@@ -115,6 +115,12 @@ The model call is neutral: `ModelCaller.stream(PlugRequest, { app, signal })` re
 
 One state machine (`runResponse`) produces both the JSON body and the SSE events, so they cannot disagree. It is stateless like the rest: `previous_response_id`, `conversation` and `item_reference` are rejected, and nothing is stored. Structured output reuses the Chat Completions mechanism (a forced `respond` tool unwrapped into the message text). Details and the supported field list: [responses.md](responses.md).
 
+## Third front-end: Anthropic Messages
+
+`POST /v1/messages` is a front-end on the same seam, but it takes the request over earlier than Responses does. `src/openai/route.ts` hands every request for `/v1/messages*` to `src/anthropic/route.ts` right after the route name is known, because three things differ from the OpenAI routes from the first check on: errors use Anthropic's body (`{"type":"error","error":{"type","message"}}`, mapped from the neutral error `kind` in `src/anthropic/response.ts`), `x-api-key` authenticates as well as `Authorization: Bearer` (same key store, `authenticate` is called with whichever header carries a valid key), and there is no `[DONE]`. The route then repeats the shared steps itself (origin check, JSON body, deadline, model resolution, `dropRejected`) and rethrows body, abort and unexpected errors after answering in its own shape, so the shared handler still logs the outcome. The contract did not change.
+
+`src/anthropic/request.ts` decodes `system`, content blocks (text, image, document, tool_use, tool_result), custom tools, `tool_choice`, sampling and `thinking`; `src/anthropic/response.ts` has one state machine (`runMessage`) for the message object and the SSE events. Anthropic's `input_tokens` excludes cache tokens while `PlugUsage.inputTokens` includes them, so the encoder subtracts. Details and the supported field list: [messages.md](messages.md).
+
 ## Module map
 
 ```text
@@ -131,6 +137,9 @@ src/openai/response.ts      encode completions, SSE, errors, model list (pure); 
 src/responses/route.ts      Responses orchestration (after the shared origin, auth and body steps)
 src/responses/request.ts    decode a Responses body (pure)
 src/responses/response.ts   encode the response object and its SSE events (pure); ResponsesExchange
+src/anthropic/route.ts      Anthropic Messages orchestration (takes the request over from openai/route; own errors and auth)
+src/anthropic/request.ts    decode a Messages body (pure)
+src/anthropic/response.ts   encode the message object, its SSE events and errors (pure); MessagesExchange
 src/session/host.ts         the host adapter: Effect plugin API to Promise port, catalog, hook-event shapes
 src/session/caller.ts       one model-call lifecycle: create session, prompt, relay events, release
 src/session/context.ts      context hook, seed tools, agent deny (all gated on confirmation); re-keys seeds onto the caller's tools
