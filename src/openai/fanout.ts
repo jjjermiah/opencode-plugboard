@@ -23,6 +23,7 @@
 import type { ServerResponse } from "node:http"
 import type { PlugError, PlugEvent, PlugRequest, PlugUsage } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
+import { reportPolicy } from "../policy.js"
 import { RequestAborted, boundEvents, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { chatUsageChunk, collectCompletion, encodeError, streamCompletion, type OpenAiExchange, type StreamChoice, type StreamResult } from "./response.js"
 import type { RouteHost } from "./route.js"
@@ -166,6 +167,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
   const served = reportServed(response, info, (s) => {
     if (calls.length === 1) codec.setModel(s.model)
   })
+  const policy = reportPolicy(response)
   const open = (index: number) =>
     boundEvents(
       host.caller.stream(calls[index]!, {
@@ -177,6 +179,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
           response.setHeader(SESSION_HEADER, records.filter((id) => id !== undefined).join(","))
         },
         onServed: served,
+        onPolicy: policy,
       }),
       gscope,
     )

@@ -161,6 +161,9 @@ export const isPlugError = (value: unknown): value is PlugError =>
 
 // ---------------------------------------------------------------- caller
 
+/** What an app's policy (option `apps`) changed in a request in a way the caller should be told about. */
+export type PolicyNote = "tools-stripped"
+
 export interface CallContext {
   /** App name (key name, or the default app). Decides the history directory. */
   readonly app: string
@@ -175,6 +178,8 @@ export interface CallContext {
    * reports it.
    */
   readonly onServed?: (served: ServedModel) => void
+  /** Called once, before the first event, with each change the app's policy made that the caller sent for. Front-ends report them in the `x-plugboard-policy` header. */
+  readonly onPolicy?: (notes: ReadonlyArray<PolicyNote>) => void
 }
 
 /** The target of an alias that answered: `provider/model[#variant]`, and the targets tried before it. */

@@ -110,7 +110,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     if (context.signal.aborted) reason = undefined
 
     if (reason !== undefined) {
-      rest ??= await resolveRest(deps, request)
+      rest ??= await resolveRest(deps, request, context.app)
       const target = rest[attempt]
       if (target) {
         if (!thrown) await close(iterator)
@@ -145,9 +145,9 @@ function retarget(options: PlugboardOptions, request: PlugRequest, ref: ModelRef
 }
 
 /** The fallbacks that are allowed and enabled. A catalog that cannot be loaded leaves none: the failure stands. */
-async function resolveRest(deps: FallbackDeps, request: PlugRequest): Promise<ModelRef[]> {
+async function resolveRest(deps: FallbackDeps, request: PlugRequest, app: string): Promise<ModelRef[]> {
   try {
-    return fallbackRefs(deps.options, request.model, await deps.loadCatalog())
+    return fallbackRefs(deps.options, request.model, await deps.loadCatalog(), app)
   } catch {
     return []
   }

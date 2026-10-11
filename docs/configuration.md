@@ -11,6 +11,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start. |
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
+| `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools? }`: per-app model scope, system prompt and tool policy. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks). |
 | `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
@@ -71,6 +72,32 @@ A response from a request that used a list alias carries `x-plugboard-model: <pr
 
 Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line.
 
+### Per-app policy (`apps`)
+
+Use `apps` to fix an app's behaviour on the server, without touching the app:
+
+```json
+{
+  "apps": {
+    "discord-bot": { "key": "{env:BOT_KEY}", "models": ["fast"], "system": "Answer in two sentences.", "tools": false },
+    "coding": { "key": "{env:CODING_KEY}", "models": ["anthropic/*"], "maxTools": 16 }
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `key` | The app's API key. Same as an entry in `keys`: you can set it in either place, and if you set it in both the values must match or the config is rejected. |
+| `models` | Narrows the global `models` for this app. Entries are `provider/model[#variant]`, `provider/*` or an alias name. A model outside the list gets 404 `model_not_found`, as if it did not exist. An alias entry admits that name only; a pattern admits every model it matches, and any alias that points at one. An app can only narrow: a model must pass both lists. A fallback target the app may not use is skipped. Must not be empty. |
+| `system` | Text added to the caller's system prompt. |
+| `systemMode` | `prepend` (default), `append` or `replace`. `replace` drops the caller's system prompt, including the instruction a `json_object` response format adds. |
+| `tools` | `false` drops every tool the caller sends before the model sees it. The request still succeeds, and the response carries `x-plugboard-policy: tools-stripped`. A `json_schema` response format is answered through a tool, so it is dropped too. History that already holds tool calls may be rejected by the provider. |
+| `maxTools` | Lowers the global `maxTools` for this app. A request with more tools gets 400 `too_many_tools`. It cannot be higher than the global cap. |
+
+`/v1/models`, `/v1/models/{id}` and the Gemini `/v1beta/models` routes list only what the calling app may use, and the model counts and example on the setup page and `/v1/status` follow the same scope.
+
+Without `keys` the only app is `default`, and `apps.default` configures it. Once any key exists `default` is never used, so `apps.default` is rejected. Every other app in `apps` must have a key. `system` is applied by the context hook that already rewrites a request session, so it shows up in the model request but not in the stored session transcript.
+
 ## Limits and errors
 
 Errors use the OpenAI error body shape with the matching HTTP status.
@@ -78,9 +105,10 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | Status | `code` | When | Message |
 | --- | --- | --- | --- |
 | 401 | `invalid_api_key` | Missing or wrong key | Missing or invalid API key |
-| 404 | `model_not_found` | Unknown model or not on the allowlist | Model &lt;m&gt; is not available |
+| 404 | `model_not_found` | Unknown model, not on the allowlist, or outside the app's `apps.<name>.models` | Model &lt;m&gt; is not available |
 | 403 | `no_models_configured` | The `models` option is empty | No models are allowed: set the plugboard `models` option |
 | 400 | `too_many_tools` | More tools than `maxTools` | Request has &lt;n&gt; tools; plugboard allows &lt;max&gt; (option `maxTools`) |
+| 400 | `too_many_tools` | More tools than the app's `apps.<name>.maxTools` | Request has &lt;n&gt; tools; app &lt;app&gt; allows &lt;max&gt; (option `apps.<app>.maxTools`) |
 | 400 | `too_many_choices` | `n` (or prompts times `n`) above `maxN` | n=&lt;n&gt; is above the limit of &lt;max&gt; (option `maxN`; each choice is a full model call) |
 | 400 | `unsupported_parameter` | `logprobs`, `top_logprobs`, `best_of` above 1, token-array prompts | names the parameter |
 

@@ -78,7 +78,7 @@ The store entry is the guard that makes the context hook rewrite a session. It o
 Every request leaves a session in the host, so history grows without bound unless it is pruned. The plugin session API (`ctx.session`) has `get` and `remove` but no `list` (OpenCode 2.0.26, `packages/plugin/src/effect/session.ts`), so plugboard cannot ask the host which sessions are its own. It keeps an index instead, in the plugin's own host storage (`ctx.storage`: a key-value table in the host database, namespaced by plugin id, shared by every Location, no file of ours; `packages/core/src/plugin/host.ts` `storage`, `packages/core/src/kv.ts`). If upstream adds a session list or archive call, use it and drop the index.
 
 - **Index**: the session store's `register` hook (request handling, right after `session.create`) writes one key per request session, `history/<app>/<created ms, 15 digits>/<sessionID>`. Key order is creation order, so a prefix scan returns an app's sessions oldest first and the key holds everything the sweep needs. It is written only while a limit is set, so with pruning off the host database gains nothing (#85). Sessions created while no limit was set are not indexed and never pruned.
-- **Option** `history: { maxSessions?, maxAgeDays? }`, global, applied to each app separately (apps are only key names; there is no per-app config). Unset means keep forever, the default. Both set: the stricter wins.
+- **Option** `history: { maxSessions?, maxAgeDays? }`, global, applied to each app separately (the limits themselves are not per-app config). Unset means keep forever, the default. Both set: the stricter wins.
 - **Sweep** (`src/session/prune.ts`, driven by `maybeSweep` in `src/runtime.ts`): started by a request, after its session was indexed, never by setup and never by a timer. At most one runs, and none starts within 10 minutes of the last, or 1 minute when the last left work behind. It finds the apps in the index, reads each app's entries oldest first, and deletes the prefix that exceeds `maxSessions` or is older than `maxAgeDays` through `ctx.session.remove` (the host interrupts and awaits an idle session first). A session whose request guard is still in the session store is skipped; a session the host no longer has only loses its index entry; a failed delete keeps its entry for the next sweep. Idle servers do no work: nothing is pruned until the next request.
 - **Bounded work**: at most 200 deletions per sweep, at most 20,000 index entries read per app (a capped read undercounts, so it deletes fewer sessions than the limit asks for, never more), a 60 s deadline checked between host calls, and a hung host call cannot block later sweeps. One log line per sweep with counts only: `history.swept apps scanned removed missing failed active more durationMs`.
 - **Manual path**: `compat/tools/sessions.py` lists and deletes one app's sessions through the host API, including sessions that predate the index.
@@ -167,6 +167,16 @@ One state machine (`runResponse`) produces both the JSON body and the SSE events
 
 `POST /v1/completions` is another front-end on the same seam, handed over by `src/openai/route.ts` the same way (`src/completions/route.ts`). `request.ts` turns `prompt` into one user message per prompt (a `suffix` becomes the only system prompt), `response.ts` encodes the legacy `text_completion` body and chunks. It always goes through the fan-out below, a single prompt being the case of one choice. Details: [completions.md](completions.md).
 
+## Per-app policy
+
+Option `apps` (`src/config.ts`, `AppPolicy`, looked up with `appPolicy`) carries what the operator fixes for one app. `authenticate` already yields the app name, and `CallContext.app` carries it to the session caller, so no front-end resolves policy; the three places that act on it are all behind the seam:
+
+- **Session caller** (`src/session/caller.ts`), before anything is created: the model scope (`checkAppModel` in `src/models.ts`, 404 `model_not_found`), then `tools: false` (the registered request has no tools and no tool choice) and the app's `maxTools`. Doing it here covers every front-end, current and future, with one check. The caller reports a stripped tool list through the optional `CallContext.onPolicy`; every route passes `reportPolicy(response)` (`src/policy.ts`) next to `onServed`, which sets `x-plugboard-policy` while the headers are open (the first writer wins, so `n` choices report once). The fallback wrapper keeps the model scope too: `fallbackRefs` skips a target the app may not use, so a retry never turns into a 404.
+- **Context hook** (`src/session/context.ts`): the app's `system` is prepended, appended or substituted when the hook builds the system prompt (the hook finds the app through the session store entry).
+- **Model lists** (`listAvailableModels(options, catalog, app)`): `/v1/models`, `/v1/models/{id}`, `/v1beta/models`, `/v1beta/models/{model}`, the setup page and the status count pass the app, so the list never shows what a request would refuse.
+
+`keys` and `apps.<name>.key` are merged by `parseOptions` into the one `keys` map `authenticate` uses; the policy map holds only apps that set a policy field. Options are fingerprinted with the rest, so all generations apply the same policy.
+
 ## Several choices (`n`)
 
 `n` above 1 needs no contract change: `src/openai/fanout.ts` calls the `ModelCaller` once per choice, concurrently, each call with its own session, and merges the answers. The wire encoders stay per-choice and come in as a `ChoiceCodec` (Chat Completions in `fanout.ts`, legacy completions in `src/completions/response.ts`), so the fan-out knows nothing about either wire format.
@@ -195,9 +205,10 @@ Per call: take the first event of an attempt and nothing more. If it is an `erro
 ```text
 index.ts                    the plugin: compose one generation, gated app-directory registrations, synchronous finalizer
 src/contract.ts             neutral vocabulary: PlugRequest/PlugEvent/PlugError, CatalogModel, ModelCaller
-src/config.ts               options type, defaults, parseOptions (rejects `__proto__` aliases and two apps sharing a key value), authenticate, loopback check (localhost, 127.0.0.1, ::1: the Host check's set)
-src/models.ts               allowlist/alias policy: resolveModel, listAvailableModels, fallbackRefs (neutral)
+src/config.ts               options type, defaults, parseOptions (rejects `__proto__` aliases and two apps sharing a key value), `apps` policy parsing, authenticate, loopback check (localhost, 127.0.0.1, ::1: the Host check's set)
+src/models.ts               allowlist/alias policy: resolveModel, listAvailableModels, fallbackRefs, checkAppModel (per-app scope) (neutral)
 src/fallback.ts             `withFallbacks`: ordered alias fallbacks as a ModelCaller wrapper (see Model fallbacks)
+src/policy.ts               `x-plugboard-policy` header writer (`reportPolicy`) for `CallContext.onPolicy`
 src/log.ts                  one-line logger (text or JSON), ambient request id; ids and outcomes only, never keys, bodies or URLs
 src/metrics.ts              Prometheus registry and text rendering (pure, no I/O)
 src/discovery.ts            `GET /`, `GET /v1` and `GET /v1/status` documents, HTML page (pure builders), `sendText`

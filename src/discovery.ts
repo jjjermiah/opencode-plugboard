@@ -136,7 +136,7 @@ export function buildDiscovery({ options, app, catalog }: DiscoveryInput): Disco
   const detail = !keyed || app !== undefined
   const auth = keyed ? ({ required: true, scheme: "Bearer" } as const) : { required: false }
 
-  const listed = detail && catalog ? listAvailableModels(options, catalog) : []
+  const listed = detail && catalog ? listAvailableModels(options, catalog, app) : []
   const summary = detail && catalog ? summarize(catalog) : undefined
   const suggested = summary?.providers.map((provider) => `${provider.id}/*`)
 
@@ -277,7 +277,7 @@ export function buildStatus(input: {
     servingConfirmed: runtime.servingConfirmed,
     eventPump: { running: runtime.pumpRunning },
     sessionGuards: runtime.guards,
-    models: catalog ? { catalog: catalog.length, available: listAvailableModels(options, catalog).length } : { error: "catalog_unavailable" },
+    models: catalog ? { catalog: catalog.length, available: listAvailableModels(options, catalog, app).length } : { error: "catalog_unavailable" },
     metrics: options.metrics,
   }
 }
