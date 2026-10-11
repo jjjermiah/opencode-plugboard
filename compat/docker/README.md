@@ -1,55 +1,33 @@
-# Docker for Open WebUI and n8n
+# Docker clients: Open WebUI and n8n
 
-## Status (2026-10-11): installed, VM not usable, images NOT pulled
+Both UIs run in containers pinned to the versions in `../results/`: Open WebUI `0.12.0` and n8n `2.42.6`. Both are bound to `127.0.0.1` on the host. Only the owner of the machine should reach them.
 
-- Docker CLI 29.6.2 at `~/.pixi/bin/docker`, runtime is colima (`~/.pixi/bin/colima`, profile `default`, vz, 4 CPU, 8 GiB). Context `colima` is active.
-- `colima start` fails: `failed to run attach disk "colima", in use by instance "colima"`. `~/.local/share/lima/_disks/colima/in_use_by` is a stale symlink to `~/.local/share/lima/colima` from a previous run (disk last written 2026-10-09; no lima/colima process is running).
-- Prep did not touch the VM disk lock because it is the user's VM data. To unblock, confirm nothing runs (`ps aux | grep -E "limactl|lima"` shows no `ha`/vz process for colima), then `rm ~/.local/share/lima/_disks/colima/in_use_by && colima start`. Pull and stop afterwards (`colima stop`) if you do not need it running.
-- No OrbStack, no Docker Desktop, no podman.
-- The commands below are written but **not run**; verify them when the VM is up.
+## Reaching plugboard from a container
 
-Plugboard listens on `0.0.0.0:4010`, so containers reach it at `http://host.docker.internal:4010/v1` (with `--add-host host.docker.internal:host-gateway`, which colima's Docker needs). Fallback: `http://10.0.1.103:4010/v1`. Check from inside: `docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl -s http://host.docker.internal:4010/healthz`.
+Plugboard listens on `127.0.0.1:4010` by default. Docker Desktop and similar runtimes let a container reach the host as `host.docker.internal`. On Linux add `--add-host host.docker.internal:host-gateway`, and note that a service bound to loopback is not reachable that way. Either point the container at the capture proxy (below), or listen on an address the container can reach and keep `keys` set.
+
+The scripts read `DOCKER_HOST_NAME` (default `host.docker.internal`), `PLUGBOARD_PORT` (default `4010`) and `PLUGBOARD_KEY`. They put `tools/logproxy.py` between the container and plugboard so the exchanges can be read afterwards. The proxy binds `127.0.0.1` unless `LOGPROXY_HOST` says otherwise. Anything that can reach the proxy can use the key it forwards, so widen `LOGPROXY_HOST` only on a machine you trust, and stop the proxy when you finish. Captures in `compat/traffic/` hold prompts, responses and keys; do not commit or share them.
 
 ## Open WebUI
 
-```sh
-docker pull ghcr.io/open-webui/open-webui:main      # large image (several GB)
+`open-webui.sh` is the command log for the 2026-10-11 run, grouped by step. Read it and run steps by hand. Minimal start:
 
-docker run -d --name plugboard-compat-owui -p 3000:8080 \
+```sh
+docker run -d --name plugboard-compat-owui -p 127.0.0.1:3000:8080 \
   --add-host host.docker.internal:host-gateway \
   -e OPENAI_API_BASE_URL=http://host.docker.internal:4010/v1 \
-  -e OPENAI_API_KEY="$(cat ~/.cache/opencode-adapter-dev/.compat-key)" \
+  -e OPENAI_API_KEY="$PLUGBOARD_KEY" \
   -e ENABLE_OLLAMA_API=false \
-  -e WEBUI_AUTH=false \
-  -e WEBUI_SECRET_KEY=compat-test \
   -v plugboard-compat-owui:/app/backend/data \
-  ghcr.io/open-webui/open-webui:main
-# UI: http://localhost:3000  (WEBUI_AUTH=false = single user, no login; cannot be switched back once data exists, use a fresh volume)
-docker logs -f plugboard-compat-owui
-# done:
-docker stop plugboard-compat-owui && docker rm plugboard-compat-owui && docker volume rm plugboard-compat-owui
+  ghcr.io/open-webui/open-webui:0.12.0
 ```
 
-If the model list stays empty: Admin Panel > Settings > Connections > OpenAI API, check URL `http://host.docker.internal:4010/v1` and key, press the verify button. Open WebUI calls `GET /v1/models` there. The model dropdown will show 458 ids; type `fast`.
+Open WebUI calls `GET /v1/models` when you save the connection. Use a fresh volume for each test. Remove it with `docker rm -f plugboard-compat-owui && docker volume rm plugboard-compat-owui`.
 
-Tool calling: Open WebUI has two modes per model (Workspace > Models > edit > Advanced Params > Function Calling): `default` (prompt-injected tools, the model answers with text) and `native` (real OpenAI `tools` in the request, the path plugboard serves). Test `native` for S2. You need a tool: Admin Panel > Functions/Tools, or enable a built-in tool (e.g. calculator / time) in a chat. Also check the title/tags generation calls Open WebUI fires after each chat (extra requests, `response_format` may be used).
+Tool calls: leave a model's Function Calling setting at its default. In 0.12.0 anything but `legacy` is native, which sends real `tools` and is the path plugboard serves.
 
 ## n8n
 
-```sh
-docker pull docker.n8n.io/n8nio/n8n:latest
+`n8n/run.sh` drives n8n headless: `./run.sh up`, `./run.sh scenarios`, `./run.sh down`, or `./run.sh all`. It creates a throwaway owner, API key and credential, and imports the workflows in `n8n/*.json`.
 
-docker run -d --name plugboard-compat-n8n -p 5678:5678 \
-  --add-host host.docker.internal:host-gateway \
-  -e N8N_SECURE_COOKIE=false \
-  -e GENERIC_TIMEZONE=America/Toronto \
-  -v plugboard-compat-n8n:/home/node/.n8n \
-  docker.n8n.io/n8nio/n8n:latest
-# UI: http://localhost:5678 (create the owner account on first visit, any local email/password)
-# done:
-docker stop plugboard-compat-n8n && docker rm plugboard-compat-n8n && docker volume rm plugboard-compat-n8n
-```
-
-OpenAI credentials with a custom base URL (UI): Credentials > Create > "OpenAI API" > API Key = the compat key, **Base URL** = `http://host.docker.internal:4010/v1` (the field exists on that credential; default `https://api.openai.com/v1`) > Save (n8n tests it by calling `/v1/models`).
-
-Workflow for S1 to S4/S6: Manual trigger > "AI Agent" node with sub-node "OpenAI Chat Model" (credential above, model: pick from the list or expression `fast`; if the node's model dropdown only offers OpenAI names, switch to "By ID" mode and type `fast`). Turn the "Use Responses API" option **off** (plugboard serves only Chat Completions). For S2, give the Agent a tool, e.g. the built-in "Calculator" or "Date & Time" tool, and ask a question that needs it. For S1 alone use "Basic LLM Chain" with the same model node. n8n can also be driven headless through its REST API after creating the workflow once; export the workflow JSON and commit it under `compat/docker/` with your results.
+By hand: run `docker.n8n.io/n8nio/n8n:2.42.6` with `-p 127.0.0.1:5678:5678`, create an OpenAI API credential with the plugboard key and Base URL `http://host.docker.internal:4010/v1`, and use an OpenAI Chat Model node. Turn **Use Responses API off**: it defaults to on, and plugboard has no `/v1/responses` yet, so the node fails with a 404.

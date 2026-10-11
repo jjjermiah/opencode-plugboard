@@ -12,7 +12,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 BASE = os.environ.get("PLUGBOARD_BASE_URL", "http://127.0.0.1:4010/v1")
-KEY = os.environ.get("PLUGBOARD_KEY") or (Path.home() / ".cache/opencode-adapter-dev/.compat-key").read_text().strip()
+KEY = os.environ["PLUGBOARD_KEY"]
 FIX = Path(__file__).resolve().parents[1] / "fixtures"
 FAST, CLAUDE, GPT = "fast", "anthropic/claude-haiku-4-5", "openai/gpt-5.6-luna#low"
 RED = (FIX / "red32.dataurl.txt").read_text().strip()

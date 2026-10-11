@@ -1,3 +1,7 @@
 node_modules/
 .agents/
 *.log
+.env*
+!.env.example
+.DS_Store
+*.tgz

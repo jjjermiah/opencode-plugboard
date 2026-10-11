@@ -1,13 +1,13 @@
 // LangChain JS (@langchain/openai) compat run against plugboard. Run: cd compat/js && bun langchain_js.ts [S1 S2 ...]
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 
 const BASE = process.env.PLUGBOARD_BASE_URL ?? "http://127.0.0.1:4010/v1";
-const KEY = process.env.PLUGBOARD_KEY ?? readFileSync(`${homedir()}/.cache/opencode-adapter-dev/.compat-key`, "utf8").trim();
+const KEY = process.env.PLUGBOARD_KEY;
+if (!KEY) throw new Error("set PLUGBOARD_KEY");
 const FIX = new URL("../fixtures/", import.meta.url).pathname;
 // JS ChatOpenAI forces the Responses API for any model id containing "gpt-5.6" (utils/misc.js _modelPrefersResponsesAPI),
 // ignoring useResponsesApi:false, so openai/gpt-5.6-luna#low 404s on /v1/responses. GPT_ALT dodges that rule.
@@ -49,9 +49,10 @@ async function s2(model: string) {
   const m = await b.invoke(hist);
   show(m);
   assert((m.response_metadata as any).finish_reason === "tool_calls", "finish tool_calls");
-  assert(m.tool_calls?.length === 1 && m.tool_calls[0].name === "get_weather" && m.tool_calls[0].id, "tool call");
-  assert(JSON.stringify(m.tool_calls[0].args).toLowerCase().includes("paris"), "paris");
-  hist.push(m, new ToolMessage({ content: TOOL_RESULT, tool_call_id: m.tool_calls[0].id! }));
+  const call = m.tool_calls?.[0];
+  assert(m.tool_calls?.length === 1 && call?.name === "get_weather" && call.id, "tool call");
+  assert(JSON.stringify(call!.args).toLowerCase().includes("paris"), "paris");
+  hist.push(m, new ToolMessage({ content: TOOL_RESULT, tool_call_id: call!.id! }));
   const m2 = await b.invoke(hist);
   console.log(" turn2:"); show(m2);
   assert((m2.response_metadata as any).finish_reason === "stop", "turn2 stop");
@@ -141,7 +142,7 @@ const RUNS: Record<string, [string, (m: string) => Promise<void>, string][]> = {
   ERR: [["ERR", () => err(), "-"]],
 };
 for (const k of process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(RUNS)) {
-  for (const [name, fn, model] of RUNS[k]) {
+  for (const [name, fn, model] of RUNS[k] ?? []) {
     console.log(`== ${name} model=${model}`);
     try { await fn(model); console.log("  -> PASS"); } catch (e: any) { console.log("  -> FAIL", e?.stack?.split("\n").slice(0, 3).join(" | ")); }
   }

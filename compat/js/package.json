@@ -1,12 +1,12 @@
 {
   "name": "plugboard-compat-js",
-  "module": "index.ts",
   "type": "module",
   "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "scripts": {
+    "typecheck": "tsc --noEmit"
   },
-  "peerDependencies": {
+  "devDependencies": {
+    "@types/bun": "1.4.2",
     "typescript": "^7"
   },
   "dependencies": {
