@@ -183,6 +183,8 @@ function runtime(): Runtime | undefined {
 function trackSession(rt: Runtime, app: string, sessionID: string): void {
   const history = preferred(rt)?.history
   if (!history) return logError("history.index_skipped", { app, sessionID, reason: "no live generation" })
+  // No limits, no index: an unbounded index would grow opencode.db by a row per request forever (#85).
+  if (history.limits.maxSessions === undefined && history.limits.maxAgeDays === undefined) return
   void recordSession(history.port, app, sessionID, Date.now())
     .catch((error) => logError("history.index_failed", { app, sessionID, error: errorMessage(error) }))
     .then(() => maybeSweep(rt, history))

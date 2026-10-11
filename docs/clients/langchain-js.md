@@ -45,5 +45,5 @@ console.log((await bound.invoke(history)).content)
 
 ## Gotchas
 
-- Model ids containing `gpt-5.6` (also `gpt-5.2-pro`, `gpt-5.4-pro`, `gpt-5.5-pro`, `codex`) force the Responses API and ignore `useResponsesApi: false`. The call fails with `404 No route for POST /v1/responses`. `openai/gpt-5.5#low` worked. Until plugboard serves `/v1/responses`, use an id without those strings. An alias to such a model should also dodge the check, but that is untested.
+- Model ids containing `gpt-5.6` (also `gpt-5.2-pro`, `gpt-5.4-pro`, `gpt-5.5-pro`, `codex`) force the Responses API and ignore `useResponsesApi: false`. Plugboard serves that API (see [Responses API](../responses.md)): with `openai/gpt-5.6-luna#low`, `invoke`, streaming, a tool round trip, image input and `withStructuredOutput` (`jsonSchema`, `functionCalling`) passed on 2026-10-11. Responses results have no `finish_reason` in `response_metadata`; check `status` there instead.
 - There is no list-models call. Use the `openai` SDK directly.

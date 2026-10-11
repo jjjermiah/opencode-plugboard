@@ -60,5 +60,5 @@ const { output } = await generateText({ model, output: Output.object({ schema: z
 ## Gotchas
 
 - Set `supportsStructuredOutputs: true`. Without it the SDK sends `response_format: json_object` with no schema anywhere, the model guesses the keys, and `Output.object` throws `NoObjectGeneratedError`.
-- `@ai-sdk/openai` must use `openai.chat(id)`. The default `openai(id)` calls `/v1/responses`, which plugboard does not serve yet (`404 No route for POST /v1/responses`).
+- `@ai-sdk/openai`: the default `openai(id)` calls `/v1/responses`, which plugboard now serves (see [Responses API](../responses.md)). All 17 scenarios passed this way on 2026-10-11, the same set as `openai.chat(id)`. For multi-turn chats set `providerOptions: { openai: { store: false } }`: with the default `store: true` the SDK replays earlier assistant text as `item_reference`, which plugboard rejects. `openai.chat(id)` still works if you prefer Chat Completions.
 - The SDK has no model list call. `GET /v1/models` with `fetch` works.

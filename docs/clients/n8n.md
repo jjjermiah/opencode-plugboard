@@ -6,7 +6,7 @@ Tested: n8n 2.42.6 (Docker), OpenAI Chat Model node v1.3, 2026-10-11, at an earl
 
 1. Credentials, create "OpenAI API": API Key is your plugboard key, **Base URL** is `http://host.docker.internal:4010/v1` from a container or `http://localhost:4010/v1` from a host install. The container case needs plugboard bound to a non-loopback address with `keys` set, see [reaching plugboard from another host or container](any-app.md#reaching-plugboard-from-another-host-or-container). Saving runs `GET /v1/models`.
 2. Add an OpenAI Chat Model node with that credential. If the model dropdown only lists OpenAI names, switch Model to "By ID" and type `fast`, an alias from the plugboard `aliases` option, or any allowed `provider/model[#variant]`.
-3. In the node, turn **Use Responses API off**.
+3. In the node, turn **Use Responses API off** (tested). The Responses path is served too, but untested in n8n.
 
 ## Chat
 
@@ -22,5 +22,5 @@ The Structured Output Parser works on all three models tested. It puts the schem
 
 ## Gotchas
 
-- **Use Responses API is on by default** in the Chat Model node, even with a custom Base URL. n8n then calls `POST /v1/responses`, which plugboard does not serve yet, and the run fails with `No route for POST /v1/responses`. Turn it off. The same goes for the OpenAI vendor node ("Message a Model"), which was not tested.
+- **Use Responses API is on by default** in the Chat Model node, even with a custom Base URL. n8n then calls `POST /v1/responses`. Plugboard serves it now (see [Responses API](../responses.md)), but this page's checks were run with the toggle off, and the Responses path has not been run through n8n. Leave the toggle off unless you have tried it. The same goes for the OpenAI vendor node ("Message a Model"), which was not tested.
 - Sampling options are forwarded as set, and providers reject some: ChatGPT ids return 400 `Unsupported parameter: temperature` (and `top_p`, both penalties), some models reject `frequency_penalty` or `presence_penalty`, and Claude rejects `temperature` together with `top_p`. n8n shows these as "Bad request". Leave the options unset unless you need them. `Max Tokens` is fine.
