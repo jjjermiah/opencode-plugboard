@@ -1,0 +1,18 @@
+{
+  "name": "opencode-plugboard",
+  "version": "0.0.0-spike",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "SPIKE: an OpenAI-compatible /v1/chat/completions served from inside the OpenCode V2 server, backed by one hidden OpenCode session per request.",
+  "devDependencies": {
+    "@opencode/plugin": "2.0.24",
+    "@types/node": "^26.6.2",
+    "effect": "4.0.0-rc.112",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@opencode/plugin": "*",
+    "effect": "4.0.0-rc.112"
+  }
+}
