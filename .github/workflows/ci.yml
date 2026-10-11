@@ -31,7 +31,7 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
       - name: Check the packed file list
-        run: bun scripts/check-pack.ts
+        run: bun .github/scripts/check-pack.ts
 
   compat:
     name: Compat kit checks
