@@ -23,9 +23,13 @@
     "test": "bun test",
     "release": "bun .github/scripts/release.ts"
   },
+  "dependencies": {
+    "escape-html": "1.0.3"
+  },
   "devDependencies": {
     "@opencode/plugin": "2.0.26",
     "@types/bun": "1.4.2",
+    "@types/escape-html": "^1.0.4",
     "@types/node": "^26.6.2",
     "effect": "4.0.0-rc.112",
     "typescript": "^5.9.3"

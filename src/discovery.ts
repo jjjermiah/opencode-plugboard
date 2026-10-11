@@ -16,6 +16,7 @@
  */
 
 import type { ServerResponse } from "node:http"
+import escapeText from "escape-html"
 import type { PlugboardOptions } from "./config.js"
 import type { CatalogModel } from "./contract.js"
 import { listAvailableModels } from "./models.js"
@@ -40,8 +41,7 @@ export function sendText(response: ServerResponse, status: number, contentType: 
   response.end(body)
 }
 
-const escapeHtml = (value: unknown): string =>
-  String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char)
+const escapeHtml = (value: unknown): string => escapeText(String(value))
 
 /** `http://host:port` for a listen address; an IPv6 literal gets brackets. */
 function origin(listen: PlugboardOptions["listen"]): string {
