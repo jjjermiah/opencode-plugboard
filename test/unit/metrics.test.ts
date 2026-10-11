@@ -95,6 +95,18 @@ describe("#56 createMetrics: Prometheus text", () => {
     expect(samples(text, "plugboard_history_sessions_removed_total")).toEqual(["plugboard_history_sessions_removed_total 0"])
   })
 
+  test("#54 refused calls are counted by app and reason, and nothing is written before one is refused", async () => {
+    const metrics = createMetrics()
+    expect(samples(await metrics.render(snapshot), "plugboard_limited_total")).toEqual([])
+    metrics.limited("alpha", "concurrency")
+    metrics.limited("alpha", "rate")
+    metrics.limited("alpha", "rate")
+    expect(samples(await metrics.render(snapshot), "plugboard_limited_total")).toEqual([
+      'plugboard_limited_total{app="alpha",reason="concurrency"} 1',
+      'plugboard_limited_total{app="alpha",reason="rate"} 2',
+    ])
+  })
+
   test("each registry is its own: the default one is untouched and no process metrics are collected", async () => {
     const first = createMetrics()
     const second = createMetrics()

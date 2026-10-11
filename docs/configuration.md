@@ -21,6 +21,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
 | `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`, with the same authentication as `/v1`. |
+| `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
 Changes to `listen` need a server restart; other option changes apply on config reload.
@@ -98,6 +99,28 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 
 Without `keys` the only app is `default`, and `apps.default` configures it. Once any key exists `default` is never used, so `apps.default` is rejected. Every other app in `apps` must have a key. `system` is applied by the context hook that already rewrites a request session, so it shows up in the model request but not in the stored session transcript.
 
+## Concurrency and rate limits
+
+`limits` caps how many model calls run at once, and how many an app may start per minute. Without it nothing is capped.
+
+```json
+"limits": {
+  "maxConcurrent": 8,
+  "perApp": { "maxConcurrent": 2, "requestsPerMinute": 30 },
+  "apps": { "coding": { "maxConcurrent": 4 } }
+}
+```
+
+- `maxConcurrent` at the top caps all apps together.
+- `perApp` applies to every app. `apps.<name>` overrides `perApp` field by field for that app: `coding` above gets 4 calls at once and still 30 per minute. Each name must be a configured app (a key in `keys`), or `default` when there are no keys.
+- Every value is a positive integer. Unknown keys are rejected at load.
+- A call holds one slot in each cap that applies to its app, until its answer ends, fails or the client disconnects. A request that falls back along an alias list holds one slot for all its targets.
+- Nothing queues. A call that finds a cap full gets 429 `too_many_requests` at once, before any session is created, so the provider never sees it. The HTTP response does not carry a `Retry-After` header yet.
+- `requestsPerMinute` is a fixed window of 60 seconds per app, starting at the app's first call in it. A call over the limit gets 429 `rate_limit_exceeded`.
+- A refused call takes no slot and counts toward no window.
+- The counts live in the server process: a restart clears them, and two servers do not share them.
+- With `metrics: true`, `plugboard_limited_total{app,reason}` counts refusals, where `reason` is `concurrency` or `rate`.
+
 ## Limits and errors
 
 Errors use the OpenAI error body shape with the matching HTTP status.
@@ -111,8 +134,10 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 400 | `too_many_tools` | More tools than the app's `apps.<name>.maxTools` | Request has &lt;n&gt; tools; app &lt;app&gt; allows &lt;max&gt; (option `apps.<app>.maxTools`) |
 | 400 | `too_many_choices` | `n` (or prompts times `n`) above `maxN` | n=&lt;n&gt; is above the limit of &lt;max&gt; (option `maxN`; each choice is a full model call) |
 | 400 | `unsupported_parameter` | `logprobs`, `top_logprobs`, `best_of` above 1, token-array prompts | names the parameter |
+| 429 | `too_many_requests` | A cap on concurrent calls in `limits` is full | Too many concurrent requests |
+| 429 | `rate_limit_exceeded` | The app's requests per minute in `limits` are used up | Too many requests per minute |
 
-Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. There is no per-app concurrency limit yet ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
+Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. Calls over a cap in `limits` get 429 instead (see [Concurrency and rate limits](#concurrency-and-rate-limits)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 
 Supported request fields: messages with system, developer, user text and images, assistant `tool_calls` and tool results; `tools`, `tool_choice`, `response_format` (`json_object`, `json_schema`), `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `presence_penalty`, `frequency_penalty`, `reasoning_effort`, `n` (up to `maxN`), and streaming with a final usage chunk (`stream_options.include_usage`). The legacy `POST /v1/completions` is served too: see [completions](completions.md).
 

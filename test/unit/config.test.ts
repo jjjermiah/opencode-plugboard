@@ -48,6 +48,14 @@ describe("parseOptions: defaults", () => {
     })
   })
 
+  test("limits are kept as given, and are absent when not set", () => {
+    const limits = { maxConcurrent: 8, perApp: { maxConcurrent: 2, requestsPerMinute: 60 }, apps: { a: { requestsPerMinute: 10 } } }
+    expect(parseOptions({ keys: { a: "k" }, limits }).limits).toEqual(limits)
+    expect(parseOptions({ limits: {} }).limits).toEqual({})
+    expect(parseOptions({ limits: { apps: { default: { maxConcurrent: 1 } } } }).limits).toEqual({ apps: { default: { maxConcurrent: 1 } } })
+    expect(parseOptions({}).limits).toBeUndefined()
+  })
+
   test("history limits that are not set stay absent (keep forever)", () => {
     expect(parseOptions({ history: { maxSessions: 3 } }).history).toEqual({ maxSessions: 3 })
     expect(parseOptions({ history: {} }).history).toEqual({})
@@ -89,6 +97,20 @@ describe("parseOptions: every rejection names the option", () => {
     ["an unknown history key", { history: { maxCount: 1 } }, /Unknown plugboard option `history.maxCount`/],
     ["a history.maxSessions of 0", { history: { maxSessions: 0 } }, /`history.maxSessions`/],
     ["a history.maxAgeDays past 100 years", { history: { maxAgeDays: 36_501 } }, /`history.maxAgeDays` must be an integer between 1 and 36500/],
+    ["a limits that is not an object", { limits: 5 }, /`limits` must be an object/],
+    ["an unknown limits key", { limits: { rate: 1 } }, /Unknown plugboard option `limits.rate`/],
+    ["a limits.maxConcurrent of 0", { limits: { maxConcurrent: 0 } }, /`limits.maxConcurrent` must be an integer between 1 and 1000000/],
+    ["a fractional limits.maxConcurrent", { limits: { maxConcurrent: 2.5 } }, /`limits.maxConcurrent`/],
+    ["a string limits.maxConcurrent", { limits: { maxConcurrent: "4" } }, /`limits.maxConcurrent`/],
+    ["requestsPerMinute at the top level", { limits: { requestsPerMinute: 5 } }, /Unknown plugboard option `limits.requestsPerMinute`/],
+    ["a perApp that is not an object", { limits: { perApp: 3 } }, /`limits.perApp` must be an object/],
+    ["an unknown perApp key", { limits: { perApp: { maxTools: 1 } } }, /Unknown plugboard option `limits.perApp.maxTools` \(known: maxConcurrent, requestsPerMinute\)/],
+    ["a perApp requestsPerMinute of 0", { limits: { perApp: { requestsPerMinute: 0 } } }, /`limits.perApp.requestsPerMinute`/],
+    ["an apps that is not an object", { limits: { apps: [] } }, /`limits.apps` must be an object/],
+    ["an apps entry for an app with no key", { keys: { a: "k" }, limits: { apps: { b: { maxConcurrent: 1 } } } }, /`limits.apps.b` must name a configured app/],
+    ["an apps entry for default when keys exist", { keys: { a: "k" }, limits: { apps: { default: { maxConcurrent: 1 } } } }, /`limits.apps.default` must name a configured app/],
+    ["an apps entry that is not an object", { keys: { a: "k" }, limits: { apps: { a: 2 } } }, /`limits.apps.a` must be an object/],
+    ["an unknown key in an apps entry", { keys: { a: "k" }, limits: { apps: { a: { perApp: 1 } } } }, /Unknown plugboard option `limits.apps.a.perApp`/],
   ]
   test.each(cases)("rejects %s", (_name, raw, message) => {
     expect(() => parseOptions(raw)).toThrow(message)

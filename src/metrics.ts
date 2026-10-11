@@ -62,6 +62,8 @@ export interface Metrics {
   dropped(params: ReadonlyArray<string>): void
   /** A model call failed before any output and was retried on the next target of its alias. */
   fallback(app: string): void
+  /** A call was refused with 429 by a concurrency cap (`concurrency`) or a requests-per-minute limit (`rate`). */
+  limited(app: string, reason: "concurrency" | "rate"): void
   /** One history sweep ended. */
   sweep(result: "ok" | "failed" | "timeout", removed: number): void
   /** The exposition text. Called from a request that is itself in flight, which is not counted. */
@@ -104,6 +106,12 @@ export function createMetrics(): Metrics {
     labelNames: ["app"],
     registers: [registry],
   })
+  const limited = new Counter({
+    name: "plugboard_limited_total",
+    help: "Model calls refused with 429 by a concurrency cap or a requests-per-minute limit, by app and reason.",
+    labelNames: ["app", "reason"],
+    registers: [registry],
+  })
   const sweeps = new Counter({ name: "plugboard_history_sweeps_total", help: "History sweeps that ended, by result.", labelNames: ["result"], registers: [registry] })
   const removed = new Counter({ name: "plugboard_history_sessions_removed_total", help: "Request sessions removed by history sweeps.", registers: [registry] })
   const generations = new Gauge({ name: "plugboard_generations", help: "Accepted plugin generations (one per OpenCode Location) serving requests.", registers: [registry] })
@@ -142,6 +150,7 @@ export function createMetrics(): Metrics {
       for (const param of params) count(dropped, { param })
     },
     fallback: (app) => count(fallbacks, { app }),
+    limited: (app, reason) => count(limited, { app, reason }),
     sweep(result, amount) {
       count(sweeps, { result })
       if (amount > 0 && Number.isFinite(amount)) removed.inc(amount)
