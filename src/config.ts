@@ -6,6 +6,9 @@ import { allowedBy, parseModelRef } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
 
+/** How `/v1/models` spells a model id: the canonical `provider/model#variant`, a UI-safe slug, or both. Resolution accepts either. */
+export type ModelIds = "canonical" | "slugs" | "both"
+
 /** Plugin options, after defaults and validation (see `parseOptions`). */
 export interface PlugboardOptions {
   readonly listen: { readonly host: string; readonly port: number }
@@ -42,6 +45,8 @@ export interface PlugboardOptions {
   readonly logFormat: "text" | "json"
   /** Serve `GET /metrics` (Prometheus text). Off by default; same authentication as `/v1`. */
   readonly metrics: boolean
+  /** Ids listed by `/v1/models`: canonical, slugs (`provider--model__variant`) or both. See `toSlug` in `src/models.ts`. */
+  readonly modelIds: ModelIds
 }
 
 export type SystemMode = "prepend" | "append" | "replace"
@@ -71,7 +76,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics"])
+const KNOWN = new Set(["listen", "keys", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds"])
 const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays"])
 /** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
 const MAX_AGE_DAYS = 36_500
@@ -139,6 +144,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
 
 const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools"])
 const SYSTEM_MODES: ReadonlySet<string> = new Set(["prepend", "append", "replace"])
+const MODEL_IDS: ReadonlySet<string> = new Set(["canonical", "slugs", "both"])
 
 /** Validates `apps` (the `key` field was merged into `keys` already) into per-app policies. */
 function parseApps(
@@ -266,6 +272,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (input.logFormat !== undefined && input.logFormat !== "text" && input.logFormat !== "json")
     throw new Error("plugboard option `logFormat` must be `text` or `json`")
   if (input.metrics !== undefined && typeof input.metrics !== "boolean") throw new Error("plugboard option `metrics` must be a boolean")
+  if (input.modelIds !== undefined && (typeof input.modelIds !== "string" || !MODEL_IDS.has(input.modelIds)))
+    throw new Error("plugboard option `modelIds` must be `canonical`, `slugs` or `both`")
 
   const historyInput = input.history
   if (historyInput !== undefined && !isRecord(historyInput)) throw new Error("plugboard option `history` must be an object")
@@ -289,6 +297,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     dropUnsupportedParams: input.dropUnsupportedParams !== false,
     logFormat: input.logFormat === "json" ? "json" : "text",
     metrics: input.metrics === true,
+    modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
   }
 }
 

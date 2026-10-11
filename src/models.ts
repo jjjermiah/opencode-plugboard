@@ -20,6 +20,33 @@ export function refToString(ref: ModelRef): string {
   return `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
 }
 
+/**
+ * A UI-safe spelling of a canonical id: `/` becomes `--` and `#` becomes `__`, so some chat UIs that mangle
+ * `/` and `#` keep it intact. `anthropic/claude-haiku-4-5#high` -> `anthropic--claude-haiku-4-5__high`.
+ */
+export function toSlug(id: string): string {
+  return id.replaceAll("/", "--").replaceAll("#", "__")
+}
+
+/**
+ * The canonical id a slug stands for, or undefined when `slug` is not one. The first `--` ends the provider, the
+ * first `__` starts the variant; a `--` inside the model id is read back as `/`. Ids where that does not round
+ * trip are not listed as slugs (see `listAvailableModels`), so they are never offered and never resolved this way.
+ */
+export function fromSlug(slug: string): string | undefined {
+  if (typeof slug !== "string" || /[\s/#*]/.test(slug)) return undefined
+  const sep = slug.indexOf("--")
+  if (sep <= 0) return undefined
+  const providerID = slug.slice(0, sep)
+  const rest = slug.slice(sep + 2)
+  const at = rest.indexOf("__")
+  const model = (at === -1 ? rest : rest.slice(0, at)).replaceAll("--", "/")
+  const variant = at === -1 ? undefined : rest.slice(at + 2)
+  if (variant !== undefined && (!variant || variant.includes("__"))) return undefined
+  const id = refToString({ providerID, id: model, ...(variant === undefined ? {} : { variant }) })
+  return parseModelRef(id) ? id : undefined
+}
+
 /** `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly. */
 export function allowedBy(models: ReadonlyArray<string>, ref: ModelRef): boolean {
   return models.some((pattern) => {
@@ -80,7 +107,8 @@ export function resolveModel(
     code: "model_not_found",
     param: "model",
   }
-  let ref = parseModelRef(own(options.aliases, model) ?? model)
+  // Aliases keep priority over slugs; a slug and a canonical id both resolve, whatever `modelIds` lists.
+  let ref = parseModelRef(own(options.aliases, model) ?? fromSlug(model) ?? model)
   if (!ref) return notAvailable
   if (!ref.variant && reasoningEffort && find(catalog, { ...ref, variant: reasoningEffort }))
     ref = { ...ref, variant: reasoningEffort }
@@ -96,7 +124,9 @@ export interface ListedModel {
 
 /**
  * The allowlist intersected with the catalog, plus aliases whose target qualifies. Ids are unique except an alias may repeat one.
- * With `app`, the list is narrowed to that app's `models` (see `inAppScope`).
+ * Each model is listed as its canonical id, its slug, or both, per `options.modelIds`; a model whose slug does not
+ * round trip (see `fromSlug`) is left out in `slugs` mode. Aliases are listed as they are.
+ * With `app`, the list is narrowed to that app's `models` (see `inAppScope`), judged on the canonical id.
  */
 export function listAvailableModels(options: PlugboardOptions, catalog: ReadonlyArray<CatalogModel>, app?: string): ListedModel[] {
   const policy = app === undefined ? undefined : appPolicy(options, app)
@@ -110,7 +140,9 @@ export function listAvailableModels(options: PlugboardOptions, catalog: Readonly
       const id = refToString(ref)
       if (seen.has(id) || !allowed(options, ref) || !inAppScope(policy, id, ref)) continue
       seen.add(id)
-      data.push(entry(id, ref, model))
+      if (options.modelIds !== "slugs") data.push(entry(id, ref, model))
+      const slug = toSlug(id)
+      if (options.modelIds !== "canonical" && fromSlug(slug) === id) data.push(entry(slug, ref, model))
     }
   }
   for (const [alias, target] of Object.entries(options.aliases)) {
@@ -119,6 +151,22 @@ export function listAvailableModels(options: PlugboardOptions, catalog: Readonly
     if (ref && model) data.push(entry(alias, ref, model))
   }
   return data
+}
+
+/** Capabilities `GET /v1/models?capability=` can filter on: the flags the catalog reports (`CatalogModel.capabilities`). */
+export type Capability = "vision" | "tools"
+
+const CAPABILITY_FLAG: Readonly<Record<Capability, "image" | "tools">> = { vision: "image", tools: "tools" }
+
+/** The capability a query value names, or undefined for anything else (`json` has no catalog flag, so it is not one). */
+export function parseCapability(value: string): Capability | undefined {
+  return Object.hasOwn(CAPABILITY_FLAG, value) ? (value as Capability) : undefined
+}
+
+/** The listed models whose catalog entry sets that capability flag to true. Order is kept. */
+export function filterByCapability(models: ReadonlyArray<ListedModel>, capability: Capability): ListedModel[] {
+  const flag = CAPABILITY_FLAG[capability]
+  return models.filter(({ model }) => model.capabilities?.[flag] === true)
 }
 
 /**

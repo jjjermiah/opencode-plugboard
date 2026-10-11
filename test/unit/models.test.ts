@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import fc from "fast-check"
 import type { PlugError } from "../../src/contract.js"
-import { listAvailableModels, resolveModel } from "../../src/models.js"
+import { filterByCapability, fromSlug, listAvailableModels, parseCapability, refToString, resolveModel, toSlug } from "../../src/models.js"
 import { CATALOG, model, testOptions } from "../support/fixtures.js"
 
 const notAvailable = (name: string): PlugError => ({ status: 404, kind: "not_found", code: "model_not_found", param: "model", message: `Model ${name} is not available` })
@@ -80,5 +81,131 @@ describe("listAvailableModels", () => {
   test("each entry carries its ref and catalog model", () => {
     const [entry] = listAvailableModels(testOptions({ models: ["test/vision"] }), CATALOG)
     expect(entry).toEqual({ id: "test/vision", ref: { providerID: "test", id: "vision" }, model: CATALOG[1]! })
+  })
+})
+
+describe("toSlug and fromSlug: UI-safe model ids", () => {
+  test("toSlug turns `/` into `--` and `#` into `__`", () => {
+    expect(toSlug("anthropic/claude-haiku-4-5#high")).toBe("anthropic--claude-haiku-4-5__high")
+    expect(toSlug("openrouter/vendor/model")).toBe("openrouter--vendor--model")
+  })
+
+  test.each(["test/echo", "test/echo#high", "openrouter/vendor/model", "openrouter/vendor/model#low", "other/model"])("%s round trips through its slug", (id) => {
+    expect(fromSlug(toSlug(id))).toBe(id)
+  })
+
+  test("any provider, model and variant built from plain segments round trips", () => {
+    const segment = fc.stringMatching(/^[a-z0-9]{1,8}$/)
+    const canonical = fc.tuple(segment, fc.array(segment, { minLength: 1, maxLength: 3 }), fc.option(fc.stringMatching(/^[a-z0-9]{1,6}$/), { nil: undefined }))
+    fc.assert(
+      fc.property(canonical, ([providerID, parts, variant]) => {
+        const id = refToString({ providerID, id: parts.join("/"), ...(variant ? { variant } : {}) })
+        expect(fromSlug(toSlug(id))).toBe(id)
+      }),
+    )
+  })
+
+  test.each(["", "test/echo", "fast", "--echo", "test--", "__", "test--echo__", "test--echo__high__x", "test--echo#high", "test--ec ho", "test--echo/x"])(
+    "fromSlug rejects %p",
+    (junk) => {
+      expect(fromSlug(junk)).toBeUndefined()
+    },
+  )
+})
+
+describe("resolveModel: slugs", () => {
+  test.each(["test/echo", "test/echo#high", "test/vision", "other/model"])("the slug of %s resolves to the same model as the canonical id", (id) => {
+    const options = testOptions({ models: ["test/*", "other/*"] })
+    expect(resolveModel(options, toSlug(id), CATALOG)).toEqual(resolveModel(options, id, CATALOG))
+  })
+
+  test("a slug and a canonical id both resolve, whatever modelIds lists", () => {
+    const options = testOptions({ modelIds: "slugs" })
+    expect(resolveModel(options, "test--echo__high", CATALOG)).toEqual({ providerID: "test", id: "echo", variant: "high" })
+    expect(resolveModel(options, "test/echo#high", CATALOG)).toEqual({ providerID: "test", id: "echo", variant: "high" })
+  })
+
+  test("a slug of a model the allowlist refuses is not available", () => {
+    expect(resolveModel(testOptions({ models: ["test/echo"] }), "test--vision", CATALOG)).toEqual(notAvailable("test--vision"))
+  })
+
+  test("a slug takes the reasoning effort variant like a canonical id", () => {
+    expect(resolveModel(testOptions(), "test--echo", CATALOG, "high")).toEqual({ providerID: "test", id: "echo", variant: "high" })
+  })
+
+  test("an alias wins over a slug with the same spelling", () => {
+    const options = testOptions({ models: ["test/*", "other/*"], aliases: { "test--echo": "other/model" } })
+    expect(resolveModel(options, "test--echo", CATALOG)).toEqual({ providerID: "other", id: "model" })
+  })
+})
+
+describe("listAvailableModels: modelIds", () => {
+  const aliases = { fast: "test/echo#low" }
+
+  test("canonical lists only canonical ids (the default)", () => {
+    expect(listAvailableModels(testOptions({ models: ["test/echo", "other/*"], aliases }), CATALOG).map((entry) => entry.id)).toEqual([
+      "test/echo",
+      "test/echo#low",
+      "test/echo#high",
+      "other/model",
+      "fast",
+    ])
+  })
+
+  test("slugs lists each model's slug in place of its canonical id, aliases unchanged", () => {
+    const options = testOptions({ modelIds: "slugs", models: ["test/echo", "other/*"], aliases })
+    expect(listAvailableModels(options, CATALOG).map((entry) => entry.id)).toEqual(["test--echo", "test--echo__low", "test--echo__high", "other--model", "fast"])
+  })
+
+  test("both lists each canonical id followed by its slug, aliases unchanged", () => {
+    const options = testOptions({ modelIds: "both", models: ["test/echo", "other/*"], aliases })
+    expect(listAvailableModels(options, CATALOG).map((entry) => entry.id)).toEqual([
+      "test/echo",
+      "test--echo",
+      "test/echo#low",
+      "test--echo__low",
+      "test/echo#high",
+      "test--echo__high",
+      "other/model",
+      "other--model",
+      "fast",
+    ])
+  })
+
+  test("a slug entry carries the same ref and catalog model as its canonical id", () => {
+    const [canonical, slug] = listAvailableModels(testOptions({ modelIds: "both", models: ["test/vision"] }), CATALOG)
+    expect(slug).toEqual({ ...canonical!, id: "test--vision" })
+  })
+
+  test("a model whose slug would not resolve back is left out of slugs, and kept under canonical and both", () => {
+    const catalog = [model("test", "a--b")]
+    expect(listAvailableModels(testOptions({ modelIds: "slugs" }), catalog)).toEqual([])
+    expect(listAvailableModels(testOptions({ modelIds: "canonical" }), catalog).map((entry) => entry.id)).toEqual(["test/a--b"])
+    expect(listAvailableModels(testOptions({ modelIds: "both" }), catalog).map((entry) => entry.id)).toEqual(["test/a--b"])
+  })
+})
+
+describe("filterByCapability", () => {
+  const listed = listAvailableModels(testOptions({ models: ["test/*", "other/*"] }), CATALOG)
+  const ids = (capability: Parameters<typeof filterByCapability>[1]) => filterByCapability(listed, capability).map((entry) => entry.id)
+
+  test("vision keeps the models whose catalog entry reports image input", () => {
+    expect(ids("vision")).toEqual(["test/vision"])
+  })
+
+  test("tools keeps every model whose catalog entry reports tool support, variants included", () => {
+    expect(ids("tools")).toEqual(["test/echo", "test/echo#low", "test/echo#high", "test/vision"])
+  })
+
+  test("a model without capability metadata matches no capability", () => {
+    expect(filterByCapability(listAvailableModels(testOptions({ models: ["other/*"] }), CATALOG), "tools")).toEqual([])
+  })
+
+  test("parseCapability accepts vision and tools; json and anything else name no capability", () => {
+    expect(parseCapability("vision")).toBe("vision")
+    expect(parseCapability("tools")).toBe("tools")
+    expect(parseCapability("json")).toBeUndefined()
+    expect(parseCapability("toString")).toBeUndefined()
+    expect(parseCapability("")).toBeUndefined()
   })
 })
