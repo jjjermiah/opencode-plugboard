@@ -1,7 +1,6 @@
 {
   "name": "opencode-plugboard",
-  "version": "0.2.0",
-  "private": true,
+  "version": "0.2.1",
   "type": "module",
   "license": "MIT",
   "description": "OpenCode V2 plugin that serves an OpenAI-compatible /v1/chat/completions and /v1/models from your OpenCode server, backed by the providers you already connected there.",

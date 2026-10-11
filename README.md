@@ -12,7 +12,7 @@ Docs: [architecture](https://github.com/jjjermiah/opencode-plugboard/blob/main/d
 
 ## Quick start
 
-Install it in your global OpenCode config (`~/.config/opencode/opencode.jsonc`). It has to be global. See [History](#history) for why. Until the package is on npm, set `package` to the path of a checkout.
+Install it in your global OpenCode config (`~/.config/opencode/opencode.jsonc`). It has to be global. See [History](#history) for why. OpenCode installs it from npm the first time it loads; to run a local checkout instead, set `package` to its path.
 
 ```jsonc
 {
