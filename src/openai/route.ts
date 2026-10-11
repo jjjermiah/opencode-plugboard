@@ -14,7 +14,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { authenticate, type PlugboardOptions } from "../config.js"
-import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
+import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import {
   BodyError,
   RequestAborted,
@@ -45,38 +45,6 @@ const SESSION_HEADER = "x-plugboard-session"
 const MODEL_PREFIX = "/v1/models/"
 const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions"]
 
-/**
- * Errors before any content are real HTTP errors, not a 200 SSE stream: pull events until the
- * first one that is not reasoning (which streaming drops anyway). Returns the error, or the stream
- * with that first event put back.
- */
-async function peekStream(events: AsyncIterable<PlugEvent>): Promise<{ error: PlugError } | { events: AsyncIterable<PlugEvent> }> {
-  const iterator = events[Symbol.asyncIterator]()
-  let first = await iterator.next()
-  while (!first.done && first.value.type === "reasoning-delta") first = await iterator.next()
-  if (!first.done && first.value.type === "error") {
-    void iterator.return?.(undefined)?.catch?.(() => {})
-    return { error: first.value.error }
-  }
-  const lead = first
-  return {
-    events: {
-      async *[Symbol.asyncIterator]() {
-        try {
-          if (!lead.done) yield lead.value
-          while (true) {
-            const next = await iterator.next()
-            if (next.done) return
-            yield next.value
-          }
-        } finally {
-          void iterator.return?.(undefined)?.catch?.(() => {})
-        }
-      },
-    },
-  }
-}
-
 const decodeSegment = (raw: string): string => {
   try {
     return decodeURIComponent(raw)
@@ -90,6 +58,8 @@ interface RequestInfo {
   route: string
   app?: string
   model?: string
+  /** Set when a response committed as 200 and then failed (a stream error frame): the log outcome and the error code. */
+  failed?: string
 }
 
 export function createOpenAiRoute(host: RouteHost) {
@@ -173,13 +143,16 @@ export function createOpenAiRoute(host: RouteHost) {
     )
 
     if (exchange.stream) {
-      const peeked = await peekStream(events)
-      if ("error" in peeked) return fail(response, peeked.error)
-      const sse = sseWriter(response)
-      await streamCompletion(sse.paced(peeked.events), exchange, sse.write)
+      // Nothing is committed until the encoder writes its first frame, so a failure before any
+      // wire-visible output (including suppressed reasoning or structured prose) is a real HTTP error.
+      const sse = sseWriter(response, scope.signal)
+      const { failure } = await streamCompletion(sse.paced(events), exchange, sse.write)
       if (!sse.started && !response.headersSent) {
-        if (!scope.signal.aborted) fail(response, { status: 502, kind: "server", message: "No response from the model" })
-      } else if (!response.writableEnded) response.end()
+        if (!scope.signal.aborted || scope.timedOut) fail(response, failure ?? { status: 502, kind: "server", message: "No response from the model" })
+      } else {
+        if (failure) info.failed = failure.code ?? failure.kind
+        if (!response.writableEnded) response.end()
+      }
       return
     }
 
@@ -219,7 +192,10 @@ export function createOpenAiRoute(host: RouteHost) {
         }
       }
       if (outcome === "ok" && scope.signal.aborted) outcome = scope.timedOut ? "timeout" : "disconnected"
-      else if (outcome === "ok" && response.statusCode >= 400) outcome = `status_${response.statusCode}`
+      else if (outcome === "ok" && info.failed !== undefined) {
+        outcome = "error"
+        error = info.failed
+      } else if (outcome === "ok" && response.statusCode >= 400) outcome = `status_${response.statusCode}`
     } catch (caught) {
       outcome = "error"
       error = errorMessage(caught)

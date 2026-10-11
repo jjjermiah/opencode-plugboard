@@ -13,6 +13,8 @@ const MAX_BODY_BYTES = 32 * 1024 * 1024
 const MAX_TIMER_MS = 2 ** 31 - 1
 /** After answering a request whose body was not fully read, keep discarding it this long before cutting the socket. */
 const LINGER_MS = 5_000
+/** After the deadline passes, a response that has not finished flushing (a client that stopped reading) is destroyed after this long. */
+const DEADLINE_GRACE_MS = 2_000
 
 /** A request body that cannot be accepted: too large, or not JSON. `status` is the HTTP status to answer with. */
 export class BodyError extends Error {
@@ -52,7 +54,22 @@ export function beginRequest(request: IncomingMessage, response: ServerResponse,
   const abort = (kind: RequestAborted["kind"]) => {
     if (!controller.signal.aborted) controller.abort(new RequestAborted(kind))
   }
-  let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => abort("timeout"), Math.min(Math.max(timeoutMs, 1), MAX_TIMER_MS))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let graceTimer: ReturnType<typeof setTimeout> | undefined
+  const onDeadline = () => {
+    abort("timeout")
+    // The error response (or the rest of a stream) may never flush to a client that stopped reading: cut the transport.
+    // Cleared only once the socket is gone: on some runtimes the response reports finished/closed
+    // after `end()` while bytes are still queued for a client that stopped reading, so neither
+    // `writableFinished`, `writableLength` nor the response's `close` shows a flush. An idle
+    // connection cut here is harmless.
+    graceTimer = setTimeout(() => {
+      response.destroy()
+      request.socket?.destroy()
+    }, DEADLINE_GRACE_MS)
+    graceTimer.unref?.()
+  }
+  timer = setTimeout(onDeadline, Math.min(Math.max(timeoutMs, 1), MAX_TIMER_MS))
   timer.unref?.()
   const dispose = () => {
     clearTimeout(timer)
@@ -61,6 +78,7 @@ export function beginRequest(request: IncomingMessage, response: ServerResponse,
   response.on("close", () => {
     if (!response.writableFinished) abort("disconnected")
     dispose()
+    if (request.socket?.destroyed) clearTimeout(graceTimer)
   })
   request.on("error", () => abort("disconnected"))
   if (response.destroyed || request.destroyed || request.socket?.destroyed) abort("disconnected")
@@ -177,9 +195,9 @@ export const sendJson = (response: ServerResponse, status: number, payload: unkn
  * SSE response writer. Headers go out with the first chunk, so nothing is committed until there
  * is something to send; chunks after the client is gone are dropped. `write` is synchronous (the
  * encoder's contract); backpressure is honoured by `paced`, which holds back the next event while
- * the socket buffer is full.
+ * the socket buffer is full. `signal` (the request scope's) ends those waits when it aborts.
  */
-export function sseWriter(response: ServerResponse) {
+export function sseWriter(response: ServerResponse, signal?: AbortSignal) {
   let started = false
   let blocked = false
   const waiters: Array<() => void> = []
@@ -190,8 +208,17 @@ export function sseWriter(response: ServerResponse) {
   response.on("drain", release)
   response.on("close", release)
   const drained = (): Promise<void> => {
-    if (!blocked || response.destroyed) return Promise.resolve()
-    return new Promise((resolve) => waiters.push(resolve))
+    if (!blocked || response.destroyed || signal?.aborted) return Promise.resolve()
+    return new Promise((resolve) => {
+      const done = () => {
+        signal?.removeEventListener("abort", done)
+        const at = waiters.indexOf(done)
+        if (at >= 0) waiters.splice(at, 1)
+        resolve()
+      }
+      waiters.push(done)
+      signal?.addEventListener("abort", done, { once: true })
+    })
   }
   return {
     get started() {
@@ -210,9 +237,13 @@ export function sseWriter(response: ServerResponse) {
       }
       if (!response.write(chunk)) blocked = true
     },
-    /** Resolves when the socket buffer has room again, or the client is gone. */
+    /** Resolves when the socket buffer has room again, the client is gone, or the request scope aborted. */
     drained,
-    /** Passes events through, waiting for `drain` before pulling each one, and stops when the client is gone. */
+    /**
+     * Passes events through, waiting for `drain` before pulling each one, and stops when the client
+     * is gone. A scope abort ends the wait but not the stream: the next pull yields the timeout
+     * error (or ends), and the request deadline's grace timer cuts a socket that cannot take it.
+     */
     async *paced(events: AsyncIterable<PlugEvent>): AsyncGenerator<PlugEvent> {
       const iterator = events[Symbol.asyncIterator]()
       try {
