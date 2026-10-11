@@ -6,6 +6,7 @@
  * Steps:
  *   - a `PlugEvent`: yielded as is;
  *   - `{ record: id }`: calls `context.onRecord(id)` (the session caller does this before its first event);
+ *   - `{ policy: notes }`: calls `context.onPolicy(notes)` (the session caller does this when an app's policy changed the request);
  *   - `{ wait: promise }`: holds the stream until the promise settles (or the request aborts);
  *   - `"hang"`: holds until the request aborts, like a model that never answers;
  *   - `{ throw: error }`: the stream rejects, like a backend bug.
@@ -13,9 +14,9 @@
  * Like the real session caller, the fake ends its stream (no more events) once `context.signal`
  * aborts.
  */
-import type { CallContext, ModelCaller, PlugEvent, PlugRequest } from "../../src/contract.js"
+import type { CallContext, ModelCaller, PolicyNote, PlugEvent, PlugRequest } from "../../src/contract.js"
 
-export type ScriptStep = PlugEvent | { readonly record: string } | { readonly wait: Promise<unknown> } | "hang" | { readonly throw: unknown }
+export type ScriptStep = PlugEvent | { readonly record: string } | { readonly policy: ReadonlyArray<PolicyNote> } | { readonly wait: Promise<unknown> } | "hang" | { readonly throw: unknown }
 export type Script = ReadonlyArray<ScriptStep>
 
 export interface RecordedCall {
@@ -63,6 +64,7 @@ export class FakeModelCaller implements ModelCaller {
             return
           }
           if ("record" in step) context.onRecord?.(step.record)
+          else if ("policy" in step) context.onPolicy?.(step.policy)
           else if ("wait" in step) await orAbort(step.wait, context.signal)
           else if ("throw" in step) throw step.throw
           else {
