@@ -15,7 +15,7 @@ import { basename, join, resolve, sep } from "node:path"
 import type { PlugRequest } from "../contract.js"
 
 /** `$XDG_DATA_HOME/opencode-plugboard`, else `~/.local/share/opencode-plugboard`. */
-export function dataRoot(): string {
+function dataRoot(): string {
   const base = process.env.XDG_DATA_HOME && process.env.XDG_DATA_HOME.length > 0 ? process.env.XDG_DATA_HOME : join(homedir(), ".local", "share")
   return join(base, "opencode-plugboard")
 }

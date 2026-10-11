@@ -1,9 +1,10 @@
-/** Model refs, catalog reduction and the allowlist/alias policy. Protocol-neutral: front-ends format the results. */
+/** Model refs and the allowlist/alias policy over a neutral catalog. Protocol-neutral: front-ends format the results. */
 
-import type { CatalogModel, ModelRef, PlugError, PlugboardOptions } from "./contract.js"
+import type { PlugboardOptions } from "./config.js"
+import type { CatalogModel, ModelRef, PlugError } from "./contract.js"
 
 /** `provider/model[#variant]`. The model id may contain slashes (`openrouter/vendor/model`). */
-export function parseModelRef(s: string): ModelRef | undefined {
+function parseModelRef(s: string): ModelRef | undefined {
   if (typeof s !== "string") return undefined
   const slash = s.indexOf("/")
   if (slash <= 0) return undefined
@@ -15,48 +16,8 @@ export function parseModelRef(s: string): ModelRef | undefined {
   return { providerID: s.slice(0, slash), id, ...(variant ? { variant } : {}) }
 }
 
-export function refToString(ref: ModelRef): string {
+function refToString(ref: ModelRef): string {
   return `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-}
-
-const record = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
-
-/**
- * Reduces `ctx.model.list` data (V2 `Model.Info`, tolerant of missing fields) to the catalog.
- * Models with `enabled: false` are dropped; `modelID` wins over `id`; variants may be `{ id }` or strings.
- */
-export function toCatalog(raw: unknown[]): CatalogModel[] {
-  const catalog: CatalogModel[] = []
-  for (const item of raw) {
-    const model = record(item)
-    if (!model || model.enabled === false) continue
-    const providerID = model.providerID
-    const id = model.modelID ?? model.id
-    if (typeof providerID !== "string" || typeof id !== "string" || !providerID || !id) continue
-    const variants = (Array.isArray(model.variants) ? model.variants : [])
-      .map((v) => (typeof v === "string" ? v : record(v)?.id))
-      .filter((v): v is string => typeof v === "string" && v.length > 0)
-    const caps = record(model.capabilities)
-    const input = caps && Array.isArray(caps.input) ? caps.input : undefined
-    const context = record(model.limit)?.context
-    catalog.push({
-      providerID,
-      id,
-      ...(typeof model.name === "string" ? { name: model.name } : {}),
-      variants: [...new Set(variants)],
-      ...(caps
-        ? {
-            capabilities: {
-              ...(typeof caps.tools === "boolean" ? { tools: caps.tools } : {}),
-              ...(input ? { image: input.includes("image") } : {}),
-            },
-          }
-        : {}),
-      ...(typeof context === "number" ? { contextLimit: context } : {}),
-    })
-  }
-  return catalog
 }
 
 /** `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly. */
@@ -91,13 +52,13 @@ export function resolveModel(
     return {
       status: 403,
       message: "No models are allowed: set the plugboard `models` option",
-      type: "permission_error",
+      kind: "permission",
       code: "no_models_configured",
     }
   const notAvailable: PlugError = {
     status: 404,
     message: `Model ${model} is not available`,
-    type: "not_found_error",
+    kind: "not_found",
     code: "model_not_found",
     param: "model",
   }

@@ -1,38 +1,41 @@
 /**
- * OpenAI Chat Completions request -> PlugRequest.
+ * OpenAI Chat Completions request -> neutral `PlugRequest` plus the `OpenAiExchange` the
+ * response encoders need.
  *
  * Pure function: no I/O. The route resolves `model` to a `ModelRef` afterwards, which is why
- * the result omits `ref`.
+ * the request omits `ref`.
  */
-import { isPlugError } from "../errors.js"
-import type {
-  PlugboardOptions,
-  PlugError,
-  PlugGeneration,
-  PlugMessage,
-  PlugPart,
-  PlugRequest,
-  PlugTool,
-  PlugToolChoice,
+import type { PlugboardOptions } from "../config.js"
+import {
+  isPlugError,
+  type PlugError,
+  type PlugGeneration,
+  type PlugMessage,
+  type PlugPart,
+  type PlugRequest,
+  type PlugTool,
+  type PlugToolChoice,
 } from "../contract.js"
+import type { OpenAiExchange } from "./response.js"
 
 type JsonObject = Record<string, unknown>
 
 export interface ParsedChat {
+  /** The model call, minus the model ref the route resolves from `request.model`. */
   readonly request: Omit<PlugRequest, "ref">
+  /** Response presentation state for the encoders; never reaches the model call. */
+  readonly exchange: OpenAiExchange
   readonly reasoningEffort?: string
-  /** `stream_options.include_usage`: the stream encoder adds a final usage chunk. */
-  readonly includeUsage: boolean
 }
 
 /** Name of the forced tool that carries structured output. */
-export const RESPOND_TOOL = "respond"
+const RESPOND_TOOL = "respond"
 
 const isRecord = (value: unknown): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value)
 
 const bad = (message: string, param?: string, code?: string): PlugError => ({
   status: 400,
-  type: "invalid_request_error",
+  kind: "invalid_request",
   message,
   ...(code ? { code } : {}),
   ...(param ? { param } : {}),
@@ -257,13 +260,16 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
     tools,
     ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),
     generation,
-    ...(respond ? { structured: { toolName: RESPOND_TOOL } } : {}),
-    stream: body.stream === true,
   }
   const streamOptions = isRecord(body.stream_options) ? body.stream_options : {}
   return {
     request,
-    includeUsage: streamOptions.include_usage === true,
+    exchange: {
+      model: body.model,
+      stream: body.stream === true,
+      includeUsage: streamOptions.include_usage === true,
+      ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
+    },
     ...(typeof body.reasoning_effort === "string" ? { reasoningEffort: body.reasoning_effort } : {}),
   }
 }

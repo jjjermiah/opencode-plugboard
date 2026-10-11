@@ -1,41 +1,16 @@
 /**
- * Shared contracts between plugboard's layers (spec: homelab
- * .agents/specs/2026-10-11-opencode-openai-adapter-plugin.md, D2 and D6).
+ * The neutral vocabulary between plugboard's layers.
  *
- * Front-ends (OpenAI Chat Completions now; Responses, Anthropic Messages and Gemini later)
- * translate their wire format to and from these types. The ModelCaller turns a
- * PlugRequest into a stream of PlugEvents. Names mirror `@opencode/ai`
- * (LLMRequest parts, LLMEvent, Usage) so a native `ctx.llm.stream` backend can
- * replace the session backend without touching the front-ends.
+ * Front-ends (OpenAI Chat Completions now; others later) translate their wire format to and
+ * from these types. A `ModelCaller` turns a `PlugRequest` into a stream of `PlugEvent`s. Names
+ * mirror `@opencode/ai` (request parts, `LLMEvent`, `Usage`) so a native `ctx.llm.stream`
+ * backend could replace the session backend without touching the front-ends.
  *
- * Types plus a few shared constants; no other runtime code.
+ * Nothing here is specific to a wire protocol: response-shaping choices (streaming, usage
+ * chunks, structured-output unwrapping) belong to the front-end, not to the request.
+ *
+ * Types plus one discriminator (`isPlugError`).
  */
-
-// ---------------------------------------------------------------- options
-
-/** Plugin options, after defaults and validation (see config.ts). */
-export interface PlugboardOptions {
-  readonly listen: { readonly host: string; readonly port: number }
-  /** App name -> API key. App names match APP_NAME_PATTERN; "default" is reserved. */
-  readonly keys: Readonly<Record<string, string>>
-  /** Allowlist: exact `provider/model`, `provider/model#variant`, or `provider/*` patterns. Empty = nothing allowed. */
-  readonly models: ReadonlyArray<string>
-  /** Alias -> `provider/model[#variant]`. Targets must also pass the allowlist. */
-  readonly aliases: Readonly<Record<string, string>>
-  readonly maxTools: number
-  readonly requestTimeoutMs: number
-  /** Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network. */
-  readonly remoteImages: boolean
-}
-
-export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
-export const DEFAULT_APP = "default"
-export const DEFAULTS = {
-  host: "127.0.0.1",
-  port: 4010,
-  maxTools: 32,
-  requestTimeoutMs: 600_000,
-} as const
 
 // ---------------------------------------------------------------- models
 
@@ -45,7 +20,7 @@ export interface ModelRef {
   readonly variant?: string
 }
 
-/** What `/v1/models` and the request resolver work from: one enabled model as the server sees it. */
+/** One enabled model as the server sees it: what model listing and the request resolver work from. */
 export interface CatalogModel {
   readonly providerID: string
   readonly id: string
@@ -107,22 +82,17 @@ export interface PlugGeneration {
   readonly frequencyPenalty?: number
 }
 
-/** Format-neutral request. Front-ends produce it; the ModelCaller consumes it. */
+/** Format-neutral model call. Front-ends produce it; the `ModelCaller` consumes it. */
 export interface PlugRequest {
-  /** Caller's model string as sent (id or alias), echoed back in responses. */
+  /** The model string the caller sent (id or alias). Informational for the backend (session title, metadata). */
   readonly model: string
-  /** Resolved by the core before reaching the ModelCaller. */
+  /** Resolved by the core before reaching the `ModelCaller`. */
   readonly ref: ModelRef
   readonly system: ReadonlyArray<string>
   readonly messages: ReadonlyArray<PlugMessage>
   readonly tools: ReadonlyArray<PlugTool>
   readonly toolChoice?: PlugToolChoice
   readonly generation: PlugGeneration
-  /** Set when the front-end mapped response_format to a forced tool (D13); the front-end unwraps it. */
-  readonly structured?: { readonly toolName: string }
-  readonly stream: boolean
-  /** OpenAI `stream_options.include_usage`: send a final usage chunk when streaming. */
-  readonly includeUsage?: boolean
 }
 
 // ---------------------------------------------------------------- events
@@ -144,25 +114,35 @@ export type PlugEvent =
   | { readonly type: "finish"; readonly reason: PlugFinish; readonly usage?: PlugUsage }
   | { readonly type: "error"; readonly error: PlugError }
 
-/** Error with an HTTP status and an OpenAI-style type/code; front-ends encode it. */
+export type PlugErrorKind = "invalid_request" | "authentication" | "permission" | "not_found" | "rate_limit" | "server" | "timeout"
+
+/**
+ * An error with an HTTP status and a transport-neutral kind. Front-ends map `kind` to their wire
+ * vocabulary (OpenAI: `src/openai/response.ts`). `code` is a machine-readable detail and `param`
+ * names the offending request field, when there is one.
+ */
 export interface PlugError {
   readonly status: number
+  readonly kind: PlugErrorKind
   readonly message: string
-  readonly type: "invalid_request_error" | "authentication_error" | "permission_error" | "not_found_error" | "rate_limit_error" | "server_error" | "timeout_error"
   readonly code?: string
   readonly param?: string
 }
 
+/** The one discriminator for `PlugError` values returned in place of a result. */
+export const isPlugError = (value: unknown): value is PlugError =>
+  typeof value === "object" && value !== null && "status" in value && "kind" in value && "message" in value
+
 // ---------------------------------------------------------------- caller
 
 export interface CallContext {
-  /** App name (key name, or DEFAULT_APP). Decides the history directory. */
+  /** App name (key name, or the default app). Decides the history directory. */
   readonly app: string
   /** Aborted on client disconnect or timeout. */
   readonly signal: AbortSignal
 }
 
-/** D6: the seam between the core and a backend (session backend now, ctx.llm.stream later). */
+/** The seam between the core and a backend (the session backend now, `ctx.llm.stream` possibly later). */
 export interface ModelCaller {
   stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent>
 }

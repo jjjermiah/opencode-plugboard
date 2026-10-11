@@ -4,10 +4,34 @@
  *
  * Reasoning deltas are dropped: Chat Completions has no standard field for them.
  */
-import type { PlugError, PlugEvent, PlugFinish, PlugRequest, PlugUsage } from "../contract.js"
+import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
+
+/**
+ * What the encoders need to know about the exchange besides the model events: Chat Completions
+ * presentation state. The request decoder produces it; the model call never sees it.
+ */
+export interface OpenAiExchange {
+  /** The model string the client sent; echoed in every response object. */
+  readonly model: string
+  readonly stream: boolean
+  /** `stream_options.include_usage`: the stream carries a usage field per chunk and a final usage chunk. */
+  readonly includeUsage: boolean
+  /** Name of the forced tool that carries `response_format` output; its input is unwrapped into the message content. */
+  readonly structuredTool?: string
+}
+
+const ERROR_TYPES: Record<PlugErrorKind, string> = {
+  invalid_request: "invalid_request_error",
+  authentication: "authentication_error",
+  permission: "permission_error",
+  not_found: "not_found_error",
+  rate_limit: "rate_limit_error",
+  server: "server_error",
+  timeout: "timeout_error",
+}
 
 const FINISH_REASONS: Record<Exclude<PlugFinish, "error">, string> = {
   stop: "stop",
@@ -17,7 +41,7 @@ const FINISH_REASONS: Record<Exclude<PlugFinish, "error">, string> = {
 }
 
 export const encodeError = (error: PlugError): object => ({
-  error: { message: error.message, type: error.type, param: error.param ?? null, code: error.code ?? null },
+  error: { message: error.message, type: ERROR_TYPES[error.kind], param: error.param ?? null, code: error.code ?? null },
 })
 
 /** `GET /v1/models` body. */
@@ -58,18 +82,18 @@ const finishReason = (reason: Exclude<PlugFinish, "error">, calls: number, struc
 
 const noFinish = (): PlugError => ({
   status: 500,
-  type: "server_error",
+  kind: "server",
   message: "Model stream ended without a finish event",
 })
 
-const failedRun = (): PlugError => ({ status: 500, type: "server_error", message: "Model run failed" })
+const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
 
 const newId = () => `chatcmpl-${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`
 const now = () => Math.floor(Date.now() / 1000)
 
 export async function collectCompletion(
   events: AsyncIterable<PlugEvent>,
-  request: PlugRequest,
+  exchange: OpenAiExchange,
 ): Promise<{ status: number; body: object }> {
   let text = ""
   const calls: ToolCall[] = []
@@ -96,7 +120,7 @@ export async function collectCompletion(
   }
 
   // Structured output: the forced tool's input is the answer.
-  const answer = request.structured && calls.find((call) => call.name === request.structured?.toolName)
+  const answer = exchange.structuredTool !== undefined ? calls.find((call) => call.name === exchange.structuredTool) : undefined
   const toolCalls = answer ? [] : calls
   const message: Record<string, unknown> = {
     role: "assistant",
@@ -115,7 +139,7 @@ export async function collectCompletion(
       id: newId(),
       object: "chat.completion",
       created: now(),
-      model: request.model,
+      model: exchange.model,
       choices: [{ index: 0, message, logprobs: null, finish_reason: finishReason(finish, toolCalls.length, !!answer) }],
       ...(usage ? { usage: encodeUsage(usage) } : {}),
     },
@@ -125,13 +149,11 @@ export async function collectCompletion(
 /**
  * Writes SSE frames via `write` (each frame is one complete `data: ...\n\n` string).
  * A mid-stream error is written as an `error` frame and then `data: [DONE]`.
- * `includeUsage` mirrors `stream_options.include_usage`.
  */
 export async function streamCompletion(
   events: AsyncIterable<PlugEvent>,
-  request: PlugRequest,
+  exchange: OpenAiExchange,
   write: (chunk: string) => void,
-  options: { includeUsage?: boolean } = {},
 ): Promise<void> {
   const id = newId()
   const created = now()
@@ -141,9 +163,9 @@ export async function streamCompletion(
       id,
       object: "chat.completion.chunk",
       created,
-      model: request.model,
+      model: exchange.model,
       choices: [{ index: 0, delta, finish_reason: finish, logprobs: null }],
-      ...(options.includeUsage ? { usage: null } : {}),
+      ...(exchange.includeUsage ? { usage: null } : {}),
     })
 
   let started = false
@@ -173,7 +195,7 @@ export async function streamCompletion(
     start()
     if (event.type === "text-delta") {
       if (event.text.length > 0) chunk({ content: event.text })
-    } else if (request.structured?.toolName === event.name) {
+    } else if (exchange.structuredTool === event.name) {
       answered = true
       chunk({ content: args(event.input) })
     } else {
@@ -190,7 +212,7 @@ export async function streamCompletion(
   }
   start()
   chunk({}, finishReason(finish!, calls, answered))
-  if (options.includeUsage && usage)
-    frame({ id, object: "chat.completion.chunk", created, model: request.model, choices: [], usage: encodeUsage(usage) })
+  if (exchange.includeUsage && usage)
+    frame({ id, object: "chat.completion.chunk", created, model: exchange.model, choices: [], usage: encodeUsage(usage) })
   write("data: [DONE]\n\n")
 }

@@ -4,35 +4,37 @@
  *
  * Lifecycle of `stream()`: validate the app name, prepare images, create the session, register
  * its request state, start the prompt, then relay the collector's events until it is terminal.
- * `finally` releases the registry entry and interrupts anything still running. Request
- * sessions are registered in the process-wide registry so the app-directory hook
- * (`context.ts`) and the event pump can find them.
+ * `finally` releases the store entry and interrupts anything still running. Request
+ * sessions are registered in the process-wide session store (`state.ts`) so the app-directory
+ * hook (`context.ts`) and the event pump can find them.
  */
 
 import { randomUUID } from "node:crypto"
-import { APP_NAME_PATTERN, DEFAULT_APP, type CallContext, type ModelCaller, type PlugEvent, type PlugRequest } from "../contract.js"
-import { getRegistry } from "../registry.js"
+import { APP_NAME_PATTERN, DEFAULT_APP } from "../config.js"
+import type { CallContext, ModelCaller, PlugEvent, PlugRequest } from "../contract.js"
 import { RequestCollector } from "./events.js"
-import { describeError, type SessionPort } from "./host.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
+import { describeError, type SessionPort } from "./host.js"
 import { ImageError, prepareImages } from "./media.js"
 import { SEED_PREFIX } from "./seeds.js"
+import type { SessionStore } from "./state.js"
 
 export interface SessionCallerDeps {
   readonly port: SessionPort
+  /** The process-wide store request sessions are registered in. */
+  readonly sessions: SessionStore
   /** Allow fetching http(s) image URLs (option `remoteImages`). */
   readonly remoteImages?: boolean
 }
 
 const failure = (status: number, message: string, code: string): PlugEvent => ({
   type: "error",
-  error: { status, type: status >= 500 ? "server_error" : "invalid_request_error", message, code },
+  error: { status, kind: status >= 500 ? "server" : "invalid_request", message, code },
 })
 
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
-  const { port } = deps
+  const { port, sessions } = deps
   const remoteImages = deps.remoteImages === true
-  const registry = getRegistry()
 
   return {
     async *stream(request: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
@@ -68,7 +70,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           permissions: [{ action: `${SEED_PREFIX}*`, resource: "*", effect: "allow" }],
         })
         sessionID = String(created.id)
-        registry.requests.set(sessionID, { sessionID, app, requestID, request, images, collector })
+        sessions.register({ sessionID, app, requestID, request, collector })
 
         context.signal.addEventListener("abort", onAbort, { once: true })
         if (context.signal.aborted) return onAbort()
@@ -89,7 +91,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       } finally {
         context.signal.removeEventListener("abort", onAbort)
         if (sessionID) {
-          registry.requests.delete(sessionID)
+          sessions.release(sessionID)
           // Anything still running (consumer left early, error, timeout) is interrupted; a finished turn is left alone.
           if (collector && !collector.terminal) {
             collector.cancel()

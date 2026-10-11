@@ -1,7 +1,30 @@
-/** Plugin options: defaults, validation, caller authentication and the loopback check. */
+/** Plugin options: type, defaults, validation, caller authentication and the loopback check. */
 
-import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULTS } from "./contract.js"
-import type { PlugError, PlugboardOptions } from "./contract.js"
+import type { PlugError } from "./contract.js"
+
+/** Plugin options, after defaults and validation (see `parseOptions`). */
+export interface PlugboardOptions {
+  readonly listen: { readonly host: string; readonly port: number }
+  /** App name -> API key. App names match APP_NAME_PATTERN; "default" is reserved. */
+  readonly keys: Readonly<Record<string, string>>
+  /** Allowlist: exact `provider/model`, `provider/model#variant`, or `provider/*` patterns. Empty = nothing allowed. */
+  readonly models: ReadonlyArray<string>
+  /** Alias -> `provider/model[#variant]`. Targets must also pass the allowlist. */
+  readonly aliases: Readonly<Record<string, string>>
+  readonly maxTools: number
+  readonly requestTimeoutMs: number
+  /** Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network. */
+  readonly remoteImages: boolean
+}
+
+export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
+export const DEFAULT_APP = "default"
+const DEFAULTS = {
+  host: "127.0.0.1",
+  port: 4010,
+  maxTools: 32,
+  requestTimeoutMs: 600_000,
+} as const
 
 const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages"])
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
@@ -83,7 +106,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 const UNAUTHORIZED: PlugError = {
   status: 401,
   message: "Missing or invalid API key",
-  type: "authentication_error",
+  kind: "authentication",
   code: "invalid_api_key",
 }
 

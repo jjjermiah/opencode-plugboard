@@ -22,8 +22,6 @@ export interface RequestState {
   readonly app: string
   readonly requestID: string
   readonly request: PlugRequest
-  /** Images attached to the stored prompt, in order; the hook swaps them in for placeholders. */
-  readonly images: ReadonlyArray<{ readonly uri: string; readonly name: string }>
   readonly collector: EventSink
 }
 

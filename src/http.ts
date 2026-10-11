@@ -5,8 +5,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { isLoopbackHost } from "./config.js"
-import type { PlugError, PlugEvent, PlugboardOptions } from "./contract.js"
+import { isLoopbackHost, type PlugboardOptions } from "./config.js"
+import type { PlugError, PlugEvent } from "./contract.js"
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024
 
@@ -108,7 +108,7 @@ export async function* withTimeout(
         controller.abort()
         yield {
           type: "error",
-          error: { status: 504, type: "timeout_error", code: "timeout", message: `Request timed out after ${timeoutMs} ms (option requestTimeoutMs)` },
+          error: { status: 504, kind: "timeout", code: "timeout", message: `Request timed out after ${timeoutMs} ms (option requestTimeoutMs)` },
         }
         return
       }
@@ -138,11 +138,11 @@ function hostAllowed(options: PlugboardOptions, hostHeader: string | undefined):
  */
 export function checkOrigin(request: IncomingMessage, options: PlugboardOptions): PlugError | undefined {
   if (!hostAllowed(options, request.headers.host))
-    return { status: 403, type: "permission_error", code: "invalid_host", message: "Host header not allowed" }
+    return { status: 403, kind: "permission", code: "invalid_host", message: "Host header not allowed" }
   if (Object.keys(options.keys).length === 0 && request.headers.origin !== undefined)
     return {
       status: 403,
-      type: "permission_error",
+      kind: "permission",
       code: "cross_origin_forbidden",
       message: "Cross-origin requests are not allowed on a keyless endpoint; configure `keys`",
     }
@@ -153,7 +153,7 @@ export function checkJsonContentType(request: IncomingMessage): PlugError | unde
   if (contentType !== "application/json")
     return {
       status: 415,
-      type: "invalid_request_error",
+      kind: "invalid_request",
       code: "unsupported_media_type",
       message: "Content-Type must be application/json",
     }

@@ -7,11 +7,10 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { authenticate } from "../config.js"
-import type { ModelCaller, PlugError, PlugEvent, PlugRequest, PlugboardOptions } from "../contract.js"
-import { isPlugError } from "../errors.js"
+import { authenticate, type PlugboardOptions } from "../config.js"
+import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { BodyError, abortOnDisconnect, checkJsonContentType, checkOrigin, readJsonBody, sendJson, sseWriter, withTimeout } from "../http.js"
-import { listAvailableModels, resolveModel, toCatalog } from "../models.js"
+import { listAvailableModels, resolveModel } from "../models.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
 
@@ -19,8 +18,8 @@ import { collectCompletion, encodeError, encodeModelList, streamCompletion } fro
 export interface RouteHost {
   readonly options: PlugboardOptions
   readonly caller: ModelCaller
-  /** Raw `ctx.model.list` data from the serving Location. */
-  loadCatalog(): Promise<unknown[]>
+  /** The serving Location's enabled models. */
+  loadCatalog(): Promise<ReadonlyArray<CatalogModel>>
 }
 
 const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions"]
@@ -72,7 +71,7 @@ export function createOpenAiRoute(host: RouteHost) {
       if (!KNOWN_ROUTES.includes(route)) {
         return fail(response, {
           status: 404,
-          type: "not_found_error",
+          kind: "not_found",
           code: "not_found",
           message: `No route for ${request.method} ${url.pathname}`,
         })
@@ -82,7 +81,7 @@ export function createOpenAiRoute(host: RouteHost) {
       if (isPlugError(auth)) return fail(response, auth)
 
       if (route === "GET /v1/models") {
-        const catalog = toCatalog(await host.loadCatalog())
+        const catalog = await host.loadCatalog()
         return sendJson(response, 200, encodeModelList(listAvailableModels(host.options, catalog)))
       }
 
@@ -92,32 +91,33 @@ export function createOpenAiRoute(host: RouteHost) {
       const body = await readJsonBody(request)
       const parsed = parseChatRequest(body, host.options)
       if (isPlugError(parsed)) return fail(response, parsed)
-      const catalog = toCatalog(await host.loadCatalog())
+      const catalog = await host.loadCatalog()
       const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
       if (isPlugError(ref)) return fail(response, ref)
-      const plug: PlugRequest = { ...parsed.request, includeUsage: parsed.includeUsage, ref }
+      const call: PlugRequest = { ...parsed.request, ref }
+      const { exchange } = parsed
 
       const controller = abortOnDisconnect(response)
-      const events = withTimeout(host.caller.stream(plug, { app: auth.app, signal: controller.signal }), host.options.requestTimeoutMs, controller)
+      const events = withTimeout(host.caller.stream(call, { app: auth.app, signal: controller.signal }), host.options.requestTimeoutMs, controller)
 
-      if (plug.stream) {
+      if (exchange.stream) {
         const peeked = await peekStream(events)
         if ("error" in peeked) return fail(response, peeked.error)
         const sse = sseWriter(response)
-        await streamCompletion(peeked.events, plug, sse.write, { includeUsage: plug.includeUsage })
-        if (!sse.started && !response.headersSent) sendJson(response, 502, encodeError({ status: 502, type: "server_error", message: "No response from the model" }))
+        await streamCompletion(peeked.events, exchange, sse.write)
+        if (!sse.started && !response.headersSent) sendJson(response, 502, encodeError({ status: 502, kind: "server", message: "No response from the model" }))
         else if (!response.writableEnded) response.end()
         return
       }
 
-      const result = await collectCompletion(events, plug)
+      const result = await collectCompletion(events, exchange)
       sendJson(response, result.status, result.body)
     } catch (error) {
-      if (error instanceof BodyError) return fail(response, { status: error.status, type: "invalid_request_error", message: error.message })
+      if (error instanceof BodyError) return fail(response, { status: error.status, kind: "invalid_request", message: error.message })
       const message = error instanceof Error ? error.message : String(error)
       console.error("[opencode-plugboard] request failed", error)
       if (response.headersSent) return void response.end()
-      fail(response, { status: 500, type: "server_error", message })
+      fail(response, { status: 500, kind: "server", message })
     }
   }
 }

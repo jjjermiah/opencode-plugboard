@@ -1,15 +1,17 @@
 /**
- * Context hook application: what `session.hook("context")` does for a plugboard request session.
+ * Context hook and seed tools: what plugboard installs inside the app directories, and what the
+ * `session.hook("context")` hook does for a plugboard request session.
  *
- * The stored prompt is only a readable transcript. Here the hook swaps in the caller's real
+ * The stored prompt is only a readable transcript. The hook swaps in the caller's real
  * structured system, messages, tool definitions and generation options. Sessions that are not
- * plugboard requests (not in the process-wide registry) are untouched.
+ * plugboard requests (not in the process-wide session store) are untouched.
  */
 
+import { Effect } from "effect"
 import type { PlugMessage, PlugRequest } from "../contract.js"
-import { getRegistry } from "../registry.js"
-import type { ContextHookEvent, HostPart } from "./host.js"
-import { SEED_PREFIX } from "./seeds.js"
+import type { ContextHookEvent, HostContext, HostPart } from "./host.js"
+import { SEED_PREFIX, SEED_RESULT } from "./seeds.js"
+import type { SessionStore } from "./state.js"
 
 const text = (value: string): HostPart => ({ type: "text", text: value })
 
@@ -75,10 +77,10 @@ function remapSeedTools(session: ContextHookEvent, request: PlugRequest): void {
  * `session.hook("context")` body: swap the request session's system, messages, tools and
  * generation options for the caller's.
  */
-export function applyContext(event: unknown): void {
+function applyContext(event: unknown, sessions: SessionStore): void {
   // Assumed invariant: the host passes its mutable `SessionContext` (checked structurally by `HostContextMatches`).
   const session = event as ContextHookEvent
-  const state = getRegistry().requests.get(String(session.sessionID))
+  const state = sessions.lookup(String(session.sessionID))
   if (!state) return
   const { request } = state
 
@@ -98,4 +100,39 @@ export function applyContext(event: unknown): void {
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 
   remapSeedTools(session, request)
+}
+
+/**
+ * Registrations for a Location inside the plugboard data root: the context hook, the agent
+ * deny for the seeds, and the seed tool pool.
+ *
+ * Every agent denies the seeds; request sessions are created with a session permission that
+ * allows them again, so a person prompting inside an app directory is never offered them.
+ * Registration only: no host call that waits on readiness (see docs/architecture.md).
+ */
+export function installSessionHooks(ctx: HostContext, options: { readonly maxTools: number; readonly sessions: SessionStore }) {
+  return Effect.gen(function* () {
+    // Swap in the caller's system/messages/tools for plugboard request sessions only.
+    yield* ctx.session.hook("context", (event) => Effect.sync(() => applyContext(event, options.sessions)))
+
+    yield* ctx.agent.transform((editor) => {
+      for (const agent of editor.list()) {
+        editor.update(agent.id, (item) => {
+          item.permissions.push({ action: `${SEED_PREFIX}*`, resource: "*", effect: "deny" })
+        })
+      }
+    })
+    yield* ctx.tool.transform((editor) => {
+      for (let index = 0; index < options.maxTools; index++) {
+        editor.add({
+          name: `${SEED_PREFIX}${index}`,
+          description: "Plugboard placeholder tool.",
+          input: { type: "object", properties: {}, additionalProperties: true },
+          options: { codemode: false },
+          // Settles at once so history shows a completed call; plugboard ends the turn itself (see seeds.ts).
+          execute: () => Effect.succeed({ content: SEED_RESULT }),
+        })
+      }
+    })
+  })
 }

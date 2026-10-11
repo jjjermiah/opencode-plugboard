@@ -33,7 +33,7 @@ export interface Registration {
   dispose(): void
 }
 
-export const GRACE_MS = 10_000
+const GRACE_MS = 10_000
 
 const VERSION = 1
 const KEY = Symbol.for("opencode-plugboard.runtime")
@@ -52,7 +52,6 @@ interface Runtime {
   readonly version: number
   readonly sessions: SessionStore
   readonly generations: Handler[]
-  readonly closeHooks: Map<string, () => void>
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: { readonly stop: () => void }
@@ -69,7 +68,7 @@ function runtime(): Runtime | undefined {
   const slot = globalThis as Record<symbol, unknown>
   const existing = slot[KEY] as { readonly version: number } | undefined
   if (!existing) {
-    const created: Runtime = { version: VERSION, sessions: createSessionStore(), generations: [], closeHooks: new Map() }
+    const created: Runtime = { version: VERSION, sessions: createSessionStore(), generations: [] }
     slot[KEY] = created
     return created
   }
@@ -124,12 +123,6 @@ function closeListener(rt: Runtime, listener: Listener): void {
   try {
     rt.pump?.stop()
   } catch {}
-  for (const hook of rt.closeHooks.values()) {
-    try {
-      hook()
-    } catch {}
-  }
-  rt.closeHooks.clear()
   listener.server.close()
   listener.server.closeAllConnections()
   if (listener.bound) log("listener.closed")
@@ -184,12 +177,6 @@ export function registerGeneration(listen: { host: string; port: number }, handl
       listener.graceTimer.unref?.()
     },
   }
-}
-
-/** Run `hook` when the listener closes (after the grace period). Keyed so generations don't stack hooks. */
-export function onListenerClose(key: string, hook: () => void): void {
-  const rt = runtime()
-  if (rt?.listener) rt.closeHooks.set(key, hook)
 }
 
 /**

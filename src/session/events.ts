@@ -2,10 +2,10 @@
  * Session event translation.
  *
  * `RequestCollector` receives the OpenCode bus events of ONE plugboard request session
- * (already filtered by the process-wide registry) and turns them into `PlugEvent`s that the
+ * (already filtered by the process-wide session store) and turns them into `PlugEvent`s that the
  * ModelCaller streams out through `events()` (not buffered beyond the queue).
  *
- * The turn is stopped from inside the model loop (see `seeds.ts`): once the step has ended
+ * The turn is stopped from inside the model loop (see `session/seeds.ts`): once the step has ended
  * (`session.step.ended`) with at least one tool call, the owner is asked to interrupt the
  * session before a second model step can start, and the request finishes as `tool-calls`.
  * The collector never calls the host itself; the owner passes `stopTurn`.
@@ -76,18 +76,18 @@ const toUsage = (tokens?: RawUsage): PlugUsage | undefined =>
       }
     : undefined
 
-/** Host `SessionError` (`{ type, message, status?, response? }`) to an OpenAI-style error. */
-export function toPlugError(error: RawError | undefined, fallback: string): PlugError {
+/** Host `SessionError` (`{ type, message, status?, response? }`) to a `PlugError`. */
+function toPlugError(error: RawError | undefined, fallback: string): PlugError {
   const status = typeof error?.status === "number" && error.status >= 400 ? error.status : undefined
   const message = error?.message || fallback
   const base = { message, ...(error?.type ? { code: error.type } : {}) }
-  if (status === 401) return { status, type: "authentication_error", ...base }
-  if (status === 403) return { status, type: "permission_error", ...base }
-  if (status === 404) return { status, type: "not_found_error", ...base }
-  if (status === 429) return { status, type: "rate_limit_error", ...base }
-  if (status === 408 || status === 504) return { status, type: "timeout_error", ...base }
-  if (status !== undefined && status < 500) return { status, type: "invalid_request_error", ...base }
-  return { status: status ?? 502, type: "server_error", ...base }
+  if (status === 401) return { status, kind: "authentication", ...base }
+  if (status === 403) return { status, kind: "permission", ...base }
+  if (status === 404) return { status, kind: "not_found", ...base }
+  if (status === 429) return { status, kind: "rate_limit", ...base }
+  if (status === 408 || status === 504) return { status, kind: "timeout", ...base }
+  if (status !== undefined && status < 500) return { status, kind: "invalid_request", ...base }
+  return { status: status ?? 502, kind: "server", ...base }
 }
 
 export interface CollectorHooks {
@@ -205,7 +205,7 @@ export class RequestCollector {
           if (this.calls.size > 0) this.finishWith("tool-calls")
           else if (this.wasCancelled) this.end()
           else if (item.type === "session.execution.succeeded") this.finishWith("stop")
-          else this.fail({ status: 500, type: "server_error", message: "Request was interrupted before the model finished" })
+          else this.fail({ status: 500, kind: "server", message: "Request was interrupted before the model finished" })
         }
         this.end()
         return
