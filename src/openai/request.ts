@@ -1,9 +1,10 @@
 /**
- * OpenAI Chat Completions request -> PlugRequest (spec R1, D13, D22, D23).
+ * OpenAI Chat Completions request -> PlugRequest.
  *
- * Pure function: no I/O. The core resolves `model` to a `ModelRef` afterwards, which is why
+ * Pure function: no I/O. The route resolves `model` to a `ModelRef` afterwards, which is why
  * the result omits `ref`.
  */
+import { isPlugError } from "../errors.js"
 import type {
   PlugboardOptions,
   PlugError,
@@ -13,9 +14,9 @@ import type {
   PlugRequest,
   PlugTool,
   PlugToolChoice,
-} from "../contract.ts"
+} from "../contract.js"
 
-type Json = Record<string, unknown>
+type JsonObject = Record<string, unknown>
 
 export interface ParsedChat {
   readonly request: Omit<PlugRequest, "ref">
@@ -24,12 +25,10 @@ export interface ParsedChat {
   readonly includeUsage: boolean
 }
 
-/** Name of the forced tool that carries structured output (D13). */
+/** Name of the forced tool that carries structured output. */
 export const RESPOND_TOOL = "respond"
 
-const isRecord = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value)
-
-const isError = (value: unknown): value is PlugError => isRecord(value) && typeof value.status === "number"
+const isRecord = (value: unknown): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value)
 
 const bad = (message: string, param?: string, code?: string): PlugError => ({
   status: 400,
@@ -174,7 +173,7 @@ const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError =
   return bad("Unsupported tool_choice", "tool_choice")
 }
 
-/** response_format json_schema / json_object -> the forced `respond` tool (D13). */
+/** response_format json_schema / json_object -> the forced `respond` tool. */
 const parseResponseFormat = (raw: unknown): PlugTool | undefined | PlugError => {
   if (raw == null) return undefined
   if (!isRecord(raw)) return bad("response_format must be an object", "response_format")
@@ -193,7 +192,7 @@ const parseResponseFormat = (raw: unknown): PlugTool | undefined | PlugError => 
   return bad(`Unsupported response_format type "${String(raw.type)}"`, "response_format.type")
 }
 
-const parseGeneration = (body: Json): PlugGeneration | PlugError => {
+const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
   const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = {}
   const number = (key: string): number | undefined | PlugError => {
     const value = body[key]
@@ -226,21 +225,21 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (!Array.isArray(body.messages) || body.messages.length === 0) return bad("messages must be a non-empty array", "messages")
 
-  // D23: parameters the session backend cannot honour are rejected, not ignored.
+  // Parameters the session backend cannot honour are rejected, not ignored.
   if (typeof body.n === "number" && body.n > 1) return bad("Only n=1 is supported", "n", "unsupported_parameter")
   if (body.logprobs === true) return bad("logprobs is not supported", "logprobs", "unsupported_parameter")
   if (body.top_logprobs != null) return bad("top_logprobs is not supported", "top_logprobs", "unsupported_parameter")
 
   const parsed = parseMessages(body.messages)
-  if (isError(parsed)) return parsed
+  if (isPlugError(parsed)) return parsed
   const callerTools = parseTools(body.tools)
   if (!Array.isArray(callerTools)) return callerTools
   const toolChoice = parseToolChoice(body.tool_choice)
-  if (isError(toolChoice)) return toolChoice
+  if (isPlugError(toolChoice)) return toolChoice
   const respond = parseResponseFormat(body.response_format)
-  if (isError(respond)) return respond
+  if (isPlugError(respond)) return respond
   const generation = parseGeneration(body)
-  if (isError(generation)) return generation
+  if (isPlugError(generation)) return generation
 
   const tools = respond ? [...callerTools, respond] : callerTools
   if (tools.length > options.maxTools)
@@ -261,10 +260,10 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
     ...(respond ? { structured: { toolName: RESPOND_TOOL } } : {}),
     stream: body.stream === true,
   }
-  const options_ = isRecord(body.stream_options) ? body.stream_options : {}
+  const streamOptions = isRecord(body.stream_options) ? body.stream_options : {}
   return {
     request,
-    includeUsage: options_.include_usage === true,
+    includeUsage: streamOptions.include_usage === true,
     ...(typeof body.reasoning_effort === "string" ? { reasoningEffort: body.reasoning_effort } : {}),
   }
 }

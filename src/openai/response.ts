@@ -1,9 +1,11 @@
 /**
- * PlugEvents -> OpenAI Chat Completions responses: one JSON body, or SSE chunks (spec D12, D13, D23).
+ * Neutral results -> OpenAI wire objects: Chat Completions as one JSON body or SSE chunks, the
+ * `/v1/models` list, and error bodies.
  *
  * Reasoning deltas are dropped: Chat Completions has no standard field for them.
  */
-import type { PlugError, PlugEvent, PlugFinish, PlugRequest, PlugUsage } from "../contract.ts"
+import type { PlugError, PlugEvent, PlugFinish, PlugRequest, PlugUsage } from "../contract.js"
+import type { ListedModel } from "../models.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -16,6 +18,18 @@ const FINISH_REASONS: Record<Exclude<PlugFinish, "error">, string> = {
 
 export const encodeError = (error: PlugError): object => ({
   error: { message: error.message, type: error.type, param: error.param ?? null, code: error.code ?? null },
+})
+
+/** `GET /v1/models` body. */
+export const encodeModelList = (models: ReadonlyArray<ListedModel>): object => ({
+  object: "list",
+  data: models.map(({ id, ref, model }) => ({
+    id,
+    object: "model",
+    created: 0,
+    owned_by: ref.providerID,
+    plugboard: { capabilities: model.capabilities ?? {}, contextLimit: model.contextLimit },
+  })),
 })
 
 const encodeUsage = (usage: PlugUsage) => {
@@ -34,7 +48,7 @@ const args = (input: unknown) => (typeof input === "string" ? input : JSON.strin
 
 /**
  * Final finish_reason. Tool calls force `tool_calls` even when the upstream says `stop`;
- * structured output (D13) ends as a plain `stop`.
+ * structured output ends as a plain `stop`.
  */
 const finishReason = (reason: Exclude<PlugFinish, "error">, calls: number, structured: boolean) => {
   if (reason === "length" || reason === "content-filter") return FINISH_REASONS[reason]
