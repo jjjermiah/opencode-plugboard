@@ -99,10 +99,10 @@ function close(holder: Holder): void {
 
 /**
  * Join (or create) the shared listener. Global config options are authoritative (D19): the
- * generation that binds the port fixes the options for the listener's lifetime. A generation
- * whose options differ (`fingerprint`, JSON of the parsed options) logs once and stays inert, so
- * a project config entry can never serve requests with weaker auth than the one that bound.
- * Option changes need a server restart.
+ * live generations fix the options (`fingerprint`, JSON of the parsed options): one whose options
+ * differ logs once and stays inert, so a project config entry can never serve with weaker auth
+ * than the live one. When none is live (config reload) the next generation's options are
+ * adopted. A different `listen` needs a server restart.
  */
 export function registerGeneration(listen: { host: string; port: number }, handler: Handler, fingerprint: string): Registration {
   let holder = holderOf()
@@ -112,16 +112,28 @@ export function registerGeneration(listen: { host: string; port: number }, handl
   }
   holder ??= ((globalThis as Record<symbol, unknown>)[KEY] = create(listen, fingerprint)) as Holder
   const joined = holder
-  // A holder created before fingerprints existed (hot reload from an older build) adopts the first one.
-  joined.fingerprint ??= fingerprint
-  if (joined.fingerprint !== fingerprint) {
+  if (joined.listen.host !== listen.host || joined.listen.port !== listen.port) {
     if (!joined.mismatchLogged) {
       joined.mismatchLogged = true
       console.error(
-        "[opencode-plugboard] plugin options differ from the ones that started the listener (global config is authoritative); this Location stays inert. Restart the server after changing options",
+        `[opencode-plugboard] listener is bound to ${joined.listen.host}:${joined.listen.port}; this Location asks for ${listen.host}:${listen.port} and stays inert. Restart the server after changing \`listen\``,
       )
     }
     return { dispose() {} }
+  }
+  // Same port, other options: a live generation owns them (global config is authoritative), so
+  // this one stays inert. With none live (config reload: all old generations disposed) the new
+  // options are adopted. A holder from before fingerprints also lands here and adopts.
+  if (joined.fingerprint !== fingerprint) {
+    if (joined.handlers.length > 0 && joined.fingerprint !== undefined) {
+      if (!joined.mismatchLogged) {
+        joined.mismatchLogged = true
+        console.error("[opencode-plugboard] plugin options differ from the live listener's (global config is authoritative); this Location stays inert")
+      }
+      return { dispose() {} }
+    }
+    joined.fingerprint = fingerprint
+    joined.mismatchLogged = false
   }
   if (joined.graceTimer) clearTimeout(joined.graceTimer)
   joined.graceTimer = undefined

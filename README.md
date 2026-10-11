@@ -80,7 +80,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). Off by default because it lets callers make the host request internal addresses; callers can always send `data:` URLs. |
 
-Changes to options need a server restart. The global config is the only source of options: a plugin entry elsewhere with different options logs once and stays inert.
+Changes to `listen` need a server restart; other option changes apply on config reload. The global config is the only source of options: while a Location with the global options is live, a plugin entry elsewhere with different options logs once and stays inert.
 On a loopback `listen.host`, requests with a `Host` header other than `127.0.0.1`, `localhost` or `[::1]` (on the listen port) get 403 `invalid_host`, and without `keys` a request with an `Origin` header gets 403 `cross_origin_forbidden`. `POST` bodies must be `application/json` (415 otherwise).
 
 Without `keys`, only a loopback `listen.host` is accepted and every caller is the app `default`. Once any key exists, every request needs a valid key, loopback included. Callers send it as `Authorization: Bearer <key>`. They never see or need the OpenCode server password.
