@@ -148,6 +148,11 @@ One state machine (`runResponse`) produces both the JSON body and the SSE events
 - JSON: each choice's body is encoded alone, then `choices[0]` of each is renumbered by index and the `usage` objects are summed.
 - SSE: one `sse.paced` serves all choices (one backpressure wait, one keepalive). A merge pulls at most one event ahead per choice, tags it with its choice, and feeds one queue per choice, which that choice's encoder reads. Encoders write their own chunks with the shared `id` and their `index`; the error frame, the summed usage chunk and `[DONE]` are written once, by the fan-out.
 - `maxN` (default 1) caps the calls per request, because each is a full model call and a kept session.
+## Fourth front-end: Gemini
+
+`POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent?alt=sse`, plus `GET /v1beta/models[/{model}]`, are a front-end in `src/gemini/` on the same seam. `src/openai/route.ts` matches the path (`matchGeminiRoute`), checks the origin, authenticates in the shared step (before route existence is revealed, so an unauthenticated Gemini path gets a 401 in Google's body) and dispatches to `src/gemini/route.ts` with the metered caller. Two things differ from the other front-ends. The model is in the URL, not the body, and the credential may be `x-goog-api-key` or `?key=` as well as `Authorization` (`geminiAuthorization` normalizes it into the Bearer form `authenticate` reads). And every error on a Gemini path, including the shared ones (auth, origin, body, timeout), uses Google's `{error:{code,message,status}}` body: the route remembers which responses are Gemini ones and picks the encoder in `fail`.
+
+One state machine (`runGenerate`) produces both the JSON body and the SSE chunks. Gemini function calls carry no id, so the decoder assigns ids and pairs each `functionResponse` with the earliest unanswered call of the same name; the response omits ids. Structured output reuses the forced `respond` tool (a non-object schema is wrapped in one property and unwrapped). The contract did not change. Details and the supported field list: [gemini.md](gemini.md).
 
 ## Module map
 
@@ -161,7 +166,7 @@ src/metrics.ts              Prometheus registry and text rendering (pure, no I/O
 src/discovery.ts            `GET /`, `GET /v1` and `GET /v1/status` documents, HTML page (pure builders), `sendText`
 src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store, history sweep state, metrics registry
 src/http.ts                 ingress: body limits, origin checks, disconnect abort, deadline, JSON/SSE transport
-src/openai/route.ts         Chat Completions and /v1/models orchestration; dispatches POST /v1/responses and /v1/completions
+src/openai/route.ts         Chat Completions and /v1/models orchestration; dispatches POST /v1/responses, /v1/completions and the Gemini paths
 src/openai/fanout.ts        n > 1: one model call per choice, group cancellation, JSON merge, SSE interleave; ChoiceCodec
 src/openai/request.ts       decode a Chat Completions body (pure)
 src/openai/response.ts      encode completions, SSE, errors, model list (pure); OpenAiExchange
@@ -174,6 +179,9 @@ src/responses/response.ts   encode the response object and its SSE events (pure)
 src/anthropic/route.ts      Anthropic Messages orchestration (takes the request over from openai/route; own errors and auth)
 src/anthropic/request.ts    decode a Messages body (pure)
 src/anthropic/response.ts   encode the message object, its SSE events and errors (pure); MessagesExchange
+src/gemini/route.ts         Gemini path matching, credential sources, orchestration (after the shared origin and auth steps)
+src/gemini/request.ts       decode a generateContent body (pure): contents, tools and schema conversion, toolConfig, generationConfig
+src/gemini/response.ts      encode GenerateContentResponse chunks, the model list and Google-shaped errors (pure); GeminiExchange
 src/session/host.ts         the host adapter: Effect plugin API to Promise port, catalog, hook-event shapes
 src/session/caller.ts       one model-call lifecycle: create session, prompt, relay events, release
 src/session/context.ts      context hook, seed tools, agent deny (all gated on confirmation); re-keys seeds onto the caller's tools
@@ -186,7 +194,7 @@ src/session/media.ts        bounded image preparation (data URLs; opt-in remote 
 src/session/seeds.ts        seed name prefix and result text
 ```
 
-Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `discovery`, `metrics`, `runtime` (only the `processMetrics` / `processStatus` defaults, overridable through `RouteHost`), `openai/request`, `openai/response`, `openai/fanout`, `completions/route`, `responses/route` -> `contract`; `responses/route` -> `http`, `models`, `responses/request`, `responses/response` (and the Chat error encoder, same body shape); `runtime` -> `history` (`ensureBackend`), `prune`, `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`, `responses/request`, `responses/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
+Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `discovery`, `metrics`, `runtime` (only the `processMetrics` / `processStatus` defaults, overridable through `RouteHost`), `openai/request`, `openai/response`, `openai/fanout`, `completions/route`, `responses/route` -> `contract`; `responses/route` -> `http`, `models`, `responses/request`, `responses/response` (and the Chat error encoder, same body shape); `gemini/route` -> `http`, `models`, `gemini/request`, `gemini/response`, `openai/sampling`; `runtime` -> `history` (`ensureBackend`), `prune`, `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`, `responses/request`, `responses/response`, `gemini/request`, `gemini/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
 
 ## Error text and route existence
 
