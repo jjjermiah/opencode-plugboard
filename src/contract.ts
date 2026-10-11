@@ -97,6 +97,11 @@ export interface PlugRequest {
 
 // ---------------------------------------------------------------- events
 
+/**
+ * Token usage for one model call. Totals are inclusive, like OpenAI's:
+ * `inputTokens` includes `cacheReadTokens` and `cacheWriteTokens`;
+ * `outputTokens` includes `reasoningTokens`.
+ */
 export interface PlugUsage {
   readonly inputTokens?: number
   readonly outputTokens?: number
@@ -140,6 +145,8 @@ export interface CallContext {
   readonly app: string
   /** Aborted on client disconnect or timeout. */
   readonly signal: AbortSignal
+  /** Called once, before the first event, with the id of the history record this call writes (if any). */
+  readonly onRecord?: (recordID: string) => void
 }
 
 /** The seam between the core and a backend (the session backend now, `ctx.llm.stream` possibly later). */
