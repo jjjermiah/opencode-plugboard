@@ -98,6 +98,17 @@ describe("runResponse: failures", () => {
     expect(failure).toMatchObject({ status: 429 })
   })
 
+  test("#49 a failure before output on a stream the transport already committed opens the response and fails it", async () => {
+    const emitted: ResponsesStreamEvent[] = []
+    const result = await runResponse(events(ev.reasoning("x"), ev.error({ message: "died" })), plain, (event) => void emitted.push(event), () => true)
+    expect(emitted.map((event) => [event.type, event.sequence_number])).toEqual([
+      ["response.created", 0],
+      ["response.in_progress", 1],
+      ["response.failed", 2],
+    ])
+    expect(result).toMatchObject({ started: true, failure: { message: "died" }, response: { status: "failed", output: [] } })
+  })
+
   test("#38 a failure after output closes the open message and emits response.failed", async () => {
     const { types, response } = await run(plain, ev.text("part"), ev.error({ message: "boom", code: "upstream" }))
     expect(types.slice(-4)).toEqual(["response.output_text.done", "response.content_part.done", "response.output_item.done", "response.failed"])

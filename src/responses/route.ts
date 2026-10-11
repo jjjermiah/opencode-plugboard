@@ -56,7 +56,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
 
   if (exchange.stream) {
     const sse = sseWriter(response, scope.signal)
-    const { failure } = await runResponse(sse.paced(events), exchange, (event) => sse.write(sseFrame(event)))
+    const { failure } = await runResponse(sse.paced(events), exchange, (event) => sse.write(sseFrame(event)), () => sse.started)
     if (!sse.started && !response.headersSent) {
       if (!scope.signal.aborted || scope.timedOut) fail(failure ?? { status: 502, kind: "server", message: "No response from the model" })
     } else {

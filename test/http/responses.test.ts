@@ -92,18 +92,17 @@ describe("POST /v1/responses", () => {
     expect(logs.of("request.failed")[0]!.fields).toMatchObject({ status: "200", outcome: "error", error: "upstream" })
   })
 
-  // Known bug, found by this suite: when reasoning commits the stream (#49) and the model then
-  // fails before any output event, Chat Completions writes an error frame but Responses ends the
-  // 200 stream with no event at all, so the client cannot tell a failure from an empty stream.
-  // Flip to `test` when fixed.
-  test.failing("#49 reasoning commits the stream, so a later failure still ends with response.failed", async () => {
+  // Found by this suite: the stream used to end with no event at all, so a client could not tell a failure from an empty answer.
+  test("#49 reasoning commits the stream, so a later failure still opens the response and ends with response.failed", async () => {
     const release = gate()
     await route([ev.reasoning("thinking"), { wait: release.promise }, ev.error({ message: "died", code: "upstream" })])
     const stream = await server!.open(responses({ stream: true }))
     expect(stream.status).toBe(200)
     release.open()
     const events = eventsOf(await stream.ended)
-    expect(events.at(-1)?.event).toBe("response.failed")
+    expect(events.map(({ event }) => event)).toEqual(["response.created", "response.in_progress", "response.failed"])
+    expect(events.at(-1)!.data.response).toMatchObject({ status: "failed", error: { code: "upstream", message: "died" }, output: [] })
+    expect(logs.of("request.failed")[0]!.fields).toMatchObject({ status: "200", outcome: "error", error: "upstream" })
   })
 
   test("#32 the deadline applies: a model that never answers is a 504", async () => {
