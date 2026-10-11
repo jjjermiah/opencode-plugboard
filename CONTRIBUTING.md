@@ -27,6 +27,8 @@ The suite runs on `bun test`. It is fast and never talks to a real OpenCode serv
 - CI keeps floors on the number of tests per layer and on coverage (`.ci/`). They only go up: when you add tests, raise them with `.github/scripts/test-gates.ts --ratchet` (see test/README.md) and commit them with the tests.
 - A change to a wire format regenerates `test/types/wire.ts` (`bun test/types/generate.ts`) and `docs/compatibility.md`; the type check and CI fail when they are stale.
 
+Benchmarks (`bun run bench`) are not part of `bun test`. The CI job that gates them against `.ci/bench-baseline.json` is advisory. See [test/README.md](test/README.md#benchmarks-118). Move the baseline only for a change that is meant to move the numbers, and say why in the commit.
+
 The tests do not replace a live run for host behaviour: run the change on an isolated server too.
 
 ## Never try a change on your real OpenCode

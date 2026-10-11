@@ -45,6 +45,17 @@ bun .github/scripts/test-gates.ts .coverage --ratchet
 
 and commit `.ci/` with the tests. Lowering a floor is a deliberate edit that the PR must explain.
 
+## Benchmarks (#118)
+
+`bun run bench` runs `test/bench/request.bench.ts` with mitata (exact-pinned): each front-end over loopback HTTP with a replayed model, a 2,000-delta stream, `n=3` fan-out, the pure decode and model resolution with a 1,000-model allowlist. It is not part of `bun test`. Connections are kept alive, because a new TCP connection per request made the medians swing by two orders of magnitude on loopback.
+
+```sh
+bun run bench -- --json run.json
+bun .github/scripts/bench-gate.ts run.json --summary
+```
+
+`.ci/bench-baseline.json` holds the median per benchmark (ns) from one machine. The gate fails when a median is more than 2x its baseline, or when a baseline entry did not run. Runners differ from that machine, so the CI job is advisory. To move the baseline after an intended change, run the bench on the same kind of machine, `bun .github/scripts/bench-gate.ts run.json --update`, and commit it with the change.
+
 ## Shared fakes (`support/`)
 
 ### `fixtures.ts`

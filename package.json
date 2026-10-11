@@ -21,6 +21,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
     "test": "bun test",
+    "bench": "bun test/bench/request.bench.ts",
     "smoke:pack": "bun .github/scripts/smoke-pack.ts",
     "release": "bun .github/scripts/release.ts"
   },
@@ -54,6 +55,7 @@
     "fast-xml-parser": "5.11.2",
     "lcov-parse": "1.0.0",
     "lefthook": "2.2.1",
+    "mitata": "1.0.34",
     "openai": "7.32.0",
     "typescript": "^5.9.3"
   },
