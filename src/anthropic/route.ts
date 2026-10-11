@@ -21,6 +21,7 @@ import {
   checkJsonContentType,
   checkOrigin,
   readJsonBody,
+  sendError,
   sendJson,
   sseWriter,
   type RequestScope,
@@ -65,7 +66,7 @@ const authenticateRequest = (host: RouteHost, request: IncomingMessage) => {
 
 export async function serveMessages(host: RouteHost, call: MessagesCall): Promise<void> {
   const { path, request, response, scope, info } = call
-  const fail = (error: PlugError, close = false) => sendJson(response, error.status, encodeError(error), { close })
+  const fail = (error: PlugError, close = false) => sendError(response, error, encodeError(error), { close })
   if (request.method === "POST") info.route = `POST ${path}`
   response.setHeader("request-id", `req_${crypto.randomUUID().replaceAll("-", "")}`)
 

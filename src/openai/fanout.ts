@@ -25,7 +25,7 @@ import type { PlugError, PlugEvent, PlugRequest, PlugUsage } from "../contract.j
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
-import { RequestAborted, boundEvents, sendJson, sseWriter, type RequestScope } from "../http.js"
+import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { chatUsageChunk, collectCompletion, encodeError, streamCompletion, type OpenAiExchange, type StreamChoice, type StreamResult } from "./response.js"
 import type { RouteHost } from "./route.js"
 
@@ -38,7 +38,7 @@ export interface ChoiceCodec {
   /** Prefix of the shared stream id (`chatcmpl-`, `cmpl-`). */
   readonly idPrefix: string
   /** One choice as a complete JSON body with `choices[0]` and `usage`. */
-  collect(events: AsyncIterable<PlugEvent>, index: number): Promise<{ status: number; body: object }>
+  collect(events: AsyncIterable<PlugEvent>, index: number): Promise<{ status: number; body: object; retryAfterSeconds?: number }>
   /** One choice of the shared stream: this choice's chunks only (see `StreamChoice`). */
   streamChoice(events: AsyncIterable<PlugEvent>, write: (chunk: string) => void, choice: StreamChoice): Promise<StreamResult>
   /** The final chunk with the summed usage (`include_usage`). */
@@ -155,7 +155,7 @@ const addUsage = (a: PlugUsage, b: PlugUsage): PlugUsage => {
 }
 
 export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls, response, scope, info, codec }: ChoicesCall): Promise<void> {
-  const fail = (error: PlugError) => sendJson(response, error.status, encodeError(error))
+  const fail = (error: PlugError) => sendError(response, error, encodeError(error))
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason
 
@@ -190,8 +190,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
     )
 
   if (!codec.stream) {
-    const results = await new Promise<Array<{ status: number; body: object }>>((resolve, reject) => {
-      const done: Array<{ status: number; body: object }> = []
+    const results = await new Promise<Array<{ status: number; body: object; retryAfterSeconds?: number }>>((resolve, reject) => {
+      const done: Array<{ status: number; body: object; retryAfterSeconds?: number }> = []
       let left = calls.length
       calls.forEach((_, index) => {
         codec.collect(open(index), index).then(
@@ -211,7 +211,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
       })
     })
     const first = results[0]!
-    return sendJson(response, first.status, results.length === 1 ? first.body : mergeBodies(results.map((result) => result.body)))
+    return sendJson(response, first.status, results.length === 1 ? first.body : mergeBodies(results.map((result) => result.body)), { retryAfterSeconds: first.retryAfterSeconds })
   }
 
   const sse = sseWriter(response, scope.signal)

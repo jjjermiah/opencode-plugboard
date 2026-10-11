@@ -165,17 +165,28 @@ export function finishRequest(request: IncomingMessage, response: ServerResponse
   response.once("close", () => clearTimeout(timer))
 }
 
-/** `close`: also tell the client to drop the connection (after an unread or abandoned body). */
-export const sendJson = (response: ServerResponse, status: number, payload: unknown, options?: { close?: boolean }) => {
+/**
+ * `close`: also tell the client to drop the connection (after an unread or abandoned body).
+ * `retryAfterSeconds`: sent as `Retry-After` (a rate-limit refusal, see `PlugError.retryAfterSeconds`).
+ */
+export const sendJson = (response: ServerResponse, status: number, payload: unknown, options?: { close?: boolean; retryAfterSeconds?: number }) => {
   if (response.headersSent || response.destroyed) return
   const body = JSON.stringify(payload)
   response.writeHead(status, {
     "content-type": "application/json",
     "content-length": Buffer.byteLength(body),
     ...(options?.close ? { connection: "close" } : {}),
+    ...(options?.retryAfterSeconds !== undefined ? { "retry-after": String(options.retryAfterSeconds) } : {}),
   })
   response.end(body)
 }
+
+/**
+ * A `PlugError` answered in a front-end's own wire body, before any output. Every route's `fail` goes
+ * through here, so a refused call (`PlugError.retryAfterSeconds`) always carries `Retry-After`.
+ */
+export const sendError = (response: ServerResponse, error: PlugError, body: unknown, options?: { close?: boolean }) =>
+  sendJson(response, error.status, body, { ...options, retryAfterSeconds: error.retryAfterSeconds })
 
 /**
  * SSE response writer. Headers go out with the first chunk, so nothing is committed until there

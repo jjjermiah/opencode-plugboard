@@ -32,6 +32,7 @@ import {
   checkOrigin,
   finishRequest,
   readJsonBody,
+  sendError,
   sendJson,
   sseWriter,
   type RequestScope,
@@ -119,7 +120,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   /** Responses to Gemini routes: errors there use Google's body. */
   const googleErrors = new WeakSet<ServerResponse>()
   const fail = (response: ServerResponse, error: PlugError, close = false) =>
-    sendJson(response, error.status, googleErrors.has(response) ? encodeGeminiError(error) : encodeError(error), { close })
+    sendError(response, error, googleErrors.has(response) ? encodeGeminiError(error) : encodeError(error), { close })
 
   /** The catalog for a page that can do without it: a failure is logged and reported as absent; an abort still ends the request. */
   async function optionalCatalog(scope: RequestScope): Promise<ReadonlyArray<CatalogModel> | undefined> {
@@ -282,7 +283,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     const result = await collectCompletion(events, exchange)
-    sendJson(response, result.status, result.body)
+    sendJson(response, result.status, result.body, { retryAfterSeconds: result.retryAfterSeconds })
   }
 
   /** Never rejects: every failure ends in a response (or a closed socket) and one log line. */
