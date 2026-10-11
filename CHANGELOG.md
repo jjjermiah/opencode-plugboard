@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.8.0] - 2026-10-11
+
 ### Added
 
 - **Legacy `/v1/completions`** ([#75](https://github.com/jjjermiah/opencode-plugboard/issues/75)). Older scripts and some tools' "completion" mode still POST here. A prompt becomes one user message with no system prompt, a prompt array makes one call per prompt, `suffix` becomes an instruction (best effort; chat models have no insert mode), `echo` works, and so do streaming and `stream_options.include_usage`. `logprobs`, `best_of` above 1 and token-array prompts get a 400.
@@ -321,7 +325,8 @@ Providers, through the session path: GitHub Copilot, Anthropic (Claude Max throu
 
 `copilot-api` and LiteLLM showed what an OpenAI-compatible front door should feel like to the people calling it. No code was taken from either.
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.1...v0.5.0
