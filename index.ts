@@ -3,8 +3,9 @@
  * server, backed by the server's own providers.
  *
  * Install in the GLOBAL OpenCode config. OpenCode loads the plugin once per Location:
- *   - everywhere, a generation joins the process-wide listener (src/runtime.ts) and serves
- *     requests with the newest live generation;
+ *   - everywhere, a generation asks to join the process-wide listener (src/runtime.ts); an
+ *     accepted one can serve requests (a data-root Location is preferred, else the newest), a
+ *     rejected one does nothing at all;
  *   - only inside the plugboard data root (`.../opencode-plugboard/<app>/`) it also registers the
  *     context hook and the seed tools that make request sessions work. In any other project it
  *     registers nothing else.
@@ -20,7 +21,7 @@ import { Effect } from "effect"
 import { parseOptions } from "./src/config.js"
 import { errorMessage, logError } from "./src/log.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensurePump, registerGeneration, sessionStore } from "./src/runtime.js"
+import { ensurePump, loadServingCatalog, registerGeneration, sessionStore } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { isInsideDataRoot } from "./src/session/history.js"
@@ -42,27 +43,46 @@ export default Plugin.define({
       // ---- every Location: join the shared listener (sync registration only).
       const sessions = sessionStore()
       const startPump = () => ensurePump(() => ctx.event.subscribe())
+      const ownCatalog = () => loadCatalog(ctx)
       const handle = createOpenAiRoute({
         options,
-        caller: createSessionCaller({ port: createSessionPort(ctx), sessions, remoteImages: options.remoteImages }),
+        caller: createSessionCaller({
+          port: createSessionPort(ctx),
+          sessions,
+          maxTools: options.maxTools,
+          remoteImages: options.remoteImages,
+        }),
+        // The catalog comes from the preferred accepted generation (a data-root Location when there is
+        // one), not from whichever Location registered last; this generation's own is the fallback.
         loadCatalog: async () => {
           startPump()
-          return loadCatalog(ctx)
+          return loadServingCatalog(ownCatalog)
         },
       })
-      const registration = registerGeneration(
-        options.listen,
-        (request, response) => {
+      const inDataRoot = isInsideDataRoot(ctx.location.directory)
+      const registration = registerGeneration({
+        listen: options.listen,
+        options,
+        owner: inDataRoot,
+        handler: (request, response) => {
           startPump()
-          void handle(request, response)
+          handle(request, response).catch((error) => {
+            logError("request.unhandled", { error: errorMessage(error) })
+            if (response.headersSent) return void response.end()
+            response.writeHead(500, { "content-type": "application/json" })
+            response.end(JSON.stringify({ error: { message: "Internal server error", type: "server_error" } }))
+          })
         },
-        JSON.stringify(options),
-      )
+        loadCatalog: ownCatalog,
+      })
       yield* Effect.addFinalizer(() => Effect.sync(() => registration.dispose()))
+
+      // ---- a rejected generation (different options or `listen`, foreign runtime) serves nothing and installs nothing.
+      if (!registration.accepted) return
       startPump()
 
       // ---- real projects stop here: no hooks, no tools, no agent changes.
-      if (!isInsideDataRoot(ctx.location.directory)) return
+      if (!inDataRoot) return
 
       // ---- plugboard app directories only: the context hook and the seed tools.
       yield* installSessionHooks(ctx, { maxTools: options.maxTools, sessions })

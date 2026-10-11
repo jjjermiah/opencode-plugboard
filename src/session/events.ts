@@ -11,8 +11,9 @@
  * The collector never calls the host itself; the owner passes `stopTurn`.
  */
 
-import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
+import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
 import type { BusEvent } from "./host.js"
+import { FAILURE_EVENT } from "./state.js"
 
 /** Minimal async queue: producers `push`, one consumer iterates; `close` ends the iteration. */
 class EventQueue<T> implements AsyncIterable<T> {
@@ -52,6 +53,12 @@ class EventQueue<T> implements AsyncIterable<T> {
   }
 }
 
+/**
+ * The host's session token record (`TokenUsage.Info`, `session.step.ended` / `session.usage.updated`
+ * `tokens`). It is a NON-overlapping breakdown (`packages/core/src/session/usage.ts`): `input` is
+ * the non-cached prompt, `output` the visible (non-reasoning) completion, `reasoning` the hidden
+ * reasoning, and `cache.read` / `cache.write` the cached prompt parts.
+ */
 interface RawUsage {
   readonly input?: number
   readonly output?: number
@@ -65,11 +72,20 @@ interface RawError {
   readonly status?: number
 }
 
+const total = (...parts: Array<number | undefined>): number | undefined =>
+  parts.some((part) => typeof part === "number") ? parts.reduce<number>((sum, part) => sum + (typeof part === "number" ? part : 0), 0) : undefined
+
+/**
+ * Host breakdown to `PlugUsage`, whose totals are inclusive (see `PlugUsage`):
+ *   inputTokens  = input + cache.read + cache.write
+ *   outputTokens = output + reasoning
+ * reasoning and cache fields pass through as the subsets they are.
+ */
 const toUsage = (tokens?: RawUsage): PlugUsage | undefined =>
   tokens
     ? {
-        inputTokens: tokens.input,
-        outputTokens: tokens.output,
+        inputTokens: total(tokens.input, tokens.cache?.read, tokens.cache?.write),
+        outputTokens: total(tokens.output, tokens.reasoning),
         reasoningTokens: tokens.reasoning,
         cacheReadTokens: tokens.cache?.read,
         cacheWriteTokens: tokens.cache?.write,
@@ -181,8 +197,14 @@ export class RequestCollector {
         return
       case "session.step.ended":
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
-        if (!this.finished && this.calls.size > 0) this.hooks.stopTurn()
+        // Also after the response finished: a later step that ended with calls means the first
+        // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
+        if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
         this.finishWith(this.calls.size > 0 ? "tool-calls" : toFinish(item.finish))
+        return
+      case FAILURE_EVENT:
+        // Synthetic, from inside the process (lost event stream, preparation mismatch).
+        if (isPlugError(item.error)) this.abort(item.error)
         return
       case "session.step.failed": {
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
@@ -212,6 +234,13 @@ export class RequestCollector {
       default:
         return
     }
+  }
+
+  /** Fail the request with `error` and stop the turn. No-op once the request is terminal. */
+  abort(error: PlugError): void {
+    if (this.finished) return
+    this.fail(error)
+    this.hooks.stopTurn()
   }
 
   /** Close the stream without a terminal event (client gone). */

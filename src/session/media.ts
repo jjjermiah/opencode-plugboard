@@ -6,7 +6,6 @@
  */
 
 import type { PlugRequest } from "../contract.js"
-import { describeError } from "./host.js"
 
 const MAX_REMOTE_IMAGE_BYTES = 20 * 1024 * 1024
 
@@ -22,13 +21,15 @@ export class ImageError extends Error {
 
 async function toDataUrl(url: string, signal: AbortSignal, remoteImages: boolean): Promise<string> {
   if (url.startsWith("data:")) return url
-  if (!/^https?:\/\//i.test(url)) throw new ImageError("unsupported_image_url", `Unsupported image URL scheme: ${url.slice(0, 32)}`)
+  if (!/^https?:\/\//i.test(url)) throw new ImageError("unsupported_image_url", "Unsupported image URL scheme; use a data: URL or an http(s) URL")
   if (!remoteImages)
     throw new ImageError("remote_images_disabled", "Remote image URLs are disabled; send a data: URL or set the plugboard `remoteImages` option")
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) }).catch((error) => {
-    throw new ImageError("image_fetch_failed", `Could not fetch image: ${describeError(error)}`)
+  // Messages never carry the URL or the fetch error text: both can hold credentials in the query string.
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) }).catch((error: unknown) => {
+    const reason = error instanceof Error && error.name === "TimeoutError" ? "timed out" : "network error"
+    throw new ImageError("image_fetch_failed", `Could not fetch image (${reason})`)
   })
-  if (!response.ok) throw new ImageError("image_fetch_failed", `Could not fetch image (${response.status}): ${url.slice(0, 120)}`)
+  if (!response.ok) throw new ImageError("image_fetch_failed", `Could not fetch image (HTTP ${response.status})`)
   const mediaType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? ""
   if (!mediaType.startsWith("image/")) throw new ImageError("invalid_image", `URL did not return an image (content-type: ${mediaType || "none"})`)
   const declared = Number(response.headers.get("content-length"))

@@ -17,10 +17,30 @@
  * request returns anything, so that step leaves no trace. The captured `session.tool.called`
  * events are what a `tool_calls` response needs.
  * Seeds are registered only inside the plugboard data root, denied to every agent there,
- * and allowed again by the permissions of plugboard's own request sessions.
+ * and allowed again by the permissions of plugboard's own request sessions. Those permissions
+ * deny every other tool (defense in depth: if a second step ever runs outside the context
+ * hook's replacement, it cannot run real OpenCode tools).
  */
+
+import type { PlugRequest, PlugTool } from "../contract.js"
 
 export const SEED_PREFIX = "plugboard_seed_"
 
 /** Output of every seed tool call: the caller, not OpenCode, runs the tool. */
 export const SEED_RESULT = "Returned to caller (opencode-plugboard)"
+
+/**
+ * Session permissions of a request session. The host takes the last matching rule (session rules
+ * come after the agent's): everything is denied, then the seeds are allowed again.
+ */
+export const REQUEST_PERMISSIONS: ReadonlyArray<{ action: string; resource: string; effect: "allow" | "deny" }> = [
+  { action: "*", resource: "*", effect: "deny" },
+  { action: `${SEED_PREFIX}*`, resource: "*", effect: "allow" },
+]
+
+/** The caller tools that get a seed in the model request (`tool_choice` none offers none, a named tool only that one). */
+export function seedToolsFor(request: PlugRequest): ReadonlyArray<PlugTool> {
+  const choice = request.toolChoice
+  if (choice === "none") return []
+  return typeof choice === "object" ? request.tools.filter((tool) => tool.name === choice.name) : request.tools
+}

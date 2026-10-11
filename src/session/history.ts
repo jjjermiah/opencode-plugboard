@@ -12,7 +12,7 @@ import { mkdir, realpath } from "node:fs/promises"
 import { realpathSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, join, resolve, sep } from "node:path"
-import type { PlugRequest } from "../contract.js"
+import type { PlugError, PlugRequest } from "../contract.js"
 
 /** `$XDG_DATA_HOME/opencode-plugboard`, else `~/.local/share/opencode-plugboard`. */
 function dataRoot(): string {
@@ -43,11 +43,21 @@ export function isInsideDataRoot(directory: string): boolean {
   return dir === root || dir.startsWith(root + sep)
 }
 
-/** Create (if needed) and return the real path of `<dataRoot>/<app>`. `app` must already be validated. */
-export async function ensureAppDir(app: string): Promise<string> {
-  const appDir = join(dataRoot(), app)
+/**
+ * Create (if needed) and return the real path of `<dataRoot>/<app>`. `app` must already be validated.
+ * Fails closed with a `PlugError` when the resolved path is not strictly inside the canonical data
+ * root (a symlinked app directory): a session there would run in another project, where plugboard
+ * registers no context hook and no seeds, so it must never be created.
+ */
+export async function ensureAppDir(app: string): Promise<string | PlugError> {
+  const root = dataRoot()
+  const appDir = join(root, app)
   await mkdir(appDir, { recursive: true })
-  return realpath(appDir)
+  const [realRoot, realApp] = await Promise.all([realpath(root), realpath(appDir)])
+  if (!realApp.startsWith(realRoot + sep)) {
+    return { status: 500, kind: "server", code: "app_dir_outside_root", message: "The app directory resolves outside the plugboard data root" }
+  }
+  return realApp
 }
 
 const TITLE_LENGTH = 60

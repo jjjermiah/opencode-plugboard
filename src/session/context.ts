@@ -8,10 +8,10 @@
  */
 
 import { Effect } from "effect"
-import type { PlugMessage, PlugRequest } from "../contract.js"
+import type { PlugError, PlugMessage, PlugRequest } from "../contract.js"
 import type { ContextHookEvent, HostContext, HostPart } from "./host.js"
-import { SEED_PREFIX, SEED_RESULT } from "./seeds.js"
-import type { SessionStore } from "./state.js"
+import { SEED_PREFIX, SEED_RESULT, seedToolsFor } from "./seeds.js"
+import { FAILURE_EVENT, type SessionStore } from "./state.js"
 
 const text = (value: string): HostPart => ({ type: "text", text: value })
 
@@ -55,23 +55,27 @@ function generationOptions(request: PlugRequest): Record<string, unknown> {
  * registered tool by the descriptor object it handed to the hook (upstream
  * `model-request.ts`, tool mapping after the `context` hook), so the descriptors are mutated in
  * place and the very same objects are re-inserted under the caller's names. Never copy them.
+ * Returns how many caller tools got no seed (zero unless the seed pool is smaller than the request needs).
  */
-function remapSeedTools(session: ContextHookEvent, request: PlugRequest): void {
-  const choice = request.toolChoice
+function remapSeedTools(session: ContextHookEvent, request: PlugRequest): number {
   const seeds = Object.entries(session.tools ?? {}).filter(([name]) => name.startsWith(SEED_PREFIX))
-  const tools = choice === "none" ? [] : typeof choice === "object" ? request.tools.filter((tool) => tool.name === choice.name) : request.tools
+  const tools = seedToolsFor(request)
   const next: NonNullable<ContextHookEvent["tools"]> = {}
   let index = 0
   for (const tool of tools) {
-    const seed = seeds[index++]
+    const seed = seeds[index]
     if (!seed) break
+    index++
     const descriptor = seed[1]
     descriptor.description = tool.description
     descriptor.input = tool.parameters
     next[tool.name] = descriptor
   }
   session.tools = next
+  return tools.length - index
 }
+
+const preparationFailed = (message: string): PlugError => ({ status: 500, kind: "server", code: "backend_preparation_failed", message })
 
 /**
  * `session.hook("context")` body: swap the request session's system, messages, tools and
@@ -88,7 +92,14 @@ function applyContext(event: unknown, sessions: SessionStore): void {
   const hostMedia = (session.messages ?? [])
     .flatMap((message) => (Array.isArray(message.content) ? (message.content as unknown[]) : []))
     .filter((part) => (part as HostPart | undefined)?.type === "media")
-  const swap = (part: HostPart) => (typeof part.__attachment === "number" ? (hostMedia[part.__attachment] ?? text("[image unavailable]")) : part)
+  let missingMedia = 0
+  const swap = (part: HostPart) => {
+    if (typeof part.__attachment !== "number") return part
+    const media = hostMedia[part.__attachment]
+    if (media) return media
+    missingMedia++
+    return text("[image unavailable]")
+  }
 
   const system = request.system.map(text)
   // The OpenCode session API has no tool-choice control, so a forced or required tool is steered by instruction.
@@ -99,7 +110,17 @@ function applyContext(event: unknown, sessions: SessionStore): void {
   session.messages = toHostMessages(request.messages).map((message) => ({ ...message, content: message.content.map(swap) }))
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 
-  remapSeedTools(session, request)
+  const missingTools = remapSeedTools(session, request)
+
+  // The caller validates both before dispatch; this only fires if the host disagrees. The request is
+  // already rewritten (no real tool can run); fail it instead of answering from a truncated prompt.
+  if (missingMedia > 0 || missingTools > 0) {
+    const detail = [missingMedia > 0 ? `${missingMedia} attachment(s) not delivered by the host` : "", missingTools > 0 ? `${missingTools} tool(s) without a seed tool` : ""]
+    state.collector.push({
+      type: FAILURE_EVENT,
+      error: preparationFailed(`Could not prepare the model request: ${detail.filter(Boolean).join(", ")}`),
+    })
+  }
 }
 
 /**
