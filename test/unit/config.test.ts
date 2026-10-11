@@ -19,6 +19,7 @@ describe("parseOptions: defaults", () => {
       dropUnsupportedParams: true,
       logFormat: "text",
       metrics: false,
+      modelIds: "canonical",
     })
   })
 
@@ -88,6 +89,8 @@ describe("parseOptions: every rejection names the option", () => {
     ["a history that is not an object", { history: 5 }, /`history` must be an object/],
     ["an unknown history key", { history: { maxCount: 1 } }, /Unknown plugboard option `history.maxCount`/],
     ["a history.maxSessions of 0", { history: { maxSessions: 0 } }, /`history.maxSessions`/],
+    ["an unknown modelIds mode", { modelIds: "all" }, /`modelIds` must be `canonical`, `slugs` or `both`/],
+    ["a modelIds that is not a string", { modelIds: ["slugs"] }, /`modelIds` must be/],
     ["a history.maxAgeDays past 100 years", { history: { maxAgeDays: 36_501 } }, /`history.maxAgeDays` must be an integer between 1 and 36500/],
   ]
   test.each(cases)("rejects %s", (_name, raw, message) => {
@@ -100,6 +103,16 @@ describe("parseOptions: every rejection names the option", () => {
 
   test("a key named __proto__ is refused by the app name pattern", () => {
     expect(() => parseOptions(JSON.parse('{"keys":{"__proto__":"k"}}'))).toThrow(/must match/)
+  })
+})
+
+describe("parseOptions: modelIds", () => {
+  test.each(["canonical", "slugs", "both"] as const)("accepts %p", (modelIds) => {
+    expect(parseOptions({ modelIds }).modelIds).toBe(modelIds)
+  })
+
+  test("defaults to canonical", () => {
+    expect(parseOptions({}).modelIds).toBe("canonical")
   })
 })
 

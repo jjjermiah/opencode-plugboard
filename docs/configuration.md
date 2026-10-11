@@ -21,6 +21,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
 | `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`, with the same authentication as `/v1`. |
+| `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
 Changes to `listen` need a server restart; other option changes apply on config reload.
@@ -39,9 +40,20 @@ Callers name models as `provider/model`, optionally `provider/model#variant` (fo
 - `provider/model#variant` allows exactly that variant.
 - `provider/*` allows every model of the provider.
 
-With no `models`, `/v1/models` is empty and chat calls return 403. `/v1/models` lists the allowlist intersected with the models enabled on your server, plus your aliases. Each entry has `owned_by` set to the provider and an extra `plugboard` object (`capabilities`, `contextLimit`). The ids contain `/` and `#`, which some UIs mishandle, so define an alias for those.
+With no `models`, `/v1/models` is empty and chat calls return 403. `/v1/models` lists the allowlist intersected with the models enabled on your server, plus your aliases. Each entry has `owned_by` set to the provider and an extra `plugboard` object (`capabilities`, `contextLimit`). The ids contain `/` and `#`, which some UIs mishandle: set `modelIds` to `slugs` or define an alias for those.
 
 `reasoning_effort` in a request picks a variant when the model name has none and the model has one by that name. An alias can point at a model with a variant, which is the easy way to give a client a fixed effort level.
+
+## Model ids in UIs
+
+Some chat UIs mangle `/` and `#`, so `anthropic/claude-haiku-4-5#high` breaks there. Set `modelIds` to `slugs` to list the UI-safe spelling instead: `/` becomes `--` and `#` becomes `__`, so that model is `anthropic--claude-haiku-4-5__high`. `both` lists each id followed by its slug, for clients that accept either.
+
+- Requests accept a slug wherever they accept a canonical id, whatever `modelIds` says. A client that cached a slug keeps working when you change the option.
+- An alias still wins over a slug with the same name.
+- A model whose id contains `--` has no unambiguous slug. `slugs` leaves it out and it stays listed under `canonical`.
+- Aliases are listed as they are in every mode.
+
+`/v1/models?capability=vision` or `?capability=tools` lists only the models whose catalog entry reports image input or tool support. Any other value is rejected. `json` is not offered because the host catalog has no structured-output flag to filter on.
 
 ## Aliases and fallbacks
 
