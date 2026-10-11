@@ -40,6 +40,20 @@ export interface StreamResult {
   readonly failure?: PlugError
   /** Whether any frame was written (the response is committed as a 200 SSE stream). */
   readonly started: boolean
+  /** The usage the model reported, when the exchange succeeded. */
+  readonly usage?: PlugUsage
+}
+
+/**
+ * One choice of a fanned-out stream (`n` > 1, see `src/openai/fanout.ts`): the chunks share the
+ * stream's `id` and `created` and carry this choice's `index`. The encoder then writes this
+ * choice's chunks only. The error frame, the usage chunk and `[DONE]` belong to the whole
+ * stream and are written by the fan-out.
+ */
+export interface StreamChoice {
+  readonly id: string
+  readonly created: number
+  readonly index: number
 }
 
 const ERROR_TYPES: Record<PlugErrorKind, string> = {
@@ -246,6 +260,16 @@ export async function collectCompletion(
   }
 }
 
+/** The final chunk of a stream with `include_usage`: no choices, the totals. */
+export const chatUsageChunk = (model: string, id: string, created: number, usage: PlugUsage): object => ({
+  id,
+  object: "chat.completion.chunk",
+  created,
+  model,
+  choices: [],
+  usage: encodeUsage(usage),
+})
+
 /**
  * Writes SSE frames via `write` (each frame is one complete `data: ...\n\n` string) and reports
  * how the exchange ended. A failure before the first frame is not written (the first wire-visible
@@ -256,9 +280,11 @@ export async function streamCompletion(
   events: AsyncIterable<PlugEvent>,
   exchange: OpenAiExchange,
   write: (chunk: string) => void,
+  choice?: StreamChoice,
 ): Promise<StreamResult> {
-  const id = newId()
-  const created = now()
+  const id = choice?.id ?? newId()
+  const created = choice?.created ?? now()
+  const index = choice?.index ?? 0
   const frame = (value: object) => write(`data: ${JSON.stringify(value)}\n\n`)
   const chunk = (delta: Record<string, unknown>, finish: string | null = null) =>
     frame({
@@ -266,7 +292,7 @@ export async function streamCompletion(
       object: "chat.completion.chunk",
       created,
       model: exchange.model,
-      choices: [{ index: 0, delta, finish_reason: finish, logprobs: null }],
+      choices: [{ index, delta, finish_reason: finish, logprobs: null }],
       ...(exchange.includeUsage ? { usage: null } : {}),
     })
 
@@ -348,16 +374,18 @@ export async function streamCompletion(
   failure ??= finish ? (passthrough ? undefined : structured.failure(exchange, finish, answered)) : noFinish()
   if (failure) {
     if (!started) return { failure, started }
-    frame(encodeError(failure))
-    write("data: [DONE]\n\n")
+    if (!choice) {
+      frame(encodeError(failure))
+      write("data: [DONE]\n\n")
+    }
     return { failure, started }
   }
   flush()
   start()
   if (held && isStructured) chunk({ content: structured.content(held) })
   chunk({}, finishReason(finish!, calls, isStructured))
-  if (exchange.includeUsage && usage)
-    frame({ id, object: "chat.completion.chunk", created, model: exchange.model, choices: [], usage: encodeUsage(usage) })
+  if (choice) return { started, ...(usage ? { usage } : {}) }
+  if (exchange.includeUsage && usage) frame(chatUsageChunk(exchange.model, id, created, usage))
   write("data: [DONE]\n\n")
   return { started }
 }

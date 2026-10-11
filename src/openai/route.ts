@@ -1,6 +1,7 @@
 /**
  * OpenAI front-end route table: `GET /healthz`, `GET /v1/models`, `GET /v1/models/{id}`,
- * `POST /v1/chat/completions`, and the dispatch of `POST /v1/responses` to `src/responses/route.ts`.
+ * `POST /v1/chat/completions` (`n` > 1 through `./fanout.ts`), and the dispatch of `POST /v1/responses`
+ * and `POST /v1/completions` to `src/responses/route.ts` and `src/completions/route.ts`.
  * Observability and first-run routes (`src/discovery.ts`, `src/metrics.ts`): `GET /` and `GET /v1`
  * (keyless discovery), the authenticated `GET /v1/status`, and `GET /metrics` (option `metrics`).
  *
@@ -39,8 +40,10 @@ import { errorMessage, log, logError, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { listAvailableModels, resolveModel } from "../models.js"
 import { isMessagesPath, serveMessages } from "../anthropic/route.js"
+import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
+import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
 import { dropRejected } from "./sampling.js"
@@ -61,7 +64,7 @@ const SESSION_HEADER = "x-plugboard-session"
 const REQUEST_ID_HEADER = "x-plugboard-request-id"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
-const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/responses", "GET /v1/status"]
+const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /v1/status"]
 /** Pages anyone may fetch; they decide for themselves how much to show (see `src/discovery.ts`). */
 const DISCOVERY_ROUTES = ["GET /", "GET /v1"]
 /** Allows a page's inline style and nothing else: no scripts, images, fonts or frames. */
@@ -205,6 +208,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     const body = await readJsonBody(request, scope.signal)
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
+    if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
     const parsed = parseChatRequest(body, host.options)
     if (isPlugError(parsed)) return fail(response, parsed)
     const catalog = await scope.race(host.loadCatalog())
@@ -220,6 +224,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
     const call: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
     const { exchange } = parsed
+    // n > 1: one independent call per choice, merged (src/openai/fanout.ts).
+    if (parsed.n > 1)
+      return serveChoices(host, { app: auth.app, calls: Array.from({ length: parsed.n }, () => call), response, scope, info, codec: chatCodec(exchange) })
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.
     if (scope.signal.aborted) throw scope.signal.reason
