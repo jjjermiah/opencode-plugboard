@@ -5,9 +5,9 @@
  * (already filtered by the process-wide registry, R11) and turns them into `PlugEvent`s on an
  * `EventQueue` that the ModelCaller streams out (not buffered).
  *
- * The turn is stopped from inside the model loop (see `seeds.ts`): once the model stream has
- * finished (`session.step.streamed`) with at least one tool call, the owner is asked to
- * interrupt the session, and the aborted step is reported as a normal `tool-calls` finish.
+ * The turn is stopped from inside the model loop (see `seeds.ts`): once the step has ended
+ * (`session.step.ended`) with at least one tool call, the owner is asked to interrupt the
+ * session before a second model step can start, and the request finishes as `tool-calls`.
  */
 
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "./contract.js"
@@ -83,12 +83,9 @@ export function toPlugError(error: { type?: string; message?: string; status?: n
 }
 
 export interface CollectorHooks {
-  /** The model stream ended with tool calls: stop the turn before the placeholder tools run. */
+  /** The step ended with tool calls: stop the turn before the runner starts another model step. */
   readonly stopTurn: () => void
 }
-
-/** Grace for the aborted step's usage after the owner interrupted the turn. */
-const FINISH_GRACE_MS = 3_000
 
 export class RequestCollector {
   readonly queue = new EventQueue<PlugEvent>()
@@ -96,7 +93,6 @@ export class RequestCollector {
   private readonly toolNames = new Map<string, string>()
   private readonly calls = new Set<string>()
   private usage?: RawUsage
-  private graceTimer?: ReturnType<typeof setTimeout>
   /** True once a `finish` or `error` event was emitted; later events are ignored. */
   terminal = false
   /** True once the OpenCode execution ended (succeeded, failed or interrupted). */
@@ -147,13 +143,9 @@ export class RequestCollector {
       case "session.usage.updated":
         this.usage = (item.tokens as RawUsage) ?? this.usage
         return
-      case "session.step.streamed":
-        if (this.terminal || this.calls.size === 0) return
-        this.hooks.stopTurn()
-        this.graceTimer ??= setTimeout(() => this.finishWith("tool-calls"), FINISH_GRACE_MS)
-        return
       case "session.step.ended":
         this.usage = (item.tokens as RawUsage) ?? this.usage
+        if (!this.terminal && this.calls.size > 0) this.hooks.stopTurn()
         this.finishWith(this.calls.size > 0 ? "tool-calls" : toFinish(item.finish))
         return
       case "session.step.failed": {
@@ -187,8 +179,6 @@ export class RequestCollector {
 
   /** Close the stream without a terminal event (client gone). */
   end(): void {
-    if (this.graceTimer) clearTimeout(this.graceTimer)
-    this.graceTimer = undefined
     this.terminal = true
     this.queue.close()
   }

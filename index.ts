@@ -20,7 +20,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import { onListenerClose, registerGeneration } from "./src/listener.js"
 import { dispatch, getRegistry } from "./src/registry.js"
 import { createRouter } from "./src/server.js"
-import { SEED_PREFIX } from "./src/seeds.js"
+import { SEED_PREFIX, SEED_RESULT } from "./src/seeds.js"
 import { applyContext, createSessionCaller, isInsideDataRoot, type SessionPort } from "./src/session-backend.js"
 // Wires the config, model and OpenAI front-end functions into the `RouteDeps` the router takes.
 import { deps } from "./src/deps.js"
@@ -118,8 +118,8 @@ export default Plugin.define({
             description: "Plugboard placeholder tool.",
             input: { type: "object", properties: {}, additionalProperties: true },
             options: { codemode: false },
-            // Blocks until plugboard interrupts the session (see src/seeds.ts).
-            execute: (() => Effect.never) as any,
+            // Settles at once so history shows a completed call; plugboard ends the turn itself (see src/seeds.ts).
+            execute: (() => Effect.succeed({ content: SEED_RESULT })) as any,
           })
         }
       })

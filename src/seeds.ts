@@ -7,16 +7,20 @@
  * the caller's name becomes the map key (what the provider sees), while the seed keeps its
  * own `name` (what the executor dispatches on).
  *
- * A seed's `execute` never returns. Measured on 2.0.26: failing it (even with a typed
- * non-`Tool.Error`) is converted to a normal tool failure, so the turn continues with a
- * second model step (11 steps in 8 s on glm-5.3-flash). The documented decline path
- * (`Permission.DeclinedError`) is only reachable from inside host tools. So the seed
- * blocks, and plugboard stops the turn itself by interrupting the session as soon as
- * the model stream has finished (`session.step.streamed`); the captured
- * `session.tool.called` events are what a `tool_calls` response needs.
- *
+ * A seed's `execute` returns at once with `SEED_RESULT`, so history shows the call as
+ * completed. A tool result always makes the runner start a second model step
+ * (`record.needsContinuation`, runner/step.ts), and no tool result, hook or agent setting
+ * ends the loop (failing the seed, even with a typed non-`Tool.Error`, is converted to a
+ * normal tool failure, and `Permission.DeclinedError` is only reachable from host tools).
+ * So plugboard stops the turn itself: once the step has settled with a normal `tool-calls`
+ * finish (`session.step.ended`) it interrupts the session, before the second step's model
+ * request returns anything, so that step leaves no trace. The captured `session.tool.called`
+ * events are what a `tool_calls` response needs.
  * Seeds are registered only inside the plugboard data root (D17), denied to every agent there,
  * and allowed again by the permissions of plugboard's own request sessions (R10).
  */
 
 export const SEED_PREFIX = "plugboard_seed_"
+
+/** Output of every seed tool call: the caller, not OpenCode, runs the tool. */
+export const SEED_RESULT = "Returned to caller (opencode-plugboard)"
