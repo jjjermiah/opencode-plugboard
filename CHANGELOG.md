@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.0] - 2026-10-11
+
 ### Fixed
 
 - **Streams start right away** ([#49](https://github.com/jjjermiah/opencode-plugboard/issues/49)). A reasoning model could think for over a minute before saying anything, and plugboard sent nothing at all until then, not even headers, so clients with a header timeout gave up. Now the 200 and SSE headers go out at the first model event (reasoning counts), followed by a `: keepalive` comment after every 15 seconds of silence, including long pauses while a tool call's arguments are generated. A failure before that first event is still a real HTTP error; after it, it's an SSE error frame. The same applies to `/v1/responses`.
@@ -253,7 +257,8 @@ Providers, through the session path: GitHub Copilot, Anthropic (Claude Max throu
 
 `opencode-llm-proxy` by KochC got the shape right first: a plugin that starts a local server and reuses OpenCode's providers. It is V1 only, which is why this project exists. `copilot-api` and LiteLLM showed what an OpenAI-compatible front door should feel like to the people calling it. No code was taken from any of them. They were reading material.
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.1.0...v0.2.0
