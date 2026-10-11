@@ -257,6 +257,9 @@ async def main():
     print("\n=== SUMMARY ===")
     for r in RESULTS:
         print(" | ".join(r)[:200])
+    failed = [r for r in RESULTS if r[2] != "pass"]
+    print(f"{len(failed)} of {len(RESULTS)} failed")
+    return 1 if failed else 0
 
 
-asyncio.run(main())
+sys.exit(asyncio.run(main()))

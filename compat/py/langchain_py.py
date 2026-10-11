@@ -128,6 +128,7 @@ def s5(model=FAST):
 
 def s6(model=FAST):
     prompt = "Estimate: 2 boiled eggs and a slice of toast."
+    failed = []
     for method in ("json_schema", "function_calling", "json_mode"):
         print(f" method={method}")
         try:
@@ -140,6 +141,9 @@ def s6(model=FAST):
             print("  OK")
         except Exception as e:
             print("  FAIL", type(e).__name__, str(e)[:600])
+            failed.append(method)
+    if failed:
+        raise AssertionError(f"structured output failed for: {', '.join(failed)}")
 
 
 def s7():
@@ -157,10 +161,14 @@ def err():
         ChatOpenAI(base_url=BASE, api_key="bad", model=FAST, use_responses_api=False, max_retries=0).invoke("hi")
     except Exception as e:
         print("  bad key:", type(e).__name__, str(e)[:300])
+    else:
+        raise AssertionError("bad key was accepted")
     try:
         llm("nope", max_retries=0).invoke("hi")
     except Exception as e:
         print("  bad model:", type(e).__name__, str(e)[:300])
+    else:
+        raise AssertionError("unknown model was accepted")
 
 
 def defaults():
@@ -185,6 +193,7 @@ RUNS = {
 
 if __name__ == "__main__":
     want = sys.argv[1:] or list(RUNS)
+    failures = []
     for k in want:
         for name, fn, model in RUNS[k]:
             print(f"== {name} model={model}")
@@ -194,3 +203,8 @@ if __name__ == "__main__":
             except Exception:
                 print("  -> FAIL")
                 traceback.print_exc(limit=3)
+                failures.append(f"{name} {model or '-'}")
+    print(f"\nSUMMARY: {len(failures)} failed")
+    for f in failures:
+        print("  FAIL", f)
+    sys.exit(1 if failures else 0)

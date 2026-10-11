@@ -1,6 +1,6 @@
 # Open WebUI
 
-Tested: Open WebUI 0.12.0 (Docker), 2026-10-11. S1 to S7 passed, driven over its HTTP API. A browser was not used, so dropdown behaviour with a long model list is unobserved.
+Tested: Open WebUI 0.12.0 (Docker), 2026-10-11, at an earlier commit. S1 to S7 passed, driven over its HTTP API. A browser was not used, so dropdown behaviour with a long model list is unobserved. S6 was a direct API call, and on `fast` the S5 image answer was "Crimson" rather than "red".
 
 Add plugboard as an OpenAI connection, in the UI (Admin Panel, Settings, Connections, OpenAI API) or by environment:
 
@@ -14,7 +14,7 @@ docker run -d --name open-webui -p 127.0.0.1:3000:8080 \
   ghcr.io/open-webui/open-webui:0.12.0
 ```
 
-Outside Docker use `http://localhost:4010/v1`. From a container on Linux, plugboard on loopback is unreachable: see [compat/docker/README.md](../../compat/docker/README.md).
+The container example needs plugboard bound to a non-loopback address with `keys` set. A loopback bind is not reachable from a container, and its `Host` check would reject `host.docker.internal` anyway. See [reaching plugboard from another host or container](any-app.md#reaching-plugboard-from-another-host-or-container). Outside Docker use `http://localhost:4010/v1`. The test setup is in [compat/docker/README.md](../../compat/docker/README.md).
 
 ## Chat
 

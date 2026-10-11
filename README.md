@@ -4,11 +4,11 @@ An OpenCode V2 plugin that turns your OpenCode server into an OpenAI-compatible 
 
 You logged in to ChatGPT, Claude, Copilot or OpenCode Go once, in OpenCode. Your other tools (a Discord bot, n8n, Open WebUI, a script) only speak the OpenAI API, so each one wants its own key or its own gateway with its own logins. Plugboard serves `/v1/chat/completions` and `/v1/models` from inside OpenCode, so those tools can reuse the logins you already have. Tool calls go back to the caller to execute. OpenCode never runs your tools.
 
-OpenCode V2 has no such endpoint, and the V1 plugins that did this stopped working when the plugin API changed. Plugboard is V2 only. It is pinned to OpenCode 2.0.26 (peer range `>=2.0.26 <2.1`), the version it was developed and checked against.
+OpenCode V2 has no such endpoint, and the V1 plugins that did this stopped working when the plugin API changed. Plugboard is V2 only. It was tested on OpenCode 2.0.26, and the peer range `>=2.0.26 <2.1` allows 2.0.x patch releases.
 
 Status: v0.1, in development and not published yet. Chat Completions and the model list only. There is no `/v1/responses`, see [Known gaps](#known-gaps) and the [roadmap](#roadmap).
 
-Docs: [architecture](docs/architecture.md), [development](docs/development.md), [clients](#clients).
+Docs: [architecture](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md), [development](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/development.md), [clients](#clients).
 
 ## Quick start
 
@@ -65,25 +65,25 @@ const stream = await client.chat.completions.create({
 for await (const chunk of stream) process.stdout.write(chunk.choices[0]?.delta?.content ?? "")
 ```
 
-`GET /healthz` returns OK when the listener is up. `GET /v1/models/{id}` returns one model from the list. Every chat response carries an `x-plugboard-session` header with the id of the OpenCode session that recorded it, so you can find the request in [History](#history).
+`GET /healthz` returns OK when the listener is up and needs no key. `GET /v1/models/{id}` returns one model from the list. Every chat response carries an `x-plugboard-session` header with the id of the OpenCode session that recorded it, so you can find the request in [History](#history). To call plugboard from another machine or a container, see [reaching plugboard from another host](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md#reaching-plugboard-from-another-host-or-container).
 
 ## Clients
 
-One short page per client, with a config snippet, a chat, a tool call, a structured-output note and the gotchas found in testing. Versions and dates are on each page; the raw evidence is in [`compat/results`](compat/results).
+One short page per client, with a config snippet, a chat, a tool call, a structured-output note and the gotchas found in testing. Versions and dates are on each page; the raw evidence is in [`compat/results`](https://github.com/jjjermiah/opencode-plugboard/tree/main/compat/results).
 
-| Client | Page | Result (2026-10-11) |
+| Client | Page | Last run (2026-10-11) |
 | --- | --- | --- |
-| OpenAI Python SDK | [openai-python](docs/clients/openai-python.md) | pass |
-| OpenAI JS SDK | [openai-js](docs/clients/openai-js.md) | pass |
-| Vercel AI SDK | [vercel-ai-sdk](docs/clients/vercel-ai-sdk.md) | pass with `createOpenAICompatible` or `.chat()`; the default `@ai-sdk/openai` call needs `/v1/responses` |
-| LangChain Python | [langchain-python](docs/clients/langchain-python.md) | pass |
-| LangChain JS | [langchain-js](docs/clients/langchain-js.md) | pass except `gpt-5.6*` ids, which force the Responses API |
-| pydantic-ai | [pydantic-ai](docs/clients/pydantic-ai.md) | pass with `OpenAIChatModel` |
-| Open WebUI | [open-webui](docs/clients/open-webui.md) | pass |
-| n8n | [n8n](docs/clients/n8n.md) | pass with "Use Responses API" off |
-| Anything else | [any-app](docs/clients/any-app.md) | base URL, key, model id |
+| OpenAI Python SDK | [openai-python](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-python.md) | pass |
+| OpenAI JS SDK | [openai-js](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-js.md) | pass |
+| Vercel AI SDK | [vercel-ai-sdk](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/vercel-ai-sdk.md) | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `@ai-sdk/openai` call needs `/v1/responses` |
+| LangChain Python | [langchain-python](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-python.md) | pass; `json_mode` on `fast` was unreliable |
+| LangChain JS | [langchain-js](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-js.md) | pass except `gpt-5.6*` ids, which force the Responses API, and `json_mode` on `fast` |
+| pydantic-ai | [pydantic-ai](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/pydantic-ai.md) | pass with `OpenAIChatModel` |
+| Open WebUI | [open-webui](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/open-webui.md) | pass over its HTTP API; no browser, no structured output in its UI |
+| n8n | [n8n](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/n8n.md) | pass with "Use Responses API" off |
+| Anything else | [any-app](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md) | base URL, key, model id |
 
-Checks drove each client's own SDK or API against a dev server. They covered one plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. I did not use a browser for Open WebUI.
+Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass here is not a clean sweep, and the notes in the table and on each page say where it was not. The release-candidate record has not been written yet.
 
 ## Known gaps
 
@@ -99,7 +99,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | --- | --- | --- |
 | `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start. |
 | `listen.port` | `4010` | Port to bind. |
-| `keys` | none | Map of app name to API key. The app name is also the history directory. Names match `[a-z0-9-]+`. `default` is reserved. |
+| `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`. Each target must also pass `models`. |
 | `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
@@ -110,9 +110,9 @@ Changes to `listen` need a server restart; other option changes apply on config 
 
 OpenCode loads the plugin once per project directory, and all of those loads share one listener. The first one to load decides the options. A load elsewhere with different options logs once and stays inert, so a project entry cannot serve with weaker auth than the live one. When none is live, for example during a config reload, the next load's options are adopted. Requests are served from plugboard's own data directory when it is loaded, so a project's provider config doesn't change what callers get. So install it in the global config, which every project loads, and don't repeat it per project.
 
-On a loopback `listen.host`, requests with a `Host` header other than `127.0.0.1`, `localhost` or `[::1]` (on the listen port) get 403 `invalid_host`, and without `keys` a request with an `Origin` header gets 403 `cross_origin_forbidden`. `POST` bodies must be `application/json` (415 otherwise).
+On a loopback `listen.host`, requests with a `Host` header other than `127.0.0.1`, `localhost` or `[::1]` (on the listen port) get 403 `invalid_host`, and without `keys` a request with an `Origin` header gets 403 `cross_origin_forbidden`. The `Host` check only applies when `listen.host` is loopback. `POST` bodies must be `application/json` (415 otherwise).
 
-Without `keys`, only a loopback `listen.host` is accepted and every caller is the app `default`. Once any key exists, every request needs a valid key, loopback included. Callers send it as `Authorization: Bearer <key>`. They never see or need the OpenCode server password.
+Without `keys`, only a loopback `listen.host` is accepted and every caller is the app `default`. Once any key exists, every `/v1` request needs a valid key, loopback included, and `/healthz` stays open. Callers send the key as `Authorization: Bearer <key>`. They never see or need the OpenCode server password.
 
 ## Models
 
@@ -128,23 +128,25 @@ With no `models`, `/v1/models` is empty and chat calls return 403. `/v1/models` 
 
 ## Apps and keys
 
-Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its history lands in its own directory. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line.
+Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line.
 
 ## History
 
 Every request is kept as an OpenCode session, so you can see what each app asked and what the model answered. Plugboard keeps the full caller transcript in each session (system prompt, messages, images as attachments, tool calls and results) plus the reply. The title is the first user message. A ten-turn chat is ten sessions, each complete.
 
-Sessions live in a per-app directory, so they never show up in your real projects:
+Each session is filed under a per-app directory, so it never shows up in your real projects:
 
 ```
 $XDG_DATA_HOME/opencode-plugboard/<app>/        # default ~/.local/share/opencode-plugboard/<app>/
 ```
 
-In OpenCode they appear as one group per app in the desktop and phone app home screen. In the TUI they are visible in the all-projects view (ctrl+a), not in a project's own list. Nothing deletes them yet ([pruning is a roadmap item](https://github.com/jjjermiah/opencode-plugboard/issues/8)).
+That directory only groups sessions: it is the `directory` a session is filed under. The prompts and replies are not stored in it. OpenCode keeps them in its own database, `opencode.db` in its data directory (`opencode debug paths` prints the exact location, and `OPENCODE_DB` can override it). So deleting, locking down or backing up the app directory removes, protects or saves no history. To back up, restrict or purge history, work on that database, or remove sessions through OpenCode ([`compat/tools/sessions.py`](https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/tools/sessions.py) does that for one app).
+
+In OpenCode the sessions appear as one group per app in the desktop and phone app home screen. In the TUI they are visible in the all-projects view (ctrl+a), not in a project's own list. Nothing deletes them yet ([pruning is a roadmap item](https://github.com/jjjermiah/opencode-plugboard/issues/8)).
 
 OpenCode loads plugin hooks per directory, so plugboard has to be loaded in those app directories, which is why it needs the global config. Everywhere outside the data root it is inert: it only joins the shared listener and registers no hooks, tools or agent rules, so your real projects behave as before.
 
-History records every prompt and reply, so treat the data directory as sensitive.
+History records every prompt and reply, so treat OpenCode's database as sensitive.
 
 ## Warm-up for always-on servers
 
@@ -200,7 +202,8 @@ Behaviours worth knowing:
 
 - `parallel_tool_calls` and `seed` are accepted and ignored.
 - `tool_choice` `auto` and `none` work as expected. `required` and a named function are applied as an instruction to the model, because the OpenCode session API has no tool-choice control. A model can still answer in text.
-- `response_format` `json_schema` (and `json_object`) work through a `respond` tool the model is instructed to call, and the arguments come back as the message content. It worked on every model tested, but the provider does not enforce the schema.
+- `response_format` `json_schema` works through a `respond` tool the model is instructed to call, and the arguments come back as the message content. The provider does not enforce the schema, so validate the result. `json_object` adds a system instruction instead and carries no schema, so name the keys in your prompt; weak models may still ignore them.
+- A request that carries both `tools` and a `json_schema` response format is changing: it will return the caller's tool calls ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)). Don't rely on the current behaviour for that combination.
 - A streamed tool call arrives as one delta carrying the whole arguments string.
 
 ## How it works
@@ -213,7 +216,7 @@ Each request becomes a session in the app's directory, using OpenCode's own requ
 4. When the model has emitted its tool calls, the plugin interrupts the turn and returns the calls to the caller. Text streams out as it arrives.
 5. The front-end encodes the events as JSON or SSE, and the session stays as history.
 
-The model call sits behind one interface, `ModelCaller`, so a native backend can replace the session backend later without touching the front-ends ([roadmap](https://github.com/jjjermiah/opencode-plugboard/issues/3)). [docs/architecture.md](docs/architecture.md) has the details: lifetimes, process-wide state and the freeze-safety rules.
+The model call sits behind one interface, `ModelCaller`, so a native backend can replace the session backend later without touching the front-ends ([roadmap](https://github.com/jjjermiah/opencode-plugboard/issues/3)). [docs/architecture.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md) has the details: lifetimes, process-wide state and the freeze-safety rules.
 
 ## Roadmap
 

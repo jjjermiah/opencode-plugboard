@@ -1,6 +1,6 @@
 # LangChain Python
 
-Tested: `langchain-openai` 1.7.0, `langchain-core` 1.6.9, 2026-10-11. Every scenario passed.
+Tested: `langchain-openai` 1.7.0, `langchain-core` 1.6.9, 2026-10-11, at an earlier commit. Every scenario passed, but `json_mode` on `fast` passed on one sample only (see Structured output).
 
 ```python
 import os

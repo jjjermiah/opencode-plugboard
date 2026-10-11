@@ -7,6 +7,7 @@
 #      LOGPROXY_HOST (interface the capture proxy binds, default 127.0.0.1; see compat/docker/README.md).
 # Captured traffic in compat/traffic/ is sensitive (prompts, responses, tool arguments). Do not commit or share it.
 set -u
+umask 077   # everything this script writes (token, helper, captures) is owner-only
 : "${PLUGBOARD_KEY:?set PLUGBOARD_KEY}"
 PLUGBOARD_PORT=${PLUGBOARD_PORT:-4010}
 DOCKER_HOST_NAME=${DOCKER_HOST_NAME:-host.docker.internal}
@@ -15,61 +16,71 @@ LOGPROXY_PORT=4091          # pick a free port
 export OWUI_PORT=3091       # host port for Open WebUI, bound to 127.0.0.1
 IMAGE=ghcr.io/open-webui/open-webui:0.12.0
 CT=plugboard-compat-owui
-TD=${TMPDIR:-/tmp}          # scratch for the token and helper script
+TD=$(mktemp -d "${TMPDIR:-/tmp}/plugboard-owui.XXXXXX")   # private scratch dir for the token and helper script
+LOGPROXY_PID=
+# Runs when the shell exits: stops the capture proxy we started (by PID, never by pattern) and removes the scratch dir.
+# The container is left to step 14 so a failed run can be inspected.
+cleanup() {
+  [ -n "$LOGPROXY_PID" ] && kill "$LOGPROXY_PID" 2>/dev/null
+  rm -rf "$TD"
+}
+trap cleanup EXIT
 
 # 0. Container -> host reachability
 docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl -s -m 5 "http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/healthz"; echo   # after step 2
 
 # 1. Pull (several GB)
-docker pull $IMAGE
+docker pull "$IMAGE"
 
 # 2. logproxy between Open WebUI and plugboard. Plugboard on loopback is not reachable from a container on Linux,
 #    so LOGPROXY_HOST may need to be the docker bridge address or 0.0.0.0. Anything that can reach the proxy can reuse the
 #    key it forwards: bind it to 0.0.0.0 only on a machine you trust, and stop it when done.
-python3 compat/tools/logproxy.py --host "$LOGPROXY_HOST" --port $LOGPROXY_PORT --upstream "http://127.0.0.1:$PLUGBOARD_PORT" --out compat/traffic/open-webui.jsonl &
+python3 compat/tools/logproxy.py --host "$LOGPROXY_HOST" --port "$LOGPROXY_PORT" --upstream "http://127.0.0.1:$PLUGBOARD_PORT" --out compat/traffic/open-webui.jsonl &
+LOGPROXY_PID=$!
 docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl -s -m 5 "http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/healthz"   # {"ok":true}
 
 # 3. Open WebUI, pointed at the logproxy (not at 4010 directly). WEBUI_AUTH=False = single user.
-docker volume rm $CT 2>/dev/null
-docker run -d --name $CT -p 127.0.0.1:$OWUI_PORT:8080 \
+docker volume rm "$CT" 2>/dev/null
+docker run -d --name "$CT" -p "127.0.0.1:$OWUI_PORT:8080" \
   --add-host host.docker.internal:host-gateway \
-  -e OPENAI_API_BASE_URL=http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/v1 \
+  -e OPENAI_API_BASE_URL="http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/v1" \
   -e OPENAI_API_KEY="$PLUGBOARD_KEY" \
   -e ENABLE_OLLAMA_API=false -e WEBUI_AUTH=False -e WEBUI_SECRET_KEY=compat-test \
-  -v $CT:/app/backend/data \
-  $IMAGE
-until curl -s -m 3 localhost:$OWUI_PORT/health; do sleep 5; done; echo     # {"status":true} after ~25 s
-curl -s localhost:$OWUI_PORT/api/version                                    # {"version":"0.12.0",...}
+  -v "$CT:/app/backend/data" \
+  "$IMAGE"
+until curl -s -m 3 "localhost:$OWUI_PORT/health"; do sleep 5; done; echo     # {"status":true} after ~25 s
+curl -s "localhost:$OWUI_PORT/api/version"                                  # {"version":"0.12.0",...}
 
 # 4. API token. With WEBUI_AUTH=False, GET /api/v1/auths/ returns 401 on a fresh volume;
 #    POST /api/v1/auths/signin (any body, it logs in the default admin) returns the token.
-curl -s -X POST localhost:$OWUI_PORT/api/v1/auths/signin -H 'content-type: application/json' \
-  -d '{"email":"admin@localhost","password":"admin"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" > $TD/owui.tok
-T=$(cat $TD/owui.tok)
+curl -s -X POST "localhost:$OWUI_PORT/api/v1/auths/signin" -H 'content-type: application/json' \
+  -d '{"email":"admin@localhost","password":"admin"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" > "$TD/owui.tok"
+T=$(cat "$TD/owui.tok")
+printf 'Authorization: Bearer %s\n' "$T" > "$TD/auth.hdr"   # curl reads it with -H @file, so the token stays out of the process list
 
 # 5. S7: model list as the UI sees it (Open WebUI calls GET /v1/models, merges, dedupes by id)
-curl -s -H "Authorization: Bearer $T" localhost:$OWUI_PORT/api/models -o $TD/models.json -w "%{http_code} %{size_download} %{time_total}s\n"
+curl -s -H @"$TD/auth.hdr" "localhost:$OWUI_PORT/api/models" -o "$TD/models.json" -w "%{http_code} %{size_download} %{time_total}s\n"
 python3 -c "
-import json; m=json.load(open('$TD/models.json'))['data']; ids=[x['id'] for x in m]
-print(len(ids), len(set(ids)), [i for i in ids if i in ('fast','anthropic/claude-haiku-4-5','openai/gpt-5.6-luna#low')])"
+import json, sys; m=json.load(open(sys.argv[1]))['data']; ids=[x['id'] for x in m]
+print(len(ids), len(set(ids)), [i for i in ids if i in ('fast','anthropic/claude-haiku-4-5','openai/gpt-5.6-luna#low')])" "$TD/models.json"
 # Connection verify button (also the wrong-key path): POST /openai/verify
-curl -s -X POST localhost:$OWUI_PORT/openai/verify -H "Authorization: Bearer $T" -H 'content-type: application/json' \
+curl -s -X POST "localhost:$OWUI_PORT/openai/verify" -H @"$TD/auth.hdr" -H 'content-type: application/json' \
   -d "{\"url\":\"http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/v1\",\"key\":\"wrongkey\"}"
 
 # 6. S1 non-stream through the Open WebUI API (plain passthrough, no chat record, no aux calls)
-curl -s -m 120 localhost:$OWUI_PORT/api/chat/completions -H "Authorization: Bearer $T" -H 'content-type: application/json' \
+curl -s -m 120 "localhost:$OWUI_PORT/api/chat/completions" -H @"$TD/auth.hdr" -H 'content-type: application/json' \
   -d '{"model":"fast","stream":false,"messages":[{"role":"user","content":"Reply with exactly: pong"}]}'
 
 # 7. S3 streaming, with and without stream_options
-curl -sN -m 120 localhost:$OWUI_PORT/api/chat/completions -H "Authorization: Bearer $T" -H 'content-type: application/json' \
+curl -sN -m 120 "localhost:$OWUI_PORT/api/chat/completions" -H @"$TD/auth.hdr" -H 'content-type: application/json' \
   -d '{"model":"fast","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"Reply with exactly: pong"}]}'
-curl -sN -m 120 localhost:$OWUI_PORT/api/chat/completions -H "Authorization: Bearer $T" -H 'content-type: application/json' \
+curl -sN -m 120 "localhost:$OWUI_PORT/api/chat/completions" -H @"$TD/auth.hdr" -H 'content-type: application/json' \
   -d '{"model":"fast","stream":true,"messages":[{"role":"user","content":"Reply with exactly: pong"}]}'
 
 # 8. Helper that drives Open WebUI the way its frontend does: POST /api/v1/chats/new, then POST /api/chat/completions with
 #    chat_id + message id + session_id + background_tasks (title/tags/follow-ups fire server side), then read the chat back.
 #    Without chat_id the API is a bare passthrough and no aux calls happen.
-cat > $TD/owui_chat.py <<'PY'
+cat > "$TD/owui_chat.py" <<'PY'
 #!/usr/bin/env python3
 # usage: owui_chat.py MODEL PROMPT [--tools id1,id2] [--params '{"function_calling":"legacy"}'] [--noaux] [--image dataurlfile]
 import json, time, uuid, urllib.request, urllib.error, argparse, os, sys
@@ -114,7 +125,7 @@ print("assistant:", json.dumps(m, default=str)[:1500])
 PY
 
 # 9. S1/S3 the way the UI does it (adds tools, aux calls)
-python3 $TD/owui_chat.py fast "Reply with exactly: pong"
+python3 "$TD/owui_chat.py" fast "Reply with exactly: pong"
 
 # 10. S2: create a tool (Open WebUI Python tool; admin-only API), then chat with it in each Function Calling mode.
 #     In 0.12.0 the modes are: anything but "legacy" = native (real `tools` in the request, the default);
@@ -137,11 +148,11 @@ r = urllib.request.Request("http://localhost:$OWUI_PORT/api/v1/tools/create", da
                            headers={"Authorization": "Bearer $T", "content-type": "application/json"})
 print(urllib.request.urlopen(r).read()[:200])
 PY
-python3 $TD/owui_chat.py fast "What is the weather in Paris? Use the tool." --tools weather --params '{"function_calling":"native"}'
-python3 $TD/owui_chat.py fast "What is the weather in Paris? Use the tool." --tools weather --params '{"function_calling":"default"}'
-python3 $TD/owui_chat.py fast "What is the weather in Paris? Use the tool." --tools weather --params '{"function_calling":"legacy"}'
+python3 "$TD/owui_chat.py" fast "What is the weather in Paris? Use the tool." --tools weather --params '{"function_calling":"native"}'
+python3 "$TD/owui_chat.py" fast "What is the weather in Paris? Use the tool." --tools weather --params '{"function_calling":"default"}'
+python3 "$TD/owui_chat.py" fast "What is the weather in Paris? Use the tool." --tools weather --params '{"function_calling":"legacy"}'
 for M in anthropic/claude-haiku-4-5 'openai/gpt-5.6-luna#low'; do
-  python3 $TD/owui_chat.py "$M" "What is the weather in Paris? Use the tool." --tools weather --noaux
+  python3 "$TD/owui_chat.py" "$M" "What is the weather in Paris? Use the tool." --tools weather --noaux
 done
 
 # 11. S5 image, direct API with a data URL
@@ -169,12 +180,13 @@ for m in ["fast", "anthropic/claude-haiku-4-5", "openai/gpt-5.6-luna#low"]:
     print(m, json.loads(urllib.request.urlopen(r, timeout=120).read())["choices"][0]["message"]["content"])
 PY
 # unknown model: Open WebUI answers itself, request never reaches plugboard
-curl -s localhost:$OWUI_PORT/api/chat/completions -H "Authorization: Bearer $T" -H 'content-type: application/json' \
+curl -s "localhost:$OWUI_PORT/api/chat/completions" -H @"$TD/auth.hdr" -H 'content-type: application/json' \
   -d '{"model":"nope","stream":false,"messages":[{"role":"user","content":"hi"}]}'      # HTTP 400 {"detail":"Model not found"}
 
 # 13. Inspect what was sent
 jq -c '{path,status,model:.req_json.model,stream:.req_json.stream,keys:(.req_json|keys?)}' compat/traffic/open-webui.jsonl
 
 # 14. Cleanup (image kept)
-docker stop $CT && docker rm $CT && docker volume rm $CT
-pkill -f "logproxy.py --host $LOGPROXY_HOST --port $LOGPROXY_PORT"
+docker stop "$CT" && docker rm "$CT" && docker volume rm "$CT"
+# The EXIT trap stops the logproxy by PID and deletes $TD (token included) when this shell ends. Do it now if you stay in the shell:
+cleanup; trap - EXIT

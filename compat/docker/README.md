@@ -1,16 +1,16 @@
 # Docker clients: Open WebUI and n8n
 
-Both UIs run in containers pinned to the versions in `../results/`: Open WebUI `0.12.0` and n8n `2.42.6`. Both are bound to `127.0.0.1` on the host. Only the owner of the machine should reach them.
+Both UIs run in containers pinned to the versions the scripts use: Open WebUI `0.12.0` and n8n `2.42.6` (the dated results are in `../results/`). Both are bound to `127.0.0.1` on the host. Only the owner of the machine should reach them.
 
 ## Reaching plugboard from a container
 
-Plugboard listens on `127.0.0.1:4010` by default. Docker Desktop and similar runtimes let a container reach the host as `host.docker.internal`. On Linux add `--add-host host.docker.internal:host-gateway`, and note that a service bound to loopback is not reachable that way. Either point the container at the capture proxy (below), or listen on an address the container can reach and keep `keys` set.
+Plugboard listens on `127.0.0.1:4010` by default, and a container cannot use that: `host.docker.internal` leads to the host's gateway address, not loopback, and a loopback bind answers any other `Host` header with 403 `invalid_host`. The general recipe (non-loopback bind with `keys`, firewall or tunnel, reverse proxy `Host` handling, `host.lima.internal`) is in [docs/clients/any-app.md](../../docs/clients/any-app.md#reaching-plugboard-from-another-host-or-container).
 
-The scripts read `DOCKER_HOST_NAME` (default `host.docker.internal`), `PLUGBOARD_PORT` (default `4010`) and `PLUGBOARD_KEY`. They put `tools/logproxy.py` between the container and plugboard so the exchanges can be read afterwards. The proxy binds `127.0.0.1` unless `LOGPROXY_HOST` says otherwise. Anything that can reach the proxy can use the key it forwards, so widen `LOGPROXY_HOST` only on a machine you trust, and stop the proxy when you finish. Captures in `compat/traffic/` hold prompts, responses and keys; do not commit or share them.
+The scripts here take a different route and leave plugboard on loopback. They read `DOCKER_HOST_NAME` (default `host.docker.internal`), `PLUGBOARD_PORT` (default `4010`) and `PLUGBOARD_KEY`, and put `tools/logproxy.py` between the container and plugboard so the exchanges can be read afterwards. The container talks to the proxy, and the proxy talks to `127.0.0.1:4010` with its own `Host` header, which passes the loopback check. The proxy binds `127.0.0.1` unless `LOGPROXY_HOST` says otherwise, and a container needs it on an address it can reach (the docker bridge address, or `0.0.0.0`). Anything that can reach the proxy can use the key it forwards, so widen `LOGPROXY_HOST` only on a machine you trust, and stop the proxy when you finish. Captures in `compat/traffic/` hold prompts, responses and keys; do not commit or share them.
 
 ## Open WebUI
 
-`open-webui.sh` is the command log for the 2026-10-11 run, grouped by step. Read it and run steps by hand. Minimal start:
+`open-webui.sh` is the command log for the 2026-10-11 run, grouped by step. Read it and run steps by hand. It keeps its token and helper script in a private `mktemp -d` directory, and stops the proxy it started by PID when the shell exits. Minimal start (this one points the container at plugboard directly, so plugboard needs the non-loopback bind from the recipe above):
 
 ```sh
 docker run -d --name plugboard-compat-owui -p 127.0.0.1:3000:8080 \

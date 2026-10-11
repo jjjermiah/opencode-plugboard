@@ -1,10 +1,10 @@
 # n8n
 
-Tested: n8n 2.42.6 (Docker), OpenAI Chat Model node v1.3, 2026-10-11. S1 to S7 passed, driven headless through webhooks.
+Tested: n8n 2.42.6 (Docker), OpenAI Chat Model node v1.3, 2026-10-11, at an earlier commit. S1 to S7 passed, driven headless through webhooks. The "Response Format: JSON" check on `fast` was flaky (see Structured output), and the Responses API default and some sampling options failed (see Gotchas).
 
 ## Setup
 
-1. Credentials, create "OpenAI API": API Key is your plugboard key, **Base URL** is `http://host.docker.internal:4010/v1` from a container (see [compat/docker/README.md](../../compat/docker/README.md)) or `http://localhost:4010/v1` from a host install. Saving runs `GET /v1/models`.
+1. Credentials, create "OpenAI API": API Key is your plugboard key, **Base URL** is `http://host.docker.internal:4010/v1` from a container or `http://localhost:4010/v1` from a host install. The container case needs plugboard bound to a non-loopback address with `keys` set, see [reaching plugboard from another host or container](any-app.md#reaching-plugboard-from-another-host-or-container). Saving runs `GET /v1/models`.
 2. Add an OpenAI Chat Model node with that credential. If the model dropdown only lists OpenAI names, switch Model to "By ID" and type `fast`, an alias from the plugboard `aliases` option, or any allowed `provider/model[#variant]`.
 3. In the node, turn **Use Responses API off**.
 

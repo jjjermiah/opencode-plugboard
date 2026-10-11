@@ -240,7 +240,10 @@ async function errors() {
     out.push(`401: ${e.constructor.name} status=${e.status} code=${e.code} type=${e.type} msg=${e.message}`)
   }
   try { await bad.models.list(); assert(false, "no error") }
-  catch (e: any) { out.push(`401 models: ${e.constructor.name} code=${e.code}`) }
+  catch (e: any) {
+    assert(e instanceof OpenAI.AuthenticationError, `models class ${e?.constructor?.name}`)
+    out.push(`401 models: ${e.constructor.name} code=${e.code}`)
+  }
   try { await client.chat.completions.create({ model: "nope", messages: [{ role: "user", content: "hi" }] }); assert(false, "no error") }
   catch (e: any) {
     assert(e instanceof OpenAI.NotFoundError, `class ${e?.constructor?.name}`)
@@ -250,7 +253,10 @@ async function errors() {
     const s = await client.chat.completions.create({ model: "nope", stream: true, messages: [{ role: "user", content: "hi" }] })
     for await (const _ of s) {}
     assert(false, "no error")
-  } catch (e: any) { out.push(`404 stream: ${e.constructor.name} status=${e.status} code=${e.code}`) }
+  } catch (e: any) {
+    assert(e instanceof OpenAI.NotFoundError, `stream class ${e?.constructor?.name}`)
+    out.push(`404 stream: ${e.constructor.name} status=${e.status} code=${e.code}`)
+  }
   return out.join(" | ")
 }
 
@@ -286,3 +292,6 @@ await run("EXTRA", FAST, () => extras(FAST))
 
 console.log("\nSUMMARY")
 for (const r of rows) console.log(`${r.ok ? "PASS" : "FAIL"}\t${r.id}\t${r.model}`)
+const failed = rows.filter((r) => !r.ok)
+console.log(`${failed.length} of ${rows.length} failed`)
+if (failed.length > 0) process.exit(1)

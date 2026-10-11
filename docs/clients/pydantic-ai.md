@@ -1,6 +1,6 @@
 # pydantic-ai
 
-Tested: `pydantic-ai-slim[openai]` 2.55.0 (Chat Completions API), `openai` 3.29.0, 2026-10-11. Every scenario passed.
+Tested: `pydantic-ai-slim[openai]` 2.55.0 (Chat Completions API), `openai` 3.29.0, 2026-10-11, at an earlier commit. Every scenario passed, though one `ImageUrl` data URL answer on `fast` failed on its first run and passed on a rerun with an identical request.
 
 ```python
 import os

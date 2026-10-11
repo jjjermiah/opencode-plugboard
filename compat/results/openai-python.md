@@ -1,10 +1,12 @@
 # OpenAI Python SDK against plugboard
 
-- Date / tester: 2026-10-11 / subagent (OpenAI Python client lane)
+> Historical record of one run at `3fcedc7`, before the later refactors. Superseded since: `GET /v1/models/{id}` is implemented (the `models.retrieve` 404 below is fixed, [#9](https://github.com/jjjermiah/opencode-plugboard/issues/9)), and the reasoning token observation was addressed by the usage fix in [#10](https://github.com/jjjermiah/opencode-plugboard/issues/10). Re-test on the release commit is tracked in [`release-candidate.md`](release-candidate.md).
+
+- Date / tester: 2026-10-11 / automated run
 - Client + exact version(s): `openai` 3.29.0 (Python 3.13), `pydantic` 2.14.1, `httpx` 0.28.1 (no adapter packages)
 - Env: compat/py (uv)
 - Plugboard commit: 3fcedc7 (dev server hot-reloads; no failures attributable to a reload seen)
-- Verdict (README gate = S1 and S2 pass): **PASS** (all S1-S7 pass; one extra probe, `models.retrieve`, 404s)
+- Verdict (README gate = S1 and S2 pass): **PASS** (all S1-S7 pass; one extra probe, `models.retrieve`, 404ed at this commit and has since been implemented)
 
 Script: `compat/py/openai_py.py`. Run through logproxy (port 4047), one pass, ~28 chat requests, no retries needed.
 Run: `PLUGBOARD_BASE_URL=... uv run --project compat/py python compat/py/openai_py.py` (`ONLY=S1,S2` filters).
@@ -38,7 +40,7 @@ Extra probes:
 | model `nope`, non-stream | pass | `openai.NotFoundError`, 404, `code='model_not_found'`, `param='model'`, message `Model nope is not available` |
 | model `nope`, `stream=True` | pass | `NotFoundError` raised at call time (plain JSON 404, not SSE) |
 | `developer` role + `max_completion_tokens` + `reasoning_effort="low"` on fast | pass | `pong` |
-| `client.models.retrieve("fast")` | **fail (gap)** | `NotFoundError: Error code: 404 - {'error': {'message': 'No route for GET /v1/models/fast', 'type': 'not_found_error', 'param': None, 'code': 'not_found'}}` |
+| `client.models.retrieve("fast")` | **fail (gap, since implemented)** | `NotFoundError: Error code: 404 - {'error': {'message': 'No route for GET /v1/models/fast', 'type': 'not_found_error', 'param': None, 'code': 'not_found'}}` |
 
 ## Failures (exact error text)
 
@@ -47,7 +49,7 @@ Only `models.retrieve` (not in S1-S7):
 
 ## Suspected plugboard bugs
 
-1. **`GET /v1/models/{id}` not implemented** (plugboard gap, low severity). Raw request: `GET /v1/models/fast` with the valid Bearer key. Raw response: `404 {"error":{"message":"No route for GET /v1/models/fast","type":"not_found_error","param":null,"code":"not_found"}}` (2026-10-11 ~16:16 EDT). Some clients (e.g. UIs that validate a configured model) call this. Note ids containing `/` and `#` would need path handling (`anthropic/claude-haiku-4-5`, `...#low`; the SDK percent-encodes them).
+1. **(Superseded: implemented.) `GET /v1/models/{id}` not implemented at this commit** (plugboard gap, low severity). Raw request: `GET /v1/models/fast` with the valid Bearer key. Raw response: `404 {"error":{"message":"No route for GET /v1/models/fast","type":"not_found_error","param":null,"code":"not_found"}}` (2026-10-11 ~16:16 EDT). Some clients (e.g. UIs that validate a configured model) call this. Note ids containing `/` and `#` would need path handling (`anthropic/claude-haiku-4-5`, `...#low`; the SDK percent-encodes them).
 
 2. **Reasoning-like text inside streamed content on `fast`** (probably model behaviour; unverified). One of three streamed `Reply with exactly: pong` runs (include_usage, `fast`) returned content deltas `User wants exactly "pong".pong` in a single delta. The other two returned `pong`. Non-stream S1 always returned `pong`. `src/openai/response.ts:158` drops `reasoning-delta` events, so this text appears to come from the model as a `text` part, not from a leaked reasoning part. Raw response (logproxy row 10, 2026-10-11 ~16:16:11 EDT):
    ```
@@ -72,8 +74,8 @@ No other bugs. Observations (not bugs): tool call ids from `fast` are bare UUIDs
 
 ## Notes / follow-ups
 
-- Session cleanup: deleted 25 compat sessions matched by timestamp+model+prompt against my proxy log (sessions are shared with parallel agents and carry no request id, so a coincidental match with another agent's identical-prompt session at the same second is possible but harmless; completed history only).
-- Suggested: add `GET /v1/models/{id}` (or document it as unsupported); consider surfacing the reasoning-in-content sample to whoever maintains `fast`.
+- Session cleanup: 25 `compat` sessions were deleted, matched by timestamp, model and prompt against the proxy log. Sessions carried no request id and the app was shared with concurrent runs, so a coincidental match with another run's identical prompt at the same second was possible (completed history only).
+- Follow-up at the time: add `GET /v1/models/{id}` (done since). The reasoning-in-content sample on `fast` was not reproduced.
 - Raw traffic: `compat/traffic/openai-python.jsonl` (gitignored).
 
 Scripts committed under: `compat/py/openai_py.py`

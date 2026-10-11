@@ -5,6 +5,7 @@ Prints one line per scenario: `RESULT <id> <model> PASS|FAIL <note>`.
 """
 import json
 import os
+import sys
 import traceback
 from pathlib import Path
 
@@ -309,3 +310,6 @@ if __name__ == "__main__":
     print("\nSUMMARY")
     for r in results:
         print(f"{r[0]:34} {r[1]:28} {r[2]}")
+    failed = [r for r in results if r[2] != "PASS"]
+    print(f"{len(failed)} of {len(results)} failed")
+    sys.exit(1 if failed else 0)

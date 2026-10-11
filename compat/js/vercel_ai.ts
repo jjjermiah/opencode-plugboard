@@ -158,6 +158,7 @@ const extra: [string, string[]][] = [["S6s", [FAST]], ["E1", [FAST]], ["E2", [FA
 
 console.log(`provider=${providerKind} baseURL=${baseURL}`)
 const table: string[] = []
+let failed = 0
 for (const [sc, models] of [...defaultPlan, ...extra]) {
   if (only ? !only.includes(sc) : false) continue
   if (!only && extra.some((e) => e[0] === sc) && process.env.NO_EXTRA) continue
@@ -174,6 +175,10 @@ for (const [sc, models] of [...defaultPlan, ...extra]) {
     dumpSent()
     if (process.env.FULL || !r.ok) dumpSentFull()
     table.push(`${sc}\t${m}\t${r.ok ? "pass" : "FAIL"}`)
+    if (!r.ok) failed++
   }
 }
 console.log("\n" + table.join("\n"))
+console.log(`${failed} of ${table.length} failed`)
+// `openai-default` is the documented failure mode: the default @ai-sdk/openai call uses /v1/responses, which plugboard does not serve.
+if (failed > 0 && providerKind !== "openai-default") process.exit(1)

@@ -1,6 +1,8 @@
 # pydantic-ai against plugboard
 
-- Date / tester: 2026-10-11 / subagent (pydantic-ai lane)
+> Historical record of one run at `3fcedc7`, before the later refactors. Re-test on the release commit is tracked in [`release-candidate.md`](release-candidate.md).
+
+- Date / tester: 2026-10-11 / automated run
 - Client + exact version(s): `pydantic-ai-slim[openai]` 2.55.0 (`OpenAIChatModel` + `OpenAIProvider`, Chat Completions API), `openai` 3.29.0, `pydantic` 2.14.1
 - Env: compat/py (uv, Python 3.13)
 - Plugboard commit: 3fcedc7
@@ -68,7 +70,7 @@ The prompt token count (39) is identical in both and low enough that it probably
 - Streaming text: the entire `pong` arrives in a single content delta after an initial `role: assistant, content: ""` delta; pydantic-ai handled it.
 - PromptedOutput on `fast`: the model returned numbers as strings (`{"calories":"235","protein_g":"14"}`). pydantic's lax mode coerced them, so this passed. With strict validation it would fail. Model behaviour, since `json_object` mode does not enforce the schema.
 - `/v1/models` returned 387 ids, none duplicated, when I ran S7 (the README says 458 with ~71 duplicates; the dev server presumably changed since the README was written, or that count is stale). Not a client problem either way.
-- Session cleanup: sessions carry no id in the proxy log, so I deleted my sessions by matching (second, model, prompt) against the proxy log: 48 deleted. Parallel agents using the same models and prompts at the same second could have been matched too (their sessions are throwaway). A few of my sessions (tool-turn titles) may remain; `sessions.py delete --older-than` will catch them.
+- Session cleanup: sessions carried no id in the proxy log, so 48 were deleted by matching (second, model, prompt) against it. A concurrent run with the same models and prompts at the same second could have been matched too. A few sessions (tool-turn titles) may remain; `sessions.py delete --older-than` catches them.
 - Not tested: parallel tool calls, `developer` role (pydantic-ai chose `system`; would need a profile with `openai_system_prompt_role='developer'`), reasoning-model profile (`openai_reasoning_*`) on `#high` variants, Responses API (`OpenAIResponsesModel`; plugboard may not implement `/v1/responses`).
 
-Scripts committed under: `compat/py/pydantic_ai_check.py` (not committed per instructions)
+Script: `compat/py/pydantic_ai_check.py`.
