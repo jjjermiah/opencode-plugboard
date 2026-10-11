@@ -22,8 +22,7 @@ import { dispatch, getRegistry } from "./src/registry.js"
 import { createRouter } from "./src/server.js"
 import { SEED_PREFIX } from "./src/seeds.js"
 import { applyContext, createSessionCaller, isInsideDataRoot, type SessionPort } from "./src/session-backend.js"
-// TEMPORARY: lane-local shim. The orchestrator replaces it with the real config.ts / models.ts /
-// openai/*.ts functions (same `RouteDeps` shape) at merge.
+// Wires the config, model and OpenAI front-end functions into the `RouteDeps` the router takes.
 import { deps } from "./src/deps.js"
 
 type AnyRecord = Record<string, any>
@@ -81,7 +80,7 @@ export default Plugin.define({
       }
       const handle = createRouter(deps, {
         options,
-        caller: createSessionCaller({ port }),
+        caller: createSessionCaller({ port, remoteImages: options.remoteImages }),
         loadCatalog: async () => {
           ensurePump(ctx)
           const listed = (await run(ctx.model.list({} as any) as Effect.Effect<unknown>)) as { data?: unknown[] }
@@ -91,7 +90,7 @@ export default Plugin.define({
       const registration = registerGeneration(options.listen, (request: IncomingMessage, response: ServerResponse) => {
         ensurePump(ctx)
         void handle(request, response)
-      })
+      }, JSON.stringify(options))
       yield* Effect.addFinalizer(() => Effect.sync(() => registration.dispose()))
       ensurePump(ctx)
 

@@ -3,7 +3,7 @@
 import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULTS } from "./contract.ts"
 import type { PlugError, PlugboardOptions } from "./contract.ts"
 
-const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs"])
+const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages"])
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
 const ALIAS_TARGET = /^[^/#*\s]+\/[^#*\s]+(#[^#*\s]+)?$/
 
@@ -65,6 +65,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     aliases[alias] = target
   }
 
+  if (input.remoteImages !== undefined && typeof input.remoteImages !== "boolean")
+    throw new Error("plugboard option `remoteImages` must be a boolean")
+
   return {
     listen: { host, port: port ?? DEFAULTS.port },
     keys,
@@ -72,6 +75,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     aliases,
     maxTools: positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024),
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs),
+    remoteImages: input.remoteImages === true,
   }
 }
 

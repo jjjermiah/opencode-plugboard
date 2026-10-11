@@ -24,6 +24,9 @@ interface Holder {
   readonly version: number
   readonly server: Server
   readonly listen: { readonly host: string; readonly port: number }
+  /** JSON of the parsed options of the generation that bound the port; later generations must match it. */
+  fingerprint: string | undefined
+  mismatchLogged: boolean
   readonly handlers: Handler[]
   readonly closeHooks: Map<string, () => void>
   graceTimer?: ReturnType<typeof setTimeout>
@@ -44,11 +47,13 @@ const unavailable = (response: ServerResponse, message: string) => {
   response.end(body)
 }
 
-function create(listen: { host: string; port: number }): Holder {
+function create(listen: { host: string; port: number }, fingerprint: string): Holder {
   const holder: Holder = {
     version: VERSION,
     server: createServer(),
     listen,
+    fingerprint,
+    mismatchLogged: false,
     handlers: [],
     closeHooks: new Map(),
     bound: false,
@@ -93,17 +98,31 @@ function close(holder: Holder): void {
 }
 
 /**
- * Join (or create) the shared listener. Global config options are authoritative: the first
- * generation fixes `listen`; `listen` changes need a server restart (D19).
+ * Join (or create) the shared listener. Global config options are authoritative (D19): the
+ * generation that binds the port fixes the options for the listener's lifetime. A generation
+ * whose options differ (`fingerprint`, JSON of the parsed options) logs once and stays inert, so
+ * a project config entry can never serve requests with weaker auth than the one that bound.
+ * Option changes need a server restart.
  */
-export function registerGeneration(listen: { host: string; port: number }, handler: Handler): Registration {
+export function registerGeneration(listen: { host: string; port: number }, handler: Handler, fingerprint: string): Registration {
   let holder = holderOf()
   if (holder && holder.version !== VERSION) {
     console.error(`[opencode-plugboard] listener holder version ${holder.version} is not ${VERSION}; restart the server`)
     return { dispose() {} }
   }
-  holder ??= ((globalThis as Record<symbol, unknown>)[KEY] = create(listen)) as Holder
+  holder ??= ((globalThis as Record<symbol, unknown>)[KEY] = create(listen, fingerprint)) as Holder
   const joined = holder
+  // A holder created before fingerprints existed (hot reload from an older build) adopts the first one.
+  joined.fingerprint ??= fingerprint
+  if (joined.fingerprint !== fingerprint) {
+    if (!joined.mismatchLogged) {
+      joined.mismatchLogged = true
+      console.error(
+        "[opencode-plugboard] plugin options differ from the ones that started the listener (global config is authoritative); this Location stays inert. Restart the server after changing options",
+      )
+    }
+    return { dispose() {} }
+  }
   if (joined.graceTimer) clearTimeout(joined.graceTimer)
   joined.graceTimer = undefined
   joined.handlers.push(handler)

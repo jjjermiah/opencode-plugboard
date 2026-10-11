@@ -24,6 +24,8 @@ export interface PlugboardOptions {
   readonly aliases: Readonly<Record<string, string>>
   readonly maxTools: number
   readonly requestTimeoutMs: number
+  /** Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network. */
+  readonly remoteImages: boolean
 }
 
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/

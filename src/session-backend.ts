@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto"
 import { mkdir, realpath } from "node:fs/promises"
 import { realpathSync } from "node:fs"
 import { homedir } from "node:os"
-import { join, resolve, sep } from "node:path"
+import { basename, join, resolve, sep } from "node:path"
 import { RequestCollector } from "./backend.js"
 import { APP_NAME_PATTERN, DEFAULT_APP, type CallContext, type ModelCaller, type PlugEvent, type PlugMessage, type PlugRequest } from "./contract.js"
 import { getRegistry, type RequestState } from "./registry.js"
@@ -37,7 +37,7 @@ function realpathLoose(path: string): string {
     } catch {
       const parent = resolve(current, "..")
       if (parent === current) return resolve(path)
-      tail.push(current.slice(parent.length + 1))
+      tail.push(basename(current))
       current = parent
     }
   }
@@ -67,6 +67,8 @@ export interface SessionPort {
 
 export interface SessionCallerDeps {
   readonly port: SessionPort
+  /** Allow fetching http(s) image URLs (option `remoteImages`). */
+  readonly remoteImages?: boolean
 }
 
 const TITLE_LENGTH = 60
@@ -88,16 +90,45 @@ const makeTitle = (request: PlugRequest): string => {
 
 const MAX_REMOTE_IMAGE_BYTES = 20 * 1024 * 1024
 
-/** Prompt files must be inline data: URLs; fetch http(s) images once so the host can build assets. */
-async function toDataUrl(url: string, signal: AbortSignal): Promise<string> {
+class ImageError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+/** Prompt files must be inline data: URLs; http(s) images are fetched once, only when `remoteImages` is on. */
+async function toDataUrl(url: string, signal: AbortSignal, remoteImages: boolean): Promise<string> {
   if (url.startsWith("data:")) return url
-  if (!/^https?:\/\//i.test(url)) throw new Error(`Unsupported image URL scheme: ${url.slice(0, 32)}`)
-  const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) })
-  if (!response.ok) throw new Error(`Could not fetch image (${response.status}): ${url.slice(0, 120)}`)
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  if (bytes.byteLength > MAX_REMOTE_IMAGE_BYTES) throw new Error("Image is larger than 20 MB")
-  const mediaType = response.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream"
-  return `data:${mediaType};base64,${Buffer.from(bytes).toString("base64")}`
+  if (!/^https?:\/\//i.test(url)) throw new ImageError("unsupported_image_url", `Unsupported image URL scheme: ${url.slice(0, 32)}`)
+  if (!remoteImages)
+    throw new ImageError("remote_images_disabled", "Remote image URLs are disabled; send a data: URL or set the plugboard `remoteImages` option")
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) }).catch((error) => {
+    throw new ImageError("image_fetch_failed", `Could not fetch image: ${describe(error)}`)
+  })
+  if (!response.ok) throw new ImageError("image_fetch_failed", `Could not fetch image (${response.status}): ${url.slice(0, 120)}`)
+  const mediaType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? ""
+  if (!mediaType.startsWith("image/")) throw new ImageError("invalid_image", `URL did not return an image (content-type: ${mediaType || "none"})`)
+  const declared = Number(response.headers.get("content-length"))
+  const tooLarge = () => new ImageError("image_too_large", "Image is larger than 20 MB")
+  if (Number.isFinite(declared) && declared > MAX_REMOTE_IMAGE_BYTES) throw tooLarge()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  const reader = response.body?.getReader()
+  if (!reader) throw new ImageError("invalid_image", "Image response had no body")
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > MAX_REMOTE_IMAGE_BYTES) {
+      void reader.cancel().catch(() => {})
+      throw tooLarge()
+    }
+    chunks.push(value)
+  }
+  return `data:${mediaType};base64,${Buffer.concat(chunks).toString("base64")}`
 }
 
 /** Readable transcript stored as the session's prompt; images are listed by attachment number. */
@@ -222,6 +253,7 @@ const describe = (error: unknown): string => {
 
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port } = deps
+  const remoteImages = deps.remoteImages === true
   const registry = getRegistry()
 
   return {
@@ -234,7 +266,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       let sessionID: string | undefined
       let collector: RequestCollector | undefined
       const interrupt = () => {
-        if (sessionID) void port.interrupt(sessionID).catch(() => {})
+        if (sessionID)
+          void port.interrupt(sessionID).catch((error) => console.error(`[opencode-plugboard] interrupt of ${sessionID} failed: ${describe(error)}`))
       }
       const onAbort = () => {
         if (collector) collector.cancelled = true
@@ -247,7 +280,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const images: Array<{ uri: string; name: string }> = []
         for (const message of request.messages)
           for (const part of message.content)
-            if (part.type === "media") images.push({ uri: await toDataUrl(part.url, context.signal), name: `image-${images.length + 1}` })
+            if (part.type === "media") images.push({ uri: await toDataUrl(part.url, context.signal, remoteImages), name: `image-${images.length + 1}` })
 
         // 2. The app directory under the data root; one top-level session per request (D15).
         const appDir = join(dataRoot(), app)
@@ -279,7 +312,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
 
         for await (const event of collector.queue) yield event
       } catch (error) {
-        if (!context.signal.aborted) yield failure(502, `plugboard session backend failed: ${describe(error)}`, "backend_failed")
+        if (error instanceof ImageError) yield failure(400, error.message, error.code)
+        else if (!context.signal.aborted) yield failure(502, `plugboard session backend failed: ${describe(error)}`, "backend_failed")
       } finally {
         context.signal.removeEventListener("abort", onAbort)
         if (sessionID) {

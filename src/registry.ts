@@ -12,6 +12,7 @@
 import type { PlugRequest } from "./contract.js"
 import type { RequestCollector } from "./backend.js"
 
+const VERSION = 1
 const KEY = Symbol.for("opencode-plugboard.registry")
 
 export interface RequestState {
@@ -28,13 +29,21 @@ export interface Registry {
   readonly requests: Map<string, RequestState>
   /** Interrupts the event pump fiber; set while the pump runs. */
   stopPump?: () => void
+  /** Module version that created this registry and started its pump. */
+  readonly version: number
   /** Pump running flag: true while a fiber is subscribed to the server event bus. */
   pumping: boolean
 }
 
 export function getRegistry(): Registry {
   const holder = globalThis as Record<symbol, unknown>
-  return (holder[KEY] ??= { requests: new Map(), pumping: false } satisfies Registry) as Registry
+  const existing = holder[KEY] as Registry | undefined
+  if (existing?.version === VERSION) return existing
+  // Left by a different plugin version (upgrade without a server restart): stop its pump and start fresh.
+  try {
+    existing?.stopPump?.()
+  } catch {}
+  return (holder[KEY] = { version: VERSION, requests: new Map(), pumping: false } satisfies Registry) as Registry
 }
 
 /** Route one bus envelope (`{ type, data: { sessionID, ... } }`) to its request, if any. */

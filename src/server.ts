@@ -112,6 +112,18 @@ async function* withTimeout(
   }
 }
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"])
+
+/** Host header check against DNS rebinding: only meaningful when listening on loopback. */
+function hostAllowed(options: PlugboardOptions, hostHeader: string | undefined): boolean {
+  const listenHost = options.listen.host.toLowerCase().replace(/^\[|\]$/g, "")
+  const loopback = listenHost === "localhost" || listenHost === "::1" || /^127(\.\d{1,3}){3}$/.test(listenHost)
+  if (!loopback) return true
+  const match = /^(\[[^\]]+\]|[^:]+)(?::(\d+))?$/.exec((hostHeader ?? "").trim().toLowerCase())
+  if (!match || !LOOPBACK_HOSTS.has(match[1]!)) return false
+  return (match[2] ?? "80") === String(options.listen.port)
+}
+
 export function createRouter(deps: RouteDeps, host: RouteHost) {
   const fail = (response: ServerResponse, error: PlugError) => sendJson(response, error.status, deps.encodeError(error))
 
@@ -119,6 +131,17 @@ export function createRouter(deps: RouteDeps, host: RouteHost) {
     const url = new URL(request.url ?? "/", "http://127.0.0.1")
     const route = `${request.method} ${url.pathname}`
     try {
+      // Browser-reachable loopback endpoints: block DNS rebinding and cross-site calls (CSRF).
+      if (!hostAllowed(host.options, request.headers.host))
+        return fail(response, { status: 403, type: "permission_error", code: "invalid_host", message: "Host header not allowed" })
+      if (Object.keys(host.options.keys).length === 0 && request.headers.origin !== undefined)
+        return fail(response, {
+          status: 403,
+          type: "permission_error",
+          code: "cross_origin_forbidden",
+          message: "Cross-origin requests are not allowed on a keyless endpoint; configure `keys`",
+        })
+
       if (route === "GET /healthz") return sendJson(response, 200, { ok: true })
 
       const known = ["GET /v1/models", "POST /v1/chat/completions"]
@@ -139,6 +162,15 @@ export function createRouter(deps: RouteDeps, host: RouteHost) {
         return sendJson(response, 200, { object: "list", data: deps.listModels(host.options, catalog) })
       }
 
+      const contentType = request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase()
+      if (contentType !== "application/json")
+        return fail(response, {
+          status: 415,
+          type: "invalid_request_error",
+          code: "unsupported_media_type",
+          message: "Content-Type must be application/json",
+        })
+
       const body = await readBody(request)
       const parsed = deps.parseChatRequest(body, host.options)
       if (isPlugError(parsed)) return fail(response, parsed)
@@ -155,8 +187,32 @@ export function createRouter(deps: RouteDeps, host: RouteHost) {
       const events = withTimeout(host.caller.stream(plug, { app: auth.app, signal: controller.signal }), host.options.requestTimeoutMs, controller)
 
       if (plug.stream) {
+        // Errors before any content are real HTTP errors, not a 200 SSE stream: pull events
+        // until the first one that is not reasoning (which streaming drops anyway).
+        const iterator = events[Symbol.asyncIterator]()
+        let first = await iterator.next()
+        while (!first.done && first.value.type === "reasoning-delta") first = await iterator.next()
+        if (!first.done && first.value.type === "error") {
+          void iterator.return?.(undefined)?.catch?.(() => {})
+          return fail(response, first.value.error)
+        }
+        const lead = first
+        const rest: AsyncIterable<PlugEvent> = {
+          async *[Symbol.asyncIterator]() {
+            try {
+              if (!lead.done) yield lead.value
+              while (true) {
+                const next = await iterator.next()
+                if (next.done) return
+                yield next.value
+              }
+            } finally {
+              void iterator.return?.(undefined)?.catch?.(() => {})
+            }
+          },
+        }
         let started = false
-        await deps.streamCompletion(events, plug, (chunk) => {
+        await deps.streamCompletion(rest, plug, (chunk) => {
           if (response.destroyed) return
           if (!started) {
             started = true
