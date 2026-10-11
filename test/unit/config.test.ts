@@ -7,6 +7,7 @@ describe("parseOptions: defaults", () => {
     expect(parseOptions(undefined)).toEqual({
       listen: { host: "127.0.0.1", port: 4010 },
       keys: {},
+      apps: {},
       models: [],
       aliases: {},
       fallbacks: {},

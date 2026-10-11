@@ -9,8 +9,10 @@ import type { HistoryLimits } from "./session/prune.js"
 /** Plugin options, after defaults and validation (see `parseOptions`). */
 export interface PlugboardOptions {
   readonly listen: { readonly host: string; readonly port: number }
-  /** App name -> API key. App names match APP_NAME_PATTERN; "default" is reserved. */
+  /** App name -> API key, from `keys` and `apps.<name>.key` merged. App names match APP_NAME_PATTERN; "default" is reserved. */
   readonly keys: Readonly<Record<string, string>>
+  /** Per-app policy (`apps`); only apps that set a policy field appear. Look one up with `appPolicy`. */
+  readonly apps: Readonly<Record<string, AppPolicy>>
   /** Allowlist: exact `provider/model`, `provider/model#variant`, or `provider/*` patterns. Empty = nothing allowed. */
   readonly models: ReadonlyArray<string>
   /** Alias -> `provider/model[#variant]`. Targets must also pass the allowlist. */
@@ -42,6 +44,23 @@ export interface PlugboardOptions {
   readonly metrics: boolean
 }
 
+export type SystemMode = "prepend" | "append" | "replace"
+
+/**
+ * What the operator fixes for one app, whatever the caller sends (option `apps`). `models` only narrows the
+ * global allowlist: entries are `provider/model[#variant]`, `provider/*` or alias names.
+ */
+export interface AppPolicy {
+  readonly models?: ReadonlyArray<string>
+  /** Text added to the caller's system prompt, or replacing it (`systemMode`). */
+  readonly system?: string
+  readonly systemMode: SystemMode
+  /** false: the caller's tools are dropped before the model sees them. */
+  readonly tools: boolean
+  /** Lowers the global `maxTools` for this app. */
+  readonly maxTools?: number
+}
+
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
 export const DEFAULT_APP = "default"
 const DEFAULTS = {
@@ -52,7 +71,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics"])
+const KNOWN = new Set(["listen", "keys", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics"])
 const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays"])
 /** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
 const MAX_AGE_DAYS = 36_500
@@ -102,6 +121,75 @@ function parseRemoteImages(value: unknown): RemoteImages {
   return { allow: allow as string[] }
 }
 
+/**
+ * `keys` and the `key` of each `apps` entry as one list. An app named in both must carry the same
+ * value: two sources that disagree are a config mistake, not a precedence rule. Values are validated
+ * by the caller of this function (non-empty strings, unique).
+ */
+function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
+  const merged = new Map<string, unknown>(Object.entries(isRecord(keys) ? keys : {}))
+  for (const [app, policy] of Object.entries(isRecord(apps) ? apps : {})) {
+    if (!isRecord(policy) || policy.key === undefined) continue
+    if (merged.has(app) && merged.get(app) !== policy.key)
+      throw new Error(`plugboard app \`${app}\` has a different key in \`keys\` and in \`apps.${app}.key\`; set it in one place or make them equal`)
+    merged.set(app, policy.key)
+  }
+  return [...merged]
+}
+
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools"])
+const SYSTEM_MODES: ReadonlySet<string> = new Set(["prepend", "append", "replace"])
+
+/** Validates `apps` (the `key` field was merged into `keys` already) into per-app policies. */
+function parseApps(
+  raw: unknown,
+  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; maxTools: number },
+): Record<string, AppPolicy> {
+  const entries: Array<[string, AppPolicy]> = []
+  for (const [app, value] of Object.entries(isRecord(raw) ? raw : {})) {
+    const at = `plugboard \`apps.${app}\``
+    if (app !== DEFAULT_APP && !APP_NAME_PATTERN.test(app)) throw new Error(`plugboard app name \`${app}\` must match ${APP_NAME_PATTERN} (or be \`${DEFAULT_APP}\`)`)
+    if (!isRecord(value)) throw new Error(`${at} must be an object`)
+    for (const field of Object.keys(value))
+      if (!APP_KNOWN.has(field)) throw new Error(`Unknown plugboard option \`apps.${app}.${field}\` (known: ${[...APP_KNOWN].join(", ")})`)
+    const keyed = Object.keys(context.keys).length > 0
+    if (app === DEFAULT_APP && (keyed || value.key !== undefined))
+      throw new Error(`${at} configures the keyless app and cannot be used together with \`keys\`; name the app and give it a key instead`)
+    if (app !== DEFAULT_APP && !Object.hasOwn(context.keys, app)) throw new Error(`${at} has no key: add \`key\` there or an entry in \`keys\``)
+
+    if (value.models !== undefined) {
+      if (!Array.isArray(value.models) || value.models.length === 0)
+        throw new Error(`${at}.models must be a non-empty array (omit it to inherit the global \`models\`)`)
+      for (const entry of value.models)
+        if (typeof entry !== "string" || !(MODEL_PATTERN.test(entry) || Object.hasOwn(context.aliases, entry)))
+          throw new Error(`${at}.models entry \`${String(entry)}\` must be \`provider/model\`, \`provider/model#variant\`, \`provider/*\` or an alias name`)
+    }
+    if (value.system !== undefined && (typeof value.system !== "string" || value.system.trim().length === 0))
+      throw new Error(`${at}.system must be a non-empty string`)
+    if (value.systemMode !== undefined && (typeof value.systemMode !== "string" || !SYSTEM_MODES.has(value.systemMode)))
+      throw new Error(`${at}.systemMode must be \`prepend\`, \`append\` or \`replace\``)
+    if (value.systemMode !== undefined && value.system === undefined) throw new Error(`${at}.systemMode needs \`system\``)
+    if (value.tools !== undefined && typeof value.tools !== "boolean") throw new Error(`${at}.tools must be a boolean`)
+    const maxTools = value.maxTools === undefined ? undefined : positiveInt(value.maxTools, `apps.${app}.maxTools`, 0, context.maxTools)
+
+    const policy: AppPolicy = {
+      ...(value.models === undefined ? {} : { models: value.models as string[] }),
+      ...(value.system === undefined ? {} : { system: value.system as string }),
+      systemMode: (value.systemMode as SystemMode | undefined) ?? "prepend",
+      tools: value.tools !== false,
+      ...(maxTools === undefined ? {} : { maxTools }),
+    }
+    // An app that only carries a key has no policy to look up.
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined) entries.push([app, policy])
+  }
+  return Object.fromEntries(entries)
+}
+
+/** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
+export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string): AppPolicy | undefined {
+  return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
+}
+
 /** Validates raw plugin options and applies defaults. Throws `Error` with an actionable message. */
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
@@ -119,8 +207,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   const keyEntries: Array<[string, string]> = []
   if (input.keys !== undefined && !isRecord(input.keys)) throw new Error("plugboard option `keys` must be an object of app name -> key")
+  if (input.apps !== undefined && !isRecord(input.apps)) throw new Error("plugboard option `apps` must be an object of app name -> policy")
   const appOfKey = new Map<string, string>()
-  for (const [app, key] of Object.entries(input.keys ?? {})) {
+  for (const [app, key] of mergedKeys(input.keys, input.apps)) {
     if (app === DEFAULT_APP) throw new Error(`plugboard key name \`${DEFAULT_APP}\` is reserved for keyless loopback use`)
     if (!APP_NAME_PATTERN.test(app)) throw new Error(`plugboard key name \`${app}\` must match ${APP_NAME_PATTERN}`)
     if (typeof key !== "string" || key.length === 0)
@@ -167,6 +256,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
   const fallbacks: Record<string, string[]> = Object.fromEntries(fallbackEntries)
 
+  const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
+  const apps = parseApps(input.apps, { keys, aliases, maxTools })
+
   const remoteImages = parseRemoteImages(input.remoteImages)
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")
     throw new Error("plugboard option `dropUnsupportedParams` must be a boolean")
@@ -185,10 +277,11 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   return {
     listen: { host, port: port ?? DEFAULTS.port },
     keys,
+    apps,
     models: models as string[],
     aliases,
     fallbacks,
-    maxTools: positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024),
+    maxTools,
     maxN: positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64),
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
     remoteImages,

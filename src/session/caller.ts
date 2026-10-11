@@ -18,9 +18,10 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { APP_NAME_PATTERN, DEFAULT_APP } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { log, logError } from "../log.js"
+import { checkAppModel } from "../models.js"
 import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, type SessionPort } from "./host.js"
@@ -34,6 +35,8 @@ export interface SessionCallerDeps {
   readonly sessions: SessionStore
   /** The seed pool size of the app directories (option `maxTools`); a request needing more tools fails before dispatch. */
   readonly maxTools: number
+  /** Per-app policy (option `apps`): model scope, tools off, a lower tool cap. The system prompt part is applied by the context hook. */
+  readonly apps?: PlugboardOptions["apps"]
   /** Allow fetching http(s) image URLs (option `remoteImages`: off, public addresses only, or with an allowlist). */
   readonly remoteImages?: RemoteImages
   /**
@@ -73,12 +76,36 @@ function checkPreparation(request: PlugRequest, images: number, maxTools: number
   return undefined
 }
 
+/**
+ * The app's tool policy applied to the request: `tools: false` drops every tool (and a tool choice that
+ * would refer to them). Returns the request the session is built from, and whether anything was dropped.
+ * Note that a `response_format` of `json_schema` is answered through a tool, so it is dropped too.
+ */
+function applyToolPolicy(request: PlugRequest, policy: AppPolicy | undefined): { request: PlugRequest; stripped: boolean } {
+  if (policy?.tools !== false) return { request, stripped: false }
+  const { toolChoice: _dropped, ...rest } = request
+  return { request: { ...rest, tools: [] }, stripped: request.tools.length > 0 }
+}
+
+/** An app's own `maxTools`, checked on top of the global one (which `checkPreparation` and the request decoders enforce). */
+function checkAppTools(request: PlugRequest, app: string, policy: AppPolicy | undefined): PlugError | undefined {
+  const max = policy?.maxTools
+  if (max === undefined || request.tools.length <= max) return undefined
+  return {
+    status: 400,
+    kind: "invalid_request",
+    code: "too_many_tools",
+    param: "tools",
+    message: `Request has ${request.tools.length} tools; app ${app} allows ${max} (option \`apps.${app}.maxTools\`)`,
+  }
+}
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port, sessions, maxTools, ensureBackend } = deps
+  const apps = deps.apps ?? {}
   const remoteImages = deps.remoteImages ?? false
 
   return {
-    async *stream(request: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
+    async *stream(called: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
       const app = APP_NAME_PATTERN.test(context.app) || context.app === DEFAULT_APP ? context.app : undefined
       if (!app) return yield failure(400, `Invalid app name: ${context.app}`, "invalid_app")
       if (context.signal.aborted) return
@@ -90,6 +117,21 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (event.type === "finish") outcome = `finish:${event.reason}`
         else if (event.type === "error") outcome = `error:${event.error.status}${event.error.code ? `:${event.error.code}` : ""}`
         return event
+      }
+
+      // The app's policy: model scope first (a model outside it is as unknown as one off the allowlist), then tools.
+      const policy = appPolicy({ apps }, app)
+      const outOfScope = checkAppModel(policy, called.model, called.ref)
+      if (outOfScope) return yield note({ type: "error", error: outOfScope })
+      const { request, stripped } = applyToolPolicy(called, policy)
+      const tooMany = checkAppTools(request, app, policy)
+      if (tooMany) return yield note({ type: "error", error: tooMany })
+      if (stripped) {
+        try {
+          context.onPolicy?.(["tools-stripped"])
+        } catch (error) {
+          logError("request.on_policy_failed", { app, error: describeError(error) })
+        }
       }
 
       let sessionID: string | undefined

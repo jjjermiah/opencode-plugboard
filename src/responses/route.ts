@@ -13,6 +13,7 @@ import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
+import { reportPolicy } from "../policy.js"
 import { encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
@@ -52,6 +53,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
         response.setHeader(SESSION_HEADER, recordID)
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
+      onPolicy: reportPolicy(response),
     }),
     scope,
   )

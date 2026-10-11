@@ -54,6 +54,7 @@ export default Plugin.define({
         port: createSessionPort(ctx),
         sessions,
         maxTools: options.maxTools,
+        apps: options.apps,
         remoteImages: options.remoteImages,
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
@@ -102,7 +103,7 @@ export default Plugin.define({
       // ---- the context hook, the agent deny and the seed tools. Ownership of the Location is only
       // known after an asynchronous check (`ensureBackend`), so all three are no-ops until
       // `registration.confirmed()`: in real projects nothing is ever added or rewritten.
-      yield* installSessionHooks(ctx, { maxTools: options.maxTools, sessions, active: registration.confirmed })
+      yield* installSessionHooks(ctx, { maxTools: options.maxTools, apps: options.apps, sessions, active: registration.confirmed })
       registration.ready()
     }),
 })

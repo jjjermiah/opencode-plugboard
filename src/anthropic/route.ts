@@ -27,6 +27,7 @@ import {
 } from "../http.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel } from "../models.js"
+import { reportPolicy } from "../policy.js"
 import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
@@ -123,6 +124,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
           response.setHeader(SESSION_HEADER, recordID)
         },
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
+        onPolicy: reportPolicy(response),
       }),
       scope,
     )

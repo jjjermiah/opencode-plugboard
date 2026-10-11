@@ -1,6 +1,6 @@
 /** Model refs and the allowlist/alias policy over a neutral catalog. Protocol-neutral: front-ends format the results. */
 
-import type { PlugboardOptions } from "./config.js"
+import { appPolicy, type AppPolicy, type PlugboardOptions } from "./config.js"
 import type { CatalogModel, ModelRef, PlugError } from "./contract.js"
 
 /** `provider/model[#variant]`. The model id may contain slashes (`openrouter/vendor/model`). */
@@ -30,6 +30,22 @@ export function allowedBy(models: ReadonlyArray<string>, ref: ModelRef): boolean
 }
 
 const allowed = (options: PlugboardOptions, ref: ModelRef): boolean => allowedBy(options.models, ref)
+
+/**
+ * Per-app narrowing (`apps.<name>.models`), applied on top of the global allowlist, never instead of it.
+ * `name` is what the caller sent (an alias or a model id). An entry that is an alias name admits that
+ * name; a pattern entry admits every resolved model it matches, whichever name reached it. No `models`
+ * on the app means no narrowing. Alias names never match as patterns: they are not `provider/model` shaped.
+ */
+function inAppScope(policy: AppPolicy | undefined, name: string, ref: ModelRef): boolean {
+  return policy?.models === undefined || policy.models.includes(name) || allowedBy(policy.models, ref)
+}
+
+/** 404 `model_not_found` when `app` may not use the (already resolved) model; the same error as an unknown model. */
+export function checkAppModel(policy: AppPolicy | undefined, name: string, ref: ModelRef): PlugError | undefined {
+  if (inAppScope(policy, name, ref)) return undefined
+  return { status: 404, message: `Model ${name} is not available`, kind: "not_found", code: "model_not_found", param: "model" }
+}
 
 function find(catalog: ReadonlyArray<CatalogModel>, ref: ModelRef): CatalogModel | undefined {
   const model = catalog.find((m) => m.providerID === ref.providerID && m.id === ref.id)
@@ -78,8 +94,12 @@ export interface ListedModel {
   readonly model: CatalogModel
 }
 
-/** The allowlist intersected with the catalog, plus aliases whose target qualifies. Ids are unique except an alias may repeat one. */
-export function listAvailableModels(options: PlugboardOptions, catalog: ReadonlyArray<CatalogModel>): ListedModel[] {
+/**
+ * The allowlist intersected with the catalog, plus aliases whose target qualifies. Ids are unique except an alias may repeat one.
+ * With `app`, the list is narrowed to that app's `models` (see `inAppScope`).
+ */
+export function listAvailableModels(options: PlugboardOptions, catalog: ReadonlyArray<CatalogModel>, app?: string): ListedModel[] {
+  const policy = app === undefined ? undefined : appPolicy(options, app)
   const entry = (id: string, ref: ModelRef, model: CatalogModel): ListedModel => ({ id, ref, model })
   const data: ListedModel[] = []
   // The catalog can list a model more than once (and repeat variants); ids must be unique.
@@ -88,14 +108,14 @@ export function listAvailableModels(options: PlugboardOptions, catalog: Readonly
     const base = { providerID: model.providerID, id: model.id }
     for (const ref of [base, ...model.variants.map((variant) => ({ ...base, variant }))]) {
       const id = refToString(ref)
-      if (seen.has(id) || !allowed(options, ref)) continue
+      if (seen.has(id) || !allowed(options, ref) || !inAppScope(policy, id, ref)) continue
       seen.add(id)
       data.push(entry(id, ref, model))
     }
   }
   for (const [alias, target] of Object.entries(options.aliases)) {
     const ref = parseModelRef(target)
-    const model = ref && allowed(options, ref) ? find(catalog, ref) : undefined
+    const model = ref && allowed(options, ref) && inAppScope(policy, alias, ref) ? find(catalog, ref) : undefined
     if (ref && model) data.push(entry(alias, ref, model))
   }
   return data
@@ -104,13 +124,15 @@ export function listAvailableModels(options: PlugboardOptions, catalog: Readonly
 /**
  * The targets an alias falls back to, in order: the fallbacks that are allowed and enabled on the server.
  * Empty for a plain model id or an alias without fallbacks. The primary target is `resolveModel`'s answer.
+ * With `app`, a target outside that app's `models` is skipped (an app scoped to the alias name admits every target).
  */
-export function fallbackRefs(options: PlugboardOptions, alias: string, catalog: ReadonlyArray<CatalogModel>): ModelRef[] {
+export function fallbackRefs(options: PlugboardOptions, alias: string, catalog: ReadonlyArray<CatalogModel>, app?: string): ModelRef[] {
+  const policy = app === undefined ? undefined : appPolicy(options, app)
   const targets = Object.hasOwn(options.fallbacks, alias) ? options.fallbacks[alias]! : []
   const refs: ModelRef[] = []
   for (const target of targets) {
     const ref = parseModelRef(target)
-    if (ref && allowed(options, ref) && find(catalog, ref)) refs.push(ref)
+    if (ref && allowed(options, ref) && inAppScope(policy, alias, ref) && find(catalog, ref)) refs.push(ref)
   }
   return refs
 }

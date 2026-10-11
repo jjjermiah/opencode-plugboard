@@ -8,6 +8,7 @@
  */
 
 import { Effect } from "effect"
+import { appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
 import type { PlugError, PlugMessage, PlugRequest } from "../contract.js"
 import type { ContextHookEvent, HostContext, HostPart, HostToolDescriptor } from "./host.js"
 import { SEED_PREFIX, SEED_RESULT, seedToolsFor } from "./seeds.js"
@@ -80,13 +81,29 @@ function remapSeedTools(session: ContextHookEvent, request: PlugRequest): number
   return tools.length - next.size
 }
 
+/**
+ * The caller's system prompts with the app's `system` applied: before them (default), after them, or
+ * instead of them (`replace` also drops instructions the front-end put there, such as the JSON-mode one).
+ */
+function systemFor(caller: ReadonlyArray<string>, policy: AppPolicy | undefined): ReadonlyArray<string> {
+  if (policy?.system === undefined) return caller
+  switch (policy.systemMode) {
+    case "prepend":
+      return [policy.system, ...caller]
+    case "append":
+      return [...caller, policy.system]
+    case "replace":
+      return [policy.system]
+  }
+}
+
 const preparationFailed = (message: string): PlugError => ({ status: 500, kind: "server", code: "backend_preparation_failed", message })
 
 /**
  * `session.hook("context")` body: swap the request session's system, messages, tools and
- * generation options for the caller's.
+ * generation options for the caller's, with the app's system prompt (option `apps`) applied.
  */
-function applyContext(event: unknown, sessions: SessionStore): void {
+function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOptions["apps"]): void {
   // Assumed invariant: the host passes its mutable `SessionContext` (checked structurally by `HostContextMatches`).
   const session = event as ContextHookEvent
   const state = sessions.lookup(String(session.sessionID))
@@ -106,7 +123,7 @@ function applyContext(event: unknown, sessions: SessionStore): void {
     return text("[image unavailable]")
   }
 
-  const system = request.system.map(text)
+  const system = systemFor(request.system, appPolicy({ apps }, state.app)).map(text)
   // The OpenCode session API has no tool-choice control, so a forced or required tool is steered by instruction.
   const choice = request.toolChoice
   if (choice === "required") system.push(text("You must respond by calling one of the provided tools."))
@@ -144,11 +161,11 @@ function applyContext(event: unknown, sessions: SessionStore): void {
  */
 export function installSessionHooks(
   ctx: HostContext,
-  options: { readonly maxTools: number; readonly sessions: SessionStore; readonly active: () => boolean },
+  options: { readonly maxTools: number; readonly sessions: SessionStore; readonly active: () => boolean; readonly apps?: PlugboardOptions["apps"] },
 ) {
   return Effect.gen(function* () {
     // Swap in the caller's system/messages/tools for plugboard request sessions only.
-    yield* ctx.session.hook("context", (event) => Effect.sync(() => (options.active() ? applyContext(event, options.sessions) : undefined)))
+    yield* ctx.session.hook("context", (event) => Effect.sync(() => (options.active() ? applyContext(event, options.sessions, options.apps ?? {}) : undefined)))
 
     yield* ctx.agent.transform((editor) => {
       if (!options.active()) return

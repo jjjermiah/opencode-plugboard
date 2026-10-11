@@ -19,6 +19,7 @@ import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { listAvailableModels, resolveModel } from "../models.js"
+import { reportPolicy } from "../policy.js"
 import type { RouteHost } from "../openai/route.js"
 import { dropRejected } from "../openai/sampling.js"
 import { parseGeminiRequest } from "./request.js"
@@ -99,7 +100,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     return fail({ status: 404, kind: "not_found", code: "method_not_supported", message: `Method ${match.verb} is not supported; plugboard serves generateContent and streamGenerateContent` })
 
   if (match.op === "list" || match.op === "get") {
-    const listed = listAvailableModels(host.options, await scope.race(host.loadCatalog()))
+    const listed = listAvailableModels(host.options, await scope.race(host.loadCatalog()), app)
     if (match.op === "list") return sendJson(response, 200, encodeGeminiModelList(listed))
     const item = listed.find((m) => m.id === match.model)
     if (!item) return fail({ status: 404, kind: "not_found", code: "model_not_found", param: "model", message: `Model ${match.model} is not available` })
@@ -139,6 +140,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
         response.setHeader(SESSION_HEADER, recordID)
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
+      onPolicy: reportPolicy(response),
     }),
     scope,
   )
