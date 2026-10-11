@@ -11,8 +11,8 @@ import { encodeError, type StreamChoice, type StreamResult } from "../openai/res
 
 /** What the encoders need besides the model events; the request decoder produces it, the model call never sees it. */
 export interface CompletionsExchange {
-  /** The model string the client sent; echoed in every response object. */
-  readonly model: string
+  /** The model string the client sent; echoed in every response object. A request that used an alias with fallbacks echoes the target that answered (`CallContext.onServed`). */
+  model: string
   readonly stream: boolean
   /** `stream_options.include_usage`: a final chunk with `choices: []` and the summed usage. */
   readonly includeUsage: boolean
@@ -144,4 +144,5 @@ export const completionsCodec = (exchange: CompletionsExchange): ChoiceCodec => 
     choices: [],
     usage: encodeUsage(usage),
   }),
+  setModel: (model) => void (exchange.model = model),
 })

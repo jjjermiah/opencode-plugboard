@@ -14,7 +14,17 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Model fallback chains** ([#53](https://github.com/jjjermiah/opencode-plugboard/issues/53)). One provider having a bad minute used to fail every caller of that alias. Now an alias can be an ordered list:
+
+  ```jsonc
+  "aliases": { "fast": ["opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"] }
+  ```
+
+  When a call fails before any output reaches the client (rate limit, quota, provider down or timing out, a lost provider sign-in, a failed model run), plugboard quietly retries the next target in a fresh session. Nothing is retried once output has started, so an answer is never stitched together from two models, and client errors (bad request, context too long, content filter) come back as they are. It works on every endpoint: Chat Completions, Responses, Messages, completions and Gemini.
+
+  You always know who answered: the `x-plugboard-model` header (plus `x-plugboard-fallbacks` when retries happened), the response's `model` field, `served=` and `fallbacks=` on the request log line, `plugboard_fallbacks_total` in metrics, and the whole chain on the setup page. Checked live with a dead provider as the first target on all five front-ends.
 
 ## [0.11.0] - 2026-10-11: Safety Nets Everywhere
 

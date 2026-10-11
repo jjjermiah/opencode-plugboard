@@ -10,6 +10,7 @@
 
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
+import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
 import { encodeError } from "../openai/response.js"
@@ -25,7 +26,7 @@ export interface ResponsesCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, and the outcome of a stream that failed after it committed. */
-  readonly info: { model?: string; failed?: string }
+  readonly info: ServedInfo & { model?: string; failed?: string }
 }
 
 export async function serveResponses(host: RouteHost, { app, body, response, scope, info }: ResponsesCall): Promise<void> {
@@ -50,6 +51,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
         if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
         response.setHeader(SESSION_HEADER, recordID)
       },
+      onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
     }),
     scope,
   )

@@ -4,7 +4,7 @@ import type { PlugboardOptions } from "./config.js"
 import type { CatalogModel, ModelRef, PlugError } from "./contract.js"
 
 /** `provider/model[#variant]`. The model id may contain slashes (`openrouter/vendor/model`). */
-function parseModelRef(s: string): ModelRef | undefined {
+export function parseModelRef(s: string): ModelRef | undefined {
   if (typeof s !== "string") return undefined
   const slash = s.indexOf("/")
   if (slash <= 0) return undefined
@@ -16,18 +16,20 @@ function parseModelRef(s: string): ModelRef | undefined {
   return { providerID: s.slice(0, slash), id, ...(variant ? { variant } : {}) }
 }
 
-function refToString(ref: ModelRef): string {
+export function refToString(ref: ModelRef): string {
   return `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
 }
 
 /** `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly. */
-function allowed(options: PlugboardOptions, ref: ModelRef): boolean {
-  return options.models.some((pattern) => {
+export function allowedBy(models: ReadonlyArray<string>, ref: ModelRef): boolean {
+  return models.some((pattern) => {
     if (pattern.endsWith("/*")) return pattern.slice(0, -2) === ref.providerID
     const p = parseModelRef(pattern)
     return p !== undefined && p.providerID === ref.providerID && p.id === ref.id && (p.variant === undefined || p.variant === ref.variant)
   })
 }
+
+const allowed = (options: PlugboardOptions, ref: ModelRef): boolean => allowedBy(options.models, ref)
 
 function find(catalog: ReadonlyArray<CatalogModel>, ref: ModelRef): CatalogModel | undefined {
   const model = catalog.find((m) => m.providerID === ref.providerID && m.id === ref.id)
@@ -97,4 +99,18 @@ export function listAvailableModels(options: PlugboardOptions, catalog: Readonly
     if (ref && model) data.push(entry(alias, ref, model))
   }
   return data
+}
+
+/**
+ * The targets an alias falls back to, in order: the fallbacks that are allowed and enabled on the server.
+ * Empty for a plain model id or an alias without fallbacks. The primary target is `resolveModel`'s answer.
+ */
+export function fallbackRefs(options: PlugboardOptions, alias: string, catalog: ReadonlyArray<CatalogModel>): ModelRef[] {
+  const targets = Object.hasOwn(options.fallbacks, alias) ? options.fallbacks[alias]! : []
+  const refs: ModelRef[] = []
+  for (const target of targets) {
+    const ref = parseModelRef(target)
+    if (ref && allowed(options, ref) && find(catalog, ref)) refs.push(ref)
+  }
+  return refs
 }

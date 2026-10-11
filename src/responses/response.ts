@@ -12,8 +12,8 @@ type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
 /** What the encoder needs besides the model events: Responses presentation state. The request decoder produces it. */
 export interface ResponsesExchange {
-  /** The model string the client sent; echoed in every response object. */
-  readonly model: string
+  /** The model string the client sent; echoed in every response object. A request that used an alias with fallbacks echoes the target that answered (`CallContext.onServed`). */
+  model: string
   readonly stream: boolean
   /** Request fields echoed into the response object (instructions, tools, temperature, ...). */
   readonly envelope: Readonly<Record<string, unknown>>

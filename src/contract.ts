@@ -168,6 +168,19 @@ export interface CallContext {
   readonly signal: AbortSignal
   /** Called once, before the first event, with the id of the history record this call writes (if any). */
   readonly onRecord?: (recordID: string) => void
+  /**
+   * Called once, before the first event, only for a request whose model is an alias with fallbacks
+   * (`src/fallback.ts`): which target answered and how many earlier targets failed first. A front-end
+   * uses it for `x-plugboard-model` and the `model` it echoes. A call that fails on every target never
+   * reports it.
+   */
+  readonly onServed?: (served: ServedModel) => void
+}
+
+/** The target of an alias that answered: `provider/model[#variant]`, and the targets tried before it. */
+export interface ServedModel {
+  readonly model: string
+  readonly fallbacks: number
 }
 
 /** The seam between the core and a backend (the session backend now, `ctx.llm.stream` possibly later). */

@@ -15,8 +15,8 @@ type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
 /** What the encoder needs besides the model events: Gemini presentation state. The request decoder produces it. */
 export interface GeminiExchange {
-  /** The model string from the URL; echoed as `modelVersion`. */
-  readonly model: string
+  /** The model string from the URL; echoed as `modelVersion`. A request that used an alias with fallbacks echoes the target that answered (`CallContext.onServed`). */
+  model: string
   readonly stream: boolean
   /** Name of the forced tool that carries `responseSchema` output; its input becomes the text of the answer. */
   readonly structuredTool?: string

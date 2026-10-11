@@ -22,6 +22,7 @@
 
 import type { ServerResponse } from "node:http"
 import type { PlugError, PlugEvent, PlugRequest, PlugUsage } from "../contract.js"
+import { reportServed, type ServedInfo } from "../fallback.js"
 import { RequestAborted, boundEvents, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { chatUsageChunk, collectCompletion, encodeError, streamCompletion, type OpenAiExchange, type StreamChoice, type StreamResult } from "./response.js"
 import type { RouteHost } from "./route.js"
@@ -40,6 +41,8 @@ export interface ChoiceCodec {
   streamChoice(events: AsyncIterable<PlugEvent>, write: (chunk: string) => void, choice: StreamChoice): Promise<StreamResult>
   /** The final chunk with the summed usage (`include_usage`). */
   usageChunk(choice: Omit<StreamChoice, "index">, usage: PlugUsage): object
+  /** Echo the served model of an alias with fallbacks as the response model. Used for a single call only: with several choices the body keeps the requested model. */
+  setModel(model: string): void
 }
 
 /** The Chat Completions encoder as a `ChoiceCodec`. */
@@ -50,6 +53,7 @@ export const chatCodec = (exchange: OpenAiExchange): ChoiceCodec => ({
   collect: (events) => collectCompletion(events, exchange),
   streamChoice: (events, write, choice) => streamCompletion(events, exchange, write, choice),
   usageChunk: (choice, usage) => chatUsageChunk(exchange.model, choice.id, choice.created, usage),
+  setModel: (model) => void (exchange.model = model),
 })
 
 export interface ChoicesCall {
@@ -58,8 +62,8 @@ export interface ChoicesCall {
   readonly calls: ReadonlyArray<PlugRequest>
   readonly response: ServerResponse
   readonly scope: RequestScope
-  /** The route's log fields: the outcome of a stream that failed after it committed. */
-  readonly info: { failed?: string }
+  /** The route's log fields: the outcome of a stream that failed after it committed, and the first served model. */
+  readonly info: ServedInfo & { failed?: string }
   readonly codec: ChoiceCodec
 }
 
@@ -158,6 +162,10 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
   const gscope = groupScope(scope, AbortSignal.any([scope.signal, group.signal]))
   /** History record ids as the callers report them, in choice order, for the response header (comma separated). */
   const records: Array<string | undefined> = []
+  // Headers: the first choice to be served wins. Body model: only a single call echoes the served model.
+  const served = reportServed(response, info, (s) => {
+    if (calls.length === 1) codec.setModel(s.model)
+  })
   const open = (index: number) =>
     boundEvents(
       host.caller.stream(calls[index]!, {
@@ -168,6 +176,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
           records[index] = recordID
           response.setHeader(SESSION_HEADER, records.filter((id) => id !== undefined).join(","))
         },
+        onServed: served,
       }),
       gscope,
     )

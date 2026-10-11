@@ -11,6 +11,7 @@
 
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
+import type { ServedInfo } from "../fallback.js"
 import { sendJson, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
 import { serveChoices } from "../openai/fanout.js"
@@ -28,7 +29,7 @@ export interface CompletionsCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, the sampling parameters dropped, and the outcome of a stream that failed after it committed. */
-  readonly info: { model?: string; failed?: string; dropped?: string }
+  readonly info: ServedInfo & { model?: string; failed?: string; dropped?: string }
 }
 
 export async function serveCompletions(host: RouteHost, { app, body, response, scope, info }: CompletionsCall): Promise<void> {

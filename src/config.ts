@@ -2,6 +2,7 @@
 
 import { createHash, timingSafeEqual } from "node:crypto"
 import type { PlugError } from "./contract.js"
+import { allowedBy, parseModelRef } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
 
@@ -14,6 +15,12 @@ export interface PlugboardOptions {
   readonly models: ReadonlyArray<string>
   /** Alias -> `provider/model[#variant]`. Targets must also pass the allowlist. */
   readonly aliases: Readonly<Record<string, string>>
+  /**
+   * Alias -> the targets after the first, in order, for an alias written as an array. `aliases` holds the
+   * first target, so everything that resolves an alias keeps working; the model caller retries the rest
+   * (`src/fallback.ts`). Absent for an alias with one target. Every target passes the allowlist.
+   */
+  readonly fallbacks: Readonly<Record<string, ReadonlyArray<string>>>
   readonly maxTools: number
   /** Most model calls one request may fan out to: `n` for chat completions, prompts x `n` for legacy completions. Each is a full call and a kept session. */
   readonly maxN: number
@@ -137,18 +144,28 @@ export function parseOptions(raw: unknown): PlugboardOptions {
       throw new Error(`plugboard model \`${String(pattern)}\` must be \`provider/model\`, \`provider/model#variant\` or \`provider/*\``)
 
   const aliasEntries: Array<[string, string]> = []
-  if (input.aliases !== undefined && !isRecord(input.aliases)) throw new Error("plugboard option `aliases` must be an object of alias -> model")
+  const fallbackEntries: Array<[string, string[]]> = []
+  if (input.aliases !== undefined && !isRecord(input.aliases)) throw new Error("plugboard option `aliases` must be an object of alias -> model or alias -> [model, ...]")
   for (const [alias, target] of Object.entries(input.aliases ?? {})) {
     if (alias.length === 0 || /[\s]/.test(alias)) throw new Error(`plugboard alias \`${alias}\` must be a non-empty string without whitespace`)
     // Plain-object lookups downstream would hit the prototype accessor instead of the alias.
     if (alias === "__proto__") throw new Error("plugboard alias `__proto__` is not allowed")
-    if (typeof target !== "string" || !ALIAS_TARGET.test(target))
-      throw new Error(`plugboard alias \`${alias}\` must target \`provider/model\` or \`provider/model#variant\``)
+    const chain = Array.isArray(target) ? target : [target]
+    if (chain.length === 0) throw new Error(`plugboard alias \`${alias}\` must list at least one target`)
+    for (const entry of chain) {
+      if (typeof entry !== "string" || !ALIAS_TARGET.test(entry))
+        throw new Error(`plugboard alias \`${alias}\` must target \`provider/model\` or \`provider/model#variant\` (or a list of them)`)
+      // A list is new, so it is strict: a target the allowlist would refuse can never serve, so fail at load.
+      if (Array.isArray(target) && !allowedBy(models as string[], parseModelRef(entry)!))
+        throw new Error(`plugboard alias \`${alias}\` target \`${entry}\` is not allowed by the \`models\` option`)
+    }
     if (CANONICAL_SHAPE.test(alias))
       throw new Error(`plugboard alias \`${alias}\` is written like a \`provider/model\` id; aliases must not contain \`/\` (use a short name such as \`fast\`)`)
-    aliasEntries.push([alias, target])
+    aliasEntries.push([alias, chain[0] as string])
+    if (chain.length > 1) fallbackEntries.push([alias, chain.slice(1) as string[]])
   }
   const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
+  const fallbacks: Record<string, string[]> = Object.fromEntries(fallbackEntries)
 
   const remoteImages = parseRemoteImages(input.remoteImages)
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")
@@ -170,6 +187,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     keys,
     models: models as string[],
     aliases,
+    fallbacks,
     maxTools: positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024),
     maxN: positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64),
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),

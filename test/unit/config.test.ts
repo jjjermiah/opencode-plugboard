@@ -9,6 +9,7 @@ describe("parseOptions: defaults", () => {
       keys: {},
       models: [],
       aliases: {},
+      fallbacks: {},
       maxTools: 32,
       maxN: 1,
       requestTimeoutMs: 600_000,

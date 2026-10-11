@@ -36,6 +36,7 @@ import {
   sseWriter,
   type RequestScope,
 } from "../http.js"
+import { reportServed, type ServedInfo } from "../fallback.js"
 import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, log, logError, withRequestId } from "../log.js"
@@ -96,7 +97,7 @@ const decodeSegment = (raw: string): string => {
 }
 
 /** What a request log line may carry: ids and outcomes only. */
-interface RequestInfo {
+interface RequestInfo extends ServedInfo {
   route: string
   app?: string
   model?: string
@@ -246,6 +247,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
         },
+        // An alias with fallbacks: report which target answered, and echo it as the response model.
+        onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       }),
       scope,
     )
@@ -328,7 +331,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
       // Probes and scrapes that succeed are not worth a line each.
       if ((info.route !== "GET /healthz" && info.route !== "GET /metrics") || outcome !== "ok") {
-        const fields = { id, route: info.route, app: info.app, model: info.model, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
+        const fields = { id, route: info.route, app: info.app, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
         else log("request", fields)
       }

@@ -94,6 +94,8 @@ export interface Discovery {
     readonly state: ModelsState
     readonly allowlist: ReadonlyArray<string>
     readonly aliases: Readonly<Record<string, string>>
+    /** Alias -> the targets tried after its first one, for aliases written as a list. Absent when there are none. */
+    readonly fallbacks?: Readonly<Record<string, ReadonlyArray<string>>>
     /** Ids `GET /v1/models` lists (allowlist intersected with the catalog, plus aliases). */
     readonly available?: number
     readonly hint?: string
@@ -171,6 +173,7 @@ export function buildDiscovery({ options, app, catalog }: DiscoveryInput): Disco
             state,
             allowlist: options.models,
             aliases: options.aliases,
+            ...(Object.keys(options.fallbacks).length > 0 ? { fallbacks: options.fallbacks } : {}),
             ...(catalog ? { available: listed.length } : {}),
             ...(modelsHint ? { hint: modelsHint } : {}),
           },
@@ -202,7 +205,7 @@ export function renderDiscoveryHtml(doc: Discovery): string {
     if (models.available !== undefined) sections.push(`<p>${escapeHtml(models.available)} model ids available.</p>`)
     sections.push(`<h3>Allowlist</h3>${models.allowlist.length > 0 ? list(models.allowlist) : "<p>Empty.</p>"}`)
     const aliases = Object.entries(models.aliases)
-    if (aliases.length > 0) sections.push(`<h3>Aliases</h3>${list(aliases.map(([alias, target]) => `${alias} -> ${target}`))}`)
+    if (aliases.length > 0) sections.push(`<h3>Aliases</h3>${list(aliases.map(([alias, target]) => [alias, target, ...(models.fallbacks?.[alias] ?? [])].join(" -> ")))}`)
   }
   if (doc.suggestedModels) {
     sections.push(`<h2>Suggested <code>models</code> option</h2>${pre(`"models": ${JSON.stringify(doc.suggestedModels)}`)}`)
