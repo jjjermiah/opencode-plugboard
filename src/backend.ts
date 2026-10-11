@@ -1,146 +1,224 @@
 /**
- * Model-caller: collect one OpenCode session turn into an OpenAI-shaped step result.
+ * Session-backend event translation.
  *
- * The turn is stopped from inside the model loop (see `seeds.ts`), so the events of
- * interest are: text deltas/endings, the parsed tool call, and one terminal step
- * event carrying finish reason + tokens.
+ * `RequestCollector` receives the OpenCode bus events of ONE plugboard request session
+ * (already filtered by the process-wide registry, R11) and turns them into `PlugEvent`s on an
+ * `EventQueue` that the ModelCaller streams out (not buffered).
+ *
+ * The turn is stopped from inside the model loop (see `seeds.ts`): once the model stream has
+ * finished (`session.step.streamed`) with at least one tool call, the owner is asked to
+ * interrupt the session, and the aborted step is reported as a normal `tool-calls` finish.
  */
 
-export interface CollectedToolCall {
-  readonly id: string
-  readonly name: string
-  readonly input: unknown
-  readonly executed: boolean
+import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "./contract.js"
+
+/** Minimal async queue: producers `push`, one consumer iterates; `close` ends the iteration. */
+export class EventQueue<T> implements AsyncIterable<T> {
+  private readonly items: T[] = []
+  private waiter?: () => void
+  private closed = false
+
+  push(item: T): void {
+    if (this.closed) return
+    this.items.push(item)
+    this.wake()
+  }
+
+  close(): void {
+    this.closed = true
+    this.wake()
+  }
+
+  private wake() {
+    const waiter = this.waiter
+    this.waiter = undefined
+    waiter?.()
+  }
+
+  async *[Symbol.asyncIterator](): AsyncGenerator<T> {
+    while (true) {
+      const item = this.items.shift()
+      if (item !== undefined) {
+        yield item
+        continue
+      }
+      if (this.closed) return
+      await new Promise<void>((resolve) => {
+        this.waiter = resolve
+      })
+    }
+  }
 }
 
-export interface CollectedUsage {
+interface RawUsage {
   readonly input?: number
   readonly output?: number
   readonly reasoning?: number
   readonly cache?: { readonly read?: number; readonly write?: number }
 }
 
-export interface CollectedStep {
-  readonly text: string
-  readonly toolCalls: ReadonlyArray<CollectedToolCall>
-  readonly finish?: string
-  readonly rawFinish?: string
-  readonly tokens?: CollectedUsage
-  readonly cost?: number
-  readonly stepError?: unknown
+const toUsage = (tokens?: RawUsage): PlugUsage | undefined =>
+  tokens
+    ? {
+        inputTokens: tokens.input,
+        outputTokens: tokens.output,
+        reasoningTokens: tokens.reasoning,
+        cacheReadTokens: tokens.cache?.read,
+        cacheWriteTokens: tokens.cache?.write,
+      }
+    : undefined
+
+/** Host `SessionError` (`{ type, message, status?, response? }`) to an OpenAI-style error. */
+export function toPlugError(error: { type?: string; message?: string; status?: number } | undefined, fallback: string): PlugError {
+  const status = typeof error?.status === "number" && error.status >= 400 ? error.status : undefined
+  const message = error?.message || fallback
+  const base = { message, ...(error?.type ? { code: error.type } : {}) }
+  if (status === 401) return { status, type: "authentication_error", ...base }
+  if (status === 403) return { status, type: "permission_error", ...base }
+  if (status === 404) return { status, type: "not_found_error", ...base }
+  if (status === 429) return { status, type: "rate_limit_error", ...base }
+  if (status === 408 || status === 504) return { status, type: "timeout_error", ...base }
+  if (status !== undefined && status < 500) return { status, type: "invalid_request_error", ...base }
+  return { status: status ?? 502, type: "server_error", ...base }
 }
 
-/**
- * Single-use sink for the events of one adapter session. `push` is called from the
- * plugin's event-stream fiber; `done` resolves on the terminal step event.
- */
-export class StepCollector {
-  readonly sessionID: string
-  private readonly textParts = new Map<number, string>()
+export interface CollectorHooks {
+  /** The model stream ended with tool calls: stop the turn before the placeholder tools run. */
+  readonly stopTurn: () => void
+}
+
+/** Grace for the aborted step's usage after the owner interrupted the turn. */
+const FINISH_GRACE_MS = 3_000
+
+export class RequestCollector {
+  readonly queue = new EventQueue<PlugEvent>()
+  private readonly emittedText = new Map<number, number>()
   private readonly toolNames = new Map<string, string>()
-  private readonly calls = new Map<string, CollectedToolCall>()
-  private readonly settled: Promise<void>
-  private settle!: () => void
-  /** Resolves when the whole execution (all steps) ended: succeeded, failed or interrupted. */
-  readonly executionEnded: Promise<string>
-  private endExecution!: (kind: string) => void
-  /** Number of model steps that started. */
-  steps = 0
-  /** Number of tool calls seen so far. */
-  get toolCalls(): number {
-    return this.calls.size
-  }
-  private finish?: string
-  private rawFinish?: string
-  private tokens?: CollectedUsage
-  private cost?: number
-  private stepError?: unknown
+  private readonly calls = new Set<string>()
+  private usage?: RawUsage
+  private graceTimer?: ReturnType<typeof setTimeout>
+  /** True once a `finish` or `error` event was emitted; later events are ignored. */
+  terminal = false
+  /** True once the OpenCode execution ended (succeeded, failed or interrupted). */
+  executionEnded = false
+  /** Set by the backend when the client went away or the request timed out. */
+  cancelled = false
 
-  constructor(sessionID: string) {
-    this.sessionID = sessionID
-    this.settled = new Promise<void>((resolve) => {
-      this.settle = resolve
-    })
-    this.executionEnded = new Promise<string>((resolve) => {
-      this.endExecution = resolve
-    })
-  }
+  constructor(private readonly hooks: CollectorHooks) {}
 
-  get done(): Promise<void> {
-    return this.settled
-  }
-
-  /** Spike diagnostics: every event seen for this session, with ms since the collector was created. */
-  readonly trace: Array<{ t: number; type: string; data?: unknown }> = []
-  private readonly started = Date.now()
-
-  push(event: Record<string, any>): void {
-    this.trace.push({ t: Date.now() - this.started, type: String(event.type), data: event.delta ?? event.error })
-    switch (event.type) {
-      case "session.step.started":
-        this.steps++
+  /** `item` is the flattened bus event: `{ type, ...data }`. */
+  push(item: Record<string, any>): void {
+    switch (item.type) {
+      case "session.text.delta": {
+        if (this.terminal) return
+        const ordinal = Number(item.ordinal ?? 0)
+        const delta = String(item.delta ?? "")
+        this.emittedText.set(ordinal, (this.emittedText.get(ordinal) ?? 0) + delta.length)
+        if (delta.length > 0) this.emit({ type: "text-delta", text: delta })
         return
-      case "session.execution.succeeded":
-      case "session.execution.failed":
-      case "session.execution.interrupted":
-        this.endExecution(String(event.type))
+      }
+      case "session.text.ended": {
+        if (this.terminal) return
+        // Deltas are live-only; if any were missed, the ended event carries the full text.
+        const ordinal = Number(item.ordinal ?? 0)
+        const full = String(item.text ?? "")
+        const seen = this.emittedText.get(ordinal) ?? 0
+        if (full.length > seen) this.emit({ type: "text-delta", text: full.slice(seen) })
+        this.emittedText.set(ordinal, full.length)
         return
-      case "session.text.delta":
-        this.textParts.set(event.ordinal, (this.textParts.get(event.ordinal) ?? "") + String(event.delta ?? ""))
+      }
+      case "session.reasoning.delta": {
+        if (this.terminal) return
+        const delta = String(item.delta ?? "")
+        if (delta.length > 0) this.emit({ type: "reasoning-delta", text: delta })
         return
-      case "session.text.ended":
-        this.textParts.set(event.ordinal, String(event.text ?? ""))
-        return
+      }
       case "session.tool.input.started":
-        this.toolNames.set(String(event.id), String(event.name ?? ""))
+        this.toolNames.set(String(item.id), String(item.name ?? ""))
         return
-      case "session.tool.called":
-        this.calls.set(String(event.id), {
-          id: String(event.id),
-          name: this.toolNames.get(String(event.id)) ?? "",
-          input: event.input,
-          executed: event.executed === true,
-        })
+      case "session.tool.called": {
+        if (this.terminal) return
+        const id = String(item.id)
+        if (this.calls.has(id)) return
+        this.calls.add(id)
+        this.emit({ type: "tool-call", id, name: String(item.name ?? this.toolNames.get(id) ?? ""), input: item.input })
         return
+      }
       case "session.usage.updated":
-        this.tokens ??= event.tokens as CollectedUsage
+        this.usage = (item.tokens as RawUsage) ?? this.usage
+        return
+      case "session.step.streamed":
+        if (this.terminal || this.calls.size === 0) return
+        this.hooks.stopTurn()
+        this.graceTimer ??= setTimeout(() => this.finishWith("tool-calls"), FINISH_GRACE_MS)
         return
       case "session.step.ended":
-        this.finish = event.finish
-        this.rawFinish = event.rawFinish
-        this.tokens = (event.tokens as CollectedUsage) ?? this.tokens
-        this.cost = event.cost
-        this.settle()
+        this.usage = (item.tokens as RawUsage) ?? this.usage
+        this.finishWith(this.calls.size > 0 ? "tool-calls" : toFinish(item.finish))
         return
-      case "session.step.failed":
-        this.finish = event.finish
-        this.rawFinish = event.rawFinish
-        this.tokens = (event.tokens as CollectedUsage) ?? this.tokens
-        this.cost = event.cost
-        this.stepError = event.error
-        this.settle()
+      case "session.step.failed": {
+        this.usage = (item.tokens as RawUsage) ?? this.usage
+        const error = item.error as { type?: string; message?: string; status?: number } | undefined
+        if (this.calls.size > 0 && error?.type === "aborted") return this.finishWith("tool-calls")
+        if (item.finish === "content-filter") return this.finishWith("content-filter")
+        if (error?.type === "aborted" && this.cancelled) return this.end()
+        return this.fail(toPlugError(error, "Model step failed"))
+      }
+      case "session.execution.failed":
+        this.executionEnded = true
+        if (!this.terminal) this.fail(toPlugError(item.error, "Session execution failed"))
+        this.end()
+        return
+      case "session.execution.interrupted":
+      case "session.execution.succeeded":
+        this.executionEnded = true
+        if (!this.terminal) {
+          if (this.calls.size > 0) this.finishWith("tool-calls")
+          else if (this.cancelled) this.end()
+          else if (item.type === "session.execution.succeeded") this.finishWith("stop")
+          else this.fail({ status: 500, type: "server_error", message: "Request was interrupted before the model finished" })
+        }
+        this.end()
         return
       default:
         return
     }
   }
 
-  result(): CollectedStep {
-    const text = [...this.textParts.entries()]
-      .sort(([left], [right]) => left - right)
-      .map(([, value]) => value)
-      .join("")
-    return {
-      text,
-      toolCalls: [...this.calls.values()],
-      finish: this.finish,
-      rawFinish: this.rawFinish,
-      tokens: this.tokens,
-      cost: this.cost,
-      // The adapter itself interrupts the turn once tool calls are captured; that abort is expected.
-      stepError: this.calls.size > 0 && (this.stepError as { type?: string } | undefined)?.type === "aborted" ? undefined : this.stepError,
-    }
+  /** Close the stream without a terminal event (client gone). */
+  end(): void {
+    if (this.graceTimer) clearTimeout(this.graceTimer)
+    this.graceTimer = undefined
+    this.terminal = true
+    this.queue.close()
+  }
+
+  private finishWith(reason: PlugFinish): void {
+    if (this.terminal) return
+    this.emit({ type: "finish", reason, usage: toUsage(this.usage) })
+    this.end()
+  }
+
+  private fail(error: PlugError): void {
+    if (this.terminal) return
+    this.emit({ type: "error", error })
+    this.end()
+  }
+
+  private emit(event: PlugEvent): void {
+    this.queue.push(event)
   }
 }
 
-export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+const toFinish = (finish: unknown): PlugFinish => {
+  switch (finish) {
+    case "length":
+    case "content-filter":
+    case "error":
+      return finish
+    case "tool-calls":
+      return "tool-calls"
+    default:
+      return "stop"
+  }
+}
