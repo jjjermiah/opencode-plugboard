@@ -42,6 +42,7 @@ import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/ro
 import { errorMessage, log, logError, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { listAvailableModels, resolveModel } from "../models.js"
+import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import { isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveCompletions } from "../completions/route.js"
@@ -251,6 +252,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         // An alias with fallbacks: report which target answered, and echo it as the response model.
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),
+        onCache: reportCache(response),
       }),
       scope,
     )

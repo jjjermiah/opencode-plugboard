@@ -1,6 +1,7 @@
 /** Plugin options: type, defaults, validation, caller authentication and the loopback check. */
 
 import { createHash, timingSafeEqual } from "node:crypto"
+import type { CacheConfig } from "./cache.js"
 import type { PlugError } from "./contract.js"
 import { allowedBy, parseModelRef } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
@@ -42,6 +43,8 @@ export interface PlugboardOptions {
   readonly logFormat: "text" | "json"
   /** Serve `GET /metrics` (Prometheus text). Off by default; same authentication as `/v1`. */
   readonly metrics: boolean
+  /** Opt-in exact-match response cache (see `src/cache.ts`). Absent: off. */
+  readonly cache?: CacheConfig
 }
 
 export type SystemMode = "prepend" | "append" | "replace"
@@ -71,8 +74,12 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics"])
+const KNOWN = new Set(["listen", "keys", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "cache"])
 const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays"])
+const CACHE_KNOWN = new Set(["ttlSeconds", "maxEntries", "maxBytes", "apps"])
+const CACHE_DEFAULTS = { maxEntries: 1000, maxBytes: 64 * 1024 * 1024 } as const
+/** One year: a longer TTL is a typo, and keeps the millisecond conversion a safe integer. */
+const MAX_CACHE_TTL_SECONDS = 31_536_000
 /** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
 const MAX_AGE_DAYS = 36_500
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
@@ -190,6 +197,24 @@ export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string):
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
 }
 
+function parseCache(value: unknown, keys: Readonly<Record<string, string>>): CacheConfig | undefined {
+  if (value === undefined) return undefined
+  if (!isRecord(value)) throw new Error("plugboard option `cache` must be an object with `ttlSeconds`")
+  for (const key of Object.keys(value))
+    if (!CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`cache.${key}\` (known: ${[...CACHE_KNOWN].join(", ")})`)
+  if (value.ttlSeconds === undefined) throw new Error("plugboard option `cache.ttlSeconds` is required (how long an answer is served, in seconds)")
+  const ttlSeconds = positiveInt(value.ttlSeconds, "cache.ttlSeconds", 0, MAX_CACHE_TTL_SECONDS)
+  const maxEntries = positiveInt(value.maxEntries, "cache.maxEntries", CACHE_DEFAULTS.maxEntries)
+  const maxBytes = positiveInt(value.maxBytes, "cache.maxBytes", CACHE_DEFAULTS.maxBytes)
+  if (value.apps === undefined) return { ttlSeconds, maxEntries, maxBytes }
+  if (!Array.isArray(value.apps) || value.apps.length === 0) throw new Error("plugboard option `cache.apps` must be a non-empty array of app names")
+  // A name that can never authenticate would silently leave the cache off for the app the user meant.
+  const known = Object.keys(keys).length === 0 ? [DEFAULT_APP] : Object.keys(keys)
+  for (const app of value.apps)
+    if (typeof app !== "string" || !known.includes(app)) throw new Error(`plugboard \`cache.apps\` entry \`${String(app)}\` is not an app (known: ${known.join(", ")})`)
+  return { ttlSeconds, maxEntries, maxBytes, apps: [...new Set(value.apps as string[])] }
+}
+
 /** Validates raw plugin options and applies defaults. Throws `Error` with an actionable message. */
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
@@ -274,6 +299,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const maxSessions = historyInput?.maxSessions === undefined ? undefined : positiveInt(historyInput.maxSessions, "history.maxSessions", 0)
   const maxAgeDays = historyInput?.maxAgeDays === undefined ? undefined : positiveInt(historyInput.maxAgeDays, "history.maxAgeDays", 0, MAX_AGE_DAYS)
 
+  const cache = parseCache(input.cache, keys)
+
   return {
     listen: { host, port: port ?? DEFAULTS.port },
     keys,
@@ -289,6 +316,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     dropUnsupportedParams: input.dropUnsupportedParams !== false,
     logFormat: input.logFormat === "json" ? "json" : "text",
     metrics: input.metrics === true,
+    ...(cache ? { cache } : {}),
   }
 }
 

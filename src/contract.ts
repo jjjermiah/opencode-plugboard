@@ -180,6 +180,10 @@ export interface CallContext {
   readonly onServed?: (served: ServedModel) => void
   /** Called once, before the first event, with each change the app's policy made that the caller sent for. Front-ends report them in the `x-plugboard-policy` header. */
   readonly onPolicy?: (notes: ReadonlyArray<PolicyNote>) => void
+  /** Called once, before the first event, when the response cache applies to the call: `hit` replays a stored answer (no session, no record), `miss` runs the model. Not called when the cache is off, skipped for the app, or `noCache` is set. */
+  readonly onCache?: (result: "hit" | "miss") => void
+  /** Bypass the response cache for this call. Fan-out sets it: each choice of `n` above 1 repeats one request and must be a fresh sample. */
+  readonly noCache?: boolean
 }
 
 /** The target of an alias that answered: `provider/model[#variant]`, and the targets tried before it. */

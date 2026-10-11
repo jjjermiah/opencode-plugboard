@@ -13,6 +13,7 @@ import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
+import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import { encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
@@ -54,6 +55,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
+      onCache: reportCache(response),
     }),
     scope,
   )

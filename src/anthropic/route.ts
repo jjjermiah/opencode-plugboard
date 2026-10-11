@@ -27,6 +27,7 @@ import {
 } from "../http.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel } from "../models.js"
+import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
@@ -125,6 +126,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
         },
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),
+        onCache: reportCache(response),
       }),
       scope,
     )

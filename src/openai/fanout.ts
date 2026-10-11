@@ -23,6 +23,7 @@
 import type { ServerResponse } from "node:http"
 import type { PlugError, PlugEvent, PlugRequest, PlugUsage } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
+import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import { RequestAborted, boundEvents, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { chatUsageChunk, collectCompletion, encodeError, streamCompletion, type OpenAiExchange, type StreamChoice, type StreamResult } from "./response.js"
@@ -168,6 +169,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
     if (calls.length === 1) codec.setModel(s.model)
   })
   const policy = reportPolicy(response)
+  // Each choice is a fresh sample: the response cache never serves or stores fan-out calls.
+  const cache = reportCache(response)
   const open = (index: number) =>
     boundEvents(
       host.caller.stream(calls[index]!, {
@@ -180,6 +183,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
         },
         onServed: served,
         onPolicy: policy,
+        onCache: cache,
+        noCache: calls.length > 1,
       }),
       gscope,
     )

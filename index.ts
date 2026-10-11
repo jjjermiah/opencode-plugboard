@@ -24,7 +24,7 @@ import { parseOptions } from "./src/config.js"
 import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, processMetrics, registerGeneration, sessionStore } from "./src/runtime.js"
+import { ensureBackend, ensurePump, loadServingCatalog, processMetrics, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createSessionPort, loadCatalog } from "./src/session/host.js"
@@ -68,11 +68,12 @@ export default Plugin.define({
       const handle = createOpenAiRoute({
         options,
         // Aliases written as a list retry the next target before the first output (src/fallback.ts).
-        caller: withFallbacks(createSessionCaller(callerDeps), {
+        // The response cache is outside the fallbacks: a hit never reaches a provider (src/cache.ts).
+        caller: withResponseCache(withFallbacks(createSessionCaller(callerDeps), {
           options,
           loadCatalog: servingCatalog,
           onFallback: options.metrics ? (app) => processMetrics().fallback(app) : undefined,
-        }),
+        }), options),
         loadCatalog: servingCatalog,
       })
       const registration = registerGeneration({

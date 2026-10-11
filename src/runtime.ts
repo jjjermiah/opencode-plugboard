@@ -48,7 +48,9 @@ import { setTimeout as delay } from "node:timers/promises"
 import { Cause, Effect, Stream } from "effect"
 import stableStringify from "safe-stable-stringify"
 import { raceAbort } from "./abort.js"
-import { isPlugError, type CatalogModel, type PlugError } from "./contract.js"
+import { cachedCaller, createCacheStore, type CacheStore } from "./cache.js"
+import type { PlugboardOptions } from "./config.js"
+import { isPlugError, type CatalogModel, type ModelCaller, type PlugError } from "./contract.js"
 import { errorMessage, log, logError, outsideRequest, setLogFormat } from "./log.js"
 import { createMetrics, type Metrics, type RuntimeSnapshot } from "./metrics.js"
 import { ensureAppDir } from "./session/history.js"
@@ -108,7 +110,7 @@ const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
 /** 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 8
+const VERSION = 9
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -160,6 +162,8 @@ interface Runtime {
   readonly metrics: Metrics
   /** When this runtime was created, epoch ms. */
   readonly startedAt: number
+  /** The response cache store (src/cache.ts) and the fingerprint of the config and `apps` policy it was built for. */
+  cache?: { readonly fingerprint: string; readonly store: CacheStore }
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
@@ -260,6 +264,32 @@ export const sessionStore = (): SessionStore => runtime()?.sessions ?? detachedS
 
 /** The metrics registry shared by every generation in the process (a detached one under a foreign-version runtime). */
 export const processMetrics = (): Metrics => runtime()?.metrics ?? detachedMetrics
+
+/**
+ * Wraps `caller` with the response cache when option `cache` is set (a no-op without it). The store
+ * lives on the runtime, so it survives plugin generations. It is replaced when the cache option or
+ * the `apps` policy differs from the one it was built for (the key does not cover policy). The store
+ * is resolved on the first call, not when the wrapper is built: a rejected generation is built too
+ * but never serves, and must not replace the live store. Under a foreign-version runtime the store
+ * is private to the wrapper.
+ */
+export function withResponseCache(caller: ModelCaller, options: PlugboardOptions): ModelCaller {
+  const config = options.cache
+  if (!config) return caller
+  let wrapped: ModelCaller | undefined
+  const build = (): ModelCaller => {
+    const rt = runtime()
+    const fingerprint = canonicalJson({ cache: config, apps: options.apps })
+    let held = rt?.cache
+    if (!held || held.fingerprint !== fingerprint) {
+      held = { fingerprint, store: createCacheStore({ ttlMs: config.ttlSeconds * 1000, maxEntries: config.maxEntries, maxBytes: config.maxBytes }) }
+      if (rt) rt.cache = held
+    }
+    const count = options.metrics ? (app: string, result: "hit" | "miss") => processMetrics().cache(app, result) : undefined
+    return cachedCaller(caller, config, held.store, count)
+  }
+  return { stream: (request, context) => (wrapped ??= build()).stream(request, context) }
+}
 
 /** What `/v1/status` and the discovery pages report about the process, besides the model catalog. */
 export interface RuntimeStatus extends RuntimeSnapshot {
