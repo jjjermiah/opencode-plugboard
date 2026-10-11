@@ -6,7 +6,7 @@ You logged in to ChatGPT, Claude, Copilot or OpenCode Go once, in OpenCode. Your
 
 OpenCode V2 has no such endpoint, and the V1 plugins that did this stopped working when the plugin API changed. Plugboard is V2 only. It was tested on OpenCode 2.0.26, and the peer range `>=2.0.26 <2.1` allows 2.0.x patch releases.
 
-Status: early (0.x), [published on npm](https://www.npmjs.com/package/opencode-plugboard). Chat Completions and the model list today. There is no `/v1/responses`, see [Known gaps](#known-gaps) and the [roadmap](#roadmap).
+Status: early (0.x), [published on npm](https://www.npmjs.com/package/opencode-plugboard). Chat Completions, the Responses API and the model list. `/v1/responses` is a stateless subset, see [docs/responses.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/responses.md).
 
 Docs: [architecture](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md), [development](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/development.md), [clients](#clients).
 
@@ -75,7 +75,7 @@ One short page per client, with a config snippet, a chat, a tool call, a structu
 | --- | --- | --- |
 | OpenAI Python SDK | [openai-python](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-python.md) | pass |
 | OpenAI JS SDK | [openai-js](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-js.md) | pass |
-| Vercel AI SDK | [vercel-ai-sdk](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/vercel-ai-sdk.md) | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `@ai-sdk/openai` call needs `/v1/responses` |
+| Vercel AI SDK | [vercel-ai-sdk](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/vercel-ai-sdk.md) | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `openai(id)` call works through `/v1/responses` (set `store: false` for multi-turn) |
 | LangChain Python | [langchain-python](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-python.md) | pass; `json_mode` on `fast` was unreliable |
 | LangChain JS | [langchain-js](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-js.md) | pass except `gpt-5.6*` ids, which force the Responses API, and `json_mode` on `fast` |
 | pydantic-ai | [pydantic-ai](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/pydantic-ai.md) | pass with `OpenAIChatModel` |
@@ -87,9 +87,9 @@ Each run drove the client's own SDK or API against a dev server at an earlier co
 
 ## Known gaps
 
-- **No `/v1/responses` yet.** Clients that default to the Responses API fail with `404 No route for POST /v1/responses`. That includes the Vercel AI SDK's `@ai-sdk/openai` default call (use `createOpenAICompatible` or `.chat(id)`), LangChain JS for `gpt-5.6*` ids, and n8n's "Use Responses API" option (turn it off).
+- **`/v1/responses` is stateless.** `previous_response_id`, `conversation`, `item_reference`, `background` and hosted tools return 400. See [docs/responses.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/responses.md).
 - Only `n=1`, no `logprobs`, no embeddings, audio or image generation.
-- No history pruning, no per-app concurrency limit.
+- No per-app concurrency limit yet ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54), [#86](https://github.com/jjjermiah/opencode-plugboard/issues/86)).
 
 ## Options
 
@@ -104,6 +104,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `aliases` | none | Map of alias to `provider/model[#variant]`. Each target must also pass `models`. |
 | `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
+| `history` | none (keep forever) | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app, `maxAgeDays` deletes older ones; with both, the stricter wins. |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). Off by default because it lets callers make the host request internal addresses; callers can always send `data:` URLs. |
 
 Changes to `listen` need a server restart; other option changes apply on config reload.
@@ -142,7 +143,7 @@ $XDG_DATA_HOME/opencode-plugboard/<app>/        # default ~/.local/share/opencod
 
 That directory only groups sessions: it is the `directory` a session is filed under. The prompts and replies are not stored in it. OpenCode keeps them in its own database, `opencode.db` in its data directory (`opencode debug paths` prints the exact location, and `OPENCODE_DB` can override it). So deleting, locking down or backing up the app directory removes, protects or saves no history. To back up, restrict or purge history, work on that database, or remove sessions through OpenCode ([`compat/tools/sessions.py`](https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/tools/sessions.py) does that for one app).
 
-In OpenCode the sessions appear as one group per app in the desktop and phone app home screen. In the TUI they are visible in the all-projects view (ctrl+a), not in a project's own list. Nothing deletes them yet ([pruning is a roadmap item](https://github.com/jjjermiah/opencode-plugboard/issues/8)).
+In OpenCode the sessions appear as one group per app in the desktop and phone app home screen. In the TUI they are visible in the all-projects view (ctrl+a), not in a project's own list. Set `history` to delete old ones: sweeps run on requests, at most every 10 minutes, in bounded batches, and never touch a running session. Only sessions created while a limit is set are pruned; remove older ones with `compat/tools/sessions.py`.
 
 OpenCode loads plugin hooks per directory, so plugboard has to be loaded in those app directories, which is why it needs the global config. Everywhere outside the data root it is inert: it only joins the shared listener and registers no hooks, tools or agent rules, so your real projects behave as before.
 
@@ -220,7 +221,7 @@ The model call sits behind one interface, `ModelCaller`, so a native backend can
 
 ## Roadmap
 
-Work is tracked in GitHub issues. The [v0.1 milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/1) lists what is needed before the first release, and the [later milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/2) holds the rest: the `/v1/responses`, `/v1/messages` and Gemini front-ends, agent mode, a native backend, history pruning and an upstream request to boot plugins at server start.
+Work is tracked in GitHub issues. The [v0.1 milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/1) lists what is needed before the first release, and the [later milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/2) holds the rest: the `/v1/messages` and Gemini front-ends, agent mode, a native backend, usage accounting, rate limits and an upstream request to boot plugins at server start.
 
 Not planned: V1 support, embeddings, audio, image generation.
 
