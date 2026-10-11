@@ -25,6 +25,38 @@ describe("#76 log lines", () => {
     expect(Date.parse(line.time)).not.toBeNaN()
   })
 
+  test("#126 json is pino's: level is a name, the base holds only the service, info goes to stdout", () => {
+    setLogFormat("json")
+    log("x", { time: "spoof", service: "spoof" })
+    const line = JSON.parse(logs.lines[0]!.raw)
+    expect(Object.keys(line).sort()).toEqual(["event", "level", "service", "time"])
+    expect(line).toMatchObject({ level: "info", service: "opencode-plugboard", event: "x" })
+    expect(Date.parse(line.time)).not.toBeNaN()
+    expect(logs.lines[0]!.level).toBe("log")
+  })
+
+  test.each(["text", "json"] as const)("#126 %s: credential fields are censored, at the top level and under headers", (format) => {
+    setLogFormat(format)
+    log("x", { authorization: "Bearer sk-1", "x-api-key": "sk-2", "x-goog-api-key": "sk-3", key: "sk-4", ok: true })
+    logError("y", { headers: undefined, Authorization: "Bearer sk-5" })
+    const text = logs.lines.map((line) => line.raw).join("\n")
+    expect(text).not.toMatch(/sk-\d/)
+    expect(text.match(/\[redacted\]/g)).toHaveLength(5)
+    expect(text).toContain("ok")
+  })
+
+  test("#126 a header object is censored too", () => {
+    setLogFormat("json")
+    log("x", { headers: { authorization: "Bearer sk-1", "x-api-key": "sk-2", accept: "a" } } as never)
+    expect(JSON.parse(logs.lines[0]!.raw).headers).toEqual({ authorization: "[redacted]", "x-api-key": "[redacted]", accept: "a" })
+  })
+
+  test("json carries the ambient request id too", () => {
+    setLogFormat("json")
+    withRequestId("req9", () => log("inside"))
+    expect(JSON.parse(logs.lines[0]!.raw)).toMatchObject({ event: "inside", id: "req9" })
+  })
+
   test("a line written while a request runs carries its id, across awaits; an explicit id wins", async () => {
     await withRequestId("req123", async () => {
       await Promise.resolve()

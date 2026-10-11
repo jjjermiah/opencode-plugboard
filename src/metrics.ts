@@ -1,7 +1,9 @@
 /**
- * Process metrics in the Prometheus text exposition format (version 0.0.4), hand-rolled: no
- * dependency, no I/O. One registry lives in the process runtime (`src/runtime.ts`), so counts
- * survive a plugin generation being replaced. `GET /metrics` renders it (opt-in, `metrics: true`).
+ * Process metrics in the Prometheus text exposition format (version 0.0.4), on @prometheus-io/client. No
+ * I/O. `createMetrics` makes one `Registry` of its own (the default global registry is never
+ * touched, and the default process metrics are never collected); the one the server uses lives
+ * in the process runtime (`src/runtime.ts`), so counts survive a plugin generation being
+ * replaced. `GET /metrics` renders it (opt-in, `metrics: true`).
  *
  * Labels are bounded by construction and carry ids only: `app` is a configured key name (or
  * `_none` before authentication succeeded), `route` is one of the known routes or `unknown`,
@@ -9,6 +11,7 @@
  * `src/openai/sampling.ts`. Never a model string, key, path or client-supplied text.
  */
 
+import { Counter, Gauge, Histogram, Registry } from "@prometheus-io/client"
 import type { PlugUsage } from "./contract.js"
 
 /** `app` label of a request that was not authenticated (app names cannot contain an underscore). */
@@ -41,70 +44,15 @@ export interface RuntimeSnapshot {
 /** Request duration buckets, seconds: model calls run from under a second to many minutes. */
 const BUCKETS = [0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600]
 
-const escapeLabel = (value: string): string => value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/"/g, '\\"')
-const escapeHelp = (value: string): string => value.replace(/\\/g, "\\\\").replace(/\n/g, "\\n")
-const labelText = (names: ReadonlyArray<string>, values: ReadonlyArray<string>): string =>
-  names.length === 0 ? "" : `{${names.map((name, index) => `${name}="${escapeLabel(values[index] ?? "")}"`).join(",")}}`
-
-class Counter {
-  private readonly series = new Map<string, { values: string[]; total: number }>()
-  constructor(
-    readonly name: string,
-    readonly help: string,
-    private readonly labels: ReadonlyArray<string>,
-  ) {}
-  add(values: ReadonlyArray<string>, amount = 1): void {
-    if (!(amount > 0) || !Number.isFinite(amount)) return
-    const key = values.join("\u0000")
-    const entry = this.series.get(key)
-    if (entry) entry.total += amount
-    else this.series.set(key, { values: [...values], total: amount })
-  }
-  render(): string[] {
-    const lines = [`# HELP ${this.name} ${escapeHelp(this.help)}`, `# TYPE ${this.name} counter`]
-    for (const { values, total } of this.series.values()) lines.push(`${this.name}${labelText(this.labels, values)} ${total}`)
-    return lines
-  }
+/** A counter that ignores zero, negative and non-finite amounts (@prometheus-io/client throws on the last two and would write a zero series for the first). */
+const count = <L extends string>(counter: Counter<L>, labels: Record<L, string>, amount = 1): void => {
+  // `Record<L, string>` is what `LabelValues<L>` means for a non-empty label list; its conditional type cannot resolve for a generic `L`.
+  if (amount > 0 && Number.isFinite(amount)) (counter as Counter<string>).inc(labels, amount)
 }
-
-class Histogram {
-  private readonly series = new Map<string, { values: string[]; counts: number[]; sum: number; count: number }>()
-  constructor(
-    readonly name: string,
-    readonly help: string,
-    private readonly labels: ReadonlyArray<string>,
-  ) {}
-  observe(values: ReadonlyArray<string>, seconds: number): void {
-    if (!(seconds >= 0) || !Number.isFinite(seconds)) return
-    const key = values.join("\u0000")
-    let entry = this.series.get(key)
-    if (!entry) this.series.set(key, (entry = { values: [...values], counts: BUCKETS.map(() => 0), sum: 0, count: 0 }))
-    BUCKETS.forEach((bound, index) => {
-      if (seconds <= bound) entry.counts[index]! += 1
-    })
-    entry.sum += seconds
-    entry.count += 1
-  }
-  render(): string[] {
-    const lines = [`# HELP ${this.name} ${escapeHelp(this.help)}`, `# TYPE ${this.name} histogram`]
-    for (const { values, counts, sum, count } of this.series.values()) {
-      const names = [...this.labels, "le"]
-      BUCKETS.forEach((bound, index) => lines.push(`${this.name}_bucket${labelText(names, [...values, String(bound)])} ${counts[index]}`))
-      lines.push(`${this.name}_bucket${labelText(names, [...values, "+Inf"])} ${count}`)
-      lines.push(`${this.name}_sum${labelText(this.labels, values)} ${sum}`)
-      lines.push(`${this.name}_count${labelText(this.labels, values)} ${count}`)
-    }
-    return lines
-  }
-}
-
-const gauge = (name: string, help: string, value: number): string[] => [
-  `# HELP ${name} ${escapeHelp(help)}`,
-  `# TYPE ${name} gauge`,
-  `${name} ${value}`,
-]
 
 export interface Metrics {
+  /** The `Content-Type` of `render`'s text, as the registry reports it. */
+  readonly contentType: string
   /** A request entered the handler. Pair with `requestFinished`. */
   requestStarted(): void
   requestFinished(input: { readonly app: string; readonly route: string; readonly status: number; readonly outcome: Outcome; readonly ms: number }): void
@@ -117,65 +65,95 @@ export interface Metrics {
   /** One history sweep ended. */
   sweep(result: "ok" | "failed" | "timeout", removed: number): void
   /** The exposition text. Called from a request that is itself in flight, which is not counted. */
-  render(snapshot: RuntimeSnapshot): string
+  render(snapshot: RuntimeSnapshot): Promise<string>
 }
 
 export function createMetrics(): Metrics {
   let inFlight = 0
-  const requests = new Counter("plugboard_requests_total", "Requests handled, by app, route, response status and outcome.", ["app", "route", "status", "outcome"])
-  const duration = new Histogram("plugboard_request_duration_seconds", "Time from request start to the end of the response, by app and route.", ["app", "route"])
-  const tokens = new Counter(
-    "plugboard_tokens_total",
-    "Tokens of completed model calls, by app and kind. Kinds do not overlap: input is uncached prompt tokens, cache_read and cache_write are cached prompt tokens, output excludes reasoning.",
-    ["app", "kind"],
-  )
-  const dropped = new Counter("plugboard_dropped_params_total", "Sampling parameters dropped because the target model rejects them, by parameter.", ["param"])
-  const fallbacks = new Counter("plugboard_fallbacks_total", "Model calls retried on the next target of an alias after a failure before any output, by app.", ["app"])
-  const sweeps = new Counter("plugboard_history_sweeps_total", "History sweeps that ended, by result.", ["result"])
-  const removed = new Counter("plugboard_history_sessions_removed_total", "Request sessions removed by history sweeps.", [])
+  const registry = new Registry()
+  // Registration order is the order of the exposition text.
+  const requests = new Counter({
+    name: "plugboard_requests_total",
+    help: "Requests handled, by app, route, response status and outcome.",
+    labelNames: ["app", "route", "status", "outcome"],
+    registers: [registry],
+  })
+  const duration = new Histogram({
+    name: "plugboard_request_duration_seconds",
+    help: "Time from request start to the end of the response, by app and route.",
+    labelNames: ["app", "route"],
+    buckets: BUCKETS,
+    registers: [registry],
+  })
+  const inFlightGauge = new Gauge({ name: "plugboard_requests_in_flight", help: "Requests being handled right now, not counting this scrape.", registers: [registry] })
+  const tokens = new Counter({
+    name: "plugboard_tokens_total",
+    help: "Tokens of completed model calls, by app and kind. Kinds do not overlap: input is uncached prompt tokens, cache_read and cache_write are cached prompt tokens, output excludes reasoning.",
+    labelNames: ["app", "kind"],
+    registers: [registry],
+  })
+  const dropped = new Counter({
+    name: "plugboard_dropped_params_total",
+    help: "Sampling parameters dropped because the target model rejects them, by parameter.",
+    labelNames: ["param"],
+    registers: [registry],
+  })
+  const fallbacks = new Counter({
+    name: "plugboard_fallbacks_total",
+    help: "Model calls retried on the next target of an alias after a failure before any output, by app.",
+    labelNames: ["app"],
+    registers: [registry],
+  })
+  const sweeps = new Counter({ name: "plugboard_history_sweeps_total", help: "History sweeps that ended, by result.", labelNames: ["result"], registers: [registry] })
+  const removed = new Counter({ name: "plugboard_history_sessions_removed_total", help: "Request sessions removed by history sweeps.", registers: [registry] })
+  const generations = new Gauge({ name: "plugboard_generations", help: "Accepted plugin generations (one per OpenCode Location) serving requests.", registers: [registry] })
+  const pumpUp = new Gauge({
+    name: "plugboard_event_pump_up",
+    help: "1 while the event pump is subscribed to the OpenCode event bus, else 0 (it starts with the first request).",
+    registers: [registry],
+  })
+  const guards = new Gauge({
+    name: "plugboard_session_guards",
+    help: "Request guards outstanding: request sessions plugboard still owns, including ones whose response has ended.",
+    registers: [registry],
+  })
+  const startTime = new Gauge({ name: "plugboard_start_time_seconds", help: "Start of the plugboard runtime in this process, Unix time.", registers: [registry] })
 
   return {
+    contentType: registry.contentType,
     requestStarted: () => void inFlight++,
     requestFinished({ app, route, status, outcome, ms }) {
       inFlight = Math.max(0, inFlight - 1)
-      requests.add([app, route, String(status), outcome])
-      duration.observe([app, route], ms / 1000)
+      count(requests, { app, route, status: String(status), outcome })
+      const seconds = ms / 1000
+      if (seconds >= 0 && Number.isFinite(seconds)) duration.observe({ app, route }, seconds)
     },
     tokens(app, usage) {
       const cacheRead = usage.cacheReadTokens ?? 0
       const cacheWrite = usage.cacheWriteTokens ?? 0
       const reasoning = usage.reasoningTokens ?? 0
-      tokens.add([app, "input"], Math.max(0, (usage.inputTokens ?? 0) - cacheRead - cacheWrite))
-      tokens.add([app, "cache_read"], cacheRead)
-      tokens.add([app, "cache_write"], cacheWrite)
-      tokens.add([app, "output"], Math.max(0, (usage.outputTokens ?? 0) - reasoning))
-      tokens.add([app, "reasoning"], reasoning)
+      count(tokens, { app, kind: "input" }, Math.max(0, (usage.inputTokens ?? 0) - cacheRead - cacheWrite))
+      count(tokens, { app, kind: "cache_read" }, cacheRead)
+      count(tokens, { app, kind: "cache_write" }, cacheWrite)
+      count(tokens, { app, kind: "output" }, Math.max(0, (usage.outputTokens ?? 0) - reasoning))
+      count(tokens, { app, kind: "reasoning" }, reasoning)
     },
     dropped(params) {
-      for (const param of params) dropped.add([param])
+      for (const param of params) count(dropped, { param })
     },
-    fallback: (app) => fallbacks.add([app]),
-    sweep(result, count) {
-      sweeps.add([result])
-      removed.add([], count)
+    fallback: (app) => count(fallbacks, { app }),
+    sweep(result, amount) {
+      count(sweeps, { result })
+      if (amount > 0 && Number.isFinite(amount)) removed.inc(amount)
     },
     render(snapshot) {
-      const lines = [
-        ...requests.render(),
-        ...duration.render(),
-        // The scrape itself is in flight; do not report it.
-        ...gauge("plugboard_requests_in_flight", "Requests being handled right now, not counting this scrape.", Math.max(0, inFlight - 1)),
-        ...tokens.render(),
-        ...dropped.render(),
-        ...fallbacks.render(),
-        ...sweeps.render(),
-        ...removed.render(),
-        ...gauge("plugboard_generations", "Accepted plugin generations (one per OpenCode Location) serving requests.", snapshot.generations),
-        ...gauge("plugboard_event_pump_up", "1 while the event pump is subscribed to the OpenCode event bus, else 0 (it starts with the first request).", snapshot.pumpRunning ? 1 : 0),
-        ...gauge("plugboard_session_guards", "Request guards outstanding: request sessions plugboard still owns, including ones whose response has ended.", snapshot.guards),
-        ...gauge("plugboard_start_time_seconds", "Start of the plugboard runtime in this process, Unix time.", Math.floor(snapshot.startedAt / 1000)),
-      ]
-      return lines.join("\n") + "\n"
+      // The scrape itself is in flight; do not report it.
+      inFlightGauge.set(Math.max(0, inFlight - 1))
+      generations.set(snapshot.generations)
+      pumpUp.set(snapshot.pumpRunning ? 1 : 0)
+      guards.set(snapshot.guards)
+      startTime.set(Math.floor(snapshot.startedAt / 1000))
+      return registry.metrics()
     },
   }
 }

@@ -107,13 +107,13 @@ describe("#73 renderDiscoveryHtml", () => {
 })
 
 describe("#56 buildStatus", () => {
-  const runtime = { runtimeVersion: 6, generations: 2, pumpRunning: true, guards: 3, startedAt: Date.UTC(2026, 9, 11), servingConfirmed: true, listener: { host: "127.0.0.1", port: 4010, bound: true } }
+  const runtime = { runtimeVersion: 8, generations: 2, pumpRunning: true, guards: 3, startedAt: Date.UTC(2026, 9, 11), servingConfirmed: true, listener: { host: "127.0.0.1", port: 4010, bound: true } }
 
   test("runtime facts, uptime and model counts for the authenticated app", () => {
     expect(buildStatus({ options: testOptions({ metrics: true }), app: "alpha", runtime, catalog: CATALOG, now: Date.UTC(2026, 9, 11, 0, 1, 30) })).toEqual({
       ok: true,
       app: "alpha",
-      runtimeVersion: 6,
+      runtimeVersion: 8,
       startedAt: "2026-10-11T00:00:00.000Z",
       uptimeSeconds: 90,
       listen: { host: "127.0.0.1", port: 4010, bound: true },

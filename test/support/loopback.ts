@@ -175,7 +175,7 @@ export interface RouteServer extends Loopback {
 }
 
 /** The runtime facts `/v1/status` and `/metrics` report, fixed for tests (the real ones come from src/runtime.ts). */
-export const TEST_STATUS: RuntimeStatus = { runtimeVersion: 6, generations: 1, pumpRunning: false, guards: 0, startedAt: Date.UTC(2026, 9, 11), servingConfirmed: false }
+export const TEST_STATUS: RuntimeStatus = { runtimeVersion: 8, generations: 1, pumpRunning: false, guards: 0, startedAt: Date.UTC(2026, 9, 11), servingConfirmed: false }
 
 export interface RouteSetup {
   readonly caller: ModelCaller
