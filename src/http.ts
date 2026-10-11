@@ -49,9 +49,9 @@ export interface RequestScope {
 
 /**
  * Establishes cancellation and the deadline. Call before the first `await` of a request: a socket
- * that is already gone aborts immediately, so abandoned work never starts.
+ * that is already gone aborts immediately, so abandoned work never starts. `graceMs` is for tests.
  */
-export function beginRequest(request: IncomingMessage, response: ServerResponse, timeoutMs: number): RequestScope {
+export function beginRequest(request: IncomingMessage, response: ServerResponse, timeoutMs: number, graceMs = DEADLINE_GRACE_MS): RequestScope {
   const controller = new AbortController()
   const abort = (kind: RequestAborted["kind"]) => {
     if (!controller.signal.aborted) controller.abort(new RequestAborted(kind))
@@ -68,7 +68,7 @@ export function beginRequest(request: IncomingMessage, response: ServerResponse,
     graceTimer = setTimeout(() => {
       response.destroy()
       request.socket?.destroy()
-    }, DEADLINE_GRACE_MS)
+    }, graceMs)
     graceTimer.unref?.()
   }
   timer = setTimeout(onDeadline, Math.min(Math.max(timeoutMs, 1), MAX_TIMER_MS))
