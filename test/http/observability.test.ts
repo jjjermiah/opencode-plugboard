@@ -149,6 +149,6 @@ describe("#56 GET /metrics", () => {
   test("off: the route records no metrics at all", async () => {
     await route()
     await server!.send(chat)
-    expect(server!.metrics.render(TEST_STATUS)).not.toContain("plugboard_requests_total{")
+    expect(await server!.metrics.render(TEST_STATUS)).not.toContain("plugboard_requests_total{")
   })
 })

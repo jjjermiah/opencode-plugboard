@@ -192,7 +192,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     if (route === "GET /metrics" && metrics) {
-      return sendText(response, 200, "text/plain; version=0.0.4; charset=utf-8", metrics.render(runtimeStatus()))
+      return sendText(response, 200, metrics.contentType, await metrics.render(runtimeStatus()))
     }
 
     if (route === "GET /v1/models" || modelId !== undefined) {
