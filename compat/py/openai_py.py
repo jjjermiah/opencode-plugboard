@@ -13,7 +13,7 @@ from openai import OpenAI
 from pydantic import BaseModel, ConfigDict
 
 BASE = os.environ.get("PLUGBOARD_BASE_URL", "http://127.0.0.1:4010/v1")
-KEY = os.environ.get("PLUGBOARD_KEY") or (Path.home() / ".cache/opencode-adapter-dev/.compat-key").read_text().strip()
+KEY = os.environ["PLUGBOARD_KEY"]
 FIX = Path(__file__).resolve().parent.parent / "fixtures"
 
 FAST, CLAUDE, GPT = "fast", "anthropic/claude-haiku-4-5", "openai/gpt-5.6-luna#low"

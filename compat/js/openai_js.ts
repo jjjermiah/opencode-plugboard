@@ -1,13 +1,13 @@
 // OpenAI JS SDK vs plugboard, scenarios S1-S7 + extras. Run: cd compat/js && bun openai_js.ts [S1,S2,...]
-// Env: PLUGBOARD_BASE_URL, PLUGBOARD_KEY (optional).
+// Env: PLUGBOARD_BASE_URL (default http://127.0.0.1:4010/v1), PLUGBOARD_KEY (required).
 import OpenAI from "openai"
 import { zodResponseFormat } from "openai/helpers/zod"
 import { z } from "zod"
-import { homedir } from "node:os"
 import { readFileSync } from "node:fs"
 
 const baseURL = process.env.PLUGBOARD_BASE_URL ?? "http://127.0.0.1:4010/v1"
-const apiKey = process.env.PLUGBOARD_KEY ?? readFileSync(`${homedir()}/.cache/opencode-adapter-dev/.compat-key`, "utf8").trim()
+const apiKey = process.env.PLUGBOARD_KEY
+if (!apiKey) throw new Error("set PLUGBOARD_KEY")
 const fx = (f: string) => readFileSync(new URL(`../fixtures/${f}`, import.meta.url), "utf8")
 const client = new OpenAI({ baseURL, apiKey, maxRetries: 0 })
 

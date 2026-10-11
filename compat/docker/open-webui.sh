@@ -1,33 +1,43 @@
 #!/usr/bin/env bash
-# Open WebUI 0.12.0 against plugboard, as run on 2026-10-11 (colima Docker). Not meant to be run top to bottom unattended;
-# it is the exact command log, grouped by step. Run from the plugboard repo root. Never prints the key.
+# Open WebUI 0.12.0 against plugboard, as run on 2026-10-11. Not meant to be run top to bottom unattended;
+# it is the command log, grouped by step. Run from the plugboard repo root. Never prints the key.
+#
+# Env: PLUGBOARD_KEY (required), PLUGBOARD_PORT (plugboard port, default 4010),
+#      DOCKER_HOST_NAME (how a container reaches this machine, default host.docker.internal),
+#      LOGPROXY_HOST (interface the capture proxy binds, default 127.0.0.1; see compat/docker/README.md).
+# Captured traffic in compat/traffic/ is sensitive (prompts, responses, tool arguments). Do not commit or share it.
 set -u
-KEY_FILE=~/.cache/opencode-adapter-dev/.compat-key
-LOGPROXY_PORT=4091          # pick a port no other agent uses
-OWUI_PORT=3091              # host port for Open WebUI (n8n agent uses 5678)
+: "${PLUGBOARD_KEY:?set PLUGBOARD_KEY}"
+PLUGBOARD_PORT=${PLUGBOARD_PORT:-4010}
+DOCKER_HOST_NAME=${DOCKER_HOST_NAME:-host.docker.internal}
+LOGPROXY_HOST=${LOGPROXY_HOST:-127.0.0.1}
+LOGPROXY_PORT=4091          # pick a free port
+export OWUI_PORT=3091       # host port for Open WebUI, bound to 127.0.0.1
+IMAGE=ghcr.io/open-webui/open-webui:0.12.0
 CT=plugboard-compat-owui
 TD=${TMPDIR:-/tmp}          # scratch for the token and helper script
 
-# 0. Container -> host reachability (all three worked under colima)
-for h in host.lima.internal 10.0.1.103 host.docker.internal; do
-  docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl -s -m 5 http://$h:4010/healthz; echo
-done
+# 0. Container -> host reachability
+docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl -s -m 5 "http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/healthz"; echo   # after step 2
 
-# 1. Pull (5.76 GB on disk)
-docker pull ghcr.io/open-webui/open-webui:main
+# 1. Pull (several GB)
+docker pull $IMAGE
 
-# 2. logproxy between Open WebUI and plugboard. Must bind 0.0.0.0 so the container can reach it (default is 127.0.0.1).
-python3 compat/tools/logproxy.py --host 0.0.0.0 --port $LOGPROXY_PORT --out compat/traffic/open-webui.jsonl &
-docker run --rm curlimages/curl -s -m 5 http://host.lima.internal:$LOGPROXY_PORT/healthz   # {"ok":true}
+# 2. logproxy between Open WebUI and plugboard. Plugboard on loopback is not reachable from a container on Linux,
+#    so LOGPROXY_HOST may need to be the docker bridge address or 0.0.0.0. Anything that can reach the proxy can reuse the
+#    key it forwards: bind it to 0.0.0.0 only on a machine you trust, and stop it when done.
+python3 compat/tools/logproxy.py --host "$LOGPROXY_HOST" --port $LOGPROXY_PORT --upstream "http://127.0.0.1:$PLUGBOARD_PORT" --out compat/traffic/open-webui.jsonl &
+docker run --rm --add-host host.docker.internal:host-gateway curlimages/curl -s -m 5 "http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/healthz"   # {"ok":true}
 
 # 3. Open WebUI, pointed at the logproxy (not at 4010 directly). WEBUI_AUTH=False = single user.
 docker volume rm $CT 2>/dev/null
-docker run -d --name $CT -p $OWUI_PORT:8080 \
-  -e OPENAI_API_BASE_URL=http://host.lima.internal:$LOGPROXY_PORT/v1 \
-  -e OPENAI_API_KEY="$(cat $KEY_FILE)" \
+docker run -d --name $CT -p 127.0.0.1:$OWUI_PORT:8080 \
+  --add-host host.docker.internal:host-gateway \
+  -e OPENAI_API_BASE_URL=http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/v1 \
+  -e OPENAI_API_KEY="$PLUGBOARD_KEY" \
   -e ENABLE_OLLAMA_API=false -e WEBUI_AUTH=False -e WEBUI_SECRET_KEY=compat-test \
   -v $CT:/app/backend/data \
-  ghcr.io/open-webui/open-webui:main
+  $IMAGE
 until curl -s -m 3 localhost:$OWUI_PORT/health; do sleep 5; done; echo     # {"status":true} after ~25 s
 curl -s localhost:$OWUI_PORT/api/version                                    # {"version":"0.12.0",...}
 
@@ -44,7 +54,7 @@ import json; m=json.load(open('$TD/models.json'))['data']; ids=[x['id'] for x in
 print(len(ids), len(set(ids)), [i for i in ids if i in ('fast','anthropic/claude-haiku-4-5','openai/gpt-5.6-luna#low')])"
 # Connection verify button (also the wrong-key path): POST /openai/verify
 curl -s -X POST localhost:$OWUI_PORT/openai/verify -H "Authorization: Bearer $T" -H 'content-type: application/json' \
-  -d "{\"url\":\"http://host.lima.internal:$LOGPROXY_PORT/v1\",\"key\":\"wrongkey\"}"
+  -d "{\"url\":\"http://$DOCKER_HOST_NAME:$LOGPROXY_PORT/v1\",\"key\":\"wrongkey\"}"
 
 # 6. S1 non-stream through the Open WebUI API (plain passthrough, no chat record, no aux calls)
 curl -s -m 120 localhost:$OWUI_PORT/api/chat/completions -H "Authorization: Bearer $T" -H 'content-type: application/json' \
@@ -63,7 +73,7 @@ cat > $TD/owui_chat.py <<'PY'
 #!/usr/bin/env python3
 # usage: owui_chat.py MODEL PROMPT [--tools id1,id2] [--params '{"function_calling":"legacy"}'] [--noaux] [--image dataurlfile]
 import json, time, uuid, urllib.request, urllib.error, argparse, os, sys
-BASE = "http://localhost:3091"
+BASE = "http://localhost:" + os.environ.get("OWUI_PORT", "3091")
 TOK = open(os.path.dirname(os.path.abspath(__file__)) + "/owui.tok").read().strip()
 def call(method, path, body=None):
     req = urllib.request.Request(BASE + path, method=method, data=json.dumps(body).encode() if body is not None else None,
@@ -167,4 +177,4 @@ jq -c '{path,status,model:.req_json.model,stream:.req_json.stream,keys:(.req_jso
 
 # 14. Cleanup (image kept)
 docker stop $CT && docker rm $CT && docker volume rm $CT
-pkill -f "logproxy.py --host 0.0.0.0 --port $LOGPROXY_PORT"
+pkill -f "logproxy.py --host $LOGPROXY_HOST --port $LOGPROXY_PORT"

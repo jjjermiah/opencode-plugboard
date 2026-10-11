@@ -8,6 +8,12 @@ JSONL file as one object: {t, method, path, req_headers, req_body, status, resp_
 Authorization is redacted. SSE and chunked responses are streamed through unbuffered and logged whole.
 `req_body` / `resp_body` are strings (parsed into JSON under `req_json` / `resp_json` when possible).
 Read it with: jq -c '{path,status,req_json,resp_body}' compat/traffic/<client>.jsonl
+
+Captures are sensitive. Only the Authorization header is redacted; prompts, responses, tool arguments and other
+headers (cookies, API keys in custom headers) are logged as sent. The file is created with mode 600 and compat/traffic/
+is gitignored. Do not commit or paste captures; quote synthetic excerpts in results instead.
+
+The upstream must be plain HTTP (http://host:port). HTTPS upstreams are rejected rather than silently sent in clear text.
 """
 import argparse, http.client, json, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,7 +47,7 @@ def make_handler(up, out):
             t0 = time.time()
             body = self._read_body()
             hdrs = {k: v for k, v in self.headers.items() if k.lower() not in HOP and k.lower() != "host"}
-            conn = http.client.HTTPConnection(up.hostname, up.port, timeout=900)
+            conn = http.client.HTTPConnection(up.hostname, up.port or 80, timeout=900)
             try:
                 conn.request(self.command, self.path, body=body or None, headers=hdrs)
                 r = conn.getresponse()
@@ -95,10 +101,14 @@ def main():
     ap.add_argument("--upstream", default="http://127.0.0.1:4010")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
+    up = urllib.parse.urlparse(a.upstream)
+    if up.scheme != "http" or not up.hostname:
+        sys.exit(f"--upstream must be an http:// URL (got {a.upstream!r}); logproxy does not speak HTTPS")
     out = Path(a.out or Path(__file__).resolve().parents[1] / "traffic" / f"{int(time.time())}.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
+    out.touch(mode=0o600)
     print(f"logproxy {a.host}:{a.port} -> {a.upstream}, logging to {out}", file=sys.stderr, flush=True)
-    ThreadingHTTPServer((a.host, a.port), make_handler(urllib.parse.urlparse(a.upstream), out)).serve_forever()
+    ThreadingHTTPServer((a.host, a.port), make_handler(up, out)).serve_forever()
 
 
 if __name__ == "__main__":

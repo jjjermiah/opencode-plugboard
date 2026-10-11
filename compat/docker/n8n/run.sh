@@ -1,43 +1,52 @@
 #!/usr/bin/env bash
-# Drive n8n (Docker, colima) against plugboard, headless. Run from anywhere.
+# Drive n8n 2.42.6 (Docker) against plugboard, headless. Run from anywhere.
 #   ./run.sh up        start logproxy + n8n, create owner + API key + credential, import + activate workflows
 #   ./run.sh scenarios run S1..S7 (+extras) through webhooks, print answers and the plugboard-side HTTP status
 #   ./run.sh down      stop/remove container + volume, stop logproxy (image kept)
 #   ./run.sh all       up, scenarios, down
-# Needs: docker (colima), python3, curl. Reads the compat key from ~/.cache/opencode-adapter-dev/.compat-key.
+# Needs: docker, python3, curl.
+# Env: PLUGBOARD_KEY (required), PLUGBOARD_PORT (default 4010), DOCKER_HOST_NAME (how a container reaches this machine,
+#      default host.docker.internal), LOGPROXY_HOST (interface the capture proxy binds, default 127.0.0.1; see compat/docker/README.md).
+# Captured traffic in compat/traffic/ and the files under $STATE hold the key and prompts. Do not commit or share them.
 set -euo pipefail
-export PATH="$HOME/.pixi/bin:$PATH"
+umask 077
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 STATE="${TMPDIR:-/tmp}/plugboard-compat-n8n"            # cookie jar, API key, credential id (never committed)
 CONTAINER=plugboard-compat-n8n
 VOLUME=plugboard-compat-n8n
-N8N_PORT=5678
-PROXY_PORT=4093                                          # logproxy in front of plugboard :4010
+IMAGE=docker.n8n.io/n8nio/n8n:2.42.6
+N8N_PORT=5678                                            # bound to 127.0.0.1
+PROXY_PORT=4093                                          # logproxy in front of plugboard
+PLUGBOARD_PORT="${PLUGBOARD_PORT:-4010}"
+DOCKER_HOST_NAME="${DOCKER_HOST_NAME:-host.docker.internal}"
+LOGPROXY_HOST="${LOGPROXY_HOST:-127.0.0.1}"
 TRAFFIC="$REPO/compat/traffic/n8n.jsonl"
-KEY="$(cat "$HOME/.cache/opencode-adapter-dev/.compat-key")"
+KEY="${PLUGBOARD_KEY:?set PLUGBOARD_KEY}"
 N8N="http://127.0.0.1:$N8N_PORT"
-# Container -> Mac: host.docker.internal needs --add-host on colima. host.lima.internal and 10.0.1.103 also resolve (checked).
-CRED_URL="http://host.docker.internal:$PROXY_PORT/v1"
+# Container -> host: --add-host maps host.docker.internal where Docker does not already provide it.
+CRED_URL="http://$DOCKER_HOST_NAME:$PROXY_PORT/v1"
 OWNER_EMAIL=compat@example.com
 OWNER_PW='Compat-Test-1234'
 mkdir -p "$STATE" "$REPO/compat/traffic"
 
 up() {
-  # 1. logproxy on 0.0.0.0 so the container can reach it
+  # 1. logproxy. A container on Linux cannot reach plugboard on loopback, so LOGPROXY_HOST may need to be the docker bridge
+  #    address or 0.0.0.0. Anything that can reach the proxy can reuse the key it forwards: widen it only on a trusted machine.
   if ! curl -fs "http://127.0.0.1:$PROXY_PORT/healthz" >/dev/null; then
-    nohup python3 "$REPO/compat/tools/logproxy.py" --host 0.0.0.0 --port "$PROXY_PORT" --out "$TRAFFIC" \
+    nohup python3 "$REPO/compat/tools/logproxy.py" --host "$LOGPROXY_HOST" --port "$PROXY_PORT" \
+      --upstream "http://127.0.0.1:$PLUGBOARD_PORT" --out "$TRAFFIC" \
       >"$STATE/logproxy.log" 2>&1 &
     sleep 1
   fi
-  # 2. n8n (2.42.6 as of 2026-10-11)
-  docker pull docker.n8n.io/n8nio/n8n:latest
-  docker run -d --name "$CONTAINER" -p "$N8N_PORT:5678" \
+  # 2. n8n
+  docker pull "$IMAGE"
+  docker run -d --name "$CONTAINER" -p "127.0.0.1:$N8N_PORT:5678" \
     --add-host host.docker.internal:host-gateway \
-    -e N8N_SECURE_COOKIE=false -e GENERIC_TIMEZONE=America/Toronto \
+    -e N8N_SECURE_COOKIE=false -e GENERIC_TIMEZONE=UTC \
     -e N8N_DIAGNOSTICS_ENABLED=false -e N8N_PERSONALIZATION_ENABLED=false \
-    -v "$VOLUME:/home/node/.n8n" docker.n8n.io/n8nio/n8n:latest
+    -v "$VOLUME:/home/node/.n8n" "$IMAGE"
   until curl -fs "$N8N/healthz" >/dev/null; do sleep 2; done
   sleep 5
   # 3. owner (first-run setup endpoint), login, public-API key with workflow/credential/execution scopes
@@ -150,7 +159,7 @@ down() {
   docker stop "$CONTAINER" >/dev/null 2>&1 || true
   docker rm "$CONTAINER" >/dev/null 2>&1 || true
   docker volume rm "$VOLUME" >/dev/null 2>&1 || true
-  pkill -f "logproxy.py --host 0.0.0.0 --port $PROXY_PORT" || true
+  pkill -f "logproxy.py --host $LOGPROXY_HOST --port $PROXY_PORT" || true
   rm -rf "$STATE"
 }
 

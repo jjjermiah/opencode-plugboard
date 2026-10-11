@@ -5,7 +5,7 @@
 - Env: docker via colima (`docker info` OK). Container `plugboard-compat-owui`, host port 3091, `WEBUI_AUTH=False`, `ENABLE_OLLAMA_API=false`. Open WebUI pointed at a logproxy on `0.0.0.0:4091` (`compat/traffic/open-webui.jsonl`, 32 chat requests + 3 model-list fetches), which forwards to plugboard `:4010`.
 - Plugboard commit: `f351307` when testing started (HEAD read `85e5027` at the end; no plugboard source change was visible to me mid-run, no transient failures seen)
 - Verdict (README gate = S1 and S2 pass): **PASS**
-- Driven over HTTP only (no browser): `POST /api/v1/auths/signin` for a token, `/api/models`, `/api/chat/completions`, plus `/api/v1/chats/new` to emulate the frontend so the server-side title/tags/follow-up tasks fire. Commands: `compat/docker/open-webui.sh`. Container reachability: `host.lima.internal:4010`, `10.0.1.103:4010` and `host.docker.internal:4010` (with `--add-host ...:host-gateway`) all returned `{"ok":true}` from a throwaway container; I used `host.lima.internal`.
+- Driven over HTTP only (no browser): `POST /api/v1/auths/signin` for a token, `/api/models`, `/api/chat/completions`, plus `/api/v1/chats/new` to emulate the frontend so the server-side title/tags/follow-up tasks fire. Commands: `compat/docker/open-webui.sh`. Container reachability: the host name for the machine and `host.docker.internal:4010` (with `--add-host ...:host-gateway`) both returned `{"ok":true}` from a throwaway container.
 
 ## Scenarios
 

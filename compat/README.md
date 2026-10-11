@@ -1,110 +1,93 @@
-# Plugboard client-compat kit
+# Client compatibility kit
 
-Shared setup for checking one OpenAI client at a time against a live plugboard (release gate D5). Each client agent
-tests **one** client, runs scenarios S1 to S7, writes `compat/results/<client>.md`. Nothing to install or discover.
+Scripts, fixtures and dated results for checking one OpenAI client at a time against a running plugboard. The results in `results/` are what the [client pages](../docs/clients/) are built from. Run it against an isolated server, not your everyday OpenCode: see [docs/development.md](../docs/development.md).
 
-## Endpoint and auth
+## Setup
 
-| | |
-|---|---|
-| Base URL (this Mac) | `http://127.0.0.1:4010/v1` |
-| Base URL (Docker container) | `http://host.docker.internal:4010/v1` (add `--add-host host.docker.internal:host-gateway`), or `http://10.0.1.103:4010/v1` |
-| Health | `GET http://127.0.0.1:4010/healthz` returns `{"ok":true}` |
-| Key | file `~/.cache/opencode-adapter-dev/.compat-key` (mode 600). Header `Authorization: Bearer <key>`. App name `compat` |
-| Env vars the kit scripts read | `PLUGBOARD_BASE_URL`, `PLUGBOARD_KEY` (both optional; defaults above) |
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `PLUGBOARD_BASE_URL` | `http://127.0.0.1:4010/v1` | Plugboard endpoint |
+| `PLUGBOARD_KEY` | none, required | A key from the plugboard `keys` option. The scripts use the app name `compat` in the examples |
+| `PLUGBOARD_OC` | `opencode` | CLI command for `tools/sessions.py` |
+| `PLUGBOARD_DATA_ROOT` | `$XDG_DATA_HOME/opencode-plugboard` | History root, for `tools/sessions.py` |
 
-Load the key without printing it: `export PLUGBOARD_KEY=$(cat ~/.cache/opencode-adapter-dev/.compat-key)`.
-Do **not** paste the key into result files. The dev OpenCode server is an isolated instance (`~/.cache/opencode-adapter-dev/oc`), not the user's real OpenCode.
+Load the key without printing it, and keep it out of result files. `GET /healthz` returns `{"ok":true}` when the listener is up.
 
-## Models (all verified allowed and answering on 2026-10-11)
+The scripts assume these ids are on the `models` allowlist:
 
-| Use | Model id | Notes |
-|---|---|---|
-| Default for every scenario | `fast` | alias for `opencode-go/glm-5.3-flash`; fast, cheap, reasons a little (reasoning tokens in usage) |
-| Claude spot check | `anthropic/claude-haiku-4-5` | run S2, S5, S6 on it |
-| ChatGPT spot check | `openai/gpt-5.6-luna#low` | ChatGPT models need a variant; `#` is part of the id. Run S2, S6 on it |
+| Use | Model id |
+| --- | --- |
+| Default for every scenario | `fast`, an alias for a cheap model of your choice |
+| Claude spot check | `anthropic/claude-haiku-4-5` |
+| ChatGPT spot check | `openai/gpt-5.6-luna#low` (ChatGPT models need a variant; `#` is part of the id) |
 
-`GET /v1/models` lists 458 ids (every variant is its own entry, e.g. `anthropic/claude-haiku-4-5#high`). Each entry
-carries an extra `plugboard` object (`capabilities`, `contextLimit`); strict clients must tolerate it.
-Known oddity already seen: about 71 ids appear twice in the list (e.g. `openai/gpt-5.6-luna`). Report if your client breaks on duplicates or on `created: 0`.
+Change the constants at the top of each script if your allowlist differs.
 
-## Fixtures (`compat/fixtures/`)
+## Fixtures
 
 | File | Content |
-|---|---|
-| `red32.dataurl.txt` | `data:image/png;base64,...` of a solid red 32x32 PNG (`red32.png` is the raw file) |
-| `get_weather.tool.json` | OpenAI tool object: `get_weather(city: string)`, `city` required |
-| `get_weather.result.json` | tool result to feed back: `{"temp_c":18,"sky":"cloudy"}` |
-| `meal_estimate.json_schema.json` | `{name, strict, schema}` for `response_format.json_schema`: object `calories` (number), `protein_g` (number), both required, `additionalProperties:false` |
+| --- | --- |
+| `fixtures/red32.dataurl.txt` | `data:image/png;base64,...` of a solid red 32x32 PNG (`red32.png` is the raw file) |
+| `fixtures/get_weather.tool.json` | OpenAI tool object `get_weather(city: string)` |
+| `fixtures/get_weather.result.json` | Tool result to feed back: `{"temp_c":18,"sky":"cloudy"}` |
+| `fixtures/meal_estimate.json_schema.json` | `response_format.json_schema` for `{calories, protein_g}` |
 
-Prompts to use (keep these exact so results are comparable):
+Prompts, so results compare: S1 `Reply with exactly: pong`; S2/S4 `What is the weather in Paris? Use the tool.`; S5 `What color is this image? One word.` with the red PNG; S6 `Estimate: 2 boiled eggs and a slice of toast.`
 
-- S1: `Reply with exactly: pong`
-- S2/S4: `What is the weather in Paris? Use the tool.`
-- S5: `What color is this image? One word.` with the red PNG
-- S6: `Estimate: 2 boiled eggs and a slice of toast.`
+## Scenarios
 
-## Scenarios (every client)
+Mark each pass, fail or n.a. (the client has no such feature). Use `fast` unless noted.
 
-Mark each pass / fail / n.a. (n.a. = the client has no such feature; say so). Run on `fast` unless the row says otherwise.
+| # | Scenario | Expected |
+| --- | --- | --- |
+| S1 | Plain chat, non-stream | 200, content contains `pong`, `finish_reason` `stop`, usage present |
+| S2 | Tool call, then a follow-up turn with the assistant `tool_calls` and a `tool` message | Turn 1 `finish_reason` `tool_calls`, one `get_weather` call with a JSON string `arguments` and non-empty `id`. Turn 2 `stop`, mentions 18 or cloudy. Also on the Claude and ChatGPT ids |
+| S3 | Streaming text, with and without `stream_options.include_usage` | Chunks, first delta has `role`, a `stop` chunk, a last chunk with `choices: []` and usage when requested, `[DONE]` |
+| S4 | Streaming tool call | `delta.tool_calls[0]` has `index`, `id`, `type`, name and arguments. Plugboard sends the whole arguments in one delta; clients must accumulate either way |
+| S5 | Image as `image_url` data URL | 200, answer says red. On `fast` and the Claude id |
+| S6 | Structured output with `json_schema` (or the client's feature) | Content parses as JSON with numeric `calories` and `protein_g`, no extra keys. On all three ids |
+| S7 | `GET /v1/models` through the client | 200, parses, `fast` and a `#low` id present. Each entry carries an extra `plugboard` object, so strict clients must tolerate it |
 
-| # | Scenario | Expected observable outcome |
-|---|---|---|
-| S1 | Plain chat, non-stream, `Reply with exactly: pong` | HTTP 200; assistant content contains `pong`; `finish_reason` `stop`; `usage` has prompt/completion/total tokens |
-| S2 | Non-stream tool call, then follow-up turn. Send `get_weather` tool + the weather prompt. Then send the full history: assistant message with the returned `tool_calls`, a `tool` message (`tool_call_id` = returned id, content = `get_weather.result.json`), same `tools` | Turn 1: `finish_reason` `tool_calls`; one tool call named `get_weather`, `arguments` is a JSON string with `city` ≈ Paris; non-empty `id`; plugboard does not execute anything. Turn 2: HTTP 200, `finish_reason` `stop`, content mentions 18 and/or cloudy |
-| S3 | Streaming text (`stream: true`), prompt of S1. Also with `stream_options.include_usage: true` | SSE chunks `chat.completion.chunk`; first delta has `role: assistant`; content deltas concatenate to `pong`; a `finish_reason: stop` chunk; with include_usage a last chunk with `choices: []` and `usage`; ends with `data: [DONE]` |
-| S4 | Streaming tool call, S2 turn 1 with `stream: true` + include_usage | `delta.tool_calls[0]` has `index`, `id`, `type: function`, `function.name: get_weather`, arguments (plugboard currently sends the whole arguments string in one delta; clients must accumulate either way); a `finish_reason: tool_calls` chunk; usage chunk; `[DONE]`. The client's own tool-call objects must come out assembled |
-| S5 | Image: user content parts `text` + `image_url` with the red data URL | 200; answer says red. Run on `fast` (see if the model accepts images; if the provider rejects it note the error) and on `anthropic/claude-haiku-4-5` (must say red) |
-| S6 | Structured output: `response_format` json_schema (or the client's structured-output feature) with the meal schema | `message.content` parses as JSON with numeric `calories` and `protein_g` and no extra keys. Run on `fast`, `anthropic/claude-haiku-4-5`, `openai/gpt-5.6-luna#low` |
-| S7 | List models (`GET /v1/models` through the client) | HTTP 200; client parses it; `fast` present; a Claude and a `#low` id present |
+Optional: wrong key gives 401 `invalid_api_key`, model `nope` gives 404 `model_not_found`, and the client surfaces the OpenAI error body.
 
-Optional if time allows: an error path (wrong key gives 401 `invalid_api_key`; model `nope` gives 404 `model_not_found`; check the client surfaces the OpenAI error body), and a `developer` role message or `reasoning_effort` if the client sends them by default.
+Keep calls tiny: one prompt per scenario, no loops. A whole client run is about 15 to 25 requests.
 
-Keep calls tiny: one prompt per scenario, no loops, no retries beyond what the client does itself. Whole client run is roughly 15 to 25 requests.
+## Running
 
-## Result report: `compat/results/<client>.md`
+| Env | Run | Pinned in |
+| --- | --- | --- |
+| `py/` (uv, Python 3.12+) | `cd compat/py && uv run smoke.py`, or `uv run python openai_py.py` | `uv.lock` |
+| `js/` (bun) | `cd compat/js && bun smoke.ts`, or `bun openai_js.ts`; type check with `bun run typecheck` | `bun.lock` |
+| Docker (Open WebUI, n8n) | see [docker/README.md](docker/README.md) | image tags in the scripts |
 
-Copy `compat/results/_template.md`. Required: client + exact version(s), which env (`compat/py`, `compat/js`, docker), scenario table with pass/fail/n.a., exact error text for each fail, what request the client actually sent, and for every suspected plugboard bug the raw request and raw response (from the proxy log). Distinguish plugboard bug / client quirk / model behaviour; say which you think and why.
+`smoke.py` and `smoke.ts` run S1 and fail unless the reply contains `pong`. The larger scripts take scenario names (for example `S1,S2`).
 
-## Capturing raw traffic
+## Results
 
-`compat/tools/logproxy.py`: stdlib reverse proxy, streams SSE through, logs each exchange as JSONL with Authorization redacted.
+Copy `results/_template.md` to `results/<client>.md`. Record the client and exact versions, the plugboard commit, a scenario table, exact error text for each failure, and for every suspected plugboard bug the raw request and response. Say whether you think it is a plugboard bug, a client quirk or model behaviour, and why. Results are dated evidence, so leave old ones as they are and add a new dated file when you re-test.
+
+## Capturing traffic
+
+`tools/logproxy.py` is a stdlib reverse proxy. It streams SSE through and writes each exchange as one JSONL object.
 
 ```sh
-python3 compat/tools/logproxy.py --port 4011 --out compat/traffic/<client>.jsonl &   # use a different port per agent if running in parallel
+python3 compat/tools/logproxy.py --port 4011 --upstream http://127.0.0.1:4010 --out compat/traffic/<client>.jsonl &
 # point the client at http://127.0.0.1:4011/v1 with the same key
 jq -c '{path,status,req_json,resp_body}' compat/traffic/<client>.jsonl
-kill %1
 ```
 
-`compat/traffic/` is gitignored; paste the relevant exchanges into your result file. Pick your own proxy port (4011 to 4099) so parallel agents don't collide.
-Client debug flags also work: OpenAI Python `OPENAI_LOG=debug`; OpenAI JS `OPENAI_LOG=debug`; LangChain `set_debug(True)`; Vercel AI SDK `result.request.body` / `result.response.body`.
-
-## Environments (preinstalled)
-
-| Env | Run | Installed |
-|---|---|---|
-| `compat/py` (uv, Python 3.13) | `cd compat/py && uv run smoke.py` or `uv run python your_script.py` | `openai` 3.29.0, `langchain-openai` 1.7.0, `langchain-core` 1.6.9, `pydantic-ai-slim[openai]` 2.55.0, `pydantic` 2.14.1, `httpx` 0.28.1 (pinned in `uv.lock`) |
-| `compat/js` (bun 1.4.2, Node 26.9) | `cd compat/js && bun smoke.ts` or `bun your_script.ts` | `openai` 7.32.0, `ai` 7.0.137, `@ai-sdk/openai` 4.0.91, `@ai-sdk/openai-compatible` 3.0.67, `@langchain/openai` 1.6.2, `@langchain/core` 1.2.17, `zod` 4.6.6 (pinned in `bun.lock`) |
-| Docker (Open WebUI, n8n) | see `compat/docker/README.md` | Docker is installed but its VM is not usable right now; read that file |
-
-Add your client's scripts under `compat/py/<client>/` or `compat/js/<client>/` and commit them with the result file. Need another package? `uv add <pkg>` / `bun add <pkg>` in that env is fine; note the version in your report. If you add a dependency, only commit `pyproject.toml`/`uv.lock` or `package.json`/`bun.lock` changes for your own client (other agents are working in the same tree, so `git add` only your own paths).
+- Captures are sensitive. Only the `Authorization` header is redacted; prompts, responses, tool arguments and other headers are logged as sent. The file is created with mode 600 and `compat/traffic/` is gitignored. Quote synthetic excerpts in results, not raw captures.
+- The upstream must be `http://`. The proxy refuses `https://` rather than send it in clear text.
+- Client debug flags also work: `OPENAI_LOG=debug` (OpenAI Python and JS), `set_debug(True)` (LangChain), `result.request.body` (Vercel AI SDK).
 
 ## Cleanup
 
-Every request leaves a history session under `<dataRoot>/compat` (dataRoot = `~/.cache/opencode-adapter-dev/home/.local/share/opencode-plugboard`). From the repo root:
+Every request leaves a history session under `<data root>/compat`.
 
 ```sh
-python3 compat/tools/sessions.py list                     # compat sessions only
-python3 compat/tools/sessions.py delete --older-than 120  # or: --all, or specific ids
+python3 compat/tools/sessions.py list
+python3 compat/tools/sessions.py delete --all --dry-run
+python3 compat/tools/sessions.py delete --older-than 120
 ```
 
-It wraps `~/.cache/opencode-adapter-dev/oc api session.list|session.remove` and refuses to delete anything whose `metadata.plugboard.app` is not `compat`. Raw equivalent: `~/.cache/opencode-adapter-dev/oc api get "/api/session?directory=<dataRoot>/compat&limit=100"` and `oc api session.remove --param sessionID=<id>`. Run `--all` once when your own client run is done (parallel agents share the `compat` app, so prefer `--older-than` while others are running, or delete by the ids you saw in your proxy log).
-
-## Rules
-
-- Dev server only (`:4010` here). Never run plain `opencode`; never touch `~/.config/opencode`, real projects, or the `sparkyfitness`, `default`, `kamogawa` apps' sessions.
-- Do not restart the dev OpenCode service. Do not edit its config (`~/.cache/opencode-adapter-dev/home/.config/opencode/opencode.jsonc`); the `compat` key is already there. If something needs a config change, report it.
-- Do not edit plugboard source (`src/`, `index.ts`). Another agent is changing it and the plugin hot-reloads: a transient 5xx / connection refused / odd behaviour may be a reload. Retry once after 10 s before calling it a bug. Record the time of the failure.
-- Keep model calls tiny (one short prompt per scenario). Use `fast` by default.
-- Don't print or commit the key. `compat/traffic/` and `node_modules`/`.venv` are gitignored.
+The tool deletes only sessions whose `metadata.plugboard.app` matches `--app` (default `compat`). It never touches other apps. Runs that share the `compat` app share its history, so use `--older-than` or explicit ids while another run is active.

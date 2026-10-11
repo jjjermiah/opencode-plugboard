@@ -2,7 +2,7 @@
 
 - Date / tester: 2026-10-11, client agent (n8n)
 - Client + exact version(s): n8n **2.42.6** (`docker.n8n.io/n8nio/n8n:latest`, digest `sha256:526daa38b68e…`). Nodes: `@n8n/n8n-nodes-langchain` bundled; OpenAI Chat Model v1.3 (uses `@langchainjs/openai`, `openai` JS SDK 6.46.0 per `X-Stainless-Package-Version`), Basic LLM Chain v1.9, AI Agent v3.1, Code Tool v1.3, Structured Output Parser v1.3
-- Env: docker (colima, Docker 29.6.2). Container `plugboard-compat-n8n`, port 5678, via logproxy on `0.0.0.0:4093` → plugboard `:4010`. Credential Base URL `http://host.docker.internal:4093/v1` (needs `--add-host host.docker.internal:host-gateway`; `http://host.lima.internal:PORT` and `http://10.0.1.103:PORT` also reached the proxy from a throwaway curl container)
+- Env: docker (colima, Docker 29.6.2). Container `plugboard-compat-n8n`, port 5678, via logproxy on `0.0.0.0:4093` → plugboard `:4010`. Credential Base URL `http://host.docker.internal:4093/v1` (needs `--add-host host.docker.internal:host-gateway`)
 - Plugboard commit: `f351307`
 - Verdict (README gate = S1 and S2 pass): **PASS**. S1 to S7 all pass. The only failures are n8n default/advanced options that plugboard correctly forwards and the upstream provider rejects (see S8 and the Responses API default).
 

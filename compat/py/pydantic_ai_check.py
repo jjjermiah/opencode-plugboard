@@ -1,7 +1,7 @@
 """pydantic-ai compat check against plugboard (S1..S7 + error paths).
 
 Run: cd compat/py && uv run python pydantic_ai_check.py [--base URL] [--only S1,S2] [--models fast,...]
-Default base goes through the logproxy on :4041 if PLUGBOARD_BASE_URL is unset.
+Env: PLUGBOARD_BASE_URL (default http://127.0.0.1:4010/v1), PLUGBOARD_KEY (required).
 """
 import argparse
 import asyncio
@@ -23,7 +23,7 @@ from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures"
-KEY = os.environ.get("PLUGBOARD_KEY") or (Path.home() / ".cache/opencode-adapter-dev/.compat-key").read_text().strip()
+KEY = os.environ["PLUGBOARD_KEY"]
 
 FAST = "fast"
 CLAUDE = "anthropic/claude-haiku-4-5"
@@ -219,7 +219,7 @@ async def err_bad_model(base):
 
 async def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base", default=os.environ.get("PLUGBOARD_BASE_URL", "http://127.0.0.1:4041/v1"))
+    ap.add_argument("--base", default=os.environ.get("PLUGBOARD_BASE_URL", "http://127.0.0.1:4010/v1"))
     ap.add_argument("--only", default="")
     a = ap.parse_args()
     base = a.base

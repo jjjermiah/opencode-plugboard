@@ -1,15 +1,15 @@
 // Vercel AI SDK (ai v7) compat run against plugboard. Scenarios S1-S7.
 // Usage: cd compat/js && bun vercel_ai.ts <compat|openai-chat|openai-default> [S1,S2,...] [model,model]
-// Env: PLUGBOARD_BASE_URL (default http://127.0.0.1:4010/v1), PLUGBOARD_KEY (default: key file).
+// Env: PLUGBOARD_BASE_URL (default http://127.0.0.1:4010/v1), PLUGBOARD_KEY (required).
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { createOpenAI } from "@ai-sdk/openai"
 import { generateText, streamText, generateObject, tool, isStepCount, Output } from "ai"
 import { z } from "zod"
-import { homedir } from "node:os"
 import { readFileSync } from "node:fs"
 
 const baseURL = process.env.PLUGBOARD_BASE_URL ?? "http://127.0.0.1:4010/v1"
-const apiKey = process.env.PLUGBOARD_KEY ?? readFileSync(`${homedir()}/.cache/opencode-adapter-dev/.compat-key`, "utf8").trim()
+const apiKey = process.env.PLUGBOARD_KEY
+if (!apiKey) throw new Error("set PLUGBOARD_KEY")
 const providerKind = process.argv[2] ?? "compat"
 const only = process.argv[3] && process.argv[3] !== "all" ? process.argv[3].split(",") : null
 const modelsArg = process.argv[4]?.split(",")
@@ -19,13 +19,14 @@ const redUrl = readFileSync("../fixtures/red32.dataurl.txt", "utf8").trim()
 // Request log: what the SDK actually sends (key never recorded).
 type Sent = { url: string; body: any }
 let sent: Sent[] = []
-const loggingFetch: typeof fetch = async (input, init) => {
+const loggingFetchImpl = async (input: string | URL | Request, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
   let body: any = undefined
   try { body = init?.body ? JSON.parse(String(init.body)) : undefined } catch { body = String(init?.body) }
   sent.push({ url, body })
   return fetch(input, init)
 }
+const loggingFetch = loggingFetchImpl as typeof fetch
 
 function provider(opts: { includeUsage?: boolean; structured?: boolean } = {}) {
   if (providerKind === "compat")
@@ -72,7 +73,7 @@ const scenarios: Record<string, (m: string) => Promise<R>> = {
     toolCalls = []
     const r = await generateText({ model: model(m), tools: { get_weather: weather }, stopWhen: isStepCount(4), prompt: "What is the weather in Paris? Use the tool." })
     const steps = r.steps.map((s) => s.finishReason).join(">")
-    const ok = toolCalls.length === 1 && /paris/i.test(toolCalls[0]) && /18|cloud/i.test(r.text) && r.finishReason === "stop"
+    const ok = toolCalls.length === 1 && /paris/i.test(toolCalls[0] ?? "") && /18|cloud/i.test(r.text) && r.finishReason === "stop"
     return { ok, note: `steps=${steps} toolCityArg=${JSON.stringify(toolCalls)} finalText=${JSON.stringify(r.text.slice(0, 120))} step1.toolCalls=${JSON.stringify(r.steps[0]?.toolCalls.map((c) => ({ id: c.toolCallId, name: c.toolName, input: c.input })))}` }
   },
   async S3(m) {
@@ -166,7 +167,7 @@ for (const [sc, models] of [...defaultPlan, ...extra]) {
     sent = []
     const t0 = Date.now()
     let r: R
-    try { r = await scenarios[sc](m) } catch (e: any) {
+    try { r = await scenarios[sc]!(m) } catch (e: any) {
       r = { ok: false, note: `THROW ${e?.constructor?.name} status=${e?.statusCode} msg=${JSON.stringify(e?.message)} body=${JSON.stringify(e?.responseBody)?.slice(0, 500)}` }
     }
     console.log(`\n[${sc}] ${m} => ${r.ok ? "PASS" : "FAIL"} (${Date.now() - t0}ms)\n   ${r.note}`)
