@@ -1,26 +1,2 @@
-/**
- * Seed tools.
- *
- * OpenCode's `session.hook("context")` may only advertise tool definitions that
- * correspond to a *registered* Tool.Info (unmatched entries are dropped), so plugboard owns a
- * pool of registered seeds (`maxTools` of them, spec D22) and re-keys them in the hook:
- * the caller's name becomes the map key (what the provider sees), while the seed keeps its
- * own `name` (what the executor dispatches on).
- *
- * A seed's `execute` returns at once with `SEED_RESULT`, so history shows the call as
- * completed. A tool result always makes the runner start a second model step
- * (`record.needsContinuation`, runner/step.ts), and no tool result, hook or agent setting
- * ends the loop (failing the seed, even with a typed non-`Tool.Error`, is converted to a
- * normal tool failure, and `Permission.DeclinedError` is only reachable from host tools).
- * So plugboard stops the turn itself: once the step has settled with a normal `tool-calls`
- * finish (`session.step.ended`) it interrupts the session, before the second step's model
- * request returns anything, so that step leaves no trace. The captured `session.tool.called`
- * events are what a `tool_calls` response needs.
- * Seeds are registered only inside the plugboard data root (D17), denied to every agent there,
- * and allowed again by the permissions of plugboard's own request sessions (R10).
- */
-
-export const SEED_PREFIX = "plugboard_seed_"
-
-/** Output of every seed tool call: the caller, not OpenCode, runs the tool. */
-export const SEED_RESULT = "Returned to caller (opencode-plugboard)"
+/** Forwarding module; the implementation lives in `./session/seeds.ts`. */
+export { SEED_PREFIX, SEED_RESULT } from "./session/seeds.js"
