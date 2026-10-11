@@ -14,7 +14,19 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Rules per app** ([#78](https://github.com/jjjermiah/opencode-plugboard/issues/78), [#51](https://github.com/jjjermiah/opencode-plugboard/issues/51)). One key used to reach every allowed model, and the only way to change an app's behaviour was to change the app. The new `apps` option lets the operator decide, per app:
+
+  ```jsonc
+  "apps": {
+    "discord-bot": { "key": "sk-...", "models": ["fast"], "system": "Answer in one sentence.", "tools": false },
+    "n8n": { "key": "sk-...", "models": ["anthropic/*"], "maxTools": 8 }
+  }
+  ```
+
+  `models` narrows the global allowlist for that app (an app can only ever narrow it): anything outside is the usual 404, and every model list, the setup page and `/v1/status` show only what that key may use. Fallback targets an app can't use are skipped. `system` is prepended (or appended, or replaces the caller's) on every request, `tools: false` strips caller tools and says so in `x-plugboard-policy: tools-stripped`, and `maxTools` lowers the tool cap. It all happens in the session layer, so it applies to every endpoint. `keys` keeps working and merges with `apps`.
+- **Every client, checked on every push** ([#101](https://github.com/jjjermiah/opencode-plugboard/issues/101), [#132](https://github.com/jjjermiah/opencode-plugboard/issues/132), [#130](https://github.com/jjjermiah/opencode-plugboard/issues/130)). The official `openai`, `@anthropic-ai/sdk` and `@google/genai` SDKs and four Vercel AI SDK providers now run text, streaming, tool round trips, parallel tools, images, structured output, errors and usage against plugboard in CI, and the result is published as [docs/compatibility.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/compatibility.md) (67 pass, 1 known gap). Every response encoder is type-checked against the SDKs' own wire types, and property tests throw arbitrary JSON at every decoder to prove it answers with a 400, never a crash. The suite is now **1122 tests in about 1.5 s**, with per-layer test-count floors and a 97.5% line-coverage floor that can only go up ([#110](https://github.com/jjjermiah/opencode-plugboard/issues/110), [#100](https://github.com/jjjermiah/opencode-plugboard/issues/100)).
 
 ## [0.12.0] - 2026-10-11: Plan B Built In
 
