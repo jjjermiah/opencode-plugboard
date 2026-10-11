@@ -153,6 +153,8 @@ export interface PlugError {
   readonly message: string
   readonly code?: string
   readonly param?: string
+  /** Seconds to wait before a retry, for a `Retry-After` header. Set by the limiter (`src/limits.ts`); no route reads it yet. */
+  readonly retryAfterSeconds?: number
 }
 
 /** The one discriminator for `PlugError` values returned in place of a result. */

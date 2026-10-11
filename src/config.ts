@@ -47,6 +47,8 @@ export interface PlugboardOptions {
   readonly metrics: boolean
   /** Ids listed by `/v1/models`: canonical, slugs (`provider--model__variant`) or both. See `toSlug` in `src/models.ts`. */
   readonly modelIds: ModelIds
+  /** Concurrency caps and requests per minute per app (see `src/limits.ts`). Absent: unlimited. */
+  readonly limits?: Limits
 }
 
 export type SystemMode = "prepend" | "append" | "replace"
@@ -66,6 +68,24 @@ export interface AppPolicy {
   readonly maxTools?: number
 }
 
+/** One set of caps. A field that is not set is unlimited. */
+export interface LimitCaps {
+  /** Model calls in flight at once; each call holds one slot. */
+  readonly maxConcurrent?: number
+  /** Model calls started per minute (a fixed one-minute window). */
+  readonly requestsPerMinute?: number
+}
+
+/**
+ * Option `limits`. `maxConcurrent` caps all apps together; `perApp` caps every app; `apps.<name>`
+ * overrides `perApp` field by field for that app.
+ */
+export interface Limits {
+  readonly maxConcurrent?: number
+  readonly perApp?: LimitCaps
+  readonly apps?: Readonly<Record<string, LimitCaps>>
+}
+
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
 export const DEFAULT_APP = "default"
 const DEFAULTS = {
@@ -76,7 +96,11 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds"])
+const KNOWN = new Set(["listen", "keys", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits"])
+const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps"])
+const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
+/** Largest cap accepted: far above any provider's limit, and keeps the error messages short. */
+const MAX_LIMIT = 1_000_000
 const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays"])
 /** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
 const MAX_AGE_DAYS = 36_500
@@ -191,6 +215,39 @@ function parseApps(
   return Object.fromEntries(entries)
 }
 
+/** Validates one set of caps (`limits.perApp`, or one `limits.apps` entry): each cap is a positive integer. */
+function parseCaps(raw: unknown, at: string): LimitCaps {
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object`)
+  for (const key of Object.keys(raw))
+    if (!LIMIT_CAP_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${[...LIMIT_CAP_KNOWN].join(", ")})`)
+  return {
+    ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, `${at}.maxConcurrent`, 0, MAX_LIMIT) }),
+    ...(raw.requestsPerMinute === undefined ? {} : { requestsPerMinute: positiveInt(raw.requestsPerMinute, `${at}.requestsPerMinute`, 0, MAX_LIMIT) }),
+  }
+}
+
+/** Validates `limits`. An `apps` entry must name a configured app: a key in `keys` (or `default`, only when there are no keys). */
+function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limits | undefined {
+  if (raw === undefined) return undefined
+  if (!isRecord(raw)) throw new Error("plugboard option `limits` must be an object")
+  for (const key of Object.keys(raw))
+    if (!LIMITS_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`limits.${key}\` (known: ${[...LIMITS_KNOWN].join(", ")})`)
+  const appsRaw = raw.apps
+  if (appsRaw !== undefined && !isRecord(appsRaw)) throw new Error("plugboard option `limits.apps` must be an object of app name -> caps")
+  const apps: Record<string, LimitCaps> = {}
+  for (const [app, value] of Object.entries(appsRaw ?? {})) {
+    const at = `limits.apps.${app}`
+    const configured = app === DEFAULT_APP ? Object.keys(keys).length === 0 : Object.hasOwn(keys, app)
+    if (!configured) throw new Error(`plugboard option \`${at}\` must name a configured app (a key in \`keys\`; \`${DEFAULT_APP}\` only without keys)`)
+    apps[app] = parseCaps(value, at)
+  }
+  return {
+    ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, "limits.maxConcurrent", 0, MAX_LIMIT) }),
+    ...(raw.perApp === undefined ? {} : { perApp: parseCaps(raw.perApp, "limits.perApp") }),
+    ...(appsRaw === undefined ? {} : { apps }),
+  }
+}
+
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
 export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string): AppPolicy | undefined {
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
@@ -282,6 +339,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const maxSessions = historyInput?.maxSessions === undefined ? undefined : positiveInt(historyInput.maxSessions, "history.maxSessions", 0)
   const maxAgeDays = historyInput?.maxAgeDays === undefined ? undefined : positiveInt(historyInput.maxAgeDays, "history.maxAgeDays", 0, MAX_AGE_DAYS)
 
+  const limits = parseLimits(input.limits, keys)
+
   return {
     listen: { host, port: port ?? DEFAULTS.port },
     keys,
@@ -298,6 +357,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     logFormat: input.logFormat === "json" ? "json" : "text",
     metrics: input.metrics === true,
     modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
+    ...(limits === undefined ? {} : { limits }),
   }
 }
 
