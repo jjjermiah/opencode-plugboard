@@ -24,7 +24,7 @@ import { SEED_PREFIX } from "./src/seeds.js"
 import { applyContext, createSessionCaller, isInsideDataRoot, type SessionPort } from "./src/session-backend.js"
 // TEMPORARY: lane-local shim. The orchestrator replaces it with the real config.ts / models.ts /
 // openai/*.ts functions (same `RouteDeps` shape) at merge.
-import { devDeps as deps } from "./src/dev-front.js"
+import { deps } from "./src/deps.js"
 
 type AnyRecord = Record<string, any>
 

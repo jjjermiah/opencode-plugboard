@@ -8,7 +8,7 @@
  * (LLMRequest parts, LLMEvent, Usage) so a native `ctx.llm.stream` backend can
  * replace the session backend without touching the front-ends.
  *
- * Type-only module: no runtime code, nothing imported at runtime.
+ * Types plus a few shared constants; no other runtime code.
  */
 
 // ---------------------------------------------------------------- options
@@ -119,6 +119,8 @@ export interface PlugRequest {
   /** Set when the front-end mapped response_format to a forced tool (D13); the front-end unwraps it. */
   readonly structured?: { readonly toolName: string }
   readonly stream: boolean
+  /** OpenAI `stream_options.include_usage`: send a final usage chunk when streaming. */
+  readonly includeUsage?: boolean
 }
 
 // ---------------------------------------------------------------- events
