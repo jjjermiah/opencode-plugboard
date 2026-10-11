@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.6.0] - 2026-10-11
+
 This release closes most of the findings from a hostile read of the code: what would make a careful person refuse to install it.
 
 ### Security
@@ -295,7 +299,8 @@ Providers, through the session path: GitHub Copilot, Anthropic (Claude Max throu
 
 `copilot-api` and LiteLLM showed what an OpenAI-compatible front door should feel like to the people calling it. No code was taken from either.
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.3.0...v0.4.0
