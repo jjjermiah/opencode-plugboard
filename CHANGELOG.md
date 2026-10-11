@@ -14,7 +14,18 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Filter models by capability.** `GET /v1/models?capability=vision` or `?capability=tools` lists only models the catalog says can see images or call tools, so a UI's model picker can hide the ones that would fail. Any other value is a 400. (The 0.15.0 notes said the parameter was not wired yet; it is now.)
+- **`Retry-After` on every 429.** When a concurrency cap or rate window refuses a call before any output, every API family now sends `Retry-After`, so well-behaved clients back off on their own instead of hammering the server.
+- **Discovery lists every endpoint.** `GET /` and `GET /v1` now include legacy completions, Anthropic Messages and the Gemini routes, from one `ENDPOINTS` constant that a test checks against the router in both directions ([#136](https://github.com/jjjermiah/opencode-plugboard/issues/136)).
+- **Wider client coverage.** The compatibility matrix now runs LangChain (OpenAI, Anthropic, Google) and `@ai-sdk/openai-compatible` alongside the official SDKs, with `n > 1`, thinking and token-count scenarios. It found five gaps, each pinned as a known failure and filed as an issue.
+
+### Security
+
+- **`/v1/messages` checks the key before the method** ([#137](https://github.com/jjjermiah/opencode-plugboard/issues/137)). An unauthenticated GET used to get a 405 that confirmed the route exists; it now gets a 401 like every other route.
+- **Gemini metrics labels are bounded** ([#135](https://github.com/jjjermiah/opencode-plugboard/issues/135)). The route label is a fixed template and unknown verbs count as `unknown`, so a caller can't grow the metrics table by inventing paths.
+- A test now proves that a key removed by a config reload is refused by the live listener.
 
 ## [0.15.0] - 2026-10-11: Brakes, Memory, Clean Names
 
