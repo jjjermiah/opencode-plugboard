@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Reused by publish.yml so a release runs the same gates as CI.
+  workflow_call:
 
 permissions: {}
 

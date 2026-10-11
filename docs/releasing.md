@@ -1,52 +1,49 @@
 # Releasing
 
-Releases are driven by `CHANGELOG.md`. The version bump, the changelog heading, the commit and the tag come from one script. Publishing to npm happens in CI once the repository is public.
+Releases are driven by `CHANGELOG.md`. One script does the version bump, the changelog heading, the commit and the tag. GitHub Actions does the rest.
 
-## Normal flow
+## Everyday flow
 
-1. While you work, keep `[Unreleased]` in `CHANGELOG.md` current. The release notes are that text, so write it for users.
-2. Run the pre-release client checks and fill in `compat/results/release-candidate.md` against the commit you will tag (see [development.md](development.md)).
-3. From a clean `main`:
+1. Keep `[Unreleased]` in `CHANGELOG.md` current. The release notes are that text, so write it for users. Fill in `compat/results/release-candidate.md` (see [development.md](development.md)).
+2. From a clean `main`: `bun run release 0.3.0 --push`. Add `--dry-run` first to see the diff; it changes nothing and only warns about git state.
+3. Watch the "Publish" run. It checks the gates, publishes to npm and creates the GitHub release.
 
-   ```sh
-   bun run release 0.3.0 --push
-   ```
+The script refuses when the working tree is dirty, the branch is not `main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, or the tag exists. It moves the `[Unreleased]` text under `## [0.3.0] - <today>`, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json`, commits "Release 0.3.0" and creates the annotated tag `v0.3.0`. Without `--push` it prints the push command instead.
 
-   Add `--dry-run` first to see the diff. A dry run changes nothing and only warns about git state.
+A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHub prerelease.
 
-The script refuses when the working tree is dirty, the branch is not `main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, or the tag exists. It moves the `[Unreleased]` text under `## [0.3.0] - <today>`, leaves an empty `[Unreleased]` behind, fixes the compare links at the bottom, bumps `package.json`, commits "Release 0.3.0" and creates the annotated tag `v0.3.0`. With `--push` it pushes `main` and the tag in one go. Without it, it prints the push command.
+## What the workflow does
 
-For a prerelease such as `0.3.0-rc.1`, the workflow publishes with the `next` dist-tag and marks the GitHub release as a prerelease.
+`.github/workflows/publish.yml` runs on a `v*` tag push, with one run per ref and no cancelling. In order:
 
-## What CI does
+1. The CI jobs from `ci.yml` (typecheck, pack check, compat checks) run through `workflow_call`, so a release has exactly the same gates as CI.
+2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
+3. It builds the release notes from the changelog section. A missing or empty section fails here, before anything is published.
+4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.
+5. It creates the GitHub release (marked as a prerelease when the version has a `-`). If the release exists, it leaves it alone.
 
-Pushing a `v*` tag starts `.github/workflows/publish.yml`. It checks that the tag matches the `package.json` version and is on `main`, runs the typecheck and the pack check, runs `npm publish --provenance --access public`, then creates the GitHub release from the changelog section if one does not exist yet. There is no npm token: npm authenticates the workflow through GitHub's OIDC identity (trusted publishing), which needs npm 11.5.1 or newer. The workflow installs it.
+Both writes are safe to retry: re-run the failed run, or "Run workflow" on the tag with `dry_run` unticked.
 
-The workflow fails on purpose while the repository is private, because npm provenance is only available for public repositories. Use the manual path below until then.
+Provenance: npm cannot generate provenance attestations for a private repository, so the workflow passes `--provenance` only when the repository is public. Trusted publishing itself works from a private repository. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) and [provenance](https://docs.npmjs.com/generating-provenance-statements).
+
+## Prove the pipeline without releasing
+
+Actions tab, "Publish", "Run workflow" on `main` with `dry_run` ticked (the default), or:
+
+```sh
+gh workflow run publish.yml -f dry_run=true
+```
+
+It runs the gates, checks the changelog notes and runs `npm publish --dry-run`. It does not publish or create a release.
 
 ## One-time npm setup (owner)
 
-Do this once, after the repository is public and the package exists on npm:
-
-1. Open the package settings: `https://www.npmjs.com/package/opencode-plugboard/access`.
+1. Open `https://www.npmjs.com/package/opencode-plugboard/access` (package, Settings).
 2. Under "Trusted Publisher", choose GitHub Actions.
 3. Fill in: organization or user `jjjermiah`, repository `opencode-plugboard`, workflow filename `publish.yml`. Leave the environment empty.
-4. Save. Optionally set "Publishing access" to "Require two-factor authentication and disallow tokens", so only trusted publishing can publish.
+4. If npm asks for "Allowed actions", allow `npm publish`.
+5. Save. Then optionally set "Publishing access" to "Require two-factor authentication and disallow tokens". Trusted publishing keeps working.
 
-The workflow filename must match exactly, or npm rejects the OIDC token with a 404 or 403 on publish.
+npm does not check the configuration when you save it. A new configuration expires if it has no successful publish within 2 days.
 
-## Manual publish (until the repository is public)
-
-Run the script as above, but push the tag yourself after you publish. From the tagged commit:
-
-```sh
-bun run release 0.3.0
-git push --atomic origin main v0.3.0
-npm publish --auth-type=web
-bun scripts/release-notes.ts v0.3.0 > /tmp/notes.md
-gh release create v0.3.0 --verify-tag --title v0.3.0 --notes-file /tmp/notes.md
-```
-
-`--auth-type=web` opens a browser login, so it works with two-factor authentication. This publish has no provenance attestation. The publish workflow will fail on the pushed tag while the repository is private. That is expected, ignore it.
-
-Check the result with `npm view opencode-plugboard version` and `npm pack --dry-run --json --ignore-scripts`.
+If it is not configured or a field is wrong, the "Publish to npm" step fails (typically `ENEEDAUTH` or a 404/403 from the registry) and nothing is released. The workflow filename must match exactly, including `.yml`. Fix the setting, then re-run the failed run.
