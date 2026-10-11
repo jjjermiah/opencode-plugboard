@@ -23,7 +23,7 @@ Plugboard returns the tool calls to the app and never runs them. The app execute
 
 ## Structured output
 
-`response_format` with `json_schema` is supported. Plugboard instructs the model to answer through a `respond` tool and returns its arguments as the message content. The provider does not enforce the schema, so validate the result. `json_object` adds a system instruction and carries no schema, so name the keys in your prompt: weak models may ignore them. Sending `tools` together with `json_schema` is changing to return the caller's tool calls ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)); don't rely on the current behaviour for that combination.
+`response_format` with `json_schema` is supported. Plugboard instructs the model to answer through a `respond` tool and returns its arguments as the message content. The provider does not enforce the schema, so validate the result. `json_object` adds a system instruction and carries no schema, so name the keys in your prompt: weak models may ignore them. When a model wraps the JSON in a markdown code fence, plugboard strips that one fence if the inside parses as JSON (a fenced stream arrives as one content chunk). Sending `tools` together with `json_schema` is changing to return the caller's tool calls ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)); don't rely on the current behaviour for that combination.
 
 ## Gotchas
 

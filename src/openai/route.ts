@@ -32,6 +32,7 @@ import { errorMessage, log, logError } from "../log.js"
 import { listAvailableModels, resolveModel } from "../models.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
+import { dropRejected } from "./sampling.js"
 
 /** What the serving generation supplies per request. */
 export interface RouteHost {
@@ -42,6 +43,7 @@ export interface RouteHost {
 }
 
 const SESSION_HEADER = "x-plugboard-session"
+const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
 const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions"]
 
@@ -60,6 +62,8 @@ interface RequestInfo {
   model?: string
   /** Set when a response committed as 200 and then failed (a stream error frame): the log outcome and the error code. */
   failed?: string
+  /** Sampling parameters dropped for this model (comma list), when any. */
+  dropped?: string
 }
 
 export function createOpenAiRoute(host: RouteHost) {
@@ -125,7 +129,13 @@ export function createOpenAiRoute(host: RouteHost) {
     const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
     if (isPlugError(ref)) return fail(response, ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-    const call: PlugRequest = { ...parsed.request, ref }
+    // Sampling parameters the model is known to reject are dropped and reported (header and log), before any response bytes.
+    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined
+    if (sampled && sampled.dropped.length > 0) {
+      info.dropped = sampled.dropped.join(",")
+      response.setHeader(DROPPED_HEADER, info.dropped)
+    }
+    const call: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
     const { exchange } = parsed
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.
@@ -143,14 +153,19 @@ export function createOpenAiRoute(host: RouteHost) {
     )
 
     if (exchange.stream) {
-      // Nothing is committed until the encoder writes its first frame, so a failure before any
-      // wire-visible output (including suppressed reasoning or structured prose) is a real HTTP error.
+      // Nothing is committed until the first model event that is not a terminal one (reasoning
+      // counts: `paced` then commits 200 and sends keepalive comments), so a failure before that is a
+      // real HTTP error. After it, a failure is an SSE error frame.
       const sse = sseWriter(response, scope.signal)
-      const { failure } = await streamCompletion(sse.paced(events), exchange, sse.write)
+      const { failure, started } = await streamCompletion(sse.paced(events), exchange, sse.write)
       if (!sse.started && !response.headersSent) {
         if (!scope.signal.aborted || scope.timedOut) fail(response, failure ?? { status: 502, kind: "server", message: "No response from the model" })
       } else {
-        if (failure) info.failed = failure.code ?? failure.kind
+        if (failure) {
+          info.failed = failure.code ?? failure.kind
+          // Committed by a keepalive before the encoder wrote anything: the encoder left the error for us.
+          if (!started && !response.writableEnded) sse.write(`data: ${JSON.stringify(encodeError(failure))}\n\ndata: [DONE]\n\n`)
+        }
         if (!response.writableEnded) response.end()
       }
       return
@@ -205,7 +220,7 @@ export function createOpenAiRoute(host: RouteHost) {
         finishRequest(request, response)
       } catch {}
       if (info.route !== "GET /healthz" || outcome !== "ok") {
-        const fields = { id, route: info.route, app: info.app, model: info.model, status: response.statusCode, ms: Date.now() - started, outcome, error }
+        const fields = { id, route: info.route, app: info.app, model: info.model, dropped: info.dropped, status: response.statusCode, ms: Date.now() - started, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
         else log("request", fields)
       }

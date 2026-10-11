@@ -27,6 +27,12 @@ export interface OpenAiExchange {
    * answer is content only when the step called no caller tool.
    */
   readonly callerTools?: boolean
+  /**
+   * `response_format: json_object`: the model is only asked in a system instruction, and sometimes
+   * wraps the answer in a markdown code fence. A single fence around text that parses as JSON is
+   * stripped from the content (`unfence`).
+   */
+  readonly jsonObject?: boolean
 }
 
 /** How a streamed exchange ended. Nothing was written when `failure` is set and `started` is false: the caller answers with a real HTTP error. */
@@ -123,6 +129,24 @@ const structured = {
         },
 }
 
+/** One markdown code fence (```json or a bare ```) around the whole text. */
+const FENCED = /^```[ \t]*(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n?[ \t]*```$/i
+
+/**
+ * The inside of a single code fence that wraps the whole text, when the inside parses as JSON;
+ * anything else comes back unchanged (prose around the fence, two fences, non-JSON).
+ */
+export function unfence(text: string): string {
+  const inside = FENCED.exec(text.trim())?.[1]
+  if (inside === undefined) return text
+  try {
+    JSON.parse(inside)
+    return inside.trim()
+  } catch {
+    return text
+  }
+}
+
 const newId = () => `chatcmpl-${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`
 const now = () => Math.floor(Date.now() / 1000)
 
@@ -169,7 +193,9 @@ export async function collectCompletion(
         ? structured.content(answer)
         : null
       : exchange.structuredTool === undefined && text.length > 0
-        ? text
+        ? exchange.jsonObject
+          ? unfence(text)
+          : text
         : null,
     refusal: null,
   }
@@ -229,6 +255,18 @@ export async function streamCompletion(
     started = true
     chunk({ role: "assistant", content: "" })
   }
+  // json_object: text that opens with a backtick may be a fenced answer, so it waits (as `pending`)
+  // until a tool call or the finish shows the whole text; anything else streams as it comes. A
+  // fenced answer therefore arrives as one chunk.
+  let pending = ""
+  let passing = false
+  const flush = () => {
+    if (pending.length === 0) return
+    const text = unfence(pending)
+    pending = ""
+    start()
+    chunk({ content: text })
+  }
 
   for await (const event of events) {
     if (event.type === "error") {
@@ -258,6 +296,16 @@ export async function streamCompletion(
       }
       if (!(exchange.callerTools && event.type === "tool-call")) continue
     }
+    if (exchange.jsonObject && event.type === "text-delta" && !passing) {
+      pending += event.text
+      const lead = pending.trimStart()
+      if (lead.length > 0 && !lead.startsWith("`")) {
+        passing = true
+        flush()
+      }
+      continue
+    }
+    if (event.type !== "text-delta") flush()
     start()
     if (event.type === "text-delta") {
       if (event.text.length > 0) chunk({ content: event.text })
@@ -276,6 +324,7 @@ export async function streamCompletion(
     write("data: [DONE]\n\n")
     return { failure, started }
   }
+  flush()
   start()
   if (held && isStructured) chunk({ content: structured.content(held) })
   chunk({}, finishReason(finish!, calls, isStructured))

@@ -15,6 +15,8 @@ export interface PlugboardOptions {
   readonly requestTimeoutMs: number
   /** Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network. */
   readonly remoteImages: boolean
+  /** Drop sampling parameters the target model is known to reject (reported in `x-plugboard-dropped-params`). On by default; off forwards them as sent. */
+  readonly dropUnsupportedParams: boolean
 }
 
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
@@ -26,7 +28,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages"])
+const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages", "dropUnsupportedParams"])
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
 const ALIAS_TARGET = /^[^/#*\s]+\/[^#*\s]+(#[^#*\s]+)?$/
 /** `provider/model...` shaped: an alias like this would collide with real model ids in listing and resolution. */
@@ -112,6 +114,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   if (input.remoteImages !== undefined && typeof input.remoteImages !== "boolean")
     throw new Error("plugboard option `remoteImages` must be a boolean")
+  if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")
+    throw new Error("plugboard option `dropUnsupportedParams` must be a boolean")
 
   return {
     listen: { host, port: port ?? DEFAULTS.port },
@@ -121,6 +125,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     maxTools: positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024),
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
     remoteImages: input.remoteImages === true,
+    dropUnsupportedParams: input.dropUnsupportedParams !== false,
   }
 }
 

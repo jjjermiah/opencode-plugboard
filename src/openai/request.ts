@@ -328,6 +328,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
       stream: body.stream === true,
       includeUsage: streamOptions.include_usage === true,
       ...(respond ? { structuredTool: RESPOND_TOOL, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+      ...(format.instruction ? { jsonObject: true } : {}),
     },
     ...(typeof body.reasoning_effort === "string" ? { reasoningEffort: body.reasoning_effort } : {}),
   }
