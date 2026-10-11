@@ -1,7 +1,7 @@
 /**
- * HTTP ingress and transport helpers: body reading, header checks, JSON and SSE responses,
- * disconnect abort and the request deadline. Protocol-neutral: callers pass in already-encoded
- * payloads, and checks return a `PlugError` for the caller to encode.
+ * HTTP ingress and transport helpers: request scope (disconnect abort and the one end-to-end
+ * deadline), body reading, header checks, JSON and SSE responses. Protocol-neutral: callers pass
+ * in already-encoded payloads, and checks return a `PlugError` for the caller to encode.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
@@ -9,6 +9,10 @@ import { isLoopbackHost, type PlugboardOptions } from "./config.js"
 import type { PlugError, PlugEvent } from "./contract.js"
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024
+/** Largest delay `setTimeout` accepts; anything larger fires at once. */
+const MAX_TIMER_MS = 2 ** 31 - 1
+/** After answering a request whose body was not fully read, keep discarding it this long before cutting the socket. */
+const LINGER_MS = 5_000
 
 /** A request body that cannot be accepted: too large, or not JSON. `status` is the HTTP status to answer with. */
 export class BodyError extends Error {
@@ -20,50 +24,181 @@ export class BodyError extends Error {
   }
 }
 
-/** Reads the body as JSON (an empty body is `{}`). Rejects with `BodyError` (413, 400) or the stream's error. */
-export function readJsonBody(request: IncomingMessage): Promise<unknown> {
+/** Why a request's work was abandoned: the client went away, or the deadline passed. It is the abort reason of `RequestScope.signal`. */
+export class RequestAborted extends Error {
+  constructor(readonly kind: "disconnected" | "timeout") {
+    super(kind === "timeout" ? "Request deadline exceeded" : "Client disconnected")
+  }
+}
+
+/** Cancellation for one HTTP request: aborts on client disconnect and at the single end-to-end deadline. */
+export interface RequestScope {
+  readonly signal: AbortSignal
+  readonly timedOut: boolean
+  /** The `PlugError` to answer a timeout with. */
+  readonly timeoutError: PlugError
+  /** Settles like `promise`, or rejects with the abort reason (`RequestAborted`) as soon as the scope aborts. `promise` is always observed. */
+  race<T>(promise: Promise<T>): Promise<T>
+  /** Clears the deadline timer; call once the request is finished. */
+  dispose(): void
+}
+
+/**
+ * Establishes cancellation and the deadline. Call before the first `await` of a request: a socket
+ * that is already gone aborts immediately, so abandoned work never starts.
+ */
+export function beginRequest(request: IncomingMessage, response: ServerResponse, timeoutMs: number): RequestScope {
+  const controller = new AbortController()
+  const abort = (kind: RequestAborted["kind"]) => {
+    if (!controller.signal.aborted) controller.abort(new RequestAborted(kind))
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => abort("timeout"), Math.min(Math.max(timeoutMs, 1), MAX_TIMER_MS))
+  timer.unref?.()
+  const dispose = () => {
+    clearTimeout(timer)
+    timer = undefined
+  }
+  response.on("close", () => {
+    if (!response.writableFinished) abort("disconnected")
+    dispose()
+  })
+  request.on("error", () => abort("disconnected"))
+  if (response.destroyed || request.destroyed || request.socket?.destroyed) abort("disconnected")
+
+  const { signal } = controller
+  const timedOut = () => signal.reason instanceof RequestAborted && signal.reason.kind === "timeout"
+  return {
+    signal,
+    get timedOut() {
+      return timedOut()
+    },
+    timeoutError: {
+      status: 504,
+      kind: "timeout",
+      code: "timeout",
+      message: `Request timed out after ${timeoutMs} ms (option requestTimeoutMs)`,
+    },
+    race<T>(promise: Promise<T>): Promise<T> {
+      promise.catch(() => {})
+      if (signal.aborted) return Promise.reject(signal.reason)
+      return new Promise<T>((resolve, reject) => {
+        const onAbort = () => reject(signal.reason)
+        signal.addEventListener("abort", onAbort, { once: true })
+        promise.then(
+          (value) => {
+            signal.removeEventListener("abort", onAbort)
+            resolve(value)
+          },
+          (error) => {
+            signal.removeEventListener("abort", onAbort)
+            reject(error)
+          },
+        )
+      })
+    },
+    dispose,
+  }
+}
+
+/**
+ * Reads the body as JSON (an empty body is `{}`). Rejects with `BodyError` (413, 400), the abort
+ * reason of `signal` or the stream's error. On rejection the rest of the body is discarded, not
+ * buffered, so the response can still be delivered (see `finishRequest`).
+ */
+export function readJsonBody(request: IncomingMessage, signal: AbortSignal): Promise<unknown> {
   return new Promise((resolve, reject) => {
+    const declared = Number(request.headers["content-length"])
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+      request.resume()
+      return reject(new BodyError(413, "Request body too large"))
+    }
+    if (signal.aborted) return reject(signal.reason)
     const chunks: Buffer[] = []
     let size = 0
-    request.on("data", (chunk: Buffer) => {
+    const cleanup = () => {
+      request.off("data", onData)
+      request.off("error", onError)
+      request.off("end", onEnd)
+      signal.removeEventListener("abort", onAbort)
+    }
+    const stop = (error: unknown) => {
+      cleanup()
+      chunks.length = 0
+      request.resume()
+      reject(error)
+    }
+    const onData = (chunk: Buffer) => {
       size += chunk.length
-      if (size > MAX_BODY_BYTES) {
-        reject(new BodyError(413, "Request body too large"))
-        request.destroy()
-        return
-      }
+      if (size > MAX_BODY_BYTES) return stop(new BodyError(413, "Request body too large"))
       chunks.push(chunk)
-    })
-    request.on("error", reject)
-    request.on("end", () => {
+    }
+    const onError = (error: Error) => stop(error)
+    const onAbort = () => stop(signal.reason)
+    const onEnd = () => {
+      cleanup()
       try {
         resolve(chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString("utf8")))
       } catch {
         reject(new BodyError(400, "Request body is not valid JSON"))
       }
-    })
+    }
+    request.on("data", onData)
+    request.on("error", onError)
+    request.on("end", onEnd)
+    signal.addEventListener("abort", onAbort, { once: true })
   })
 }
 
-export const sendJson = (response: ServerResponse, status: number, payload: unknown) => {
-  if (response.headersSent) return
+/**
+ * Call when a request is done. If the client is still sending a body that was not read, keep
+ * discarding it briefly so the response is not lost to a connection reset, then cut the socket.
+ */
+export function finishRequest(request: IncomingMessage, response: ServerResponse): void {
+  if (request.complete || request.destroyed) return
+  request.resume()
+  const timer = setTimeout(() => request.destroy(), LINGER_MS)
+  timer.unref?.()
+  response.once("close", () => clearTimeout(timer))
+}
+
+/** `close`: also tell the client to drop the connection (after an unread or abandoned body). */
+export const sendJson = (response: ServerResponse, status: number, payload: unknown, options?: { close?: boolean }) => {
+  if (response.headersSent || response.destroyed) return
   const body = JSON.stringify(payload)
-  response.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) })
+  response.writeHead(status, {
+    "content-type": "application/json",
+    "content-length": Buffer.byteLength(body),
+    ...(options?.close ? { connection: "close" } : {}),
+  })
   response.end(body)
 }
 
 /**
  * SSE response writer. Headers go out with the first chunk, so nothing is committed until there
- * is something to send; chunks after the client is gone are dropped.
+ * is something to send; chunks after the client is gone are dropped. `write` is synchronous (the
+ * encoder's contract); backpressure is honoured by `paced`, which holds back the next event while
+ * the socket buffer is full.
  */
 export function sseWriter(response: ServerResponse) {
   let started = false
+  let blocked = false
+  const waiters: Array<() => void> = []
+  const release = () => {
+    blocked = false
+    for (const resolve of waiters.splice(0)) resolve()
+  }
+  response.on("drain", release)
+  response.on("close", release)
+  const drained = (): Promise<void> => {
+    if (!blocked || response.destroyed) return Promise.resolve()
+    return new Promise((resolve) => waiters.push(resolve))
+  }
   return {
     get started() {
       return started
     },
     write(chunk: string) {
-      if (response.destroyed) return
+      if (response.destroyed || response.writableEnded) return
       if (!started) {
         started = true
         response.writeHead(200, {
@@ -73,51 +208,49 @@ export function sseWriter(response: ServerResponse) {
           "x-accel-buffering": "no",
         })
       }
-      response.write(chunk)
+      if (!response.write(chunk)) blocked = true
+    },
+    /** Resolves when the socket buffer has room again, or the client is gone. */
+    drained,
+    /** Passes events through, waiting for `drain` before pulling each one, and stops when the client is gone. */
+    async *paced(events: AsyncIterable<PlugEvent>): AsyncGenerator<PlugEvent> {
+      const iterator = events[Symbol.asyncIterator]()
+      try {
+        while (true) {
+          await drained()
+          if (response.destroyed) return
+          const next = await iterator.next()
+          if (next.done) return
+          yield next.value
+        }
+      } finally {
+        void iterator.return?.(undefined)?.catch?.(() => {})
+      }
     },
   }
 }
 
-/** Client disconnect (also mid-SSE) aborts the returned controller, which interrupts the model call. */
-export function abortOnDisconnect(response: ServerResponse): AbortController {
-  const controller = new AbortController()
-  response.on("close", () => {
-    if (!response.writableFinished) controller.abort()
-  })
-  return controller
-}
-
 /**
- * Bound the event stream by the request timeout. On timeout the caller is aborted
- * (so the session is interrupted) and a 504 error event ends the stream.
+ * Bound the event stream by the request scope. On timeout a 504 error event ends the stream; on
+ * disconnect the stream just ends. Either way the scope's abort already interrupted the caller.
  */
-export async function* withTimeout(
-  events: AsyncIterable<PlugEvent>,
-  timeoutMs: number,
-  controller: AbortController,
-): AsyncGenerator<PlugEvent> {
+export async function* boundEvents(events: AsyncIterable<PlugEvent>, scope: RequestScope): AsyncGenerator<PlugEvent> {
   const iterator = events[Symbol.asyncIterator]()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), timeoutMs)
-  })
   try {
     while (true) {
-      const next = await Promise.race([iterator.next(), timeout])
-      if (next === "timeout") {
-        controller.abort()
-        yield {
-          type: "error",
-          error: { status: 504, kind: "timeout", code: "timeout", message: `Request timed out after ${timeoutMs} ms (option requestTimeoutMs)` },
-        }
+      let next: IteratorResult<PlugEvent>
+      try {
+        next = await scope.race(iterator.next())
+      } catch (error) {
+        if (!(error instanceof RequestAborted)) throw error
+        if (error.kind === "timeout") yield { type: "error", error: scope.timeoutError }
         return
       }
       if (next.done) return
       yield next.value
     }
   } finally {
-    clearTimeout(timer)
-    // Not awaited: when the timeout won, `next()` is still pending until the abort propagates.
+    // Not awaited: when the scope aborted, `next()` is still pending until the abort propagates.
     void iterator.return?.(undefined)?.catch?.(() => {})
   }
 }
