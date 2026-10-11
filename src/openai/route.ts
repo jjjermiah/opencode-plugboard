@@ -38,6 +38,7 @@ import {
 import { errorMessage, log, logError, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { listAvailableModels, resolveModel } from "../models.js"
+import { isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveResponses } from "../responses/route.js"
 import { processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import { parseChatRequest } from "./request.js"
@@ -135,6 +136,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const route = `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
     info.route = modelId !== undefined || known(route) || route === "GET /healthz" ? route : "unknown"
+    // Anthropic Messages: its own error shape and x-api-key auth, so it takes the request from here.
+    if (isMessagesPath(path)) return serveMessages(host, { path, request, response, scope, info })
 
     const rejected = checkOrigin(request, host.options)
     if (rejected) return fail(response, rejected)
