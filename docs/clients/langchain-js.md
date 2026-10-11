@@ -1,6 +1,6 @@
 # LangChain JS
 
-Tested: `@langchain/openai` 1.6.2, `@langchain/core` 1.2.17, 2026-10-11. Everything passed except model ids that force the Responses API (below).
+Tested: `@langchain/openai` 1.6.2, `@langchain/core` 1.2.17, 2026-10-11, at an earlier commit. Everything passed except model ids that force the Responses API (below) and `jsonMode` on `fast`, which returned `{}`.
 
 ```ts
 import { ChatOpenAI } from "@langchain/openai"

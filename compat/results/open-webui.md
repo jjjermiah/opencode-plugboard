@@ -1,10 +1,12 @@
 # Open WebUI against plugboard
 
-- Date / tester: 2026-10-11, compat agent (Claude)
+> Historical record of one run at `f351307`, before the later refactors. Superseded since: the usage accounting observation (fixed in [#10](https://github.com/jjjermiah/opencode-plugboard/issues/10)). Re-test on the release commit is tracked in [`release-candidate.md`](release-candidate.md).
+
+- Date / tester: 2026-10-11, automated run
 - Client + exact version(s): Open WebUI **0.12.0** (`ghcr.io/open-webui/open-webui:main`, image id `e597ba2ca442`; Python 3.11, aiohttp 3.14.3 does the upstream HTTP)
 - Env: docker via colima (`docker info` OK). Container `plugboard-compat-owui`, host port 3091, `WEBUI_AUTH=False`, `ENABLE_OLLAMA_API=false`. Open WebUI pointed at a logproxy on `0.0.0.0:4091` (`compat/traffic/open-webui.jsonl`, 32 chat requests + 3 model-list fetches), which forwards to plugboard `:4010`.
 - Plugboard commit: `f351307` when testing started (HEAD read `85e5027` at the end; no plugboard source change was visible to me mid-run, no transient failures seen)
-- Verdict (README gate = S1 and S2 pass): **PASS**
+- Verdict (README gate = S1 and S2 pass): **PASS**, driven over HTTP only. S6 was a direct API call because Open WebUI has no structured-output feature in its UI, and `fast` answered "Crimson" in S5.
 - Driven over HTTP only (no browser): `POST /api/v1/auths/signin` for a token, `/api/models`, `/api/chat/completions`, plus `/api/v1/chats/new` to emulate the frontend so the server-side title/tags/follow-up tasks fire. Commands: `compat/docker/open-webui.sh`. Container reachability: the host name for the machine and `host.docker.internal:4010` (with `--add-host ...:host-gateway`) both returned `{"ok":true}` from a throwaway container.
 
 ## Scenarios
@@ -62,7 +64,7 @@ None on the scenarios. The only non-200 results were the two expected error-path
 
 None blocking. Minor observations (low confidence, plugboard behaviour):
 
-1. `reasoning_tokens` inconsistent with `completion_tokens` on `fast`. Same prompt `Reply with exactly: pong`:
+1. (Superseded: fixed in #10.) `reasoning_tokens` inconsistent with `completion_tokens` on `fast`. Same prompt `Reply with exactly: pong`:
    - non-stream: `"usage":{"prompt_tokens":17,"completion_tokens":32,"total_tokens":49,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":0}}`
    - stream (last chunk): `{"choices":[],"usage":{"prompt_tokens":17,"completion_tokens":3,"total_tokens":20,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":101}}}` (reasoning excluded from `completion_tokens` here, included in the non-stream one).
    Open WebUI only displays these; no functional impact.
@@ -71,7 +73,7 @@ None blocking. Minor observations (low confidence, plugboard behaviour):
 
 ## Notes / follow-ups
 
-- Mutations in this run are local to the throwaway container: tool `weather`, chats, admin user. Container and volume removed, image `ghcr.io/open-webui/open-webui:main` kept. logproxy stopped. Sessions from this run (about 35 requests) remain in the plugboard `compat` app; cleanup left to the orchestrator.
+- Mutations in this run are local to the throwaway container: tool `weather`, chats, admin user. Container and volume removed, image `ghcr.io/open-webui/open-webui:main` kept. logproxy stopped. Sessions from this run (about 35 requests) remain in the plugboard `compat` app.
 - Not covered: browser rendering (no browser), Open WebUI file upload path for images (used the direct image_url data URL), RAG/web search, multiple connections, `function_calling` set per model in Workspace (the same flag via request params).
 - Open WebUI shows model ids as returned (including `#low`, `/` names); selecting by id works via API. Dropdown behaviour with 387 entries in the browser was not observed; the API list loads instantly (cached). `/v1/models` was fetched 3 times in this run (startup, my `/api/models` call, the verify button).
 - Scripts: no files under `compat/py` or `compat/js`; helper is embedded in `compat/docker/open-webui.sh`.

@@ -9,7 +9,7 @@ bun install
 bun run typecheck
 ```
 
-The type check is also the host-compatibility gate: it fails when the pinned `@opencode/plugin` changes shape.
+The type check is also the host-compatibility gate: it fails when the `@opencode/plugin` types (the devDependency is pinned to 2.0.26) change shape. The peer range `>=2.0.26 <2.1` allows 2.0.x patch releases, which have not each been tested.
 
 ## Isolated server
 
@@ -75,4 +75,5 @@ If a request hangs, stop the dev server (`pkill -f "serve --service"` also match
 - Use a separate key and app name for test traffic (`dev` above), so its history stays apart from real apps.
 - Keep model calls tiny. Use an alias for a cheap model.
 - Clean up test history with `compat/tools/sessions.py`. It needs to talk to the same isolated server: `PLUGBOARD_OC=pb-dev PLUGBOARD_DATA_ROOT="${PB_DEV_DIR:-$HOME/.cache/plugboard-dev}/home/.local/share/opencode-plugboard" python3 compat/tools/sessions.py list --app dev`.
-- Client checks live in [`compat/`](../compat/README.md).
+- The isolated server keeps its history in its own database under `$D/home/.local/share/opencode/`, so deleting `$D` removes it all.
+- Client checks live in [`compat/`](../compat/README.md). Each runner exits nonzero when a scenario fails. Before a release, fill in [`compat/results/release-candidate.md`](../compat/results/release-candidate.md) against the commit you will tag.

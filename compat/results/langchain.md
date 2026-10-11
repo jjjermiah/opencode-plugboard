@@ -1,15 +1,17 @@
 # LangChain (Python `langchain-openai` + JS `@langchain/openai`) against plugboard
 
-- Date / tester: 2026-10-11 / client-compat agent (LangChain)
+> Historical record of one run at `3fcedc7`, before the later refactors. Superseded since: `json_object` is no longer a forced `respond` tool but a system instruction (observation 2), and the usage accounting inconsistency was fixed in [#10](https://github.com/jjjermiah/opencode-plugboard/issues/10) (observation 3). The `/v1/responses` gap (observation 1) still stands. Re-test on the release commit is tracked in [`release-candidate.md`](release-candidate.md).
+
+- Date / tester: 2026-10-11 / automated run (LangChain)
 - Client + exact version(s):
   - Python: `langchain-openai` 1.7.0, `langchain-core` 1.6.9, `openai` 3.29.0, `httpx` 0.28.1, `pydantic` 2.14.1
   - JS: `@langchain/openai` 1.6.2, `@langchain/core` 1.2.17, `openai` 7.32.0, `zod` 4.6.6 (bun 1.4.2)
 - Env: `compat/py` (uv, Python 3.13) and `compat/js` (bun)
 - Plugboard commit: `3fcedc7` (dev server hot-reloads; no transient 5xx seen during the runs)
-- Verdict (S1 and S2 pass): **PASS** for Python (everything on every model). **PARTIAL** for JS: everything passes except one client quirk: JS `ChatOpenAI` forces the Responses API for ids containing `gpt-5.6`, and plugboard has no `/v1/responses` route.
+- Verdict (S1 and S2 pass): **PASS** for Python: every scenario passed on every model, but `json_mode` on `fast` passed on a single sample (it returned `{}` in JS and curl). **PARTIAL** for JS: JS `ChatOpenAI` forces the Responses API for ids containing `gpt-5.6` and plugboard has no `/v1/responses` route, and `json_mode` on `fast` returned `{}`.
 
 Scripts: `compat/py/langchain_py.py`, `compat/js/langchain_js.ts`. Both take scenario names (`S1 S2 S3 S4 S5 S6 S7 S1x ERR`; JS also `GPTALT`) and read `PLUGBOARD_BASE_URL` / `PLUGBOARD_KEY`.
-Raw traffic (gitignored): `compat/traffic/langchain.jsonl` (Python; **mixed with other agents**, a parallel agent used the same port 4031, filter by `user-agent` and body) and `compat/traffic/langchain-js.jsonl` (JS, clean, port 4067).
+Raw traffic (gitignored): `compat/traffic/langchain.jsonl` (Python; **mixed with another run's traffic**, which used the same proxy port 4031, so filter by `user-agent` and body) and `compat/traffic/langchain-js.jsonl` (JS, clean, port 4067).
 
 ## Scenarios
 
@@ -56,8 +58,8 @@ None blocking. Observations, most likely first:
    - request `POST /v1/responses` `{"input":[{"type":"message","role":"user","content":"Reply with exactly: pong"}],"model":"openai/gpt-5.6-luna#low","stream":false,"text":{}}`
    - response 404 `{"error":{"message":"No route for POST /v1/responses","type":"not_found_error","param":null,"code":"not_found"}}`
    The 404 body is OpenAI-shaped, good. Decision for plugboard: document the workaround (use the `openai/` prefix is not enough in JS; pass a model id without `gpt-5.6`, or use Python) or add a Responses route. I did not verify whether a Responses route is in scope.
-2. **Model behaviour, with a design weak spot: `response_format: {"type":"json_object"}` on `fast`.** plugboard maps `json_object` to a forced `respond` tool with `{type:object, additionalProperties:true}` (`src/openai/request.ts:182`), so the model sees no key names except in the prompt. `fast` returned `{}` 4 of 4 times for the same prompt in JS and curl, while Python got `{"calories":"220","protein_g":"15"}` once (strings, not numbers; pydantic coerced). Another agent's request on `fast` without a key hint got `{"actual_response":"..."}`. Claude and gpt-5.x answered correctly. Raw: request `{"model":"fast","stream":false,"response_format":{"type":"json_object"},"messages":[{"role":"user","content":"Estimate: 2 boiled eggs and a slice of toast. Respond as JSON with keys calories and protein_g (numbers)."}]}` -> `"message":{"content":"{}"},"finish_reason":"stop"`, usage `prompt 182, completion 200`. Note `prompt_tokens` 182 for a ~25-token prompt (plugboard adds about 150 tokens of tool/system scaffolding for any `response_format`).
-3. **Minor: usage accounting is inconsistent for reasoning models.** Same prompt `Reply with exactly: pong` on `fast`:
+2. **(Superseded: `json_object` now uses a system instruction, not the `respond` tool.) Model behaviour, with a design weak spot: `response_format: {"type":"json_object"}` on `fast`.** At `3fcedc7` plugboard mapped `json_object` to a forced `respond` tool with `{type:object, additionalProperties:true}` (`src/openai/request.ts:182`), so the model sees no key names except in the prompt. `fast` returned `{}` 4 of 4 times for the same prompt in JS and curl, while Python got `{"calories":"220","protein_g":"15"}` once (strings, not numbers; pydantic coerced). A request on `fast` from a concurrent run without a key hint got `{"actual_response":"..."}`. Claude and gpt-5.x answered correctly. Raw: request `{"model":"fast","stream":false,"response_format":{"type":"json_object"},"messages":[{"role":"user","content":"Estimate: 2 boiled eggs and a slice of toast. Respond as JSON with keys calories and protein_g (numbers)."}]}` -> `"message":{"content":"{}"},"finish_reason":"stop"`, usage `prompt 182, completion 200`. Note `prompt_tokens` 182 for a ~25-token prompt (plugboard adds about 150 tokens of tool/system scaffolding for any `response_format`).
+3. **(Superseded: fixed in #10.) Minor: usage accounting is inconsistent for reasoning models.** Same prompt `Reply with exactly: pong` on `fast`:
    - Py, non-stream: `"usage":{"prompt_tokens":17,"completion_tokens":3,"total_tokens":20,"completion_tokens_details":{"reasoning_tokens":64}}` -> reasoning (64) larger than completion (3) and not in total.
    - JS, non-stream: `completion_tokens 83`, `reasoning_tokens 0` for the same visible `pong`.
    - streaming: `reasoning_tokens 0` with `completion_tokens` 3 (Py) / 47 (JS).
@@ -78,9 +80,8 @@ No other bug: no schema leaks, no 5xx, `finish_reason`, ids and SSE framing all 
 
 ## Notes / follow-ups
 
-- Sessions: **not deleted by me.** Session metadata has no client id, other agents share the `compat` app and used the same models and prompts at the same time, so I could not attribute sessions safely. Orchestrator: run `python3 compat/tools/sessions.py delete --all` after all client agents finish.
-- A parallel agent logged into my proxy port 4031 (collision), so `langchain.jsonl` has foreign traffic; `langchain-js.jsonl` is clean.
-- One edit to my JS script was made with a Python one-liner in the shell (the `edit` tool had a transient JSON error); the file is only mine.
+- Sessions from this run were not deleted: session metadata had no client id, and concurrent runs used the same `compat` app, models and prompts, so they could not be attributed. Responses now carry `x-plugboard-session`.
+- Another run's proxy shared port 4031, so `langchain.jsonl` has foreign traffic; `langchain-js.jsonl` is clean.
 - Not tested: JS `use_responses_api` against a future `/v1/responses`, multi-tool parallel calls, async clients, `with_structured_output` with strict `json_schema` on nested schemas, the `reasoning` kwarg.
 
-Scripts committed under: `compat/py/langchain_py.py`, `compat/js/langchain_js.ts` (not committed per instructions)
+Scripts: `compat/py/langchain_py.py`, `compat/js/langchain_js.ts`.

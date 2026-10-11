@@ -124,8 +124,10 @@ async function s7() {
 }
 async function err() {
   for (const [label, m, key] of [["bad key", FAST, "bad"], ["bad model", "nope", KEY]] as const) {
+    let threw = false;
     try { await new ChatOpenAI({ model: m, apiKey: key, configuration: { baseURL: BASE }, useResponsesApi: false, maxRetries: 0 }).invoke("hi"); }
-    catch (e: any) { console.log(" ", label + ":", e?.name, e?.status, String(e?.message).slice(0, 300)); }
+    catch (e: any) { threw = true; console.log(" ", label + ":", e?.name, e?.status, String(e?.message).slice(0, 300)); }
+    assert(threw, `${label} was accepted`);
   }
 }
 
@@ -141,9 +143,17 @@ const RUNS: Record<string, [string, (m: string) => Promise<void>, string][]> = {
   S7: [["S7", () => s7(), "-"]],
   ERR: [["ERR", () => err(), "-"]],
 };
+const failures: string[] = [];
 for (const k of process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(RUNS)) {
-  for (const [name, fn, model] of RUNS[k] ?? []) {
+  if (!RUNS[k]) { failures.push(`${k} (unknown run name)`); console.log(`== ${k}: unknown run name`); continue; }
+  for (const [name, fn, model] of RUNS[k]) {
     console.log(`== ${name} model=${model}`);
-    try { await fn(model); console.log("  -> PASS"); } catch (e: any) { console.log("  -> FAIL", e?.stack?.split("\n").slice(0, 3).join(" | ")); }
+    try { await fn(model); console.log("  -> PASS"); } catch (e: any) {
+      console.log("  -> FAIL", e?.stack?.split("\n").slice(0, 3).join(" | "));
+      failures.push(`${name} ${model}`);
+    }
   }
 }
+console.log(`\nSUMMARY: ${failures.length} failed`);
+for (const f of failures) console.log("  FAIL", f);
+if (failures.length > 0) process.exit(1);

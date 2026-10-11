@@ -1,6 +1,6 @@
 # OpenAI Python SDK
 
-Tested: `openai` 3.29.0, 2026-10-11. Every scenario passed.
+Tested: `openai` 3.29.0, 2026-10-11, at an earlier commit. Scenarios S1 to S7 and the error paths passed; `models.retrieve` was a 404 then and is implemented now (see Gotchas).
 
 ```python
 import os
@@ -45,5 +45,5 @@ print(r.choices[0].message.content)
 
 - Tool call ids differ by model (a bare UUID, `chatcmpl-tool-...`, `toolu_...`, `call_...`). Don't parse them.
 - Streaming usage needs `stream_options={"include_usage": True}`. A streamed tool call arrives as one delta with the whole arguments string.
-- `client.models.retrieve(id)` returns 404 until `GET /v1/models/{id}` lands. `client.models.list()` works.
+- `client.models.list()` and `client.models.retrieve(id)` (`GET /v1/models/{id}`) are both served. `retrieve` was added after the 2026-10-11 run and has not been re-run with this SDK.
 - A wrong key raises `AuthenticationError` (401 `invalid_api_key`). An unknown model raises `NotFoundError` (404 `model_not_found`).

@@ -1,6 +1,8 @@
 # Vercel AI SDK against plugboard
 
-- Date / tester: 2026-10-11, subagent
+> Historical record of one run at `3fcedc7`, before the later refactors. Superseded since: `json_object` is now served with a system instruction (the S6 detail below describes the model's reply to the older mapping; the client still sends no schema, so the keys stay unknown). Re-test on the release commit is tracked in [`release-candidate.md`](release-candidate.md).
+
+- Date / tester: 2026-10-11, automated run
 - Client + exact version(s): `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91, `zod` 4.6.6. User-Agent sent: `ai/7.0.137 ai-sdk-provider-utils/5.0.58 bun/1.4.2`
 - Env: compat/js (bun 1.4.2). Script: `compat/js/vercel_ai.ts`. Run: `bun vercel_ai.ts <compat|openai-chat|openai-default> [S1,S2|all] [model,...]`
 - Plugboard commit: 3fcedc7
@@ -106,7 +108,7 @@ Both providers surfaced the OpenAI error body correctly through `APICallError`:
 
 - Decide whether plugboard should serve `/v1/responses`. Without it, `@ai-sdk/openai` v4 users must use `.chat()`. Docs should say so (and `createOpenAICompatible` with `supportsStructuredOutputs: true` for structured output).
 - Not tested: `developer` role and `max_completion_tokens` (the SDK only emits them for ids it classes as reasoning models, and plugboard's `provider/model#variant` ids do not match), `parallel_tool_calls`, multiple parallel tool calls, tool-choice `required`/named, `streamObject`, embeddings (no such plugboard feature expected).
-- Test hygiene: the first `compat` run (27 requests) was accidentally logged by another agent's logproxy on :4031 (port clash, my proxy failed to bind) and appears in `compat/traffic/langchain.jsonl` (recognisable by the `ai-sdk` user agent). I then re-ran everything through my own proxy on :4071. Sessions: 63 sessions deleted, matched by model + creation time to my requests (user agent `ai-sdk`). Matching by time means a handful could belong to a parallel agent with the same model at the same second; I did not use `--all`. A few leftover compat sessions of mine may exist.
+- Test hygiene: the first `compat` run (27 requests) went through a capture proxy that another run already held on :4031 (port clash), so those requests are in `compat/traffic/langchain.jsonl` (recognisable by the `ai-sdk` user agent). Everything was then re-run through a dedicated proxy on :4071. 63 sessions were deleted, matched by model and creation time (user agent `ai-sdk`); matching by time can catch a session from a concurrent run with the same model, and a few leftover `compat` sessions may remain.
 - Reproduce: `cd compat/js && PLUGBOARD_KEY=... bun vercel_ai.ts compat` (then `openai-chat`, `openai-default`). Optional env `PLUGBOARD_BASE_URL`, `FULL=1` (print full request bodies).
 
-Scripts committed under: `compat/js/vercel_ai.ts` (not committed by me, per instructions)
+Script: `compat/js/vercel_ai.ts`.

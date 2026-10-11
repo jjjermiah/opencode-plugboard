@@ -1,6 +1,6 @@
 # OpenAI JS SDK
 
-Tested: `openai` 7.32.0 with `zod` 4.6.6, 2026-10-11. Every scenario passed.
+Tested: `openai` 7.32.0 with `zod` 4.6.6, 2026-10-11, at an earlier commit. Scenarios S1 to S7 and the error paths passed.
 
 ```ts
 import OpenAI from "openai"
@@ -47,5 +47,5 @@ console.log(second.choices[0]?.message.content)
 ## Gotchas
 
 - Streaming usage needs `stream_options: { include_usage: true }`. The `.stream()` helper assembles the single-delta tool call correctly.
-- `client.models.retrieve(id)` returns 404 until `GET /v1/models/{id}` lands. `models.list()` works.
+- `models.list()` and `client.models.retrieve(id)` (`GET /v1/models/{id}`) are both served. `retrieve` was added after the 2026-10-11 run and has not been re-run with this SDK.
 - A wrong key throws `AuthenticationError` (401). An unknown model throws `NotFoundError` (404), also with `stream: true`.

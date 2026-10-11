@@ -1,6 +1,6 @@
 # Client compatibility kit
 
-Scripts, fixtures and dated results for checking one OpenAI client at a time against a running plugboard. The results in `results/` are what the [client pages](../docs/clients/) are built from. Run it against an isolated server, not your everyday OpenCode: see [docs/development.md](../docs/development.md).
+Scripts, fixtures and dated results for checking one OpenAI client at a time against a running plugboard. The results in `results/` are what the [client pages](../docs/clients/) are built from. Run it against an isolated server, not your everyday OpenCode: see [docs/development.md](../docs/development.md). Runners exit nonzero on failure, so they can gate a release.
 
 ## Setup
 
@@ -60,11 +60,11 @@ Keep calls tiny: one prompt per scenario, no loops. A whole client run is about 
 | `js/` (bun) | `cd compat/js && bun smoke.ts`, or `bun openai_js.ts`; type check with `bun run typecheck` | `bun.lock` |
 | Docker (Open WebUI, n8n) | see [docker/README.md](docker/README.md) | image tags in the scripts |
 
-`smoke.py` and `smoke.ts` run S1 and fail unless the reply contains `pong`. The larger scripts take scenario names (for example `S1,S2`).
+`smoke.py` and `smoke.ts` run S1 and fail unless the reply contains `pong`. The larger scripts take scenario names (for example `S1,S2`). Every runner prints a summary and exits nonzero when any scenario failed. The one intended exception is `bun vercel_ai.ts openai-default`, which documents that the default `@ai-sdk/openai` call needs `/v1/responses` and always fails.
 
 ## Results
 
-Copy `results/_template.md` to `results/<client>.md`. Record the client and exact versions, the plugboard commit, a scenario table, exact error text for each failure, and for every suspected plugboard bug the raw request and response. Say whether you think it is a plugboard bug, a client quirk or model behaviour, and why. Results are dated evidence, so leave old ones as they are and add a new dated file when you re-test.
+Copy `results/_template.md` to `results/<client>.md`. Record the client and exact versions, the plugboard commit, a scenario table, exact error text for each failure, and for every suspected plugboard bug the raw request and response. Say whether you think it is a plugboard bug, a client quirk or model behaviour, and why. Results are dated evidence, so keep old observations and add a new dated file when you re-test. When later code makes an old conclusion wrong, add a note at the top of the file that marks it superseded and say what changed; don't rewrite the observation. Don't put session chatter in a result (who ran it, what was or wasn't committed). The record for a release is [`results/release-candidate.md`](results/release-candidate.md).
 
 ## Capturing traffic
 
@@ -82,7 +82,7 @@ jq -c '{path,status,req_json,resp_body}' compat/traffic/<client>.jsonl
 
 ## Cleanup
 
-Every request leaves a history session under `<data root>/compat`.
+Every request leaves a history session filed under `<data root>/compat`. The directory only groups the sessions; the prompts and replies live in OpenCode's database (see the [README](../README.md#history)), so these commands delete sessions through OpenCode rather than files.
 
 ```sh
 python3 compat/tools/sessions.py list

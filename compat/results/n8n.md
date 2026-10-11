@@ -1,10 +1,12 @@
 # n8n against plugboard
 
-- Date / tester: 2026-10-11, client agent (n8n)
+> Historical record of one run at `f351307`, before the later refactors. Superseded since: the usage accounting observation (fixed in [#10](https://github.com/jjjermiah/opencode-plugboard/issues/10)) and the `json_object` wording (now a system instruction). Re-test on the release commit is tracked in [`release-candidate.md`](release-candidate.md).
+
+- Date / tester: 2026-10-11, automated run (n8n)
 - Client + exact version(s): n8n **2.42.6** (`docker.n8n.io/n8nio/n8n:latest`, digest `sha256:526daa38b68e…`). Nodes: `@n8n/n8n-nodes-langchain` bundled; OpenAI Chat Model v1.3 (uses `@langchainjs/openai`, `openai` JS SDK 6.46.0 per `X-Stainless-Package-Version`), Basic LLM Chain v1.9, AI Agent v3.1, Code Tool v1.3, Structured Output Parser v1.3
 - Env: docker (colima, Docker 29.6.2). Container `plugboard-compat-n8n`, port 5678, via logproxy on `0.0.0.0:4093` → plugboard `:4010`. Credential Base URL `http://host.docker.internal:4093/v1` (needs `--add-host host.docker.internal:host-gateway`)
 - Plugboard commit: `f351307`
-- Verdict (README gate = S1 and S2 pass): **PASS**. S1 to S7 all pass. The only failures are n8n default/advanced options that plugboard correctly forwards and the upstream provider rejects (see S8 and the Responses API default).
+- Verdict (README gate = S1 and S2 pass): **PASS**. S1 to S7 passed, with one qualification: S6b on `fast` returned `{}` in one run and string numbers in another. Failures were the Responses API default (a plugboard gap, plugboard has no `/v1/responses`) and the S8 sampling options, which plugboard forwarded and the upstream provider rejected.
 
 How it was driven (all headless, no UI): `compat/docker/n8n/run.sh all` (`up`, `scenarios`, `down` also work alone). Owner via `POST /rest/owner/setup`, login via `POST /rest/login`, public API key via `POST /rest/api-keys` (valid scopes: `workflow:create|read|list|update|delete|activate|deactivate`, `credential:*`, `execution:*`; `workflow:execute` does not exist, so the key request fails with `{"code":..,"message":..}`), credential via public API `POST /api/v1/credentials` (`type: openAiApi`, `data.url` = Base URL), credential test via internal `POST /rest/credentials/test`, workflows via `POST /api/v1/workflows` + `/activate`, executed through production **webhook** URLs (`/webhook/<path>`). The public API has no "execute workflow" endpoint, so webhooks were the way. The model is set **By ID** with an expression: `{"__rl":true,"mode":"id","value":"={{ $('Webhook').first().json.body.model }}"}`, so one workflow serves all three models.
 
@@ -52,12 +54,12 @@ How it was driven (all headless, no UI): `compat/docker/n8n/run.sh all` (`up`, `
 
 ## Suspected plugboard bugs
 
-None confirmed. Items for the orchestrator to judge (classification in brackets):
+None confirmed. Items to judge (classification in brackets):
 
 1. **`POST /v1/responses` is a 404** [feature gap, plugboard intentionally Chat Completions only; n8n default is Responses API on]. Raw above. Documentation item: tell n8n users to turn "Use Responses API" off. If plugboard ever adds `/v1/responses`, n8n would work without that toggle.
 2. **Sampling params are forwarded; provider-specific rejections come back as HTTP 400 `provider.invalid-request`** [model/provider behaviour, plugboard passes it through faithfully]. Real OpenAI behaves the same for gpt-5 reasoning models (`Unsupported parameter: temperature`), so clients that always send `temperature` (n8n does only when the user sets it) break on `#low` ChatGPT ids. Consider (design choice, not a bug): silently dropping unsupported sampling params for models that reject them. Raw request (n8n, run at 16:2x EDT): `{"model":"openai/gpt-5.6-luna#low","temperature":0.2,"top_p":0.9,"frequency_penalty":0.1,"presence_penalty":0.1,"stream":false,"max_tokens":300,"messages":[{"role":"user","content":"Reply with exactly: pong"}]}` → 400 `{"error":{"message":"Unsupported parameter: temperature","type":"invalid_request_error","param":null,"code":"provider.invalid-request"}}`.
-3. **`usage` on `fast`: `completion_tokens` high but `reasoning_tokens` 0 and tiny content** [unverified, low priority, possibly plugboard usage mapping or model]. Example (S6b, `fast`, json_object): content `{}` (2 chars) with `"usage":{"prompt_tokens":188,"completion_tokens":165,"total_tokens":353,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":0}}`. The README says `fast` reasons a little, so the 165 tokens are probably hidden reasoning not reported under `reasoning_tokens`. Same pattern in S1 (`pong`, 3 tokens, fine) vs S6 fast (`completion_tokens:200` for ~30 chars).
-4. Transient: plugboard `:4010` was unreachable for about 1 minute (~16:31 to 16:32 EDT, hot reload by the other agent). During that window n8n's credential test said `Service Unavailable` (logproxy 502 "Connection refused"). Not a bug; re-run was clean.
+3. **(Superseded: usage accounting was fixed in #10.) `usage` on `fast`: `completion_tokens` high but `reasoning_tokens` 0 and tiny content** [unverified, low priority, possibly plugboard usage mapping or model]. Example (S6b, `fast`, json_object): content `{}` (2 chars) with `"usage":{"prompt_tokens":188,"completion_tokens":165,"total_tokens":353,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":0}}`. The README says `fast` reasons a little, so the 165 tokens are probably hidden reasoning not reported under `reasoning_tokens`. Same pattern in S1 (`pong`, 3 tokens, fine) vs S6 fast (`completion_tokens:200` for ~30 chars).
+4. Transient: plugboard `:4010` was unreachable for about 1 minute (~16:31 to 16:32 EDT, a hot reload of the dev server). During that window n8n's credential test said `Service Unavailable` (logproxy 502 "Connection refused"). Not a bug; re-run was clean.
 
 Raw S2 exchange for reference (fast, non-stream; first `run.sh` pass, from the logproxy):
 
@@ -101,7 +103,7 @@ n8n accumulated it into a tool call, ran the Code tool, and sent a second stream
 - Structured output via the Structured Output Parser is prompt-based (S6 passes on all three models) and returns the parsed value under `output`; `response_format: json_object` is the only true response-format passthrough n8n offers in Completions mode. If a strict-schema (`json_schema`) check against plugboard is wanted, use another client; n8n only sends it in Responses API mode.
 - `fast` returned `{}` for the json_object prompt once and string numbers (`"230"`) once: model behaviour with `response_format: json_object` (no schema enforcement), not plugboard.
 - n8n dedups model ids (387 shown of 458 listed), so the known duplicate ids do not hurt it.
-- Container `plugboard-compat-n8n`, its volume, and the logproxy on 4093 are stopped and removed; image `docker.n8n.io/n8nio/n8n:latest` kept. State dir (`$TMPDIR/plugboard-compat-n8n`: cookie jar, API key, credential id) removed. n8n runs generated about 35 `compat` app sessions; cleanup left to the orchestrator (`python3 compat/tools/sessions.py list`).
+- Container `plugboard-compat-n8n`, its volume, and the logproxy on 4093 are stopped and removed; image `docker.n8n.io/n8nio/n8n:latest` kept. State dir (`$TMPDIR/plugboard-compat-n8n`: cookie jar, API key, credential id) removed. n8n runs generated about 35 `compat` app sessions, left in place (`python3 compat/tools/sessions.py list` shows them).
 - Raw traffic (gitignored): `compat/traffic/n8n.jsonl` (final run), `n8n-explore.jsonl` and `n8n-run1.jsonl` (earlier passes).
 - Not tested: n8n Chat Hub / "OpenAI" vendor node (Message a Model, which uses the Responses API), memory sub-nodes, parallel tool calls, `reasoning_effort`, Extra Body.
 

@@ -38,6 +38,7 @@ up() {
     nohup python3 "$REPO/compat/tools/logproxy.py" --host "$LOGPROXY_HOST" --port "$PROXY_PORT" \
       --upstream "http://127.0.0.1:$PLUGBOARD_PORT" --out "$TRAFFIC" \
       >"$STATE/logproxy.log" 2>&1 &
+    echo $! >"$STATE/logproxy.pid"
     sleep 1
   fi
   # 2. n8n
@@ -159,7 +160,7 @@ down() {
   docker stop "$CONTAINER" >/dev/null 2>&1 || true
   docker rm "$CONTAINER" >/dev/null 2>&1 || true
   docker volume rm "$VOLUME" >/dev/null 2>&1 || true
-  pkill -f "logproxy.py --host $LOGPROXY_HOST --port $PROXY_PORT" || true
+  if [ -f "$STATE/logproxy.pid" ]; then kill "$(cat "$STATE/logproxy.pid")" 2>/dev/null || true; fi
   rm -rf "$STATE"
 }
 

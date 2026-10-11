@@ -1,8 +1,8 @@
 # Vercel AI SDK
 
-Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91, 2026-10-11.
+Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91, 2026-10-11, at an earlier commit.
 
-Use `createOpenAICompatible`. It passed every scenario.
+Use `createOpenAICompatible`. It passed every scenario with `supportsStructuredOutputs: true`. Without that flag structured output failed (see Gotchas).
 
 ```ts
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"

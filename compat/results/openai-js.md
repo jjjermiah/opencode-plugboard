@@ -1,9 +1,11 @@
 # OpenAI JS/TS SDK against plugboard
 
-- Date / tester: 2026-10-11 (run 20:16:14Z to 20:17:05Z), subagent
+> Historical record of one run at `3fcedc7`, before the later refactors. Superseded since: the usage accounting observation below (fixed in [#10](https://github.com/jjjermiah/opencode-plugboard/issues/10)), and the run did not touch `models.retrieve`, which is now implemented. Re-test on the release commit is tracked in [`release-candidate.md`](release-candidate.md).
+
+- Date / tester: 2026-10-11 (run 20:16:14Z to 20:17:05Z), automated run
 - Client + exact version(s): `openai` npm 7.32.0 (`User-Agent: OpenAI/JS 7.32.0`), `zod` 4.6.6 (for `openai/helpers/zod`); runtime bun 1.4.2 launching script, SDK reports node v26.3.0 runtime
 - Env: compat/js (bun)
-- Plugboard commit: 3fcedc7 (dev server hot-reloads; the tree may have been edited by another agent during the run)
+- Plugboard commit: 3fcedc7 (the dev server hot-reloads, so the running code may have moved during the run)
 - Verdict (README gate = S1 and S2 pass): **PASS**
 - Script: `compat/js/openai_js.ts` (`cd compat/js && bun openai_js.ts [S1,S2,...]`). Run through `compat/tools/logproxy.py` on port 4037; log `compat/traffic/openai-js.jsonl` (gitignored). SDK built with `maxRetries: 0`.
 
@@ -42,7 +44,7 @@ Error path details (client surfaces the OpenAI error body correctly):
 
 None blocking. Minor observations (usage accounting, probably not client related; time 20:16 to 20:17Z):
 
-1. **`reasoning_tokens` inconsistent with `completion_tokens` / `total_tokens` on `fast`.** Same model, similar prompts:
+1. **(Superseded: usage accounting was fixed in #10, re-check on the release commit.) `reasoning_tokens` inconsistent with `completion_tokens` / `total_tokens` on `fast`.** Same model, similar prompts:
    - non-stream S6 (request `{"model":"fast","messages":[{"role":"user","content":"Estimate: 2 boiled eggs and a slice of toast."}],"response_format":{...}}`), response usage: `{"prompt_tokens":200,"completion_tokens":19,"total_tokens":219,"completion_tokens_details":{"reasoning_tokens":38}}`. Here `reasoning_tokens` (38) exceeds `completion_tokens` (19) and is not in `total_tokens`; OpenAI semantics is that `completion_tokens` includes reasoning.
    - Same model, S6 `.parse()` response: `"completion_tokens":141,...,"reasoning_tokens":0` (reasoning folded into completion, reported as 0).
    - S1 non-stream fast `completion_tokens: 36`, S3 stream `completion_tokens: 102` for content `pong`, both `reasoning_tokens: 0`.
@@ -86,7 +88,7 @@ Note: tool-call ids from `fast` vary by run (`chatcmpl-tool-...` or a plain UUID
 ## Notes / follow-ups
 
 - Total requests: about 45 including helper variants (S4 sends 3 stream/runTools exchanges, S6 3 per model).
-- **Session cleanup NOT done.** `compat/tools/sessions.py` cannot attribute sessions to a client (no session id in response headers or traffic log), and five other agents use the same `compat` app with identical prompts at the same seconds, so deleting by id would risk removing their sessions. My requests ran 20:16:14Z to 20:17:05Z (16:16:14 to 16:17:05 EDT). Orchestrator: run `python3 compat/tools/sessions.py delete --all` after all agents finish. Suggestion: have plugboard echo the session id in a response header (e.g. `x-plugboard-session`) so clients can clean up their own.
+- Sessions from this run were not deleted. At the time `compat/tools/sessions.py` could not attribute a session to a client (no session id in response headers or the traffic log), and other runs shared the `compat` app with identical prompts. The requests ran 20:16:14Z to 20:17:05Z (16:16:14 to 16:17:05 EDT). Superseded: responses now carry an `x-plugboard-session` header with the session id.
 - `compat/js/package.json` untouched; no extra deps needed (`openai/helpers/zod` with zod 4.6.6 works).
 
-Scripts committed under: `compat/js/openai_js.ts` (not committed by me, per instructions).
+Script: `compat/js/openai_js.ts`.
