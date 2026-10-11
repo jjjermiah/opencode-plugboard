@@ -1,5 +1,8 @@
 [test]
-# Only the suite under test/; compat/ is a separate manual kit.
+# Only the suite under test/; the top-level compat/ is the separate manual kit (test/compat/ is
+# the automated client matrix, part of the suite).
 root = "test"
 # Points HOME and the XDG dirs at a throwaway directory before any test module loads.
 preload = ["./test/setup.ts"]
+# Coverage measures the package (index.ts and src/), not the suite's own helpers.
+coveragePathIgnorePatterns = ["test/**"]

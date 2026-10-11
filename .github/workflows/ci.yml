@@ -32,6 +32,11 @@ jobs:
         run: bun run typecheck
       - name: Test
         run: bun test
+      # #110 and #100: per-layer test counts and coverage must stay at or above the floors in .ci/.
+      - name: Test gates (test counts and coverage)
+        run: |
+          bun test --coverage --coverage-reporter=lcov --coverage-dir="$RUNNER_TEMP/gates" --reporter=junit --reporter-outfile="$RUNNER_TEMP/gates/junit.xml" > /dev/null
+          bun .github/scripts/test-gates.ts "$RUNNER_TEMP/gates" --summary
       - name: Check the packed file list
         run: bun .github/scripts/check-pack.ts
       - name: Smoke-test the packed tarball
