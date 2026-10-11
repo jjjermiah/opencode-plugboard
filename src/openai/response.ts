@@ -21,6 +21,19 @@ export interface OpenAiExchange {
   readonly includeUsage: boolean
   /** Name of the forced tool that carries `response_format` output; its input is unwrapped into the message content. */
   readonly structuredTool?: string
+  /**
+   * The caller's own tools are offered next to the structured tool. A call to any of them is the
+   * response (normal `tool_calls`, prose and the structured answer dropped); the structured
+   * answer is content only when the step called no caller tool.
+   */
+  readonly callerTools?: boolean
+}
+
+/** How a streamed exchange ended. Nothing was written when `failure` is set and `started` is false: the caller answers with a real HTTP error. */
+export interface StreamResult {
+  readonly failure?: PlugError
+  /** Whether any frame was written (the response is committed as a 200 SSE stream). */
+  readonly started: boolean
 }
 
 const ERROR_TYPES: Record<PlugErrorKind, string> = {
@@ -141,14 +154,23 @@ export async function collectCompletion(
     return { status: error.status, body: encodeError(error) }
   }
 
-  const isStructured = exchange.structuredTool !== undefined
   const answer = calls.find((call) => structured.isAnswer(exchange, call))
-  const missing = structured.failure(exchange, finish, answer !== undefined)
+  const others = calls.filter((call) => !structured.isAnswer(exchange, call))
+  // With the caller's tools offered, a call to one of them wins over the structured answer.
+  const passthrough = exchange.callerTools === true && others.length > 0
+  const isStructured = exchange.structuredTool !== undefined && !passthrough
+  const missing = passthrough ? undefined : structured.failure(exchange, finish, answer !== undefined)
   if (missing) return { status: missing.status, body: encodeError(missing) }
-  const toolCalls = isStructured ? [] : calls
+  const toolCalls = isStructured ? [] : others
   const message: Record<string, unknown> = {
     role: "assistant",
-    content: isStructured ? (answer ? structured.content(answer) : null) : text.length > 0 ? text : null,
+    content: isStructured
+      ? answer
+        ? structured.content(answer)
+        : null
+      : exchange.structuredTool === undefined && text.length > 0
+        ? text
+        : null,
     refusal: null,
   }
   if (toolCalls.length > 0)
@@ -171,14 +193,16 @@ export async function collectCompletion(
 }
 
 /**
- * Writes SSE frames via `write` (each frame is one complete `data: ...\n\n` string).
- * A mid-stream error is written as an `error` frame and then `data: [DONE]`.
+ * Writes SSE frames via `write` (each frame is one complete `data: ...\n\n` string) and reports
+ * how the exchange ended. A failure before the first frame is not written (the first wire-visible
+ * output decides the HTTP status: see `StreamResult`); a failure after it is written as an
+ * `error` frame and then `data: [DONE]`.
  */
 export async function streamCompletion(
   events: AsyncIterable<PlugEvent>,
   exchange: OpenAiExchange,
   write: (chunk: string) => void,
-): Promise<void> {
+): Promise<StreamResult> {
   const id = newId()
   const created = now()
   const frame = (value: object) => write(`data: ${JSON.stringify(value)}\n\n`)
@@ -195,6 +219,8 @@ export async function streamCompletion(
   let started = false
   let calls = 0
   let answered = false
+  /** With caller tools offered the structured answer waits for the finish: a caller tool call in the same step replaces it. */
+  let held: ToolCall | undefined
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
@@ -217,13 +243,20 @@ export async function streamCompletion(
     }
     if (event.type === "reasoning-delta") continue
     if (exchange.structuredTool !== undefined) {
-      // Structured mode: only the first answer is content; everything else is suppressed.
-      if (event.type === "tool-call" && !answered && structured.isAnswer(exchange, event)) {
-        answered = true
-        start()
-        chunk({ content: structured.content(event) })
+      // Structured mode: only the first answer is content; prose and other tool calls are
+      // suppressed, except the caller's own tools when they are offered.
+      if (event.type === "tool-call" && structured.isAnswer(exchange, event)) {
+        if (!answered) {
+          answered = true
+          if (exchange.callerTools) held = event
+          else {
+            start()
+            chunk({ content: structured.content(event) })
+          }
+        }
+        continue
       }
-      continue
+      if (!(exchange.callerTools && event.type === "tool-call")) continue
     }
     start()
     if (event.type === "text-delta") {
@@ -234,15 +267,20 @@ export async function streamCompletion(
     }
   }
 
-  failure ??= finish ? structured.failure(exchange, finish, answered) : noFinish()
+  const passthrough = exchange.callerTools === true && calls > 0
+  const isStructured = exchange.structuredTool !== undefined && !passthrough
+  failure ??= finish ? (passthrough ? undefined : structured.failure(exchange, finish, answered)) : noFinish()
   if (failure) {
+    if (!started) return { failure, started }
     frame(encodeError(failure))
     write("data: [DONE]\n\n")
-    return
+    return { failure, started }
   }
   start()
-  chunk({}, finishReason(finish!, calls, exchange.structuredTool !== undefined))
+  if (held && isStructured) chunk({ content: structured.content(held) })
+  chunk({}, finishReason(finish!, calls, isStructured))
   if (exchange.includeUsage && usage)
     frame({ id, object: "chat.completion.chunk", created, model: exchange.model, choices: [], usage: encodeUsage(usage) })
   write("data: [DONE]\n\n")
+  return { started }
 }

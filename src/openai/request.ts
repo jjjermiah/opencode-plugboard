@@ -31,6 +31,9 @@ export interface ParsedChat {
 /** Name of the forced tool that carries structured output. */
 const RESPOND_TOOL = "respond"
 
+/** The most stop sequences OpenAI accepts. */
+const MAX_STOP = 4
+
 const isRecord = (value: unknown): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value)
 
 const bad = (message: string, param?: string, code?: string): PlugError => ({
@@ -166,6 +169,11 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
     if (!fn || typeof fn.name !== "string" || fn.name.length === 0)
       return bad('Each tool must be {"type":"function","function":{"name":...}}', `tools[${index}]`)
     if (names.has(fn.name)) return bad(`Duplicate tool name "${fn.name}"`, `tools[${index}].function.name`)
+    if (fn.description != null && typeof fn.description !== "string")
+      return bad("Tool description must be a string", `tools[${index}].function.description`)
+    // An omitted `parameters` is a tool without arguments; a present one must be a JSON Schema object.
+    if (fn.parameters != null && !isRecord(fn.parameters))
+      return bad("Tool parameters must be a JSON Schema object", `tools[${index}].function.parameters`)
     names.add(fn.name)
     tools.push({
       name: fn.name,
@@ -188,8 +196,9 @@ const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError =
 const JSON_OBJECT_INSTRUCTION = "Respond with a single valid JSON object only."
 
 /**
- * `json_schema` -> the forced `respond` tool (`structured`). `json_object` -> a system instruction
- * and plain text content (`instruction`): there is no schema to force a tool with.
+ * `json_schema` -> the `respond` tool (`structured`; forced unless the caller also sends tools).
+ * `json_object` -> a system instruction and plain text content (`instruction`): there is no schema
+ * to force a tool with.
  */
 const parseResponseFormat = (raw: unknown): { structured?: PlugTool; instruction?: string } | PlugError => {
   if (raw == null) return {}
@@ -199,11 +208,15 @@ const parseResponseFormat = (raw: unknown): { structured?: PlugTool; instruction
   if (raw.type === "json_schema") {
     const spec = raw.json_schema
     if (!isRecord(spec)) return bad("response_format.json_schema must be an object", "response_format.json_schema")
+    if (spec.name != null && typeof spec.name !== "string") return bad("response_format.json_schema.name must be a string", "response_format.json_schema.name")
+    if (spec.description != null && typeof spec.description !== "string")
+      return bad("response_format.json_schema.description must be a string", "response_format.json_schema.description")
+    if (!isRecord(spec.schema)) return bad("response_format.json_schema.schema must be a JSON Schema object", "response_format.json_schema.schema")
     return {
       structured: {
         name: RESPOND_TOOL,
         description: typeof spec.description === "string" ? spec.description : "Respond with JSON matching this schema.",
-        parameters: isRecord(spec.schema) ? spec.schema : { type: "object", additionalProperties: true },
+        parameters: spec.schema,
       },
     }
   }
@@ -212,27 +225,32 @@ const parseResponseFormat = (raw: unknown): { structured?: PlugTool; instruction
 
 const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
   const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = {}
-  const number = (key: string): number | undefined | PlugError => {
+  const number = (key: string, min: number, max: number, integer: boolean): number | undefined | PlugError => {
     const value = body[key]
     if (value == null) return undefined
-    return typeof value === "number" && Number.isFinite(value) ? value : bad(`${key} must be a number`, key)
+    if (typeof value !== "number" || !Number.isFinite(value)) return bad(`${key} must be a number`, key)
+    if (integer && !Number.isInteger(value)) return bad(`${key} must be an integer`, key)
+    if (value < min || value > max)
+      return bad(max === Number.MAX_SAFE_INTEGER ? `${key} must be at least ${min}` : `${key} must be between ${min} and ${max}`, key)
+    return value
   }
-  for (const [key, field] of [
-    ["temperature", "temperature"],
-    ["top_p", "topP"],
-    ["presence_penalty", "presencePenalty"],
-    ["frequency_penalty", "frequencyPenalty"],
+  for (const [key, field, min, max, integer] of [
+    ["temperature", "temperature", 0, 2, false],
+    ["top_p", "topP", 0, 1, false],
+    ["presence_penalty", "presencePenalty", -2, 2, false],
+    ["frequency_penalty", "frequencyPenalty", -2, 2, false],
     // max_completion_tokens is the current name; max_tokens the deprecated one. Prefer the former.
-    ["max_tokens", "maxTokens"],
-    ["max_completion_tokens", "maxTokens"],
+    ["max_tokens", "maxTokens", 1, Number.MAX_SAFE_INTEGER, true],
+    ["max_completion_tokens", "maxTokens", 1, Number.MAX_SAFE_INTEGER, true],
   ] as const) {
-    const value = number(key)
+    const value = number(key, min, max, integer)
     if (typeof value === "object") return value
     if (value !== undefined) out[field] = value
   }
   if (body.stop != null) {
     const stop = typeof body.stop === "string" ? [body.stop] : body.stop
     if (!Array.isArray(stop) || !stop.every((s) => typeof s === "string")) return bad("stop must be a string or an array of strings", "stop")
+    if (stop.length > MAX_STOP) return bad(`stop takes at most ${MAX_STOP} sequences`, "stop")
     out.stop = stop as string[]
   }
   return out
@@ -244,7 +262,10 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   if (!Array.isArray(body.messages) || body.messages.length === 0) return bad("messages must be a non-empty array", "messages")
 
   // Parameters the session backend cannot honour are rejected, not ignored.
-  if (typeof body.n === "number" && body.n > 1) return bad("Only n=1 is supported", "n", "unsupported_parameter")
+  if (body.n != null) {
+    if (typeof body.n !== "number" || !Number.isInteger(body.n) || body.n < 1) return bad("n must be a positive integer", "n")
+    if (body.n > 1) return bad("Only n=1 is supported", "n", "unsupported_parameter")
+  }
   if (body.logprobs === true) return bad("logprobs is not supported", "logprobs", "unsupported_parameter")
   if (body.top_logprobs != null) return bad("top_logprobs is not supported", "top_logprobs", "unsupported_parameter")
 
@@ -269,7 +290,17 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
       "reserved_tool_name",
     )
 
-  const tools = respond ? [...callerTools, respond] : callerTools
+  // json_schema + caller tools: the model may call a caller tool or `respond`, so `tool_choice` is
+  // `required` (not forced to `respond`). `tool_choice: none` leaves only `respond`; naming a tool
+  // contradicts a structured answer.
+  if (respond && typeof toolChoice === "object")
+    return bad(
+      "A tool_choice that names a tool cannot be combined with response_format json_schema",
+      "tool_choice",
+      "unsupported_parameter",
+    )
+  const withCallerTools = respond !== undefined && callerTools.length > 0 && toolChoice !== "none"
+  const tools = respond ? (withCallerTools ? [...callerTools, respond] : [respond]) : callerTools
   if (tools.length > options.maxTools)
     return bad(
       `Request has ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`,
@@ -277,7 +308,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
       "too_many_tools",
     )
 
-  const forced: PlugToolChoice | undefined = respond ? { type: "tool", name: RESPOND_TOOL } : toolChoice
+  const forced: PlugToolChoice | undefined = respond ? (withCallerTools ? "required" : { type: "tool", name: RESPOND_TOOL }) : toolChoice
   const request: Omit<PlugRequest, "ref"> = {
     model: body.model,
     system: format.instruction ? [...parsed.system, format.instruction] : parsed.system,
@@ -293,7 +324,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
       model: body.model,
       stream: body.stream === true,
       includeUsage: streamOptions.include_usage === true,
-      ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
+      ...(respond ? { structuredTool: RESPOND_TOOL, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
     },
     ...(typeof body.reasoning_effort === "string" ? { reasoningEffort: body.reasoning_effort } : {}),
   }
