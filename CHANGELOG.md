@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.12.0] - 2026-10-11: Plan B Built In
+
+**Full diff:** [v0.11.0...v0.12.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.11.0...v0.12.0)
+
 ### Added
 
 - **Model fallback chains** ([#53](https://github.com/jjjermiah/opencode-plugboard/issues/53)). One provider having a bad minute used to fail every caller of that alias. Now an alias can be an ordered list:
@@ -25,6 +31,95 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
   When a call fails before any output reaches the client (rate limit, quota, provider down or timing out, a lost provider sign-in, a failed model run), plugboard quietly retries the next target in a fresh session. Nothing is retried once output has started, so an answer is never stitched together from two models, and client errors (bad request, context too long, content filter) come back as they are. It works on every endpoint: Chat Completions, Responses, Messages, completions and Gemini.
 
   You always know who answered: the `x-plugboard-model` header (plus `x-plugboard-fallbacks` when retries happened), the response's `model` field, `served=` and `fallbacks=` on the request log line, `plugboard_fallbacks_total` in metrics, and the whole chain on the setup page. Checked live with a dead provider as the first target on all five front-ends.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (8 commits)</summary>
+
+#### Features
+
+**feat(ci): add the commit-level full story to release notes** ([`082147b`](https://github.com/jjjermiah/opencode-plugboard/commit/082147b0ea4ebf64c700e93326ab07685409cc04))
+
+A release used to be only the curated CHANGELOG section. The commit bodies, where the reasoning and validation evidence live, never reached readers. Now every release has two layers: the curated notes on top, and "The full story" generated from the git history below them.
+
+commit-detail.ts collects the commits between the previous tag and this one, drops merge commits (including squashed "Merge w5/x" ones git does not see as merges) and the release commit, and groups the rest by conventional type: Features, Fixes, Security, Performance, Refactors, Tests, Docs, CI and tooling, Dependencies, Other. Each entry is the header, a short-hash link and the full body. Wrapped lines are joined into one line per paragraph, because GitHub renders single newlines as line breaks and a 72 column body would otherwise look ragged. Lists, quotes, tables, code fences and footers such as "Fixes #N" keep their lines.
+
+I used conventional-commits-parser to classify headers instead of regexes. I do not use its body/footer split: it cuts at the first "word: " line, which in prose is not a footer, and rejoining the halves inserted a blank line in the middle of a sentence. The body is the raw text under the header. Old commits are not conventional. "Tests:", "changelog:", "docs + changelog:" and "Security hardening:" are mapped by their first word; everything else is Other rather than guessed.
+
+release-notes.ts prints curated notes, then "## The full story" with one collapsed details block per group, then the Full diff link. It cuts the generated block out of the CHANGELOG section first, using the commit-detail markers, so the story is always rebuilt from git. It fails before anything is published when the previous tag is not in the clone (publish.yml already checks out with fetch-depth 0), and falls back to HEAD for a dry run before the tag exists. A --changelog-detail flag prints the CHANGELOG block for one version.
+
+release.ts is a focused change: it appends that block, collapsed in one details element, to the new section, and the release commit is now "chore(release): X.Y.Z" with the title in the body, so it passes commitlint by the ignore rule. The tag message is unchanged.
+
+Rejected: writing the story into the GitHub release from the CHANGELOG block alone. The CHANGELOG would then be the only source, and a hand edit there would change the release. Rebuilding from git keeps one source of truth.
+
+Checked: release-notes.ts for 0.9.1, 0.8.0 and 0.4.0 shows the expected groups and bodies; a release.ts --dry-run in a scratch clone (0.11.0 sample) adds the block with the right previous tag and no merge or release commits; typecheck and bun test (799) pass; npm pack and check-pack are unchanged.
+
+#### Docs
+
+**docs: document the commit convention and the two layer release notes** ([`300bfef`](https://github.com/jjjermiah/opencode-plugboard/commit/300bfeff540eb22df1f33455409ca968c92965db))
+
+Contributors and agents need one place that says what a commit looks like and why the body matters, now that bodies are published.
+
+CONTRIBUTING.md gets a Commits section: the format, the type list, suggested scopes, the 150 character floor for feat, fix, perf, refactor and security, a full example body (checked with commitlint, it passes), what is exempt, and how enforcement works locally and in CI. It also records why there is no prepare script, so nobody adds one and breaks the publish job. The pull request checklist gains a commit line.
+
+AGENTS.md gets one rule: every agent commit is a Conventional Commit with a detailed body, checked with "bunx commitlint --edit <file>" before "git commit -F". Agents were the main source of one line commits.
+
+docs/releasing.md explains the two layers (curated notes, generated full story), how commit-detail.ts groups them, the markers that fence the CHANGELOG block, why release-notes.ts rebuilds the story from git instead of reading that block, the new release commit subject, and the preview commands.
+
+Prose follows the repo rule: no em or en dashes.
+
+**docs(changelog): add commit-level detail to every released section** ([`fc16e1e`](https://github.com/jjjermiah/opencode-plugboard/commit/fc16e1ec90a51a6260dbad958fbf2b50c2c52d2d))
+
+Each released section of CHANGELOG.md (0.1.0 to 0.11.0) now ends with a collapsed "Commit-level detail" block, generated by release-notes.ts --changelog-detail from the real history between the previous tag and the tag. The curated text above each block is untouched; the diff is additions only, so the file stays scannable and nothing written by hand changed.
+
+0.2.1 has no block: its only commit is the release commit, so there is nothing to show. Commits from before the convention are listed as they were written, grouped by an obvious prefix or under Other, with no invented types. The block is fenced by commit-detail markers so release-notes.ts can cut it out and rebuild it, and the backfill can be run again safely.
+
+The matching GitHub releases were edited with the full story appended after their existing notes, keeping each body as it was because some had been edited by hand after release (0.1.0, 0.3.0, 0.4.1 and 0.9.0 differ from the CHANGELOG text). The Full diff link and the release names are unchanged. v0.10.0 has no GitHub release (its publish run failed), so it only got the CHANGELOG block and I did not create a release for it.
+
+#### CI and tooling
+
+**ci: enforce Conventional Commits with detailed bodies** ([`db2c03e`](https://github.com/jjjermiah/opencode-plugboard/commit/db2c03ecf13e5ca41187de2ca4cda206c6f25fbe))
+
+Commit history was the raw material for nothing: subjects like "Tests: session layer" and "Add a Gemini generateContent front-end" mixed styles, and half of the bodies were one line. The owner wants every commit to be a Conventional Commit whose body says what changed, why, what was rejected and how it was checked, because those bodies now feed the release notes (next commits).
+
+commitlint.config.mjs extends @commitlint/config-conventional and adds:
+- body-empty never, so every commit explains itself.
+- a small local rule, body-min-length-for-types, requiring 150 characters of body for feat, fix, perf, refactor and security. commitlint's own body-min-length cannot be limited to some types, so a six line plugin rule is the least code that works.
+- a "security" type, since the changelog has a Security group and conventional has no such type.
+- a scope-enum at warning level: scopes are suggested (openai, responses, anthropic, gemini, completions, session, runtime, http, config, metrics, discovery, cache, fallback, tests, ci, docs, changelog, deps) but an unknown one does not block a commit.
+- an ignore for "chore(release): X.Y.Z", which release.ts writes. Merge commits are already ignored by commitlint's defaults.
+
+Local enforcement is a lefthook commit-msg hook (lefthook.yml). I did not add a "prepare" script that runs "lefthook install": npm runs prepare on "npm publish", the publish job installs no dev dependencies, so the release would fail with "lefthook: not found". Contributors run "bunx lefthook install" once; CONTRIBUTING.md says so.
+
+CI enforcement is a new workflow, commits.yml, kept apart from ci.yml so publish.yml (which reuses ci.yml) does not lint on release and so it does not collide with the CI lane's edits. It lints "from..to" for the push or pull request range and falls back to the cutoff, main at 204bd5f on 2026-10-11, when the base is missing or older, so history is never failed retroactively. commitlint treats an empty range as an error, so the job exits early then.
+
+Checked: commitlint accepts a detailed fix and rejects a missing body, a 10 character fix body, a capitalised subject and a non-conventional header; chore(release) and merge messages pass; actionlint is clean on all workflows; linting HEAD~3..HEAD of the old history fails as intended, which is why the cutoff exists. conventional-commits-parser is added here too because the next commit uses it.
+
+**ci: start the commit lint after Release 0.11.0** ([`873644b`](https://github.com/jjjermiah/opencode-plugboard/commit/873644b3f1afb994167d1c3f85299d70e7b2dfa5))
+
+The commits workflow skips history before a cutoff so old commits are never failed retroactively. I set the cutoff to main's HEAD at the time (204bd5f), but main kept moving while this branch was open: the CI lane landed its commits and 0.11.0 was released. Those commits are not all written to the new convention, and the cutoff is also the fallback range start for a new branch push or a force-push whose "before" sha is gone, so a cutoff at 204bd5f could fail them.
+
+The cutoff is now a54a703, "Release 0.11.0", main's HEAD when this branch was rebased onto it. Every commit after it must follow the convention. CONTRIBUTING.md names the same commit.
+
+Checked: actionlint is clean and "commitlint --from main --to HEAD" passes for the commits on this branch.
+
+#### Other
+
+**Ordered model fallbacks for aliases: retry the next target before the first output** ([`67cbf82`](https://github.com/jjjermiah/opencode-plugboard/commit/67cbf821326a0cddc01df358535fe85be9548d33))
+
+Fixes #53
+
+**Fallbacks: report the served model from every front-end** ([`bd8b7eb`](https://github.com/jjjermiah/opencode-plugboard/commit/bd8b7eb812d820a89ad5e7e7a2d78b051af903db))
+
+x-plugboard-model and x-plugboard-fallbacks headers, served/fallbacks in the request log line, the served model echoed in the body for a single call, and the whole chain in discovery. Fixes #53
+
+**Fallbacks: Gemini route, tests** ([`ecaaabd`](https://github.com/jjjermiah/opencode-plugboard/commit/ecaaabdd0e28252afc63be31e1f66c2de4b5b03e))
+
+Wire onServed into the Gemini route and add unit tests for the chain and the alias list options (config defaults test gains the new fallbacks field).
+Fixes #53
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.11.0] - 2026-10-11: Safety Nets Everywhere
 
@@ -935,7 +1030,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.0...v0.9.1

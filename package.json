@@ -1,6 +1,6 @@
 {
   "name": "opencode-plugboard",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "type": "module",
   "license": "MIT",
   "description": "Use the ChatGPT, Claude, Copilot and OpenCode Go logins in your OpenCode server from any app. An OpenCode V2 plugin serving OpenAI-compatible Chat Completions, Responses and model endpoints.",
