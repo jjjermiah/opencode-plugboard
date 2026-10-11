@@ -1,5 +1,6 @@
 /** Plugin options: type, defaults, validation, caller authentication and the loopback check. */
 
+import { createHash, timingSafeEqual } from "node:crypto"
 import type { PlugError } from "./contract.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
@@ -125,6 +126,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   }
   // Own-property construction: a key such as `__proto__` must stay a key, never reach the prototype.
   const keys: Record<string, string> = Object.fromEntries(keyEntries)
+  digestsOf(keys)
   if (keyEntries.length === 0 && !isLoopbackHost(host))
     throw new Error(`plugboard refuses to listen on non-loopback host \`${host}\` without \`keys\``)
 
@@ -186,20 +188,30 @@ const UNAUTHORIZED: PlugError = {
   code: "invalid_api_key",
 }
 
-function same(a: string, b: string): boolean {
-  let diff = a.length ^ b.length
-  const length = Math.max(a.length, b.length)
-  for (let i = 0; i < length; i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0)
-  return diff === 0
+const sha256 = (text: string): Buffer => createHash("sha256").update(text).digest()
+
+/**
+ * SHA-256 digest of each key, computed once per `keys` object (at parse; lazily for an options
+ * object built without `parseOptions`). Comparing fixed-size digests means a wrong token's length
+ * and content do not change how long the comparison takes.
+ */
+const keyDigests = new WeakMap<object, ReadonlyArray<readonly [string, Buffer]>>()
+
+function digestsOf(keys: Readonly<Record<string, string>>): ReadonlyArray<readonly [string, Buffer]> {
+  let digests = keyDigests.get(keys)
+  if (!digests) keyDigests.set(keys, (digests = Object.entries(keys).map(([name, key]) => [name, sha256(key)] as const)))
+  return digests
 }
 
 /** No keys -> app `default`; with keys every request needs `Authorization: Bearer <key>`. */
 export function authenticate(options: PlugboardOptions, authorization: string | undefined): { app: string } | PlugError {
-  const entries = Object.entries(options.keys)
+  const entries = digestsOf(options.keys)
   if (entries.length === 0) return { app: DEFAULT_APP }
   const token = /^Bearer\s+(\S+)\s*$/i.exec(authorization ?? "")?.[1]
   if (!token) return UNAUTHORIZED
+  const digest = sha256(token)
   let app: string | undefined
-  for (const [name, key] of entries) if (same(token, key)) app = name
+  // Every key is compared, no early exit.
+  for (const [name, expected] of entries) if (timingSafeEqual(digest, expected)) app = name
   return app === undefined ? UNAUTHORIZED : { app }
 }

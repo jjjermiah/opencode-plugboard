@@ -5,6 +5,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
+import { raceAbort } from "./abort.js"
 import { isLoopbackHost, type PlugboardOptions } from "./config.js"
 import type { PlugError, PlugEvent } from "./contract.js"
 
@@ -98,24 +99,7 @@ export function beginRequest(request: IncomingMessage, response: ServerResponse,
       code: "timeout",
       message: `Request timed out after ${timeoutMs} ms (option requestTimeoutMs)`,
     },
-    race<T>(promise: Promise<T>): Promise<T> {
-      promise.catch(() => {})
-      if (signal.aborted) return Promise.reject(signal.reason)
-      return new Promise<T>((resolve, reject) => {
-        const onAbort = () => reject(signal.reason)
-        signal.addEventListener("abort", onAbort, { once: true })
-        promise.then(
-          (value) => {
-            signal.removeEventListener("abort", onAbort)
-            resolve(value)
-          },
-          (error) => {
-            signal.removeEventListener("abort", onAbort)
-            reject(error)
-          },
-        )
-      })
-    },
+    race: (promise) => raceAbort(promise, signal),
     dispose,
   }
 }
