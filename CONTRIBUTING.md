@@ -40,7 +40,10 @@ After every plugin change, run the pong gate from that document: a normal prompt
 
 ## Code rules
 
-- Runtime imports are only `effect`, `@opencode/plugin` (and `/effect`) and `node:*`. The host provides the first two, and a bundled second copy breaks things. Everything else is `import type`. Never import `@opencode/ai` or OpenCode core at runtime.
+- Prefer a popular, industry-accepted npm package over hand-rolled code. Runtime packages go in `dependencies`. OpenCode installs a registry plugin's `dependencies` with install scripts disabled, so a dependency must be pure JS with no install script and no native build; check `npm view <pkg> scripts` and `dependencies` first, and prefer packages with no dependencies of their own.
+- `effect` and `@opencode/plugin` (and `/effect`) stay host-provided peers. The host serves them to a Bun plugin and throws on a plugin-local copy, so never list them in `dependencies`. `Schema` comes from `effect`.
+- A plugin loaded from a local path gets no install, so run `bun install` in that checkout first.
+- Never import `@opencode/ai` or OpenCode core at runtime.
 - Import specifiers end in `.js`.
 - `src/contract.ts` is the neutral seam between the OpenAI front-end and the OpenCode back-end. OpenAI wire details stay in `src/openai/`. A new API format is a new front-end beside it, not a change to the contract.
 - Request sessions keep `deny *` plus `allow plugboard_seed_*` permissions. Keep that backstop.
