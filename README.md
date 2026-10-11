@@ -12,7 +12,7 @@ client ──▶ plugboard listener ──▶ OpenCode session ──▶ provide
   └──── reply; tool calls go back to the caller ◀──────────┘
 ```
 
-Tools like n8n, Open WebUI or a Discord bot only speak the OpenAI API, so each wants its own key or its own gateway. Plugboard serves OpenAI Chat Completions (`/v1/chat/completions`), the Responses API (`/v1/responses`), the Anthropic Messages API (`/v1/messages`) and `/v1/models` from inside OpenCode. OpenCode never runs your tools.
+Tools like n8n, Open WebUI or a Discord bot only speak the OpenAI API, so each wants its own key or its own gateway. Plugboard serves OpenAI Chat Completions (`/v1/chat/completions`), the Responses API (`/v1/responses`), the Anthropic Messages API (`/v1/messages`), legacy completions (`/v1/completions`) and `/v1/models` from inside OpenCode. OpenCode never runs your tools.
 
 ## Quick start
 
@@ -30,7 +30,7 @@ export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.7.0",
+      "package": "opencode-plugboard@0.8.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
         "models": ["anthropic/claude-sonnet-4-6", "github-copilot/*", "opencode-go/glm-5.3-flash"],
@@ -77,7 +77,7 @@ Plugboard is early (0.x) and narrow on purpose.
 
 - **V2 only.** OpenCode V2 has no OpenAI endpoint, and the V1 plugins that had one stopped working when the plugin API changed. V1 is not planned.
 - **Two formats:** Chat Completions and Responses. `/v1/responses` is a stateless subset, see [docs/responses.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/responses.md). Anthropic Messages and Gemini front-ends are on the [roadmap](#roadmap).
-- **Not planned:** embeddings, audio, image generation. Only `n=1`, no `logprobs`.
+- **Not planned:** embeddings, audio, image generation, `logprobs`.
 - **No concurrency limit per app** yet ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54), [#86](https://github.com/jjjermiah/opencode-plugboard/issues/86)).
 - **Not a gateway with its own provider keys.** It only reuses what OpenCode is logged in to.
 
