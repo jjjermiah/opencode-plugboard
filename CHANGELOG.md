@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The Gemini front-end is actually in the package now.** 0.9.0's notes describe the Gemini API, but a botched merge on my side tagged 0.9.0 without the `src/gemini/` code, so `/v1beta/...` answered 401/404 in that version. This release contains the code exactly as it was live-tested. If you installed 0.9.0 for Gemini, upgrade.
 
 ## [0.9.0] - 2026-10-11: Speaks Fluent Gemini
 
