@@ -12,7 +12,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
-| `aliases` | none | Map of alias to `provider/model[#variant]`. Each target must also pass `models`. |
+| `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks). |
 | `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
 | `maxN` | `1` | Most model calls one request may fan out to: `n` on Chat Completions and `/v1/completions`, or prompts times `n` for a prompt array. Each is a full call and a kept session, so `n: 4` costs four times. Above the cap, 400 `too_many_choices`. See [completions](completions.md). |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
@@ -41,6 +41,30 @@ Callers name models as `provider/model`, optionally `provider/model#variant` (fo
 With no `models`, `/v1/models` is empty and chat calls return 403. `/v1/models` lists the allowlist intersected with the models enabled on your server, plus your aliases. Each entry has `owned_by` set to the provider and an extra `plugboard` object (`capabilities`, `contextLimit`). The ids contain `/` and `#`, which some UIs mishandle, so define an alias for those.
 
 `reasoning_effort` in a request picks a variant when the model name has none and the model has one by that name. An alias can point at a model with a variant, which is the easy way to give a client a fixed effort level.
+
+## Aliases and fallbacks
+
+An alias is a short name for a model. Point it at a list to get ordered fallbacks:
+
+```json
+"aliases": {
+  "smart": "anthropic/claude-sonnet-4-5",
+  "fast": ["opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"]
+}
+```
+
+A request for `fast` goes to the first target. If that call fails before any output reached the client, plugboard retries the next target in a new call, and so on down the list. Rules:
+
+- Only failures before the first event are retried: rate limit, quota, provider unavailable or timeout, provider sign-in failure, a failed model run, or a backend call that throws. Client errors (`invalid_request`, `context_length_exceeded`, `content_filter`) are returned as they are.
+- Once any output has been sent (text, reasoning or a tool call), a failure is never retried. A partly streamed answer is not restarted.
+- Attempts are capped at the list length and share the request deadline. A disconnect or timeout ends the chain.
+- If every target fails, the last error is returned.
+- Each attempt is its own history session, so history shows the failed ones too.
+- Every target in a list must pass `models`, checked when the options load; a target that does not makes the plugin refuse the options. Targets that are not enabled on the server are skipped at call time.
+- A target keeps its own variant (`provider/model#low`). `reasoning_effort` only picks a variant for the first target.
+- `/v1/models` lists the alias once, as its first target.
+
+A response from a request that used a list alias carries `x-plugboard-model: <provider/model>` (the target that answered) and, when retries happened, `x-plugboard-fallbacks: <n>`. The `model` field of the response is that target too. The request log line has `served=` and `fallbacks=`, and each retry logs `model.fallback` with the failure code. With `metrics: true`, `plugboard_fallbacks_total{app}` counts retries.
 
 ## Apps and keys
 

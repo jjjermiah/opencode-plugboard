@@ -22,8 +22,9 @@ import { Plugin } from "@opencode/plugin/effect"
 import { Effect } from "effect"
 import { parseOptions } from "./src/config.js"
 import { errorMessage, logError } from "./src/log.js"
+import { withFallbacks } from "./src/fallback.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, registerGeneration, sessionStore } from "./src/runtime.js"
+import { ensureBackend, ensurePump, loadServingCatalog, processMetrics, registerGeneration, sessionStore } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createSessionPort, loadCatalog } from "./src/session/host.js"
@@ -57,15 +58,21 @@ export default Plugin.define({
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
       }
+      // The catalog comes from the preferred accepted generation (a data-root Location when there is
+      // one), not from whichever Location registered last; this generation's own is the fallback.
+      const servingCatalog = async () => {
+        startPump()
+        return loadServingCatalog(ownCatalog)
+      }
       const handle = createOpenAiRoute({
         options,
-        caller: createSessionCaller(callerDeps),
-        // The catalog comes from the preferred accepted generation (a data-root Location when there is
-        // one), not from whichever Location registered last; this generation's own is the fallback.
-        loadCatalog: async () => {
-          startPump()
-          return loadServingCatalog(ownCatalog)
-        },
+        // Aliases written as a list retry the next target before the first output (src/fallback.ts).
+        caller: withFallbacks(createSessionCaller(callerDeps), {
+          options,
+          loadCatalog: servingCatalog,
+          onFallback: options.metrics ? (app) => processMetrics().fallback(app) : undefined,
+        }),
+        loadCatalog: servingCatalog,
       })
       const registration = registerGeneration({
         listen: options.listen,

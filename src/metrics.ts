@@ -112,6 +112,8 @@ export interface Metrics {
   tokens(app: string, usage: PlugUsage): void
   /** Sampling parameters dropped for one request. */
   dropped(params: ReadonlyArray<string>): void
+  /** A model call failed before any output and was retried on the next target of its alias. */
+  fallback(app: string): void
   /** One history sweep ended. */
   sweep(result: "ok" | "failed" | "timeout", removed: number): void
   /** The exposition text. Called from a request that is itself in flight, which is not counted. */
@@ -128,6 +130,7 @@ export function createMetrics(): Metrics {
     ["app", "kind"],
   )
   const dropped = new Counter("plugboard_dropped_params_total", "Sampling parameters dropped because the target model rejects them, by parameter.", ["param"])
+  const fallbacks = new Counter("plugboard_fallbacks_total", "Model calls retried on the next target of an alias after a failure before any output, by app.", ["app"])
   const sweeps = new Counter("plugboard_history_sweeps_total", "History sweeps that ended, by result.", ["result"])
   const removed = new Counter("plugboard_history_sessions_removed_total", "Request sessions removed by history sweeps.", [])
 
@@ -151,6 +154,7 @@ export function createMetrics(): Metrics {
     dropped(params) {
       for (const param of params) dropped.add([param])
     },
+    fallback: (app) => fallbacks.add([app]),
     sweep(result, count) {
       sweeps.add([result])
       removed.add([], count)
@@ -163,6 +167,7 @@ export function createMetrics(): Metrics {
         ...gauge("plugboard_requests_in_flight", "Requests being handled right now, not counting this scrape.", Math.max(0, inFlight - 1)),
         ...tokens.render(),
         ...dropped.render(),
+        ...fallbacks.render(),
         ...sweeps.render(),
         ...removed.render(),
         ...gauge("plugboard_generations", "Accepted plugin generations (one per OpenCode Location) serving requests.", snapshot.generations),
