@@ -76,10 +76,10 @@ function start(port: number, init: SendInit, onResponse: (response: IncomingMess
   return client
 }
 
-/** Listen on 127.0.0.1 with an ephemeral port. */
-export async function listen(handler: (request: IncomingMessage, response: ServerResponse) => void): Promise<Loopback> {
+/** Listen on 127.0.0.1 (or `host`, e.g. `::1`) with an ephemeral port. The client always connects to 127.0.0.1. */
+export async function listen(handler: (request: IncomingMessage, response: ServerResponse) => void, host = "127.0.0.1"): Promise<Loopback> {
   const server: Server = createServer(handler)
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  await new Promise<void>((resolve) => server.listen(0, host, resolve))
   const port = (server.address() as AddressInfo).port
   return {
     port,

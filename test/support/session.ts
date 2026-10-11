@@ -87,6 +87,14 @@ export interface HostTokens {
   readonly cache?: { readonly read?: number; readonly write?: number }
 }
 
+/** Host `SessionError` (`RawError` in src/session/events.ts). `response.body` is the provider's raw text. */
+export interface HostError {
+  readonly type: string
+  readonly message?: string
+  readonly status?: number
+  readonly response?: { readonly body?: string }
+}
+
 /** Envelope builders for one session: `bus("ses_1").textDelta("Hi")`. */
 export function bus(sessionID: string) {
   const envelope = (type: string, data: Record<string, unknown> = {}): BusEnvelope => ({ type, data: { sessionID, ...data } })
@@ -98,9 +106,9 @@ export function bus(sessionID: string) {
     toolCalled: (id: string, name: string, input: Json = {}) => envelope("session.tool.called", { id, name, input }),
     usage: (tokens: HostTokens) => envelope("session.usage.updated", { tokens }),
     stepEnded: (finish = "stop", tokens?: HostTokens) => envelope("session.step.ended", { finish, ...(tokens ? { tokens } : {}) }),
-    stepFailed: (error: { type: string; message?: string; status?: number }, finish?: string) => envelope("session.step.failed", { error, ...(finish ? { finish } : {}) }),
+    stepFailed: (error: HostError, finish?: string) => envelope("session.step.failed", { error, ...(finish ? { finish } : {}) }),
     executionSucceeded: () => envelope("session.execution.succeeded"),
-    executionFailed: (error: { type: string; message?: string } = { type: "unknown" }) => envelope("session.execution.failed", { error }),
+    executionFailed: (error: HostError = { type: "unknown" }) => envelope("session.execution.failed", { error }),
     executionInterrupted: () => envelope("session.execution.interrupted"),
   }
 }
