@@ -14,7 +14,23 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+0.10.0 was tagged but never reached npm: the new test suite failed in CI on Linux and the release gate refused to publish. That's the gate working. This release carries everything 0.10.0 had, plus the fix and a lot more hardening.
+
+### Added
+
+- **Release safety nets** ([#109](https://github.com/jjjermiah/opencode-plugboard/issues/109), [#112](https://github.com/jjjermiah/opencode-plugboard/issues/112), [#113](https://github.com/jjjermiah/opencode-plugboard/issues/113), [#117](https://github.com/jjjermiah/opencode-plugboard/issues/117)). Every release now installs the packed tarball into a throwaway project and loads it the way OpenCode does, proving setup returns synchronously and the host packages resolve to one copy. CI tests against every published OpenCode host version in the supported range, a weekly job proposes host bumps, a nightly job catches dependency drift, and `bun run release --push` follows the publish to the end and waits until npm actually serves the new version.
+- **A map of the code** ([#119](https://github.com/jjjermiah/opencode-plugboard/issues/119)). `STRUCTURE.md` says where everything lives and where new code goes, and the architecture doc now opens with 22 numbered invariants, each naming the file that enforces it.
+
+### Changed
+
+- **Battle-tested packages instead of hand-rolled code** ([#120](https://github.com/jjjermiah/opencode-plugboard/issues/120)). Plugboard now depends on `ipaddr.js` for the remote-image address guard ([#121](https://github.com/jjjermiah/opencode-plugboard/issues/121)), `escape-html` for the setup page ([#127](https://github.com/jjjermiah/opencode-plugboard/issues/127)) and `safe-stable-stringify` for option fingerprints ([#128](https://github.com/jjjermiah/opencode-plugboard/issues/128)). All three are MIT, tiny, dependency-free and have no install scripts, which matters because OpenCode installs plugins with scripts disabled. The address guard also refuses a few more reserved ranges than before; `remoteImages.allow` still overrides.
+- **Keys are compared as SHA-256 digests with `crypto.timingSafeEqual`** ([#122](https://github.com/jjjermiah/opencode-plugboard/issues/122)), so timing no longer depends on the length of a wrong key.
+- One shared abort helper replaces four copies ([#133](https://github.com/jjjermiah/opencode-plugboard/issues/133)). Internal runtime version 7: restart OpenCode after upgrading.
+
+### Fixed
+
+- **Remote images try every resolved address** ([#134](https://github.com/jjjermiah/opencode-plugboard/issues/134)). A host that resolves to `::1` and `127.0.0.1` with the image server on only one of them used to fail; plugboard now tries each checked address in order. Found by the test suite.
+- A transport test assumed macOS socket buffer sizes and failed on Linux; it now uses a stub that models exactly the full-buffer state it tests.
 
 ## [0.10.0] - 2026-10-11: Proof, Not Promises
 
