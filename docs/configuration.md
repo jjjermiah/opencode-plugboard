@@ -62,9 +62,10 @@ A request for `fast` goes to the first target. If that call fails before any out
 - Each attempt is its own history session, so history shows the failed ones too.
 - Every target in a list must pass `models`, checked when the options load; a target that does not makes the plugin refuse the options. Targets that are not enabled on the server are skipped at call time.
 - A target keeps its own variant (`provider/model#low`). `reasoning_effort` only picks a variant for the first target.
-- `/v1/models` lists the alias once, as its first target.
+- `/v1/models` lists the alias once, as its first target. The setup page and `GET /v1` show the whole chain.
+- A call that ends in an error has no served model, so those responses carry neither header.
 
-A response from a request that used a list alias carries `x-plugboard-model: <provider/model>` (the target that answered) and, when retries happened, `x-plugboard-fallbacks: <n>`. The `model` field of the response is that target too. The request log line has `served=` and `fallbacks=`, and each retry logs `model.fallback` with the failure code. With `metrics: true`, `plugboard_fallbacks_total{app}` counts retries.
+A response from a request that used a list alias carries `x-plugboard-model: <provider/model>` (the target that answered) and, when retries happened, `x-plugboard-fallbacks: <n>`. The `model` field of the response is that target too (with `n` above 1 the body keeps the alias, and the headers report the first choice that was served). The request log line has `served=` and `fallbacks=`, and each retry logs `model.fallback` with the failure code. With `metrics: true`, `plugboard_fallbacks_total{app}` counts retries.
 
 ## Apps and keys
 

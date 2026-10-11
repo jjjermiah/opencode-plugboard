@@ -25,6 +25,7 @@ import {
   sseWriter,
   type RequestScope,
 } from "../http.js"
+import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel } from "../models.js"
 import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
@@ -45,7 +46,7 @@ export interface MessagesCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the route name, the app, the resolved model, dropped parameters, and the outcome of a stream that failed after it committed. */
-  readonly info: { route: string; app?: string; model?: string; failed?: string; dropped?: string }
+  readonly info: ServedInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string }
 }
 
 const header = (request: IncomingMessage, name: string): string | undefined => {
@@ -121,6 +122,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
         },
+        onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       }),
       scope,
     )

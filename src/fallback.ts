@@ -12,8 +12,9 @@
  * A call whose model is not an alias with fallbacks goes straight to the wrapped caller.
  */
 
+import type { ServerResponse } from "node:http"
 import type { PlugboardOptions } from "./config.js"
-import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest } from "./contract.js"
+import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest, ServedModel } from "./contract.js"
 import { log } from "./log.js"
 import { fallbackRefs, refToString } from "./models.js"
 import { dropRejected } from "./openai/sampling.js"
@@ -42,6 +43,34 @@ const RETRYABLE = new Set([
   "prompt_failed",
   "backend_failed",
 ])
+
+export const MODEL_HEADER = "x-plugboard-model"
+export const FALLBACKS_HEADER = "x-plugboard-fallbacks"
+
+/** The route's log fields a served model fills in. */
+export interface ServedInfo {
+  served?: string
+  fallbacks?: number
+}
+
+/**
+ * The `CallContext.onServed` of a route: `x-plugboard-model` (and `x-plugboard-fallbacks` when targets
+ * failed first) while the headers are still open, and the log fields. The first call wins, so several
+ * choices of one request report the first answer. `then` runs for that first call (a single-call route
+ * echoes the served model in the body there).
+ */
+export function reportServed(response: ServerResponse, info: ServedInfo, then?: (served: ServedModel) => void): (served: ServedModel) => void {
+  return (served) => {
+    if (info.served !== undefined) return
+    info.served = served.model
+    info.fallbacks = served.fallbacks
+    if (!response.headersSent && !response.destroyed) {
+      response.setHeader(MODEL_HEADER, served.model)
+      if (served.fallbacks > 0) response.setHeader(FALLBACKS_HEADER, String(served.fallbacks))
+    }
+    then?.(served)
+  }
+}
 
 export const isRetryable = (error: PlugError): boolean => error.code !== undefined && RETRYABLE.has(error.code)
 
@@ -98,7 +127,8 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     if (recordID !== undefined) report(context, recordID)
     if (thrown) throw thrown.error
     if (first!.done) return
-    if (reason === undefined) context.onServed?.({ model: refToString(ref), fallbacks: attempt })
+    // An error is not an answer: a call that fails (non-retryable, or on its last target) reports no served model.
+    if (reason === undefined && first!.value.type !== "error") context.onServed?.({ model: refToString(ref), fallbacks: attempt })
     try {
       yield first!.value
       for (let step = await iterator.next(); !step.done; step = await iterator.next()) yield step.value

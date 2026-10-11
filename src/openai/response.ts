@@ -14,8 +14,8 @@ type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
  * presentation state. The request decoder produces it; the model call never sees it.
  */
 export interface OpenAiExchange {
-  /** The model string the client sent; echoed in every response object. */
-  readonly model: string
+  /** The model string the client sent; echoed in every response object. A request that used an alias with fallbacks echoes the target that answered (`CallContext.onServed`). */
+  model: string
   readonly stream: boolean
   /** `stream_options.include_usage`: the stream carries a usage field per chunk and a final usage chunk. */
   readonly includeUsage: boolean
