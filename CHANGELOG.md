@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.14.0] - 2026-10-11: Standard Issue Gauges
+
+**Full diff:** [v0.13.0...v0.14.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.13.0...v0.14.0)
+
 ### Changed
 
 - **Metrics and logs on proven libraries** ([#125](https://github.com/jjjermiah/opencode-plugboard/issues/125), [#126](https://github.com/jjjermiah/opencode-plugboard/issues/126)). The hand-rolled Prometheus exposition and logger are gone. Metrics now run on `@prometheus-io/client` (the maintained successor of `prom-client`, which npm marks deprecated) and logs on `pino`. Metric names, labels and buckets are unchanged; `plugboard_history_sessions_removed_total` now reads 0 from the start and histogram bucket lines put `le` first. JSON logs keep `level` as a name; text lines look the same; info still goes to stdout and errors to stderr. Internal runtime version 8: restart OpenCode after upgrading.
@@ -21,6 +27,84 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Security
 
 - **Credentials are redacted from logs.** Fields named `authorization`, `key`, `apiKey`, `x-api-key` and `x-goog-api-key`, also under `headers`, are written as `[redacted]`, so a future log line can't leak a key by accident.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (4 commits)</summary>
+
+#### Refactors
+
+**refactor(metrics): back the registry with prom-client** ([`bb97738`](https://github.com/jjjermiah/opencode-plugboard/commit/bb97738c6b89c4058aac67cc68bc2e623ae0c379))
+
+src/metrics.ts hand-rolled the Prometheus text format: label and help escaping, counter series maps, histogram buckets and the render loop. It is now built on prom-client 15.1.3 (Apache-2.0, pure JS, no install script; its only dependencies are tdigest and @opentelemetry/api, both script-free). The Metrics interface and createMetrics() factory keep their shape, so no call site moves except the one that renders.
+
+What changed:
+- createMetrics() makes a new Registry per call. The global default registry is never used and collectDefaultMetrics is never called, so the process emits only the plugboard_* series it did before. The runtime still holds one Metrics (and so one Registry) on globalThis.
+- Same metric names, labels, bucket bounds and registration order as before, so the exposition order is unchanged.
+- Metrics.render() is now async (registry.metrics() returns a promise) and Metrics gains contentType, taken from the registry. The /metrics route awaits it and uses that content type instead of a literal. This is a one-line change in src/openai/route.ts.
+- Counter and histogram guards stay in a small wrapper: zero, negative and non-finite amounts are ignored. prom-client would throw on the last two and write an empty series for zero, and a metrics call must never throw into request handling.
+- Runtime VERSION 7 -> 8. The Metrics object on the runtime changed shape (async render), and a hot-reloaded module of the old version must not call a sync render on it.
+
+Output differences, all legitimate under text format 0.0.4:
+- A counter without labels (plugboard_history_sessions_removed_total) reads 0 from the start instead of having no sample until its first event. Labelled counters still have no series until first use.
+- Histogram bucket lines write le first, then the other labels. Test expectations changed for exactly these two, and the in-flight, token-kind, escaping and ignore-bad-amount behaviour is unchanged.
+
+Rejected: keeping render() synchronous by hand-rendering the registry (defeats the point); collectDefaultMetrics (unbounded new series, not asked for); pre-initialising labelled series (cardinality is bounded by what actually happens, as before).
+
+Validation: bun run typecheck; bun test (metrics unit tests are now async and gain registry isolation, default-register and content-type cases); bun .github/scripts/smoke-pack.ts and check-pack.ts run after both lanes landed. npm view prom-client scripts shows no install script. Note: npm marks prom-client 15.1.3 deprecated in favour of @prometheus-io/client (same API lineage, 0.16.1); see issue.
+
+Fixes #125
+
+**refactor(log): back the logger with pino and redact credentials** ([`c816b3f`](https://github.com/jjjermiah/opencode-plugboard/commit/c816b3f600a97864dd98dcb67858d31ad7037d21))
+
+src/log.ts hand-rolled text and JSON formatting, value quoting, the envelope keys and the request-id scoping, and nothing censored a credential that reached a log field by mistake. It is now built on pino 10.4.0 (MIT, pure JS, no install script; its dependencies are script-free too). log, logError, withRequestId, outsideRequest, setLogFormat and errorMessage keep their signatures, so the ~40 call sites do not move.
+
+What changed:
+- One pino instance, created on first use and kept on globalThis in src/log.ts under a new versioned key. It is not on the runtime object: src/runtime.ts imports the logger and must still log when a foreign-version runtime owns the process.
+- Request id: pino's mixin reads the existing AsyncLocalStorage on every line, so withRequestId and outsideRequest behave as before and an explicit id field still wins over the ambient one.
+- logFormat "json" is pino's JSON. Keys: level, time (ISO 8601), service, event, then the fields. Differences from the old line: the key order (level first) and no pid or hostname. The level is its name ("info", "error") through formatters.level, not pino's 30 and 50, so existing parsers keep working. The message key is "event". A field named level, time, service or event is dropped, as before.
+- logFormat "text" is the same "[opencode-plugboard] event key=value" line, made from the pino record by a 15 line formatter.
+- Output still goes where it did: info to console.log (stdout), error to console.error (stderr). pino.multistream with dedupe sends each record to one of two small destinations that call console at write time, so test spies and host patches of console keep working.
+- redact censors authorization, Authorization, x-api-key, x-goog-api-key, key and apiKey, at the top level and under headers, as "[redacted]". It matches names, not values; the rule "ids and outcomes only" stays.
+
+Decision on pino-pretty: not used. It prints multi-line, level-prefixed records, cannot produce the event key=value shape that scrapers match, and adds a dozen packages. It also invites pino.transport, which starts a worker thread (thread-stream); that is a freeze and Bun-compatibility risk inside the OpenCode host, so no transport is used anywhere.
+
+Docs: docs/architecture.md and STRUCTURE.md describe both new dependencies (this commit also carries the metrics wording, see #125).
+
+Validation: bun run typecheck; bun test, 838 pass, 0 fail (new tests for pino JSON shape and stream, redaction in both formats and under headers, request id in JSON); bun .github/scripts/smoke-pack.ts and bun .github/scripts/check-pack.ts pass with the packed tarball installed with --ignore-scripts; npm view pino scripts shows no install script. The test helper captureLogs needed no change: text goes through console.
+
+Fixes #126
+
+#### Docs
+
+**docs(changelog): notes for the metrics and logging swap** ([`c4c231c`](https://github.com/jjjermiah/opencode-plugboard/commit/c4c231c4dfa376b1ea7af5484198e0d96a2f0606))
+
+Curated [Unreleased] entries for #125 and #126: metrics on @prometheus-io/client (prom-client is deprecated upstream), logs on pino, the two visible metric-format differences, runtime version 8, and credential redaction in logs. Pinned install examples bumped to 0.14.0.
+
+#### Dependencies
+
+**build(deps): switch metrics to @prometheus-io/client** ([`e1ce7bc`](https://github.com/jjjermiah/opencode-plugboard/commit/e1ce7bce598868678724d037452f11dfc4512737))
+
+prom-client, added in the previous metrics commit, is deprecated on the registry: `npm view prom-client deprecated` prints "prom-client has been replaced by @prometheus-io/client" (last prom-client release 15.1.3, published 2026-08-25). The replacement is published from the same repository, prometheus/client_js (Apache-2.0), at 0.16.1 (2026-08-27). Shipping a package its maintainers have retired would leave users installing a deprecation warning and no future fixes, so this switches before the first release that contains it.
+
+What changed:
+- package.json and bun.lock: prom-client 15.1.3 out, @prometheus-io/client 0.16.1 in, pinned exact. The runtime dependencies are the same two as before (tdigest and @opentelemetry/api), so nothing new is installed.
+- src/metrics.ts and the metrics test import from the new package. The code is otherwise unchanged: Registry, Counter, Gauge and Histogram have the same constructors, `registry.metrics()` is still async and `registry.contentType` is still the 0.0.4 text type. Every metrics test passed against it without an expectation change.
+- One typing difference: the new typings define the label argument of Counter.inc as a conditional type (LabelValues<L>) that TypeScript cannot resolve for a generic L, so the `count` helper casts the counter to Counter<string> at the single inc call. The runtime call is the same; a comment says why.
+- Docs name the new package (docs/architecture.md, STRUCTURE.md), and the runtime VERSION comment is reworded.
+- Stale fixtures: the runtimeVersion in test/support/loopback.ts (TEST_STATUS) and test/unit/discovery.test.ts said 6; the runtime is at 8 since the async render and was already at 7 before that. They are now
+  8. Nothing asserted the number against the real runtime.
+
+Install safety: npm view shows no preinstall, install or postinstall script. It has a `prepare: husky` script, which npm runs only when the package itself is installed from git or packed, never for a registry dependency, and with scripts disabled by the host anyway. Pure JS, no native build. Bun loads it: the whole suite runs on Bun, and the packed tarball installed with --ignore-scripts imports under Bun in smoke-pack.
+
+Rejected: staying on prom-client (deprecated, no more releases expected); hand-rolling the exposition again (the point of the earlier commit).
+
+Validation: bun run typecheck clean; bun test 838 pass, 0 fail; bun .github/scripts/smoke-pack.ts "smoke ok" with no prom-client deprecation warning left in the install; bun .github/scripts/check-pack.ts "pack ok: 40 files". No prom-client left in node_modules or the lockfile.
+
+Refs #125
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.13.0] - 2026-10-11: House Rules
 
@@ -1159,7 +1243,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.10.0...v0.11.0
