@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] - 2026-10-11
+
 ### Added
 
 - **Responses API** ([#1](https://github.com/jjjermiah/opencode-plugboard/issues/1)). `POST /v1/responses` now works next to Chat Completions. This was the most common first failure: the Vercel AI SDK's default `openai(id)`, `@langchain/openai` for `gpt-5.6*` ids and n8n's default Chat Model node all call it, and used to get a 404.
@@ -242,7 +246,8 @@ Providers, through the session path: GitHub Copilot, Anthropic (Claude Max throu
 
 `opencode-llm-proxy` by KochC got the shape right first: a plugin that starts a local server and reuses OpenCode's providers. It is V1 only, which is why this project exists. `copilot-api` and LiteLLM showed what an OpenAI-compatible front door should feel like to the people calling it. No code was taken from any of them. They were reading material.
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jjjermiah/opencode-plugboard/releases/tag/v0.1.0
