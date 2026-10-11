@@ -50,9 +50,20 @@ const firstUserText = (request: PlugRequest): string => {
   return request.model
 }
 
-/** Session title: the first user text, whitespace-collapsed and cut to 60 characters. */
+/**
+ * Control characters that terminal and app UIs act on: C0 (ESC, BEL, CR, ...), DEL, C1 (8-bit CSI),
+ * and the bidirectional marks and overrides (ALM, LRM, RLM, U+202A-202E, U+2066-2069) that reorder text.
+ * `\t` and `\n` are included here; callers that keep layout use `LAYOUT_SAFE`.
+ */
+const CONTROLS = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+const CONTROLS_KEEP_LAYOUT = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+
+/** One display line: whitespace (including line breaks) collapsed to single spaces, then control and bidi characters removed. */
+export const oneLine = (text: string): string => text.replace(/\s+/g, " ").replace(CONTROLS, "").trim()
+
+/** Session title: the first user text, one line, control and bidi characters removed, cut to 60 characters. */
 export const makeTitle = (request: PlugRequest): string => {
-  const flat = firstUserText(request).replace(/\s+/g, " ").trim()
+  const flat = oneLine(firstUserText(request))
   return flat.length > TITLE_LENGTH ? flat.slice(0, TITLE_LENGTH - 1) + "…" : flat
 }
 
@@ -74,16 +85,17 @@ export function renderTranscript(request: PlugRequest): string {
           lines.push(`[image ${++image}]`)
           break
         case "tool-call":
-          lines.push(`[tool call ${part.name} (${part.id})] ${typeof part.input === "string" ? part.input : JSON.stringify(part.input)}`)
+          lines.push(`[tool call ${oneLine(part.name)} (${oneLine(part.id)})] ${typeof part.input === "string" ? part.input : JSON.stringify(part.input)}`)
           break
         case "tool-result":
-          lines.push(`[tool result ${part.name} (${part.id})${part.isError ? " (error)" : ""}] ${part.result}`)
+          lines.push(`[tool result ${oneLine(part.name)} (${oneLine(part.id)})${part.isError ? " (error)" : ""}] ${part.result}`)
           break
       }
     }
     lines.push("")
   }
-  if (request.tools.length > 0) lines.push("## tools", request.tools.map((tool) => tool.name).join(", "), "")
-  const text = lines.join("\n").trim()
+  if (request.tools.length > 0) lines.push("## tools", request.tools.map((tool) => oneLine(tool.name)).join(", "), "")
+  // The stored text is display only (the model sees the structured request): body text keeps its line breaks and tabs, nothing else that a UI would act on.
+  const text = lines.join("\n").replace(CONTROLS_KEEP_LAYOUT, "").trim()
   return text.length > 0 ? text : "(empty request)"
 }

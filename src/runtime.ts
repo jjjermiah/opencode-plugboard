@@ -100,8 +100,12 @@ const SWEEP_DEADLINE_MS = 60_000
 const BACKEND_TIMEOUT_MS = 15_000
 const BACKEND_POLL_MS = 25
 
-/** 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 5
+/** How often a listener that could not bind tries again, and how often it repeats the error while it still cannot (#87). */
+const BIND_RETRY_MS = 15_000
+const BIND_REMINDER_MS = 5 * 60_000
+
+/** 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 6
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -111,6 +115,11 @@ interface Listener {
   fingerprint: string
   mismatchLogged: boolean
   bound: boolean
+  /** Failed bind attempts since the last success: while this is above 0 nothing receives requests on the port. */
+  bindFailures: number
+  /** When the bind failure was last logged (epoch ms). */
+  bindLoggedAt: number
+  retryTimer?: ReturnType<typeof setTimeout>
   graceTimer?: ReturnType<typeof setTimeout>
 }
 
@@ -312,7 +321,7 @@ const unavailable = (response: ServerResponse, message: string) => {
 }
 
 function startListener(rt: Runtime, listen: { host: string; port: number }, fingerprint: string): Listener {
-  const listener: Listener = { server: createServer(), listen, fingerprint, mismatchLogged: false, bound: false }
+  const listener: Listener = { server: createServer(), listen, fingerprint, mismatchLogged: false, bound: false, bindFailures: 0, bindLoggedAt: 0 }
   listener.server.on("request", (request, response) => {
     const current = preferred(rt)
     if (!current) return unavailable(response, "plugboard is reloading")
@@ -325,22 +334,39 @@ function startListener(rt: Runtime, listen: { host: string; port: number }, fing
   })
   listener.server.on("error", (error: NodeJS.ErrnoException) => {
     if (listener.bound) return logError("listener.error", { code: error.code, error: error.message })
-    // Never bound: another process (or an older runtime) owns the port. Log once, stay inert.
-    logError(error.code === "EADDRINUSE" ? "listener.address_in_use" : "listener.failed", {
-      listen: `${listen.host}:${listen.port}`,
-      error: error.message,
-    })
+    // Not bound: another process (or an older runtime) owns the port, so nothing here receives
+    // requests while clients may be sending their keys and prompts to whoever holds it. Say so
+    // loudly (error level, again every few minutes), keep trying, and mention it on every
+    // generation that registers meanwhile (`registerGeneration`).
+    listener.bindFailures++
+    if (Date.now() - listener.bindLoggedAt >= BIND_REMINDER_MS) {
+      listener.bindLoggedAt = Date.now()
+      logError(error.code === "EADDRINUSE" ? "listener.address_in_use" : "listener.failed", {
+        listen: `${listen.host}:${listen.port}`,
+        error: error.message,
+        status: "not serving: clients of this port reach another process",
+        action: "stop the process that holds the port or change `listen`; plugboard retries every 15s",
+      })
+    }
+    listener.retryTimer = setTimeout(() => {
+      listener.retryTimer = undefined
+      if (rt.listener === listener && !listener.bound) listener.server.listen(listen.port, listen.host)
+    }, BIND_RETRY_MS)
+    listener.retryTimer.unref?.()
   })
-  listener.server.listen(listen.port, listen.host, () => {
+  listener.server.on("listening", () => {
     listener.bound = true
-    log("listener.listening", { listen: `${listen.host}:${listen.port}` })
+    log("listener.listening", { listen: `${listen.host}:${listen.port}`, ...(listener.bindFailures > 0 ? { recoveredAfterFailedBinds: listener.bindFailures } : {}) })
+    listener.bindFailures = 0
   })
+  listener.server.listen(listen.port, listen.host)
   return listener
 }
 
 function closeListener(rt: Runtime, listener: Listener): void {
   if (rt.listener !== listener) return
   rt.listener = undefined
+  clearTimeout(listener.retryTimer)
   try {
     rt.pump?.stop()
   } catch {}
@@ -404,6 +430,13 @@ export function registerGeneration(input: GenerationInput): Registration {
   }
   if (listener.graceTimer) clearTimeout(listener.graceTimer)
   listener.graceTimer = undefined
+  if (listener.bindFailures > 0) {
+    logError("listener.not_serving", {
+      listen: `${listen.host}:${listen.port}`,
+      status: "another process holds the port; this generation serves nothing",
+      action: "stop that process or change `listen`",
+    })
+  }
   const generation: Generation = {
     directory,
     handler: input.handler,

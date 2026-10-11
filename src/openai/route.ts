@@ -157,6 +157,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       return sendText(response, 200, "text/html; charset=utf-8", renderDiscoveryHtml(doc), PAGE_HEADERS)
     }
 
+    // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but /healthz and the first-run pages.
+    const auth = authenticate(host.options, request.headers.authorization)
+    if (isPlugError(auth)) return fail(response, auth)
+    info.app = auth.app
+
     if (modelId === undefined && !known(route)) {
       return fail(response, {
         status: 404,
@@ -165,10 +170,6 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         message: `No route for ${request.method} ${path}`,
       })
     }
-
-    const auth = authenticate(host.options, request.headers.authorization)
-    if (isPlugError(auth)) return fail(response, auth)
-    info.app = auth.app
 
     if (route === "GET /v1/status") {
       const catalog = await optionalCatalog(scope)
