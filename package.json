@@ -3,8 +3,8 @@
   "version": "0.4.1",
   "type": "module",
   "license": "MIT",
-  "description": "OpenCode V2 plugin that serves an OpenAI-compatible /v1/chat/completions and /v1/models from your OpenCode server, backed by the providers you already connected there.",
-  "keywords": ["opencode", "opencode-plugin", "openai", "openai-compatible", "chat-completions"],
+  "description": "Use the ChatGPT, Claude, Copilot and OpenCode Go logins in your OpenCode server from any app. An OpenCode V2 plugin serving OpenAI-compatible Chat Completions, Responses and model endpoints.",
+  "keywords": ["opencode", "opencode-plugin", "openai", "openai-compatible", "chat-completions", "responses-api", "llm-gateway", "llm-proxy"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jjjermiah/opencode-plugboard.git"
