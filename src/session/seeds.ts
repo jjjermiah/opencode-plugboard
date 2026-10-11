@@ -13,9 +13,10 @@
  * ends the loop (failing the seed, even with a typed non-`Tool.Error`, is converted to a
  * normal tool failure, and `Permission.DeclinedError` is only reachable from host tools).
  * So plugboard stops the turn itself: once the step has settled with a normal `tool-calls`
- * finish (`session.step.ended`) it interrupts the session, before the second step's model
- * request returns anything, so that step leaves no trace. The captured `session.tool.called`
- * events are what a `tool_calls` response needs.
+ * finish (`session.step.ended`) it interrupts the session. Nothing orders that interrupt
+ * before the runner's next step, so a second step can occasionally start and be wasted (extra
+ * tokens, a stray assistant message in history, never a wrong response; tracked in issue #14).
+ * The captured `session.tool.called` events are what a `tool_calls` response needs.
  * Seeds are registered only inside the plugboard data root, denied to every agent there,
  * and allowed again by the permissions of plugboard's own request sessions. Those permissions
  * deny every other tool (defense in depth: if a second step ever runs outside the context
