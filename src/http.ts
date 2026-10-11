@@ -15,6 +15,8 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 const LINGER_MS = 5_000
 /** After the deadline passes, a response that has not finished flushing (a client that stopped reading) is destroyed after this long. */
 const DEADLINE_GRACE_MS = 2_000
+/** An SSE stream idle for this long gets a comment line, so a client with a header or idle timeout keeps waiting for a model that is still reasoning. */
+const KEEPALIVE_MS = 15_000
 
 /** A request body that cannot be accepted: too large, or not JSON. `status` is the HTTP status to answer with. */
 export class BodyError extends Error {
@@ -196,10 +198,18 @@ export const sendJson = (response: ServerResponse, status: number, payload: unkn
  * is something to send; chunks after the client is gone are dropped. `write` is synchronous (the
  * encoder's contract); backpressure is honoured by `paced`, which holds back the next event while
  * the socket buffer is full. `signal` (the request scope's) ends those waits when it aborts.
+ *
+ * Keepalive: `paced` commits the response (200 and SSE headers) at the first event that is not a
+ * terminal one (reasoning counts), then writes an SSE comment whenever the stream has been idle
+ * for `keepaliveMs`, until the events end. A failure before that first event still gets its real
+ * HTTP status; after it, the caller must report failures as SSE frames. A tick is skipped while
+ * the socket buffer is full, and stops when the client is gone or the scope aborted.
  */
-export function sseWriter(response: ServerResponse, signal?: AbortSignal) {
+export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepaliveMs = KEEPALIVE_MS) {
   let started = false
   let blocked = false
+  let lastWrite = Date.now()
+  let timer: ReturnType<typeof setTimeout> | undefined
   const waiters: Array<() => void> = []
   const release = () => {
     blocked = false
@@ -207,6 +217,45 @@ export function sseWriter(response: ServerResponse, signal?: AbortSignal) {
   }
   response.on("drain", release)
   response.on("close", release)
+  const commit = () => {
+    if (started || response.destroyed || response.writableEnded) return
+    started = true
+    response.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    })
+    // `writeHead` alone queues the headers until the first body write; a keepalive commit has no body yet.
+    response.flushHeaders()
+  }
+  const send = (chunk: string) => {
+    if (!response.write(chunk)) blocked = true
+    lastWrite = Date.now()
+  }
+  const stopKeepalive = () => {
+    clearTimeout(timer)
+    timer = undefined
+  }
+  const arm = (delay: number) => {
+    timer = setTimeout(tick, delay)
+    timer.unref?.()
+  }
+  const tick = () => {
+    timer = undefined
+    if (response.destroyed || response.writableEnded || signal?.aborted) return
+    const idle = Date.now() - lastWrite
+    if (idle < keepaliveMs) return arm(keepaliveMs - idle)
+    if (!blocked) send(": keepalive\n\n")
+    arm(keepaliveMs)
+  }
+  const beginKeepalive = () => {
+    commit()
+    if (!started || timer !== undefined) return
+    lastWrite = Date.now()
+    arm(keepaliveMs)
+  }
+  response.on("close", stopKeepalive)
   const drained = (): Promise<void> => {
     if (!blocked || response.destroyed || signal?.aborted) return Promise.resolve()
     return new Promise((resolve) => {
@@ -226,16 +275,8 @@ export function sseWriter(response: ServerResponse, signal?: AbortSignal) {
     },
     write(chunk: string) {
       if (response.destroyed || response.writableEnded) return
-      if (!started) {
-        started = true
-        response.writeHead(200, {
-          "content-type": "text/event-stream; charset=utf-8",
-          "cache-control": "no-cache, no-transform",
-          connection: "keep-alive",
-          "x-accel-buffering": "no",
-        })
-      }
-      if (!response.write(chunk)) blocked = true
+      commit()
+      send(chunk)
     },
     /** Resolves when the socket buffer has room again, the client is gone, or the request scope aborted. */
     drained,
@@ -252,9 +293,11 @@ export function sseWriter(response: ServerResponse, signal?: AbortSignal) {
           if (response.destroyed) return
           const next = await iterator.next()
           if (next.done) return
+          if (next.value.type !== "error" && next.value.type !== "finish") beginKeepalive()
           yield next.value
         }
       } finally {
+        stopKeepalive()
         void iterator.return?.(undefined)?.catch?.(() => {})
       }
     },
