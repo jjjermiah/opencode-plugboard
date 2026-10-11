@@ -1,5 +1,5 @@
 /**
- * Process metrics in the Prometheus text exposition format (version 0.0.4), on prom-client. No
+ * Process metrics in the Prometheus text exposition format (version 0.0.4), on @prometheus-io/client. No
  * I/O. `createMetrics` makes one `Registry` of its own (the default global registry is never
  * touched, and the default process metrics are never collected); the one the server uses lives
  * in the process runtime (`src/runtime.ts`), so counts survive a plugin generation being
@@ -11,7 +11,7 @@
  * `src/openai/sampling.ts`. Never a model string, key, path or client-supplied text.
  */
 
-import { Counter, Gauge, Histogram, Registry } from "prom-client"
+import { Counter, Gauge, Histogram, Registry } from "@prometheus-io/client"
 import type { PlugUsage } from "./contract.js"
 
 /** `app` label of a request that was not authenticated (app names cannot contain an underscore). */
@@ -44,9 +44,10 @@ export interface RuntimeSnapshot {
 /** Request duration buckets, seconds: model calls run from under a second to many minutes. */
 const BUCKETS = [0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600]
 
-/** A counter that ignores zero, negative and non-finite amounts (prom-client throws on the last two and would write a zero series for the first). */
+/** A counter that ignores zero, negative and non-finite amounts (@prometheus-io/client throws on the last two and would write a zero series for the first). */
 const count = <L extends string>(counter: Counter<L>, labels: Record<L, string>, amount = 1): void => {
-  if (amount > 0 && Number.isFinite(amount)) counter.inc(labels, amount)
+  // `Record<L, string>` is what `LabelValues<L>` means for a non-empty label list; its conditional type cannot resolve for a generic `L`.
+  if (amount > 0 && Number.isFinite(amount)) (counter as Counter<string>).inc(labels, amount)
 }
 
 export interface Metrics {

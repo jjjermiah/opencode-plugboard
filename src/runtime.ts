@@ -107,7 +107,7 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 8: `Metrics.render` is async and the registry is prom-client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+/** 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
 const VERSION = 8
 const KEY = Symbol.for("opencode-plugboard.runtime")
 

@@ -23,7 +23,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `http.ts` | Ingress and transport: body limits, Host and Origin checks, disconnect abort, the one deadline, JSON and SSE writers. |
 | `runtime.ts` | The process-wide runtime on `globalThis`: generations, confirmed app directories, `ensureBackend`, the listener, the event pump, the session store, history sweep state, the metrics registry. |
 | `discovery.ts` | Pure builders for `GET /`, `GET /v1` and `GET /v1/status`, and `sendText`. |
-| `metrics.ts` | The prom-client registry and text rendering. No I/O. |
+| `metrics.ts` | The @prometheus-io/client registry and text rendering. No I/O. |
 | `log.ts` | The pino logger (text or JSON lines), the ambient request id and redaction. Ids and outcomes only. |
 
 ## `src/` directories

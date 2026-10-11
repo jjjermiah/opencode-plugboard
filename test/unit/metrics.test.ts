@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { register } from "prom-client"
+import { register } from "@prometheus-io/client"
 import { createMetrics, NO_APP, outcomeLabel } from "../../src/metrics.js"
 
 const snapshot = { generations: 1, pumpRunning: false, guards: 0, startedAt: 1_700_000_000_500 }
