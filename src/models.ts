@@ -1,6 +1,6 @@
-/** Core: model refs, catalog, allowlist, aliases and `/v1/models` (D9, D14, R2). */
+/** Model refs, catalog reduction and the allowlist/alias policy. Protocol-neutral: front-ends format the results. */
 
-import type { CatalogModel, ModelRef, PlugError, PlugboardOptions } from "./contract.ts"
+import type { CatalogModel, ModelRef, PlugError, PlugboardOptions } from "./contract.js"
 
 /** `provider/model[#variant]`. The model id may contain slashes (`openrouter/vendor/model`). */
 export function parseModelRef(s: string): ModelRef | undefined {
@@ -59,7 +59,7 @@ export function toCatalog(raw: unknown[]): CatalogModel[] {
   return catalog
 }
 
-/** D14: `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly. */
+/** `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly. */
 function allowed(options: PlugboardOptions, ref: ModelRef): boolean {
   return options.models.some((pattern) => {
     if (pattern.endsWith("/*")) return pattern.slice(0, -2) === ref.providerID
@@ -108,16 +108,17 @@ export function resolveModel(
   return allowed(options, ref) && find(catalog, ref) ? ref : notAvailable
 }
 
-/** R2: OpenAI model objects for the allowlist intersected with the catalog, plus aliases whose target qualifies. */
-export function listModels(options: PlugboardOptions, catalog: ReadonlyArray<CatalogModel>): object[] {
-  const entry = (id: string, ref: ModelRef, model: CatalogModel) => ({
-    id,
-    object: "model",
-    created: 0,
-    owned_by: ref.providerID,
-    plugboard: { capabilities: model.capabilities ?? {}, contextLimit: model.contextLimit },
-  })
-  const data: object[] = []
+/** One servable model id: a catalog id (`provider/model[#variant]`) or an alias, with the catalog model behind it. */
+export interface ListedModel {
+  readonly id: string
+  readonly ref: ModelRef
+  readonly model: CatalogModel
+}
+
+/** The allowlist intersected with the catalog, plus aliases whose target qualifies. Ids are unique except an alias may repeat one. */
+export function listAvailableModels(options: PlugboardOptions, catalog: ReadonlyArray<CatalogModel>): ListedModel[] {
+  const entry = (id: string, ref: ModelRef, model: CatalogModel): ListedModel => ({ id, ref, model })
+  const data: ListedModel[] = []
   // The catalog can list a model more than once (and repeat variants); ids must be unique.
   const seen = new Set<string>()
   for (const model of catalog) {

@@ -1,7 +1,7 @@
-/** Plugin options: defaults, validation (D7, D8, D14, D24) and caller authentication (D8). */
+/** Plugin options: defaults, validation, caller authentication and the loopback check. */
 
-import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULTS } from "./contract.ts"
-import type { PlugError, PlugboardOptions } from "./contract.ts"
+import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULTS } from "./contract.js"
+import type { PlugError, PlugboardOptions } from "./contract.js"
 
 const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages"])
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
@@ -11,7 +11,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function loopback(host: string): boolean {
+/** `localhost`, `::1` or `127.x.x.x` (brackets and case ignored). */
+export function isLoopbackHost(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "")
   return h === "localhost" || h === "::1" || /^127(\.\d{1,3}){3}$/.test(h)
 }
@@ -47,7 +48,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
       throw new Error(`plugboard key \`${app}\` must be a non-empty string (is its {env:VAR} set?)`)
     keys[app] = key
   }
-  if (Object.keys(keys).length === 0 && !loopback(host))
+  if (Object.keys(keys).length === 0 && !isLoopbackHost(host))
     throw new Error(`plugboard refuses to listen on non-loopback host \`${host}\` without \`keys\``)
 
   const models = input.models ?? []
@@ -93,7 +94,7 @@ function same(a: string, b: string): boolean {
   return diff === 0
 }
 
-/** D8/D24: no keys -> app `default`; with keys every request needs `Authorization: Bearer <key>`. */
+/** No keys -> app `default`; with keys every request needs `Authorization: Bearer <key>`. */
 export function authenticate(options: PlugboardOptions, authorization: string | undefined): { app: string } | PlugError {
   const entries = Object.entries(options.keys)
   if (entries.length === 0) return { app: DEFAULT_APP }
