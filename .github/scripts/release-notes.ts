@@ -31,9 +31,26 @@ if (titleOnly) {
 }
 let end = lines.findIndex((l, i) => i > start && /^(## \[|\[[^\]]+\]: )/.test(l))
 if (end < 0) end = lines.length
-const notes = lines.slice(start + 1, end).join("\n").trim()
+// The section carries its own "**Full diff:**" line (release.ts writes it); it is
+// dropped here and re-appended at the end, so it appears once, last.
+const notes = lines
+  .slice(start + 1, end)
+  .filter((l) => !l.startsWith("**Full diff:**"))
+  .join("\n")
+  .trim()
 if (!notes) {
   console.error(`the CHANGELOG.md section for ${version} is empty`)
   process.exit(1)
 }
-console.log(notes)
+
+const repoUrl = /^\[Unreleased\]: (.+)\/compare\//m.exec(lines.join("\n"))?.[1]
+if (!repoUrl) {
+  console.error('CHANGELOG.md needs a "[Unreleased]: <repo url>/compare/..." link ref at the bottom')
+  process.exit(1)
+}
+// The previous release is the next version heading down (the changelog is newest first).
+const previous = /^## \[([^\]]+)\]/.exec(lines[end] ?? "")?.[1]
+const diff = previous
+  ? `[v${previous}...v${version}](${repoUrl}/compare/v${previous}...v${version})`
+  : `[v${version}](${repoUrl}/tree/v${version})`
+console.log(`${notes}\n\n---\n\n**Full diff:** ${diff}`)

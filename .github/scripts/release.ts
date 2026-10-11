@@ -126,6 +126,8 @@ const next = [
   "",
   `## [${version}] - ${date}: ${title}`,
   "",
+  `**Full diff:** [v${previous}...${tag}](${repoUrl}/compare/v${previous}...${tag})`,
+  "",
   body,
   "",
   ...lines.slice(sectionEnd, linkAt),
