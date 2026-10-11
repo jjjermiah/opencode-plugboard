@@ -14,7 +14,22 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A test suite worth reading** ([#93](https://github.com/jjjermiah/opencode-plugboard/issues/93)). Until now plugboard was proven by hand: curl runs, throwaway scripts and an acceptance record. Every release needed a person to re-check, and the subtle promises (setup never blocks the host, the first byte decides the status, provider text never reaches callers) lived only in prose. `bun test` now runs **799 tests in under a second**, layered like the code:
+
+  | Layer | Tests | What it proves |
+  |---|---|---|
+  | unit | 448 | every request and response codec, config, model resolution, sampling drops, metrics text, discovery |
+  | http | 146 | real loopback sockets with a scripted model: auth, Host/Origin, limits, streaming, keepalive, deadlines, every endpoint, `n` fan-out |
+  | session | 167 | the OpenCode session layer against fake host APIs: lifecycle, stop rules, bounds, error classes, SSRF guard, pruning |
+  | runtime | 38 | plugin lifecycle and the freeze-safety rules as executable assertions |
+
+  Tests name the behaviour and the issue they protect, never touch a real OpenCode server or your config, and CI runs them before every release. Each layer was checked by breaking the code on purpose and watching the right test fail.
+
+### Fixed
+
+- **A Responses stream that fails after reasoning now says so.** The new tests caught it: when a model reasoned first and then failed before writing anything, `/v1/responses` sent a 200 stream with no events, so a client couldn't tell failure from an empty answer. It now ends with `response.failed`.
 
 ## [0.9.1] - 2026-10-11: Gemini, For Real
 
