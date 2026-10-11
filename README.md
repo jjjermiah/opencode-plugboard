@@ -30,7 +30,7 @@ export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.5.0",
+      "package": "opencode-plugboard@0.6.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
         "models": ["anthropic/claude-sonnet-4-6", "github-copilot/*", "opencode-go/glm-5.3-flash"],

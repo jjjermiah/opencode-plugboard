@@ -19,7 +19,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
 | `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`, with the same authentication as `/v1`. |
-| `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). Off by default because it lets callers make the host request internal addresses; callers can always send `data:` URLs. |
+| `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
 Changes to `listen` need a server restart; other option changes apply on config reload.
 
