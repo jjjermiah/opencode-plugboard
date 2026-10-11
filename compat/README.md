@@ -82,7 +82,7 @@ jq -c '{path,status,req_json,resp_body}' compat/traffic/<client>.jsonl
 
 ## Cleanup
 
-Every request leaves a history session filed under `<data root>/compat`. The directory only groups the sessions; the prompts and replies live in OpenCode's database (see the [README](../README.md#history)), so these commands delete sessions through OpenCode rather than files.
+Every request leaves a history session filed under `<data root>/compat`. The directory only groups the sessions; the prompts and replies live in OpenCode's database (see [docs/history.md](../docs/history.md)), so these commands delete sessions through OpenCode rather than files.
 
 ```sh
 python3 compat/tools/sessions.py list

@@ -55,7 +55,7 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 400 | `too_many_tools` | More tools than `maxTools` | Request has &lt;n&gt; tools; plugboard allows &lt;max&gt; (option `maxTools`) |
 | 400 | `unsupported_parameter` | `n` above 1, `logprobs`, `top_logprobs` | names the parameter |
 
-Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. There is no per-app concurrency limit in v0.1.
+Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. There is no per-app concurrency limit yet ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 
 Supported request fields: messages with system, developer, user text and images, assistant `tool_calls` and tool results; `tools`, `tool_choice`, `response_format` (`json_object`, `json_schema`), `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `presence_penalty`, `frequency_penalty`, `reasoning_effort`, and streaming with a final usage chunk (`stream_options.include_usage`).
 
