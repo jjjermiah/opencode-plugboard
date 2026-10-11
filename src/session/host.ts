@@ -129,6 +129,30 @@ export function createHistoryPort(ctx: HostContext): HistoryPort {
   }
 }
 
+/**
+ * `ctx.storage` as a Promise port for string values (the usage store keeps one JSON string per app
+ * and day). Same host table and namespace as `HistoryPort`; the keys never overlap (`usage/` vs `history/`).
+ */
+export interface StoragePort {
+  get(key: string): Promise<string | undefined>
+  put(key: string, value: string): Promise<void>
+  drop(key: string): Promise<void>
+  scan(input: { readonly prefix: string; readonly after?: string; readonly limit: number }): Promise<{ readonly keys: ReadonlyArray<string>; readonly next?: string }>
+}
+
+export function createStoragePort(ctx: HostContext): StoragePort {
+  return {
+    get: (key) => Effect.runPromise(ctx.storage.get(key)).then((value) => (typeof value === "string" ? value : undefined)),
+    put: (key, value) => Effect.runPromise(ctx.storage.set(key, value)),
+    drop: (key) => Effect.runPromise(ctx.storage.remove(key)),
+    scan: (input) =>
+      Effect.runPromise(ctx.storage.scan(input)).then((result) => ({
+        keys: result.entries.map((entry) => entry.key),
+        ...(result.next === undefined ? {} : { next: result.next }),
+      })),
+  }
+}
+
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
 

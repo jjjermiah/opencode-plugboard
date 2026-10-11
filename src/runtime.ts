@@ -25,8 +25,10 @@
  *  - the metrics registry (src/metrics.ts) and the runtime start time, so counters and uptime
  *     outlive any one generation. `processMetrics` / `processStatus` read them for `/metrics`,
  *     `/v1/status` and the discovery pages;
- *   - the request limiter's queues and rate windows (src/limits.ts), so a cap holds across
- *     generations. `processLimits` reads them.
+  *   - the request limiter's queues and rate windows (src/limits.ts), so a cap holds across
+ *     generations. `processLimits` reads them;
+  *   - the usage store's live days (src/usage.ts), so the in-memory aggregates survive a generation.
+ *     `processUsage` reads them.
  *
  * Registration is explicit: `registerGeneration` returns whether the generation was accepted. A
  * rejected one (different `listen`, options that differ from the live ones, foreign runtime) never
@@ -60,6 +62,7 @@ import { ensureAppDir } from "./session/history.js"
 import type { HistoryPort } from "./session/host.js"
 import { recordSession, sweepHistory, type HistoryLimits } from "./session/prune.js"
 import { createSessionStore, type SessionStore } from "./session/state.js"
+import { createUsageState, type UsageState } from "./usage.js"
 
 export type Handler = (request: IncomingMessage, response: ServerResponse) => void
 
@@ -112,8 +115,8 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 10
+/** 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 11
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -169,6 +172,8 @@ interface Runtime {
   readonly startedAt: number
   /** The response cache store (src/cache.ts) and the fingerprint of the config and `apps` policy it was built for. */
   cache?: { readonly fingerprint: string; readonly store: CacheStore }
+  /** The usage store's live days and retention clock (src/usage.ts). */
+  readonly usage: UsageState
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
@@ -181,6 +186,7 @@ const detachedSessions = createSessionStore()
 const detachedMetrics = createMetrics()
 const detachedStartedAt = Date.now()
 const detachedLimits = createLimitState()
+const detachedUsage = createUsageState()
 let foreignVersionLogged = false
 
 /** The process runtime, created on first use; undefined when a different version already owns the process. */
@@ -197,6 +203,7 @@ function runtime(): Runtime | undefined {
       sweep: { nextAt: 0, running: false },
       metrics: createMetrics(),
       limits: createLimitState(),
+      usage: createUsageState(),
       startedAt: Date.now(),
     }
     slot[KEY] = created
@@ -274,6 +281,9 @@ export const processMetrics = (): Metrics => runtime()?.metrics ?? detachedMetri
 
 /** The request limiter's state shared by every generation in the process (detached under a foreign-version runtime). */
 export const processLimits = (): LimitState => runtime()?.limits ?? detachedLimits
+
+/** The usage store's live days shared by every generation in the process (detached under a foreign-version runtime). */
+export const processUsage = (): UsageState => runtime()?.usage ?? detachedUsage
 
 /**
  * Wraps `caller` with the response cache when option `cache` is set (a no-op without it). The store
