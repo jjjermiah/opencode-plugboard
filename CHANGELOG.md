@@ -38,6 +38,101 @@ Nothing yet.
 - **Remote images try every resolved address** ([#134](https://github.com/jjjermiah/opencode-plugboard/issues/134)). A host that resolves to `::1` and `127.0.0.1` with the image server on only one of them used to fail; plugboard now tries each checked address in order. Found by the test suite.
 - A transport test assumed macOS socket buffer sizes and failed on Linux; it now uses a stub that models exactly the full-buffer state it tests.
 
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (11 commits)</summary>
+
+#### Tests
+
+**test(http): make the sseWriter backpressure test independent of OS socket buffers** ([`7c57296`](https://github.com/jjjermiah/opencode-plugboard/commit/7c57296d016589fd817abfe1a4a5acdf304c8560))
+
+The v0.10.0 Publish run failed in CI on this one test: "drained() waits while the socket buffer is full" expected "pending" but saw "drained". The test wrote 64 MB into a real loopback socket with a paused client and assumed the buffer stayed full. On macOS it does; on Linux (CI, and reproduced locally in an oven/bun:1.4.2 container, 5 of 5 runs failing) loopback autotuning absorbs the data and Bun keeps reading despite pause(), so `drain` fires within the 5 ms window. The product behaviour is right; the test was measuring the OS.
+
+The test now drives sseWriter with a stub response whose write() always returns false and never emits `drain`, which is exactly the state the test is about. It asserts drained() stays pending, then resolves when the request scope aborts (#32).
+
+Rejected: writing until writableNeedDrain on the real socket. Tried it; the response reports needDrain but Linux still flushes it within milliseconds.
+
+Validation: bun test test/http/transport.test.ts green on macOS (3 runs) and Linux container (3 runs); full suite 799 pass / 0 fail inside the container; typecheck clean.
+
+This is why v0.10.0 never reached npm: the release gate did its job.
+
+#### Docs
+
+**docs: STRUCTURE.md and numbered invariants (I1 to I22)** ([`5b0ea21`](https://github.com/jjjermiah/opencode-plugboard/commit/5b0ea218d011f5bc88ce396c0f5899b9f3a6875f))
+
+Fixes #119
+
+A new contributor had to read the whole architecture doc to learn where code goes and which rules are load-bearing. STRUCTURE.md maps src/ and gives the request flow and a "where to add new code" guide. The architecture doc now opens with 22 numbered invariants, each naming the file that enforces it, so reviews and tests can cite them.
+
+Also fixes stale text in the architecture doc: the front-end headings had two "Third", the dependency paragraph missed Anthropic and legacy completions, the 401 rule omitted the discovery pages and the Messages 405, and the error mapping is per front-end, not OpenAI only.
+
+**docs(changelog): notes for 0.11.0** ([`5df68f4`](https://github.com/jjjermiah/opencode-plugboard/commit/5df68f488ed2b0fa6e52da29838a081333465b3f))
+
+Curated notes for the release that replaces the unpublished 0.10.0: CI safety nets (#109 #112 #113 #117), STRUCTURE.md and invariants (#119), package swaps (#120 #121 #122 #127 #128 #133), and the #134 multi-address fix. Pinned install examples bumped to 0.11.0.
+
+#### CI and tooling
+
+**ci: pack smoke test, OpenCode host matrix, nightly run, weekly host bump, release watch** ([`a69c0f0`](https://github.com/jjjermiah/opencode-plugboard/commit/a69c0f0657f4d0cd6a3eaeb4ef3494f748690a3c))
+
+Four release-safety pieces, all reusing ci.yml so they also gate publishing.
+
+Pack smoke (#109): .github/scripts/smoke-pack.ts runs npm pack, installs the tarball into a throwaway project with peers, and smoke-probe.ts imports the entry the way OpenCode does. It runs the plugin effect against a spy ctx under Effect.runSync(Effect.scoped(...)), so a setup that awaits or blocks fails the job (invariant I1); it checks session.hook, agent.transform and tool.transform were registered and that effect and @opencode/plugin resolve to exactly one copy. Dev-path tests cannot see packaging or dependency-resolution breaks; this can.
+
+Host matrix (#112): host-versions.ts lists stable @opencode/plugin versions inside the peer range (Bun.semver, no new dependency) and ci.yml fans out typecheck + tests over oldest/middle/newest. host-bump.yml runs weekly, bumps the pinned devDependency (and effect) when a newer 2.0.x exists and opens a PR, as a draft when checks fail. Opening PRs needs the repo setting "Allow GitHub Actions to create pull requests".
+
+Nightly (#113): fresh install with the lockfile removed and no cache, then typecheck, tests, pack check and smoke, so dependency drift shows up without blocking pushes.
+
+Release watch (#117): `bun run release --push` now follows the Publish run with `gh run watch --exit-status`, then polls npm (--prefer-online, every 10 s, 5 min cap) until the version is visible and latest/next points at it, and exits with that result. --no-watch skips it; --watch-only X.Y.Z re-checks an existing tag. npm can acknowledge a publish and keep it staged for a minute, which is how 0.9.x briefly looked missing.
+
+Merge note: kept main's unconditional `bun test` step (the suite has landed) over the branch's conditional one.
+
+Validation: actionlint clean; smoke passes locally; host-matrix steps run locally on 2.0.26 and 2.0.25; nightly, host-bump and a publish dry run green on the branch; --watch-only checked against v0.9.1 (success) and v0.10.0 (failed run, exit 1); typecheck clean.
+
+Fixes #109
+Fixes #112
+Fixes #113
+Fixes #117
+
+#### Other
+
+**Restate the dependency rule in AGENTS.md and CONTRIBUTING.md** ([`8c18572`](https://github.com/jjjermiah/opencode-plugboard/commit/8c18572d5838054dec074a23b43ee485da05d634))
+
+Fixes #120
+
+**Compare API keys with timingSafeEqual over SHA-256 digests** ([`6e72b07`](https://github.com/jjjermiah/opencode-plugboard/commit/6e72b0726e538270a886f215ca5e874682bf1faf))
+
+Fixes #122
+
+**Use escape-html in the discovery page** ([`c455271`](https://github.com/jjjermiah/opencode-plugboard/commit/c4552719f931976fcb1bf69bbba430cd7ed1b8ba))
+
+Fixes #127
+
+**Use safe-stable-stringify for the options fingerprint** ([`8f110df`](https://github.com/jjjermiah/opencode-plugboard/commit/8f110dfa37414b52fcede856a7fc92e3e8f0b300))
+
+Bumps the runtime VERSION to 7.
+
+Fixes #128
+
+**Classify SSRF addresses with ipaddr.js and try each checked address** ([`e731a76`](https://github.com/jjjermiah/opencode-plugboard/commit/e731a76529c132538851b2a91299bd342585ad97))
+
+Replaces the hand-rolled IPv4/IPv6 parsing and range tables in src/session/media.ts with ipaddr.js. The resolve-all, pin and generic error behaviour is unchanged, and NAT64/6to4 still defer to the embedded IPv4 address. The connection now tries each checked address in order instead of only the first.
+
+Fixes #121
+Fixes #134
+
+**One shared abort helper instead of four** ([`0dc8a2c`](https://github.com/jjjermiah/opencode-plugboard/commit/0dc8a2c6cf9f64afbf33e30cb8924bf3c20cfbb3))
+
+raceAbort in src/abort.ts replaces abortable (runtime.ts), raceAbort (session/caller.ts) and the body of RequestScope.race (http.ts); sleep uses node:timers/promises with a signal. src/openai/fanout.ts keeps its own copy of the race (another lane owns that file).
+
+Fixes #133
+
+**Dependency rule: pin exact versions, types in devDependencies** ([`a75ae24`](https://github.com/jjjermiah/opencode-plugboard/commit/a75ae24bebbdb6bc1662ae6a772369526c580796))
+
+Refs #120
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.10.0] - 2026-10-11: Proof, Not Promises
 
 **Full diff:** [v0.9.1...v0.10.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.1...v0.10.0)
@@ -59,6 +154,66 @@ Nothing yet.
 
 - **A Responses stream that fails after reasoning now says so.** The new tests caught it: when a model reasoned first and then failed before writing anything, `/v1/responses` sent a 200 stream with no events, so a client couldn't tell failure from an empty answer. It now ends with `response.failed`.
 
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (10 commits)</summary>
+
+#### Tests
+
+**Tests: pure codecs (config, models, sampling, Chat Completions, Responses)** ([`3ef7ad8`](https://github.com/jjjermiah/opencode-plugboard/commit/3ef7ad8ff59ecb8b1231d40ab453cdc7e6aaa6cc))
+
+Fixes #95
+
+**Tests: HTTP layer over loopback with a fake model caller** ([`dcf90f4`](https://github.com/jjjermiah/opencode-plugboard/commit/dcf90f4547a36a95fd6d67cf4f012f58fecfe7b6))
+
+beginRequest takes an optional grace (default unchanged) so the slow-reader cut runs in milliseconds. A test.failing records a bug in the Responses stream: a failure after reasoning commits the stream ends it with no event.
+
+Fixes #96
+
+**Tests: runtime and plugin lifecycle, freeze safety as assertions** ([`0326438`](https://github.com/jjjermiah/opencode-plugboard/commit/03264389e2e44f03185bd190e0bdd0777810fb0b))
+
+Fixes #98
+
+**Tests: follow v0.8.0 (#58 n above maxN is too_many_choices, 12-char request id, new option defaults)** ([`950c288`](https://github.com/jjjermiah/opencode-plugboard/commit/950c2884a536c2dd21e8f5b33002a406907aa6b3))
+
+**Tests: Anthropic Messages, legacy completions, n fan-out, discovery, metrics, status, request id, catalog and logs** ([`ada14b3`](https://github.com/jjjermiah/opencode-plugboard/commit/ada14b35e8c45970fe8fab778d038038860db58e))
+
+Codec units for src/anthropic, src/completions, src/discovery.ts, src/metrics.ts, src/log.ts and the host catalog; loopback HTTP tests for /v1/messages, /v1/completions, n > 1 (merge, interleave, cancellation), GET / and /v1, /v1/status, /metrics and its auth, x-plugboard-request-id, and #91 (401 before route lookup). startRoute takes a fresh metrics registry and a fixed runtime status, so route tests never create the process runtime.
+
+Refs #4 #56 #58 #73 #74 #75 #76 #87 #91
+
+**Tests: session layer (collector, store, caller, context hook, media SSRF, history, prune)** ([`078f32c`](https://github.com/jjjermiah/opencode-plugboard/commit/078f32cf49ede3d019b1a1b9a5087148ec5ee74b))
+
+RequestCollector event mapping, usage, finish reasons (#36), stop-turn rules (#33), queue bounds (#39) and the caller-safe error classes (#88); the store's dispatch, retire and failAll; the session caller's lifecycle against FakeSessionPort (#35, #40); the context hook and seed re-keying by descriptor identity; the #84 address matrix and allowlist with a loopback image server; #89 title and transcript sanitizing; the bounded history sweep.
+
+A test.failing records that remote image fetches try only the first resolved address.
+
+Fixes #97
+
+#### Docs
+
+**docs: CI gates include the tests (releasing, publish workflow, PR template); test README covers the new layers** ([`a43132a`](https://github.com/jjjermiah/opencode-plugboard/commit/a43132a7125556687abd407ef1a7b97bf3f34da4))
+
+Refs #100
+
+**changelog: test suite** ([`9400448`](https://github.com/jjjermiah/opencode-plugboard/commit/94004483ada5a41fbb5d5b35c537fd4af935880a))
+
+#### Other
+
+**Test suite: bun test runner, layout, shared fakes and conventions** ([`bd75ca6`](https://github.com/jjjermiah/opencode-plugboard/commit/bd75ca6f148fd8fc2fc202408ec793abcd357ad8))
+
+bun test with a preload that sandboxes HOME and XDG, a test tsconfig that adds Bun types for test files only, shared fakes under test/support (FakeModelCaller, loopback client, log capture, spy plugin context, runtime helpers, FakeSessionPort, FakeHistoryPort, bus builder) and test/README.md. AGENTS.md and CONTRIBUTING.md replace the no-test-suite rule; CI runs bun test.
+
+Fixes #94
+Refs #100
+
+**responses: a failure after reasoning committed the stream ends with response.failed** ([`24b62a0`](https://github.com/jjjermiah/opencode-plugboard/commit/24b62a0381ec05399bded79cc5a9be92714311e3))
+
+When reasoning arrives first, the SSE writer commits the 200 stream (#49). If the model then failed before any output, runResponse emitted nothing and the client got an empty 200 stream, unable to tell a failure from an empty answer. Chat Completions writes an error frame in that case. runResponse now takes a committed() check from the route: when the transport is committed, a failure still opens the response (created, in_progress) and ends it with response.failed. Flips the test.failing that recorded the bug.
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.9.1] - 2026-10-11: Gemini, For Real
 
 **Full diff:** [v0.9.0...v0.9.1](https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.0...v0.9.1)
@@ -66,6 +221,29 @@ Nothing yet.
 ### Fixed
 
 - **The Gemini front-end is actually in the package now.** 0.9.0's notes describe the Gemini API, but a botched merge on my side tagged 0.9.0 without the `src/gemini/` code, so `/v1beta/...` answered 401/404 in that version. This release contains the code exactly as it was live-tested. If you installed 0.9.0 for Gemini, upgrade.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Docs
+
+**docs: Gemini live test results** ([`290de5a`](https://github.com/jjjermiah/opencode-plugboard/commit/290de5a60e6a8fca6402d5ccf0ba0771945681b2))
+
+Fixes #5
+
+**changelog: 0.9.1 ships the Gemini code** ([`3203c9a`](https://github.com/jjjermiah/opencode-plugboard/commit/3203c9a874c652982f4d5a0727ec75cce81fd19f))
+
+#### Other
+
+**Add a Gemini generateContent front-end** ([`d172952`](https://github.com/jjjermiah/opencode-plugboard/commit/d172952f85dbbbafe9b2fc67a8c747e699e91520))
+
+Serve POST /v1beta/models/{model}:generateContent and :streamGenerateContent (alt=sse), plus GET /v1beta/models and /v1beta/models/{model}, on the neutral seam. Decodes contents, systemInstruction, function declarations, toolConfig, generationConfig and structured output; encodes Gemini responses, SSE chunks and Google-shaped errors. Accepts x-goog-api-key and ?key= on these routes.
+
+Fixes #5
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.9.0] - 2026-10-11: Speaks Fluent Gemini
 
@@ -79,6 +257,27 @@ Nothing yet.
 
   Point a client at the plugboard root as its base URL and pass an alias as the model name (ids with `/` work literally; `#` must be written `%23`). The key works as `x-goog-api-key`, `?key=` or a Bearer token. Hosted tools such as `googleSearch` and `codeExecution`, `candidateCount` above 1 and `cachedContent` get a 400; `countTokens` and embeddings a 404. Gemini function calls carry no id, so responses are paired with calls by name and order.
 
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Docs
+
+**changelog + readme: Gemini API** ([`ffa40f5`](https://github.com/jjjermiah/opencode-plugboard/commit/ffa40f5f9914fcf0282c1569f50dde8235f73013))
+
+#### Other
+
+**Require a title on every release** ([`2c302f4`](https://github.com/jjjermiah/opencode-plugboard/commit/2c302f41393da31f4cf3244dda7fe98a1e72e63e))
+
+CHANGELOG headings read '## [X.Y.Z] - date: Title'. release.ts needs --title (2 to 5 words, max 40 chars), the publish workflow fails without a title and names the GitHub release 'vX.Y.Z: Title'.
+
+**Add a Full diff link to every release's notes** ([`6c2956b`](https://github.com/jjjermiah/opencode-plugboard/commit/6c2956b71e62af2c077b61ec47a7e42f6d974753))
+
+release.ts writes it under the new version heading; release-notes.ts moves it to the end of the notes. Backfilled for 0.1.0 to 0.8.0.
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.8.0] - 2026-10-11: Many Voices
 
 **Full diff:** [v0.7.0...v0.8.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.7.0...v0.8.0)
@@ -91,6 +290,28 @@ Nothing yet.
 ### Changed
 
 - **Breaking:** `n` above the cap now returns 400 `too_many_choices` instead of `unsupported_parameter`.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Docs
+
+**changelog + readme: completions and n** ([`d481023`](https://github.com/jjjermiah/opencode-plugboard/commit/d4810234793e8d725f8a71dfc0150c630f6f5d3d))
+
+#### Other
+
+**Add legacy /v1/completions and n > 1 by parallel fan-out** ([`c9b217d`](https://github.com/jjjermiah/opencode-plugboard/commit/c9b217d337ff66cfab3858234a165bf0ebc2f875))
+
+Legacy completions: new src/completions front-end (prompt string or string array, suffix as a system instruction, echo, stream, usage; logprobs, best_of > 1 and token prompts are 400).
+
+n > 1: src/openai/fanout.ts runs one ModelCaller call per choice in its own session and merges them (JSON choices and summed usage, SSE chunks interleaved by index, one [DONE]). Any failing choice fails the request and cancels the rest. New option maxN (default 1) caps the calls.
+
+Fixes #75
+Fixes #58
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.7.0] - 2026-10-11: Claude Code, Any Brain
 
@@ -108,6 +329,23 @@ Nothing yet.
   It takes `system`, text, image, document, `tool_use` and `tool_result` blocks, custom tools, `tool_choice`, sampling, `stop_sequences` and `thinking` (mapped to a model variant when one fits; reasoning comes back as thinking blocks), and streams Anthropic's event sequence. Keys work as `x-api-key` or `Authorization: Bearer`, and errors use Anthropic's body shape. Server tools, `mcp_servers` and `output_config.format` get a 400, `count_tokens` a 404, and a stop sequence is reported as `end_turn` because the backend doesn't say which one fired.
 
   One deliberate leniency: Claude Code sends a `system`-role message when it doesn't recognise the model id, which Anthropic's own API would reject. Plugboard folds it into the system prompt, because that is exactly the case this endpoint exists for.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Other
+
+**Add an Anthropic Messages front-end (POST /v1/messages)** ([`53647ba`](https://github.com/jjjermiah/opencode-plugboard/commit/53647baaa9bbd60e03152028e5a1216c20771c0b))
+
+Decodes system, content blocks, custom tools, tool_choice, sampling and thinking into a PlugRequest and encodes PlugEvents as a message object or the Anthropic SSE sequence, with Anthropic-shaped errors and x-api-key auth. count_tokens answers a clear 404. src/openai/route.ts only dispatches.
+
+Fixes #4
+
+**anthropic: lift system-role messages into the system prompt (Claude Code on non-Claude models); docs + changelog** ([`5c16b70`](https://github.com/jjjermiah/opencode-plugboard/commit/5c16b70dc3a407c402be05d81b83989fd01c90fa))
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.6.0] - 2026-10-11: Locked Doors
 
@@ -132,6 +370,32 @@ This release closes most of the findings from a hostile read of the code: what w
 - **Breaking:** unknown paths now return 401 instead of 404 without a valid key.
 - Internal runtime version 6. Restart OpenCode after upgrading.
 
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Security
+
+**Security hardening: remote image SSRF, error text, titles, auth order, lost port** ([`b3018f1`](https://github.com/jjjermiah/opencode-plugboard/commit/b3018f10812c1078dc937f0598b2422957546548))
+
+Remote image fetches resolve the host, refuse non-public addresses unless `remoteImages.allow` names them, and connect to the checked address. Provider error text goes to the log only; callers get stable codes. Session titles and transcript headers lose control and bidi characters. Authentication runs before route existence. A failed bind logs at error level, retries and is repeated per generation. Runtime VERSION is 5.
+
+Fixes #84
+Fixes #88
+Fixes #89
+Fixes #91
+Fixes #87
+Refs #90
+
+#### Docs
+
+**docs: compare against standalone gateways only** ([`896e9f5`](https://github.com/jjjermiah/opencode-plugboard/commit/896e9f5fdae7020290f2d219278bb6945417df53))
+
+**changelog + docs: security release** ([`afb6310`](https://github.com/jjjermiah/opencode-plugboard/commit/afb6310ef79132e9560f51cef78ec5914b88d0fd))
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.5.0] - 2026-10-11: Lights On
 
 **Full diff:** [v0.4.1...v0.5.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.1...v0.5.0)
@@ -147,6 +411,28 @@ This release closes most of the findings from a hostile read of the code: what w
 
 - Internal runtime version 5. Restart OpenCode after upgrading.
 
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Docs
+
+**docs + changelog: setup page, metrics, catalog metadata, JSON logs** ([`f5ec7bd`](https://github.com/jjjermiah/opencode-plugboard/commit/f5ec7bdb97aa544d30d478a94aef2fcd7b4d7305))
+
+#### Other
+
+**package: description and keywords cover the Responses API** ([`643077a`](https://github.com/jjjermiah/opencode-plugboard/commit/643077acb5d7d1737888bbb712ab7505df73d1ce))
+
+**Observability and discovery: JSON logs + request id, /metrics + /v1/status, catalog metadata in /v1/models, GET / and /v1** ([`2211fe5`](https://github.com/jjjermiah/opencode-plugboard/commit/2211fe53ac6b5537d6a5a1e75d6dcf2d51d19ae1))
+
+Fixes #76
+Fixes #56
+Fixes #74
+Fixes #73
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.4.1] - 2026-10-11: First Impressions
 
 **Full diff:** [v0.4.0...v0.4.1](https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.0...v0.4.1)
@@ -156,6 +442,30 @@ This release closes most of the findings from a hostile read of the code: what w
 - **A README you can try in a minute** ([#62](https://github.com/jjjermiah/opencode-plugboard/issues/62), [#66](https://github.com/jjjermiah/opencode-plugboard/issues/66)). The top of the page is now a one-line pitch, a diagram, a pinned install, the warm-up call and a curl that prints `pong`. A "What this is not" section says plainly that plugboard is V2 only, which API formats it serves, and how it differs from a standalone gateway such as LiteLLM, which needs its own provider keys. The long reference sections moved to `docs/configuration.md`, `docs/history.md` and `docs/warm-up.md`; the README went from 231 to 119 lines.
 - **Pin the version you install** ([#83](https://github.com/jjjermiah/opencode-plugboard/issues/83)). A bare `"opencode-plugboard"` makes OpenCode track `latest`, and a global plugin runs inside OpenCode in every project, next to your provider logins. The docs now recommend `opencode-plugboard@<version>` and say why.
 - Release and CI scripts moved to `.github/scripts/` ([#92](https://github.com/jjjermiah/opencode-plugboard/issues/92)). `bun run release` works as before.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Docs
+
+**docs: fix stale Responses, concurrency and history links after the README split** ([`f86ba36`](https://github.com/jjjermiah/opencode-plugboard/commit/f86ba36616c9f99f6277e02dec71ff5bb0a5c9fd))
+
+**docs: pin 0.4.1** ([`84a6e86`](https://github.com/jjjermiah/opencode-plugboard/commit/84a6e8614de21ea1b97327a8984385ad4cb07868))
+
+#### Other
+
+**README first screen, pinned install, honest comparison; scripts under .github** ([`398b7d2`](https://github.com/jjjermiah/opencode-plugboard/commit/398b7d25df6e48ad3080d315d05c14f7277cf073))
+
+The README now opens with a one-line pitch, a diagram, a pinned install, the warm-up call and a curl that prints pong. Options, models, errors, warm-up units and history moved to docs/ pages. A "What this is not" section compares plugboard with opencode-llm-proxy and LiteLLM. The install recommends pinning and states the global-plugin trust boundary. The release and CI scripts moved to .github/scripts with every reference updated.
+
+Fixes #62
+Fixes #66
+Fixes #83
+Fixes #92
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.4.0] - 2026-10-11: No Awkward Silences
 
@@ -169,6 +479,29 @@ This release closes most of the findings from a hostile read of the code: what w
 ### Changed
 
 - **Sampling parameters a model rejects are dropped, not fatal** ([#30](https://github.com/jjjermiah/opencode-plugboard/issues/30)). Apps like n8n and Open WebUI let users set `temperature`, `top_p` and the penalties, and several models refuse some of them with a 400: older Claude won't take `temperature` and `top_p` together, newer Claude and the GPT-5/6 family refuse them outright, and two OpenCode Go models only accept fixed values. Plugboard now drops what the target model is known to reject and tells you in the `x-plugboard-dropped-params` response header and the request log line, so nothing changes silently. The table comes from probing every model on a live server, not from docs. A model plugboard doesn't know still gets everything as sent. Set `dropUnsupportedParams: false` to turn this off.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Docs
+
+**changelog, readme, architecture: keepalive, json_object fences, dropped sampling params** ([`4e9695d`](https://github.com/jjjermiah/opencode-plugboard/commit/4e9695dcf90312932ac60c6992d2a5d116e7844b))
+
+#### Other
+
+**Keep streams alive while reasoning, unfence json_object, drop rejected sampling params** ([`a4d059b`](https://github.com/jjjermiah/opencode-plugboard/commit/a4d059b0d70fb2b6a02b3688bd1f3c4ac28b16df))
+
+Fixes #49: a stream commits 200 and the SSE headers at the first model event that is not terminal (reasoning counts) and sends a `: keepalive` comment after 15 s idle until the stream ends. Failures before that keep their HTTP status; later ones are SSE error frames.
+
+Fixes #50: in json_object mode, a single code fence around text that parses as JSON is stripped, in JSON bodies and streams. Fence-led streamed text is held and sent as one chunk; other text streams as before.
+
+Fixes #30: sampling parameters a model is known to reject are dropped and listed in `x-plugboard-dropped-params`. Option `dropUnsupportedParams` (default true) turns it off.
+
+**Publish workflow: dry run on an already-published version only packs** ([`866b478`](https://github.com/jjjermiah/opencode-plugboard/commit/866b478ce3cfa191f6f8771a303435c128c9c040))
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.3.0] - 2026-10-11: Two Front Doors
 
@@ -192,6 +525,52 @@ This release closes most of the findings from a hostile read of the code: what w
 ### Changed
 
 - Internal runtime version 4. Restart OpenCode after upgrading; a hot reload over an older plugboard stays inert and says so in the log.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (9 commits)</summary>
+
+#### Docs
+
+**changelog: note 0.2.1 as the first npm release** ([`6b63251`](https://github.com/jjjermiah/opencode-plugboard/commit/6b63251ee0d76bd4fc29ce0d6a4ab1d918a5ce7d))
+
+**readme: status line reflects the npm release; link the acceptance record** ([`0322246`](https://github.com/jjjermiah/opencode-plugboard/commit/0322246acb6e32761d1a44e389d20a848e555e84))
+
+**changelog: Unreleased entries for history limits and project infrastructure** ([`470c68e`](https://github.com/jjjermiah/opencode-plugboard/commit/470c68ecd0fcea0d6a5f09a0fe4adec770a77996))
+
+**docs: history index only while a limit is set** ([`1ca44a6`](https://github.com/jjjermiah/opencode-plugboard/commit/1ca44a6b8eee4a6279a409750d5aba8b04b72640))
+
+**readme + changelog: Responses API and history limits** ([`7bd83d9`](https://github.com/jjjermiah/opencode-plugboard/commit/7bd83d9e8e8ed2b6bc133c0ac12dec5ea3a9f9db))
+
+#### Other
+
+**Prune old request history** ([`4851caa`](https://github.com/jjjermiah/opencode-plugboard/commit/4851caa27ade0668166208bbbe136273ab4a60d8))
+
+Index each request session in the host's plugin storage and sweep past history.maxSessions / history.maxAgeDays, skipping sessions whose request guard is active. Unset keeps history forever.
+
+Fixes #8
+
+**Add CI, publish workflow, release script and community files** ([`a6a134f`](https://github.com/jjjermiah/opencode-plugboard/commit/a6a134f826b66523b1adb1e3cd2190e2dd185db4))
+
+CI runs the typecheck, a pack check derived from package.json files, the compat/js typecheck, py_compile and bash -n. The publish workflow uses npm trusted publishing on v* tags and refuses while the repo is private. scripts/release.ts cuts a release from CHANGELOG.md.
+
+Fixes #63
+Fixes #64
+Fixes #65
+Fixes #67
+Fixes #68
+Fixes #70
+
+**Add POST /v1/responses front-end** ([`b8fa40a`](https://github.com/jjjermiah/opencode-plugboard/commit/b8fa40aa0ed1c9cbfbf22cb116be52b574073650))
+
+Parse Responses input items, instructions, function tools, text.format and reasoning.effort into the neutral PlugRequest; encode PlugEvents as a response object or the named SSE events. Stateless: previous_response_id, conversation, item_reference, background and hosted tools return 400 unsupported_parameter. Core contract and Chat Completions unchanged.
+
+Fixes #1
+
+**Publish workflow: private-repo trusted publishing, shared CI gates, dry run** ([`e3fd3ab`](https://github.com/jjjermiah/opencode-plugboard/commit/e3fd3aba4734d137bfcb30d166bcebb5f9316d1a))
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.2.1] - 2026-10-11: Out in the Open
 
@@ -243,6 +622,73 @@ A fresh reviewer read 0.1.0 cold, as a stranger would on first public read, and 
 - README and client pages match the code again ([#44](https://github.com/jjjermiah/opencode-plugboard/issues/44)), and `docs/clients/any-app.md` has a working recipe for reaching plugboard from another machine or a container ([#45](https://github.com/jjjermiah/opencode-plugboard/issues/45)).
 - The compat runners exit nonzero when anything fails ([#46](https://github.com/jjjermiah/opencode-plugboard/issues/46)), the Open WebUI script keeps its token private ([#47](https://github.com/jjjermiah/opencode-plugboard/issues/47)), and old results are marked where they've been superseded ([#48](https://github.com/jjjermiah/opencode-plugboard/issues/48)).
 - `AGENTS.md` tells coding agents the rules that matter here: the isolated dev server, freeze safety, and what may be imported at runtime.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (8 commits)</summary>
+
+#### Docs
+
+**docs: CHANGELOG for 0.1.0** ([`5d18b06`](https://github.com/jjjermiah/opencode-plugboard/commit/5d18b067725d9ad8b22b264122a24f1c8067c6c2))
+
+**docs, compat: fix stale claims, harden runners, clean results** ([`c922a59`](https://github.com/jjjermiah/opencode-plugboard/commit/c922a59fe639692724825aee091a494350779a64))
+
+History lives in OpenCode's database; the app directory only groups sessions. The README also still said models.retrieve was missing, json_object used the respond tool, and every request needed a key. It now matches the code, uses absolute doc links (the npm package ships only the README) and says tested on 2.0.26 with a 2.0.x peer range. any-app.md gains one recipe for reaching plugboard from another host or container.
+
+Compat runners now aggregate outcomes and exit nonzero on failure (langchain_py s6 no longer prints PASS after catching failures). open-webui.sh uses umask 077, a private mktemp -d, a cleanup trap and PID-based stop instead of pkill. Result files lose agent handoff chatter and gain notes marking superseded conclusions; a release-candidate record template is added.
+
+Fixes #43
+Fixes #44
+Fixes #45
+Fixes #46
+Fixes #47
+Fixes #48
+
+#### Other
+
+**session: interrupt on execution end, keep length/filter reasons, bound queue and images, abort before side effects, checked host inputs** ([`1884e82`](https://github.com/jjjermiah/opencode-plugboard/commit/1884e8243f83e9200e444ab96fbd38945015022a))
+
+Fixes #33
+Fixes #36
+Fixes #39
+Fixes #40
+Fixes #41
+
+**config: loopback means the Host check's set, reject duplicate key values and __proto__ aliases** ([`d5b45e7`](https://github.com/jjjermiah/opencode-plugboard/commit/d5b45e723fdacd3650709f41ab4cc131f8c71b01))
+
+127.0.0.2 counted as loopback but failed the Host check, so a keyless listener there rejected every request. isLoopbackHost is now exactly localhost, 127.0.0.1 and ::1. Two apps with the same key value are an error instead of the last one winning. Maps are built with Object.fromEntries and a __proto__ alias is rejected.
+
+Fixes #42
+Refs #37
+
+**Fail closed per app directory; no filesystem in plugin setup** ([`497b1ae`](https://github.com/jjjermiah/opencode-plugboard/commit/497b1ae03c744521f944257b4e6d44b2791785cc))
+
+Setup no longer calls realpathSync. Ownership of a Location is decided asynchronously by ensureBackend (request handling): it canonicalizes the app dir (symlink containment), confirms it, boots the Location with an agent lookup scoped to it when no generation is there, rebuilds transforms of a generation set up earlier, and waits until an accepted generation has its hook installed. A rejected generation or a timeout is 503 backend_unavailable. The hook, agent deny and seed tools are registered for every accepted generation but stay no-ops until the directory is confirmed. The pump now starts lazily, as documented. Seed tool map is built with Object.fromEntries so a tool named __proto__ stays a key; duplicate tool names are reported.
+
+Fixes #31
+Fixes #35
+Fixes #37
+
+**http: abortable drain, first visible output decides status, caller tools with json_schema, strict request fields** ([`6d06773`](https://github.com/jjjermiah/opencode-plugboard/commit/6d06773afcc250b43b5004814a279af46860703a))
+
+Streams: the SSE drain wait ends on the request scope's abort, and after the deadline a grace timer destroys the socket of a client that stopped reading, so the handler settles and logs. The encoder commits the 200 only when it writes its first frame and returns the terminal outcome; a failure before that (including after suppressed prose or reasoning) is a real HTTP error, and a stream error after it logs outcome=error with the code.
+
+With tools and response_format json_schema, the caller's tools are offered next to `respond` with tool_choice required; a caller tool call returns tool_calls, otherwise `respond` is the answer.
+
+The request decoder rejects invalid tool parameters/description, missing or invalid json_schema, non-integer n, out-of-range numeric fields and more than 4 stop sequences, each with a param path.
+
+Fixes #32
+Fixes #34
+Fixes #38
+Refs #42
+
+**openai: respond tool description marks it as the final answer (matters when caller tools are offered too)** ([`fb1d522`](https://github.com/jjjermiah/opencode-plugboard/commit/fb1d522e16b18725c96608012560504945e07a82))
+
+**Add AGENTS.md for agents working in this repo** ([`77a737f`](https://github.com/jjjermiah/opencode-plugboard/commit/77a737fc561c1e92ba8738e618274da09e1d5f66))
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.1.0] - 2026-10-11: First Spark
 
 **Full diff:** [v0.1.0](https://github.com/jjjermiah/opencode-plugboard/tree/v0.1.0)
@@ -407,6 +853,77 @@ Providers, through the session path: GitHub Copilot, Anthropic (Claude Max throu
 ### Acknowledgements
 
 `copilot-api` and LiteLLM showed what an OpenAI-compatible front door should feel like to the people calling it. No code was taken from either.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (26 commits)</summary>
+
+#### Refactors
+
+**refactor(session): split session backend by responsibility** ([`b187ea5`](https://github.com/jjjermiah/opencode-plugboard/commit/b187ea5b911a2dba79102a1e3c331d73adef6b2c))
+
+**refactor(http): separate HTTP ingress from OpenAI route; models policy stays neutral** ([`f42e63c`](https://github.com/jjjermiah/opencode-plugboard/commit/f42e63c7fb22d576ba57b99174586dfa3552654f))
+
+**refactor(runtime): single process owner for listener, pump and session store** ([`5e0a891`](https://github.com/jjjermiah/opencode-plugboard/commit/5e0a8912ed5461f61d7f476929de21db903e1977))
+
+**refactor: integrate modules, neutral model-call contract, architecture doc** ([`962b5bc`](https://github.com/jjjermiah/opencode-plugboard/commit/962b5bc5f17db3eac6d41b6c746b2aa789719b63))
+
+#### Docs
+
+**docs: native-backend issue reflects completed seed tools and step.ended interrupt** ([`aacf221`](https://github.com/jjjermiah/opencode-plugboard/commit/aacf22113b872656cccbc69fc13498bba1e3296d))
+
+**docs: architecture and README match the request guard, accepted generations and owner preference** ([`2a70bb6`](https://github.com/jjjermiah/opencode-plugboard/commit/2a70bb619d15d5cdd5e0672477e640e9afdc815a))
+
+#### Other
+
+**Spike: session-backend OpenAI endpoint + shared contracts** ([`6e27cbc`](https://github.com/jjjermiah/opencode-plugboard/commit/6e27cbc3e04f9311829946389d690f4e5bbb50b1))
+
+**config + models** ([`475907e`](https://github.com/jjjermiah/opencode-plugboard/commit/475907e288d9523ca6196117d5e4b443af3aaea9))
+
+**openai chat front-end** ([`ab8d471`](https://github.com/jjjermiah/opencode-plugboard/commit/ab8d47169f3b9035a316b22d98c04ebdbbc1927c))
+
+**README + roadmap issue drafts** ([`7814e28`](https://github.com/jjjermiah/opencode-plugboard/commit/7814e28a726bde86c111b2e2d8b0e6ef90beb6dd))
+
+**runtime: cross-location session backend, versioned listener, process-wide registry, route table** ([`73dc146`](https://github.com/jjjermiah/opencode-plugboard/commit/73dc146aebbe310a7c00fecd28148ea1d34c08cc))
+
+**Wire real config/models and OpenAI front-end into the router; drop spike shims** ([`b2d0332`](https://github.com/jjjermiah/opencode-plugboard/commit/b2d0332a0e3db9455a26ba55faec6f3e0eb699ed))
+
+**Address runtime review: CSRF/host checks, remoteImages off, authoritative options, early stream errors** ([`81a07ad`](https://github.com/jjjermiah/opencode-plugboard/commit/81a07ad12e65472da6405f066ebbbe3f4b7c1805))
+
+**Re-adopt options when no generation is live** ([`e44407c`](https://github.com/jjjermiah/opencode-plugboard/commit/e44407cd579338be05abf2d9a542f4964938aaae))
+
+**Seed tools settle at once; interrupt on step end so history shows completed calls** ([`96ac463`](https://github.com/jjjermiah/opencode-plugboard/commit/96ac4630485ee654a9f8e07f0cc3a08c7ed824a4))
+
+The seed tool returned never, so every tool-call turn showed aborted tool parts and a failed assistant message. It now returns 'Returned to caller', and the turn is interrupted on session.step.ended, before a second step can produce output. The HTTP response is unchanged.
+
+**compat: shared kit for client checks** ([`4ab8044`](https://github.com/jjjermiah/opencode-plugboard/commit/4ab804449cc2517592eda75cf900444dd2278405))
+
+**models: dedupe /v1/models ids** ([`3fcedc7`](https://github.com/jjjermiah/opencode-plugboard/commit/3fcedc7d7e2e1bdee2d540012e063f63f514b961))
+
+**compat: client check scripts and results (OpenAI py/js, Vercel AI SDK, LangChain py/js, pydantic-ai)** ([`f351307`](https://github.com/jjjermiah/opencode-plugboard/commit/f3513079f36daf54f46b66fcf002cb9a940e9dc0))
+
+**Move roadmap to GitHub issues** ([`85e5027`](https://github.com/jjjermiah/opencode-plugboard/commit/85e5027e51a3dd785ffa1b88f0f541a04f8a1868))
+
+The deferred-feature drafts are now issues and milestones, so docs/issues goes away and the README roadmap links to them.
+
+**compat: Open WebUI 0.12.0 check (pass)** ([`d0762d7`](https://github.com/jjjermiah/opencode-plugboard/commit/d0762d7a44ca55c4930560426e41d8c463077f98))
+
+**compat: n8n 2.42.6 check (pass)** ([`8f0d040`](https://github.com/jjjermiah/opencode-plugboard/commit/8f0d040650fd13e47478a681598ed95abe422bd7))
+
+**contract: inclusive usage semantics; CallContext.onRecord for the history id** ([`48e3314`](https://github.com/jjjermiah/opencode-plugboard/commit/48e331448f8f0af6ea20bf98db46de62cd01cda9))
+
+**protocol: shared structured-output projection, stricter request validation, json_object via instruction, alias/timeout validation** ([`7dcd86e`](https://github.com/jjjermiah/opencode-plugboard/commit/7dcd86e3016eab2a9116425172a7ac127aec2569))
+
+**http: request scope (disconnect + single deadline), 400/413/500 hardening, SSE backpressure, GET /v1/models/{id}, x-plugboard-session header** ([`4f17677`](https://github.com/jjjermiah/opencode-plugboard/commit/4f1767749065c7f328f9f2a78b724a247abf63db))
+
+**safety: keep the request guard until host execution ends; explicit generation registration; app dir containment; preparation checks; inclusive usage; history id hook** ([`6c2bdf1`](https://github.com/jjjermiah/opencode-plugboard/commit/6c2bdf1676d6841f23f4276e471a8f7e768da3de))
+
+**release prep: package metadata, client docs, portable compat kit** ([`f4c8afb`](https://github.com/jjjermiah/opencode-plugboard/commit/f4c8afb8861ad2db6656fffa773d9d21f6a3312f))
+
+package.json gets real metadata, an exports entry, a files allowlist and a 2.0.26 host pin. README and docs match what the code and the client checks showed. The compat kit reads PLUGBOARD_* env vars, pins Docker images and drops machine-specific paths.
+
+</details>
+<!-- commit-detail:end -->
 
 [Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.11.0...HEAD
 [0.11.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.10.0...v0.11.0
