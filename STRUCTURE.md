@@ -9,8 +9,10 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `index.ts` | The plugin. Parses options and composes one generation: route, session caller, generation registration, context hook. Registers and returns, nothing else (I1). |
 | `src/` | All runtime code. This is what gets published. |
 | `docs/` | Architecture, configuration, per-API field lists, history, development and release notes. |
-| `compat/` | Manual client checks (real OpenAI, Anthropic and Gemini clients) and helper tools. Not published. |
-| `.github/` | CI, release scripts and the pack check. Not published. |
+| `test/` | The `bun test` suite, including the automated client matrix (`test/compat`) and SDK wire-type goldens (`test/types`). See [test/README.md](test/README.md). Not published. |
+| `compat/` | Manual client checks against a real server (real OpenAI, Anthropic and Gemini clients) and helper tools. Not published. |
+| `.ci/` | Ratcheting CI floors: tests per layer and coverage. Raised with `.github/scripts/test-gates.ts --ratchet`. |
+| `.github/` | CI, release scripts, the pack check, the test gates and the compatibility matrix renderer. Not published. |
 | `CONTRIBUTING.md`, `AGENTS.md` | Rules for people and for coding agents. |
 
 ## `src/` top-level files
@@ -60,4 +62,4 @@ Each API front-end has the same three files: `request.ts` decodes the wire body 
 
 **New session behaviour.** It goes in `src/session/`. Anything that runs in the app directory goes through `context.ts` and must be a no-op until `confirmed()` (I4). Anything that must outlive a generation goes through `src/runtime.ts` or `state.ts`. Teardown stays synchronous and calls nothing on `ctx` (I2). Host calls and host-shaped casts stay in `host.ts`.
 
-**A new test.** Tests live in `test/`, layered like the code (unit, http, session, runtime); see [test/README.md](test/README.md) for the layers and shared fakes. Name the behaviour and the issue or invariant it protects, e.g. `I18: a failure before the first output keeps its HTTP status`. Host behaviour still needs a live run on an isolated server, as in [CONTRIBUTING.md](CONTRIBUTING.md).
+**A new test.** Tests live in `test/`, layered like the code (unit, http, session, runtime), plus the client matrix (`test/compat`) and the SDK wire-type goldens (`test/types`); see [test/README.md](test/README.md) for the layers and shared fakes. Name the behaviour and the issue or invariant it protects, e.g. `I18: a failure before the first output keeps its HTTP status`. Host behaviour still needs a live run on an isolated server, as in [CONTRIBUTING.md](CONTRIBUTING.md).

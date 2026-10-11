@@ -9,6 +9,7 @@
  */
 import { createServer, request as httpRequest, type ClientRequest, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
+import { createParser } from "eventsource-parser"
 import type { PlugboardOptions } from "../../src/config.js"
 import type { CatalogModel, ModelCaller } from "../../src/contract.js"
 import { createMetrics, type Metrics } from "../../src/metrics.js"
@@ -202,27 +203,31 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
   return { ...server, options, metrics }
 }
 
-/** One parsed SSE frame: comment lines (`: keepalive`) have only `comment`. */
+/** One parsed SSE item, in stream order: an event (`data`, and `event` when named) or a comment (`: keepalive`). */
 export interface SseFrame {
   readonly event?: string
   readonly data?: string
   readonly comment?: string
 }
 
-/** Split an SSE body into frames. */
+/**
+ * Parse an SSE body with eventsource-parser, the parser real clients use (AI SDK, `eventsource`),
+ * so tests assert what a client sees: multi-line data joined, `\r\n` handled, events without data
+ * not dispatched. Comments are kept in order for the keepalive checks (#129); tests that care about
+ * exact bytes read `OpenStream.received` instead.
+ */
 export function parseSse(text: string): SseFrame[] {
-  return text
-    .split("\n\n")
-    .filter((block) => block.length > 0)
-    .map((block) => {
-      const frame: { event?: string; data?: string; comment?: string } = {}
-      for (const line of block.split("\n")) {
-        if (line.startsWith(":")) frame.comment = line.slice(1).trim()
-        else if (line.startsWith("event: ")) frame.event = line.slice(7)
-        else if (line.startsWith("data: ")) frame.data = line.slice(6)
-      }
-      return frame
-    })
+  const frames: SseFrame[] = []
+  const parser = createParser({
+    onEvent: (message) => void frames.push({ ...(message.event === undefined ? {} : { event: message.event }), data: message.data }),
+    onComment: (comment) => void frames.push({ comment: comment.trim() }),
+    onError: (error) => {
+      throw error
+    },
+  })
+  // No trailing blank line is added: an event the server did not terminate is not delivered, as for a real client.
+  parser.feed(text)
+  return frames
 }
 
 /** The JSON payloads of the `data:` frames, without `[DONE]` and comments. */
