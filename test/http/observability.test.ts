@@ -75,7 +75,8 @@ describe("#73 GET / and GET /v1", () => {
     const doc = (await server!.send({ path: "/v1" })).json()
     expect(doc.authentication).toEqual({ required: true, scheme: "Bearer" })
     expect(doc).not.toHaveProperty("models")
-    expect(JSON.stringify(doc)).not.toMatch(/alpha|beta|secret/)
+    // `(?<!v1)beta`: the Gemini endpoints are `/v1beta/...`, a path and not an app name (#136).
+    expect(JSON.stringify(doc)).not.toMatch(/alpha|(?<!v1)beta|secret/)
   })
 
   test("keyed, a valid key: its own app only; a wrong key is a 401", async () => {

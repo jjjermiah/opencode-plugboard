@@ -58,18 +58,30 @@ export interface Endpoint {
   readonly description: string
 }
 
-function endpoints(options: PlugboardOptions): Endpoint[] {
-  return [
-    { method: "GET", path: "/", auth: false, description: "This page." },
-    { method: "GET", path: "/v1", auth: false, description: "This page as JSON." },
-    { method: "GET", path: "/healthz", auth: false, description: "Liveness: {\"ok\":true}." },
-    { method: "GET", path: "/v1/models", auth: true, description: "Models this app may call." },
-    { method: "GET", path: "/v1/models/{id}", auth: true, description: "One model." },
-    { method: "POST", path: "/v1/chat/completions", auth: true, description: "OpenAI Chat Completions." },
-    { method: "POST", path: "/v1/responses", auth: true, description: "OpenAI Responses (stateless)." },
-    { method: "GET", path: "/v1/status", auth: true, description: "Runtime status: generations, address, model count, uptime." },
-    ...(options.metrics ? [{ method: "GET", path: "/metrics", auth: true, description: "Prometheus metrics." }] : []),
-  ]
+/**
+ * Every endpoint plugboard serves, in the order the document lists them. Dispatch lives in
+ * `src/openai/route.ts` and the front-end routes; `test/http/discovery.test.ts` probes each served
+ * route and fails when this list omits one (#136). `/metrics` is added only when option `metrics` is on.
+ */
+export const ENDPOINTS: ReadonlyArray<Endpoint> = [
+  { method: "GET", path: "/", auth: false, description: "This page." },
+  { method: "GET", path: "/v1", auth: false, description: "This page as JSON." },
+  { method: "GET", path: "/healthz", auth: false, description: "Liveness: {\"ok\":true}." },
+  { method: "GET", path: "/v1/models", auth: true, description: "Models this app may call (OpenAI shape)." },
+  { method: "GET", path: "/v1/models/{id}", auth: true, description: "One model." },
+  { method: "POST", path: "/v1/chat/completions", auth: true, description: "OpenAI Chat Completions." },
+  { method: "POST", path: "/v1/completions", auth: true, description: "Legacy OpenAI completions." },
+  { method: "POST", path: "/v1/responses", auth: true, description: "OpenAI Responses (stateless)." },
+  { method: "POST", path: "/v1/messages", auth: true, description: "Anthropic Messages (x-api-key or Bearer)." },
+  { method: "GET", path: "/v1beta/models", auth: true, description: "Gemini model list." },
+  { method: "GET", path: "/v1beta/models/{model}", auth: true, description: "One Gemini model." },
+  { method: "POST", path: "/v1beta/models/{model}:generateContent", auth: true, description: "Gemini generateContent." },
+  { method: "POST", path: "/v1beta/models/{model}:streamGenerateContent", auth: true, description: "Gemini streamGenerateContent, with ?alt=sse." },
+  { method: "GET", path: "/v1/status", auth: true, description: "Runtime status: generations, address, model count, uptime." },
+]
+
+function endpoints(options: PlugboardOptions): ReadonlyArray<Endpoint> {
+  return options.metrics ? [...ENDPOINTS, { method: "GET", path: "/metrics", auth: true, description: "Prometheus metrics." }] : ENDPOINTS
 }
 
 type ModelsState = "ready" | "no_models_configured" | "none_available" | "catalog_unavailable"
