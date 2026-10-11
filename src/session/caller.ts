@@ -4,11 +4,14 @@
  *
  * Lifecycle of `stream()`: validate the app name, prepare images, create the session, register
  * its request state, start the prompt, then relay the collector's events until it is terminal.
+ * Abort is checked before every side effect (directory, backend, create, register, prompt), and
+ * the awaited host call (create) is raced against the request signal; teardown never is.
  * Request sessions are registered in the process-wide session store (`state.ts`) so the
  * app-directory hook (`context.ts`) and the event pump can find them.
  *
  * The response and the host execution have different lifetimes (docs/architecture.md). When the
- * response is over, `finally` interrupts anything still running and hands the store entry, the
+ * response is over, `finally` interrupts unless the host already reported the end of the
+ * execution or the turn settled with a plain stop (a step can fail while the runner goes on) and hands the store entry, the
  * request guard, to `sessions.retire`: it stays until the host reports the end of the execution
  * or a bounded cleanup runs out (logged). Nothing here waits for that.
  */
@@ -32,6 +35,11 @@ export interface SessionCallerDeps {
   readonly maxTools: number
   /** Allow fetching http(s) image URLs (option `remoteImages`). */
   readonly remoteImages?: boolean
+  /**
+   * Make sure the backend of `app` can run request sessions (the app directory's plugin is loaded),
+   * called right before `session.create`. An error ends the request without creating anything.
+   */
+  readonly ensureBackend?: (app: string, signal: AbortSignal) => Promise<PlugError | undefined>
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
@@ -64,8 +72,19 @@ function checkPreparation(request: PlugRequest, images: number, maxTools: number
   return undefined
 }
 
+/** Settles with `promise`, or rejects as soon as `signal` aborts. Request side only: the promise itself keeps running. */
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  promise.catch(() => {}) // a late rejection after the race was lost must not become unhandled
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason)
+    signal.addEventListener("abort", onAbort, { once: true })
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort))
+  })
+}
+
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
-  const { port, sessions, maxTools } = deps
+  const { port, sessions, maxTools, ensureBackend } = deps
   const remoteImages = deps.remoteImages === true
 
   return {
@@ -86,9 +105,12 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       let sessionID: string | undefined
       let collector: RequestCollector | undefined
       let promptStarted = false
+      let interruptRequested = false
       const interrupt = () => {
-        if (sessionID)
+        if (sessionID) {
+          interruptRequested = true
           void port.interrupt(sessionID).catch((error) => logError("session.interrupt_failed", { requestID, app, error: describeError(error) }))
+        }
       }
       const onAbort = () => {
         collector?.cancel()
@@ -102,17 +124,24 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (invalid) return yield note({ type: "error", error: invalid })
 
         // 2. The app directory under the data root; one top-level session per request.
+        if (context.signal.aborted) return
         const directory = await ensureAppDir(app)
         if (isPlugError(directory)) return yield note({ type: "error", error: directory })
 
+        // 3. The backend must be able to run the session before it is created.
+        if (context.signal.aborted) return
+        const unavailable = await ensureBackend?.(app, context.signal)
+        if (unavailable) return yield note({ type: "error", error: unavailable })
+        if (context.signal.aborted) return
+
         collector = new RequestCollector({ stopTurn: interrupt })
-        const created = await port.create({
+        const created = await raceAbort(port.create({
           directory,
           model: { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) },
           title: makeTitle(request),
           metadata: { plugboard: { app, model: request.model, requestID } },
           permissions: REQUEST_PERMISSIONS,
-        })
+        }), context.signal)
         sessionID = String(created.id)
         sessions.register({ sessionID, app, requestID, request, collector })
 
@@ -126,7 +155,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           logError("request.on_record_failed", { requestID, app, error: describeError(error) })
         }
 
-        // 3. Prompt concurrently; events stream through the collector while it runs.
+        // 4. Prompt concurrently; events stream through the collector while it runs.
+        if (context.signal.aborted) return onAbort()
         const owned = collector
         promptStarted = true
         void port.prompt({ sessionID, text: renderTranscript(request), files: images }).catch((error) => {
@@ -145,11 +175,12 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       } finally {
         context.signal.removeEventListener("abort", onAbort)
         if (sessionID && collector) {
-          // Anything still running (consumer left early, error, timeout) is interrupted; a finished turn is left alone.
-          if (!collector.terminal) {
-            collector.cancel()
-            interrupt()
-          }
+          // The response may be over (consumer left early, error, timeout, a failed step) while the
+          // host keeps running the session: interrupt unless it reported the end of the execution
+          // or the step ended plainly (the runner stops by itself), and only if no interrupt went
+          // out yet (the tool-calls path asked at the step end already).
+          if (!collector.terminal) collector.cancel()
+          if (!collector.executionEnded && !collector.turnSettled && !interruptRequested) interrupt()
           // The response ends here, the host execution may not have: the guard is kept until it does.
           if (promptStarted) sessions.retire(sessionID, { timeoutMs: CLEANUP_TIMEOUT_MS, onTimeout: interrupt })
           else sessions.release(sessionID)

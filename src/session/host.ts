@@ -15,42 +15,77 @@ import { Effect } from "effect"
 import type { CatalogModel } from "../contract.js"
 
 export type HostContext = Plugin.Context
+
+/** JSON value, the shape of session metadata (the host's `Json`). */
+export type Json = string | number | boolean | null | ReadonlyArray<Json> | { readonly [key: string]: Json }
+
 /** Promise-shaped view of the host calls the session caller needs (the entry wires them to `ctx.session`). */
 export interface SessionPort {
   create(input: {
     readonly directory: string
     readonly model: { readonly providerID: string; readonly id: string; readonly variant?: string }
     readonly title: string
-    readonly metadata: Record<string, unknown>
+    readonly metadata: { readonly [key: string]: Json }
     readonly permissions: ReadonlyArray<{ action: string; resource: string; effect: "allow" | "deny" }>
   }): Promise<{ id: string }>
   prompt(input: { readonly sessionID: string; readonly text: string; readonly files: ReadonlyArray<{ uri: string; name: string }> }): Promise<unknown>
   interrupt(sessionID: string): Promise<void>
 }
 
+type HostSession = HostContext["session"]
+
 /**
- * `ctx.session` as a Promise port. The host's Effect types carry branded IDs and an
- * unconstrained requirements parameter that the structural `SessionPort` does not model, so the
- * cast sites below are the only places that erase them. Invariant at every site: the input is the
- * shape the host's own method takes (checked by the host at runtime), and the effect needs no
- * services (the host provides them).
+ * The host's branded session ID. It is a string with a type-level brand and no runtime form, so
+ * the one cast below is the only unchecked step: the ID always comes from the host's own
+ * `session.create` result (or an event of that session).
+ */
+type HostSessionID = Parameters<HostSession["interrupt"]>[0]["sessionID"]
+const hostSessionID = (id: string): HostSessionID => id as HostSessionID
+
+type HostCreate = NonNullable<Parameters<HostSession["create"]>[0]>
+type HostModelRef = NonNullable<HostCreate["model"]>
+type HostDirectory = NonNullable<HostCreate["location"]>["directory"]
+
+/**
+ * Branded model ref and directory. Same kind of cast as the session ID: the values are the
+ * resolved catalog ref (a model the host listed) and the app directory `ensureAppDir` returned
+ * (absolute, inside the data root); the host validates both again at runtime.
+ */
+const hostModel = (model: { readonly providerID: string; readonly id: string; readonly variant?: string }): HostModelRef => ({
+  providerID: model.providerID as HostModelRef["providerID"],
+  id: model.id as HostModelRef["id"],
+  ...(model.variant ? { variant: model.variant as NonNullable<HostModelRef["variant"]> } : {}),
+})
+const hostDirectory = (directory: string): HostDirectory => directory as HostDirectory
+
+/**
+ * `ctx.session` as a Promise port. Inputs are built as object literals that must `satisfy` the
+ * host's own parameter types, so a host upgrade that changes them fails `bunx tsc --noEmit`;
+ * the only casts are the branded IDs (session, model, directory), one helper each. The host's effects need no services (it provides them).
  */
 export function createSessionPort(ctx: HostContext): SessionPort {
-  const run = <A>(effect: Effect.Effect<A, unknown, unknown>): Promise<A> => Effect.runPromise(effect as Effect.Effect<A>)
+  const run = <A>(effect: Effect.Effect<A, unknown>): Promise<A> => Effect.runPromise(effect)
   return {
     create: (input) =>
       run(
         ctx.session.create({
-          model: input.model,
+          model: hostModel(input.model),
           title: input.title,
           metadata: input.metadata,
           permissions: input.permissions,
-          location: { directory: input.directory },
-        } as Parameters<HostContext["session"]["create"]>[0]),
-      ) as Promise<{ id: string }>,
-    prompt: (input) => run(ctx.session.prompt(input as Parameters<HostContext["session"]["prompt"]>[0])),
+          location: { directory: hostDirectory(input.directory) },
+        } satisfies HostCreate),
+      ).then((created) => ({ id: String(created.id) })),
+    prompt: (input) =>
+      run(
+        ctx.session.prompt({
+          sessionID: hostSessionID(input.sessionID),
+          text: input.text,
+          files: input.files,
+        } satisfies Parameters<HostSession["prompt"]>[0]),
+      ),
     interrupt: (sessionID) =>
-      run(ctx.session.interrupt({ sessionID } as Parameters<HostContext["session"]["interrupt"]>[0])).then(() => undefined),
+      run(ctx.session.interrupt({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["interrupt"]>[0])).then(() => undefined),
   }
 }
 

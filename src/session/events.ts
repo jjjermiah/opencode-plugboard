@@ -15,16 +15,61 @@ import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type Plug
 import type { BusEvent } from "./host.js"
 import { FAILURE_EVENT } from "./state.js"
 
-/** Minimal async queue: producers `push`, one consumer iterates; `close` ends the iteration. */
+/** At most this many events may wait for a slow consumer, and at most this many (estimated) bytes of them. */
+const MAX_QUEUED_EVENTS = 10_000
+const MAX_QUEUED_BYTES = 8 * 1024 * 1024
+
+/** The error a request fails with when its consumer cannot keep up. */
+const RESPONSE_OVERFLOW: PlugError = {
+  status: 502,
+  kind: "server",
+  code: "response_overflow",
+  message: "The response was not read fast enough; too much output was waiting",
+}
+
+/** Rough size of an event's payload, for the queue's byte bound. */
+function sizeOf(event: PlugEvent): number {
+  switch (event.type) {
+    case "text-delta":
+    case "reasoning-delta":
+      return event.text.length
+    case "tool-call":
+      return 64 + event.name.length + (JSON.stringify(event.input) ?? "").length
+    default:
+      return 256
+  }
+}
+
+/**
+ * Minimal async queue: producers `push`, one consumer iterates; `close` ends the iteration.
+ * Bounded: `push` refuses an item that would exceed the item or byte limit (the caller decides
+ * what to do; it never waits), so a slow consumer cannot make one request grow without limit.
+ */
 class EventQueue<T> implements AsyncIterable<T> {
-  private readonly items: T[] = []
+  private items: Array<{ item: T; size: number }> = []
+  private bytes = 0
   private waiter?: () => void
   private closed = false
 
-  push(item: T): void {
-    if (this.closed) return
-    this.items.push(item)
+  constructor(
+    private readonly maxItems: number,
+    private readonly maxBytes: number,
+  ) {}
+
+  /** False when the item was refused for size (nothing was queued). Unbounded when `force`. */
+  push(item: T, size: number, force = false): boolean {
+    if (this.closed) return true
+    if (!force && (this.items.length >= this.maxItems || this.bytes + size > this.maxBytes)) return false
+    this.items.push({ item, size })
+    this.bytes += size
     this.wake()
+    return true
+  }
+
+  /** Drop everything that waits (the consumer is gone or too slow). */
+  clear(): void {
+    this.items = []
+    this.bytes = 0
   }
 
   close(): void {
@@ -40,9 +85,10 @@ class EventQueue<T> implements AsyncIterable<T> {
 
   async *[Symbol.asyncIterator](): AsyncGenerator<T> {
     while (true) {
-      const item = this.items.shift()
-      if (item !== undefined) {
-        yield item
+      const next = this.items.shift()
+      if (next !== undefined) {
+        this.bytes -= next.size
+        yield next.item
         continue
       }
       if (this.closed) return
@@ -112,7 +158,7 @@ export interface CollectorHooks {
 }
 
 export class RequestCollector {
-  private readonly queue = new EventQueue<PlugEvent>()
+  private readonly queue = new EventQueue<PlugEvent>(MAX_QUEUED_EVENTS, MAX_QUEUED_BYTES)
   private readonly emittedText = new Map<number, number>()
   private readonly toolNames = new Map<string, string>()
   private readonly calls = new Set<string>()
@@ -120,6 +166,7 @@ export class RequestCollector {
   private finished = false
   private executionDone = false
   private wasCancelled = false
+  private settled = false
 
   constructor(private readonly hooks: CollectorHooks) {}
 
@@ -131,6 +178,11 @@ export class RequestCollector {
   /** True once the OpenCode execution ended (succeeded, failed or interrupted). */
   get executionEnded(): boolean {
     return this.executionDone
+  }
+
+  /** True once a step ended with a plain `stop` and no tool calls: the runner finishes by itself, nothing needs interrupting. */
+  get turnSettled(): boolean {
+    return this.settled
   }
 
   /** True once the owner cancelled the request (client gone or timeout). */
@@ -200,7 +252,8 @@ export class RequestCollector {
         // Also after the response finished: a later step that ended with calls means the first
         // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
         if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
-        this.finishWith(this.calls.size > 0 ? "tool-calls" : toFinish(item.finish))
+        if (this.calls.size === 0 && toFinish(item.finish) === "stop") this.settled = true
+        this.finishWith(withCalls(toFinish(item.finish), this.calls.size > 0))
         return
       case FAILURE_EVENT:
         // Synthetic, from inside the process (lost event stream, preparation mismatch).
@@ -210,6 +263,8 @@ export class RequestCollector {
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         // Assumed invariant: `error` is the host's `SessionError` (RawError shape).
         const error = item.error as RawError | undefined
+        // The host can run another step after a failed one; the response is over, the turn must be too.
+        if (!this.executionDone && error?.type !== "aborted") this.hooks.stopTurn()
         if (this.calls.size > 0 && error?.type === "aborted") return this.finishWith("tool-calls")
         if (item.finish === "content-filter") return this.finishWith("content-filter")
         if (error?.type === "aborted" && this.wasCancelled) return this.end()
@@ -262,9 +317,18 @@ export class RequestCollector {
   }
 
   private emit(event: PlugEvent): void {
-    this.queue.push(event)
+    // Errors are always queued: they are how an overflow is reported.
+    if (this.queue.push(event, sizeOf(event), event.type === "error")) return
+    // The consumer is not keeping up: drop what waits, fail this request only, and stop the turn.
+    this.queue.clear()
+    this.queue.push({ type: "error", error: RESPONSE_OVERFLOW }, 0, true)
+    this.end()
+    if (!this.executionDone) this.hooks.stopTurn()
   }
 }
+
+/** A tool call turns a normal stop into `tool-calls`; a truncated, filtered or failed step keeps its reason. */
+const withCalls = (reason: PlugFinish, hasCalls: boolean): PlugFinish => (hasCalls && (reason === "stop" || reason === "tool-calls") ? "tool-calls" : reason)
 
 const toFinish = (finish: unknown): PlugFinish => {
   switch (finish) {
