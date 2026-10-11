@@ -70,6 +70,20 @@ describe("#4 the route", () => {
     expect(count.json()).toEqual(anthropicError("not_found_error"))
   })
 
+  test("#137 an unauthenticated GET is a 401, not a 405, so the path is not revealed", async () => {
+    await route([ev.finish()], { keys: { app: "secret" } })
+    const reply = await server!.send({ path: "/v1/messages" })
+    expect(reply.status).toBe(401)
+    expect(reply.json()).toEqual(anthropicError("authentication_error"))
+  })
+
+  test("#137 an authenticated GET is still a 405", async () => {
+    await route([ev.finish()], { keys: { app: "secret" } })
+    const reply = await server!.send({ path: "/v1/messages", headers: { "x-api-key": "secret" } })
+    expect(reply.status).toBe(405)
+    expect(reply.json()).toEqual(anthropicError("invalid_request_error"))
+  })
+
   test("every response carries Anthropic's request-id and plugboard's request id", async () => {
     await route([ev.finish()])
     const reply = await server!.send(messages())
