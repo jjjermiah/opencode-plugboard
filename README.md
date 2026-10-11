@@ -4,7 +4,7 @@
 [![license](https://img.shields.io/npm/l/opencode-plugboard)](https://github.com/jjjermiah/opencode-plugboard/blob/main/LICENSE)
 [![CI](https://github.com/jjjermiah/opencode-plugboard/actions/workflows/ci.yml/badge.svg)](https://github.com/jjjermiah/opencode-plugboard/actions/workflows/ci.yml)
 
-An OpenCode V2 plugin that serves an OpenAI-compatible API from your OpenCode server, so your other apps reuse the provider logins you already made in OpenCode.
+An OpenCode V2 plugin that turns your OpenCode server into an OpenAI- and Anthropic-compatible API, so every other app reuses the provider logins you already made in OpenCode. Point Claude Code at a GPT model, or n8n at your Claude subscription.
 
 ```
 client ──▶ plugboard listener ──▶ OpenCode session ──▶ provider
@@ -12,7 +12,7 @@ client ──▶ plugboard listener ──▶ OpenCode session ──▶ provide
   └──── reply; tool calls go back to the caller ◀──────────┘
 ```
 
-Tools like n8n, Open WebUI or a Discord bot only speak the OpenAI API, so each wants its own key or its own gateway. Plugboard serves `/v1/chat/completions`, `/v1/responses` and `/v1/models` from inside OpenCode. OpenCode never runs your tools.
+Tools like n8n, Open WebUI or a Discord bot only speak the OpenAI API, so each wants its own key or its own gateway. Plugboard serves OpenAI Chat Completions (`/v1/chat/completions`), the Responses API (`/v1/responses`), the Anthropic Messages API (`/v1/messages`) and `/v1/models` from inside OpenCode. OpenCode never runs your tools.
 
 ## Quick start
 
@@ -30,7 +30,7 @@ export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.6.0",
+      "package": "opencode-plugboard@0.7.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
         "models": ["anthropic/claude-sonnet-4-6", "github-copilot/*", "opencode-go/glm-5.3-flash"],

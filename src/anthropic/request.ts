@@ -299,10 +299,21 @@ export function parseMessagesRequest(body: unknown, options: PlugboardOptions): 
 
   const generation = parseGeneration(body)
   if (isPlugError(generation)) return generation
-  const messages = parseMessages(body.messages)
+  // Claude Code sends a `system` role message for models it doesn't know (any non-Claude id), which the real API
+  // would reject. Lift those into the system prompt so any OpenCode model works behind Claude Code.
+  const rawMessages: unknown = body.messages
+  const lifted = Array.isArray(rawMessages) ? rawMessages.filter((m) => isRecord(m) && m.role === "system") : []
+  const messages = parseMessages(Array.isArray(rawMessages) && lifted.length > 0 ? rawMessages.filter((m) => !lifted.includes(m)) : rawMessages)
   if (isPlugError(messages)) return messages
-  const system = parseSystem(body.system)
-  if (isPlugError(system)) return system
+  const base = parseSystem(body.system)
+  if (isPlugError(base)) return base
+  const extra: string[] = []
+  for (const m of lifted) {
+    const s = parseSystem((m as Record<string, unknown>).content)
+    if (isPlugError(s)) return s
+    extra.push(...s)
+  }
+  const system = [...base, ...extra]
   const tools = parseTools(body.tools)
   if (isPlugError(tools)) return tools
   const toolChoice = parseToolChoice(body.tool_choice)
