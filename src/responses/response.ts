@@ -79,10 +79,16 @@ const structuredFailure = (exchange: ResponsesExchange, finish: Exclude<PlugFini
         message: `The model finished without calling the \`${exchange.structuredTool}\` tool, so there is no structured output`,
       }
 
+/**
+ * `committed`: whether the transport already committed a 200 stream before any event was emitted
+ * (the SSE writer does at the first reasoning event, #49). A failure then still opens the response
+ * and ends it with `response.failed`, instead of leaving the client an empty 200 stream.
+ */
 export async function runResponse(
   events: AsyncIterable<PlugEvent>,
   exchange: ResponsesExchange,
   emit: (event: ResponsesStreamEvent) => void,
+  committed: () => boolean = () => false,
 ): Promise<ResponseRun> {
   const id = newId("resp")
   const createdAt = Math.floor(Date.now() / 1000)
@@ -203,14 +209,15 @@ export async function runResponse(
   const structuredAnswer = exchange.structuredTool !== undefined && !passthrough
   failure ??= finish ? (passthrough ? undefined : structuredFailure(exchange, finish, answered)) : noFinish()
   if (failure) {
-    if (!started) return { failure, started }
+    if (!started && !committed()) return { failure, started }
+    start()
     closeMessage()
     const response = envelope("failed", items, {
       error: { code: failure.code ?? failure.kind, message: failure.message },
       ...(usage ? { usage: encodeUsage(usage) } : {}),
     })
     send("response.failed", { response })
-    return { failure, started, response }
+    return { failure, started: true, response }
   }
   start()
   if (held && structuredAnswer) text(args(held.input))

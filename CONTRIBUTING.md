@@ -9,11 +9,21 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ```sh
 bun install
 bun run typecheck
+bun test
 ```
 
-The type check is the only automated gate. It also checks host compatibility: it fails when the pinned `@opencode/plugin` changes shape. CI runs it on every push and pull request.
+The type check also checks host compatibility: it fails when the pinned `@opencode/plugin` changes shape. CI runs the type check and the tests on every push and pull request.
 
-There is no test suite, on purpose. Please don't add one or a test framework. Prove behaviour with a throwaway `bun -e` script (a fake `ModelCaller` or `SessionPort`, real loopback HTTP), delete it afterwards, and run the change live on an isolated server.
+## Tests
+
+The suite uses `bun test` and nothing else. It is fast and never talks to a real OpenCode server: HOME and the XDG directories point at a temporary directory for the run. [test/README.md](test/README.md) explains the layout (`unit`, `http`, `session`, `runtime`, `live`) and the shared fakes.
+
+- Add or change a test with every behaviour change. Name it after the behaviour, and the issue it protects: `"#38 a failure before the first output keeps its HTTP status"`.
+- Use the shared fakes instead of new ones, and tables when cases differ only in data.
+- No real waits beyond a few milliseconds: inject the interval, hold a fake with a `gate()`, or use fake timers.
+- A known bug gets a `test.failing` with a comment. Never weaken a test to make it pass.
+
+The tests do not replace a live run for host behaviour: run the change on an isolated server too.
 
 ## Never try a change on your real OpenCode
 
@@ -54,6 +64,6 @@ Prose in the README, docs, issues and changelog is plain and short. No em or en 
 ## Pull requests
 
 - One change per pull request, with the issue linked.
-- `bun run typecheck` passes.
+- `bun run typecheck` and `bun test` pass.
 - The pong gate passed on an isolated server, if you touched `src/` or `index.ts`.
 - `[Unreleased]` in the changelog is updated.

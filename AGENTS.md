@@ -4,8 +4,8 @@ OpenCode V2 plugin that serves an OpenAI-compatible API (`/v1/chat/completions`,
 
 ## Commands
 
-- `bun install`, then `bun run typecheck` (`tsc --noEmit`). The typecheck is the only automated gate and doubles as the host-compatibility check (`HostContextMatches` in `src/session/host.ts` fails it when the pinned `@opencode/plugin` changes shape).
-- There is no test suite, on purpose (owner's rule). Don't add one or a test framework. Prove behaviour with throwaway `bun -e` scripts (fake `ModelCaller` / `SessionPort`, real loopback HTTP) and delete them after, plus live runs on an isolated server.
+- `bun install`, then `bun run typecheck` and `bun test`. The typecheck checks `src/` with Node types, then the tests (`test/tsconfig.json`); it doubles as the host-compatibility check (`HostContextMatches` in `src/session/host.ts` fails it when the pinned `@opencode/plugin` changes shape).
+- Tests: `bun test` only, no other framework or test dependency. Layout, conventions and the shared fakes (`FakeModelCaller`, loopback client, spy plugin context, `FakeSessionPort`, `FakeHistoryPort`, `bus`) are in `test/README.md`. Name each test after the behaviour and the issue it protects (`"#38 ..."`); no real sleeps beyond a few ms (inject the interval, use a `gate()`, or fake timers). Tests never touch a real OpenCode server or `~/.config/opencode` (`test/setup.ts` sandboxes HOME and XDG). A behaviour change comes with a test; a known bug gets a `test.failing`. Live runs on an isolated server are still required for host behaviour the fakes cannot show.
 - `npm pack --dry-run --json --ignore-scripts` must list only `files` (index.ts, src/, README.md, LICENSE).
 
 ## Never develop against a real OpenCode server
@@ -31,7 +31,7 @@ A plugin effect that blocked once froze every prompt in the project that loaded 
 ## Repo conventions
 
 - Work items are GitHub issues in `jjjermiah/opencode-plugboard` (milestones `v0.1`, `later`), not markdown files in the repo. Reference them in commits (`Fixes #N`).
-- Humans read `CONTRIBUTING.md`; releases are cut with `bun run release <version> --title "Short Creative Title"` (2 to 5 words, required; CHANGELOG headings read `## [X.Y.Z] - date: Title`; see `docs/releasing.md`). CI (`.github/workflows/ci.yml`) runs the typecheck and `bun .github/scripts/check-pack.ts`.
+- Humans read `CONTRIBUTING.md`; releases are cut with `bun run release <version> --title "Short Creative Title"` (2 to 5 words, required; CHANGELOG headings read `## [X.Y.Z] - date: Title`; see `docs/releasing.md`). CI (`.github/workflows/ci.yml`) runs the typecheck, `bun test` and `bun .github/scripts/check-pack.ts`.
 - Semantic versioning; update `CHANGELOG.md` (keep `[Unreleased]` at the top, with context and reasoning, not a commit dump) with every user-visible change.
 - Parallel agent lanes use git worktrees under `.agents/worktrees/` (gitignored) with disjoint file sets; merge into `main`.
 - Prose (README, docs, issues, changelog): plain and short, no em or en dashes as punctuation. Nothing machine- or homelab-specific in the repo (no private IPs, `/Users/...` paths, keys).

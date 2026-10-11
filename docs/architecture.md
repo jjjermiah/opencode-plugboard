@@ -205,4 +205,4 @@ Provider and host error text never reaches the caller (#88): `toPlugError` in `s
 - Relative imports use `.js` specifiers.
 - Errors cross layers as `PlugError` values (checked with `isPlugError`); only the OpenAI encoder maps `kind` to the wire `type`.
 - Casts that erase host types live in `src/session/host.ts` and state the invariant that makes them safe.
-- There is no test suite; checks are `bunx tsc --noEmit` and live runs against an isolated OpenCode server.
+- Checks are `bun run typecheck`, `bun test` (see `test/README.md`; the freeze-safety rules above are asserted in `test/runtime/plugin.test.ts`) and live runs against an isolated OpenCode server.

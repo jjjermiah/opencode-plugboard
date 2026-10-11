@@ -1,0 +1,9 @@
+{
+  // The suite's own project: it adds Bun's types (bun:test) for test files only, so the root
+  // tsconfig keeps checking src/ and index.ts against Node types alone.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "bun"]
+  },
+  "include": ["../index.ts", "../src/**/*.ts", "./**/*.ts"]
+}
