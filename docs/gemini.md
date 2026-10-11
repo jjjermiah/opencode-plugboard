@@ -4,7 +4,7 @@
 
 Plugboard is stateless, as on the other endpoints: every request carries the whole conversation in `contents`. Nothing is stored.
 
-Tested: `@google/genai` 2.28.0 (JS SDK) against a fake model caller over loopback HTTP, 2026-10-11: plain chat, streamed chat, a function-calling round trip (manual and through `ai.chats`), JSON output, image input, `models.list` and `models.get`, error handling, and `apiVersion: "v1"`. Not run against a live OpenCode server, the Python SDK or the Gemini CLI.
+Tested, 2026-10-11, `@google/genai` 2.28.0 (JS SDK): against a fake model caller (plain, streamed and function-calling chat, JSON output, image input, `models.list` and `models.get`, errors, `apiVersion: "v1"`), and live on OpenCode 2.0.26 with `opencode-go/glm-5.3-flash` (alias `fast`), `anthropic/claude-haiku-5-5` and `openai/gpt-5.6-luna%23low`: text, stream, a function-calling round trip, JSON schema, parallel calls in a stream and in `ai.chats`, and an array schema. Not run with the Python SDK or the Gemini CLI.
 
 ```ts
 import { GoogleGenAI } from "@google/genai"
