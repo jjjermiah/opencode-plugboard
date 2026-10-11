@@ -14,34 +14,47 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-A second review of 0.1.0, done from scratch by a fresh reviewer at commit `2a70bb6`, found eighteen things worth fixing before the first publish. They are being fixed in parallel right now. This section will be rewritten once they land. For now, by theme:
+Nothing yet. Next up: a `/v1/responses` front-end ([#1](https://github.com/jjjermiah/opencode-plugboard/issues/1)), because three popular clients now default to it.
 
-**Lifecycle safety**
-- Plugin setup calls `realpathSync` on every location, so a hung mount could stall the server thread. Ownership has to be worked out later, from request handling ([#31](https://github.com/jjjermiah/opencode-plugboard/issues/31)).
-- The interrupt is keyed on the response ending, not the host execution ending, so a failed step can leave the provider being called for up to 30 seconds ([#33](https://github.com/jjjermiah/opencode-plugboard/issues/33)).
-- Requests should fail closed when an app directory has no context hook, instead of sending the raw transcript as an ordinary prompt ([#35](https://github.com/jjjermiah/opencode-plugboard/issues/35)).
-- Host calls cannot be cancelled, so a deadline during preparation can still create a session ([#40](https://github.com/jjjermiah/opencode-plugboard/issues/40)).
-- Host inputs should be checked with `satisfies`, not cast, so an OpenCode upgrade breaks the type check instead of the runtime ([#41](https://github.com/jjjermiah/opencode-plugboard/issues/41)).
+## [0.2.0] - 2026-10-11
+
+A fresh reviewer read 0.1.0 cold, as a stranger would on first public read, and found eighteen things worth fixing. None of them needed a redesign. Most were places where the code promised something it didn't quite do, so this release is about making those promises true. Nothing in the public API was removed. A few malformed requests that 0.1.0 quietly repaired now get a 400, which is why this is a minor bump and not a patch.
+
+### Highlights
+
+- **Tools and structured output work together.** Ask for `json_schema` and offer tools, and the model can call your tools first and give the structured answer after. 0.1.0 silently dropped your tools in that case ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)).
+- **Plugin setup never touches the disk.** The freeze rules said setup only registers and returns, but 0.1.0 still resolved real paths there. A hung network mount could have stalled the whole server. Ownership is now worked out from request handling ([#31](https://github.com/jjjermiah/opencode-plugboard/issues/31)).
+- **No more fail-open requests.** Before creating a session, plugboard now checks that its hook is live in the app directory and boots that directory if needed. If it can't, you get a 503 `backend_unavailable` instead of the model receiving your raw transcript as an ordinary prompt ([#35](https://github.com/jjjermiah/opencode-plugboard/issues/35)).
+
+### Fixed
+
+**Lifecycle**
+- The stop decision follows OpenCode's execution, not the HTTP response. A failed step used to leave the provider being called for up to 30 seconds after we had already returned the error ([#33](https://github.com/jjjermiah/opencode-plugboard/issues/33)).
+- Aborts are checked before every side effect, and session creation races the request signal, so a deadline during preparation no longer creates a session ([#40](https://github.com/jjjermiah/opencode-plugboard/issues/40)).
+- Inputs sent to OpenCode are type-checked with `satisfies` instead of cast, so an OpenCode upgrade that changes their shape fails `bun run typecheck` rather than a live request ([#41](https://github.com/jjjermiah/opencode-plugboard/issues/41)).
 
 **HTTP and streaming**
-- The SSE backpressure wait ignores the request deadline, so a client that stops reading keeps a handler alive forever ([#32](https://github.com/jjjermiah/opencode-plugboard/issues/32)).
-- Stream failures before any visible content return 200 and log `ok` ([#38](https://github.com/jjjermiah/opencode-plugboard/issues/38)).
-- The event queue and the total image bytes per request need a bound ([#39](https://github.com/jjjermiah/opencode-plugboard/issues/39)).
+- A client that stops reading an SSE stream can no longer outlive the deadline. The drain wait is abortable and the socket is cut 2 seconds after the deadline ([#32](https://github.com/jjjermiah/opencode-plugboard/issues/32)).
+- The first byte decides the status. A failure before any visible output is a real HTTP error, not a 200 with an error frame, and the request log records `outcome=error` instead of `ok` ([#38](https://github.com/jjjermiah/opencode-plugboard/issues/38)).
+- Per-request limits: 10,000 queued events or about 8 MiB (502 `response_overflow`), and 50 MB of images in total (400 `images_too_large`). One greedy request can't hold the process's memory ([#39](https://github.com/jjjermiah/opencode-plugboard/issues/39)).
 
-**Protocol validation**
-- `tools` together with `json_schema` silently drops the caller's tools ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)).
-- A tool call overwrites `length` and `content_filter` finish reasons ([#36](https://github.com/jjjermiah/opencode-plugboard/issues/36)).
-- A tool or alias named `__proto__` disappears ([#37](https://github.com/jjjermiah/opencode-plugboard/issues/37)).
-- Malformed request fields are repaired instead of rejected; `127.0.0.2` counts as loopback but fails the Host check; duplicate key values are accepted ([#42](https://github.com/jjjermiah/opencode-plugboard/issues/42)).
+**Protocol**
+- A tool call no longer hides a `length` or `content_filter` finish reason ([#36](https://github.com/jjjermiah/opencode-plugboard/issues/36)).
+- A tool or alias named `__proto__` is kept as a real name instead of vanishing ([#37](https://github.com/jjjermiah/opencode-plugboard/issues/37)).
 
-**Docs and compatibility checks**
-- Say where history is really stored ([#43](https://github.com/jjjermiah/opencode-plugboard/issues/43)).
-- Remove claims the code no longer matches ([#44](https://github.com/jjjermiah/opencode-plugboard/issues/44)).
-- A working recipe for reaching plugboard from another host or container ([#45](https://github.com/jjjermiah/opencode-plugboard/issues/45)).
-- Compat runners that print PASS after failures ([#46](https://github.com/jjjermiah/opencode-plugboard/issues/46)).
-- The Open WebUI script leaves a token in a world-readable temp file ([#47](https://github.com/jjjermiah/opencode-plugboard/issues/47)).
-- Clean up compat results and add a release-candidate acceptance record ([#48](https://github.com/jjjermiah/opencode-plugboard/issues/48)).
+### Changed
 
+- **Stricter validation** ([#42](https://github.com/jjjermiah/opencode-plugboard/issues/42)). Malformed fields are rejected with a 400 that names the field instead of being repaired: non-object tool parameters, a `json_schema` without a schema, bad `n`, out-of-range `temperature`, `top_p`, penalties and token limits, more than 4 `stop` sequences, and a named `tool_choice` together with `json_schema`.
+- **Config checks.** Loopback now means exactly `localhost`, `127.0.0.1` or `::1`, the same set the Host check accepts. Two apps can't share a key value.
+- The `respond` tool describes itself as the final answer, so a model offered your tools as well knows which call ends the turn.
+- The internal runtime version is 3. Restart OpenCode after upgrading; a hot reload over an older plugboard stays inert and says so in the log.
+
+### Docs and compatibility kit
+
+- History is stored in OpenCode's own database, not in the app directories, which only group sessions. Deleting one removes nothing ([#43](https://github.com/jjjermiah/opencode-plugboard/issues/43)).
+- README and client pages match the code again ([#44](https://github.com/jjjermiah/opencode-plugboard/issues/44)), and `docs/clients/any-app.md` has a working recipe for reaching plugboard from another machine or a container ([#45](https://github.com/jjjermiah/opencode-plugboard/issues/45)).
+- The compat runners exit nonzero when anything fails ([#46](https://github.com/jjjermiah/opencode-plugboard/issues/46)), the Open WebUI script keeps its token private ([#47](https://github.com/jjjermiah/opencode-plugboard/issues/47)), and old results are marked where they've been superseded ([#48](https://github.com/jjjermiah/opencode-plugboard/issues/48)).
+- `AGENTS.md` tells coding agents the rules that matter here: the isolated dev server, freeze safety, and what may be imported at runtime.
 ## [0.1.0] - 2026-10-11
 
 Not yet published to npm. Install from a checkout until [#29](https://github.com/jjjermiah/opencode-plugboard/issues/29) is done.
@@ -165,7 +178,7 @@ The ones that shaped the code, with the reasons.
 
 **Symlink containment.** Plugboard compares real paths when it decides whether a directory is inside its data root, so a symlink does not make a real project look like an app directory or the reverse.
 
-**Cancellation, deadlines and backpressure.** Each request has one scope that holds both the client disconnect and a single deadline (`requestTimeoutMs`). A disconnect, SSE included, interrupts the request. A slow SSE reader is paced by backpressure instead of growing a buffer. The second review found gaps here, listed under Unreleased.
+**Cancellation, deadlines and backpressure.** Each request has one scope that holds both the client disconnect and a single deadline (`requestTimeoutMs`). A disconnect, SSE included, interrupts the request. A slow SSE reader is paced by backpressure instead of growing a buffer. The second review found gaps here, fixed in 0.2.0.
 
 **Validation.** A malformed request URL returns 400 instead of an unhandled rejection. Bad bodies get 400 or 413. Aliases and timeouts are validated on load. Missing placeholders or attachments fail the request with `backend_preparation_failed` instead of silently dropping a tool. Event subscriptions are filtered by session id before anything is buffered, so other projects' sessions are never held.
 
@@ -205,5 +218,6 @@ Providers, through the session path: GitHub Copilot, Anthropic (Claude Max throu
 
 `opencode-llm-proxy` by KochC got the shape right first: a plugin that starts a local server and reuses OpenCode's providers. It is V1 only, which is why this project exists. `copilot-api` and LiteLLM showed what an OpenAI-compatible front door should feel like to the people calling it. No code was taken from any of them. They were reading material.
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jjjermiah/opencode-plugboard/releases/tag/v0.1.0
