@@ -8,11 +8,15 @@ The layers follow docs/architecture.md, from pure code out to the host.
 
 | Directory | What it covers | Fakes |
 |---|---|---|
-| `unit/` | Pure codecs and policy: `config`, `models`, `openai/sampling`, the Chat Completions, Responses, Anthropic Messages and legacy completions codecs, discovery and status documents, metrics text, the logger, the host catalog | none (the catalog uses the spy context) |
-| `http/` | `src/http.ts` primitives and every route over real loopback HTTP: ingress and auth, chat, responses, messages, completions and `n` fan-out, discovery, status, metrics, request ids | `FakeModelCaller`, loopback client |
+| `unit/` | Pure codecs and policy: `config`, `models`, `openai/sampling`, the Chat Completions, Responses, Anthropic Messages, legacy completions and Gemini codecs, discovery and status documents, metrics text, the logger, the host catalog. Also the decoder properties (`properties.test.ts`) and the SDK wire goldens (`wire.test.ts`) | none (the catalog uses the spy context) |
+| `http/` | `src/http.ts` primitives and every route over real loopback HTTP: ingress and auth, chat, responses, messages, completions and `n` fan-out, Gemini, discovery, status, metrics, request ids | `FakeModelCaller`, loopback client |
 | `session/` | `src/session/*`: collector, store, caller, context hook, media (SSRF guard), history, prune | `FakeSessionPort`, `FakeHistoryPort`, `bus`, spy context, loopback image server |
 | `runtime/` | `src/runtime.ts` generations, listener, `ensureBackend`, and `index.ts` freeze safety | spy plugin context, runtime helpers |
+| `compat/` | The client compatibility matrix (#101): official SDKs run a shared scenario set against a real route | `FakeModelCaller` scripted by `compat/scenarios.ts` |
+| `types/` | No tests: the SDK-typed wire goldens checked by `bun run typecheck` (#132) | none |
 | `live/` | Opt-in suite against an isolated server (not written yet, #99) | none |
+
+The top-level `compat/` directory is a different thing: the manual kit run against a real server.
 
 ## Conventions
 
@@ -22,6 +26,24 @@ The layers follow docs/architecture.md, from pure code out to the host.
 - A known bug gets a `test.failing` with a comment that says what is wrong; flip it to `test` with the fix.
 - Tests that touch `src/runtime.ts` call `isolateRuntime()`: no runtime before each test, its listener closed after, and a fresh data root.
 - Assert log lines through `captureLogs()`; it also keeps the run quiet.
+- Prefer a popular, maintained package to hand-rolled test plumbing (`eventsource-parser`, `fast-check`, the official SDKs). Test-only packages are exact-pinned devDependencies and never ship.
+
+## Beyond example tests
+
+- **Properties** (`unit/properties.test.ts`, fast-check, #130): every request decoder returns a 400 `PlugError` or a well-formed request for any input, never a throw. Each decoder has an arbitrary of any value and a request-shaped one (`often(valid)` is usually valid, sometimes a wrong type), which must decode at least now and then. On a failure fast-check prints the seed and the shrunk counterexample; rerun one with `fc.assert(..., { seed, path })`.
+- **SDK wire types** (`types/`, #132): `types/wire.ts` holds one golden per wire shape, generated from the encoders by `bun test/types/generate.ts`. Each golden `satisfies Wire<SdkType>` (every field we send exists in `openai`, `@anthropic-ai/sdk` or `@google/genai` with a compatible type) and goes through `exact<SdkType>()` (required fields we leave out). Known gaps have a `@ts-expect-error` naming them, listed in `GAPS` in `generate.ts`; when one closes, the unused directive fails the type check. `unit/wire.test.ts` checks the encoders still produce the goldens. After an intended wire change: regenerate, then `bun run typecheck`.
+- **Compatibility matrix** (`compat/`, #101): `compat/clients.ts` lists each client (package, endpoint) and its cases per scenario in `compat/scenarios.ts`. A case the endpoint cannot have is left out (n/a); a known incompatibility is `{ gap, run }` and runs as `test.failing`. To add a client, add a `Client`; to add a scenario, add it to `SCENARIOS`, script the fake model's answer in `script()`, and give every client a case or leave it out. `docs/compatibility.md` is generated from the results (`.github/scripts/compat-matrix.ts`); CI fails when it is stale.
+
+## Gates (`.ci/`)
+
+CI runs the suite once more with JUnit and lcov output and `.github/scripts/test-gates.ts` checks two ratcheting floors (#110, #100): the tests that ran per layer (`.ci/test-count-floors.json`) and line and function coverage of `index.ts` and `src/` (`.ci/coverage-floor.json`). The job summary shows both tables. Floors only go up: after adding tests, run
+
+```sh
+bun test --coverage --coverage-reporter=lcov --coverage-dir=.coverage --reporter=junit --reporter-outfile=.coverage/junit.xml
+bun .github/scripts/test-gates.ts .coverage --ratchet
+```
+
+and commit `.ci/` with the tests. Lowering a floor is a deliberate edit that the PR must explain.
 
 ## Shared fakes (`support/`)
 
@@ -47,7 +69,7 @@ Script steps: a `PlugEvent`; `{ record: id }` calls `onRecord`; `{ wait: promise
 - `startRoute({ caller, options?, catalog?, status? })`: the real `createOpenAiRoute` on 127.0.0.1 with an ephemeral port; `listen.port` is set to that port so the Host check passes. It gets a fresh metrics registry (`server.metrics`) and fixed runtime facts (`TEST_STATUS`), so route tests never create the process runtime.
 - `listen(handler, host?)`: a bare loopback server (127.0.0.1, or e.g. `::1`) for transport tests and the image server.
 - On either: `send(init)` resolves with `{ status, headers, text, json() }`; `open(init)` reads a response incrementally (`received`, `waitFor`, `ended`, `pause`, `destroy`); `raw(init)` returns the client request, to hang up before any response.
-- `parseSse(text)`, `sseData(text)`: SSE frames, and the JSON of the `data:` frames.
+- `parseSse(text)`, `sseData(text)`: events and comments in order, parsed by `eventsource-parser` as real clients do (#129), and the JSON of the `data:` events. For exact bytes (keepalive timing) read `open(...).received`.
 
 ### `logs.ts`: `captureLogs()`
 
