@@ -16,7 +16,7 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 
 `.github/workflows/publish.yml` runs on a `v*` tag push, with one run per ref and no cancelling. In order:
 
-1. The CI jobs from `ci.yml` (typecheck, pack check, compat checks) run through `workflow_call`, so a release has exactly the same gates as CI.
+1. The CI jobs from `ci.yml` (typecheck, tests, pack check, compat checks) run through `workflow_call`, so a release has exactly the same gates as CI.
 2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
 3. It builds the release notes from the changelog section with `.github/scripts/release-notes.ts`. A missing or empty section fails here, before anything is published.
 4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.

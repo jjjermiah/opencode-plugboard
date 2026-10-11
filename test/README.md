@@ -8,9 +8,9 @@ The layers follow docs/architecture.md, from pure code out to the host.
 
 | Directory | What it covers | Fakes |
 |---|---|---|
-| `unit/` | Pure codecs and policy: `config`, `models`, `openai/sampling`, `openai/request`, `openai/response`, `responses/request`, `responses/response` | none |
-| `http/` | `src/http.ts` primitives and the OpenAI route over real loopback HTTP | `FakeModelCaller`, loopback client |
-| `session/` | `src/session/*` (not written yet, #97) | `FakeSessionPort`, `FakeHistoryPort`, `bus` |
+| `unit/` | Pure codecs and policy: `config`, `models`, `openai/sampling`, the Chat Completions, Responses, Anthropic Messages and legacy completions codecs, discovery and status documents, metrics text, the logger, the host catalog | none (the catalog uses the spy context) |
+| `http/` | `src/http.ts` primitives and every route over real loopback HTTP: ingress and auth, chat, responses, messages, completions and `n` fan-out, discovery, status, metrics, request ids | `FakeModelCaller`, loopback client |
+| `session/` | `src/session/*`: collector, store, caller, context hook, media (SSRF guard), history, prune | `FakeSessionPort`, `FakeHistoryPort`, `bus`, spy context, loopback image server |
 | `runtime/` | `src/runtime.ts` generations, listener, `ensureBackend`, and `index.ts` freeze safety | spy plugin context, runtime helpers |
 | `live/` | Opt-in suite against an isolated server (not written yet, #99) | none |
 
@@ -44,8 +44,8 @@ Script steps: a `PlugEvent`; `{ record: id }` calls `onRecord`; `{ wait: promise
 
 ### `loopback.ts`
 
-- `startRoute({ caller, options?, catalog? })`: the real `createOpenAiRoute` on 127.0.0.1 with an ephemeral port; `listen.port` is set to that port so the Host check passes.
-- `listen(handler)`: a bare loopback server for transport tests.
+- `startRoute({ caller, options?, catalog?, status? })`: the real `createOpenAiRoute` on 127.0.0.1 with an ephemeral port; `listen.port` is set to that port so the Host check passes. It gets a fresh metrics registry (`server.metrics`) and fixed runtime facts (`TEST_STATUS`), so route tests never create the process runtime.
+- `listen(handler, host?)`: a bare loopback server (127.0.0.1, or e.g. `::1`) for transport tests and the image server.
 - On either: `send(init)` resolves with `{ status, headers, text, json() }`; `open(init)` reads a response incrementally (`received`, `waitFor`, `ended`, `pause`, `destroy`); `raw(init)` returns the client request, to hang up before any response.
 - `parseSse(text)`, `sseData(text)`: SSE frames, and the JSON of the `data:` frames.
 
@@ -65,4 +65,6 @@ A stand-in `Plugin.Context` that records every domain call (`session.hook`, `age
 
 - `FakeSessionPort`: records `created`, `prompted`, `interrupted`; `script.create | prompt | interrupt` override an answer (fail, hold, custom IDs). Default IDs are `ses_1`, `ses_2`, ...
 - `FakeHistoryPort`: `ctx.storage` and `session.remove` in memory. `entries` (sorted scans with `after` and `limit`), `sessions` the host still has, `failing` sessions whose delete rejects, `removed`.
-- `bus(sessionID)`: host bus envelopes for `SessionStore.dispatch`: `textDelta`, `textEnded`, `reasoningDelta`, `toolInputStarted`, `toolCalled`, `usage`, `stepEnded`, `stepFailed`, `executionSucceeded | Failed | Interrupted`. Token records use the host's non-overlapping breakdown (`HostTokens`).
+- `bus(sessionID)`: host bus envelopes for `SessionStore.dispatch`: `textDelta`, `textEnded`, `reasoningDelta`, `toolInputStarted`, `toolCalled`, `usage`, `stepEnded`, `stepFailed`, `executionSucceeded | Failed | Interrupted`. Token records use the host's non-overlapping breakdown (`HostTokens`); errors are the host's `SessionError` (`HostError`, with the provider's raw `response.body`).
+
+A session test usually registers a real `RequestCollector` in a real `createSessionStore()` and drives it with `store.dispatch(bus(id).…)`, exactly as the event pump does; the caller tests make `FakeSessionPort.script.prompt` dispatch the host's answer.
