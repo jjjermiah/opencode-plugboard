@@ -88,6 +88,28 @@ const noFinish = (): PlugError => ({
 
 const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
 
+/**
+ * Structured-output projection, shared by the JSON and SSE encoders so both give the same body.
+ * In structured mode (`exchange.structuredTool` set) the content is exactly the arguments of
+ * the first call to that tool: prose, reasoning and any other tool call are suppressed, and
+ * later calls to it are ignored. Without an answer the exchange fails, except when the model
+ * stopped for `length` or `content-filter`, which keep their finish reasons with empty content.
+ */
+const structured = {
+  isAnswer: (exchange: OpenAiExchange, call: ToolCall) => exchange.structuredTool !== undefined && call.name === exchange.structuredTool,
+  content: (call: ToolCall) => args(call.input),
+  /** The failure for a finished structured exchange, if any. */
+  failure: (exchange: OpenAiExchange, finish: Exclude<PlugFinish, "error">, answered: boolean): PlugError | undefined =>
+    exchange.structuredTool === undefined || answered || finish === "length" || finish === "content-filter"
+      ? undefined
+      : {
+          status: 502,
+          kind: "server",
+          code: "structured_output_missing",
+          message: `The model finished without calling the \`${exchange.structuredTool}\` tool, so there is no structured output`,
+        },
+}
+
 const newId = () => `chatcmpl-${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`
 const now = () => Math.floor(Date.now() / 1000)
 
@@ -119,12 +141,14 @@ export async function collectCompletion(
     return { status: error.status, body: encodeError(error) }
   }
 
-  // Structured output: the forced tool's input is the answer.
-  const answer = exchange.structuredTool !== undefined ? calls.find((call) => call.name === exchange.structuredTool) : undefined
-  const toolCalls = answer ? [] : calls
+  const isStructured = exchange.structuredTool !== undefined
+  const answer = calls.find((call) => structured.isAnswer(exchange, call))
+  const missing = structured.failure(exchange, finish, answer !== undefined)
+  if (missing) return { status: missing.status, body: encodeError(missing) }
+  const toolCalls = isStructured ? [] : calls
   const message: Record<string, unknown> = {
     role: "assistant",
-    content: answer ? args(answer.input) : text.length > 0 ? text : null,
+    content: isStructured ? (answer ? structured.content(answer) : null) : text.length > 0 ? text : null,
     refusal: null,
   }
   if (toolCalls.length > 0)
@@ -140,7 +164,7 @@ export async function collectCompletion(
       object: "chat.completion",
       created: now(),
       model: exchange.model,
-      choices: [{ index: 0, message, logprobs: null, finish_reason: finishReason(finish, toolCalls.length, !!answer) }],
+      choices: [{ index: 0, message, logprobs: null, finish_reason: finishReason(finish, toolCalls.length, isStructured) }],
       ...(usage ? { usage: encodeUsage(usage) } : {}),
     },
   }
@@ -192,26 +216,32 @@ export async function streamCompletion(
       continue
     }
     if (event.type === "reasoning-delta") continue
+    if (exchange.structuredTool !== undefined) {
+      // Structured mode: only the first answer is content; everything else is suppressed.
+      if (event.type === "tool-call" && !answered && structured.isAnswer(exchange, event)) {
+        answered = true
+        start()
+        chunk({ content: structured.content(event) })
+      }
+      continue
+    }
     start()
     if (event.type === "text-delta") {
       if (event.text.length > 0) chunk({ content: event.text })
-    } else if (exchange.structuredTool === event.name) {
-      answered = true
-      chunk({ content: args(event.input) })
     } else {
       // Tool calls arrive whole, so each goes out as one chunk with the next index.
       chunk({ tool_calls: [{ index: calls++, id: event.id, type: "function", function: { name: event.name, arguments: args(event.input) } }] })
     }
   }
 
-  failure ??= finish ? undefined : noFinish()
+  failure ??= finish ? structured.failure(exchange, finish, answered) : noFinish()
   if (failure) {
     frame(encodeError(failure))
     write("data: [DONE]\n\n")
     return
   }
   start()
-  chunk({}, finishReason(finish!, calls, answered))
+  chunk({}, finishReason(finish!, calls, exchange.structuredTool !== undefined))
   if (exchange.includeUsage && usage)
     frame({ id, object: "chat.completion.chunk", created, model: exchange.model, choices: [], usage: encodeUsage(usage) })
   write("data: [DONE]\n\n")

@@ -123,7 +123,9 @@ const parseMessages = (raw: unknown[]): { system: string[]; messages: PlugMessag
             const fn = isRecord(call) && isRecord(call.function) ? call.function : undefined
             if (!isRecord(call) || !fn || typeof fn.name !== "string")
               return bad("Each tool call needs an id and a function name", `${param}.tool_calls[${i}]`)
-            const id = typeof call.id === "string" ? call.id : `call_${index}_${i}`
+            if (typeof call.id !== "string" || call.id.length === 0)
+              return bad("Each tool call needs a non-empty id", `${param}.tool_calls[${i}].id`)
+            const id = call.id
             toolNames.set(id, fn.name)
             parts.push({
               type: "tool-call",
@@ -141,7 +143,10 @@ const parseMessages = (raw: unknown[]): { system: string[]; messages: PlugMessag
         if (typeof message.tool_call_id !== "string" || result === undefined)
           return bad("Tool messages need a tool_call_id and string or text-part content", param)
         const id = message.tool_call_id
-        messages.push({ role: "tool", content: [{ type: "tool-result", id, name: toolNames.get(id) ?? "tool", result }] })
+        const name = toolNames.get(id)
+        if (name === undefined)
+          return bad(`Tool message answers tool_call_id "${id}", which no earlier assistant tool call has`, `${param}.tool_call_id`)
+        messages.push({ role: "tool", content: [{ type: "tool-result", id, name, result }] })
         break
       }
       default:
@@ -155,10 +160,13 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
   if (raw == null) return []
   if (!Array.isArray(raw)) return bad("tools must be an array", "tools")
   const tools: PlugTool[] = []
+  const names = new Set<string>()
   for (const [index, entry] of raw.entries()) {
     const fn = isRecord(entry) && entry.type === "function" && isRecord(entry.function) ? entry.function : undefined
     if (!fn || typeof fn.name !== "string" || fn.name.length === 0)
       return bad('Each tool must be {"type":"function","function":{"name":...}}', `tools[${index}]`)
+    if (names.has(fn.name)) return bad(`Duplicate tool name "${fn.name}"`, `tools[${index}].function.name`)
+    names.add(fn.name)
     tools.push({
       name: fn.name,
       description: typeof fn.description === "string" ? fn.description : "",
@@ -176,20 +184,27 @@ const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError =
   return bad("Unsupported tool_choice", "tool_choice")
 }
 
-/** response_format json_schema / json_object -> the forced `respond` tool. */
-const parseResponseFormat = (raw: unknown): PlugTool | undefined | PlugError => {
-  if (raw == null) return undefined
+/** System instruction for `json_object`: no schema, so the caller's prompt describes the keys (OpenAI semantics). */
+const JSON_OBJECT_INSTRUCTION = "Respond with a single valid JSON object only."
+
+/**
+ * `json_schema` -> the forced `respond` tool (`structured`). `json_object` -> a system instruction
+ * and plain text content (`instruction`): there is no schema to force a tool with.
+ */
+const parseResponseFormat = (raw: unknown): { structured?: PlugTool; instruction?: string } | PlugError => {
+  if (raw == null) return {}
   if (!isRecord(raw)) return bad("response_format must be an object", "response_format")
-  if (raw.type === "text") return undefined
-  if (raw.type === "json_object")
-    return { name: RESPOND_TOOL, description: "Respond with a JSON object.", parameters: { type: "object", additionalProperties: true } }
+  if (raw.type === "text") return {}
+  if (raw.type === "json_object") return { instruction: JSON_OBJECT_INSTRUCTION }
   if (raw.type === "json_schema") {
     const spec = raw.json_schema
     if (!isRecord(spec)) return bad("response_format.json_schema must be an object", "response_format.json_schema")
     return {
-      name: RESPOND_TOOL,
-      description: typeof spec.description === "string" ? spec.description : "Respond with JSON matching this schema.",
-      parameters: isRecord(spec.schema) ? spec.schema : { type: "object", additionalProperties: true },
+      structured: {
+        name: RESPOND_TOOL,
+        description: typeof spec.description === "string" ? spec.description : "Respond with JSON matching this schema.",
+        parameters: isRecord(spec.schema) ? spec.schema : { type: "object", additionalProperties: true },
+      },
     }
   }
   return bad(`Unsupported response_format type "${String(raw.type)}"`, "response_format.type")
@@ -239,10 +254,20 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   if (!Array.isArray(callerTools)) return callerTools
   const toolChoice = parseToolChoice(body.tool_choice)
   if (isPlugError(toolChoice)) return toolChoice
-  const respond = parseResponseFormat(body.response_format)
-  if (isPlugError(respond)) return respond
+  const format = parseResponseFormat(body.response_format)
+  if (isPlugError(format)) return format
+  const respond = format.structured
   const generation = parseGeneration(body)
   if (isPlugError(generation)) return generation
+
+  if (typeof toolChoice === "object" && !callerTools.some((tool) => tool.name === toolChoice.name))
+    return bad(`tool_choice names "${toolChoice.name}", which is not in tools`, "tool_choice.function.name")
+  if (respond && callerTools.some((tool) => tool.name === RESPOND_TOOL))
+    return bad(
+      `A tool named "${RESPOND_TOOL}" collides with response_format json_schema, which plugboard answers through that name`,
+      "tools",
+      "reserved_tool_name",
+    )
 
   const tools = respond ? [...callerTools, respond] : callerTools
   if (tools.length > options.maxTools)
@@ -255,7 +280,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   const forced: PlugToolChoice | undefined = respond ? { type: "tool", name: RESPOND_TOOL } : toolChoice
   const request: Omit<PlugRequest, "ref"> = {
     model: body.model,
-    system: parsed.system,
+    system: format.instruction ? [...parsed.system, format.instruction] : parsed.system,
     messages: parsed.messages,
     tools,
     ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),

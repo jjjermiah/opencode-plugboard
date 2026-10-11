@@ -29,6 +29,10 @@ const DEFAULTS = {
 const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages"])
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
 const ALIAS_TARGET = /^[^/#*\s]+\/[^#*\s]+(#[^#*\s]+)?$/
+/** `provider/model...` shaped: an alias like this would collide with real model ids in listing and resolution. */
+const CANONICAL_SHAPE = /^[^/\s]+\/\S/
+/** Largest delay Node timers accept (2^31 - 1); longer values overflow and fire immediately. */
+const MAX_TIMER_MS = 2_147_483_647
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -86,6 +90,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     if (alias.length === 0 || /[\s]/.test(alias)) throw new Error(`plugboard alias \`${alias}\` must be a non-empty string without whitespace`)
     if (typeof target !== "string" || !ALIAS_TARGET.test(target))
       throw new Error(`plugboard alias \`${alias}\` must target \`provider/model\` or \`provider/model#variant\``)
+    if (CANONICAL_SHAPE.test(alias))
+      throw new Error(`plugboard alias \`${alias}\` is written like a \`provider/model\` id; aliases must not contain \`/\` (use a short name such as \`fast\`)`)
     aliases[alias] = target
   }
 
@@ -98,7 +104,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     models: models as string[],
     aliases,
     maxTools: positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024),
-    requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs),
+    requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
     remoteImages: input.remoteImages === true,
   }
 }
