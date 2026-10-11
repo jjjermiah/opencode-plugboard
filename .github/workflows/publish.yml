@@ -102,10 +102,12 @@ jobs:
           args=(--access public)
           case "$VERSION" in *-*) args+=(--tag next) ;; esac
           if [ "$REPO_PRIVATE" != true ]; then args+=(--provenance); fi
-          if [ "$DRY_RUN" = true ]; then
+          if [ -n "$(npm view "$name@$VERSION" version 2>/dev/null)" ]; then
+            # npm publish --dry-run also refuses an existing version, so only pack.
+            echo "$name@$VERSION is already on npm, not publishing it again."
+            if [ "$DRY_RUN" = true ]; then npm pack --dry-run --ignore-scripts; fi
+          elif [ "$DRY_RUN" = true ]; then
             npm publish "${args[@]}" --dry-run
-          elif [ -n "$(npm view "$name@$VERSION" version 2>/dev/null)" ]; then
-            echo "$name@$VERSION is already on npm, skipping the publish."
           else
             npm publish "${args[@]}"
           fi
