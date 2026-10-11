@@ -107,7 +107,7 @@ Fixes #N
 `commitlint` (config in `commitlint.config.mjs`) checks the format in two places:
 
 - Locally, a [lefthook](https://lefthook.dev) `commit-msg` hook. Install it once per clone with `bunx lefthook install`. Worktrees share the clone's hooks, but each needs its own `bun install`. Check a draft with `bunx commitlint --edit <file>` or `echo "..." | bunx commitlint`.
-- In CI, the "Commits" workflow lints every commit in a push or pull request. Commits up to `204bd5f` (the last one before the convention) are never checked.
+- In CI, the "Commits" workflow lints every commit in a push or pull request. Commits up to `a54a703` (Release 0.11.0, the last one before the convention) are never checked.
 
 There is no `prepare` script on purpose. npm runs `prepare` on `npm publish`, and the publish job installs no dev dependencies, so the hook would break the release.
 
