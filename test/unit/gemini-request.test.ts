@@ -25,7 +25,7 @@ describe("matchGeminiRoute", () => {
     ["POST", "/v1beta/models/models/fast:streamGenerateContent", { op: "generate", route: "POST /v1beta/models/{model}:streamGenerateContent", model: "fast", stream: true }],
     ["POST", "/v1/models/test/echo:generateContent", { op: "generate", route: "POST /v1/models/{model}:generateContent", model: "test/echo", stream: false }],
     ["POST", "/v1beta/models/ollama/llama3:8b:generateContent", { op: "generate", route: "POST /v1beta/models/{model}:generateContent", model: "ollama/llama3:8b", stream: false }],
-    ["POST", "/v1beta/models/fast:countTokens", { op: "unsupported", route: "POST /v1beta/models/{model}:countTokens", verb: "countTokens" }],
+    ["POST", "/v1beta/models/fast:countTokens", { op: "unsupported", route: "unknown", verb: "countTokens" }],
   ])("%s %s", (method, path, match) => {
     expect(matchGeminiRoute(method, path)).toEqual(match as never)
   })
