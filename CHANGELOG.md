@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.16.0] - 2026-10-11: Knock Before Entering
+
+**Full diff:** [v0.15.0...v0.16.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.15.0...v0.16.0)
+
 ### Added
 
 - **Filter models by capability.** `GET /v1/models?capability=vision` or `?capability=tools` lists only models the catalog says can see images or call tools, so a UI's model picker can hide the ones that would fail. Any other value is a 400. (The 0.15.0 notes said the parameter was not wired yet; it is now.)
@@ -26,6 +32,146 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - **`/v1/messages` checks the key before the method** ([#137](https://github.com/jjjermiah/opencode-plugboard/issues/137)). An unauthenticated GET used to get a 405 that confirmed the route exists; it now gets a 401 like every other route.
 - **Gemini metrics labels are bounded** ([#135](https://github.com/jjjermiah/opencode-plugboard/issues/135)). The route label is a fixed template and unknown verbs count as `unknown`, so a caller can't grow the metrics table by inventing paths.
 - A test now proves that a key removed by a config reload is refused by the live listener.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (11 commits)</summary>
+
+#### Features
+
+**feat(openai): filter GET /v1/models with ?capability=vision or tools** ([`e18270e`](https://github.com/jjjermiah/opencode-plugboard/commit/e18270e85e5b14f7ea2fbdfeb6605b9c48ab040f))
+
+The capability filter from the previous change (parseCapability and filterByCapability in src/models.ts) was never called. GET /v1/models ignored the query, so a client asking for vision models got every model.
+
+The list branch now reads ?capability=. A valid value filters the listed models on the catalog flags (image for vision, tools for tools). Any other value, including an empty one, is a 400 invalid_request_error with code invalid_capability, param capability and the message "capability must be vision or tools". The value is checked before the catalog loads, so a bad query never waits on the host. A missing parameter returns the full list, as before. /v1/models/{id} ignores the parameter.
+
+Rejected: accepting json. The catalog has no structured-output flag, so a json filter would guess from response_format support. docs/configuration.md already says json is not offered; it is accurate and unchanged.
+
+Checked with bun test test/http/ingress.test.ts (40 of 40). New tests: the vision and tools filters on the loopback route, and a table of json, an empty value and toString, each a 400 with the catalog failing on purpose, so a 500 would show that the catalog loaded first.
+
+Refs #61
+
+**feat(http): send Retry-After on a refused call before any output** ([`fe4dd17`](https://github.com/jjjermiah/opencode-plugboard/commit/fe4dd17c0c4470a33a0d2434e50194722512a3ee))
+
+The limiter (src/limits.ts) refuses a call over a cap with a 429 and sets PlugError.retryAfterSeconds, but no route sent that value. A client had no hint when to retry, so it retried at once or gave up.
+
+Every front-end now answers a pre-output error through one helper, sendError in src/http.ts. It sends the status and the wire body as before, and adds Retry-After when the error carries retryAfterSeconds. Routes using it: Chat Completions, legacy completions, Responses, Messages and Gemini. The fan-out and the non-stream Chat Completions path read the value from the failing choice, so `n` above 1 keeps the hint too. collectCompletion and the completions collector now return retryAfterSeconds with their status and body. That is the one shape change; the wire bodies are unchanged.
+
+Rejected: putting the header in a shared middleware. The routes build their own error bodies, and the error only exists inside each route's fail step, so a helper called there is the smaller change. Errors after the first output cannot carry a header, so they are not changed.
+
+Checked with a new test file, test/http/retry-after.test.ts. A fake caller yields a 429 with retryAfterSeconds 1 on each route (chat, streamed chat, n=2, completions, responses, messages, Gemini and streamed Gemini), and each answers Retry-After: 1. A plain 503 sends no header. bun test test/http test/unit passes (990 of 990) and bun run typecheck is clean.
+
+#### Fixes
+
+**fix(anthropic): authenticate before the method check on /v1/messages** ([`7c4200f`](https://github.com/jjjermiah/opencode-plugboard/commit/7c4200faac34013c480a72f8274409e21be62819))
+
+A GET or any other non-POST to /v1/messages answered 405 before the request was authenticated. An unauthenticated caller could tell that the path exists, which was the one exception to invariant I15. The Messages route now runs the Host and Origin checks, then authentication, then the 405 for a non-POST method. An unauthenticated GET is a 401 in Anthropic's error shape, and an authenticated GET is still a 405.
+
+The other route families already authenticate first (#91), so this follows that order. Only the position of the method check changes; the 405 itself is unchanged. docs/architecture.md (I15 and the error section) now describe the same order.
+
+Checked with two new tests in test/http/messages.test.ts: the unauthenticated GET is a 401 and the authenticated GET is a 405. The messages suite passes (20 of 20) with bun test test/http/messages.test.ts.
+
+Fixes #137
+
+**fix(gemini): bound the route label of Gemini requests** ([`736b9af`](https://github.com/jjjermiah/opencode-plugboard/commit/736b9af7ae573c48056d1705cef5ec8e90f196d5))
+
+The route label of a Gemini request was built from the method verb in the request path, `POST /v1beta/models/{model}:<verb>`. With option `metrics` on, an unauthenticated caller could mint a new `route` label value for each made-up verb, and the registry keeps every label value for the life of the process. The label is set before authentication, so nothing checked the path against a fixed set.
+
+The two Gemini verbs plugboard serves keep fixed labels (`POST /v1beta/models/{model}:generateContent` and the streaming one, with the `/v1/models/` spelling keeping its own). Every other verb is labelled `unknown`, and the verb stays only in the response body, where the client already sent it. The model name was never in the label, so the model side was already bounded. I considered labelling unsupported verbs with a fixed template such as `POST .../{model}:{verb}`, but that still names the template only and gives no information a count of `unknown` does not.
+
+Checked with bun test test/http/gemini.test.ts (23 of 23). The existing test.failing for #135 is now a test. New tests: made-up verbs share the label `unknown`; `fast`, an unknown model and another name share one generate label; a path outside the Gemini routes is `unknown`.
+
+Fixes #135
+
+**fix(discovery): list every endpoint the router serves** ([`e539c0d`](https://github.com/jjjermiah/opencode-plugboard/commit/e539c0d76c32248c95e4a7b35f58a6be4cf6cf9a))
+
+The discovery document (GET /v1 and the GET / page) listed only the OpenAI routes. POST /v1/completions, POST /v1/messages and the Gemini paths (GET /v1beta/models, GET /v1beta/models/{model}, and the generateContent and streamGenerateContent methods) were served but not listed, so a client that reads the document could not find them.
+
+The list is now one exported constant, ENDPOINTS in src/discovery.ts. The metrics endpoint is still added only when option metrics is on. I considered deriving the list from the router's own route table, but the router matches on method and path in several front-ends, so a shared table would have touched every route for a small gain. The constant plus a test is the smaller change.
+
+The test is test/http/discovery.test.ts. It probes every served route with an authenticated request and checks that each answers something other than the router's own "No route for" 404, and that GET /v1 lists it under its template. A second test checks the reverse: the document lists no endpoint that no probe reaches. A new route therefore needs a probe, which is the point of the test.
+
+Two existing assertions matched the substring "beta" in the keyless document to catch another app's name. The Gemini paths contain "/v1beta/", so those assertions now ignore "v1beta" (a negative lookbehind). They still reject another app's name, and the behaviour they protect is unchanged.
+
+Checked with bun test test/http/discovery.test.ts test/unit/discovery.test.ts test/http/observability.test.ts (53 of 53).
+
+Fixes #136
+
+#### Tests
+
+**test(gemini): expect the unknown label for an unsupported Gemini verb** ([`4cf8ada`](https://github.com/jjjermiah/opencode-plugboard/commit/4cf8ada3094a2db633a20f1cea3400402316a2ef))
+
+Commit 736b9af (#135) labels every Gemini verb other than generateContent and streamGenerateContent `unknown`, so the client's verb never reaches a metric label. The unit test for matchGeminiRoute still expected the old template `POST /v1beta/models/{model}:countTokens`, so the suite was red after that commit. I ran only test/http/gemini.test.ts for it and did not run the whole suite; this commit corrects the expectation.
+
+The assertion now reads route "unknown" for countTokens, the same value the route returns, and the op and verb are unchanged.
+
+Checked with bun test test/unit/gemini-request.test.ts and the full bun test run (see the report for the counts).
+
+Refs #135
+
+**test(tests): widen the compat matrix to LangChain, n > 1, thinking and token counts** ([`c8c5556`](https://github.com/jjjermiah/opencode-plugboard/commit/c8c555693c9cb2cfef053a6080ae074a17cd4a60))
+
+The matrix (#101) gains the scenarios the client issues ask for, and the clients that exercise them. Every case is a real request through plugboard's loopback route, with the fake model scripted in test/compat/scenarios.ts. New scenarios: multi-turn (#103, #104), thinking (#102), stop-sequence (#102), n (#106), stream-usage (#106, #7), developer (#7), echo-suffix (#106), count-tokens (#102, #103), document (#102), model-id (#103). A client with no case for a scenario stays n/a, as before.
+
+New clients: @langchain/openai chat and responses (useResponsesApi), @langchain/anthropic, @langchain/google-genai, the legacy @langchain/openai completions class (test/compat/langchain.ts), ai + @ai-sdk/openai-compatible, and ai + @ai-sdk/openai with store: false.
+
+Known gaps, pinned as test.failing with the reason in the matrix footnotes:
+- ai + @ai-sdk/openai (responses), multi-turn: the AI SDK default (store: true) resends the first answer as an item_reference. plugboard answers 400, and the message names providerOptions.openai.store (checked by running it). The store: false row passes.
+- @anthropic-ai/sdk, stop-sequence: a stop returns end_turn with stop_sequence null. Anthropic reports stop_sequence and the matched text.
+- @anthropic-ai/sdk, count-tokens: 404 not_found_error (count_tokens is not served). @google/genai, count-tokens: 404 NOT_FOUND (countTokens is not served). Gemini CLI calls countTokens, so this affects it too (live only).
+
+Spec gap found, not pinned as a failure: thinking blocks go out with an empty signature (src/anthropic/response.ts). Anthropic signs thinking blocks, and a client that resends them has nothing valid to send back. The case accepts any string, so the gap is recorded here, not as a test.
+
+Matrix server option: maxN: 2. The default maxN of 1 refuses n > 1 because each choice is a model call. The matrix opts in so the n scenario runs. The default refusal stays tested in test/unit/openai-request.test.ts (#58).
+
+LangChain Google has no image case: it refuses inline images unless the model name looks multimodal, and the matrix alias is `fast`. That case is n/a.
+
+Not covered here, and why: streamed tool-call argument splits (#7; the fake emits whole calls), chats and Python clients (#103, #104, #105: live only), the OpenAI Agents SDK (#104), the live mode (PLUGBOARD_LIVE, #99), and upstream spec validation (#107; no spec package is installed, only the #132 SDK types).
+
+Checked: bun run typecheck passes. bun test: 1350 pass, 0 fail. The matrix (PLUGBOARD_COMPAT_RESULTS, compat-matrix.ts --docs docs/compatibility.md) gives 137 pass, 5 gap, 0 fail, 146 n/a. test-gates.ts --ratchet raised the compat floor 69 to 143; it also raised unit, http and runtime, which were already behind the base tree and not changed here. check-pack.ts passes.
+
+Refs #7, #101, #102, #103, #104, #105, #106, #107
+
+**test(http): a key dropped by a config reload is rejected on the live listener** ([`7ce1d91`](https://github.com/jjjermiah/opencode-plugboard/commit/7ce1d91b8cc912d348e5b4bf5fe383ed4428ba48))
+
+The report behind #90 says a removed key might keep working after a reload, because authentication uses the serving generation's options and an app-directory generation that did not reload could keep serving the old ones. I checked the path the host normally takes: a config reload disposes the Location's generations, then the edited config registers as a new one. With no generation live, its options are adopted (I5 and runtime registerGeneration).
+
+The new test builds the real OpenAI route on the real listener, with two keys. It disposes the first generation, registers the edited config with only one of the keys, and checks GET /v1/models over loopback. The dropped key gets 401, the kept key gets 200. It passes on the code as it is, so no change to src/runtime.ts or authentication was needed.
+
+One case is not covered by this test, and I did not change it. If an old generation stays live across a reload (the case the issue describes), the new config is rejected by design: a live generation's options are never replaced, so a project config cannot weaken authentication (I5). I checked it with a throwaway probe: the new registration was rejected and the dropped key still answered 200. Closing that case needs a decision about whether a stricter config may replace live options, so it is left open.
+
+Checked with bun test test/runtime/key-revocation.test.ts (1 of 1).
+
+Refs #90
+
+#### Docs
+
+**docs(changelog): notes for the route fixes, capability filter and compat coverage** ([`378fbb3`](https://github.com/jjjermiah/opencode-plugboard/commit/378fbb3afb993e184306d3f29a6ac64c742cc4e6))
+
+Curated [Unreleased] entries for #135, #136, #137, the ?capability= wiring (correcting the 0.15.0 note that said it was not wired), Retry-After on pre-stream 429s, the wider compat matrix and the key-revocation test. Pinned install examples bumped to 0.16.0.
+
+#### CI and tooling
+
+**ci(tests): raise the test-count and coverage floors** ([`385afcb`](https://github.com/jjjermiah/opencode-plugboard/commit/385afcb31c73caa1cdb9342db0994d5ff0676b80))
+
+The route fixes above added 49 tests (http 187 to 236, runtime 38 to 58, unit 684 to 754). The floors only go up, so they now match the counts after this branch. session and compat stay where they were, since no test was added there. Coverage moved from 97.5 to 97.6 lines and 91.3 to 91.6 functions.
+
+Ran the coverage command from test/README.md, then bun .github/scripts/test-gates.ts .coverage --ratchet. Every floor was met before the ratchet, and the ratchet only raised values.
+
+#### Dependencies
+
+**build(deps): add langchain and ai-sdk openai-compatible for the compat matrix** ([`b6db59f`](https://github.com/jjjermiah/opencode-plugboard/commit/b6db59fc39e467600c60efdb2e67dd0b77390577))
+
+The compatibility matrix (#101) runs the clients the issues name. Four were missing from devDependencies: the LangChain JS packages for OpenAI, Anthropic and Google (#102, #103, #104, #106), and @ai-sdk/openai-compatible for the Vercel path that any OpenAI-compatible server uses (#105). All four are official, pinned exact, and test-only: check-pack still lists only the package's own files.
+
+Rejected: driving LangChain through its Python package. That needs a second toolchain in CI for the same JS wire. Rejected: hand-writing the LangChain request shapes, which would test our guess of the client instead of the client.
+
+Checked: none of the four has an install, postinstall or prepare script (npm view). bun add resolved 15 new packages, all pure JS. The lockfile is committed with the versions, since CI runs bun install --frozen-lockfile.
+
+Refs #101, #102, #103, #104, #105, #106
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.15.0] - 2026-10-11: Brakes, Memory, Clean Names
 
@@ -1369,7 +1515,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.12.0...v0.13.0
