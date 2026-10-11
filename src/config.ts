@@ -13,6 +13,8 @@ export interface PlugboardOptions {
   /** Alias -> `provider/model[#variant]`. Targets must also pass the allowlist. */
   readonly aliases: Readonly<Record<string, string>>
   readonly maxTools: number
+  /** Most model calls one request may fan out to: `n` for chat completions, prompts x `n` for legacy completions. Each is a full call and a kept session. */
+  readonly maxN: number
   readonly requestTimeoutMs: number
   /** Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network. */
   readonly remoteImages: boolean
@@ -28,10 +30,11 @@ const DEFAULTS = {
   host: "127.0.0.1",
   port: 4010,
   maxTools: 32,
+  maxN: 1,
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams"])
+const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams"])
 const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays"])
 /** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
 const MAX_AGE_DAYS = 36_500
@@ -136,6 +139,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     models: models as string[],
     aliases,
     maxTools: positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024),
+    maxN: positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64),
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
     remoteImages: input.remoteImages === true,
     history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) },

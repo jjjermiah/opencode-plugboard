@@ -14,6 +14,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`. Each target must also pass `models`. |
 | `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
+| `maxN` | `1` | Most model calls one request may fan out to: `n` on Chat Completions and `/v1/completions`, or prompts times `n` for a prompt array. Each is a full call and a kept session, so `n: 4` costs four times. Above the cap, 400 `too_many_choices`. See [completions](completions.md). |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
 | `history` | none (keep forever) | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app, `maxAgeDays` deletes older ones; with both, the stricter wins. |
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
@@ -53,11 +54,12 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 404 | `model_not_found` | Unknown model or not on the allowlist | Model &lt;m&gt; is not available |
 | 403 | `no_models_configured` | The `models` option is empty | No models are allowed: set the plugboard `models` option |
 | 400 | `too_many_tools` | More tools than `maxTools` | Request has &lt;n&gt; tools; plugboard allows &lt;max&gt; (option `maxTools`) |
-| 400 | `unsupported_parameter` | `n` above 1, `logprobs`, `top_logprobs` | names the parameter |
+| 400 | `too_many_choices` | `n` (or prompts times `n`) above `maxN` | n=&lt;n&gt; is above the limit of &lt;max&gt; (option `maxN`; each choice is a full model call) |
+| 400 | `unsupported_parameter` | `logprobs`, `top_logprobs`, `best_of` above 1, token-array prompts | names the parameter |
 
 Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. There is no per-app concurrency limit yet ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 
-Supported request fields: messages with system, developer, user text and images, assistant `tool_calls` and tool results; `tools`, `tool_choice`, `response_format` (`json_object`, `json_schema`), `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `presence_penalty`, `frequency_penalty`, `reasoning_effort`, and streaming with a final usage chunk (`stream_options.include_usage`).
+Supported request fields: messages with system, developer, user text and images, assistant `tool_calls` and tool results; `tools`, `tool_choice`, `response_format` (`json_object`, `json_schema`), `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `presence_penalty`, `frequency_penalty`, `reasoning_effort`, `n` (up to `maxN`), and streaming with a final usage chunk (`stream_options.include_usage`). The legacy `POST /v1/completions` is served too: see [completions](completions.md).
 
 Behaviours worth knowing:
 

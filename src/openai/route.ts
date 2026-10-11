@@ -1,6 +1,7 @@
 /**
  * OpenAI front-end route table: `GET /healthz`, `GET /v1/models`, `GET /v1/models/{id}`,
- * `POST /v1/chat/completions`, and the dispatch of `POST /v1/responses` to `src/responses/route.ts`.
+ * `POST /v1/chat/completions` (`n` > 1 through `./fanout.ts`), and the dispatch of `POST /v1/responses`
+ * and `POST /v1/completions` to `src/responses/route.ts` and `src/completions/route.ts`.
  *
  * The flow is: establish cancellation and the deadline, check origin, authenticate, parse, resolve
  * the model, call the ModelCaller, encode. Parsing, policy and encoding are imported directly;
@@ -30,7 +31,9 @@ import {
 } from "../http.js"
 import { errorMessage, log, logError } from "../log.js"
 import { listAvailableModels, resolveModel } from "../models.js"
+import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
+import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
 import { dropRejected } from "./sampling.js"
@@ -46,7 +49,7 @@ export interface RouteHost {
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
-const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/responses"]
+const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses"]
 
 const decodeSegment = (raw: string): string => {
   try {
@@ -125,6 +128,7 @@ export function createOpenAiRoute(host: RouteHost) {
 
     const body = await readJsonBody(request, scope.signal)
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
+    if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
     const parsed = parseChatRequest(body, host.options)
     if (isPlugError(parsed)) return fail(response, parsed)
     const catalog = await scope.race(host.loadCatalog())
@@ -139,6 +143,9 @@ export function createOpenAiRoute(host: RouteHost) {
     }
     const call: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
     const { exchange } = parsed
+    // n > 1: one independent call per choice, merged (src/openai/fanout.ts).
+    if (parsed.n > 1)
+      return serveChoices(host, { app: auth.app, calls: Array.from({ length: parsed.n }, () => call), response, scope, info, codec: chatCodec(exchange) })
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.
     if (scope.signal.aborted) throw scope.signal.reason

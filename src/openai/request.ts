@@ -25,6 +25,8 @@ export interface ParsedChat {
   readonly request: Omit<PlugRequest, "ref">
   /** Response presentation state for the encoders; never reaches the model call. */
   readonly exchange: OpenAiExchange
+  /** `n`: independent model calls whose answers become `choices` (1..`maxN`). The route fans out when it is above 1. */
+  readonly n: number
   readonly reasoningEffort?: string
 }
 
@@ -226,7 +228,16 @@ const parseResponseFormat = (raw: unknown): { structured?: PlugTool; instruction
   return bad(`Unsupported response_format type "${String(raw.type)}"`, "response_format.type")
 }
 
-const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
+/** `n` is how many completions to return. Each one is a full model call (see `src/openai/fanout.ts`), so it is capped by the `maxN` option. */
+export const parseChoiceCount = (body: JsonObject, options: PlugboardOptions): number | PlugError => {
+  if (body.n == null) return 1
+  if (typeof body.n !== "number" || !Number.isInteger(body.n) || body.n < 1) return bad("n must be a positive integer", "n")
+  if (body.n > options.maxN)
+    return bad(`n=${body.n} is above the limit of ${options.maxN} (option \`maxN\`; each choice is a full model call)`, "n", "too_many_choices")
+  return body.n
+}
+
+export const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
   const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = {}
   const number = (key: string, min: number, max: number, integer: boolean): number | undefined | PlugError => {
     const value = body[key]
@@ -265,10 +276,8 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   if (!Array.isArray(body.messages) || body.messages.length === 0) return bad("messages must be a non-empty array", "messages")
 
   // Parameters the session backend cannot honour are rejected, not ignored.
-  if (body.n != null) {
-    if (typeof body.n !== "number" || !Number.isInteger(body.n) || body.n < 1) return bad("n must be a positive integer", "n")
-    if (body.n > 1) return bad("Only n=1 is supported", "n", "unsupported_parameter")
-  }
+  const n = parseChoiceCount(body, options)
+  if (typeof n === "object") return n
   if (body.logprobs === true) return bad("logprobs is not supported", "logprobs", "unsupported_parameter")
   if (body.top_logprobs != null) return bad("top_logprobs is not supported", "top_logprobs", "unsupported_parameter")
 
@@ -323,6 +332,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   const streamOptions = isRecord(body.stream_options) ? body.stream_options : {}
   return {
     request,
+    n,
     exchange: {
       model: body.model,
       stream: body.stream === true,

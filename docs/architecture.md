@@ -115,6 +115,19 @@ The model call is neutral: `ModelCaller.stream(PlugRequest, { app, signal })` re
 
 One state machine (`runResponse`) produces both the JSON body and the SSE events, so they cannot disagree. It is stateless like the rest: `previous_response_id`, `conversation` and `item_reference` are rejected, and nothing is stored. Structured output reuses the Chat Completions mechanism (a forced `respond` tool unwrapped into the message text). Details and the supported field list: [responses.md](responses.md).
 
+## Third front-end: legacy completions
+
+`POST /v1/completions` is another front-end on the same seam, handed over by `src/openai/route.ts` the same way (`src/completions/route.ts`). `request.ts` turns `prompt` into one user message per prompt (a `suffix` becomes the only system prompt), `response.ts` encodes the legacy `text_completion` body and chunks. It always goes through the fan-out below, a single prompt being the case of one choice. Details: [completions.md](completions.md).
+
+## Several choices (`n`)
+
+`n` above 1 needs no contract change: `src/openai/fanout.ts` calls the `ModelCaller` once per choice, concurrently, each call with its own session, and merges the answers. The wire encoders stay per-choice and come in as a `ChoiceCodec` (Chat Completions in `fanout.ts`, legacy completions in `src/completions/response.ts`), so the fan-out knows nothing about either wire format.
+
+- The choices share a group signal: the request's (disconnect, deadline) plus one that aborts when any choice fails. A failed choice fails the request and cancels the rest, so there is never a partial answer set.
+- JSON: each choice's body is encoded alone, then `choices[0]` of each is renumbered by index and the `usage` objects are summed.
+- SSE: one `sse.paced` serves all choices (one backpressure wait, one keepalive). A merge pulls at most one event ahead per choice, tags it with its choice, and feeds one queue per choice, which that choice's encoder reads. Encoders write their own chunks with the shared `id` and their `index`; the error frame, the summed usage chunk and `[DONE]` are written once, by the fan-out.
+- `maxN` (default 1) caps the calls per request, because each is a full model call and a kept session.
+
 ## Module map
 
 ```text
@@ -125,9 +138,13 @@ src/models.ts               allowlist/alias policy: resolveModel, listAvailableM
 src/log.ts                  one-line logger; ids and outcomes only, never keys, bodies or URLs
 src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store, history sweep state
 src/http.ts                 ingress: body limits, origin checks, disconnect abort, deadline, JSON/SSE transport
-src/openai/route.ts         Chat Completions and /v1/models orchestration; dispatches POST /v1/responses
+src/openai/route.ts         Chat Completions and /v1/models orchestration; dispatches POST /v1/responses and /v1/completions
+src/openai/fanout.ts        n > 1: one model call per choice, group cancellation, JSON merge, SSE interleave; ChoiceCodec
 src/openai/request.ts       decode a Chat Completions body (pure)
 src/openai/response.ts      encode completions, SSE, errors, model list (pure); OpenAiExchange
+src/completions/route.ts    legacy completions orchestration (after the shared origin, auth and body steps)
+src/completions/request.ts  decode a /v1/completions body (pure)
+src/completions/response.ts encode text_completion bodies and chunks (pure); CompletionsExchange
 src/responses/route.ts      Responses orchestration (after the shared origin, auth and body steps)
 src/responses/request.ts    decode a Responses body (pure)
 src/responses/response.ts   encode the response object and its SSE events (pure); ResponsesExchange
@@ -143,7 +160,7 @@ src/session/media.ts        bounded image preparation (data URLs; opt-in remote 
 src/session/seeds.ts        seed name prefix and result text
 ```
 
-Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response`, `responses/route` -> `contract`; `responses/route` -> `http`, `models`, `responses/request`, `responses/response` (and the Chat error encoder, same body shape); `runtime` -> `history` (`ensureBackend`), `prune`, `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`, `responses/request`, `responses/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
+Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response`, `openai/fanout`, `responses/route`, `completions/route` -> `contract`; `openai/fanout` -> `http`, `openai/response`; `completions/route` -> `http`, `models`, `openai/fanout`, `openai/sampling`, `completions/request` (and `openai/request` for the shared `n` and sampling parsing), `completions/response`; `responses/route` -> `http`, `models`, `responses/request`, `responses/response` (and the Chat error encoder, same body shape); `runtime` -> `history` (`ensureBackend`), `prune`, `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`, `responses/request`, `responses/response`, `completions/request`, `completions/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
 
 ## Conventions
 
