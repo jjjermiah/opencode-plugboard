@@ -11,7 +11,9 @@ import { createServer, request as httpRequest, type ClientRequest, type Incoming
 import type { AddressInfo } from "node:net"
 import type { PlugboardOptions } from "../../src/config.js"
 import type { CatalogModel, ModelCaller } from "../../src/contract.js"
+import { createMetrics, type Metrics } from "../../src/metrics.js"
 import { createOpenAiRoute } from "../../src/openai/route.js"
+import type { RuntimeStatus } from "../../src/runtime.js"
 import { CATALOG, testOptions } from "./fixtures.js"
 
 export interface Reply {
@@ -167,13 +169,20 @@ export async function listen(handler: (request: IncomingMessage, response: Serve
 
 export interface RouteServer extends Loopback {
   readonly options: PlugboardOptions
+  /** The route's metrics registry (fresh per server; written only when option `metrics` is on). */
+  readonly metrics: Metrics
 }
+
+/** The runtime facts `/v1/status` and `/metrics` report, fixed for tests (the real ones come from src/runtime.ts). */
+export const TEST_STATUS: RuntimeStatus = { runtimeVersion: 6, generations: 1, pumpRunning: false, guards: 0, startedAt: Date.UTC(2026, 9, 11), servingConfirmed: false }
 
 export interface RouteSetup {
   readonly caller: ModelCaller
   /** Raw plugin options (`listen` is filled in); defaults to `testOptions()`'s. */
   readonly options?: Record<string, unknown>
   readonly catalog?: ReadonlyArray<CatalogModel> | (() => Promise<ReadonlyArray<CatalogModel>>)
+  /** Runtime facts for `/v1/status` and `/metrics`; `TEST_STATUS` by default, so no process runtime is created. */
+  readonly status?: () => RuntimeStatus
 }
 
 /** The real OpenAI route behind a loopback listener, with a fake model caller and a fixed catalog. */
@@ -182,12 +191,15 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
   const server = await listen((request, response) => void handle!(request, response))
   const options = testOptions({ ...setup.options, listen: { host: "127.0.0.1", port: server.port } })
   const catalog = setup.catalog ?? CATALOG
+  const metrics = createMetrics()
   handle = createOpenAiRoute({
     options,
     caller: setup.caller,
     loadCatalog: typeof catalog === "function" ? catalog : async () => catalog,
+    metrics,
+    status: setup.status ?? (() => TEST_STATUS),
   })
-  return { ...server, options }
+  return { ...server, options, metrics }
 }
 
 /** One parsed SSE frame: comment lines (`: keepalive`) have only `comment`. */

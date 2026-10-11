@@ -15,7 +15,7 @@ import { CATALOG } from "./fixtures.js"
 export const RUNTIME_KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface RuntimeShape {
-  listener?: { server: { close(): void; closeAllConnections(): void }; graceTimer?: ReturnType<typeof setTimeout> }
+  listener?: { server: { close(): void; closeAllConnections(): void }; graceTimer?: ReturnType<typeof setTimeout>; retryTimer?: ReturnType<typeof setTimeout> }
   pump?: { stop(): void }
 }
 
@@ -26,6 +26,7 @@ export function resetRuntime(): void {
   const rt = slot[RUNTIME_KEY] as RuntimeShape | undefined
   if (rt?.listener) {
     clearTimeout(rt.listener.graceTimer)
+    clearTimeout(rt.listener.retryTimer)
     rt.listener.server.closeAllConnections()
     rt.listener.server.close()
   }

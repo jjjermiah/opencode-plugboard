@@ -148,12 +148,15 @@ describe("the listener outlives generations by a grace period", () => {
     expect(await whoServes(port)).toBe("b")
   })
 
-  test("a port owned by someone else leaves the runtime inert, logged once", async () => {
+  test("#87 a port owned by someone else is an error on bind and on every generation that joins meanwhile", async () => {
     const taken = await listen(() => {})
     registerGeneration(generation("a", { port: taken.port }))
     registerGeneration(generation("b", { port: taken.port }))
     await until(() => logs.of("listener.address_in_use").length > 0, 1_000, "the bind failure")
     expect(logs.of("listener.address_in_use")).toHaveLength(1)
+    expect(logs.of("listener.address_in_use")[0]!.level).toBe("error")
+    registerGeneration(generation("c", { port: taken.port }))
+    expect(logs.of("listener.not_serving")).toHaveLength(1)
     expect(logs.of("listener.listening")).toEqual([])
     await taken.close()
   })

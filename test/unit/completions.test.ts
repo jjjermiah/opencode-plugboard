@@ -1,0 +1,133 @@
+import { describe, expect, test } from "bun:test"
+import { parseCompletionsRequest, type ParsedCompletions } from "../../src/completions/request.js"
+import { completionsCodec, type CompletionsExchange } from "../../src/completions/response.js"
+import { isPlugError, type PlugEvent } from "../../src/contract.js"
+import { ev, events, testOptions } from "../support/fixtures.js"
+import { sseData } from "../support/loopback.js"
+
+const options = testOptions({ maxN: 4 })
+const body = (extra: Record<string, unknown> = {}) => ({ model: "test/echo", prompt: "Once upon", ...extra })
+
+function parse(raw: unknown): ParsedCompletions {
+  const parsed = parseCompletionsRequest(raw, options)
+  if (isPlugError(parsed)) throw new Error(`unexpected rejection: ${parsed.message}`)
+  return parsed
+}
+
+describe("#75 parseCompletionsRequest", () => {
+  const rejections: Array<[string, unknown, { param?: string; code?: string }]> = [
+    ["a body that is not an object", "x", {}],
+    ["a missing model", { prompt: "x" }, { param: "model" }],
+    ["a missing prompt", { model: "m" }, { param: "prompt" }],
+    ["an empty prompt array", body({ prompt: [] }), { param: "prompt" }],
+    ["a token-array prompt", body({ prompt: [1, 2, 3] }), { param: "prompt", code: "unsupported_parameter" }],
+    ["a list of token arrays", body({ prompt: [[1, 2]] }), { param: "prompt", code: "unsupported_parameter" }],
+    ["a prompt list with a non-string", body({ prompt: ["a", null] }), { param: "prompt" }],
+    ["logprobs", body({ logprobs: 2 }), { param: "logprobs", code: "unsupported_parameter" }],
+    ["best_of 2", body({ best_of: 2 }), { param: "best_of", code: "unsupported_parameter" }],
+    ["best_of 0", body({ best_of: 0 }), { param: "best_of" }],
+    ["a non-boolean echo", body({ echo: "yes" }), { param: "echo" }],
+    ["a non-string suffix", body({ suffix: 1 }), { param: "suffix" }],
+    ["#58 n above maxN", body({ n: 5 }), { param: "n", code: "too_many_choices" }],
+    ["#58 prompts times n above maxN", body({ prompt: ["a", "b", "c"], n: 2 }), { param: "prompt", code: "too_many_choices" }],
+    ["temperature above 2", body({ temperature: 3 }), { param: "temperature" }],
+  ]
+  test.each(rejections)("rejects %s", (_name, raw, expected) => {
+    expect(parseCompletionsRequest(raw, options)).toMatchObject({ status: 400, kind: "invalid_request", ...expected })
+  })
+
+  test("a string prompt is one user message, no system prompt, no tools", () => {
+    expect(parse(body({ max_tokens: 5 }))).toMatchObject({
+      n: 1,
+      requests: [{ model: "test/echo", system: [], tools: [], generation: { maxTokens: 5 }, messages: [{ role: "user", content: [{ type: "text", text: "Once upon" }] }] }],
+      exchange: { model: "test/echo", stream: false, includeUsage: false, perPrompt: 1 },
+    })
+  })
+
+  test("a prompt list is one call per prompt; n multiplies them within maxN", () => {
+    const parsed = parse(body({ prompt: ["a", "b"], n: 2, best_of: 1 }))
+    expect(parsed.requests.map((request) => (request.messages[0]!.content[0] as { text: string }).text)).toEqual(["a", "b"])
+    expect(parsed.n).toBe(2)
+    expect(parsed.exchange.perPrompt).toBe(2)
+  })
+
+  test("suffix becomes the one system instruction", () => {
+    const [request] = parse(body({ suffix: "The end." })).requests
+    expect(request!.system).toHaveLength(1)
+    expect(request!.system[0]).toEndWith("Suffix:\nThe end.")
+  })
+
+  test("echo keeps the prompts for the encoder; stream_options.include_usage is read", () => {
+    expect(parse(body({ prompt: ["a", "b"], echo: true, stream: true, stream_options: { include_usage: true } })).exchange).toEqual({
+      model: "test/echo",
+      stream: true,
+      includeUsage: true,
+      perPrompt: 1,
+      echo: ["a", "b"],
+    })
+  })
+})
+
+describe("#75 the text_completion codec", () => {
+  const exchange: CompletionsExchange = { model: "fast", stream: false, includeUsage: false, perPrompt: 2, echo: ["P0 ", "P1 "] }
+  const codec = completionsCodec(exchange)
+
+  test("collect: one choice as a text_completion body; echo prefixes the choice's own prompt", async () => {
+    const result = (await codec.collect(events(ev.reasoning("x"), ev.text("lived"), ev.call("c", "f"), ev.finish("stop", { inputTokens: 3, outputTokens: 1 })), 2)) as { status: number; body: any }
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({ object: "text_completion", model: "fast", choices: [{ text: "P1 lived", index: 0, logprobs: null, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 } })
+    expect(result.body.id).toMatch(/^cmpl-/)
+  })
+
+  test.each([
+    ["length", "length"],
+    ["content-filter", "content_filter"],
+    ["tool-calls", "stop"],
+  ] as const)("finish %s -> finish_reason %s", async (reason, wire) => {
+    const result = (await codec.collect(events(ev.text("x"), ev.finish(reason)), 0)) as { body: any }
+    expect(result.body.choices[0].finish_reason).toBe(wire)
+  })
+
+  test("collect: a failure is its own status and an OpenAI error body", async () => {
+    expect(await codec.collect(events(ev.error({ status: 429, kind: "rate_limit", message: "slow" })), 0)).toEqual({
+      status: 429,
+      body: { error: { message: "slow", type: "rate_limit_error", param: null, code: null } },
+    })
+  })
+
+  async function stream(list: PlugEvent[], index = 0) {
+    let text = ""
+    const result = await codec.streamChoice(events(...list), (chunk) => void (text += chunk), { id: "cmpl-shared", created: 7, index })
+    return { text, result, chunks: sseData(text) }
+  }
+
+  test("streamChoice: the echo prefix, text chunks and a finish chunk with this choice's index; no [DONE] (the fan-out owns it)", async () => {
+    const { chunks, text, result } = await stream([ev.text("a"), ev.text("b"), ev.finish("stop", { inputTokens: 1 })], 1)
+    expect(chunks.map((chunk) => [chunk.choices[0].text, chunk.choices[0].index, chunk.choices[0].finish_reason])).toEqual([
+      ["P0 ", 1, null],
+      ["a", 1, null],
+      ["b", 1, null],
+      ["", 1, "stop"],
+    ])
+    expect(chunks.every((chunk) => chunk.id === "cmpl-shared" && chunk.created === 7)).toBe(true)
+    expect(text).not.toContain("[DONE]")
+    expect(result).toEqual({ started: true, usage: { inputTokens: 1 } })
+  })
+
+  test("streamChoice: a failure before text writes nothing", async () => {
+    const { text, result } = await stream([ev.error({ message: "x" })])
+    expect(text).toBe("")
+    expect(result).toEqual({ started: false, failure: { status: 502, kind: "server", message: "x" } })
+  })
+
+  test("usageChunk: no choices, the summed totals", () => {
+    expect(codec.usageChunk({ id: "cmpl-shared", created: 7 }, { inputTokens: 2, outputTokens: 3 })).toEqual({
+      id: "cmpl-shared",
+      object: "text_completion",
+      created: 7,
+      model: "fast",
+      choices: [],
+      usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+    })
+  })
+})
