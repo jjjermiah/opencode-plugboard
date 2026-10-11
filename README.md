@@ -111,7 +111,7 @@ Sessions live in a per-app directory, so they never show up in your real project
 $XDG_DATA_HOME/opencode-plugboard/<app>/        # default ~/.local/share/opencode-plugboard/<app>/
 ```
 
-In OpenCode they appear as one group per app in the desktop and phone app home screen. In the TUI they are visible in the all-projects view (ctrl+a), not in a project's own list. Nothing deletes them yet ([pruning is a roadmap item](docs/issues/history-pruning.md)).
+In OpenCode they appear as one group per app in the desktop and phone app home screen. In the TUI they are visible in the all-projects view (ctrl+a), not in a project's own list. Nothing deletes them yet ([pruning is a roadmap item](https://github.com/jjjermiah/opencode-plugboard/issues/8)).
 
 OpenCode loads plugin hooks per directory, so plugboard has to be loaded in those app directories, which is why it needs the global config. Everywhere outside the data root it is inert: it only joins the shared listener and registers no hooks, tools or agent rules, so your real projects behave as before.
 
@@ -145,7 +145,7 @@ On macOS, a second launchd job that runs once at login and after boot (`~/Librar
 </plist>
 ```
 
-If `opencode` is not on the job's `PATH`, use its full path. A request to `/healthz` before the warm-up gets connection refused, which is expected. I'd like OpenCode to boot plugins at server start so none of this is needed ([upstream request draft](docs/issues/upstream-boot-plugins-at-server-start.md)).
+If `opencode` is not on the job's `PATH`, use its full path. A request to `/healthz` before the warm-up gets connection refused, which is expected. I'd like OpenCode to boot plugins at server start so none of this is needed ([upstream request](https://github.com/jjjermiah/opencode-plugboard/issues/2)).
 
 When config reloads happen, plugboard keeps the port open through a short grace period, so a reload does not drop connections. If no plugboard generation is alive when a request arrives, the caller gets a 503.
 
@@ -177,7 +177,7 @@ Each request becomes a session in the app's directory, using OpenCode's own requ
 
 `response_format` with a JSON schema becomes a forced `respond` tool, and its arguments come back as the message content.
 
-The model call sits behind one interface, `ModelCaller`, so a native backend can replace the session backend later without touching the front-ends ([roadmap](docs/issues/native-backend.md)).
+The model call sits behind one interface, `ModelCaller`, so a native backend can replace the session backend later without touching the front-ends ([roadmap](https://github.com/jjjermiah/opencode-plugboard/issues/3)).
 
 ## Compatibility
 
@@ -187,16 +187,7 @@ Client testing is planned, not done. The v0.1 release gate is: OpenAI SDK (Pytho
 
 ## Roadmap
 
-Each item has a draft issue in [`docs/issues`](docs/issues):
-
-- [`/v1/responses` front-end](docs/issues/responses-frontend.md)
-- [`/v1/messages` (Anthropic) front-end](docs/issues/anthropic-messages-frontend.md)
-- [Gemini front-end](docs/issues/gemini-frontend.md)
-- [Agent mode: OpenCode agents as models](docs/issues/agent-mode.md)
-- [Native backend through an upstream `ctx.llm.stream`](docs/issues/native-backend.md)
-- [Compatibility harness](docs/issues/compat-harness.md)
-- [History pruning](docs/issues/history-pruning.md)
-- [Upstream: boot plugins at server start](docs/issues/upstream-boot-plugins-at-server-start.md)
+Work is tracked in GitHub issues. The [v0.1 milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/1) lists what is needed before the first release, and the [later milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/2) holds the rest: the `/v1/responses`, `/v1/messages` and Gemini front-ends, agent mode, a native backend, a compatibility harness, history pruning and an upstream request to boot plugins at server start.
 
 Not planned: V1 support, embeddings, audio, image generation.
 
