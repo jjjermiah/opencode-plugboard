@@ -105,6 +105,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
 | `history` | none (keep forever) | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app, `maxAgeDays` deletes older ones; with both, the stricter wins. |
+| `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). Off by default because it lets callers make the host request internal addresses; callers can always send `data:` URLs. |
 
 Changes to `listen` need a server restart; other option changes apply on config reload.

@@ -137,6 +137,7 @@ src/session/context.ts      context hook, seed tools, agent deny (all gated on c
 src/session/events.ts       turns one session's bus events into PlugEvents (collector)
 src/session/state.ts        cross-generation session ownership store
 src/session/history.ts      data root, app directory (async, symlink containment), session title and transcript
+src/openai/sampling.ts      per-model table of sampling parameters to drop (`dropRejected`, #30)
 src/session/prune.ts        history index keys, `recordSession`, the bounded `sweepHistory` (see History pruning)
 src/session/media.ts        bounded image preparation (data URLs; opt-in remote fetch)
 src/session/seeds.ts        seed name prefix and result text
