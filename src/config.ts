@@ -1,6 +1,7 @@
 /** Plugin options: type, defaults, validation, caller authentication and the loopback check. */
 
 import type { PlugError } from "./contract.js"
+import type { HistoryLimits } from "./session/prune.js"
 
 /** Plugin options, after defaults and validation (see `parseOptions`). */
 export interface PlugboardOptions {
@@ -15,6 +16,8 @@ export interface PlugboardOptions {
   readonly requestTimeoutMs: number
   /** Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network. */
   readonly remoteImages: boolean
+  /** Prune old request sessions (see `src/session/prune.ts`). A limit that is unset is not applied; with neither, history is kept forever. Applies per app. */
+  readonly history: HistoryLimits
 }
 
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
@@ -26,7 +29,10 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages"])
+const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages", "history"])
+const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays"])
+/** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
+const MAX_AGE_DAYS = 36_500
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
 const ALIAS_TARGET = /^[^/#*\s]+\/[^#*\s]+(#[^#*\s]+)?$/
 /** `provider/model...` shaped: an alias like this would collide with real model ids in listing and resolution. */
@@ -113,6 +119,13 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (input.remoteImages !== undefined && typeof input.remoteImages !== "boolean")
     throw new Error("plugboard option `remoteImages` must be a boolean")
 
+  const historyInput = input.history
+  if (historyInput !== undefined && !isRecord(historyInput)) throw new Error("plugboard option `history` must be an object")
+  for (const key of Object.keys(historyInput ?? {}))
+    if (!HISTORY_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`history.${key}\` (known: ${[...HISTORY_KNOWN].join(", ")})`)
+  const maxSessions = historyInput?.maxSessions === undefined ? undefined : positiveInt(historyInput.maxSessions, "history.maxSessions", 0)
+  const maxAgeDays = historyInput?.maxAgeDays === undefined ? undefined : positiveInt(historyInput.maxAgeDays, "history.maxAgeDays", 0, MAX_AGE_DAYS)
+
   return {
     listen: { host, port: port ?? DEFAULTS.port },
     keys,
@@ -121,6 +134,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     maxTools: positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024),
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
     remoteImages: input.remoteImages === true,
+    history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) },
   }
 }
 

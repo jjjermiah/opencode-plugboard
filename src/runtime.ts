@@ -18,7 +18,10 @@
  *     scope, forwarding bus events of request sessions to the session store. If it dies, the
  *     requests in flight fail with a 502 instead of waiting for their deadline;
  *   - the session store (src/session/state.ts), which outlives the listener and owns the request
- *     guards, their cleanup timers included.
+ *     guards, their cleanup timers included;
+ *   - the history sweep state: every registered request session is indexed in the host's plugin
+ *     storage and, at most every `SWEEP_INTERVAL_MS`, a sweep prunes old ones past the `history`
+ *     limits (src/session/prune.ts). Both start from request handling (the store's `register`).
  *
  * Registration is explicit: `registerGeneration` returns whether the generation was accepted. A
  * rejected one (different `listen`, options that differ from the live ones, foreign runtime) never
@@ -42,6 +45,8 @@ import { Cause, Effect, Stream } from "effect"
 import { isPlugError, type CatalogModel, type PlugError } from "./contract.js"
 import { errorMessage, log, logError } from "./log.js"
 import { ensureAppDir } from "./session/history.js"
+import type { HistoryPort } from "./session/host.js"
+import { recordSession, sweepHistory, type HistoryLimits } from "./session/prune.js"
 import { createSessionStore, type SessionStore } from "./session/state.js"
 
 export type Handler = (request: IncomingMessage, response: ServerResponse) => void
@@ -76,15 +81,23 @@ export interface GenerationInput {
    * never from setup or a finalizer.
    */
   readonly refresh: () => Promise<void>
+  /** The host storage and session deletion used to index and prune request sessions, with the configured limits (identical in every accepted generation). */
+  readonly history: { readonly port: HistoryPort; readonly limits: HistoryLimits }
 }
 
 const GRACE_MS = 10_000
+/** Earliest next history sweep after one ran (sweeps are triggered by requests, never by a timer). */
+const SWEEP_INTERVAL_MS = 10 * 60_000
+/** Earliest next sweep when one left work behind (its budget ran out). */
+const SWEEP_BACKLOG_MS = 60_000
+/** A sweep stops starting host calls after this long; a hung one stops blocking later sweeps 5 s after. */
+const SWEEP_DEADLINE_MS = 60_000
 /** How long `ensureBackend` waits for a Location to boot and its generation to become ready. */
 const BACKEND_TIMEOUT_MS = 15_000
 const BACKEND_POLL_MS = 25
 
-/** 3: the runtime tracks confirmed directories and rejected generations (a version-2 runtime lacks both). */
-const VERSION = 3
+/** 4: adds the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 4
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -102,6 +115,7 @@ interface Generation {
   readonly handler: Handler
   readonly loadCatalog: GenerationInput["loadCatalog"]
   readonly refresh: GenerationInput["refresh"]
+  readonly history: GenerationInput["history"]
   /** The context hook and transforms are installed (setup got to its end). */
   hooked: boolean
   /** The transforms have been rebuilt since `confirmed` became true for the directory. */
@@ -124,6 +138,8 @@ interface Runtime {
   readonly confirmed: Set<string>
   /** Live rejected generations per directory: tells "rejected" from "no generation yet". */
   readonly rejected: Map<string, number>
+  /** History sweep rate limit: no sweep starts before `nextAt` (epoch ms) or while one `running`. */
+  readonly sweep: { nextAt: number; running: boolean }
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
@@ -140,7 +156,14 @@ function runtime(): Runtime | undefined {
   const slot = globalThis as Record<symbol, unknown>
   const existing = slot[KEY] as { readonly version: number } | undefined
   if (!existing) {
-    const created: Runtime = { version: VERSION, sessions: createSessionStore(), generations: [], confirmed: new Set(), rejected: new Map() }
+    const created: Runtime = {
+      version: VERSION,
+      sessions: createSessionStore({ onRegister: (state) => trackSession(created, state.app, state.sessionID) }),
+      generations: [],
+      confirmed: new Set(),
+      rejected: new Map(),
+      sweep: { nextAt: 0, running: false },
+    }
     slot[KEY] = created
     return created
   }
@@ -150,6 +173,52 @@ function runtime(): Runtime | undefined {
     logError("runtime.foreign_version", { found: existing.version, expected: VERSION, action: "restart the server" })
   }
   return undefined
+}
+
+/**
+ * A request session was just created: index it, then sweep if due. Runs from request handling
+ * (the store's `register`), never awaited, never throws. Uses the preferred generation's host
+ * handles; the storage and `session.remove` are server-wide, so any live generation works.
+ */
+function trackSession(rt: Runtime, app: string, sessionID: string): void {
+  const history = preferred(rt)?.history
+  if (!history) return logError("history.index_skipped", { app, sessionID, reason: "no live generation" })
+  void recordSession(history.port, app, sessionID, Date.now())
+    .catch((error) => logError("history.index_failed", { app, sessionID, error: errorMessage(error) }))
+    .then(() => maybeSweep(rt, history))
+}
+
+/**
+ * Run a history sweep when limits are set, none is running and the rate limit allows. Bounded:
+ * see `sweepHistory`. A sweep that leaves work behind is followed up after `SWEEP_BACKLOG_MS`,
+ * a complete one after `SWEEP_INTERVAL_MS`. Logs one line with counts only.
+ */
+async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Promise<void> {
+  const { limits, port } = history
+  if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) return
+  const now = Date.now()
+  if (rt.sweep.running || now < rt.sweep.nextAt) return
+  rt.sweep.running = true
+  rt.sweep.nextAt = now + SWEEP_INTERVAL_MS
+  const deadline = AbortSignal.timeout(SWEEP_DEADLINE_MS)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const result = await Promise.race([
+      sweepHistory({ port, limits, sessions: rt.sessions, now, signal: deadline }),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), SWEEP_DEADLINE_MS + 5_000)
+        timer.unref?.()
+      }),
+    ])
+    if (!result) return logError("history.sweep_timeout", { limit: SWEEP_DEADLINE_MS })
+    if (result.more) rt.sweep.nextAt = Date.now() + SWEEP_BACKLOG_MS
+    log("history.swept", { ...result, durationMs: Date.now() - now })
+  } catch (error) {
+    logError("history.sweep_failed", { error: errorMessage(error) })
+  } finally {
+    clearTimeout(timer)
+    rt.sweep.running = false
+  }
 }
 
 /** The session store shared by every generation in the process. */
@@ -290,6 +359,7 @@ export function registerGeneration(input: GenerationInput): Registration {
     handler: input.handler,
     loadCatalog: input.loadCatalog,
     refresh: input.refresh,
+    history: input.history,
     hooked: false,
     // A directory confirmed before this Location booted needs no rebuild: its transforms already read `confirmed()` as true.
     activated: rt.confirmed.has(directory),

@@ -25,8 +25,9 @@ OpenCode may load this module once per Location, or re-evaluate it on reload. An
 - **the confirmed directories**: app directories (real path strictly inside the canonical data root) that `ensureBackend` has verified. Setup touches no filesystem, so ownership of a Location is unknown at setup and stays "not an app directory" until a request confirms it (fail closed). The runtime also counts rejected generations per directory, to tell "rejected" from "no generation yet".
 - **the session store** (`src/session/state.ts`): request state keyed by session ID. The serving generation registers it; the app-directory generation's context hook looks it up; the event pump dispatches bus events to it. It has to be shared, because those are different generations.
 - **the event pump**: one fiber subscribed to the server-wide bus, forwarding events of registered request sessions. Events of unregistered sessions are dropped before anything is buffered. If the pump dies, every in-flight request fails with a 502 (`event_stream_lost`); the next request starts a new pump.
+- **the history sweep state**: when the last sweep ran and whether one is running (see [History pruning](#history-pruning)).
 
-If a runtime written by a different version (runtime `VERSION`, currently 3) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
+If a runtime written by a different version (runtime `VERSION`, currently 4) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
 
 ### Backend readiness: `ensureBackend`
 
@@ -42,6 +43,16 @@ The session caller awaits `ensureBackend(app, signal)` (`src/runtime.ts`, wired 
 
 The store entry is the guard that makes the context hook rewrite a session. It outlives the HTTP response: the caller releases it only when the host reports `session.execution.*`. After the response, the caller interrupts the turn if it is still running and retires the entry with a 30 s bound; if the host never confirms, the runtime logs `session.cleanup_timeout`, retries the interrupt and releases. Nothing here is awaited in teardown. As a backstop, request sessions are created with permissions `deny *` then `allow plugboard_seed_*`, so even a second step that slips past the interrupt cannot run a real OpenCode tool.
 
+## History pruning
+
+Every request leaves a session in the host, so history grows without bound unless it is pruned. The plugin session API (`ctx.session`) has `get` and `remove` but no `list` (OpenCode 2.0.26, `packages/plugin/src/effect/session.ts`), so plugboard cannot ask the host which sessions are its own. It keeps an index instead, in the plugin's own host storage (`ctx.storage`: a key-value table in the host database, namespaced by plugin id, shared by every Location, no file of ours; `packages/core/src/plugin/host.ts` `storage`, `packages/core/src/kv.ts`). If upstream adds a session list or archive call, use it and drop the index.
+
+- **Index**: the session store's `register` hook (request handling, right after `session.create`) writes one key per request session, `history/<app>/<created ms, 15 digits>/<sessionID>`. Key order is creation order, so a prefix scan returns an app's sessions oldest first and the key holds everything the sweep needs. It is written always, whatever the limits, so turning pruning on later covers every session since the index existed. Sessions created before that are not indexed and never pruned.
+- **Option** `history: { maxSessions?, maxAgeDays? }`, global, applied to each app separately (apps are only key names; there is no per-app config). Unset means keep forever, the default. Both set: the stricter wins.
+- **Sweep** (`src/session/prune.ts`, driven by `maybeSweep` in `src/runtime.ts`): started by a request, after its session was indexed, never by setup and never by a timer. At most one runs, and none starts within 10 minutes of the last, or 1 minute when the last left work behind. It finds the apps in the index, reads each app's entries oldest first, and deletes the prefix that exceeds `maxSessions` or is older than `maxAgeDays` through `ctx.session.remove` (the host interrupts and awaits an idle session first). A session whose request guard is still in the session store is skipped; a session the host no longer has only loses its index entry; a failed delete keeps its entry for the next sweep. Idle servers do no work: nothing is pruned until the next request.
+- **Bounded work**: at most 200 deletions per sweep, at most 20,000 index entries read per app (a capped read undercounts, so it deletes fewer sessions than the limit asks for, never more), a 60 s deadline checked between host calls, and a hung host call cannot block later sweeps. One log line per sweep with counts only: `history.swept apps scanned removed missing failed active more durationMs`.
+- **Manual path**: `compat/tools/sessions.py` lists and deletes one app's sessions through the host API, including sessions that predate the index.
+
 ## Freeze-safety rules
 
 A plugin effect that blocked once froze every prompt in a project. The rules:
@@ -49,6 +60,7 @@ A plugin effect that blocked once froze every prompt in a project. The rules:
 - Plugin setup only **registers** and returns. It makes no call on `ctx` that waits for Location readiness, and awaits nothing from the session or model APIs.
 - Finalizers are **synchronous** and call nothing on `ctx`. `Registration.dispose` only mutates in-memory state and arms an unref'd timer.
 - Forbidden in a finalizer or teardown path: awaiting `session.interrupt`, any session/model/event call, any filesystem or network work, anything that can wait on the host. Cleanup that needs the host is the job of the request code or the runtime, outside teardown.
+- Setup also makes no `ctx.storage` or `ctx.session` call: the history index and sweep run from request handling only.
 - Plugin setup touches no filesystem, sync or async. Which Location is an app directory is decided by `ensureAppDir` / `ensureBackend` from request handling, compared by realpath.
 - The event pump starts lazily from request handling (handler and catalog load, never setup) and is never awaited.
 - Every accepted generation registers the context hook, the agent deny and the seed tools, but they are no-ops until `Registration.confirmed()`: in real projects the plugin adds no tool, agent change or context rewrite. Rejected generations register nothing.
@@ -105,7 +117,7 @@ src/contract.ts             neutral vocabulary: PlugRequest/PlugEvent/PlugError,
 src/config.ts               options type, defaults, parseOptions (rejects `__proto__` aliases and duplicate keys), authenticate, loopback check (localhost, 127.0.0.1, ::1: the Host check's set)
 src/models.ts               allowlist/alias policy: resolveModel, listAvailableModels (neutral)
 src/log.ts                  one-line logger; ids and outcomes only, never keys, bodies or URLs
-src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store
+src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store, history sweep state
 src/http.ts                 ingress: body limits, origin checks, disconnect abort, deadline, JSON/SSE transport
 src/openai/route.ts         Chat Completions and /v1/models orchestration
 src/openai/request.ts       decode a Chat Completions body (pure)
@@ -116,11 +128,12 @@ src/session/context.ts      context hook, seed tools, agent deny (all gated on c
 src/session/events.ts       turns one session's bus events into PlugEvents (collector)
 src/session/state.ts        cross-generation session ownership store
 src/session/history.ts      data root, app directory (async, symlink containment), session title and transcript
+src/session/prune.ts        history index keys, `recordSession`, the bounded `sweepHistory` (see History pruning)
 src/session/media.ts        bounded image preparation (data URLs; opt-in remote fetch)
 src/session/seeds.ts        seed name prefix and result text
 ```
 
-Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response` -> `contract`; `runtime` -> `history` (`ensureBackend`), `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
+Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response` -> `contract`; `runtime` -> `history` (`ensureBackend`), `prune`, `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
 
 ## Conventions
 

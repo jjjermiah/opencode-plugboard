@@ -26,7 +26,7 @@ import { createOpenAiRoute } from "./src/openai/route.js"
 import { ensureBackend, ensurePump, loadServingCatalog, registerGeneration, sessionStore } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
-import { createSessionPort, loadCatalog } from "./src/session/host.js"
+import { createHistoryPort, createSessionPort, loadCatalog } from "./src/session/host.js"
 
 export default Plugin.define({
   id: "opencode-plugboard",
@@ -74,6 +74,8 @@ export default Plugin.define({
         directory: ctx.location.directory,
         // Rebuild the transforms below once a request has confirmed this Location as an app directory.
         refresh: () => Effect.runPromise(Effect.all([ctx.agent.reload(), ctx.tool.reload()], { discard: true })),
+        // Host handles for indexing and pruning request sessions; only called from request handling.
+        history: { port: createHistoryPort(ctx), limits: options.history },
         handler: (request, response) => {
           startPump()
           handle(request, response).catch((error) => {

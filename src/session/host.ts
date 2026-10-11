@@ -89,6 +89,46 @@ export function createSessionPort(ctx: HostContext): SessionPort {
   }
 }
 
+/**
+ * What the history index needs from the host: the plugin's own key-value storage (`ctx.storage`,
+ * namespaced by plugin id and shared by every Location of the server) and `session.remove`. The
+ * plugin session API has no `list`, so plugboard indexes its own request sessions in that storage
+ * and prunes from the index (src/session/prune.ts).
+ */
+export interface HistoryPort {
+  put(key: string, value: string): Promise<void>
+  drop(key: string): Promise<void>
+  /** Keys under `prefix` in ascending order, after `after` (exclusive); `next` is set when more remain. */
+  scan(input: { readonly prefix: string; readonly after?: string; readonly limit: number }): Promise<{ readonly keys: ReadonlyArray<string>; readonly next?: string }>
+  /** `missing` when the session no longer exists (the host's `Session.NotFoundError`); any other failure rejects. */
+  removeSession(sessionID: string): Promise<"removed" | "missing">
+}
+
+const failureTag = (error: unknown): unknown => (typeof error === "object" && error !== null ? (error as { _tag?: unknown })._tag : undefined)
+
+/** `ctx.storage` and `ctx.session.remove` as a Promise port. The branded session ID is the same host-issued string as above. */
+export function createHistoryPort(ctx: HostContext): HistoryPort {
+  return {
+    put: (key, value) => Effect.runPromise(ctx.storage.set(key, value)),
+    drop: (key) => Effect.runPromise(ctx.storage.remove(key)),
+    scan: (input) =>
+      Effect.runPromise(ctx.storage.scan(input)).then((result) => ({
+        keys: result.entries.map((entry) => entry.key),
+        ...(result.next === undefined ? {} : { next: result.next }),
+      })),
+    removeSession: (sessionID) =>
+      Effect.runPromise(
+        ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0]).pipe(
+          Effect.match({ onSuccess: () => undefined, onFailure: (error) => ({ error }) }),
+        ),
+      ).then((failed) => {
+        if (failed === undefined) return "removed" as const
+        if (failureTag(failed.error) === "Session.NotFoundError") return "missing" as const
+        throw failed.error
+      }),
+  }
+}
+
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
 
