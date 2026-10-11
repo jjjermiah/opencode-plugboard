@@ -1,6 +1,6 @@
 # Native backend: an upstream `ctx.llm.stream` for plugins
 
-Plugboard v0.1 reaches providers through a session: a throwaway session per request, a `context` hook that swaps in the caller's messages, a pool of placeholder tools that never execute, and an interrupt once the model has emitted its tool calls. It works on four providers, but it is a workaround. It writes history we then have to manage, it needs the plugin loaded in every directory, and it pays for session setup on each call.
+Plugboard v0.1 reaches providers through a session: a session per request kept as history, a `context` hook that swaps in the caller's messages, a pool of placeholder tools that answer "Returned to caller" without doing anything, and an interrupt as soon as the step that emitted tool calls ends. The interrupt races the runner's next step: it wins in practice, but nothing in the session loop guarantees it. It works on four providers, but it is a workaround. It writes history we then have to manage, it needs the plugin loaded in every directory, and it pays for session setup on each call.
 
 What we want is a plugin API that runs one provider turn: take a request in the shape of `@opencode/ai`'s `LLMRequest`, stream `LLMEvent`s back, and do it through the same hook pipeline sessions use, so auth plugins (Claude via an auth plugin) and provider fixes still apply. A direct `LLMClient` call is not enough, because those plugins only exist as session `http.request` and `http.response` hooks.
 
