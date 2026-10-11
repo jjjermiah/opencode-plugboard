@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] - 2026-10-11
+
 ### Added
 
 - **A setup page at `GET /` and `GET /v1`** ([#73](https://github.com/jjjermiah/opencode-plugboard/issues/73)). Point a browser at plugboard and it tells you what it is serving: the listen address, the endpoints, a curl example, and a paste-ready `models` suggestion built from what your OpenCode server actually offers. An empty `models` list used to mean a 403 on every call with no clue why; now the page says so. With `keys` set, strangers only see the address and endpoints, and a valid key sees its own app and the allowlist, never other apps or any key.
@@ -274,7 +278,8 @@ Providers, through the session path: GitHub Copilot, Anthropic (Claude Max throu
 
 `opencode-llm-proxy` by KochC got the shape right first: a plugin that starts a local server and reuses OpenCode's providers. It is V1 only, which is why this project exists. `copilot-api` and LiteLLM showed what an OpenAI-compatible front door should feel like to the people calling it. No code was taken from any of them. They were reading material.
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.2.1...v0.3.0
