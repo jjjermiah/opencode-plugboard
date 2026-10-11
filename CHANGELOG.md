@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.10.0] - 2026-10-11: Proof, Not Promises
+
+**Full diff:** [v0.9.1...v0.10.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.1...v0.10.0)
+
 ### Added
 
 - **A test suite worth reading** ([#93](https://github.com/jjjermiah/opencode-plugboard/issues/93)). Until now plugboard was proven by hand: curl runs, throwaway scripts and an acceptance record. Every release needed a person to re-check, and the subtle promises (setup never blocks the host, the first byte decides the status, provider text never reaches callers) lived only in prose. `bun test` now runs **799 tests in under a second**, layered like the code:
@@ -380,7 +386,8 @@ Providers, through the session path: GitHub Copilot, Anthropic (Claude Max throu
 
 `copilot-api` and LiteLLM showed what an OpenAI-compatible front door should feel like to the people calling it. No code was taken from either.
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.7.0...v0.8.0
