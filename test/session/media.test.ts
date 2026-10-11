@@ -7,8 +7,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { lookup } from "node:dns/promises"
 import type { ServerResponse } from "node:http"
+import ipaddr from "ipaddr.js"
 import type { PlugRequest } from "../../src/contract.js"
-import { ImageError, parseAllowEntry, prepareImages, type RemoteImages } from "../../src/session/media.js"
+import { ImageError, isPublicAddress, parseAllowEntry, prepareImages, type RemoteImages } from "../../src/session/media.js"
 import { plugRequest } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { listen, type Loopback } from "../support/loopback.js"
@@ -100,6 +101,27 @@ describe("#84 addresses that are not public are refused before any connection", 
     expect(logs.of("media.remote_refused").at(-1)!.fields.reason).toBe("address_not_allowed")
   })
 
+  test.each([
+    ["a public IPv4 address", "8.8.8.8"],
+    ["a public IPv6 address", "2606:4700:4700::1111"],
+    ["NAT64 of a public address (DNS64 answers)", "64:ff9b::808:808"],
+    ["6to4 of a public address", "2002:808:808::"],
+  ])("%s is public", (_name, address) => {
+    expect(isPublicAddress(address)).toBe(true)
+  })
+
+  test.each([
+    ["IPv4-compatible loopback", "::7f00:1"],
+    ["IPv4-compatible private", "::a00:1"],
+    ["NAT64 of a private address", "64:ff9b::a00:1"],
+    ["6to4 of a private address", "2002:a00:1::"],
+    ["an IPv6 zone does not hide link-local", "fe80::1%eth0"],
+    ["not an address", "example.com"],
+    ["an odd IPv4 spelling", "0x7f.1"],
+  ])("%s is not public", (_name, address) => {
+    expect(isPublicAddress(address)).toBe(false)
+  })
+
   test("a host name that resolves to loopback is refused too", async () => {
     expect(code(await fetchImage(`http://localhost:${server.port}/ok.png`))).toBe("image_fetch_failed")
   })
@@ -135,10 +157,9 @@ describe("#84 remoteImages.allow lets the operator reach named internal hosts", 
     })
   })
 
-  // Found by this suite: only the first resolved address is tried. Where `localhost` resolves to
-  // [::1, 127.0.0.1], an image host that answers on one of them only is reported as a failed fetch,
-  // where curl or fetch would fall back to the next address. Flip to `test` if a fallback is added.
-  ;(LOCALHOST.length > 1 ? test.failing : test.skip)("an allowed name whose first address refuses the connection falls back to the next checked address", async () => {
+  // #134: where `localhost` resolves to [::1, 127.0.0.1], an image host that answers on one of
+  // them only is fetched, as curl or fetch would, by falling back to the next checked address.
+  ;(LOCALHOST.length > 1 ? test : test.skip)("#134 an allowed name whose first address refuses the connection falls back to the next checked address", async () => {
     await onLocalhost(LOCALHOST.at(-1)!, async (port) => {
       expect(code(await fetchImage(`http://localhost:${port}/ok.png`, { allow: ["localhost"] }))).toBe("fetched")
     })
@@ -151,8 +172,8 @@ describe("#84 remoteImages.allow lets the operator reach named internal hosts", 
   test.each([
     ["a host", "images.internal", { kind: "host", name: "images.internal" }],
     ["a wildcard", "*.Internal", { kind: "host", name: "*.internal" }],
-    ["an address", "10.1.2.3", { kind: "net", cidr: { ip: { family: 4, bytes: [10, 1, 2, 3] }, bits: 32 } }],
-    ["an IPv6 range", "fd00::/8", { kind: "net", cidr: { ip: { family: 6, bytes: [0xfd, ...Array(15).fill(0)] }, bits: 8 } }],
+    ["an address", "10.1.2.3", { kind: "net", address: ipaddr.parse("10.1.2.3"), bits: 32 }],
+    ["an IPv6 range", "fd00::/8", { kind: "net", address: ipaddr.parse("fd00::"), bits: 8 }],
   ])("parseAllowEntry accepts %s", (_name, entry, parsed) => {
     expect(parseAllowEntry(entry)).toEqual(parsed as never)
   })

@@ -9,15 +9,17 @@
  * server's own network (#84): the host is resolved first, every address it resolves to must be a
  * public one (loopback, private, link-local, CGNAT, ULA, multicast, reserved and mapped or
  * translated forms of those are refused) unless the operator's `remoteImages.allow` list names the
- * host or the address, and the request then connects to the address that was checked, not to the
- * name, so a second DNS answer cannot redirect it (DNS rebinding). The caller sees one generic
- * error for every fetch failure, whatever the cause.
+ * host or the address, and the request then connects to the addresses that were checked (tried in
+ * order until one accepts), not to the name, so a second DNS answer cannot redirect it (DNS
+ * rebinding). Addresses are classified by ipaddr.js. The caller sees one generic error for every
+ * fetch failure, whatever the cause.
  */
 
 import { lookup } from "node:dns/promises"
 import { request as httpRequest, type IncomingMessage } from "node:http"
 import { request as httpsRequest } from "node:https"
 import { isIP } from "node:net"
+import ipaddr from "ipaddr.js"
 import type { PlugRequest } from "../contract.js"
 import { log } from "../log.js"
 
@@ -49,127 +51,64 @@ export class ImageError extends Error {
 
 // ---- addresses
 
-interface Ip {
-  readonly family: 4 | 6
-  readonly bytes: ReadonlyArray<number>
-}
+type Ip = ipaddr.IPv4 | ipaddr.IPv6
 
-/** Dotted IPv4 or any IPv6 text form (compressed, with an embedded IPv4 tail, with a zone) to bytes. */
+/** Strict dotted IPv4 or any IPv6 text form (compressed, with an embedded IPv4 tail, with a zone). Odd IPv4 spellings (`0x7f.1`) never get here: a URL host is normalized by `new URL` first. */
 function parseIp(text: string): Ip | undefined {
-  const family = isIP(text)
-  if (family === 4) return { family, bytes: text.split(".").map(Number) }
-  if (family !== 6) return undefined
-  let head = text.split("%")[0]!
-  const dot = head.lastIndexOf(".")
-  if (dot !== -1) {
-    const colon = head.lastIndexOf(":")
-    const v4 = head.slice(colon + 1).split(".").map(Number)
-    head = `${head.slice(0, colon + 1)}${((v4[0]! << 8) | v4[1]!).toString(16)}:${((v4[2]! << 8) | v4[3]!).toString(16)}`
+  if (isIP(text) === 0) return undefined
+  try {
+    return ipaddr.parse(text)
+  } catch {
+    return undefined
   }
-  const [left = "", right = ""] = head.split("::")
-  const first = left === "" ? [] : left.split(":")
-  const last = head.includes("::") ? (right === "" ? [] : right.split(":")) : []
-  const groups = head.includes("::") ? [...first, ...Array<string>(8 - first.length - last.length).fill("0"), ...last] : head.split(":")
-  const bytes: number[] = []
-  for (const group of groups) {
-    const value = Number.parseInt(group, 16)
-    bytes.push(value >> 8, value & 0xff)
-  }
-  return { family, bytes }
 }
 
-interface Cidr {
-  readonly ip: Ip
-  readonly bits: number
-}
+/** `address/bits` match; false for another family (ipaddr.js throws on one). */
+const inNet = (ip: Ip, net: Ip, bits: number): boolean => ip.kind() === net.kind() && ip.match(net, bits)
 
-function inCidr(ip: Ip, cidr: Cidr): boolean {
-  if (ip.family !== cidr.ip.family) return false
-  let left = cidr.bits
-  for (let i = 0; left > 0; i++, left -= 8) {
-    const mask = left >= 8 ? 0xff : (0xff << (8 - left)) & 0xff
-    if ((ip.bytes[i]! & mask) !== (cidr.ip.bytes[i]! & mask)) return false
-  }
-  return true
-}
+const NAT64 = ipaddr.IPv6.parseCIDR("64:ff9b::/96")
+/** `::/96`: unspecified, loopback and the deprecated IPv4-compatible form (`::7f00:1`), which ipaddr.js calls unicast. */
+const IPV4_COMPATIBLE = ipaddr.IPv6.parseCIDR("::/96")
 
-function parseCidr(text: string): Cidr | undefined {
-  const [address = "", length, extra] = text.split("/")
-  const ip = parseIp(address)
-  if (!ip || extra !== undefined) return undefined
-  const max = ip.family === 4 ? 32 : 128
-  if (length === undefined) return { ip, bits: max }
-  const bits = Number(length)
-  return /^\d{1,3}$/.test(length) && bits <= max ? { ip, bits } : undefined
-}
-
-const cidrs = (list: string[]): Cidr[] => list.map((entry) => parseCidr(entry)!)
-
-/** IPv4 that is not a public unicast address. */
-const BLOCKED_V4 = cidrs([
-  "0.0.0.0/8", // "this network"
-  "10.0.0.0/8",
-  "100.64.0.0/10", // CGNAT
-  "127.0.0.0/8", // loopback
-  "169.254.0.0/16", // link-local, cloud metadata
-  "172.16.0.0/12",
-  "192.0.0.0/24", // IETF protocol assignments
-  "192.0.2.0/24", // documentation
-  "192.168.0.0/16",
-  "198.18.0.0/15", // benchmarking
-  "198.51.100.0/24", // documentation
-  "203.0.113.0/24", // documentation
-  "224.0.0.0/4", // multicast
-  "240.0.0.0/4", // reserved, broadcast
-])
+const v4From = (high: number, low: number) => new ipaddr.IPv4([high >> 8, high & 0xff, low >> 8, low & 0xff])
 
 /**
- * IPv6 that is not a public unicast address. NAT64 (`64:ff9b::/96`) and 6to4 (`2002::/16`) are
- * not listed: they embed an IPv4 address, which `isPublic` checks as IPv4 (a DNS64 network answers
- * with NAT64 addresses for ordinary public hosts).
+ * A public unicast address. ipaddr.js names the special ranges (loopback, private, link-local, CGNAT,
+ * multicast, reserved and documentation, ULA, Teredo, local-use NAT64, IPv4-mapped, ...); only
+ * `unicast` passes. NAT64 (`64:ff9b::/96`) and 6to4 (`2002::/16`) embed an IPv4 address, which is
+ * checked as IPv4 instead of being refused outright (a DNS64 network answers with NAT64 addresses
+ * for ordinary public hosts). An IPv4-mapped address is never a real answer for a public host.
  */
-const BLOCKED_V6 = cidrs([
-  "::/96", // unspecified, loopback, deprecated IPv4-compatible
-  "::ffff:0:0/96", // IPv4-mapped: never a real answer for a public host
-  "64:ff9b:1::/48", // local-use NAT64
-  "100::/64", // discard
-  "2001::/32", // Teredo
-  "2001:db8::/32", // documentation
-  "fc00::/7", // unique local
-  "fe80::/10", // link-local
-  "fec0::/10", // site-local (deprecated)
-  "ff00::/8", // multicast
-])
-
-/** The IPv4 address embedded in a NAT64 or 6to4 address (or a mapped one), if it is one. */
-function embeddedV4(ip: Ip): Ip | undefined {
-  if (ip.family !== 6) return undefined
-  const b = ip.bytes
-  const mapped = b.slice(0, 10).every((x) => x === 0) && b[10] === 0xff && b[11] === 0xff
-  const nat64 = b[0] === 0 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b && b.slice(4, 12).every((x) => x === 0)
-  if (mapped || nat64) return { family: 4, bytes: b.slice(12, 16) }
-  if (b[0] === 0x20 && b[1] === 0x02) return { family: 4, bytes: b.slice(2, 6) }
-  return undefined
+export function isPublicAddress(text: string): boolean {
+  const ip = parseIp(text)
+  return ip !== undefined && isPublic(ip)
 }
 
 function isPublic(ip: Ip): boolean {
-  const inner = embeddedV4(ip)
-  if (inner && !isPublic(inner)) return false
-  return !(ip.family === 4 ? BLOCKED_V4 : BLOCKED_V6).some((cidr) => inCidr(ip, cidr))
+  if (ip instanceof ipaddr.IPv4) return ip.range() === "unicast"
+  const range = ip.range()
+  const inner = range === "6to4" ? v4From(ip.parts[1]!, ip.parts[2]!) : ip.match(NAT64) ? v4From(ip.parts[6]!, ip.parts[7]!) : undefined
+  if (inner) return isPublic(inner)
+  return range === "unicast" && !ip.match(IPV4_COMPATIBLE)
 }
 
 // ---- allowlist
 
 /** One `remoteImages.allow` entry: a host name (`images.internal`, or `*.internal` for subdomains), an IP address, or a CIDR range. */
-type AllowEntry = { readonly kind: "host"; readonly name: string } | { readonly kind: "net"; readonly cidr: Cidr }
+type AllowEntry = { readonly kind: "host"; readonly name: string } | { readonly kind: "net"; readonly address: Ip; readonly bits: number }
 
 const HOSTNAME = /^(?:\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/
 
 /** Undefined when `entry` is none of the three forms. */
 export function parseAllowEntry(entry: string): AllowEntry | undefined {
   const text = entry.trim().toLowerCase()
-  const cidr = parseCidr(text)
-  if (cidr) return { kind: "net", cidr }
+  const [address = "", length, extra] = text.split("/")
+  const ip = parseIp(address)
+  if (ip && extra === undefined) {
+    const max = ip instanceof ipaddr.IPv4 ? 32 : 128
+    if (length === undefined) return { kind: "net", address: ip, bits: max }
+    if (/^\d{1,3}$/.test(length) && Number(length) <= max) return { kind: "net", address: ip, bits: Number(length) }
+  }
   return HOSTNAME.test(text) && !text.includes("/") ? { kind: "host", name: text } : undefined
 }
 
@@ -190,11 +129,12 @@ function resolveAddresses(host: string, signal: AbortSignal): Promise<string[]> 
 }
 
 /**
- * Resolve the URL's host and decide which address to connect to. Every address the name resolves
- * to has to be allowed (a name that answers with one public and one private address is refused),
- * so the pinned one cannot be a surprise. Throws the generic fetch error when anything is refused.
+ * Resolve the URL's host and return the addresses to connect to, in resolver order. Every address
+ * the name resolves to has to be allowed (a name that answers with one public and one private
+ * address is refused), so a pinned one cannot be a surprise. Throws the generic fetch error when
+ * anything is refused.
  */
-async function pickAddress(url: URL, allow: ReadonlyArray<AllowEntry>, signal: AbortSignal): Promise<string> {
+async function checkedAddresses(url: URL, allow: ReadonlyArray<AllowEntry>, signal: AbortSignal): Promise<string[]> {
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase()
   const literal = parseIp(host)
   const addresses = literal ? [host] : await resolveAddresses(host, signal)
@@ -202,14 +142,14 @@ async function pickAddress(url: URL, allow: ReadonlyArray<AllowEntry>, signal: A
   const permitted = (address: string): boolean => {
     const ip = parseIp(address)
     if (!ip) return false
-    return nameAllowed || isPublic(ip) || allow.some((entry) => entry.kind === "net" && inCidr(ip, entry.cidr))
+    return nameAllowed || isPublic(ip) || allow.some((entry) => entry.kind === "net" && inNet(ip, entry.address, entry.bits))
   }
   if (addresses.length === 0 || !addresses.every(permitted)) {
     // The log says which kind of refusal, never the host or the URL.
     log("media.remote_refused", { reason: addresses.length === 0 ? "no_address" : "address_not_allowed" })
     throw FETCH_FAILED()
   }
-  return addresses[0]!
+  return addresses
 }
 
 /** GET `url` over a connection to `address` (already checked), keeping the URL's host for `Host` and TLS. No redirects are followed by the caller. */
@@ -239,6 +179,18 @@ function get(url: URL, address: string, signal: AbortSignal): Promise<IncomingMe
   })
 }
 
+/** The first connection that succeeds, trying each checked address in order (#134); only a connection failure moves on, never a response. */
+async function getFirst(url: URL, addresses: ReadonlyArray<string>, signal: AbortSignal): Promise<IncomingMessage> {
+  for (const address of addresses) {
+    try {
+      return await get(url, address, signal)
+    } catch {
+      if (signal.aborted) break
+    }
+  }
+  throw FETCH_FAILED()
+}
+
 // ---- preparation
 
 async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteImages, budget: Budget): Promise<string> {
@@ -260,12 +212,10 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
     throw FETCH_FAILED()
   }
   const allow = typeof remoteImages === "object" ? remoteImages.allow.flatMap((entry) => parseAllowEntry(entry) ?? []) : []
-  const address = await pickAddress(target, allow, bounded).catch((error: unknown) => {
+  const addresses = await checkedAddresses(target, allow, bounded).catch((error: unknown) => {
     throw error instanceof ImageError ? error : FETCH_FAILED()
   })
-  const response = await get(target, address, bounded).catch(() => {
-    throw FETCH_FAILED()
-  })
+  const response = await getFirst(target, addresses, bounded)
   // A redirect is never followed (it could point inside); anything but a plain success is a failed fetch.
   if (response.statusCode === undefined || response.statusCode < 200 || response.statusCode > 299) {
     response.destroy()
