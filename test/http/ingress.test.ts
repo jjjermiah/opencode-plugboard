@@ -202,6 +202,20 @@ describe("GET /v1/models and /v1/models/{id}", () => {
     await expectError({ path: "/v1/models/other%2Fghost" }, wireError(404, "not_found_error", "model_not_found", "model"))
   })
 
+  test("#61 ?capability=vision and ?capability=tools list only the models the catalog flags", async () => {
+    await route({ models: ["test/*"] })
+    const ids = async (query: string) => (await server!.send({ path: `/v1/models?capability=${query}` })).json().data.map((entry: { id: string }) => entry.id)
+    expect(await ids("vision")).toEqual(["test/vision"])
+    expect(await ids("tools")).toEqual(expect.arrayContaining(["test/echo", "test/vision"]))
+  })
+
+  test.each(["json", "", "toString"])("#61 ?capability=%s is a 400 invalid_request, refused before the catalog loads", async (value) => {
+    server = await startRoute({ caller: new FakeModelCaller(), catalog: () => Promise.reject(new Error("should not load")) })
+    const reply = await server.send({ path: `/v1/models?capability=${value}` })
+    expect(reply.status).toBe(400)
+    expect(reply.json().error).toMatchObject({ type: "invalid_request_error", code: "invalid_capability", param: "capability", message: "capability must be vision or tools" })
+  })
+
   test("a catalog that fails to load is a 500 with a generic message; the cause goes to the log only", async () => {
     server = await startRoute({ caller: new FakeModelCaller(), catalog: () => Promise.reject(new Error("host exploded at /private/path")) })
     const reply = await server.send({ path: "/v1/models" })
