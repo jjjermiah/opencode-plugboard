@@ -20,6 +20,18 @@ export interface ModelRef {
   readonly variant?: string
 }
 
+/**
+ * One price entry, USD per million tokens (the host's `Model.Cost`). An entry with `aboveContext`
+ * applies once the prompt context exceeds that many tokens; the entry without it is the base price.
+ */
+export interface CatalogCost {
+  readonly input: number
+  readonly output: number
+  readonly cacheRead: number
+  readonly cacheWrite: number
+  readonly aboveContext?: number
+}
+
 /** One enabled model as the server sees it: what model listing and the request resolver work from. */
 export interface CatalogModel {
   readonly providerID: string
@@ -28,6 +40,15 @@ export interface CatalogModel {
   readonly variants: ReadonlyArray<string>
   readonly capabilities?: { readonly tools?: boolean; readonly image?: boolean }
   readonly contextLimit?: number
+  /** Token limits as the host reports them (`limit.{context,input,output}`). */
+  readonly limits?: { readonly context?: number; readonly input?: number; readonly output?: number }
+  /** Modalities the model accepts and produces (`capabilities.input` / `.output`, for example `text`, `image`). */
+  readonly modalities?: { readonly input: ReadonlyArray<string>; readonly output: ReadonlyArray<string> }
+  readonly cost?: ReadonlyArray<CatalogCost>
+  readonly status?: "alpha" | "beta" | "deprecated" | "active"
+  readonly family?: string
+  /** Release date, epoch milliseconds. */
+  readonly released?: number
 }
 
 // ---------------------------------------------------------------- request

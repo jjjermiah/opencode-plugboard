@@ -20,6 +20,10 @@ export interface PlugboardOptions {
   readonly history: HistoryLimits
   /** Drop sampling parameters the target model is known to reject (reported in `x-plugboard-dropped-params`). On by default; off forwards them as sent. */
   readonly dropUnsupportedParams: boolean
+  /** Log line format: `text` (`key=value`, the default) or `json` (one object per line). Process-wide: the live generation's value applies. */
+  readonly logFormat: "text" | "json"
+  /** Serve `GET /metrics` (Prometheus text). Off by default; same authentication as `/v1`. */
+  readonly metrics: boolean
 }
 
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
@@ -31,7 +35,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams"])
+const KNOWN = new Set(["listen", "keys", "models", "aliases", "maxTools", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics"])
 const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays"])
 /** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
 const MAX_AGE_DAYS = 36_500
@@ -123,6 +127,10 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")
     throw new Error("plugboard option `dropUnsupportedParams` must be a boolean")
 
+  if (input.logFormat !== undefined && input.logFormat !== "text" && input.logFormat !== "json")
+    throw new Error("plugboard option `logFormat` must be `text` or `json`")
+  if (input.metrics !== undefined && typeof input.metrics !== "boolean") throw new Error("plugboard option `metrics` must be a boolean")
+
   const historyInput = input.history
   if (historyInput !== undefined && !isRecord(historyInput)) throw new Error("plugboard option `history` must be an object")
   for (const key of Object.keys(historyInput ?? {}))
@@ -140,6 +148,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     remoteImages: input.remoteImages === true,
     history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) },
     dropUnsupportedParams: input.dropUnsupportedParams !== false,
+    logFormat: input.logFormat === "json" ? "json" : "text",
+    metrics: input.metrics === true,
   }
 }
 

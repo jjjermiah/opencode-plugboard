@@ -19,9 +19,12 @@
  *     requests in flight fail with a 502 instead of waiting for their deadline;
  *   - the session store (src/session/state.ts), which outlives the listener and owns the request
  *     guards, their cleanup timers included;
- *   - the history sweep state: every registered request session is indexed in the host's plugin
+ *  - the history sweep state: every registered request session is indexed in the host's plugin
  *     storage and, at most every `SWEEP_INTERVAL_MS`, a sweep prunes old ones past the `history`
- *     limits (src/session/prune.ts). Both start from request handling (the store's `register`).
+ *     limits (src/session/prune.ts). Both start from request handling (the store's `register`);
+ *  - the metrics registry (src/metrics.ts) and the runtime start time, so counters and uptime
+ *     outlive any one generation. `processMetrics` / `processStatus` read them for `/metrics`,
+ *     `/v1/status` and the discovery pages.
  *
  * Registration is explicit: `registerGeneration` returns whether the generation was accepted. A
  * rejected one (different `listen`, options that differ from the live ones, foreign runtime) never
@@ -43,7 +46,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { Cause, Effect, Stream } from "effect"
 import { isPlugError, type CatalogModel, type PlugError } from "./contract.js"
-import { errorMessage, log, logError } from "./log.js"
+import { errorMessage, log, logError, outsideRequest, setLogFormat } from "./log.js"
+import { createMetrics, type Metrics, type RuntimeSnapshot } from "./metrics.js"
 import { ensureAppDir } from "./session/history.js"
 import type { HistoryPort } from "./session/host.js"
 import { recordSession, sweepHistory, type HistoryLimits } from "./session/prune.js"
@@ -96,8 +100,8 @@ const SWEEP_DEADLINE_MS = 60_000
 const BACKEND_TIMEOUT_MS = 15_000
 const BACKEND_POLL_MS = 25
 
-/** 4: adds the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 4
+/** 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 5
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -140,6 +144,10 @@ interface Runtime {
   readonly rejected: Map<string, number>
   /** History sweep rate limit: no sweep starts before `nextAt` (epoch ms) or while one `running`. */
   readonly sweep: { nextAt: number; running: boolean }
+  /** Process-wide counters, shared by every generation (see src/metrics.ts). */
+  readonly metrics: Metrics
+  /** When this runtime was created, epoch ms. */
+  readonly startedAt: number
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
@@ -149,6 +157,8 @@ const REJECTED: Registration = { accepted: false, dispose() {}, confirmed: () =>
 
 /** Used when a foreign-version runtime owns the process: never registered into, never dispatched to. */
 const detachedSessions = createSessionStore()
+const detachedMetrics = createMetrics()
+const detachedStartedAt = Date.now()
 let foreignVersionLogged = false
 
 /** The process runtime, created on first use; undefined when a different version already owns the process. */
@@ -163,6 +173,8 @@ function runtime(): Runtime | undefined {
       confirmed: new Set(),
       rejected: new Map(),
       sweep: { nextAt: 0, running: false },
+      metrics: createMetrics(),
+      startedAt: Date.now(),
     }
     slot[KEY] = created
     return created
@@ -185,9 +197,12 @@ function trackSession(rt: Runtime, app: string, sessionID: string): void {
   if (!history) return logError("history.index_skipped", { app, sessionID, reason: "no live generation" })
   // No limits, no index: an unbounded index would grow opencode.db by a row per request forever (#85).
   if (history.limits.maxSessions === undefined && history.limits.maxAgeDays === undefined) return
-  void recordSession(history.port, app, sessionID, Date.now())
-    .catch((error) => logError("history.index_failed", { app, sessionID, error: errorMessage(error) }))
-    .then(() => maybeSweep(rt, history))
+  // Not about the request that happened to create the session: its log lines carry no request id.
+  void outsideRequest(() =>
+    recordSession(history.port, app, sessionID, Date.now())
+      .catch((error) => logError("history.index_failed", { app, sessionID, error: errorMessage(error) }))
+      .then(() => maybeSweep(rt, history)),
+  )
 }
 
 /**
@@ -212,10 +227,15 @@ async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Pro
         timer.unref?.()
       }),
     ])
-    if (!result) return logError("history.sweep_timeout", { limit: SWEEP_DEADLINE_MS })
+    if (!result) {
+      rt.metrics.sweep("timeout", 0)
+      return logError("history.sweep_timeout", { limit: SWEEP_DEADLINE_MS })
+    }
     if (result.more) rt.sweep.nextAt = Date.now() + SWEEP_BACKLOG_MS
+    rt.metrics.sweep("ok", result.removed)
     log("history.swept", { ...result, durationMs: Date.now() - now })
   } catch (error) {
+    rt.metrics.sweep("failed", 0)
     logError("history.sweep_failed", { error: errorMessage(error) })
   } finally {
     clearTimeout(timer)
@@ -225,6 +245,34 @@ async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Pro
 
 /** The session store shared by every generation in the process. */
 export const sessionStore = (): SessionStore => runtime()?.sessions ?? detachedSessions
+
+/** The metrics registry shared by every generation in the process (a detached one under a foreign-version runtime). */
+export const processMetrics = (): Metrics => runtime()?.metrics ?? detachedMetrics
+
+/** What `/v1/status` and the discovery pages report about the process, besides the model catalog. */
+export interface RuntimeStatus extends RuntimeSnapshot {
+  readonly runtimeVersion: number
+  /** The shared listener's address, and whether it is bound; absent before the first generation registered. */
+  readonly listener?: { readonly host: string; readonly port: number; readonly bound: boolean }
+  /** The serving generation's Location is a confirmed app directory (else the newest generation serves). */
+  readonly servingConfirmed: boolean
+}
+
+/** A synchronous snapshot of the runtime: no host call, no filesystem. */
+export function processStatus(): RuntimeStatus {
+  const rt = runtime()
+  if (!rt) return { runtimeVersion: VERSION, generations: 0, pumpRunning: false, guards: detachedSessions.size(), startedAt: detachedStartedAt, servingConfirmed: false }
+  const serving = preferred(rt)
+  return {
+    runtimeVersion: rt.version,
+    generations: rt.generations.length,
+    pumpRunning: rt.pump !== undefined,
+    guards: rt.sessions.size(),
+    startedAt: rt.startedAt,
+    servingConfirmed: serving !== undefined && rt.confirmed.has(serving.directory),
+    ...(rt.listener ? { listener: { host: rt.listener.listen.host, port: rt.listener.listen.port, bound: rt.listener.bound } } : {}),
+  }
+}
 
 /** The generation that serves requests and supplies the catalog: the newest confirmed app-directory one, else the newest. */
 function preferred(rt: Runtime): Generation | undefined {
@@ -367,6 +415,9 @@ export function registerGeneration(input: GenerationInput): Registration {
     activated: rt.confirmed.has(directory),
   }
   rt.generations.push(generation)
+  // Accepted generations share the live options, so this is the live `logFormat` (log lines are process-wide).
+  const options = input.options as { readonly logFormat?: unknown } | null
+  setLogFormat(options?.logFormat === "json" ? "json" : "text")
   return {
     accepted: true,
     confirmed: () => rt.confirmed.has(directory),
@@ -399,7 +450,8 @@ export function registerGeneration(input: GenerationInput): Registration {
 export function ensurePump(subscribe: () => Stream.Stream<unknown, unknown, never>): void {
   const rt = runtime()
   if (!rt || rt.pump) return
-  const fiber = Effect.runFork(subscribe().pipe(Stream.runForEach((event) => Effect.sync(() => rt.sessions.dispatch(event)))))
+  // The pump serves every request; its log lines must not carry the id of the request that started it.
+  const fiber = outsideRequest(() => Effect.runFork(subscribe().pipe(Stream.runForEach((event) => Effect.sync(() => rt.sessions.dispatch(event))))))
   const pump: Pump = {
     stopped: false,
     stop: () => {

@@ -12,7 +12,7 @@
 import type { Plugin } from "@opencode/plugin/effect"
 import type { SessionContext } from "@opencode/plugin/effect/session"
 import { Effect } from "effect"
-import type { CatalogModel } from "../contract.js"
+import type { CatalogCost, CatalogModel } from "../contract.js"
 
 export type HostContext = Plugin.Context
 
@@ -132,9 +132,39 @@ export function createHistoryPort(ctx: HostContext): HistoryPort {
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
 
+const finite = (value: unknown): number | undefined => (typeof value === "number" && Number.isFinite(value) ? value : undefined)
+const strings = (value: unknown): string[] | undefined =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined
+const STATUSES = new Set(["alpha", "beta", "deprecated", "active"])
+
+/** Host `Model.Cost[]` (USD per million tokens, optional context tier) -> neutral price entries; malformed entries are skipped. */
+function toCosts(raw: unknown): CatalogCost[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const costs: CatalogCost[] = []
+  for (const item of raw) {
+    const cost = record(item)
+    const input = finite(cost?.input)
+    const output = finite(cost?.output)
+    if (!cost || input === undefined || output === undefined) continue
+    const cache = record(cost.cache)
+    const tier = record(cost.tier)
+    const size = tier?.type === "context" ? finite(tier.size) : undefined
+    costs.push({
+      input,
+      output,
+      cacheRead: finite(cache?.read) ?? 0,
+      cacheWrite: finite(cache?.write) ?? 0,
+      ...(size === undefined ? {} : { aboveContext: size }),
+    })
+  }
+  return costs
+}
+
 /**
  * Reduces `ctx.model.list` data (V2 `Model.Info`, tolerant of missing fields) to the catalog.
  * Models with `enabled: false` are dropped; `modelID` wins over `id`; variants may be `{ id }` or strings.
+ * Cost, limits, modalities, status, family and release date are carried as the host reports them
+ * (`Model.Info`, packages/schema/src/model.ts); anything absent or malformed is left out.
  */
 function toCatalog(raw: ReadonlyArray<unknown>): CatalogModel[] {
   const catalog: CatalogModel[] = []
@@ -149,7 +179,13 @@ function toCatalog(raw: ReadonlyArray<unknown>): CatalogModel[] {
       .filter((v): v is string => typeof v === "string" && v.length > 0)
     const caps = record(model.capabilities)
     const input = caps && Array.isArray(caps.input) ? caps.input : undefined
-    const context = record(model.limit)?.context
+    const limit = record(model.limit)
+    const context = limit?.context
+    const limits = { context: finite(limit?.context), input: finite(limit?.input), output: finite(limit?.output) }
+    const modalityIn = strings(caps?.input)
+    const modalityOut = strings(caps?.output)
+    const cost = toCosts(model.cost)
+    const released = finite(record(model.time)?.released)
     catalog.push({
       providerID,
       id,
@@ -164,6 +200,14 @@ function toCatalog(raw: ReadonlyArray<unknown>): CatalogModel[] {
           }
         : {}),
       ...(typeof context === "number" ? { contextLimit: context } : {}),
+      ...(limits.context !== undefined || limits.input !== undefined || limits.output !== undefined
+        ? { limits: Object.fromEntries(Object.entries(limits).filter(([, value]) => value !== undefined)) }
+        : {}),
+      ...(modalityIn || modalityOut ? { modalities: { input: modalityIn ?? [], output: modalityOut ?? [] } } : {}),
+      ...(cost && cost.length > 0 ? { cost } : {}),
+      ...(typeof model.status === "string" && STATUSES.has(model.status) ? { status: model.status as NonNullable<CatalogModel["status"]> } : {}),
+      ...(typeof model.family === "string" && model.family ? { family: model.family } : {}),
+      ...(released !== undefined ? { released } : {}),
     })
   }
   return catalog

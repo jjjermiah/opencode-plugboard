@@ -63,6 +63,34 @@ export const encodeError = (error: PlugError): object => ({
   error: { message: error.message, type: ERROR_TYPES[error.kind], param: error.param ?? null, code: error.code ?? null },
 })
 
+/** Epoch ms -> ISO 8601, or undefined for a value Date cannot represent. */
+const isoDate = (ms: number | undefined): string | undefined => {
+  if (ms === undefined) return undefined
+  const date = new Date(ms)
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
+}
+
+/**
+ * The `plugboard` object of a model entry: what the catalog knows beyond the OpenAI fields. Absent
+ * facts are omitted. `cost` is USD per million tokens (an entry with `aboveContext` applies when
+ * the prompt exceeds that many tokens; the entry without it is the base price); `released` is ISO 8601.
+ */
+const encodePlugboard = (model: ListedModel["model"]) => ({
+  capabilities: model.capabilities ?? {},
+  contextLimit: model.contextLimit,
+  limit: model.limits,
+  modalities: model.modalities,
+  cost: model.cost?.map(({ input, output, cacheRead, cacheWrite, aboveContext }) => ({
+    input,
+    output,
+    cache: { read: cacheRead, write: cacheWrite },
+    ...(aboveContext === undefined ? {} : { aboveContext }),
+  })),
+  status: model.status,
+  family: model.family,
+  released: isoDate(model.released),
+})
+
 /** `GET /v1/models` body. */
 export const encodeModelList = (models: ReadonlyArray<ListedModel>): object => ({
   object: "list",
@@ -71,7 +99,7 @@ export const encodeModelList = (models: ReadonlyArray<ListedModel>): object => (
     object: "model",
     created: 0,
     owned_by: ref.providerID,
-    plugboard: { capabilities: model.capabilities ?? {}, contextLimit: model.contextLimit },
+    plugboard: encodePlugboard(model),
   })),
 })
 
