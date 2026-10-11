@@ -57,6 +57,8 @@ export interface SessionStore {
   retire(sessionID: string, retirement: Retirement): void
   /** Fail every registered request with `error`; returns how many were registered. */
   failAll(error: PlugError): number
+  /** How many request guards are outstanding (metrics and status only). */
+  size(): number
 }
 
 const EXECUTION_END = new Set(["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"])
@@ -140,5 +142,6 @@ export function createSessionStore(options: SessionStoreOptions = {}): SessionSt
       }
       return entries.size
     },
+    size: () => entries.size,
   }
 }
