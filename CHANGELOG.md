@@ -14,7 +14,13 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Metrics and logs on proven libraries** ([#125](https://github.com/jjjermiah/opencode-plugboard/issues/125), [#126](https://github.com/jjjermiah/opencode-plugboard/issues/126)). The hand-rolled Prometheus exposition and logger are gone. Metrics now run on `@prometheus-io/client` (the maintained successor of `prom-client`, which npm marks deprecated) and logs on `pino`. Metric names, labels and buckets are unchanged; `plugboard_history_sessions_removed_total` now reads 0 from the start and histogram bucket lines put `le` first. JSON logs keep `level` as a name; text lines look the same; info still goes to stdout and errors to stderr. Internal runtime version 8: restart OpenCode after upgrading.
+
+### Security
+
+- **Credentials are redacted from logs.** Fields named `authorization`, `key`, `apiKey`, `x-api-key` and `x-goog-api-key`, also under `headers`, are written as `[redacted]`, so a future log line can't leak a key by accident.
 
 ## [0.13.0] - 2026-10-11: House Rules
 
