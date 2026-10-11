@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in plugboard does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problem? Do not post it here. See [SECURITY.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/SECURITY.md).
+  - type: input
+    id: opencode-version
+    attributes:
+      label: OpenCode version
+      description: Output of `opencode --version`.
+      placeholder: "2.0.26"
+    validations:
+      required: true
+  - type: input
+    id: plugboard-version
+    attributes:
+      label: Plugboard version
+      description: The version from npm or the commit of your checkout.
+      placeholder: "0.2.1"
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Client
+      description: The tool or SDK calling plugboard, with its version.
+      placeholder: "openai-python 2.3.0, Open WebUI, curl"
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Provider and model
+      description: The model id you sent, and the provider behind it.
+      placeholder: "anthropic/claude-haiku-4-5"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead. Include the exact error text and the smallest request that reproduces it.
+    validations:
+      required: true
+  - type: dropdown
+    id: pong
+    attributes:
+      label: Pong gate
+      description: After the problem, does a plain prompt in the same OpenCode server still answer? See docs/development.md.
+      options:
+        - Passes, the server still answers
+        - Fails, the server hangs or stops answering
+        - Not tried
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant plugboard and OpenCode log lines. Remove API keys, provider tokens and prompt content you do not want public before pasting.
+      render: text

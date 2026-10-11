@@ -1,0 +1,21 @@
+name: Feature request
+description: Ask for something plugboard does not do yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The tool or workflow that needs this, and what happens today. Name the client and the endpoint or option involved.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How you picture it working. Leave blank if you only have the problem.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Workarounds, other tools, or settings you already tried.

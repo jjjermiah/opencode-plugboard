@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      opencode-host:
+        patterns: ["@opencode/*", "effect"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /compat/js
+    schedule:
+      interval: weekly
+    groups:
+      opencode-host:
+        patterns: ["@opencode/*", "effect"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /compat/py
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
