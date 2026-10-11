@@ -30,14 +30,15 @@ describe("#73 buildDiscovery: what each caller may see", () => {
     const doc = buildDiscovery({ options: keyed, catalog: CATALOG })
     expect(Object.keys(doc).sort()).toEqual(["authentication", "baseUrl", "endpoints", "example", "hint", "listen", "name"])
     expect(doc.authentication).toEqual({ required: true, scheme: "Bearer" })
-    expect(json(doc)).not.toMatch(/alpha|beta|test\/\*|fast/)
+    // `(?<!v1)beta`: the Gemini endpoints are `/v1beta/...`, which is a path, not an app name (#136).
+    expect(json(doc)).not.toMatch(/alpha|(?<!v1)beta|test\/\*|fast/)
   })
 
   test("keyed with a valid key: its own app and the configuration, never another app", () => {
     const doc = buildDiscovery({ options: keyed, app: "alpha", catalog: CATALOG })
     expect(doc.apps).toEqual(["alpha"])
     expect(doc.models?.allowlist).toEqual(["test/*"])
-    expect(json(doc)).not.toContain("beta")
+    expect(json(doc)).not.toMatch(/(?<!v1)beta/)
   })
 
   test("no key value ever appears, for any caller", () => {

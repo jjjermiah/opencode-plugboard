@@ -11,7 +11,7 @@
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { boundEvents, sendJson, sseWriter, type RequestScope } from "../http.js"
+import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
@@ -32,7 +32,7 @@ export interface ResponsesCall {
 }
 
 export async function serveResponses(host: RouteHost, { app, body, response, scope, info }: ResponsesCall): Promise<void> {
-  const fail = (error: PlugError) => sendJson(response, error.status, encodeError(error))
+  const fail = (error: PlugError) => sendError(response, error, encodeError(error))
 
   const parsed = parseResponsesRequest(body, host.options)
   if (isPlugError(parsed)) return fail(parsed)

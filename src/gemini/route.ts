@@ -17,7 +17,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { boundEvents, checkJsonContentType, readJsonBody, sendJson, sseWriter, type RequestScope } from "../http.js"
+import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { listAvailableModels, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
@@ -64,10 +64,10 @@ export function matchGeminiRoute(method: string | undefined, path: string): Gemi
     const verb = colon > 0 ? rest.slice(colon + 1) : ""
     const model = decode(rest.slice(0, colon))
     if (!/^[A-Za-z]+$/.test(verb) || model === undefined) return undefined
-    const label = `POST ${prefix.slice(0, -1)}/{model}:${verb}`
     if (verb === "generateContent" || verb === "streamGenerateContent")
-      return { op: "generate", route: label, model: model.startsWith("models/") ? model.slice(7) : model, stream: verb === "streamGenerateContent" }
-    return { op: "unsupported", route: label, verb }
+      return { op: "generate", route: `POST ${prefix.slice(0, -1)}/{model}:${verb}`, model: model.startsWith("models/") ? model.slice(7) : model, stream: verb === "streamGenerateContent" }
+    // The client's verb never becomes a metric or log label: every other verb is `unknown` (#135).
+    return { op: "unsupported", route: "unknown", verb }
   }
   return undefined
 }
@@ -95,7 +95,7 @@ export interface GeminiCall {
 }
 
 export async function serveGemini(host: RouteHost, { match, request, url, app, response, scope, info }: GeminiCall): Promise<void> {
-  const fail = (error: PlugError) => sendJson(response, error.status, encodeGeminiError(error))
+  const fail = (error: PlugError) => sendError(response, error, encodeGeminiError(error))
 
   if (match.op === "unsupported")
     return fail({ status: 404, kind: "not_found", code: "method_not_supported", message: `Method ${match.verb} is not supported; plugboard serves generateContent and streamGenerateContent` })

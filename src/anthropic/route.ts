@@ -21,6 +21,7 @@ import {
   checkJsonContentType,
   checkOrigin,
   readJsonBody,
+  sendError,
   sendJson,
   sseWriter,
   type RequestScope,
@@ -65,7 +66,7 @@ const authenticateRequest = (host: RouteHost, request: IncomingMessage) => {
 
 export async function serveMessages(host: RouteHost, call: MessagesCall): Promise<void> {
   const { path, request, response, scope, info } = call
-  const fail = (error: PlugError, close = false) => sendJson(response, error.status, encodeError(error), { close })
+  const fail = (error: PlugError, close = false) => sendError(response, error, encodeError(error), { close })
   if (request.method === "POST") info.route = `POST ${path}`
   response.setHeader("request-id", `req_${crypto.randomUUID().replaceAll("-", "")}`)
 
@@ -84,13 +85,14 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
   }
 
   async function serve(): Promise<void> {
-    if (request.method !== "POST")
-      return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}; use POST` })
     const rejected = checkOrigin(request, host.options)
     if (rejected) return fail(rejected)
+    // Authenticate before the method check, so an unauthenticated caller cannot map this path (#137).
     const auth = authenticateRequest(host, request)
     if (isPlugError(auth)) return fail(auth)
     info.app = auth.app
+    if (request.method !== "POST")
+      return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}; use POST` })
     if (path === COUNT_TOKENS)
       return fail({ status: 404, kind: "not_found", code: "not_found", message: "count_tokens is not supported by plugboard" })
     const unsupported = checkJsonContentType(request)

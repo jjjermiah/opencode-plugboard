@@ -32,6 +32,7 @@ import {
   checkOrigin,
   finishRequest,
   readJsonBody,
+  sendError,
   sendJson,
   sseWriter,
   type RequestScope,
@@ -41,7 +42,7 @@ import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, log, logError, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
-import { listAvailableModels, resolveModel } from "../models.js"
+import { filterByCapability, listAvailableModels, parseCapability, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import { isMessagesPath, serveMessages } from "../anthropic/route.js"
@@ -119,7 +120,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   /** Responses to Gemini routes: errors there use Google's body. */
   const googleErrors = new WeakSet<ServerResponse>()
   const fail = (response: ServerResponse, error: PlugError, close = false) =>
-    sendJson(response, error.status, googleErrors.has(response) ? encodeGeminiError(error) : encodeError(error), { close })
+    sendError(response, error, googleErrors.has(response) ? encodeGeminiError(error) : encodeError(error), { close })
 
   /** The catalog for a page that can do without it: a failure is logged and reported as absent; an abort still ends the request. */
   async function optionalCatalog(scope: RequestScope): Promise<ReadonlyArray<CatalogModel> | undefined> {
@@ -198,8 +199,13 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     if (route === "GET /v1/models" || modelId !== undefined) {
+      // `?capability=vision|tools` filters the list (#61). Any other value is refused before the catalog loads.
+      const requested = modelId === undefined ? url.searchParams.get("capability") : null
+      const capability = requested === null ? undefined : parseCapability(requested)
+      if (requested !== null && capability === undefined)
+        return fail(response, { status: 400, kind: "invalid_request", code: "invalid_capability", param: "capability", message: "capability must be vision or tools" })
       const listed = listAvailableModels(host.options, await scope.race(host.loadCatalog()), auth.app)
-      if (modelId === undefined) return sendJson(response, 200, encodeModelList(listed))
+      if (modelId === undefined) return sendJson(response, 200, encodeModelList(capability ? filterByCapability(listed, capability) : listed))
       const item = listed.find((m) => m.id === modelId)
       if (!item) {
         return fail(response, {
@@ -277,7 +283,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     const result = await collectCompletion(events, exchange)
-    sendJson(response, result.status, result.body)
+    sendJson(response, result.status, result.body, { retryAfterSeconds: result.retryAfterSeconds })
   }
 
   /** Never rejects: every failure ends in a response (or a closed socket) and one log line. */

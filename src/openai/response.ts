@@ -195,7 +195,7 @@ const now = () => Math.floor(Date.now() / 1000)
 export async function collectCompletion(
   events: AsyncIterable<PlugEvent>,
   exchange: OpenAiExchange,
-): Promise<{ status: number; body: object }> {
+): Promise<{ status: number; body: object; retryAfterSeconds?: number }> {
   let text = ""
   const calls: ToolCall[] = []
   let finish: Exclude<PlugFinish, "error"> | undefined
@@ -217,7 +217,7 @@ export async function collectCompletion(
   if (!failure && !finish) failure = noFinish()
   if (failure || !finish) {
     const error = failure ?? noFinish()
-    return { status: error.status, body: encodeError(error) }
+    return { status: error.status, body: encodeError(error), retryAfterSeconds: error.retryAfterSeconds }
   }
 
   const answer = calls.find((call) => structured.isAnswer(exchange, call))

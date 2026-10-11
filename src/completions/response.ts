@@ -44,7 +44,7 @@ const encodeUsage = (usage: PlugUsage) => {
 const prefixOf = (exchange: CompletionsExchange, index: number) => exchange.echo?.[Math.floor(index / exchange.perPrompt)] ?? ""
 
 /** One choice as a complete body: `choices[0]` carries the text, `usage` the totals. */
-async function collectText(events: AsyncIterable<PlugEvent>, exchange: CompletionsExchange, index: number): Promise<{ status: number; body: object }> {
+async function collectText(events: AsyncIterable<PlugEvent>, exchange: CompletionsExchange, index: number): Promise<{ status: number; body: object; retryAfterSeconds?: number }> {
   let text = ""
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
@@ -63,7 +63,7 @@ async function collectText(events: AsyncIterable<PlugEvent>, exchange: Completio
   if (!failure && !finish) failure = noFinish()
   if (failure || !finish) {
     const error = failure ?? noFinish()
-    return { status: error.status, body: encodeError(error) }
+    return { status: error.status, body: encodeError(error), retryAfterSeconds: error.retryAfterSeconds }
   }
   return {
     status: 200,
