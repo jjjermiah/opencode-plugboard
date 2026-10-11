@@ -60,4 +60,4 @@ Each API front-end has the same three files: `request.ts` decodes the wire body 
 
 **New session behaviour.** It goes in `src/session/`. Anything that runs in the app directory goes through `context.ts` and must be a no-op until `confirmed()` (I4). Anything that must outlive a generation goes through `src/runtime.ts` or `state.ts`. Teardown stays synchronous and calls nothing on `ctx` (I2). Host calls and host-shaped casts stay in `host.ts`.
 
-**A new test.** This tree has no committed test suite. Prove behavior with a throwaway `bun -e` script (a fake `ModelCaller` or `SessionPort`, real loopback HTTP) and a live run on an isolated server, as in [CONTRIBUTING.md](CONTRIBUTING.md). When a change protects an invariant, name it by number in the commit and the pull request.
+**A new test.** Tests live in `test/`, layered like the code (unit, http, session, runtime); see [test/README.md](test/README.md) for the layers and shared fakes. Name the behaviour and the issue or invariant it protects, e.g. `I18: a failure before the first output keeps its HTTP status`. Host behaviour still needs a live run on an isolated server, as in [CONTRIBUTING.md](CONTRIBUTING.md).
