@@ -36,6 +36,8 @@ import {
   sseWriter,
   type RequestScope,
 } from "../http.js"
+import { encodeGeminiError } from "../gemini/response.js"
+import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, log, logError, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { listAvailableModels, resolveModel } from "../models.js"
@@ -111,9 +113,10 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   const host: RouteHost = metrics ? { ...routeHost, caller: metered(routeHost.caller, metrics) } : routeHost
   /** Routes with a handler of their own. `GET /metrics` exists only when enabled; otherwise it is an unknown path. */
   const known = (route: string) => KNOWN_ROUTES.includes(route) || DISCOVERY_ROUTES.includes(route) || (metrics !== undefined && route === "GET /metrics")
-
+  /** Responses to Gemini routes: errors there use Google's body. */
+  const googleErrors = new WeakSet<ServerResponse>()
   const fail = (response: ServerResponse, error: PlugError, close = false) =>
-    sendJson(response, error.status, encodeError(error), { close })
+    sendJson(response, error.status, googleErrors.has(response) ? encodeGeminiError(error) : encodeError(error), { close })
 
   /** The catalog for a page that can do without it: a failure is logged and reported as absent; an abort still ends the request. */
   async function optionalCatalog(scope: RequestScope): Promise<ReadonlyArray<CatalogModel> | undefined> {
@@ -136,9 +139,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
     const path = url.pathname
     const modelId = request.method === "GET" && path.startsWith(MODEL_PREFIX) && path.length > MODEL_PREFIX.length ? decodeSegment(path.slice(MODEL_PREFIX.length)) : undefined
-    const route = `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
+    const gemini = matchGeminiRoute(request.method, path)
+    if (gemini) googleErrors.add(response)
+    const route = gemini?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
-    info.route = modelId !== undefined || known(route) || route === "GET /healthz" ? route : "unknown"
+    info.route = gemini || modelId !== undefined || known(route) || route === "GET /healthz" ? route : "unknown"
     // Anthropic Messages: its own error shape and x-api-key auth, so it takes the request from here.
     if (isMessagesPath(path)) return serveMessages(host, { path, request, response, scope, info })
 
@@ -164,11 +169,12 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but /healthz and the first-run pages.
-    const auth = authenticate(host.options, request.headers.authorization)
+    // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
+    const auth = authenticate(host.options, gemini ? geminiAuthorization(request, url) : request.headers.authorization)
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
 
-    if (modelId === undefined && !known(route)) {
+    if (!gemini && modelId === undefined && !known(route)) {
       return fail(response, {
         status: 404,
         kind: "not_found",
@@ -176,6 +182,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         message: `No route for ${request.method} ${path}`,
       })
     }
+
+    if (gemini) return serveGemini(host, { match: gemini, request, url, app: auth.app, response, scope, info })
 
     if (route === "GET /v1/status") {
       const catalog = await optionalCatalog(scope)
