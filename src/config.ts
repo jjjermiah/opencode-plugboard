@@ -38,10 +38,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-/** `localhost`, `::1` or `127.x.x.x` (brackets and case ignored). */
+/**
+ * The hosts plugboard treats as loopback: `localhost`, `127.0.0.1` and `::1` (brackets and case
+ * ignored). This is exactly the set the Host header check in `src/http.ts` accepts, so a listen
+ * address that passes the keyless-loopback rule can also be reached by a request that passes the
+ * Host check; other loopback addresses (`127.0.0.2`) are not loopback here and need `keys`.
+ */
 export function isLoopbackHost(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "")
-  return h === "localhost" || h === "::1" || /^127(\.\d{1,3}){3}$/.test(h)
+  return h === "localhost" || h === "127.0.0.1" || h === "::1"
 }
 
 function positiveInt(value: unknown, name: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
@@ -66,16 +71,23 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535))
     throw new Error("plugboard option `listen.port` must be an integer between 1 and 65535")
 
-  const keys: Record<string, string> = {}
+  const keyEntries: Array<[string, string]> = []
   if (input.keys !== undefined && !isRecord(input.keys)) throw new Error("plugboard option `keys` must be an object of app name -> key")
+  const appOfKey = new Map<string, string>()
   for (const [app, key] of Object.entries(input.keys ?? {})) {
     if (app === DEFAULT_APP) throw new Error(`plugboard key name \`${DEFAULT_APP}\` is reserved for keyless loopback use`)
     if (!APP_NAME_PATTERN.test(app)) throw new Error(`plugboard key name \`${app}\` must match ${APP_NAME_PATTERN}`)
     if (typeof key !== "string" || key.length === 0)
       throw new Error(`plugboard key \`${app}\` must be a non-empty string (is its {env:VAR} set?)`)
-    keys[app] = key
+    // Two apps sharing a key value would be indistinguishable: the last one would win silently.
+    const other = appOfKey.get(key)
+    if (other !== undefined) throw new Error(`plugboard keys \`${other}\` and \`${app}\` have the same value; every app needs its own key`)
+    appOfKey.set(key, app)
+    keyEntries.push([app, key])
   }
-  if (Object.keys(keys).length === 0 && !isLoopbackHost(host))
+  // Own-property construction: a key such as `__proto__` must stay a key, never reach the prototype.
+  const keys: Record<string, string> = Object.fromEntries(keyEntries)
+  if (keyEntries.length === 0 && !isLoopbackHost(host))
     throw new Error(`plugboard refuses to listen on non-loopback host \`${host}\` without \`keys\``)
 
   const models = input.models ?? []
@@ -84,16 +96,19 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     if (typeof pattern !== "string" || !MODEL_PATTERN.test(pattern))
       throw new Error(`plugboard model \`${String(pattern)}\` must be \`provider/model\`, \`provider/model#variant\` or \`provider/*\``)
 
-  const aliases: Record<string, string> = {}
+  const aliasEntries: Array<[string, string]> = []
   if (input.aliases !== undefined && !isRecord(input.aliases)) throw new Error("plugboard option `aliases` must be an object of alias -> model")
   for (const [alias, target] of Object.entries(input.aliases ?? {})) {
     if (alias.length === 0 || /[\s]/.test(alias)) throw new Error(`plugboard alias \`${alias}\` must be a non-empty string without whitespace`)
+    // Plain-object lookups downstream would hit the prototype accessor instead of the alias.
+    if (alias === "__proto__") throw new Error("plugboard alias `__proto__` is not allowed")
     if (typeof target !== "string" || !ALIAS_TARGET.test(target))
       throw new Error(`plugboard alias \`${alias}\` must target \`provider/model\` or \`provider/model#variant\``)
     if (CANONICAL_SHAPE.test(alias))
       throw new Error(`plugboard alias \`${alias}\` is written like a \`provider/model\` id; aliases must not contain \`/\` (use a short name such as \`fast\`)`)
-    aliases[alias] = target
+    aliasEntries.push([alias, target])
   }
+  const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
 
   if (input.remoteImages !== undefined && typeof input.remoteImages !== "boolean")
     throw new Error("plugboard option `remoteImages` must be a boolean")

@@ -5,8 +5,12 @@
  * itself may be re-evaluated per Location or on reload. The runtime therefore lives on
  * `globalThis` under a versioned key and holds:
  *   - the generation list: the ACCEPTED generations (request handler, catalog loader), newest
- *     last. A generation whose Location is inside the plugboard data root is the preferred owner:
- *     it serves requests and supplies the catalog; without one the newest generation does;
+ *     last. A generation whose Location is a confirmed plugboard app directory is the preferred
+ *     owner: it serves requests and supplies the catalog; without one the newest generation does;
+ *   - the confirmed directories: app directories (real paths strictly inside the canonical data
+ *     root) that `ensureBackend` has verified asynchronously. Nothing in setup touches the
+ *     filesystem, so a Location is unconfirmed, and plugboard's hook and transforms stay no-ops
+ *     there, until a request has confirmed its directory (fail closed);
  *   - the HTTP listener lifetime: the first generation binds the port, later ones join; when the
  *     last generation is gone the listener waits a grace period (a config reload recreates every
  *     generation at once) before closing; requests arriving with no live generation get 503;
@@ -18,21 +22,26 @@
  *
  * Registration is explicit: `registerGeneration` returns whether the generation was accepted. A
  * rejected one (different `listen`, options that differ from the live ones, foreign runtime) never
- * serves and must not install hooks or seeds.
+ * serves and must not install hooks or seeds. `ensureBackend` is the per-directory readiness gate
+ * the session caller awaits before creating a session: it confirms the app directory, boots its
+ * Location from request handling when no generation is there yet, and fails with
+ * `backend_unavailable` (503) when the generation there is rejected or never becomes ready.
  *
  * Version policy: a runtime written by a different version is never touched or replaced; this
  * module then behaves as inert (no listener, no pump, an empty detached session store) and logs
  * once that the server needs a restart.
  *
  * Freeze safety: everything a generation calls from plugin setup or a finalizer here is
- * synchronous and makes no call on the plugin context. `Registration.dispose` only mutates state
- * and arms an unref'd timer; the pump is started lazily by request handling, never awaited.
+ * synchronous and makes no call on the plugin context or the filesystem. `Registration.dispose`
+ * only mutates state and arms an unref'd timer; the pump is started lazily by request handling,
+ * never awaited. `ensureBackend` and `Registration.refresh` run from request handling only.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { Cause, Effect, Stream } from "effect"
-import type { CatalogModel } from "./contract.js"
+import { isPlugError, type CatalogModel, type PlugError } from "./contract.js"
 import { errorMessage, log, logError } from "./log.js"
+import { ensureAppDir } from "./session/history.js"
 import { createSessionStore, type SessionStore } from "./session/state.js"
 
 export type Handler = (request: IncomingMessage, response: ServerResponse) => void
@@ -42,22 +51,40 @@ export interface Registration {
   readonly accepted: boolean
   /** Synchronous; safe in a finalizer. */
   dispose(): void
+  /**
+   * Whether `ensureBackend` has confirmed this generation's Location as a plugboard app directory.
+   * Synchronous, no filesystem; false until then. Everything plugboard installs for app
+   * directories (context hook, agent deny, seed tools) must be a no-op while this is false.
+   */
+  confirmed(): boolean
+  /** Setup has finished installing the app-directory registrations (the context hook is in place). */
+  ready(): void
 }
 
 export interface GenerationInput {
   readonly listen: { readonly host: string; readonly port: number }
   /** The parsed options. Generations must agree on them; compared by canonical JSON (key order is irrelevant). */
   readonly options: unknown
-  /** True when this generation's Location is inside the plugboard data root (the preferred owner). */
-  readonly owner: boolean
+  /** This generation's Location directory as the host reports it. Compared as a string with the real path `ensureAppDir` returns; never resolved against the filesystem here. */
+  readonly directory: string
   readonly handler: Handler
   /** The enabled models as this generation's Location sees them. */
   readonly loadCatalog: () => Promise<ReadonlyArray<CatalogModel>>
+  /**
+   * Rebuild what depends on `Registration.confirmed()` (the agent and tool transforms) after it
+   * flipped to true for a generation that was set up before. Called from request handling only,
+   * never from setup or a finalizer.
+   */
+  readonly refresh: () => Promise<void>
 }
 
 const GRACE_MS = 10_000
+/** How long `ensureBackend` waits for a Location to boot and its generation to become ready. */
+const BACKEND_TIMEOUT_MS = 15_000
+const BACKEND_POLL_MS = 25
 
-const VERSION = 2
+/** 3: the runtime tracks confirmed directories and rejected generations (a version-2 runtime lacks both). */
+const VERSION = 3
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -71,9 +98,15 @@ interface Listener {
 }
 
 interface Generation {
-  readonly owner: boolean
+  readonly directory: string
   readonly handler: Handler
   readonly loadCatalog: GenerationInput["loadCatalog"]
+  readonly refresh: GenerationInput["refresh"]
+  /** The context hook and transforms are installed (setup got to its end). */
+  hooked: boolean
+  /** The transforms have been rebuilt since `confirmed` became true for the directory. */
+  activated: boolean
+  activating?: Promise<void>
 }
 
 interface Pump {
@@ -87,12 +120,16 @@ interface Runtime {
   readonly sessions: SessionStore
   /** Accepted generations only, newest last. */
   readonly generations: Generation[]
+  /** App directories (real paths, strictly inside the canonical data root) confirmed by `ensureBackend`. */
+  readonly confirmed: Set<string>
+  /** Live rejected generations per directory: tells "rejected" from "no generation yet". */
+  readonly rejected: Map<string, number>
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
 }
 
-const REJECTED: Registration = { accepted: false, dispose() {} }
+const REJECTED: Registration = { accepted: false, dispose() {}, confirmed: () => false, ready() {} }
 
 /** Used when a foreign-version runtime owns the process: never registered into, never dispatched to. */
 const detachedSessions = createSessionStore()
@@ -103,7 +140,7 @@ function runtime(): Runtime | undefined {
   const slot = globalThis as Record<symbol, unknown>
   const existing = slot[KEY] as { readonly version: number } | undefined
   if (!existing) {
-    const created: Runtime = { version: VERSION, sessions: createSessionStore(), generations: [] }
+    const created: Runtime = { version: VERSION, sessions: createSessionStore(), generations: [], confirmed: new Set(), rejected: new Map() }
     slot[KEY] = created
     return created
   }
@@ -118,9 +155,9 @@ function runtime(): Runtime | undefined {
 /** The session store shared by every generation in the process. */
 export const sessionStore = (): SessionStore => runtime()?.sessions ?? detachedSessions
 
-/** The generation that serves requests and supplies the catalog: the newest data-root one, else the newest. */
+/** The generation that serves requests and supplies the catalog: the newest confirmed app-directory one, else the newest. */
 function preferred(rt: Runtime): Generation | undefined {
-  for (let index = rt.generations.length - 1; index >= 0; index--) if (rt.generations[index]!.owner) return rt.generations[index]
+  for (let index = rt.generations.length - 1; index >= 0; index--) if (rt.confirmed.has(rt.generations[index]!.directory)) return rt.generations[index]
   return rt.generations.at(-1)
 }
 
@@ -205,7 +242,23 @@ function closeListener(rt: Runtime, listener: Listener): void {
 export function registerGeneration(input: GenerationInput): Registration {
   const rt = runtime()
   if (!rt) return REJECTED
-  const { listen } = input
+  const { listen, directory } = input
+  const reject = (): Registration => {
+    rt.rejected.set(directory, (rt.rejected.get(directory) ?? 0) + 1)
+    let disposed = false
+    return {
+      accepted: false,
+      confirmed: () => false,
+      ready() {},
+      dispose() {
+        if (disposed) return
+        disposed = true
+        const left = (rt.rejected.get(directory) ?? 1) - 1
+        if (left > 0) rt.rejected.set(directory, left)
+        else rt.rejected.delete(directory)
+      },
+    }
+  }
   const fingerprint = canonicalJson(input.options)
   const listener = (rt.listener ??= startListener(rt, listen, fingerprint))
   if (listener.listen.host !== listen.host || listener.listen.port !== listen.port) {
@@ -217,7 +270,7 @@ export function registerGeneration(input: GenerationInput): Registration {
         action: "this Location is rejected; restart the server after changing `listen`",
       })
     }
-    return REJECTED
+    return reject()
   }
   if (listener.fingerprint !== fingerprint) {
     if (rt.generations.length > 0) {
@@ -225,17 +278,29 @@ export function registerGeneration(input: GenerationInput): Registration {
         listener.mismatchLogged = true
         logError("listener.options_mismatch", { action: "this Location is rejected; global config is authoritative" })
       }
-      return REJECTED
+      return reject()
     }
     listener.fingerprint = fingerprint
     listener.mismatchLogged = false
   }
   if (listener.graceTimer) clearTimeout(listener.graceTimer)
   listener.graceTimer = undefined
-  const generation: Generation = { owner: input.owner, handler: input.handler, loadCatalog: input.loadCatalog }
+  const generation: Generation = {
+    directory,
+    handler: input.handler,
+    loadCatalog: input.loadCatalog,
+    refresh: input.refresh,
+    hooked: false,
+    // A directory confirmed before this Location booted needs no rebuild: its transforms already read `confirmed()` as true.
+    activated: rt.confirmed.has(directory),
+  }
   rt.generations.push(generation)
   return {
     accepted: true,
+    confirmed: () => rt.confirmed.has(directory),
+    ready() {
+      generation.hooked = true
+    },
     dispose() {
       const index = rt.generations.indexOf(generation)
       if (index !== -1) rt.generations.splice(index, 1)
@@ -286,4 +351,113 @@ export function ensurePump(subscribe: () => Stream.Stream<unknown, unknown, neve
       ...(exit._tag === "Failure" ? { error: (Cause.pretty(exit.cause).split("\n")[0] ?? "").slice(0, 200) } : {}),
     })
   })
+}
+
+const backendUnavailable = (message: string): PlugError => ({ status: 503, kind: "server", code: "backend_unavailable", message })
+
+/** Rejects when `signal` aborts; the underlying promise is left running (its late result or error is swallowed). */
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error("aborted"))
+    if (signal.aborted) return onAbort()
+    signal.addEventListener("abort", onAbort, { once: true })
+    promise.then(
+      (value) => (signal.removeEventListener("abort", onAbort), resolve(value)),
+      (error) => (signal.removeEventListener("abort", onAbort), reject(error)),
+    )
+  })
+}
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (signal.aborted) return resolve()
+    const timer = setTimeout(done, ms)
+    function done() {
+      clearTimeout(timer)
+      signal.removeEventListener("abort", done)
+      resolve()
+    }
+    signal.addEventListener("abort", done, { once: true })
+  })
+
+/** Rebuild the transforms of a generation set up before its directory was confirmed; shared by concurrent requests. */
+function activate(generation: Generation): Promise<void> {
+  generation.activating ??= generation.refresh().then(
+    () => void (generation.activated = true),
+    (error) => {
+      generation.activating = undefined
+      throw error
+    },
+  )
+  return generation.activating
+}
+
+/**
+ * The per-directory readiness gate (docs/architecture.md): resolves with undefined once an
+ * accepted generation in the app directory of `app` is ready to rewrite request sessions, else
+ * with a `PlugError`, so the caller never prompts a session that no context hook would rewrite.
+ * Only ever called from request handling, never from plugin setup.
+ *
+ * 1. Create and canonicalize the app directory asynchronously (`ensureAppDir`: symlink
+ *    containment, the resolved directory must be strictly inside the canonical data root).
+ * 2. Confirm it (before booting, so a Location that boots now sees it at setup).
+ * 3. No generation there yet: `boot(directory)` makes the host boot the Location (any host call
+ *    scoped to that directory that builds it; the entry passes `ctx.agent.list({ location })`),
+ *    which loads the plugin there. Abandoned, not interrupted, when the request ends.
+ * 4. Generations set up before the directory was confirmed get their transforms rebuilt
+ *    (`GenerationInput.refresh`).
+ * 5. Wait, bounded by `signal` and a timeout, until a generation there is accepted (so it runs
+ *    with the live options) and has installed its hook. A generation that was rejected (options
+ *    or `listen` differ) is a 503 `backend_unavailable` at once.
+ */
+export async function ensureBackend(
+  app: string,
+  signal: AbortSignal,
+  boot: (directory: string) => Promise<unknown>,
+): Promise<PlugError | undefined> {
+  const rt = runtime()
+  if (!rt) return backendUnavailable("A different plugboard runtime owns this server process; restart the server")
+  try {
+    const directory = await ensureAppDir(app)
+    if (isPlugError(directory)) return directory
+    const bounded = AbortSignal.any([signal, AbortSignal.timeout(BACKEND_TIMEOUT_MS)])
+    rt.confirmed.add(directory)
+
+    let booted = false
+    while (true) {
+      if (bounded.aborted)
+        return backendUnavailable(
+          signal.aborted ? "The request ended before the app directory was ready" : "Timed out waiting for the plugboard app directory to load its backend",
+        )
+      const here = rt.generations.filter((generation) => generation.directory === directory)
+      if (here.length === 0) {
+        if ((rt.rejected.get(directory) ?? 0) > 0)
+          return backendUnavailable("The plugboard app directory was rejected (its plugin options or `listen` differ from the live ones)")
+        if (!booted) {
+          booted = true
+          try {
+            await abortable(boot(directory), bounded)
+          } catch (error) {
+            if (bounded.aborted) continue
+            logError("backend.boot_failed", { app, error: errorMessage(error) })
+            return backendUnavailable("Could not start the plugboard app directory")
+          }
+          continue
+        }
+      } else {
+        try {
+          await abortable(Promise.all(here.filter((generation) => !generation.activated).map(activate)), bounded)
+        } catch (error) {
+          if (bounded.aborted) continue
+          throw error
+        }
+        if (here.some((generation) => generation.hooked && generation.activated)) return undefined
+      }
+      await sleep(BACKEND_POLL_MS, bounded)
+    }
+  } catch (error) {
+    if (signal.aborted) return backendUnavailable("The request ended before the app directory was ready")
+    logError("backend.check_failed", { app, error: errorMessage(error) })
+    return backendUnavailable("Could not prepare the plugboard app directory")
+  }
 }

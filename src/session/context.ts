@@ -9,7 +9,7 @@
 
 import { Effect } from "effect"
 import type { PlugError, PlugMessage, PlugRequest } from "../contract.js"
-import type { ContextHookEvent, HostContext, HostPart } from "./host.js"
+import type { ContextHookEvent, HostContext, HostPart, HostToolDescriptor } from "./host.js"
 import { SEED_PREFIX, SEED_RESULT, seedToolsFor } from "./seeds.js"
 import { FAILURE_EVENT, type SessionStore } from "./state.js"
 
@@ -55,24 +55,29 @@ function generationOptions(request: PlugRequest): Record<string, unknown> {
  * registered tool by the descriptor object it handed to the hook (upstream
  * `model-request.ts`, tool mapping after the `context` hook), so the descriptors are mutated in
  * place and the very same objects are re-inserted under the caller's names. Never copy them.
- * Returns how many caller tools got no seed (zero unless the seed pool is smaller than the request needs).
+ * Returns how many caller tools got no seed (zero unless the seed pool is smaller than the request
+ * needs, or two caller tools share a name and would collapse into one key).
+ *
+ * The map is built with `Object.fromEntries`: a tool named `__proto__` becomes an own key like any
+ * other instead of assigning the prototype and vanishing.
  */
 function remapSeedTools(session: ContextHookEvent, request: PlugRequest): number {
   const seeds = Object.entries(session.tools ?? {}).filter(([name]) => name.startsWith(SEED_PREFIX))
   const tools = seedToolsFor(request)
-  const next: NonNullable<ContextHookEvent["tools"]> = {}
+  const next = new Map<string, HostToolDescriptor>()
   let index = 0
   for (const tool of tools) {
     const seed = seeds[index]
     if (!seed) break
     index++
+    if (next.has(tool.name)) continue
     const descriptor = seed[1]
     descriptor.description = tool.description
     descriptor.input = tool.parameters
-    next[tool.name] = descriptor
+    next.set(tool.name, descriptor)
   }
-  session.tools = next
-  return tools.length - index
+  session.tools = Object.fromEntries(next)
+  return tools.length - next.size
 }
 
 const preparationFailed = (message: string): PlugError => ({ status: 500, kind: "server", code: "backend_preparation_failed", message })
@@ -124,19 +129,29 @@ function applyContext(event: unknown, sessions: SessionStore): void {
 }
 
 /**
- * Registrations for a Location inside the plugboard data root: the context hook, the agent
- * deny for the seeds, and the seed tool pool.
+ * Registrations for a plugboard Location: the context hook, the agent deny for the seeds, and
+ * the seed tool pool.
+ *
+ * Whether the Location is inside the data root is only known after an asynchronous filesystem
+ * check (never during setup), so these are registered for every accepted generation and every
+ * one of them stays a no-op until `active()` turns true: the hook leaves sessions alone, the
+ * transforms add and change nothing. `active` is read synchronously on every run; the owner
+ * rebuilds the transforms (`ctx.agent.reload()`, `ctx.tool.reload()`) after it flips.
  *
  * Every agent denies the seeds; request sessions are created with a session permission that
  * allows them again, so a person prompting inside an app directory is never offered them.
  * Registration only: no host call that waits on readiness (see docs/architecture.md).
  */
-export function installSessionHooks(ctx: HostContext, options: { readonly maxTools: number; readonly sessions: SessionStore }) {
+export function installSessionHooks(
+  ctx: HostContext,
+  options: { readonly maxTools: number; readonly sessions: SessionStore; readonly active: () => boolean },
+) {
   return Effect.gen(function* () {
     // Swap in the caller's system/messages/tools for plugboard request sessions only.
-    yield* ctx.session.hook("context", (event) => Effect.sync(() => applyContext(event, options.sessions)))
+    yield* ctx.session.hook("context", (event) => Effect.sync(() => (options.active() ? applyContext(event, options.sessions) : undefined)))
 
     yield* ctx.agent.transform((editor) => {
+      if (!options.active()) return
       for (const agent of editor.list()) {
         editor.update(agent.id, (item) => {
           item.permissions.push({ action: `${SEED_PREFIX}*`, resource: "*", effect: "deny" })
@@ -144,6 +159,7 @@ export function installSessionHooks(ctx: HostContext, options: { readonly maxToo
       }
     })
     yield* ctx.tool.transform((editor) => {
+      if (!options.active()) return
       for (let index = 0; index < options.maxTools; index++) {
         editor.add({
           name: `${SEED_PREFIX}${index}`,
