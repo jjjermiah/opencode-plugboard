@@ -1,6 +1,7 @@
 /** Plugin options: type, defaults, validation, caller authentication and the loopback check. */
 
 import type { PlugError } from "./contract.js"
+import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
 
 /** Plugin options, after defaults and validation (see `parseOptions`). */
@@ -14,8 +15,13 @@ export interface PlugboardOptions {
   readonly aliases: Readonly<Record<string, string>>
   readonly maxTools: number
   readonly requestTimeoutMs: number
-  /** Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network. */
-  readonly remoteImages: boolean
+  /**
+   * Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network.
+   * `true` fetches public addresses only (loopback, private, link-local, CGNAT and ULA ranges are refused);
+   * `{ allow }` is on too, and lists the hosts (`name`, `*.suffix`), addresses or CIDR ranges that may be
+   * fetched even when they are not public.
+   */
+  readonly remoteImages: RemoteImages
   /** Prune old request sessions (see `src/session/prune.ts`). A limit that is unset is not applied; with neither, history is kept forever. Applies per app. */
   readonly history: HistoryLimits
   /** Drop sampling parameters the target model is known to reject (reported in `x-plugboard-dropped-params`). On by default; off forwards them as sent. */
@@ -62,6 +68,23 @@ function positiveInt(value: unknown, name: string, fallback: number, max = Numbe
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > max)
     throw new Error(`plugboard option \`${name}\` must be an integer between 1 and ${max}`)
   return value
+}
+
+const REMOTE_IMAGES_ERROR =
+  "plugboard option `remoteImages` must be a boolean or `{ allow: [...] }` with host names, IP addresses or CIDR ranges that may be fetched even when they are not public"
+
+function parseRemoteImages(value: unknown): RemoteImages {
+  if (value === undefined) return false
+  if (typeof value === "boolean") return value
+  if (!isRecord(value)) throw new Error(REMOTE_IMAGES_ERROR)
+  for (const key of Object.keys(value))
+    if (key !== "allow") throw new Error(`Unknown plugboard option \`remoteImages.${key}\` (known: allow)`)
+  const allow = value.allow ?? []
+  if (!Array.isArray(allow)) throw new Error(REMOTE_IMAGES_ERROR)
+  for (const entry of allow)
+    if (typeof entry !== "string" || parseAllowEntry(entry) === undefined)
+      throw new Error(`plugboard \`remoteImages.allow\` entry \`${String(entry)}\` must be a host name (\`images.internal\`, \`*.internal\`), an IP address or a CIDR range`)
+  return { allow: allow as string[] }
 }
 
 /** Validates raw plugin options and applies defaults. Throws `Error` with an actionable message. */
@@ -118,8 +141,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   }
   const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
 
-  if (input.remoteImages !== undefined && typeof input.remoteImages !== "boolean")
-    throw new Error("plugboard option `remoteImages` must be a boolean")
+  const remoteImages = parseRemoteImages(input.remoteImages)
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")
     throw new Error("plugboard option `dropUnsupportedParams` must be a boolean")
 
@@ -137,7 +159,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     aliases,
     maxTools: positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024),
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
-    remoteImages: input.remoteImages === true,
+    remoteImages,
     history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) },
     dropUnsupportedParams: input.dropUnsupportedParams !== false,
   }

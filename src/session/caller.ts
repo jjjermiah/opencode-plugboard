@@ -23,7 +23,7 @@ import { log, logError } from "../log.js"
 import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, type SessionPort } from "./host.js"
-import { ImageError, prepareImages } from "./media.js"
+import { ImageError, prepareImages, type RemoteImages } from "./media.js"
 import { REQUEST_PERMISSIONS, seedToolsFor } from "./seeds.js"
 import type { SessionStore } from "./state.js"
 
@@ -33,8 +33,8 @@ export interface SessionCallerDeps {
   readonly sessions: SessionStore
   /** The seed pool size of the app directories (option `maxTools`); a request needing more tools fails before dispatch. */
   readonly maxTools: number
-  /** Allow fetching http(s) image URLs (option `remoteImages`). */
-  readonly remoteImages?: boolean
+  /** Allow fetching http(s) image URLs (option `remoteImages`: off, public addresses only, or with an allowlist). */
+  readonly remoteImages?: RemoteImages
   /**
    * Make sure the backend of `app` can run request sessions (the app directory's plugin is loaded),
    * called right before `session.create`. An error ends the request without creating anything.
@@ -85,7 +85,7 @@ function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port, sessions, maxTools, ensureBackend } = deps
-  const remoteImages = deps.remoteImages === true
+  const remoteImages = deps.remoteImages ?? false
 
   return {
     async *stream(request: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
@@ -134,7 +134,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (unavailable) return yield note({ type: "error", error: unavailable })
         if (context.signal.aborted) return
 
-        collector = new RequestCollector({ stopTurn: interrupt })
+        collector = new RequestCollector({ stopTurn: interrupt, requestID })
         const created = await raceAbort(port.create({
           directory,
           model: { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) },

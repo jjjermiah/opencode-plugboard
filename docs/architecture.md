@@ -20,14 +20,16 @@ The three do not line up. The generation that serves an HTTP request is a differ
 
 OpenCode may load this module once per Location, or re-evaluate it on reload. Anything that has to outlive one generation lives on `globalThis` under a versioned key (`src/runtime.ts`):
 
-- **the HTTP listener**: one port per process. The first generation binds it, later ones join. When the last generation goes, the listener waits a grace period, because a config reload recreates every generation at once, then closes. A request with no live generation gets a 503.
+- **the HTTP listener**: one port per process. The first generation binds it, later ones join. When the last generation goes, the listener waits a grace period, because a config reload recreates every generation at once, then closes. A request with no live generation gets a 503. If the bind fails (another process holds the port), nothing can receive requests, so the failure is made loud instead: `listener.address_in_use` at error level (repeated every 5 minutes), `listener.not_serving` at error level for every generation that registers while the port is held, and a silent retry every 15 s, so plugboard takes the port over when it is released. Loopback gives no isolation between local users; keys are the only boundary (#87).
 - **the generation list**: `registerGeneration` returns `{ accepted, dispose, confirmed, ready }`. A generation is rejected when its `listen` differs from the bound one, or its options (compared as key-sorted JSON) differ from the live ones; a rejected generation registers no hook or seed and never serves. When no generation is live, the next one's options are adopted. Requests are served, and the model catalog is loaded, by the newest accepted generation whose Location is a confirmed app directory (the "owner"), falling back to the newest accepted one.
 - **the confirmed directories**: app directories (real path strictly inside the canonical data root) that `ensureBackend` has verified. Setup touches no filesystem, so ownership of a Location is unknown at setup and stays "not an app directory" until a request confirms it (fail closed). The runtime also counts rejected generations per directory, to tell "rejected" from "no generation yet".
 - **the session store** (`src/session/state.ts`): request state keyed by session ID. The serving generation registers it; the app-directory generation's context hook looks it up; the event pump dispatches bus events to it. It has to be shared, because those are different generations.
 - **the event pump**: one fiber subscribed to the server-wide bus, forwarding events of registered request sessions. Events of unregistered sessions are dropped before anything is buffered. If the pump dies, every in-flight request fails with a 502 (`event_stream_lost`); the next request starts a new pump.
 - **the history sweep state**: when the last sweep ran and whether one is running (see [History pruning](#history-pruning)).
 
-If a runtime written by a different version (runtime `VERSION`, currently 4) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
+If a runtime written by a different version (runtime `VERSION`, currently 5) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
+
+**Key revocation (#90).** Every accepted generation runs with the same options (the fingerprint rule above), so authentication uses the listener's options whichever generation serves. A config edit makes the host reload every Location's plugin at once (verified live: a removed key answered 401 on the next request, an app directory in use included), and the next generation adopts the new options. A generation with different options is never allowed to override live ones, because a project config entry must not be able to weaken authentication; so a Location that somehow kept an old generation alive past a reload would keep the old options until the server restarts.
 
 ### Backend readiness: `ensureBackend`
 
@@ -136,14 +138,18 @@ src/session/caller.ts       one model-call lifecycle: create session, prompt, re
 src/session/context.ts      context hook, seed tools, agent deny (all gated on confirmation); re-keys seeds onto the caller's tools
 src/session/events.ts       turns one session's bus events into PlugEvents (collector)
 src/session/state.ts        cross-generation session ownership store
-src/session/history.ts      data root, app directory (async, symlink containment), session title and transcript
+src/session/history.ts      data root, app directory (async, symlink containment), session title and transcript (control and bidi characters stripped)
 src/openai/sampling.ts      per-model table of sampling parameters to drop (`dropRejected`, #30)
 src/session/prune.ts        history index keys, `recordSession`, the bounded `sweepHistory` (see History pruning)
-src/session/media.ts        bounded image preparation (data URLs; opt-in remote fetch)
+src/session/media.ts        bounded image preparation (data URLs; opt-in remote fetch: public addresses only unless allowed, resolved address pinned)
 src/session/seeds.ts        seed name prefix and result text
 ```
 
 Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response`, `responses/route` -> `contract`; `responses/route` -> `http`, `models`, `responses/request`, `responses/response` (and the Chat error encoder, same body shape); `runtime` -> `history` (`ensureBackend`), `prune`, `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`, `responses/request`, `responses/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
+
+## Error text and route existence
+
+Provider and host error text never reaches the caller (#88): `toPlugError` in `src/session/events.ts` maps a host `SessionError` to a stable `code` and a fixed message per class (`rate_limited`, `quota_exceeded`, `context_length_exceeded`, `provider_auth_failed`, `content_filter`, `provider_timeout`, `provider_unavailable`, `provider_rejected_request`, `model_run_failed`) and logs the raw text once as `model.failed`. The route authenticates before it says whether a path exists, so an unauthenticated caller sees 401 for every path except `/healthz` (#91).
 
 ## Conventions
 
