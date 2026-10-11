@@ -10,7 +10,26 @@
 import type { PlugEvent, PlugRequest } from "../../src/contract.js"
 import { ev } from "../support/fixtures.js"
 
-export const SCENARIOS = ["text", "stream", "tools", "parallel-tools", "image", "structured", "error", "usage"] as const
+export const SCENARIOS = [
+  "text",
+  "stream",
+  "tools",
+  "parallel-tools",
+  "image",
+  "structured",
+  "error",
+  "usage",
+  "multi-turn",
+  "thinking",
+  "stop-sequence",
+  "n",
+  "stream-usage",
+  "developer",
+  "echo-suffix",
+  "count-tokens",
+  "document",
+  "model-id",
+] as const
 export type Scenario = (typeof SCENARIOS)[number]
 
 /** What the scenarios check, for the matrix legend. */
@@ -23,6 +42,16 @@ export const SCENARIO_DESCRIPTIONS: Record<Scenario, string> = {
   structured: "JSON Schema output parsed by the client.",
   error: "A provider 429 surfaces as the client's own error type with status 429.",
   usage: "Token usage is reported in the client's usage fields.",
+  "multi-turn": "A second turn: the client resends the conversation with the model's answer, and the model answers from it (#103, #104).",
+  thinking: "Extended thinking on: the reasoning comes back as thinking content, then the answer (#102).",
+  "stop-sequence": "A stop sequence ends the answer, and the stop reason says so (#102).",
+  n: "Several choices from one request (n > 1), each with its own index (#106).",
+  "stream-usage": "Usage arrives in the stream when the client asks for it (#106, #7).",
+  developer: "A developer-role message (OpenAI's name for a system prompt) is accepted (#7).",
+  "echo-suffix": "Legacy completions options: echo the prompt and take a suffix (#106).",
+  "count-tokens": "Token counting before a request (count_tokens, countTokens) returns a count (#102, #103).",
+  document: "A PDF sent as a document block reaches the model as a document (#102).",
+  "model-id": "A model id with a `/` (provider/model) is passed through to the route unchanged (#103).",
 }
 
 export const TEXT = "Hello from plugboard"
@@ -30,8 +59,12 @@ export const STREAM_DELTAS = ["Hello ", "from ", "plugboard"]
 export const TOOL_ANSWER = "It is sunny in Oslo"
 export const PARALLEL_ANSWER = "Sunny in Oslo, rainy in Rome"
 export const STRUCTURED = { answer: "42" }
+export const MULTI_TURN_ANSWER = "Yes, again"
+export const THINKING = "Weighing the question."
 export const USAGE = { inputTokens: 11, outputTokens: 7 }
 /** A 1x1 PNG. */
+/** A PDF header, enough for the fake model to see a PDF went through. */
+export const PDF_BASE64 = "JVBERi0xLjQK"
 export const PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
 
 export const WEATHER_SCHEMA = { type: "object" as const, properties: { city: { type: "string" } }, required: ["city"] }
@@ -56,7 +89,23 @@ export function script(request: PlugRequest): PlugEvent[] {
   switch (scenarioOf(request)) {
     case "text":
     case "usage":
+    case "n":
+    case "stream-usage":
+    case "developer":
+    case "echo-suffix":
+    case "stop-sequence":
+    case "count-tokens":
+    case "model-id":
       return [ev.text(TEXT), finish]
+    case "document": {
+      const pdf = request.messages.flatMap((message) => message.content).some((part) => part.type === "media" && part.mediaType === "application/pdf")
+      return [ev.text(pdf ? "document: application/pdf" : "no document"), finish]
+    }
+    case "multi-turn":
+      // The second user turn is the only one with more than one user message.
+      return [ev.text(request.messages.filter((message) => message.role === "user").length > 1 ? MULTI_TURN_ANSWER : TEXT), finish]
+    case "thinking":
+      return [ev.reasoning(THINKING), ev.text(TEXT), finish]
     case "stream":
       return [...STREAM_DELTAS.map(ev.text), finish]
     case "tools":

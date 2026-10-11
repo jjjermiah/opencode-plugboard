@@ -10,11 +10,13 @@ import Anthropic from "@anthropic-ai/sdk"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { createGoogle } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { GoogleGenAI, type Content } from "@google/genai"
 import { APICallError, generateText, jsonSchema, Output, stepCountIs, streamText, tool, type LanguageModel } from "ai"
 import { expect } from "bun:test"
 import OpenAI from "openai"
-import { PARALLEL_ANSWER, PNG_BASE64, STREAM_DELTAS, STRUCTURED, STRUCTURED_SCHEMA, TEXT, TOOL_ANSWER, USAGE, WEATHER_SCHEMA, tag, type Scenario } from "./scenarios.js"
+import { MULTI_TURN_ANSWER, PARALLEL_ANSWER, PDF_BASE64, PNG_BASE64, STREAM_DELTAS, STRUCTURED, STRUCTURED_SCHEMA, TEXT, THINKING, TOOL_ANSWER, USAGE, WEATHER_SCHEMA, tag, type Scenario } from "./scenarios.js"
+import { LANGCHAIN_CLIENTS } from "./langchain.js"
 
 export const ENDPOINTS = {
   chat: "POST /v1/chat/completions",
@@ -111,6 +113,38 @@ const openaiChat: Client = {
       const { usage } = await openai(target).chat.completions.create({ model: MODEL, messages: [{ role: "user", content: tag("usage") }] })
       expect(usage).toMatchObject({ prompt_tokens: USAGE.inputTokens, completion_tokens: USAGE.outputTokens, total_tokens: USAGE.inputTokens + USAGE.outputTokens })
     },
+    "multi-turn": async (target) => {
+      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        { role: "user", content: tag("multi-turn") },
+        { role: "assistant", content: TEXT },
+        { role: "user", content: "Again?" },
+      ]
+      expect((await openai(target).chat.completions.create({ model: MODEL, messages })).choices[0]!.message.content).toBe(MULTI_TURN_ANSWER)
+    },
+    developer: async (target) => {
+      const completion = await openai(target).chat.completions.create({ model: MODEL, messages: [{ role: "developer", content: "Be brief." }, { role: "user", content: tag("developer") }] })
+      expect(completion.choices[0]!.message.content).toBe(TEXT)
+    },
+    n: async (target) => {
+      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{ role: "user", content: tag("n") }]
+      const completion = await openai(target).chat.completions.create({ model: MODEL, n: 2, messages })
+      expect(completion.choices.map((choice) => [choice.index, choice.message.content])).toEqual([[0, TEXT], [1, TEXT]])
+      // Streamed: the chunks of each choice carry its own index, so the client reassembles per choice.
+      const stream = await openai(target).chat.completions.create({ model: MODEL, n: 2, stream: true, messages })
+      const text: Record<number, string> = {}
+      for await (const chunk of stream) for (const choice of chunk.choices) text[choice.index] = (text[choice.index] ?? "") + (choice.delta.content ?? "")
+      expect([text[0], text[1]]).toEqual([TEXT, TEXT])
+    },
+    // A model id with a slash (the provider/model form the catalog lists) goes through the route unchanged.
+    "model-id": async (target) => {
+      expect((await openai(target).chat.completions.create({ model: "test/echo", messages: [{ role: "user", content: tag("model-id") }] })).choices[0]!.message.content).toBe(TEXT)
+    },
+    "stream-usage": async (target) => {
+      const stream = await openai(target).chat.completions.create({ model: MODEL, stream: true, stream_options: { include_usage: true }, messages: [{ role: "user", content: tag("stream-usage") }] })
+      let usage: OpenAI.CompletionUsage | null | undefined
+      for await (const chunk of stream) usage = chunk.usage ?? usage
+      expect(usage).toMatchObject({ prompt_tokens: USAGE.inputTokens, completion_tokens: USAGE.outputTokens })
+    },
   },
 }
 
@@ -160,6 +194,18 @@ const openaiResponses: Client = {
     usage: async (target) => {
       expect((await openai(target).responses.create({ model: MODEL, input: tag("usage") })).usage).toMatchObject({ input_tokens: USAGE.inputTokens, output_tokens: USAGE.outputTokens })
     },
+    // Stateless multi-turn, as `store: false` clients send it: the earlier answer goes back as a message, not an item reference.
+    "multi-turn": async (target) => {
+      const response = await openai(target).responses.create({
+        model: MODEL,
+        store: false,
+        input: [{ role: "user", content: tag("multi-turn") }, { role: "assistant", content: TEXT }, { role: "user", content: "Again?" }],
+      })
+      expect(response.output_text).toBe(MULTI_TURN_ANSWER)
+    },
+    developer: async (target) => {
+      expect((await openai(target).responses.create({ model: MODEL, input: [{ role: "developer", content: "Be brief." }, { role: "user", content: tag("developer") }] })).output_text).toBe(TEXT)
+    },
   },
 }
 
@@ -178,6 +224,21 @@ const openaiCompletions: Client = {
     error: (target) => expect429(() => openai(target).completions.create({ model: MODEL, prompt: tag("error") }), OpenAI.APIError),
     usage: async (target) => {
       expect((await openai(target).completions.create({ model: MODEL, prompt: tag("usage") })).usage).toMatchObject({ prompt_tokens: USAGE.inputTokens, completion_tokens: USAGE.outputTokens })
+    },
+    n: async (target) => {
+      const completion = await openai(target).completions.create({ model: MODEL, prompt: tag("n"), n: 2 })
+      expect(completion.choices.map((choice) => [choice.index, choice.text])).toEqual([[0, TEXT], [1, TEXT]])
+    },
+    "stream-usage": async (target) => {
+      const stream = await openai(target).completions.create({ model: MODEL, prompt: tag("stream-usage"), stream: true, stream_options: { include_usage: true } })
+      let usage: OpenAI.CompletionUsage | null | undefined
+      for await (const chunk of stream) usage = chunk.usage ?? usage
+      expect(usage).toMatchObject({ prompt_tokens: USAGE.inputTokens, completion_tokens: USAGE.outputTokens })
+    },
+    // The echoed prompt comes first, then the completion; the suffix is only an instruction to the model.
+    "echo-suffix": async (target) => {
+      const completion = await openai(target).completions.create({ model: MODEL, prompt: tag("echo-suffix"), echo: true, suffix: " world" })
+      expect(completion.choices[0]!.text).toBe(tag("echo-suffix") + TEXT)
     },
   },
 }
@@ -238,6 +299,52 @@ const anthropicMessages: Client = {
         expect(JSON.parse(block?.type === "text" ? block.text : "")).toEqual(STRUCTURED)
       },
     },
+    "multi-turn": async (target) => {
+      const message = await anthropic(target).messages.create({
+        model: MODEL,
+        max_tokens: 100,
+        messages: [{ role: "user", content: tag("multi-turn") }, { role: "assistant", content: TEXT }, { role: "user", content: "Again?" }],
+      })
+      expect(message.content as unknown).toEqual([{ type: "text", text: MULTI_TURN_ANSWER }])
+    },
+    thinking: async (target) => {
+      const message = await anthropic(target).messages.create({
+        model: MODEL,
+        max_tokens: 2000,
+        thinking: { type: "enabled", budget_tokens: 1024 },
+        messages: [{ role: "user", content: tag("thinking") }],
+      })
+      // plugboard sends an empty signature (src/anthropic/response.ts); the SDK only needs a string, so the case accepts any.
+      expect(message.content as unknown).toEqual([
+        { type: "thinking", thinking: THINKING, signature: expect.any(String) },
+        { type: "text", text: TEXT },
+      ])
+    },
+    "stop-sequence": {
+      gap: "stop_sequences never reach the stop reason: a stop returns end_turn with stop_sequence null, where Anthropic reports stop_sequence and the matched text",
+      run: async (target) => {
+        const message = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, stop_sequences: ["END"], messages: [{ role: "user", content: tag("stop-sequence") }] })
+        expect(message.stop_reason).toBe("stop_sequence")
+        expect(message.stop_sequence).toBe("END")
+      },
+    },
+    document: async (target) => {
+      const message = await anthropic(target).messages.create({
+        model: MODEL,
+        max_tokens: 100,
+        messages: [{ role: "user", content: [{ type: "text", text: tag("document") }, { type: "document", source: { type: "base64", media_type: "application/pdf", data: PDF_BASE64 } }] }],
+      })
+      expect(message.content as unknown).toEqual([{ type: "text", text: "document: application/pdf" }])
+    },
+    "model-id": async (target) => {
+      expect((await anthropic(target).messages.create({ model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: tag("model-id") }] })).content as unknown).toEqual([{ type: "text", text: TEXT }])
+    },
+    "count-tokens": {
+      gap: "count_tokens is not served: plugboard answers 404 not_found_error",
+      run: async (target) => {
+        expect((await anthropic(target).messages.countTokens({ model: MODEL, messages: [{ role: "user", content: tag("count-tokens") }] })).input_tokens).toBeGreaterThan(0)
+      },
+    },
     error: (target) => expect429(() => anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("error") }] }), Anthropic.APIError),
     usage: async (target) => {
       const { usage } = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("usage") }] })
@@ -283,6 +390,26 @@ const genaiGemini: Client = {
       const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("structured"), config: { responseMimeType: "application/json", responseJsonSchema: STRUCTURED_SCHEMA } })
       expect(JSON.parse(response.text!)).toEqual(STRUCTURED)
     },
+    "multi-turn": async (target) => {
+      const response = await genai(target).models.generateContent({
+        model: MODEL,
+        contents: [
+          { role: "user", parts: [{ text: tag("multi-turn") }] },
+          { role: "model", parts: [{ text: TEXT }] },
+          { role: "user", parts: [{ text: "Again?" }] },
+        ],
+      })
+      expect(response.text).toBe(MULTI_TURN_ANSWER)
+    },
+    "model-id": async (target) => {
+      expect((await genai(target).models.generateContent({ model: "test/echo", contents: tag("model-id") })).text).toBe(TEXT)
+    },
+    "count-tokens": {
+      gap: "countTokens is not served: plugboard answers 404 NOT_FOUND",
+      run: async (target) => {
+        expect((await genai(target).models.countTokens({ model: MODEL, contents: tag("count-tokens") })).totalTokens).toBeGreaterThan(0)
+      },
+    },
     error: async (target) => {
       const error = await genai(target)
         .models.generateContent({ model: MODEL, contents: tag("error") })
@@ -301,37 +428,44 @@ const genaiGemini: Client = {
 
 // ---------------------------------------------------------------- AI SDK
 
-/** The same AI SDK calls against any provider's model: the AI SDK runs the tool loop itself. */
-function aiSdk(name: string, endpoint: Endpoint, model: (target: Target) => LanguageModel, gaps: Partial<Record<Scenario, string>> = {}): Client {
+/** Provider options the AI SDK takes on each call (e.g. `{ openai: { store: false } }`). */
+type ProviderOptions = NonNullable<Parameters<typeof generateText>[0]["providerOptions"]>
+
+/**
+ * The same AI SDK calls against any provider's model: the AI SDK runs the tool loop itself. A
+ * scenario missing from `cases` is n/a; `gaps` marks a known incompatibility.
+ */
+function aiSdk(name: string, endpoint: Endpoint, model: (target: Target) => LanguageModel, gaps: Partial<Record<Scenario, string>> = {}, providerOptions?: ProviderOptions): Client {
   const weather = tool({ description: "Weather in a city", inputSchema: jsonSchema<{ city: string }>(WEATHER_SCHEMA), execute: async ({ city }) => `sunny in ${city}` })
-  const cases: Record<Scenario, Run> = {
+  const common = { maxRetries: 0, providerOptions }
+  const cases: Partial<Record<Scenario, Run>> = {
     text: async (target) => {
-      expect((await generateText({ model: model(target), prompt: tag("text"), maxRetries: 0 })).text).toBe(TEXT)
+      expect((await generateText({ model: model(target), prompt: tag("text"), ...common })).text).toBe(TEXT)
     },
     stream: async (target) => {
-      const result = streamText({ model: model(target), prompt: tag("stream"), maxRetries: 0, onError: () => {} })
+      const result = streamText({ model: model(target), prompt: tag("stream"), ...common, onError: () => {} })
       expect(await result.text).toBe(STREAM_DELTAS.join(""))
     },
     tools: async (target) => {
-      const result = await generateText({ model: model(target), prompt: tag("tools"), tools: { weather }, stopWhen: stepCountIs(3), maxRetries: 0 })
+      const result = await generateText({ model: model(target), prompt: tag("tools"), tools: { weather }, stopWhen: stepCountIs(3), ...common })
       expect(result.steps[0]!.toolCalls.map((call) => call.input)).toEqual([{ city: "Oslo" }])
       expect(result.text).toBe(TOOL_ANSWER)
     },
     "parallel-tools": async (target) => {
-      const result = await generateText({ model: model(target), prompt: tag("parallel-tools"), tools: { weather }, stopWhen: stepCountIs(3), maxRetries: 0 })
+      const result = await generateText({ model: model(target), prompt: tag("parallel-tools"), tools: { weather }, stopWhen: stepCountIs(3), ...common })
       expect(result.steps[0]!.toolCalls).toHaveLength(2)
       expect(result.text).toBe(PARALLEL_ANSWER)
     },
     image: async (target) => {
-      const result = await generateText({ model: model(target), maxRetries: 0, messages: [{ role: "user", content: [{ type: "text", text: tag("image") }, { type: "image", image: png(), mediaType: "image/png" }] }] })
+      const result = await generateText({ model: model(target), ...common, messages: [{ role: "user", content: [{ type: "text", text: tag("image") }, { type: "image", image: png(), mediaType: "image/png" }] }] })
       expect(result.text).toBe("image: image/png")
     },
     structured: async (target) => {
-      const result = await generateText({ model: model(target), prompt: tag("structured"), output: Output.object({ schema: jsonSchema<typeof STRUCTURED>(STRUCTURED_SCHEMA) }), maxRetries: 0 })
+      const result = await generateText({ model: model(target), prompt: tag("structured"), output: Output.object({ schema: jsonSchema<typeof STRUCTURED>(STRUCTURED_SCHEMA) }), ...common })
       expect(result.output).toEqual(STRUCTURED)
     },
     error: async (target) => {
-      const error = await generateText({ model: model(target), prompt: tag("error"), maxRetries: 0 }).then(
+      const error = await generateText({ model: model(target), prompt: tag("error"), ...common }).then(
         () => undefined,
         (caught: unknown) => caught,
       )
@@ -339,12 +473,24 @@ function aiSdk(name: string, endpoint: Endpoint, model: (target: Target) => Lang
       expect((error as APICallError).statusCode).toBe(429)
     },
     usage: async (target) => {
-      const { usage } = await generateText({ model: model(target), prompt: tag("usage"), maxRetries: 0 })
+      const { usage } = await generateText({ model: model(target), prompt: tag("usage"), ...common })
       expect(usage).toMatchObject({ inputTokens: USAGE.inputTokens, outputTokens: USAGE.outputTokens })
     },
+    // The AI SDK keeps the first turn's assistant message (with the provider's item id) and resends it.
+    "multi-turn": async (target) => {
+      const first = await generateText({ model: model(target), messages: [{ role: "user", content: tag("multi-turn") }], ...common })
+      const second = await generateText({
+        model: model(target),
+        messages: [{ role: "user", content: tag("multi-turn") }, ...first.response.messages, { role: "user", content: "Again?" }],
+        ...common,
+      })
+      expect(second.text).toBe(MULTI_TURN_ANSWER)
+    },
   }
-  return { name, endpoint, cases: Object.fromEntries(Object.entries(cases).map(([scenario, run]) => [scenario, gaps[scenario as Scenario] ? { gap: gaps[scenario as Scenario]!, run } : run])) }
+  const withGaps = Object.fromEntries(Object.entries(cases).map(([scenario, run]) => [scenario, gaps[scenario as Scenario] ? { gap: gaps[scenario as Scenario]!, run } : run]))
+  return { name, endpoint, cases: withGaps as Client["cases"] }
 }
+
 
 export const CLIENTS: ReadonlyArray<Client> = [
   openaiChat,
@@ -353,7 +499,13 @@ export const CLIENTS: ReadonlyArray<Client> = [
   anthropicMessages,
   genaiGemini,
   aiSdk("ai + @ai-sdk/openai (chat)", "chat", ({ origin, apiKey }) => createOpenAI({ baseURL: `${origin}/v1`, apiKey }).chat(MODEL)),
-  aiSdk("ai + @ai-sdk/openai (responses)", "responses", ({ origin, apiKey }) => createOpenAI({ baseURL: `${origin}/v1`, apiKey }).responses(MODEL)),
+  aiSdk("ai + @ai-sdk/openai (responses)", "responses", ({ origin, apiKey }) => createOpenAI({ baseURL: `${origin}/v1`, apiKey }).responses(MODEL), {
+    // The default `store: true` makes the AI SDK resend the earlier answer as an item_reference, which plugboard refuses (it keeps no state).
+    "multi-turn": "the AI SDK's default (store: true) resends the first answer as an item_reference, which plugboard refuses with a 400; the store: false row passes",
+  }),
+  aiSdk("ai + @ai-sdk/openai (responses, store: false)", "responses", ({ origin, apiKey }) => createOpenAI({ baseURL: `${origin}/v1`, apiKey }).responses(MODEL), {}, { openai: { store: false } }),
+  aiSdk("ai + @ai-sdk/openai-compatible", "chat", ({ origin, apiKey }) => createOpenAICompatible({ name: "plugboard", baseURL: `${origin}/v1`, apiKey }).chatModel(MODEL)),
   aiSdk("ai + @ai-sdk/anthropic", "messages", ({ origin, apiKey }) => createAnthropic({ baseURL: `${origin}/v1`, apiKey })(MODEL)),
   aiSdk("ai + @ai-sdk/google", "gemini", ({ origin, apiKey }) => createGoogle({ baseURL: `${origin}/v1beta`, apiKey })(MODEL)),
+  ...LANGCHAIN_CLIENTS,
 ]

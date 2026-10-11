@@ -29,7 +29,8 @@ let target: Target
 const results: MatrixResult[] = []
 
 beforeAll(async () => {
-  server = await startRoute({ caller: new FakeModelCaller((request) => script(request)), options: { keys: { compat: KEY }, aliases: { fast: "test/echo" } } })
+  // maxN 2: the default of 1 refuses n > 1 (each choice is a model call); the matrix allows two so the n scenario runs.
+  server = await startRoute({ caller: new FakeModelCaller((request) => script(request)), options: { keys: { compat: KEY }, aliases: { fast: "test/echo" }, maxN: 2 } })
   target = { origin: server.url, apiKey: KEY }
 })
 
