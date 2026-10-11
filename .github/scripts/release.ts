@@ -18,6 +18,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { changelogBlock, collectCommits } from "./commit-detail.ts"
 
 const PLACEHOLDER = "Nothing yet."
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
@@ -207,6 +208,10 @@ if (!link) fail('CHANGELOG.md needs a "[Unreleased]: <repo url>/compare/v<previo
 const [, repoUrl, previous] = link
 if (compare(version, previous) <= 0) fail(`${version} does not increase on the last released version ${previous}`)
 
+// The commit-level detail: every commit since the previous tag, grouped by type, in a
+// collapsed block under the curated notes. release-notes.ts rebuilds it for the GitHub release.
+const detail = changelogBlock(collectCommits(`v${previous}`, "HEAD"), repoUrl)
+
 const d = new Date()
 const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 
@@ -222,6 +227,7 @@ const next = [
   "",
   body,
   "",
+  ...(detail ? [detail, ""] : []),
   ...lines.slice(sectionEnd, linkAt),
   `[Unreleased]: ${repoUrl}/compare/${tag}...HEAD`,
   `[${version}]: ${repoUrl}/compare/v${previous}...${tag}`,
@@ -245,7 +251,7 @@ if (dryRun) {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
-  console.log(`dry run: would commit "Release ${version}" and tag ${tag}${push ? ", then push" : ""}${watch ? " and watch the release" : ""}`)
+  console.log(`dry run: would commit "chore(release): ${version}" and tag ${tag}${push ? ", then push" : ""}${watch ? " and watch the release" : ""}`)
   process.exit(0)
 }
 
@@ -255,9 +261,9 @@ if (!existsSync(".git")) fail("run this from the repository root")
 writeFileSync("CHANGELOG.md", next)
 writeFileSync("package.json", nextPkg)
 git("add", "CHANGELOG.md", "package.json")
-git("commit", "-m", `Release ${version}`)
+git("commit", "-m", `chore(release): ${version}`, "-m", `${title}. Moves [Unreleased] under ${version} in CHANGELOG.md and bumps package.json.`)
 git("tag", "-a", tag, "-m", `Release ${version}`)
-console.log(`committed "Release ${version}" and tagged ${tag}`)
+console.log(`committed "chore(release): ${version}" and tagged ${tag}`)
 
 if (push) {
   git("push", "--atomic", "origin", "main", tag)
