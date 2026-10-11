@@ -4,16 +4,18 @@
  *
  * Install in the GLOBAL OpenCode config. OpenCode loads the plugin once per Location:
  *   - everywhere, a generation asks to join the process-wide listener (src/runtime.ts); an
- *     accepted one can serve requests (a data-root Location is preferred, else the newest), a
- *     rejected one does nothing at all;
- *   - only inside the plugboard data root (`.../opencode-plugboard/<app>/`) it also registers the
- *     context hook and the seed tools that make request sessions work. In any other project it
- *     registers nothing else.
+ *     accepted one can serve requests (a confirmed app-directory Location is preferred, else the
+ *     newest), a rejected one does nothing at all;
+ *   - every accepted generation also registers the context hook, the agent deny and the seed
+ *     tools, but all three are no-ops until a request has confirmed, asynchronously, that the
+ *     Location is a plugboard app directory (`.../opencode-plugboard/<app>/`, real path strictly
+ *     inside the data root; `ensureBackend` in src/runtime.ts). Until then, and in every other
+ *     project, nothing is rewritten.
  *
  * Freeze safety: this effect only registers and returns. It makes no `ctx` call that waits on
- * location readiness and never blocks, and its finalizer is synchronous and calls nothing on
- * `ctx` (a plugin effect that blocked once froze every prompt in a project). See
- * docs/architecture.md.
+ * location readiness, touches no filesystem and never blocks, and its finalizer is synchronous
+ * and calls nothing on `ctx` (a plugin effect that blocked once froze every prompt in a project).
+ * The event pump starts lazily from request handling. See docs/architecture.md.
  */
 
 import { Plugin } from "@opencode/plugin/effect"
@@ -21,10 +23,9 @@ import { Effect } from "effect"
 import { parseOptions } from "./src/config.js"
 import { errorMessage, logError } from "./src/log.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensurePump, loadServingCatalog, registerGeneration, sessionStore } from "./src/runtime.js"
+import { ensureBackend, ensurePump, loadServingCatalog, registerGeneration, sessionStore } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
-import { isInsideDataRoot } from "./src/session/history.js"
 import { createSessionPort, loadCatalog } from "./src/session/host.js"
 
 export default Plugin.define({
@@ -42,16 +43,23 @@ export default Plugin.define({
 
       // ---- every Location: join the shared listener (sync registration only).
       const sessions = sessionStore()
+      // Started lazily from request handling (handler, catalog load); never from setup.
       const startPump = () => ensurePump(() => ctx.event.subscribe())
       const ownCatalog = () => loadCatalog(ctx)
+      // Request handling only: an agent lookup scoped to another directory makes the host build that
+      // Location, which loads this plugin there. Plugin setup never calls it.
+      const bootLocation = (directory: string) => Effect.runPromise(ctx.agent.list({ location: { directory } }))
+      const callerDeps = {
+        port: createSessionPort(ctx),
+        sessions,
+        maxTools: options.maxTools,
+        remoteImages: options.remoteImages,
+        // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
+        ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
+      }
       const handle = createOpenAiRoute({
         options,
-        caller: createSessionCaller({
-          port: createSessionPort(ctx),
-          sessions,
-          maxTools: options.maxTools,
-          remoteImages: options.remoteImages,
-        }),
+        caller: createSessionCaller(callerDeps),
         // The catalog comes from the preferred accepted generation (a data-root Location when there is
         // one), not from whichever Location registered last; this generation's own is the fallback.
         loadCatalog: async () => {
@@ -59,11 +67,13 @@ export default Plugin.define({
           return loadServingCatalog(ownCatalog)
         },
       })
-      const inDataRoot = isInsideDataRoot(ctx.location.directory)
       const registration = registerGeneration({
         listen: options.listen,
         options,
-        owner: inDataRoot,
+        // The host's string, compared with the real path `ensureBackend` confirms; no filesystem access here.
+        directory: ctx.location.directory,
+        // Rebuild the transforms below once a request has confirmed this Location as an app directory.
+        refresh: () => Effect.runPromise(Effect.all([ctx.agent.reload(), ctx.tool.reload()], { discard: true })),
         handler: (request, response) => {
           startPump()
           handle(request, response).catch((error) => {
@@ -79,12 +89,11 @@ export default Plugin.define({
 
       // ---- a rejected generation (different options or `listen`, foreign runtime) serves nothing and installs nothing.
       if (!registration.accepted) return
-      startPump()
 
-      // ---- real projects stop here: no hooks, no tools, no agent changes.
-      if (!inDataRoot) return
-
-      // ---- plugboard app directories only: the context hook and the seed tools.
-      yield* installSessionHooks(ctx, { maxTools: options.maxTools, sessions })
+      // ---- the context hook, the agent deny and the seed tools. Ownership of the Location is only
+      // known after an asynchronous check (`ensureBackend`), so all three are no-ops until
+      // `registration.confirmed()`: in real projects nothing is ever added or rewritten.
+      yield* installSessionHooks(ctx, { maxTools: options.maxTools, sessions, active: registration.confirmed })
+      registration.ready()
     }),
 })

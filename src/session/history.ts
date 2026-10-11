@@ -9,9 +9,8 @@
  */
 
 import { mkdir, realpath } from "node:fs/promises"
-import { realpathSync } from "node:fs"
 import { homedir } from "node:os"
-import { basename, join, resolve, sep } from "node:path"
+import { join, sep } from "node:path"
 import type { PlugError, PlugRequest } from "../contract.js"
 
 /** `$XDG_DATA_HOME/opencode-plugboard`, else `~/.local/share/opencode-plugboard`. */
@@ -20,34 +19,15 @@ function dataRoot(): string {
   return join(base, "opencode-plugboard")
 }
 
-/** realpath of the deepest existing ancestor plus the not-yet-existing tail. */
-function realpathLoose(path: string): string {
-  let current = resolve(path)
-  const tail: string[] = []
-  while (true) {
-    try {
-      return join(realpathSync(current), ...tail.reverse())
-    } catch {
-      const parent = resolve(current, "..")
-      if (parent === current) return resolve(path)
-      tail.push(basename(current))
-      current = parent
-    }
-  }
-}
-
-/** True when `directory` is the data root or below it, compared by realpath. */
-export function isInsideDataRoot(directory: string): boolean {
-  const root = realpathLoose(dataRoot())
-  const dir = realpathLoose(directory)
-  return dir === root || dir.startsWith(root + sep)
-}
-
 /**
  * Create (if needed) and return the real path of `<dataRoot>/<app>`. `app` must already be validated.
  * Fails closed with a `PlugError` when the resolved path is not strictly inside the canonical data
  * root (a symlinked app directory): a session there would run in another project, where plugboard
  * registers no context hook and no seeds, so it must never be created.
+ *
+ * This is the only place ownership of a directory is decided, and it is asynchronous: plugin
+ * setup never touches the filesystem. A directory that comes back here is what the runtime treats
+ * as a plugboard app directory (`ensureBackend` in src/runtime.ts).
  */
 export async function ensureAppDir(app: string): Promise<string | PlugError> {
   const root = dataRoot()

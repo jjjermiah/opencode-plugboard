@@ -21,11 +21,22 @@ The three do not line up. The generation that serves an HTTP request is a differ
 OpenCode may load this module once per Location, or re-evaluate it on reload. Anything that has to outlive one generation lives on `globalThis` under a versioned key (`src/runtime.ts`):
 
 - **the HTTP listener**: one port per process. The first generation binds it, later ones join. When the last generation goes, the listener waits a grace period, because a config reload recreates every generation at once, then closes. A request with no live generation gets a 503.
-- **the generation list**: `registerGeneration` returns `{ accepted, dispose }`. A generation is rejected when its `listen` differs from the bound one, or its options (compared as key-sorted JSON) differ from the live ones; a rejected generation registers no hook, seed or pump and never serves. When no generation is live, the next one's options are adopted. Requests are served, and the model catalog is loaded, by the newest accepted generation whose Location is inside the data root (the "owner"), falling back to the newest accepted one.
+- **the generation list**: `registerGeneration` returns `{ accepted, dispose, confirmed, ready }`. A generation is rejected when its `listen` differs from the bound one, or its options (compared as key-sorted JSON) differ from the live ones; a rejected generation registers no hook or seed and never serves. When no generation is live, the next one's options are adopted. Requests are served, and the model catalog is loaded, by the newest accepted generation whose Location is a confirmed app directory (the "owner"), falling back to the newest accepted one.
+- **the confirmed directories**: app directories (real path strictly inside the canonical data root) that `ensureBackend` has verified. Setup touches no filesystem, so ownership of a Location is unknown at setup and stays "not an app directory" until a request confirms it (fail closed). The runtime also counts rejected generations per directory, to tell "rejected" from "no generation yet".
 - **the session store** (`src/session/state.ts`): request state keyed by session ID. The serving generation registers it; the app-directory generation's context hook looks it up; the event pump dispatches bus events to it. It has to be shared, because those are different generations.
 - **the event pump**: one fiber subscribed to the server-wide bus, forwarding events of registered request sessions. Events of unregistered sessions are dropped before anything is buffered. If the pump dies, every in-flight request fails with a 502 (`event_stream_lost`); the next request starts a new pump.
 
-If a runtime written by a different version (runtime `VERSION`, currently 2) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
+If a runtime written by a different version (runtime `VERSION`, currently 3) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
+
+### Backend readiness: `ensureBackend`
+
+The session caller awaits `ensureBackend(app, signal)` (`src/runtime.ts`, wired in `index.ts`) right before `session.create`, so a session is never prompted in a directory where no context hook would rewrite it (the model would answer the raw transcript). It runs from request handling only and resolves `undefined` or a `PlugError`:
+
+1. `ensureAppDir` creates and canonicalizes `<dataRoot>/<app>` asynchronously; a path that resolves outside the canonical data root (symlink) is `app_dir_outside_root`.
+2. The real path is added to the confirmed set, before booting, so a Location that boots now sees it at setup.
+3. No generation there yet: the entry calls `ctx.agent.list({ location: { directory } })`, which makes the host build that Location and load the plugin there. The call is abandoned (not interrupted) if the request ends.
+4. A generation that was set up before its directory was confirmed (for example someone opened the app directory in OpenCode first) gets its agent and tool transforms rebuilt (`ctx.agent.reload()`, `ctx.tool.reload()`), once.
+5. It waits, bounded by the request signal and 15 s, until an accepted generation there has installed its hook. A rejected generation (options or `listen` differ), a failed boot, a timeout or an aborted request is a 503 `backend_unavailable`.
 
 ### Request guard vs response
 
@@ -38,8 +49,9 @@ A plugin effect that blocked once froze every prompt in a project. The rules:
 - Plugin setup only **registers** and returns. It makes no call on `ctx` that waits for Location readiness, and awaits nothing from the session or model APIs.
 - Finalizers are **synchronous** and call nothing on `ctx`. `Registration.dispose` only mutates in-memory state and arms an unref'd timer.
 - Forbidden in a finalizer or teardown path: awaiting `session.interrupt`, any session/model/event call, any filesystem or network work, anything that can wait on the host. Cleanup that needs the host is the job of the request code or the runtime, outside teardown.
-- The event pump starts lazily from request handling and is never awaited.
-- Nothing is registered outside the data root: in real projects the plugin adds no hook, tool or agent change (`isInsideDataRoot`, compared by realpath).
+- Plugin setup touches no filesystem, sync or async. Which Location is an app directory is decided by `ensureAppDir` / `ensureBackend` from request handling, compared by realpath.
+- The event pump starts lazily from request handling (handler and catalog load, never setup) and is never awaited.
+- Every accepted generation registers the context hook, the agent deny and the seed tools, but they are no-ops until `Registration.confirmed()`: in real projects the plugin adds no tool, agent change or context rewrite. Rejected generations register nothing.
 - Events are filtered by session ID before they are buffered.
 
 ## Seed tools and descriptor identity
@@ -64,7 +76,9 @@ client                    HTTP listener (runtime)       OpenAI route            
   |                           |                              |   PlugRequest + OpenAiExchange                           |
   |                           |                              | loadCatalog, resolveModel  |                             |
   |                           |                              | caller.stream(PlugRequest) |                             |
-  |                           |                              |--------------------------->| prepare images, app dir     |
+  |                           |                              |--------------------------->| prepare images              |
+  |                           |                              |                            | ensureBackend: app dir,     |
+  |                           |                              |                            |   boot Location, hook ready |
   |                           |                              |                            | session.create ------------>|
   |                           |                              |                            | store.register(state)       |
   |                           |                              |                            | session.prompt (transcript)>|
@@ -86,27 +100,27 @@ The model call is neutral: `ModelCaller.stream(PlugRequest, { app, signal })` re
 ## Module map
 
 ```text
-index.ts                    the plugin: compose one generation, location gate, synchronous finalizer
+index.ts                    the plugin: compose one generation, gated app-directory registrations, synchronous finalizer
 src/contract.ts             neutral vocabulary: PlugRequest/PlugEvent/PlugError, CatalogModel, ModelCaller
-src/config.ts               options type, defaults, parseOptions, authenticate, loopback check
+src/config.ts               options type, defaults, parseOptions (rejects `__proto__` aliases and duplicate keys), authenticate, loopback check (localhost, 127.0.0.1, ::1: the Host check's set)
 src/models.ts               allowlist/alias policy: resolveModel, listAvailableModels (neutral)
 src/log.ts                  one-line logger; ids and outcomes only, never keys, bodies or URLs
-src/runtime.ts              process singleton: generations, listener lifetime, event pump, session store
+src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store
 src/http.ts                 ingress: body limits, origin checks, disconnect abort, deadline, JSON/SSE transport
 src/openai/route.ts         Chat Completions and /v1/models orchestration
 src/openai/request.ts       decode a Chat Completions body (pure)
 src/openai/response.ts      encode completions, SSE, errors, model list (pure); OpenAiExchange
 src/session/host.ts         the host adapter: Effect plugin API to Promise port, catalog, hook-event shapes
 src/session/caller.ts       one model-call lifecycle: create session, prompt, relay events, release
-src/session/context.ts      context hook, seed tools, agent deny; re-keys seeds onto the caller's tools
+src/session/context.ts      context hook, seed tools, agent deny (all gated on confirmation); re-keys seeds onto the caller's tools
 src/session/events.ts       turns one session's bus events into PlugEvents (collector)
 src/session/state.ts        cross-generation session ownership store
-src/session/history.ts      data root, location gating, app directory, session title and transcript
+src/session/history.ts      data root, app directory (async, symlink containment), session title and transcript
 src/session/media.ts        bounded image preparation (data URLs; opt-in remote fetch)
 src/session/seeds.ts        seed name prefix and result text
 ```
 
-Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response` -> `contract`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
+Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response` -> `contract`; `runtime` -> `history` (`ensureBackend`), `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
 
 ## Conventions
 
