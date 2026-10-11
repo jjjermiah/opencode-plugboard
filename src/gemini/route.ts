@@ -19,6 +19,7 @@ import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { listAvailableModels, resolveModel } from "../models.js"
+import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import type { RouteHost } from "../openai/route.js"
 import { dropRejected } from "../openai/sampling.js"
@@ -141,6 +142,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
+      onCache: reportCache(response),
     }),
     scope,
   )

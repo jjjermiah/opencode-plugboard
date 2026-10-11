@@ -8,6 +8,7 @@
         "@prometheus-io/client": "0.16.1",
         "escape-html": "1.0.3",
         "ipaddr.js": "2.5.0",
+        "lru-cache": "11.5.3",
         "p-queue": "9.3.5",
         "pino": "10.4.0",
         "safe-stable-stringify": "2.5.0",

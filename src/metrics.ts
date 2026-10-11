@@ -64,6 +64,8 @@ export interface Metrics {
   fallback(app: string): void
   /** A call was refused with 429 by a concurrency cap (`concurrency`) or a requests-per-minute limit (`rate`). */
   limited(app: string, reason: "concurrency" | "rate"): void
+  /** A call the response cache applied to: a stored answer replayed (`hit`) or the model run (`miss`). */
+  cache(app: string, result: "hit" | "miss"): void
   /** One history sweep ended. */
   sweep(result: "ok" | "failed" | "timeout", removed: number): void
   /** The exposition text. Called from a request that is itself in flight, which is not counted. */
@@ -112,6 +114,12 @@ export function createMetrics(): Metrics {
     labelNames: ["app", "reason"],
     registers: [registry],
   })
+  const cache = new Counter({
+    name: "plugboard_cache_requests_total",
+    help: "Model calls the response cache applied to, by app and result (hit or miss). Absent unless the `cache` option is set.",
+    labelNames: ["app", "result"],
+    registers: [registry],
+  })
   const sweeps = new Counter({ name: "plugboard_history_sweeps_total", help: "History sweeps that ended, by result.", labelNames: ["result"], registers: [registry] })
   const removed = new Counter({ name: "plugboard_history_sessions_removed_total", help: "Request sessions removed by history sweeps.", registers: [registry] })
   const generations = new Gauge({ name: "plugboard_generations", help: "Accepted plugin generations (one per OpenCode Location) serving requests.", registers: [registry] })
@@ -151,6 +159,7 @@ export function createMetrics(): Metrics {
     },
     fallback: (app) => count(fallbacks, { app }),
     limited: (app, reason) => count(limited, { app, reason }),
+    cache: (app, result) => count(cache, { app, result }),
     sweep(result, amount) {
       count(sweeps, { result })
       if (amount > 0 && Number.isFinite(amount)) removed.inc(amount)

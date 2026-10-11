@@ -25,7 +25,7 @@ import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
 import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, processLimits, processMetrics, registerGeneration, sessionStore } from "./src/runtime.js"
+import { ensureBackend, ensurePump, loadServingCatalog, processLimits, processMetrics, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createSessionPort, loadCatalog } from "./src/session/host.js"
@@ -71,12 +71,17 @@ export default Plugin.define({
         options,
         // Caps are outermost, so one request takes one slot even when it falls back (src/limits.ts).
         // Aliases written as a list retry the next target before the first output (src/fallback.ts).
+        // Limits are outermost (one slot per request, refused calls never reach anything); the response
+        // cache sits outside the fallbacks, so a hit never reaches a provider (src/limits.ts, src/cache.ts).
         caller: withLimits(
-          withFallbacks(createSessionCaller(callerDeps), {
+          withResponseCache(
+            withFallbacks(createSessionCaller(callerDeps), {
+              options,
+              loadCatalog: servingCatalog,
+              onFallback: options.metrics ? (app) => processMetrics().fallback(app) : undefined,
+            }),
             options,
-            loadCatalog: servingCatalog,
-            onFallback: options.metrics ? (app) => processMetrics().fallback(app) : undefined,
-          }),
+          ),
           () => limits,
           processLimits(),
           { onLimited: options.metrics ? (app, reason) => processMetrics().limited(app, reason) : undefined },
