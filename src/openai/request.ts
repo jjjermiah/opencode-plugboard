@@ -215,7 +215,10 @@ const parseResponseFormat = (raw: unknown): { structured?: PlugTool; instruction
     return {
       structured: {
         name: RESPOND_TOOL,
-        description: typeof spec.description === "string" ? spec.description : "Respond with JSON matching this schema.",
+        // With caller tools also on offer, this description is what tells the model which call is the final answer.
+        description:
+          "Give your final answer by calling this tool with JSON matching its schema." +
+          (typeof spec.description === "string" ? ` ${spec.description}` : ""),
         parameters: spec.schema,
       },
     }
