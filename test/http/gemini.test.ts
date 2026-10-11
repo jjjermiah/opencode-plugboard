@@ -91,13 +91,26 @@ describe("routes", () => {
     expect(logs.of("request")[0]!.fields).toMatchObject({ route: "POST /v1/models/{model}:generateContent", model: "test/echo" })
   })
 
-  // #135 (open): the unsupported-method label carries the client's verb, so metric and log labels grow
-  // with every made-up verb. Flip to `test` when the label is bounded.
-  test.failing("#135 made-up methods share one bounded route label", async () => {
+  test("#135 made-up methods share one bounded route label, unknown", async () => {
     await route([ev.finish()], { metrics: true })
     for (const verb of ["aaa", "bbb", "ccc"]) await server!.send(generate(`/v1beta/models/fast:${verb}`))
     const routes = new Set(logs.of("request").map((line) => line.fields.route))
-    expect(routes.size).toBe(1)
+    expect([...routes]).toEqual(["unknown"])
+  })
+
+  test("#135 different model names share one route label, the fixed template", async () => {
+    await route([ev.finish()], { metrics: true })
+    for (const model of ["fast", "ghost", "other-model"]) await server!.send(generate(`/v1beta/models/${model}:generateContent`))
+    const routes = new Set(logs.of("request").map((line) => line.fields.route))
+    expect([...routes]).toEqual(["POST /v1beta/models/{model}:generateContent"])
+  })
+
+  test("#135 paths outside the Gemini routes are labelled unknown, not by their path", async () => {
+    await route([ev.finish()], { metrics: true })
+    await server!.send({ path: "/v1beta/nothing-here" })
+    await server!.send({ method: "DELETE", path: "/v1beta/models/fast" })
+    const routes = logs.of("request").map((line) => line.fields.route)
+    expect(routes).toEqual(["unknown", "unknown"])
   })
 
   test("streamGenerateContent without alt=sse is a 400 on param alt", async () => {

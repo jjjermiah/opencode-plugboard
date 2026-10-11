@@ -64,10 +64,10 @@ export function matchGeminiRoute(method: string | undefined, path: string): Gemi
     const verb = colon > 0 ? rest.slice(colon + 1) : ""
     const model = decode(rest.slice(0, colon))
     if (!/^[A-Za-z]+$/.test(verb) || model === undefined) return undefined
-    const label = `POST ${prefix.slice(0, -1)}/{model}:${verb}`
     if (verb === "generateContent" || verb === "streamGenerateContent")
-      return { op: "generate", route: label, model: model.startsWith("models/") ? model.slice(7) : model, stream: verb === "streamGenerateContent" }
-    return { op: "unsupported", route: label, verb }
+      return { op: "generate", route: `POST ${prefix.slice(0, -1)}/{model}:${verb}`, model: model.startsWith("models/") ? model.slice(7) : model, stream: verb === "streamGenerateContent" }
+    // The client's verb never becomes a metric or log label: every other verb is `unknown` (#135).
+    return { op: "unsupported", route: "unknown", verb }
   }
   return undefined
 }
