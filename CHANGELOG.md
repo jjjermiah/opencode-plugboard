@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.13.0] - 2026-10-11: House Rules
+
+**Full diff:** [v0.12.0...v0.13.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.12.0...v0.13.0)
+
 ### Added
 
 - **Rules per app** ([#78](https://github.com/jjjermiah/opencode-plugboard/issues/78), [#51](https://github.com/jjjermiah/opencode-plugboard/issues/51)). One key used to reach every allowed model, and the only way to change an app's behaviour was to change the app. The new `apps` option lets the operator decide, per app:
@@ -27,6 +33,111 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
   `models` narrows the global allowlist for that app (an app can only ever narrow it): anything outside is the usual 404, and every model list, the setup page and `/v1/status` show only what that key may use. Fallback targets an app can't use are skipped. `system` is prepended (or appended, or replaces the caller's) on every request, `tools: false` strips caller tools and says so in `x-plugboard-policy: tools-stripped`, and `maxTools` lowers the tool cap. It all happens in the session layer, so it applies to every endpoint. `keys` keeps working and merges with `apps`.
 - **Every client, checked on every push** ([#101](https://github.com/jjjermiah/opencode-plugboard/issues/101), [#132](https://github.com/jjjermiah/opencode-plugboard/issues/132), [#130](https://github.com/jjjermiah/opencode-plugboard/issues/130)). The official `openai`, `@anthropic-ai/sdk` and `@google/genai` SDKs and four Vercel AI SDK providers now run text, streaming, tool round trips, parallel tools, images, structured output, errors and usage against plugboard in CI, and the result is published as [docs/compatibility.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/compatibility.md) (67 pass, 1 known gap). Every response encoder is type-checked against the SDKs' own wire types, and property tests throw arbitrary JSON at every decoder to prove it answers with a 400, never a crash. The suite is now **1122 tests in about 1.5 s**, with per-layer test-count floors and a 97.5% line-coverage floor that can only go up ([#110](https://github.com/jjjermiah/opencode-plugboard/issues/110), [#100](https://github.com/jjjermiah/opencode-plugboard/issues/100)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (11 commits)</summary>
+
+#### Features
+
+**feat(config): per-app policy through the apps option** ([`71afc6d`](https://github.com/jjjermiah/opencode-plugboard/commit/71afc6d05b2257b4fa034c955b43f2d6e8184e9b))
+
+Some apps need steering the operator controls, not the caller: a chat UI that must not get tools, a bot that may only use one cheap model, a JSON-only instruction. This adds an `apps` option keyed by app name: `key`, `models`, `system`, `systemMode`, `tools` and `maxTools`.
+
+`keys` keeps working. `parseOptions` merges it with `apps.<name>.key` into the one key map `authenticate` already reads; a key set in both places must match or the config is rejected. Validation is strict: unknown fields, a non-default app without a key, `apps.default` next to keys, an empty `models`, a `systemMode` without `system` and a `maxTools` above the global cap all fail at load with a message naming the field. The keyless `default` app can be configured too.
+
+`models` only narrows the global allowlist. An entry is a model pattern or an alias name. An alias entry admits that name only (a bot scoped to `fast` cannot call the model behind it by id), a pattern admits every model it matches and the aliases pointing at them. A request outside the scope gets the same 404 `model_not_found` as an unknown model. `/v1/models`, `/v1/models/{id}`, the Gemini model routes, the setup page and `/v1/status` list only what the calling app may use, and a fallback target the app may not use is skipped instead of turning a retry into a 404.
+
+Enforcement sits behind the seam, so every front-end gets it with no per-route logic: the session caller checks the scope and applies `tools: false` (tools and tool choice dropped before the session is built) and the app's `maxTools` (400 `too_many_tools`), and the context hook prepends, appends or substitutes the app's `system`.
+
+The contract gains one optional callback, `CallContext.onPolicy`. The caller calls it when tools were stripped and every route sets `x-plugboard-policy: tools-stripped` next to `x-plugboard-model` while the headers are open; the first writer wins.
+
+Alternatives rejected: a 400 for a request that sends tools to a `tools: false` app (the point is that the app need not change), and resolving the scope in `resolveModel` (four routes plus Gemini would each need the app, and a new front-end could forget it). Known limits, documented: `tools: false` also drops the tool `json_schema` structured output is answered through, and `replace` drops the instruction `json_object` adds.
+
+Fixes #78
+Fixes #51
+
+#### Tests
+
+**test: parse SSE with eventsource-parser, the parser real clients use** ([`8aea37a`](https://github.com/jjjermiah/opencode-plugboard/commit/8aea37a4ff0a0f2407bb8bd8b92ba1e42faf6bbb))
+
+parseSse now feeds the body to eventsource-parser, so tests see events the way the AI SDK and eventsource do (multi-line data, CRLF, unterminated last event not delivered). Comments are still reported in order for the keepalive checks, and raw reads stay available as OpenStream.received.
+
+Adds the devDependencies the next commits use: eventsource-parser, fast-check, openai, @anthropic-ai/sdk, @google/genai, ai and the AI SDK OpenAI, Anthropic and Google providers. None ship in the package.
+
+Fixes #129
+
+**test(gemini): cover the codec, routes, key sources and Google errors** ([`d1f56c9`](https://github.com/jjjermiah/opencode-plugboard/commit/d1f56c9fc12df79e63922930995c1affb535407b))
+
+Request decoding (contents, function call pairing, schema conversion, tool config, structured output, thinking), the GenerateContentResponse encoder, Google error bodies, route matching, the three key sources (x-goog-api-key, ?key=, Authorization), alt=sse streams, #38/#49 status rules and the deadline. A test.failing records #135 (made-up method names grow the route label).
+
+Refs #5 #135
+
+**test: pin every encoder to the official SDK wire types** ([`f2b6661`](https://github.com/jjjermiah/opencode-plugboard/commit/f2b666194f797f206da637da3015bd50a223d156))
+
+test/types/wire.ts holds one golden per wire shape (chat completion and chunks, errors, model list, Responses object and events, legacy completions, Anthropic message, events and error, Gemini response and chunks), generated from the real encoders by test/types/generate.ts. Each golden satisfies Wire<SdkType> (every field we send exists in openai, @anthropic-ai/sdk or @google/genai with a compatible type) and is passed to exact<SdkType> (required fields we omit). Known gaps carry a @ts-expect-error naming them, so closing one fails the type check until the directive is removed. test/unit/wire.test.ts checks the encoders still produce the goldens. Types only: the SDKs are imported with import type.
+
+Fixes #132
+
+**test: add fast-check properties for every decoder and the schema converter** ([`eaeeb3a`](https://github.com/jjjermiah/opencode-plugboard/commit/eaeeb3a35cbf067aba1b56610bb767967362f351))
+
+Each decoder (Chat Completions, Responses, Anthropic Messages, legacy completions, Gemini) gets two properties: any value (JSON or not) decodes to a 400 invalid_request or a well-formed, serializable request, never a throw; and so does a request-shaped body whose fields are usually valid and sometimes wrong, which reaches the deeper branches (it must decode successfully at least 1% of the time, or the arbitrary is not doing its job). The schema converter never throws, emits lowercase JSON Schema types and keeps every property. Checked: dropping the isRecord guard in the chat decoder's textOf is caught on every run.
+
+Fixes #130
+
+**test: add the client compatibility matrix layer (first slice)** ([`4af4cbb`](https://github.com/jjjermiah/opencode-plugboard/commit/4af4cbb1472f7f517926a03acca2354cb60dc017))
+
+test/compat runs the official SDKs (openai for chat, responses and legacy completions; @anthropic-ai/sdk; @google/genai; the AI SDK with its OpenAI chat and responses, Anthropic and Google providers) through one scenario set (text, stream, tool round trip, parallel tools, image, structured output, errors, usage) against a real plugboard route backed by a scripted model. A case the endpoint cannot have is n/a; a known incompatibility is a gap (test.failing) with its reason. .github/scripts/compat-matrix.ts renders the outcomes for the Actions summary and generates docs/compatibility.md.
+
+Result: 67 pass, 1 gap (Anthropic SDK output_config.format), 4 n/a. Live mode against real providers is #99.
+
+Refs #101
+
+**test(policy): cover the apps option, scope enforcement and the policy header** ([`7ed1ab4`](https://github.com/jjjermiah/opencode-plugboard/commit/7ed1ab4be9b84a932589900212580f86c7fd4f16))
+
+Tests for per-app policy at each layer, using the existing fakes. test/unit/apps.test.ts covers parsing (keys and apps.key merge, every rejection, defaults, the keyless default app), the model scope on lists and fallbacks, `checkAppModel` and the header writer. test/session/policy.test.ts drives the real session caller and the context hook: 404 outside the scope with no session created, alias entry versus pattern entry, tools stripped before the session is built, the app's `maxTools`, and prepend, append and replace for the system prompt. test/http/policy.test.ts checks `x-plugboard-policy` on chat (JSON, SSE, n = 2), legacy completions, Responses, Messages and Gemini, the model lists of `/v1` and `/v1beta` per key, and the real caller behind the real route.
+
+`FakeModelCaller` gets a `{ policy: notes }` step that calls `context.onPolicy`, and the parseOptions defaults test now expects `apps: {}`.
+
+#### Docs
+
+**docs(tests): document the new test layers, gates and package rule** ([`f3952f4`](https://github.com/jjjermiah/opencode-plugboard/commit/f3952f440cdc722dd535a0719178ac6c7464a4bd))
+
+test/README.md gains the compat and types layers, how the property tests, SDK wire-type goldens and client matrix work and how to extend them, and how to raise the .ci floors. AGENTS.md replaces "no other framework or test dependency" with the owner's rule (prefer popular, exact-pinned packages to hand-rolled test code) and lists the new CI gates. CONTRIBUTING.md and STRUCTURE.md point at the new directories, .ci/ and docs/compatibility.md.
+
+Refs #101
+Refs #110
+
+**docs(changelog): notes for per-app policy and the compat matrix** ([`6cf97f8`](https://github.com/jjjermiah/opencode-plugboard/commit/6cf97f85d28e363a262e6eee1fd70d006034d650))
+
+Curated [Unreleased] entries for the apps option (#78, #51) and for the test work that landed with it: the client compatibility matrix (#101), SDK wire type checks (#132), decoder property tests (#130) and the test-count and coverage floors (#110, #100). Pinned install examples bumped to 0.13.0.
+
+#### CI and tooling
+
+**ci: gate test counts per layer and coverage with ratcheting floors** ([`504be7d`](https://github.com/jjjermiah/opencode-plugboard/commit/504be7d85437df245a6937784bc18d4fcefb247a))
+
+One extra test run in the package job writes JUnit and lcov, and .github/scripts/test-gates.ts checks them against floors in .ci/:
+
+- .ci/test-count-floors.json: tests that ran per layer (test/unit, test/http, test/session, test/runtime, test/compat). Deleting or skipping tests now fails CI instead of passing quietly. Skipped and todo tests do not count.
+- .ci/coverage-floor.json: line and function coverage of index.ts and src/ (test helpers are excluded in bunfig.toml). Today 97.5% lines, 91.1% functions; stable to 0.1% over ten runs despite the random property tests.
+
+Floors only go up: --ratchet raises them to the current values and never lowers them, so a PR that adds tests commits the new floor with them. The job summary shows a per-layer count table and per-area coverage (src/session, src/openai, ...), with rows above their floor marked "raise".
+
+JUnit is read with fast-xml-parser and lcov with lcov-parse (with @types/lcov-parse), the widely used parsers, instead of hand-rolled ones. A separate step re-runs the suite (about 2 s) rather than changing the existing Test step, which another lane may be editing.
+
+Checked: raising the http floor by one and the line floor by 0.1 each exit 1 with a named failure; the real floors pass.
+
+Fixes #110
+Fixes #100
+
+**ci: render the client compatibility matrix in the job summary** ([`0c6a334`](https://github.com/jjjermiah/opencode-plugboard/commit/0c6a334b4b631e4a3877c50fa5ddcde8c14a1a2f))
+
+The package job runs test/compat with PLUGBOARD_COMPAT_RESULTS set, renders the client x scenario x endpoint table into the job summary with .github/scripts/compat-matrix.ts, and regenerates docs/compatibility.md, failing when the committed file is stale so the published matrix always matches what CI proved. Only a new step; existing steps are unchanged.
+
+Refs #101
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.12.0] - 2026-10-11: Plan B Built In
 
@@ -1042,7 +1153,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.9.1...v0.10.0
