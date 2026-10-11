@@ -97,6 +97,12 @@ client                    HTTP listener (runtime)       OpenAI route            
 
 The model call is neutral: `ModelCaller.stream(PlugRequest, { app, signal })` returns `AsyncIterable<PlugEvent>`. Response presentation (streaming, usage chunks, structured-output unwrapping, wire error types) is `OpenAiExchange` state owned by `src/openai/` and never reaches the caller.
 
+## Second front-end: Responses
+
+`POST /v1/responses` is a front-end beside `src/openai/`, on the same neutral seam. `src/openai/route.ts` does the shared work (Host and origin check, authentication, JSON body, deadline) and hands the parsed body to `src/responses/route.ts`, which decodes it into a `PlugRequest` (`input` items, `instructions`, function tools, `text.format`, `reasoning.effort` as the variant), calls the same `ModelCaller` and encodes the `PlugEvent`s. The contract did not change. The Responses presentation state (`ResponsesExchange`: stream flag, echoed request fields, structured-output mode) lives in `src/responses/` and never reaches the caller, as `OpenAiExchange` does for Chat Completions.
+
+One state machine (`runResponse`) produces both the JSON body and the SSE events, so they cannot disagree. It is stateless like the rest: `previous_response_id`, `conversation` and `item_reference` are rejected, and nothing is stored. Structured output reuses the Chat Completions mechanism (a forced `respond` tool unwrapped into the message text). Details and the supported field list: [responses.md](responses.md).
+
 ## Module map
 
 ```text
@@ -107,9 +113,12 @@ src/models.ts               allowlist/alias policy: resolveModel, listAvailableM
 src/log.ts                  one-line logger; ids and outcomes only, never keys, bodies or URLs
 src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store
 src/http.ts                 ingress: body limits, origin checks, disconnect abort, deadline, JSON/SSE transport
-src/openai/route.ts         Chat Completions and /v1/models orchestration
+src/openai/route.ts         Chat Completions and /v1/models orchestration; dispatches POST /v1/responses
 src/openai/request.ts       decode a Chat Completions body (pure)
 src/openai/response.ts      encode completions, SSE, errors, model list (pure); OpenAiExchange
+src/responses/route.ts      Responses orchestration (after the shared origin, auth and body steps)
+src/responses/request.ts    decode a Responses body (pure)
+src/responses/response.ts   encode the response object and its SSE events (pure); ResponsesExchange
 src/session/host.ts         the host adapter: Effect plugin API to Promise port, catalog, hook-event shapes
 src/session/caller.ts       one model-call lifecycle: create session, prompt, relay events, release
 src/session/context.ts      context hook, seed tools, agent deny (all gated on confirmation); re-keys seeds onto the caller's tools
@@ -120,7 +129,7 @@ src/session/media.ts        bounded image preparation (data URLs; opt-in remote 
 src/session/seeds.ts        seed name prefix and result text
 ```
 
-Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response` -> `contract`; `runtime` -> `history` (`ensureBackend`), `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
+Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `openai/request`, `openai/response`, `responses/route` -> `contract`; `responses/route` -> `http`, `models`, `responses/request`, `responses/response` (and the Chat error encoder, same body shape); `runtime` -> `history` (`ensureBackend`), `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`, `responses/request`, `responses/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
 
 ## Conventions
 
