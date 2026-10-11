@@ -1,8 +1,35 @@
 # Architecture
 
-opencode-plugboard serves an OpenAI-compatible endpoint from inside an OpenCode V2 server and answers with the server's own providers. Each model call becomes one kept OpenCode session in an app directory under the plugboard data root. The plugin steers that session: it swaps in the caller's system prompt, messages and tools, then ends the turn when the model asks for a tool.
+opencode-plugboard serves OpenAI Chat Completions, Responses, legacy completions, Anthropic Messages and Gemini endpoints from inside an OpenCode V2 server and answers with the server's own providers. Each model call becomes one kept OpenCode session in an app directory under the plugboard data root. The plugin steers that session: it swaps in the caller's system prompt, messages and tools, then ends the turn when the model asks for a tool. For a file-by-file map and where new code goes, see [STRUCTURE.md](../STRUCTURE.md).
 
 Supported OpenCode version: **2.0.26** (`@opencode/plugin` 2.0.x, `effect` 4.0.0-rc.112). The host session API is not stable across versions, so the plugin is pinned to one. Type-level gates (`HostContextMatches` in `src/session/host.ts`, the checked `Parameters<...>` casts) make `bunx tsc --noEmit` fail when the pinned host changes shape. To upgrade: bump the dev dependency, run the type check, then re-run the live checks against an isolated server.
+
+## Invariants
+
+These are the rules a change must not break. Tests, reviews and the mutation catalogue cite them by number, so a number is never reused. The sections below explain why each holds.
+
+- **I1. Setup only registers and returns.** Plugin setup makes no call on `ctx` that waits for Location readiness and awaits nothing from the session or model APIs (`index.ts`).
+- **I2. Finalizers are synchronous and never call `ctx`.** `Registration.dispose` only mutates in-memory state and arms an unref'd timer, and teardown never awaits `session.interrupt` or any host call (`src/runtime.ts`, wired in `index.ts`).
+- **I3. Setup touches no filesystem, `ctx.storage` or `ctx.session`.** Which Location is an app directory is decided later, from request handling, by `ensureAppDir` and `ensureBackend` (`src/session/history.ts`, `src/runtime.ts`).
+- **I4. The plugin is inert outside the data root.** The context hook, the agent deny and the seed tools are registered everywhere but do nothing until `confirmed()` is true for the Location (`src/session/context.ts`, `src/runtime.ts`).
+- **I5. A rejected generation installs and serves nothing, and options that differ never replace live ones.** A different `listen`, different options or a foreign runtime means rejection, so a project config entry cannot weaken authentication (`src/runtime.ts` `registerGeneration`, `index.ts`).
+- **I6. Process-wide state lives on `globalThis` under a versioned key.** Changing the shape of the runtime means bumping `VERSION`, and a runtime of another version is never touched, which leaves this module inert (`src/runtime.ts`).
+- **I7. The event pump starts lazily from request handling and is never awaited.** Events of sessions that are not registered are dropped before anything is buffered (`src/runtime.ts` `ensurePump`, `src/session/state.ts`).
+- **I8. Request sessions deny every real tool.** They are created with `deny *` then `allow plugboard_seed_*`, so no step can run an OpenCode tool (`src/session/seeds.ts` `REQUEST_PERMISSIONS`, used by `src/session/caller.ts`).
+- **I9. Tool calls are returned to the caller, never executed.** A seed tool settles at once with a fixed result and the turn is interrupted when the step ends with tool calls (`src/session/seeds.ts`, `src/session/events.ts`, `src/session/caller.ts`).
+- **I10. Seed descriptors are mutated in place and never copied.** The host maps a rewritten tool back to its registered tool by object identity (`src/session/context.ts` `remapSeedTools`).
+- **I11. No session is created before `ensureBackend` succeeds.** A session in a directory with no context hook would answer from the raw transcript (`src/session/caller.ts`, `src/runtime.ts`).
+- **I12. The request guard outlives the HTTP response.** It is released by `session.execution.*` or by a bounded cleanup, and nothing in teardown waits for it (`src/session/state.ts`, `src/session/caller.ts`).
+- **I13. Provider and host error text never reaches callers.** Host errors map to a stable code and a fixed message, unexpected errors answer a generic 500, and image fetch failures share one message; the raw text goes to the log only (`src/session/events.ts` `toPlugError`, `src/openai/route.ts`, `src/session/media.ts`).
+- **I14. Keys are never logged or shown.** Logs carry ids and outcomes only, the discovery pages never include a key, and keys are compared in constant time (`src/log.ts`, `src/discovery.ts`, `src/config.ts` `authenticate`).
+- **I15. Authentication comes before route existence.** An unauthenticated caller gets a 401 for every path except `/healthz` and the discovery pages, and the Messages route answers 405 to a non-POST method first (`src/openai/route.ts`, `src/anthropic/route.ts`).
+- **I16. Loopback endpoints check Host and Origin.** On a loopback listen the Host header must name a loopback host and the listen port, a keyless endpoint rejects any Origin, and a keyless endpoint must listen on loopback (`src/http.ts` `checkOrigin`, `src/config.ts` `parseOptions`).
+- **I17. Remote images pass an SSRF filter.** The fetch is off by default, resolves the host first, accepts only public addresses unless allowed, connects to the address it checked, follows no redirect and has size and time caps (`src/session/media.ts`).
+- **I18. The first wire byte decides the HTTP status.** Nothing is committed until the first output event, so an earlier failure is a real HTTP error and a later one is an error frame (`src/http.ts` `sseWriter`, every `route.ts`).
+- **I19. One deadline and one disconnect abort cover a request, and an abandoned request never reaches the model caller.** The scope is created before the first `await` (`src/http.ts` `beginRequest`, `src/openai/route.ts`).
+- **I20. Front-ends talk to the back end only through `src/contract.ts`.** Wire presentation state stays in the front-end's `Exchange`, and the pure codecs import no `node:http`, Effect, filesystem or host types (`src/contract.ts`, `src/*/request.ts`, `src/*/response.ts`).
+- **I21. The history index is written only while a limit is set.** Sweeps start from request handling, do bounded work and skip a session whose request guard is still active (`src/runtime.ts` `trackSession`, `src/session/prune.ts`).
+- **I22. The request id is made by the server.** It is never taken from the client, because it is echoed in a header and written to logs (`src/openai/route.ts` `handle`).
 
 ## Three lifetimes
 
@@ -44,7 +71,7 @@ The session caller awaits `ensureBackend(app, signal)` (`src/runtime.ts`, wired 
 
 ### Request guard vs response
 
-The store entry is the guard that makes the context hook rewrite a session. It outlives the HTTP response: the caller releases it only when the host reports `session.execution.*`. After the response, the caller interrupts the turn if it is still running and retires the entry with a 30 s bound; if the host never confirms, the runtime logs `session.cleanup_timeout`, retries the interrupt and releases. Nothing here is awaited in teardown. As a backstop, request sessions are created with permissions `deny *` then `allow plugboard_seed_*`, so even a second step that slips past the interrupt cannot run a real OpenCode tool.
+The store entry is the guard that makes the context hook rewrite a session. It outlives the HTTP response: the caller releases it only when the host reports `session.execution.*`. After the response, the caller interrupts the turn if it is still running and retires the entry with a 30 s bound; if the host never confirms, the session store logs `session.cleanup_timeout`, retries the interrupt and releases. Nothing here is awaited in teardown. As a backstop, request sessions are created with permissions `deny *` then `allow plugboard_seed_*`, so even a second step that slips past the interrupt cannot run a real OpenCode tool.
 
 ## History pruning
 
@@ -70,7 +97,7 @@ All of this runs from request handling. Setup registers nothing new and makes no
 
 ## Freeze-safety rules
 
-A plugin effect that blocked once froze every prompt in a project. The rules:
+A plugin effect that blocked once froze every prompt in a project. The rules (invariants I1 to I4 and I7, with the detail):
 
 - Plugin setup only **registers** and returns. It makes no call on `ctx` that waits for Location readiness, and awaits nothing from the session or model APIs.
 - Finalizers are **synchronous** and call nothing on `ctx`. `Registration.dispose` only mutates in-memory state and arms an unref'd timer.
@@ -136,7 +163,7 @@ One state machine (`runResponse`) produces both the JSON body and the SSE events
 
 `src/anthropic/request.ts` decodes `system`, content blocks (text, image, document, tool_use, tool_result), custom tools, `tool_choice`, sampling and `thinking`; `src/anthropic/response.ts` has one state machine (`runMessage`) for the message object and the SSE events. Anthropic's `input_tokens` excludes cache tokens while `PlugUsage.inputTokens` includes them, so the encoder subtracts. Details and the supported field list: [messages.md](messages.md).
 
-## Third front-end: legacy completions
+## Fourth front-end: legacy completions
 
 `POST /v1/completions` is another front-end on the same seam, handed over by `src/openai/route.ts` the same way (`src/completions/route.ts`). `request.ts` turns `prompt` into one user message per prompt (a `suffix` becomes the only system prompt), `response.ts` encodes the legacy `text_completion` body and chunks. It always goes through the fan-out below, a single prompt being the case of one choice. Details: [completions.md](completions.md).
 
@@ -148,7 +175,8 @@ One state machine (`runResponse`) produces both the JSON body and the SSE events
 - JSON: each choice's body is encoded alone, then `choices[0]` of each is renumbered by index and the `usage` objects are summed.
 - SSE: one `sse.paced` serves all choices (one backpressure wait, one keepalive). A merge pulls at most one event ahead per choice, tags it with its choice, and feeds one queue per choice, which that choice's encoder reads. Encoders write their own chunks with the shared `id` and their `index`; the error frame, the summed usage chunk and `[DONE]` are written once, by the fan-out.
 - `maxN` (default 1) caps the calls per request, because each is a full model call and a kept session.
-## Fourth front-end: Gemini
+
+## Fifth front-end: Gemini
 
 `POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent?alt=sse`, plus `GET /v1beta/models[/{model}]`, are a front-end in `src/gemini/` on the same seam. `src/openai/route.ts` matches the path (`matchGeminiRoute`), checks the origin, authenticates in the shared step (before route existence is revealed, so an unauthenticated Gemini path gets a 401 in Google's body) and dispatches to `src/gemini/route.ts` with the metered caller. Two things differ from the other front-ends. The model is in the URL, not the body, and the credential may be `x-goog-api-key` or `?key=` as well as `Authorization` (`geminiAuthorization` normalizes it into the Bearer form `authenticate` reads). And every error on a Gemini path, including the shared ones (auth, origin, body, timeout), uses Google's `{error:{code,message,status}}` body: the route remembers which responses are Gemini ones and picks the encoder in `fail`.
 
@@ -159,15 +187,16 @@ One state machine (`runGenerate`) produces both the JSON body and the SSE chunks
 ```text
 index.ts                    the plugin: compose one generation, gated app-directory registrations, synchronous finalizer
 src/contract.ts             neutral vocabulary: PlugRequest/PlugEvent/PlugError, CatalogModel, ModelCaller
-src/config.ts               options type, defaults, parseOptions (rejects `__proto__` aliases and duplicate keys), authenticate, loopback check (localhost, 127.0.0.1, ::1: the Host check's set)
+src/config.ts               options type, defaults, parseOptions (rejects `__proto__` aliases and two apps sharing a key value), authenticate, loopback check (localhost, 127.0.0.1, ::1: the Host check's set)
 src/models.ts               allowlist/alias policy: resolveModel, listAvailableModels (neutral)
 src/log.ts                  one-line logger (text or JSON), ambient request id; ids and outcomes only, never keys, bodies or URLs
 src/metrics.ts              Prometheus registry and text rendering (pure, no I/O)
 src/discovery.ts            `GET /`, `GET /v1` and `GET /v1/status` documents, HTML page (pure builders), `sendText`
 src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store, history sweep state, metrics registry
 src/http.ts                 ingress: body limits, origin checks, disconnect abort, deadline, JSON/SSE transport
-src/openai/route.ts         Chat Completions and /v1/models orchestration; dispatches POST /v1/responses, /v1/completions and the Gemini paths
+src/openai/route.ts         front door and Chat Completions and /v1/models orchestration; dispatches POST /v1/messages, /v1/responses, /v1/completions and the Gemini paths
 src/openai/fanout.ts        n > 1: one model call per choice, group cancellation, JSON merge, SSE interleave; ChoiceCodec
+src/openai/sampling.ts      per-model table of sampling parameters to drop (`dropRejected`, #30)
 src/openai/request.ts       decode a Chat Completions body (pure)
 src/openai/response.ts      encode completions, SSE, errors, model list (pure); OpenAiExchange
 src/completions/route.ts    legacy completions orchestration (after the shared origin, auth and body steps)
@@ -188,21 +217,20 @@ src/session/context.ts      context hook, seed tools, agent deny (all gated on c
 src/session/events.ts       turns one session's bus events into PlugEvents (collector)
 src/session/state.ts        cross-generation session ownership store
 src/session/history.ts      data root, app directory (async, symlink containment), session title and transcript (control and bidi characters stripped)
-src/openai/sampling.ts      per-model table of sampling parameters to drop (`dropRejected`, #30)
 src/session/prune.ts        history index keys, `recordSession`, the bounded `sweepHistory` (see History pruning)
 src/session/media.ts        bounded image preparation (data URLs; opt-in remote fetch: public addresses only unless allowed, resolved address pinned)
 src/session/seeds.ts        seed name prefix and result text
 ```
 
-Dependency direction: `index` -> `runtime` / `session/*` / `openai/route`; `openai/route` -> `http`, `models`, `config`, `discovery`, `metrics`, `runtime` (only the `processMetrics` / `processStatus` defaults, overridable through `RouteHost`), `openai/request`, `openai/response`, `openai/fanout`, `completions/route`, `responses/route` -> `contract`; `responses/route` -> `http`, `models`, `responses/request`, `responses/response` (and the Chat error encoder, same body shape); `gemini/route` -> `http`, `models`, `gemini/request`, `gemini/response`, `openai/sampling`; `runtime` -> `history` (`ensureBackend`), `prune`, `state`; `session/caller` -> `history`, `media`, `events` -> `contract`; `session/context` -> `state`, `seeds`. Pure codecs (`openai/request`, `openai/response`, `responses/request`, `responses/response`, `gemini/request`, `gemini/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
+Dependency direction: `index` -> `runtime`, `session/*`, `openai/route`. `openai/route` -> `http`, `models`, `config`, `discovery`, `metrics`, `runtime` (only the `processMetrics` / `processStatus` defaults, overridable through `RouteHost`), `openai/request`, `openai/response`, `openai/fanout`, `openai/sampling` and the other routes (`anthropic/route`, `completions/route`, `gemini/route`, `responses/route`). Each of those imports from `openai/route` only the `RouteHost` type, and otherwise `http`, `models`, `contract` and its own `request` / `response`. Extras: `anthropic/route` -> `config` (`authenticate`) and `openai/sampling`; `completions/route` -> `openai/fanout`, `openai/sampling` and the Chat error encoder; `responses/route` -> the Chat error encoder (same body shape); `gemini/route` -> `openai/sampling`. `runtime` -> `session/history` (`ensureAppDir`), `session/prune`, `session/state`; `session/caller` -> `config` (app name pattern), `history`, `media`, `events`, `seeds`; `session/events` -> `contract`; `session/context` -> `state`, `seeds`; `config` -> `session/media` (`parseAllowEntry`). Pure codecs (`openai/request`, `openai/response`, `completions/request`, `completions/response`, `responses/request`, `responses/response`, `anthropic/request`, `anthropic/response`, `gemini/request`, `gemini/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.
 
 ## Error text and route existence
 
-Provider and host error text never reaches the caller (#88): `toPlugError` in `src/session/events.ts` maps a host `SessionError` to a stable `code` and a fixed message per class (`rate_limited`, `quota_exceeded`, `context_length_exceeded`, `provider_auth_failed`, `content_filter`, `provider_timeout`, `provider_unavailable`, `provider_rejected_request`, `model_run_failed`) and logs the raw text once as `model.failed`. The route authenticates before it says whether a path exists, so an unauthenticated caller sees 401 for every path except `/healthz` (#91).
+Provider and host error text never reaches the caller (#88): `toPlugError` in `src/session/events.ts` maps a host `SessionError` to a stable `code` and a fixed message per class (`rate_limited`, `quota_exceeded`, `context_length_exceeded`, `provider_auth_failed`, `content_filter`, `provider_timeout`, `provider_unavailable`, `provider_rejected_request`, `model_run_failed`) and logs the raw text once as `model.failed`. The route authenticates before it says whether a path exists, so an unauthenticated caller sees 401 for every path except `/healthz` and the discovery pages (#91). The one exception is the Messages route, which answers 405 to a non-POST method before it authenticates.
 
 ## Conventions
 
 - Relative imports use `.js` specifiers.
-- Errors cross layers as `PlugError` values (checked with `isPlugError`); only the OpenAI encoder maps `kind` to the wire `type`.
+- Errors cross layers as `PlugError` values (checked with `isPlugError`); each front-end's own encoder maps `kind` to its wire error type (`encodeError` in `src/openai/response.ts` and `src/anthropic/response.ts`, `encodeGeminiError` in `src/gemini/response.ts`).
 - Casts that erase host types live in `src/session/host.ts` and state the invariant that makes them safe.
 - There is no test suite; checks are `bunx tsc --noEmit` and live runs against an isolated OpenCode server.

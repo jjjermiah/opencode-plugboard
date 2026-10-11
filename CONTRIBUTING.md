@@ -2,6 +2,8 @@
 
 Thanks for looking. Plugboard runs inside people's OpenCode servers, so the bar is "does not break the host", and a few rules follow from that. [AGENTS.md](AGENTS.md) is the same material written for coding agents. Start with [docs/architecture.md](docs/architecture.md), which explains the three lifetimes (plugin generation, HTTP request, host execution) that most bugs here come from mixing up.
 
+[STRUCTURE.md](STRUCTURE.md) maps the source and says where new code goes. The numbered invariants in [docs/architecture.md](docs/architecture.md#invariants) are the rules a change must not break.
+
 Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboard/issues), not in markdown files. For anything bigger than a small fix, open or comment on an issue first so we agree on the shape before you write code. Reference it in your commit (`Fixes #N`). Report security problems privately, see [SECURITY.md](SECURITY.md).
 
 ## Set up
