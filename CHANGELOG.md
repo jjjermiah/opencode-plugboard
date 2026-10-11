@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.15.0] - 2026-10-11: Brakes, Memory, Clean Names
+
+**Full diff:** [v0.14.0...v0.15.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.14.0...v0.15.0)
+
 ### Added
 
 - **Concurrency caps and rate limits** ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54), [#86](https://github.com/jjjermiah/opencode-plugboard/issues/86), [#131](https://github.com/jjjermiah/opencode-plugboard/issues/131)). One runaway client could open dozens of parallel calls against your subscription and your OpenCode process. The new `limits` option caps model calls in flight, globally and per app, and how many calls each app may start per minute:
@@ -29,6 +35,101 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - Internal runtime version 10. Restart OpenCode after upgrading.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (8 commits)</summary>
+
+#### Features
+
+**feat(models): ui-safe model id slugs and capability filtering** ([`c517c5d`](https://github.com/jjjermiah/opencode-plugboard/commit/c517c5d81be8e7198794c9a918bf701cf458941d))
+
+Some chat UIs mangle the `/` and `#` in model ids, so `anthropic/claude-haiku-4-5#high` breaks there and users wrote an alias by hand for each model. This adds a `modelIds` option (`canonical` by default, `slugs`, or `both`). The slug form replaces `/` with `--` and `#` with `__`, so the model above is `anthropic--claude-haiku-4-5__high`. `toSlug` and `fromSlug` in src/models.ts do the mapping. `fromSlug` returns undefined for anything that is not a slug of a known shape, including canonical ids and alias names.
+
+`resolveModel` accepts a slug wherever it accepts a canonical id, whatever `modelIds` says, so a client that cached a slug keeps working when the option changes. Aliases are checked first, so an alias named like a slug still wins.
+
+An id that contains `--` or `__` does not round trip through the slug form. Listing only emits a slug when `fromSlug(toSlug(id))` gives the same id back. In `slugs` mode such a model is left out, and it stays listed under `canonical`. Without this check the list would offer a slug that resolves to a different model. Aliases are listed unchanged in every mode.
+
+`filterByCapability` and `parseCapability` filter the listed models on the flags the catalog already reports: `capabilities.image` for `vision` and `capabilities.tools` for `tools`. `json` is not accepted. The host catalog has no structured-output flag, and deriving one from `response_format` support would be a guess. The `capability` query parameter itself is wired in src/openai/route.ts by a separate change, so until that lands `/v1/models` ignores it.
+
+Docs: a `modelIds` row in docs/configuration.md and a "Model ids in UIs" section. Test-count and coverage floors were raised with `test-gates.ts --ratchet`. The http and session floors were already below the counts on the base commit, so the ratchet moved them too.
+
+Checked with `bun run typecheck`, `bun test` (1171 pass), `bun .github/scripts/check-pack.ts` and `bun .github/scripts/test-gates.ts`. The new unit tests cover round trips, a fast-check property over plain segments, junk rejection, slug resolution, alias priority, all three listing modes, the option parser and the capability filter. The live pong gate was not run for this change.
+
+Fixes #61
+
+**feat(limits): cap concurrent calls and requests per minute per app** ([`c6f8449`](https://github.com/jjjermiah/opencode-plugboard/commit/c6f844901123d822bcfe8829e058d26f1ebb67cd))
+
+Option `limits` caps how many model calls run at once, globally and per app, and how many calls an app may start per minute. Without it nothing is capped, which is today's behaviour. One runaway client could hold every provider slot and burn a subscription's quota (#54), and many parallel requests each hold a host session for up to requestTimeoutMs (#86).
+
+withLimits (src/limits.ts) is a ModelCaller wrapper. It is outermost in index.ts, outside withFallbacks, so one request takes one slot in each applicable cap however many alias targets it tries. Before the inner caller runs, the global cap, the app's cap and the app's requests-per- minute window are checked together. A refused call yields one error event: status 429, kind rate_limit, code too_many_requests or rate_limit_exceeded, and retryAfterSeconds. It never reaches the session caller, so no session is created and the provider never sees the call.
+
+Decisions. A call over a cap is refused at once. Nothing queues: #131 mentioned a bounded queue, but the decided design fails fast, so there is no wait to bound. apps.<name> overrides perApp field by field. Every check runs before anything is taken, so a refused call holds no slot and spends no window count. A slot is freed when the inner stream ends, throws, the consumer stops, or the request signal aborts; the abort also frees a slot whose inner stream ignores the signal. The rate limit is a fixed 60 s window per app. The queues and windows live on the runtime, and VERSION goes from 8 to 9, so they survive plugin generations (I6). PlugError gains retryAfterSeconds. No route reads it yet, so the Retry-After header is for the route lane to wire. Metrics gain plugboard_limited_total{app,reason}.
+
+Rejected: a hand-rolled counter (#131 asks for p-queue, and the counting is small either way), a sliding window (a fixed window needs one number per app and is enough for a per-minute cap), and a queue with a timeout (more state, and a waiting request holds its socket).
+
+Known edge: p-queue counts a slot free one microtask after its job resolves, so a call made in that same tick can be refused by mistake. Requests arrive from the I/O loop, so this is not seen in practice. The tests flush with tick() after a release.
+
+Checked: test/unit/limits.test.ts covers cap refusal, release after completion, a throw, an early stop and an abort (the abort case with an inner stream that ignores the signal), per-app independence, the window reset with an injected clock, and a fallback chain that holds one slot. Config and metrics tests cover the parsing and the counter. bun run typecheck passes, bun test passes (1161 tests), and check-pack and smoke-pack pass. Not run: a live run on an isolated server.
+
+Fixes #54
+Fixes #86
+Fixes #131
+
+**feat(cache): serve repeated requests from memory** ([`2025f84`](https://github.com/jjjermiah/opencode-plugboard/commit/2025f84da5d6d37f4c764c43ea3577c7597b65de))
+
+Pollers and bots resend identical prompts and pay for each one. With the new opt-in `cache` option, a completed answer is kept in memory and the same request from the same app is answered without a session or a provider call.
+
+What is kept: turns that end with stop or length, with text or reasoning, and no tool call, error or abort. Tool calls are not kept because they need the caller's results. Structured output is a forced tool call, so it is not kept either. A hit replays the stored events with zero usage, the onServed and onPolicy notes of the original (so x-plugboard-model and x-plugboard-policy match), and no history record.
+
+Decisions: the ModelCaller is wrapped in src/cache.ts, so no front-end has cache logic beyond reportCache. The wrapper sits outside the fallback chain in index.ts, so a hit never reaches a provider. The store lives on the runtime (VERSION 9) and is rebuilt when the cache option or the apps policy changes, because the key does not cover policy. Fan-out sets noCache for n above 1, since each choice must be a fresh sample. Every route sets x-plugboard-cache hit or miss, first writer wins. Metrics: plugboard_cache_requests_total, counted only with the metrics option. Rejected: a disk store. Memory keeps the change small; a restart empties the cache, and the docs say so.
+
+Checked: bun run typecheck, and bun test with the test commit (1204 pass). check-pack and smoke-pack pass.
+
+Fixes #59
+
+#### Tests
+
+**test(cache): cover the response cache** ([`4a1b826`](https://github.com/jjjermiah/opencode-plugboard/commit/4a1b8269568183ca7d2c4f26df25d398b1770f03))
+
+Adds unit tests for the wrapper (test/unit/cache.test.ts), http tests for the header on every front-end and for n above 1 (test/http/cache.test.ts), and runtime and config tests (test/runtime/cache.test.ts).
+
+The TTL test uses a short real TTL. lru-cache's injected perf clock did not move its expiry check after the first read, so a fake clock would have tested nothing. The http tests wrap the fake caller with cachedCaller, because startRoute does not run the runtime wiring.
+
+Checked: bun test (1204 pass, 74 of them new), bun run typecheck (src and test).
+
+Refs #59
+
+#### Docs
+
+**docs(cache): describe the response cache** ([`a7dd468`](https://github.com/jjjermiah/opencode-plugboard/commit/a7dd4689f7fc7cca1ab2a7e8ae670c2c8f89af11))
+
+Adds the cache option to docs/configuration.md: fields, defaults, what is and is not kept, the headers, and when the store resets. Adds a section and a module map line to docs/architecture.md: key, storage, replay, context flags and metrics. Operators need to know that a hit reports zero usage, that the cache is memory only, and why n above 1 is never cached.
+
+Refs #59
+
+**docs(changelog): notes for limits, the response cache and model slugs** ([`7afa987`](https://github.com/jjjermiah/opencode-plugboard/commit/7afa987008f88264bacde85ac49cc03f05024f27))
+
+Curated [Unreleased] entries for #54/#86/#131 (concurrency caps and per-app request windows), #59 (opt-in response cache) and #61 (UI-safe model id slugs), plus runtime version 10. README drops the stale "no concurrency limit" gap in favour of the real one (single-process state). Pinned install examples bumped to 0.15.0.
+
+#### Dependencies
+
+**build(deps): pin p-queue 9.3.5 for the request limiter** ([`98fe7d4`](https://github.com/jjjermiah/opencode-plugboard/commit/98fe7d40481259433909a1e4a0b060d53dda104d))
+
+The concurrency caps in src/limits.ts (#54, #86, #131) are p-queue instances, one per capped scope, with concurrency set to the cap. p-queue is the popular choice for this and #131 asks for it, so it was taken instead of a hand-rolled counter. It is pinned exact like every runtime package, because OpenCode installs plugin dependencies unattended.
+
+Checked before adding: `npm view p-queue scripts` shows no preinstall, install or postinstall script, so the ignoreScripts install is safe. Its own dependencies are p-timeout and eventemitter3, both pure JS. It is ESM only (Node >= 20) and ships its own types, so nothing goes in devDependencies. bun add p-queue@9.3.5 --exact installed 3 packages.
+
+Refs #131
+
+**build(deps): add lru-cache for the response cache** ([`e390650`](https://github.com/jjjermiah/opencode-plugboard/commit/e390650bd7b78f0b521b725c268aff7f838383cc))
+
+The response cache (src/cache.ts) needs an LRU with a TTL, an entry cap and a byte cap. lru-cache does exactly that, is widely used and has no dependencies of its own, so it replaces a hand-rolled map with expiry and eviction logic.
+
+Checked: bun install resolves lru-cache 11.5.3 (engines: node 20 or 22 and later). The Bun test suite loads it. It is a plain runtime dependency, which OpenCode installs next to the plugin with its npm install step.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.14.0] - 2026-10-11: Standard Issue Gauges
 
@@ -1257,7 +1358,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.11.0...v0.12.0
