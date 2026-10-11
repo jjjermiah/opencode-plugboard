@@ -10,10 +10,13 @@ describe("parseOptions: defaults", () => {
       models: [],
       aliases: {},
       maxTools: 32,
+      maxN: 1,
       requestTimeoutMs: 600_000,
       remoteImages: false,
       history: {},
       dropUnsupportedParams: true,
+      logFormat: "text",
+      metrics: false,
     })
   })
 

@@ -219,7 +219,7 @@ describe("the request log line", () => {
     const lines = logs.of("request")
     expect(lines).toHaveLength(2)
     expect(lines[0]!.fields).toMatchObject({ route: "POST /v1/chat/completions", app: "default", model: "test/echo", status: "200", outcome: "ok" })
-    expect(lines[0]!.fields.id).toMatch(/^[0-9a-f]{8}$/)
+    expect(lines[0]!.fields.id).toMatch(/^[0-9a-f]{12}$/)
     expect(Number(lines[0]!.fields.ms)).toBeGreaterThanOrEqual(0)
     expect(lines[1]!.fields).toMatchObject({ route: "GET /v1/models", status: "200" })
   })
