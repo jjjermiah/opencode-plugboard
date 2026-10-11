@@ -24,7 +24,8 @@
     "release": "bun .github/scripts/release.ts"
   },
   "dependencies": {
-    "escape-html": "1.0.3"
+    "escape-html": "1.0.3",
+    "safe-stable-stringify": "2.5.0"
   },
   "devDependencies": {
     "@opencode/plugin": "2.0.26",

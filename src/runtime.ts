@@ -45,6 +45,7 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import { Cause, Effect, Stream } from "effect"
+import stableStringify from "safe-stable-stringify"
 import { isPlugError, type CatalogModel, type PlugError } from "./contract.js"
 import { errorMessage, log, logError, outsideRequest, setLogFormat } from "./log.js"
 import { createMetrics, type Metrics, type RuntimeSnapshot } from "./metrics.js"
@@ -104,8 +105,8 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 6
+/** 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 7
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -298,19 +299,9 @@ export function loadServingCatalog(fallback: () => Promise<ReadonlyArray<Catalog
   return (rt ? (preferred(rt)?.loadCatalog ?? fallback) : fallback)()
 }
 
-/** JSON with object keys sorted at every level, so equal options compare equal whatever their key order. */
+/** JSON with object keys sorted at every level, so equal options compare equal whatever their key order (undefined values are left out, as in `JSON.stringify`). */
 function canonicalJson(value: unknown): string {
-  const canonical = (item: unknown): unknown => {
-    if (Array.isArray(item)) return item.map(canonical)
-    if (typeof item !== "object" || item === null) return item
-    return Object.fromEntries(
-      Object.entries(item)
-        .filter(([, entry]) => entry !== undefined)
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-        .map(([key, entry]) => [key, canonical(entry)]),
-    )
-  }
-  return JSON.stringify(canonical(value))
+  return stableStringify(value) ?? ""
 }
 
 const unavailable = (response: ServerResponse, message: string) => {
