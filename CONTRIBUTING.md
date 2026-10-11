@@ -49,7 +49,7 @@ After every plugin change, run the pong gate from that document: a normal prompt
 
 ## Package contents
 
-`npm pack --dry-run --json --ignore-scripts` must list only the `files` from `package.json` (`index.ts`, `src/`, `README.md`, `LICENSE`). CI checks this with `bun .github/scripts/check-pack.ts`; run it yourself if you add files. `.github/scripts/` holds the release and CI tooling and is not published.
+`npm pack --dry-run --json --ignore-scripts` must list only the `files` from `package.json` (`index.ts`, `src/`, `README.md`, `LICENSE`). CI checks this with `bun .github/scripts/check-pack.ts`; run it yourself if you add files. `.github/scripts/` holds the release and CI tooling and is not published. `bun run smoke:pack` installs the packed tarball into a throwaway project and loads the plugin from it; CI runs it too.
 
 ## Client checks
 

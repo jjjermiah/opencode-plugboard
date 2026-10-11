@@ -1,0 +1,94 @@
+name: Host bump
+
+# Weekly: when a newer @opencode/plugin inside the peer range (2.0.x) is published, open a PR that
+# bumps the pinned devDependencies to it, with the typecheck and test result in the body. Not a
+# required check. The repository setting "Allow GitHub Actions to create and approve pull
+# requests" must be on. A PR opened with the default token does not start CI by itself: push an
+# empty commit or close and reopen it. See docs/releasing.md.
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: host-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump the pinned host
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # push the bump branch
+      pull-requests: write # open or update the PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Find the newest host in the peer range
+        id: version
+        run: |
+          latest=$(bun .github/scripts/host-versions.ts --latest)
+          pinned=$(node -p 'require("./package.json").devDependencies["@opencode/plugin"]')
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
+          if [ "$latest" = "$pinned" ]; then
+            echo "Pinned @opencode/plugin $pinned is already the newest in range."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump the pinned devDependencies
+        if: steps.version.outputs.bump == 'true'
+        env:
+          LATEST: ${{ steps.version.outputs.latest }}
+        run: |
+          bun install --frozen-lockfile
+          # The host pins its own effect; the peer range pins one too, so keep the dev copy in step.
+          effect=$(npm view "@opencode/plugin@$LATEST" dependencies.effect)
+          bun add --dev --exact "@opencode/plugin@$LATEST" "effect@$effect"
+          git diff --stat
+
+      - name: Typecheck
+        id: typecheck
+        if: steps.version.outputs.bump == 'true'
+        continue-on-error: true
+        run: bun run typecheck
+
+      - name: Tests (when the package has a test script)
+        id: tests
+        if: steps.version.outputs.bump == 'true'
+        continue-on-error: true
+        run: |
+          if [ "$(node -p 'Boolean(require("./package.json").scripts?.test)')" = true ]; then
+            bun run test
+          else
+            echo "No test script, skipping."
+          fi
+
+      - name: Open the pull request
+        if: steps.version.outputs.bump == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: deps/opencode-host
+          delete-branch: true
+          commit-message: "Bump @opencode/plugin to ${{ steps.version.outputs.latest }}"
+          title: "Bump @opencode/plugin to ${{ steps.version.outputs.latest }}"
+          draft: ${{ steps.typecheck.outcome == 'failure' || steps.tests.outcome == 'failure' }}
+          body: |
+            OpenCode published `@opencode/plugin` ${{ steps.version.outputs.latest }}, inside the peer range. This bumps the pinned dev dependency from ${{ steps.version.outputs.pinned }} (and `effect` to the version the host pins).
+
+            - Typecheck: ${{ steps.typecheck.outcome }}
+            - Tests: ${{ steps.tests.outcome }}
+
+            A failing typecheck means the host API changed shape (`HostContextMatches` in `src/session/host.ts`); the PR is a draft then. If the host's `effect` changed, the `effect` peer range in `package.json` needs a look too. Run the pong gate on an isolated server before merging, and update the tested-host lines in `AGENTS.md` and the peer range if needed.
+
+            Opened by `.github/workflows/host-bump.yml`. Not a required check.

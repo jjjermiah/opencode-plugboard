@@ -1,0 +1,47 @@
+name: Nightly
+
+# Catches slow breakage (upstream releases, dependency drift) without blocking pushes: a fresh
+# install that ignores bun.lock and the package cache, then the same checks as CI. Not a
+# required check. See docs/releasing.md.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fresh-install:
+    name: Fresh install
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - name: Install without the lockfile or cache
+        run: |
+          rm -f bun.lock
+          bun install --no-cache
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Tests (when the package has a test script)
+        run: |
+          if [ "$(node -p 'Boolean(require("./package.json").scripts?.test)')" = true ]; then
+            bun run test
+          else
+            echo "No test script, skipping."
+          fi
+      - name: Check the packed file list
+        run: bun .github/scripts/check-pack.ts
+      - name: Smoke-test the packed tarball
+        run: bun .github/scripts/smoke-pack.ts

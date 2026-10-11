@@ -2,10 +2,16 @@
 // Cuts a release from CHANGELOG.md: moves [Unreleased] under a version heading,
 // fixes the link refs, bumps package.json, commits and tags. Not shipped in the package.
 //
-//   bun run release 0.3.0 --title "Short Creative Title" [--push] [--dry-run]
+//   bun run release 0.3.0 --title "Short Creative Title" [--push [--no-watch]] [--dry-run]
+//   bun run release 0.3.0 --watch-only
 //
 // Every release needs a title: 2 to 5 words, at most 40 characters, no trailing
 // period. It lands in the heading (`## [0.3.0] - <date>: Title`) and names the GitHub release.
+//
+// --push also follows the release to the end (unless --no-watch): it finds the Publish run for
+// the tag, waits for it, then polls npm until the version is visible and the dist-tag points at
+// it. It exits with that result. --watch-only does only that part for an existing tag, e.g. to
+// follow a run that is already going or to check a finished one.
 //
 // --dry-run prints the diff and changes nothing. Git state problems (dirty tree,
 // wrong branch) are reported as warnings there, so you can preview while editing.
@@ -16,7 +22,8 @@ import { join } from "node:path"
 const PLACEHOLDER = "Nothing yet."
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
 
-const USAGE = 'usage: bun run release <version> --title "Short Creative Title" [--push] [--dry-run]'
+const USAGE =
+  'usage: bun run release <version> --title "Short Creative Title" [--push [--no-watch]] [--dry-run]\n       bun run release <version> --watch-only'
 let title: string | undefined
 const flags = new Set<string>()
 const positional: string[] = []
@@ -26,7 +33,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === "--title") title = argv[++i] ?? ""
   else if (a.startsWith("--title=")) title = a.slice("--title=".length)
-  else if (a === "--push" || a === "--dry-run") flags.add(a)
+  else if (["--push", "--dry-run", "--watch", "--no-watch", "--watch-only"].includes(a)) flags.add(a)
   else if (a.startsWith("--")) unknown.push(a)
   else positional.push(a)
 }
@@ -36,6 +43,8 @@ if (unknown.length || positional.length !== 1) {
 }
 const dryRun = flags.has("--dry-run")
 const push = flags.has("--push")
+const watchOnly = flags.has("--watch-only")
+const watch = !flags.has("--no-watch") && (push || flags.has("--watch"))
 const version = positional[0].replace(/^v/, "")
 const tag = `v${version}`
 
@@ -79,6 +88,89 @@ function compare(a: string, b: string): number {
   }
   return 0
 }
+
+const PUBLISH_TIMEOUT_MS = 5 * 60_000
+const POLL_MS = 10_000
+
+function gh(...ghArgs: string[]): { ok: boolean; out: string } {
+  const run = Bun.spawnSync(["gh", ...ghArgs], { stderr: "pipe" })
+  return { ok: run.exitCode === 0, out: run.stdout.toString().trim() }
+}
+
+function npmView(spec: string, field: string): string {
+  const run = Bun.spawnSync(["npm", "view", spec, field, "--json", "--prefer-online"], { stderr: "pipe" })
+  return run.exitCode === 0 ? run.stdout.toString().trim() : ""
+}
+
+// Follows the Publish run for the tag, then the npm registry, and returns the exit code:
+// 0 only when the run succeeded and npm serves the version under the expected dist-tag.
+async function watchRelease(): Promise<number> {
+  const name = (JSON.parse(readFileSync("package.json", "utf8")) as { name: string }).name
+  const expectedTag = version.includes("-") ? "next" : "latest"
+  const sha = git("rev-list", "-n1", tag)
+
+  console.log(`watch: looking for the Publish run for ${tag} (${sha.slice(0, 7)})`)
+  let run: { databaseId: number; url: string } | undefined
+  for (const deadline = Date.now() + 90_000; !run && Date.now() < deadline; ) {
+    const listed = gh("run", "list", "--workflow", "publish.yml", "--branch", tag, "--limit", "20", "--json", "databaseId,headSha,url,event")
+    if (!listed.ok) {
+      console.error("watch: `gh run list` failed (is gh installed and logged in?)")
+      return 1
+    }
+    const runs = JSON.parse(listed.out || "[]") as { databaseId: number; headSha: string; url: string; event: string }[]
+    run = runs.find((r) => r.headSha === sha && r.event === "push")
+    if (!run) await Bun.sleep(5_000)
+  }
+  if (!run) {
+    console.error(`watch: no Publish run for ${tag} appeared within 90s. Check the Actions tab, then re-run with --watch-only.`)
+    return 1
+  }
+  console.log(`watch: following ${run.url}`)
+  const followed = Bun.spawnSync(["gh", "run", "watch", String(run.databaseId), "--exit-status", "--interval", "10"], {
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  if (followed.exitCode !== 0) {
+    console.error(`watch: the Publish run did not succeed. Logs: ${run.url}. Check \`npm view ${name} versions\` before re-running it, the failure may have come after the npm publish.`)
+    return 1
+  }
+  console.log("watch: the Publish run succeeded, waiting for npm to serve it")
+
+  const start = Date.now()
+  let seen = false
+  while (Date.now() - start < PUBLISH_TIMEOUT_MS) {
+    if (!seen && npmView(`${name}@${version}`, "version") === JSON.stringify(version)) {
+      seen = true
+      console.log(`watch: ${name}@${version} is visible on npm`)
+    }
+    if (seen) {
+      const tags = npmView(name, "dist-tags")
+      const current = tags ? (JSON.parse(tags) as Record<string, string>)[expectedTag] : undefined
+      if (current === version) {
+        console.log(`watch: dist-tag ${expectedTag} points at ${version}. Released.`)
+        return 0
+      }
+    }
+    await Bun.sleep(POLL_MS)
+  }
+  const waited = Math.round(PUBLISH_TIMEOUT_MS / 60_000)
+  console.error(
+    seen
+      ? `watch: ${name}@${version} is on npm but dist-tag ${expectedTag} still does not point at it after ${waited} minutes.`
+      : `watch: the Publish run succeeded but ${name}@${version} is not visible on npm after ${waited} minutes (the registry can lag).`,
+  )
+  console.error(`watch: check with \`npm view ${name} dist-tags\`, then re-run \`bun run release ${version} --watch-only\`.`)
+  return 1
+}
+
+if (watchOnly) {
+  if (push || flags.has("--watch") || flags.has("--no-watch") || dryRun || title !== undefined) fail(`--watch-only takes only a version. ${USAGE}`)
+  if (!parse(version)) fail(`"${version}" is not a valid semver version (expected x.y.z)`)
+  if (!git("tag", "--list", tag)) fail(`tag ${tag} does not exist locally; fetch it or run the release first`)
+  process.exit(await watchRelease())
+}
+if (flags.has("--watch") && !push) fail("--watch needs --push; to follow an existing tag use --watch-only")
+if (flags.has("--watch") && flags.has("--no-watch")) fail("--watch and --no-watch conflict")
 
 if (title === undefined) fail(`--title is required. ${USAGE}`)
 title = title.trim()
@@ -153,7 +245,7 @@ if (dryRun) {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
-  console.log(`dry run: would commit "Release ${version}" and tag ${tag}${push ? ", then push" : ""}`)
+  console.log(`dry run: would commit "Release ${version}" and tag ${tag}${push ? ", then push" : ""}${watch ? " and watch the release" : ""}`)
   process.exit(0)
 }
 
@@ -170,6 +262,8 @@ console.log(`committed "Release ${version}" and tagged ${tag}`)
 if (push) {
   git("push", "--atomic", "origin", "main", tag)
   console.log(`pushed main and ${tag}`)
+  if (watch) process.exit(await watchRelease())
+  console.log(`next: bun run release ${version} --watch-only`)
 } else {
   console.log(`next: git push --atomic origin main ${tag}`)
 }
