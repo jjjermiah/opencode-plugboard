@@ -1,6 +1,13 @@
 # Releasing
 
-Releases are driven by `CHANGELOG.md`. One script (`.github/scripts/release.ts`, run as `bun run release`) does the version bump, the changelog heading, the commit and the tag. GitHub Actions does the rest.
+Releases are driven by `CHANGELOG.md` and by the commit messages since the last tag. One script (`.github/scripts/release.ts`, run as `bun run release`) does the version bump, the changelog heading, the commit and the tag. GitHub Actions does the rest.
+
+## Two layers of notes
+
+- **The curated notes** are the `[Unreleased]` text you write for users: short, with the reasoning. They open the release.
+- **The full story** is generated from the commits between the previous tag and this one. `.github/scripts/commit-detail.ts` (using [`conventional-commits-parser`](https://github.com/conventional-changelog/conventional-changelog)) drops merge commits and the release commit, groups the rest by type (Features, Fixes, Security, Performance, Refactors, Tests, Docs, CI and tooling, Dependencies, Other) and prints each one with its short-hash link and full body, with wrapped lines joined so GitHub renders paragraphs cleanly. Commits from before the convention have no type; an obvious prefix (`Tests:`, `changelog:`) is mapped, the rest land in Other.
+
+The release script writes the full story into `CHANGELOG.md` as a collapsed `<details>` block (between `<!-- commit-detail:start -->` and `<!-- commit-detail:end -->`) at the end of the release section. The publish workflow does not read that block. `release-notes.ts` cuts it out of the section and rebuilds the story from git, so the GitHub release shows the curated notes, then `## The full story` (one collapsed group per type), then the Full diff link. That is why the commit bodies must be good: see [CONTRIBUTING.md](../CONTRIBUTING.md#commits). Preview any release with `bun .github/scripts/release-notes.ts 0.10.0`, or just the CHANGELOG block with `--changelog-detail`.
 
 ## Everyday flow
 
@@ -9,7 +16,7 @@ Releases are driven by `CHANGELOG.md`. One script (`.github/scripts/release.ts`,
 3. From a clean `main`: `bun run release 0.3.0 --title "Your Title" --push`. Add `--dry-run` first to see the diff; it changes nothing and only warns about git state.
 4. With `--push` the script then watches the release for you (see below). Add `--no-watch` to skip that. The "Publish" run checks the gates, publishes to npm and creates the GitHub release.
 
-The script refuses when the working tree is dirty, the branch is not `main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, the tag exists, or `--title` is missing or invalid. It moves the `[Unreleased]` text under `## [0.3.0] - <today>: Your Title`, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json`, commits "Release 0.3.0" and creates the annotated tag `v0.3.0`. Without `--push` it prints the push command instead.
+The script refuses when the working tree is dirty, the branch is not `main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, the tag exists, or `--title` is missing or invalid. It moves the `[Unreleased]` text under `## [0.3.0] - <today>: Your Title`, appends the commit-level detail block, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json`, commits `chore(release): 0.3.0` and creates the annotated tag `v0.3.0`. Without `--push` it prints the push command instead.
 
 ### Watching a release
 
@@ -25,7 +32,7 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 
 1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, compat checks) run through `workflow_call`, so a release has exactly the same gates as CI.
 2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
-3. It builds the release notes from the changelog section with `.github/scripts/release-notes.ts`. A missing or empty section, or a heading without a title, fails here, before anything is published.
+3. It builds the release notes from the changelog section and the git history with `.github/scripts/release-notes.ts`. A missing or empty section, a heading without a title, or a previous tag missing from the clone fails here, before anything is published. The checkout uses `fetch-depth: 0` so the tag range is available.
 4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.
 5. It creates the GitHub release, named `v0.3.0: Your Title` (marked as a prerelease when the version has a `-`). If the release exists, it leaves it alone.
 

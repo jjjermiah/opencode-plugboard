@@ -1,0 +1,61 @@
+name: Commits
+
+# Every commit in a push or pull request must follow commitlint.config.mjs (Conventional
+# Commits plus a detailed body; see CONTRIBUTING.md#commits). History from before the cutoff
+# is never checked. A separate workflow so publish.yml does not run it on a release.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: commits-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    name: Lint commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # main (Release 0.11.0) on 2026-10-11, the day the convention started. Commits up to
+      # here are not linted.
+      CUTOFF: a54a7034c607d52ccf858ff51b6493e6a73f4343
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the range needs the base and the cutoff
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Lint the new commits
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_HEAD: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            from=$PR_BASE
+            to=$PR_HEAD
+          else
+            from=$PUSH_BEFORE
+            to=$PUSH_HEAD
+          fi
+          # A new branch has an all-zero "before", and a force-push can leave one that no
+          # longer exists. Either way, and when the base predates the cutoff, start at the cutoff.
+          if ! git cat-file -e "$from^{commit}" 2>/dev/null || ! git merge-base --is-ancestor "$CUTOFF" "$from"; then
+            from=$CUTOFF
+          fi
+          count=$(git rev-list --count --no-merges "$from..$to")
+          echo "Linting $count commit(s) in $from..$to"
+          # commitlint refuses an empty range (from equals to), so there is nothing to lint.
+          if [ "$from" = "$to" ]; then exit 0; fi
+          bunx commitlint --from "$from" --to "$to" --verbose

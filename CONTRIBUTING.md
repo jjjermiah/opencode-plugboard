@@ -58,6 +58,59 @@ After every plugin change, run the pong gate from that document: a normal prompt
 
 The [`compat/`](compat/README.md) kit runs real OpenAI clients against a plugboard server. Use it when a change touches the wire format. Results there are dated evidence for a commit, so add a new record instead of editing an old one.
 
+## Commits
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/) and carry a detailed body. The bodies are not decoration: at release time `.github/scripts/release-notes.ts` collects every commit since the previous tag, groups them by type and publishes them in the GitHub release under "The full story" (and in a collapsed block in `CHANGELOG.md`). Whatever you write in the body is what a reader of the release sees.
+
+```text
+type(scope): subject in the imperative, lower case, no full stop
+
+Body: what changed, why, what you decided and what you rejected, how you
+checked it. Wrap at 72 columns; paragraphs are joined when the notes render.
+
+Fixes #N
+```
+
+- **Types:** `feat`, `fix`, `security`, `perf`, `refactor`, `test`, `docs`, `ci`, `build`, `chore`, `style`, `revert`. Use `(deps)` as the scope for dependency bumps (`build(deps): ...`). Mark a breaking change with `!` after the scope and a `BREAKING CHANGE:` footer.
+- **Scopes** are optional. Suggested: `openai`, `responses`, `anthropic`, `gemini`, `completions`, `session`, `runtime`, `http`, `config`, `metrics`, `discovery`, `cache`, `fallback`, `tests`, `ci`, `docs`, `changelog`, `deps`. An unknown scope only warns.
+- **Subject** at most 100 characters, imperative, not capitalised, no full stop.
+- **Body** required on every commit. For `feat`, `fix`, `perf`, `refactor` and `security` it needs at least 150 characters, and in practice should run to several paragraphs. Cover what changed, why, which alternatives you rejected and why, how you checked it (command and result), and the invariant (`I7`) or issue it touches.
+- **Footer** with `Fixes #N` or `Refs #N`.
+
+Merge commits and `chore(release): X.Y.Z` (written by the release script) are exempt.
+
+Example:
+
+```text
+fix(responses): end a stream with response.failed after reasoning
+
+A model that reasoned first and then failed before writing any text made
+/v1/responses send a 200 stream with no events. A client could not tell
+that failure from an empty answer. The encoder now tracks whether
+reasoning has already committed the stream and, if the model then fails,
+emits response.failed with the neutral error kind mapped to the wire.
+
+I first tried sending a keepalive comment until the model produced text,
+but that hides the failure for as long as the model keeps reasoning.
+The status code cannot change once the 200 is committed, so an in-band
+event is the only honest signal.
+
+Checked with a new loopback test that scripts reasoning then failure
+(fails before the change, passes after), `bun run typecheck`, `bun test`,
+and a live run on an isolated server where the pong gate still answered.
+
+Fixes #N
+```
+
+### Enforcement
+
+`commitlint` (config in `commitlint.config.mjs`) checks the format in two places:
+
+- Locally, a [lefthook](https://lefthook.dev) `commit-msg` hook. Install it once per clone with `bunx lefthook install`. Worktrees share the clone's hooks, but each needs its own `bun install`. Check a draft with `bunx commitlint --edit <file>` or `echo "..." | bunx commitlint`.
+- In CI, the "Commits" workflow lints every commit in a push or pull request. Commits up to `a54a703` (Release 0.11.0, the last one before the convention) are never checked.
+
+There is no `prepare` script on purpose. npm runs `prepare` on `npm publish`, and the publish job installs no dev dependencies, so the hook would break the release.
+
 ## Changelog
 
 Every user-visible change adds an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). Explain why the change was made and what it cost, not just what changed. Don't paste a commit list. Maintainers cut releases from that section, and every release needs a short creative title (2 to 5 words, `bun run release X.Y.Z --title "..."`), see [docs/releasing.md](docs/releasing.md).
@@ -69,6 +122,7 @@ Prose in the README, docs, issues and changelog is plain and short. No em or en 
 ## Pull requests
 
 - One change per pull request, with the issue linked.
+- Every commit passes `commitlint` and has a detailed body (see [Commits](#commits)).
 - `bun run typecheck` and `bun test` pass.
 - The pong gate passed on an isolated server, if you touched `src/` or `index.ts`.
 - `[Unreleased]` in the changelog is updated.

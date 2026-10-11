@@ -30,11 +30,15 @@
     "safe-stable-stringify": "2.5.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3",
     "@opencode/plugin": "2.0.26",
     "@types/bun": "1.4.2",
     "@types/escape-html": "^1.0.4",
     "@types/node": "^26.6.2",
+    "conventional-commits-parser": "7.1.3",
     "effect": "4.0.0-rc.112",
+    "lefthook": "2.2.1",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {

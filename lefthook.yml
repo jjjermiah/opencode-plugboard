@@ -1,0 +1,7 @@
+# Git hooks. Install once per clone with `bunx lefthook install` (see CONTRIBUTING.md#commits).
+# Not wired to a `prepare` script on purpose: npm runs `prepare` on `npm publish`, and the
+# publish job does not install dev dependencies.
+commit-msg:
+  commands:
+    commitlint:
+      run: bunx commitlint --edit {1}

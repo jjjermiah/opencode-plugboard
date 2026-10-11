@@ -34,6 +34,7 @@ A plugin effect that blocked once froze every prompt in the project that loaded 
 
 - Work items are GitHub issues in `jjjermiah/opencode-plugboard` (milestones `v0.1`, `later`), not markdown files in the repo. Reference them in commits (`Fixes #N`).
 - Humans read `CONTRIBUTING.md`; releases are cut with `bun run release <version> --title "Short Creative Title"` (2 to 5 words, required; CHANGELOG headings read `## [X.Y.Z] - date: Title`; see `docs/releasing.md`). CI (`.github/workflows/ci.yml`) runs the typecheck, `bun test` and `bun .github/scripts/check-pack.ts`.
+- Every agent commit is a Conventional Commit with a detailed body (what, why, rejected alternatives, validation evidence, `Fixes #N`); `commitlint` enforces it and the bodies become the GitHub release notes (`CONTRIBUTING.md#commits`). Write the message to a file and check it with `bunx commitlint --edit <file>` before `git commit -F`.
 - Semantic versioning; update `CHANGELOG.md` (keep `[Unreleased]` at the top, with context and reasoning, not a commit dump) with every user-visible change.
 - Parallel agent lanes use git worktrees under `.agents/worktrees/` (gitignored) with disjoint file sets; merge into `main`.
 - Prose (README, docs, issues, changelog): plain and short, no em or en dashes as punctuation. Nothing machine- or homelab-specific in the repo (no private IPs, `/Users/...` paths, keys).
