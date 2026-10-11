@@ -44,8 +44,10 @@
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
+import { setTimeout as delay } from "node:timers/promises"
 import { Cause, Effect, Stream } from "effect"
 import stableStringify from "safe-stable-stringify"
+import { raceAbort } from "./abort.js"
 import { isPlugError, type CatalogModel, type PlugError } from "./contract.js"
 import { errorMessage, log, logError, outsideRequest, setLogFormat } from "./log.js"
 import { createMetrics, type Metrics, type RuntimeSnapshot } from "./metrics.js"
@@ -503,30 +505,8 @@ export function ensurePump(subscribe: () => Stream.Stream<unknown, unknown, neve
 
 const backendUnavailable = (message: string): PlugError => ({ status: 503, kind: "server", code: "backend_unavailable", message })
 
-/** Rejects when `signal` aborts; the underlying promise is left running (its late result or error is swallowed). */
-function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(new Error("aborted"))
-    if (signal.aborted) return onAbort()
-    signal.addEventListener("abort", onAbort, { once: true })
-    promise.then(
-      (value) => (signal.removeEventListener("abort", onAbort), resolve(value)),
-      (error) => (signal.removeEventListener("abort", onAbort), reject(error)),
-    )
-  })
-}
-
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    if (signal.aborted) return resolve()
-    const timer = setTimeout(done, ms)
-    function done() {
-      clearTimeout(timer)
-      signal.removeEventListener("abort", done)
-      resolve()
-    }
-    signal.addEventListener("abort", done, { once: true })
-  })
+/** Waits `ms`, or until `signal` aborts (which resolves, never rejects). */
+const sleep = (ms: number, signal: AbortSignal): Promise<void> => delay(ms, undefined, { signal }).catch(() => {})
 
 /** Rebuild the transforms of a generation set up before its directory was confirmed; shared by concurrent requests. */
 function activate(generation: Generation): Promise<void> {
@@ -584,7 +564,7 @@ export async function ensureBackend(
         if (!booted) {
           booted = true
           try {
-            await abortable(boot(directory), bounded)
+            await raceAbort(boot(directory), bounded)
           } catch (error) {
             if (bounded.aborted) continue
             logError("backend.boot_failed", { app, error: errorMessage(error) })
@@ -594,7 +574,7 @@ export async function ensureBackend(
         }
       } else {
         try {
-          await abortable(Promise.all(here.filter((generation) => !generation.activated).map(activate)), bounded)
+          await raceAbort(Promise.all(here.filter((generation) => !generation.activated).map(activate)), bounded)
         } catch (error) {
           if (bounded.aborted) continue
           throw error

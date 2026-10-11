@@ -17,6 +17,7 @@
  */
 
 import { randomUUID } from "node:crypto"
+import { raceAbort } from "../abort.js"
 import { APP_NAME_PATTERN, DEFAULT_APP } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { log, logError } from "../log.js"
@@ -70,17 +71,6 @@ function checkPreparation(request: PlugRequest, images: number, maxTools: number
     }
   }
   return undefined
-}
-
-/** Settles with `promise`, or rejects as soon as `signal` aborts. Request side only: the promise itself keeps running. */
-function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  promise.catch(() => {}) // a late rejection after the race was lost must not become unhandled
-  if (signal.aborted) return Promise.reject(signal.reason)
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason)
-    signal.addEventListener("abort", onAbort, { once: true })
-    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort))
-  })
 }
 
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
