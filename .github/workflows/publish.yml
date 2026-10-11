@@ -79,7 +79,7 @@ jobs:
         env:
           TAG: ${{ steps.ref.outputs.tag }}
         run: |
-          bun scripts/release-notes.ts "$TAG" > "$RUNNER_TEMP/notes.md"
+          bun .github/scripts/release-notes.ts "$TAG" > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

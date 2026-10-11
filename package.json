@@ -20,7 +20,7 @@
   "files": ["index.ts", "src/", "README.md", "LICENSE"],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "release": "bun scripts/release.ts"
+    "release": "bun .github/scripts/release.ts"
   },
   "devDependencies": {
     "@opencode/plugin": "2.0.26",

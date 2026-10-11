@@ -31,7 +31,7 @@ A plugin effect that blocked once froze every prompt in the project that loaded 
 ## Repo conventions
 
 - Work items are GitHub issues in `jjjermiah/opencode-plugboard` (milestones `v0.1`, `later`), not markdown files in the repo. Reference them in commits (`Fixes #N`).
-- Humans read `CONTRIBUTING.md`; releases are cut with `bun run release <version>` (see `docs/releasing.md`). CI (`.github/workflows/ci.yml`) runs the typecheck and `bun scripts/check-pack.ts`.
+- Humans read `CONTRIBUTING.md`; releases are cut with `bun run release <version>` (see `docs/releasing.md`). CI (`.github/workflows/ci.yml`) runs the typecheck and `bun .github/scripts/check-pack.ts`.
 - Semantic versioning; update `CHANGELOG.md` (keep `[Unreleased]` at the top, with context and reasoning, not a commit dump) with every user-visible change.
 - Parallel agent lanes use git worktrees under `.agents/worktrees/` (gitignored) with disjoint file sets; merge into `main`.
 - Prose (README, docs, issues, changelog): plain and short, no em or en dashes as punctuation. Nothing machine- or homelab-specific in the repo (no private IPs, `/Users/...` paths, keys).

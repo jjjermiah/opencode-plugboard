@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 // Prints the CHANGELOG.md section for one version, for `gh release create --notes-file`.
-// Usage: bun scripts/release-notes.ts 0.3.0
+// Usage: bun .github/scripts/release-notes.ts 0.3.0
 import { readFileSync } from "node:fs"
 
 const version = (process.argv[2] ?? "").replace(/^v/, "")
 if (!version) {
-  console.error("usage: bun scripts/release-notes.ts <version>")
+  console.error("usage: bun .github/scripts/release-notes.ts <version>")
   process.exit(2)
 }
 
