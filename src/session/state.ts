@@ -67,7 +67,12 @@ interface Entry {
   timer?: ReturnType<typeof setTimeout>
 }
 
-export function createSessionStore(): SessionStore {
+export interface SessionStoreOptions {
+  /** Called once per `register`, from request handling (the runtime indexes the session for pruning). Must not block; errors are logged. */
+  readonly onRegister?: (state: RequestState) => void
+}
+
+export function createSessionStore(options: SessionStoreOptions = {}): SessionStore {
   const entries = new Map<string, Entry>()
 
   const release = (sessionID: string): boolean => {
@@ -82,6 +87,11 @@ export function createSessionStore(): SessionStore {
       const previous = entries.get(state.sessionID)
       if (previous?.timer) clearTimeout(previous.timer)
       entries.set(state.sessionID, { state, startedAt: Date.now() })
+      try {
+        options.onRegister?.(state)
+      } catch (error) {
+        logError("session.register_hook_failed", { error: errorMessage(error) })
+      }
     },
     lookup: (sessionID) => entries.get(sessionID)?.state,
     release,
