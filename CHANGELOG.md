@@ -64,7 +64,7 @@ A fresh reviewer read 0.1.0 cold, as a stranger would on first public read, and 
 - `AGENTS.md` tells coding agents the rules that matter here: the isolated dev server, freeze safety, and what may be imported at runtime.
 ## [0.1.0] - 2026-10-11
 
-Not yet published to npm. Install from a checkout until [#29](https://github.com/jjjermiah/opencode-plugboard/issues/29) is done.
+Not published to npm; 0.2.1 was the first npm release ([#29](https://github.com/jjjermiah/opencode-plugboard/issues/29)).
 
 ### Why this exists
 
