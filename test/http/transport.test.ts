@@ -229,24 +229,29 @@ describe("sseWriter: commit rules and keepalive", () => {
   })
 
   test("backpressure: drained() waits while the socket buffer is full and ends when the scope aborts", async () => {
+    // A stub response whose buffer stays full: a real paused socket drains at OS-dependent speed
+    // (Linux loopback absorbs tens of MB), which made this test pass on macOS and fail in CI.
+    const { EventEmitter } = await import("node:events")
+    const response = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      writableEnded: false,
+      headersSent: false,
+      writeHead() { this.headersSent = true; return this },
+      flushHeaders() {},
+      setHeader() {},
+      write: () => false,
+      end() {},
+    })
     let state = "pending"
     const scope = new AbortController()
-    const blocked = gate()
-    const { open } = await serve(async (_request, response) => {
-      const sse = sseWriter(response, scope.signal)
-      const chunk = `data: ${"x".repeat(1024 * 1024)}\n\n`
-      for (let i = 0; i < 64; i++) sse.write(chunk)
-      blocked.open()
-      await sse.drained()
-      state = "drained"
-    })
-    const stream = await open()
-    stream.pause()
-    await blocked.promise
+    const sse = sseWriter(response as unknown as Parameters<typeof sseWriter>[0], scope.signal)
+    sse.write("data: x\n\n")
+    const waiting = sse.drained().then(() => { state = "drained" })
     await new Promise((resolve) => setTimeout(resolve, 5))
     expect(state).toBe("pending")
     scope.abort()
-    await until(() => state === "drained")
-    stream.destroy()
+    await waiting
+    expect(state).toBe("drained")
+    response.emit("close")
   })
 })
