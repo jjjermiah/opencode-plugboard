@@ -81,10 +81,9 @@ Plugboard is early (0.x) and narrow on purpose.
 - **No concurrency limit per app** yet ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54), [#86](https://github.com/jjjermiah/opencode-plugboard/issues/86)).
 - **Not a gateway with its own provider keys.** It only reuses what OpenCode is logged in to.
 
-How it differs from the alternatives:
+How it differs from a standalone gateway:
 
-- [KochC/opencode-llm-proxy](https://github.com/KochC/opencode-llm-proxy) serves more API formats but targets OpenCode V1 only. Plugboard is V2 only and adds per-app keys and history, an explicit model allowlist, and rules that keep it from freezing the host (see [AGENTS.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/AGENTS.md)).
-- [LiteLLM](https://github.com/BerriAI/litellm) is a separate gateway you run and give its own provider keys. It covers many more providers and API shapes. Pick it when you want a standalone service. Pick plugboard when OpenCode already holds the logins you want to reuse, such as a ChatGPT or Copilot subscription.
+- [LiteLLM](https://github.com/BerriAI/litellm) is a separate gateway you run and give its own provider keys. It covers many more providers and API shapes. Pick it when you want a standalone service. Pick plugboard when OpenCode already holds the logins you want to reuse, such as a ChatGPT or Copilot subscription. Plugboard also gives each app its own key and history, an explicit model allowlist, and rules that keep it from ever freezing the host.
 
 The most common first failure is an SDK defaulting to `/v1/responses` for newer models. Plugboard serves it, but some clients need `store: false` or a "use chat completions" switch. Check the client's page below.
 
