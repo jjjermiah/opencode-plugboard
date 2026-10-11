@@ -2,7 +2,10 @@
 // Cuts a release from CHANGELOG.md: moves [Unreleased] under a version heading,
 // fixes the link refs, bumps package.json, commits and tags. Not shipped in the package.
 //
-//   bun run release 0.3.0 [--push] [--dry-run]
+//   bun run release 0.3.0 --title "Short Creative Title" [--push] [--dry-run]
+//
+// Every release needs a title: 2 to 5 words, at most 40 characters, no trailing
+// period. It lands in the heading (`## [0.3.0] - <date>: Title`) and names the GitHub release.
 //
 // --dry-run prints the diff and changes nothing. Git state problems (dirty tree,
 // wrong branch) are reported as warnings there, so you can preview while editing.
@@ -13,12 +16,22 @@ import { join } from "node:path"
 const PLACEHOLDER = "Nothing yet."
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
 
-const args = process.argv.slice(2)
-const flags = new Set(args.filter((a) => a.startsWith("--")))
-const unknown = [...flags].filter((f) => f !== "--push" && f !== "--dry-run")
-const positional = args.filter((a) => !a.startsWith("--"))
+const USAGE = 'usage: bun run release <version> --title "Short Creative Title" [--push] [--dry-run]'
+let title: string | undefined
+const flags = new Set<string>()
+const positional: string[] = []
+const unknown: string[] = []
+const argv = process.argv.slice(2)
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i]
+  if (a === "--title") title = argv[++i] ?? ""
+  else if (a.startsWith("--title=")) title = a.slice("--title=".length)
+  else if (a === "--push" || a === "--dry-run") flags.add(a)
+  else if (a.startsWith("--")) unknown.push(a)
+  else positional.push(a)
+}
 if (unknown.length || positional.length !== 1) {
-  console.error("usage: bun run release <version> [--push] [--dry-run]")
+  console.error(USAGE)
   process.exit(2)
 }
 const dryRun = flags.has("--dry-run")
@@ -67,6 +80,14 @@ function compare(a: string, b: string): number {
   return 0
 }
 
+if (title === undefined) fail(`--title is required. ${USAGE}`)
+title = title.trim()
+if (title.length > 40) fail(`title "${title}" is ${title.length} characters, the limit is 40`)
+if (title.endsWith(".")) fail(`title "${title}" must not end with a period`)
+const words = title.split(/\s+/).filter(Boolean)
+if (words.length < 2 || words.length > 5) fail(`title "${title}" has ${words.length} word(s), it needs 2 to 5`)
+if (title.replace(/^v/i, "") === version) fail("title must be more than the version number")
+
 const problems: string[] = []
 if (!parse(version)) fail(`"${version}" is not a valid semver version (expected x.y.z)`)
 
@@ -103,7 +124,7 @@ const next = [
   "",
   PLACEHOLDER,
   "",
-  `## [${version}] - ${date}`,
+  `## [${version}] - ${date}: ${title}`,
   "",
   body,
   "",

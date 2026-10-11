@@ -45,7 +45,7 @@ The [`compat/`](compat/README.md) kit runs real OpenAI clients against a plugboa
 
 ## Changelog
 
-Every user-visible change adds an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). Explain why the change was made and what it cost, not just what changed. Don't paste a commit list. Maintainers cut releases from that section, see [docs/releasing.md](docs/releasing.md).
+Every user-visible change adds an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). Explain why the change was made and what it cost, not just what changed. Don't paste a commit list. Maintainers cut releases from that section, and every release needs a short creative title (2 to 5 words, `bun run release X.Y.Z --title "..."`), see [docs/releasing.md](docs/releasing.md).
 
 ## Writing style
 

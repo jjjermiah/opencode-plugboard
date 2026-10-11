@@ -1,11 +1,15 @@
 #!/usr/bin/env bun
 // Prints the CHANGELOG.md section for one version, for `gh release create --notes-file`.
-// Usage: bun .github/scripts/release-notes.ts 0.3.0
+// Usage: bun .github/scripts/release-notes.ts 0.3.0          prints the notes
+//        bun .github/scripts/release-notes.ts 0.3.0 --title   prints the heading title
+// Both fail when the heading has no title (`## [0.3.0] - <date>: Title`).
 import { readFileSync } from "node:fs"
 
-const version = (process.argv[2] ?? "").replace(/^v/, "")
+const args = process.argv.slice(2)
+const titleOnly = args.includes("--title")
+const version = (args.find((a) => !a.startsWith("--")) ?? "").replace(/^v/, "")
 if (!version) {
-  console.error("usage: bun .github/scripts/release-notes.ts <version>")
+  console.error("usage: bun .github/scripts/release-notes.ts <version> [--title]")
   process.exit(2)
 }
 
@@ -14,6 +18,16 @@ const start = lines.findIndex((l) => l.startsWith(`## [${version}]`))
 if (start < 0) {
   console.error(`no "## [${version}]" section in CHANGELOG.md`)
   process.exit(1)
+}
+const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+const title = new RegExp(`^## \\[${escaped}\\] - \\d{4}-\\d{2}-\\d{2}: (\\S.*)$`).exec(lines[start])?.[1].trim()
+if (!title) {
+  console.error(`the CHANGELOG.md heading for ${version} has no title, expected "## [${version}] - YYYY-MM-DD: Title"`)
+  process.exit(1)
+}
+if (titleOnly) {
+  console.log(title)
+  process.exit(0)
 }
 let end = lines.findIndex((l, i) => i > start && /^(## \[|\[[^\]]+\]: )/.test(l))
 if (end < 0) end = lines.length

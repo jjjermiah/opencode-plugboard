@@ -16,7 +16,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 Nothing yet.
 
-## [0.8.0] - 2026-10-11
+## [0.8.0] - 2026-10-11: Many Voices
 
 ### Added
 
@@ -27,7 +27,7 @@ Nothing yet.
 
 - **Breaking:** `n` above the cap now returns 400 `too_many_choices` instead of `unsupported_parameter`.
 
-## [0.7.0] - 2026-10-11
+## [0.7.0] - 2026-10-11: Claude Code, Any Brain
 
 ### Added
 
@@ -42,7 +42,7 @@ Nothing yet.
 
   One deliberate leniency: Claude Code sends a `system`-role message when it doesn't recognise the model id, which Anthropic's own API would reject. Plugboard folds it into the system prompt, because that is exactly the case this endpoint exists for.
 
-## [0.6.0] - 2026-10-11
+## [0.6.0] - 2026-10-11: Locked Doors
 
 This release closes most of the findings from a hostile read of the code: what would make a careful person refuse to install it.
 
@@ -63,7 +63,7 @@ This release closes most of the findings from a hostile read of the code: what w
 - **Breaking:** unknown paths now return 401 instead of 404 without a valid key.
 - Internal runtime version 6. Restart OpenCode after upgrading.
 
-## [0.5.0] - 2026-10-11
+## [0.5.0] - 2026-10-11: Lights On
 
 ### Added
 
@@ -76,7 +76,7 @@ This release closes most of the findings from a hostile read of the code: what w
 
 - Internal runtime version 5. Restart OpenCode after upgrading.
 
-## [0.4.1] - 2026-10-11
+## [0.4.1] - 2026-10-11: First Impressions
 
 ### Changed
 
@@ -84,7 +84,7 @@ This release closes most of the findings from a hostile read of the code: what w
 - **Pin the version you install** ([#83](https://github.com/jjjermiah/opencode-plugboard/issues/83)). A bare `"opencode-plugboard"` makes OpenCode track `latest`, and a global plugin runs inside OpenCode in every project, next to your provider logins. The docs now recommend `opencode-plugboard@<version>` and say why.
 - Release and CI scripts moved to `.github/scripts/` ([#92](https://github.com/jjjermiah/opencode-plugboard/issues/92)). `bun run release` works as before.
 
-## [0.4.0] - 2026-10-11
+## [0.4.0] - 2026-10-11: No Awkward Silences
 
 ### Fixed
 
@@ -95,7 +95,7 @@ This release closes most of the findings from a hostile read of the code: what w
 
 - **Sampling parameters a model rejects are dropped, not fatal** ([#30](https://github.com/jjjermiah/opencode-plugboard/issues/30)). Apps like n8n and Open WebUI let users set `temperature`, `top_p` and the penalties, and several models refuse some of them with a 400: older Claude won't take `temperature` and `top_p` together, newer Claude and the GPT-5/6 family refuse them outright, and two OpenCode Go models only accept fixed values. Plugboard now drops what the target model is known to reject and tells you in the `x-plugboard-dropped-params` response header and the request log line, so nothing changes silently. The table comes from probing every model on a live server, not from docs. A model plugboard doesn't know still gets everything as sent. Set `dropUnsupportedParams: false` to turn this off.
 
-## [0.3.0] - 2026-10-11
+## [0.3.0] - 2026-10-11: Two Front Doors
 
 ### Added
 
@@ -116,14 +116,14 @@ This release closes most of the findings from a hostile read of the code: what w
 
 - Internal runtime version 4. Restart OpenCode after upgrading; a hot reload over an older plugboard stays inert and says so in the log.
 
-## [0.2.1] - 2026-10-11
+## [0.2.1] - 2026-10-11: Out in the Open
 
 First release on npm. No code changes since 0.2.0.
 
 - Published as [`opencode-plugboard`](https://www.npmjs.com/package/opencode-plugboard), so the `package` entry in your OpenCode config can be the name instead of a local path.
 - The GitHub repository went public, then back to private the same day while the project is polished. The npm package stays published.
 
-## [0.2.0] - 2026-10-11
+## [0.2.0] - 2026-10-11: Second Opinion
 
 A fresh reviewer read 0.1.0 cold, as a stranger would on first public read, and found eighteen things worth fixing. None of them needed a redesign. Most were places where the code promised something it didn't quite do, so this release is about making those promises true. Nothing in the public API was removed. A few malformed requests that 0.1.0 quietly repaired now get a 400, which is why this is a minor bump and not a patch.
 
@@ -162,7 +162,7 @@ A fresh reviewer read 0.1.0 cold, as a stranger would on first public read, and 
 - README and client pages match the code again ([#44](https://github.com/jjjermiah/opencode-plugboard/issues/44)), and `docs/clients/any-app.md` has a working recipe for reaching plugboard from another machine or a container ([#45](https://github.com/jjjermiah/opencode-plugboard/issues/45)).
 - The compat runners exit nonzero when anything fails ([#46](https://github.com/jjjermiah/opencode-plugboard/issues/46)), the Open WebUI script keeps its token private ([#47](https://github.com/jjjermiah/opencode-plugboard/issues/47)), and old results are marked where they've been superseded ([#48](https://github.com/jjjermiah/opencode-plugboard/issues/48)).
 - `AGENTS.md` tells coding agents the rules that matter here: the isolated dev server, freeze safety, and what may be imported at runtime.
-## [0.1.0] - 2026-10-11
+## [0.1.0] - 2026-10-11: First Spark
 
 Not published to npm; 0.2.1 was the first npm release ([#29](https://github.com/jjjermiah/opencode-plugboard/issues/29)).
 

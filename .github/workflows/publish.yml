@@ -1,8 +1,8 @@
 name: Publish
 
 # Pushing a v* tag (bun run release x.y.z --push) runs the CI gates, publishes to
-# npm with trusted publishing (OIDC, no token) and creates the GitHub release from
-# the CHANGELOG.md section. "Run workflow" with dry_run (the default) exercises
+# npm with trusted publishing (OIDC, no token) and creates the GitHub release (named
+# "vX.Y.Z: Title") from the CHANGELOG.md section. "Run workflow" with dry_run (the default) exercises
 # everything except the two writes. See docs/releasing.md.
 on:
   push:
@@ -74,12 +74,17 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      # Before anything irreversible: a missing or empty CHANGELOG section fails here.
+      # Before anything irreversible: a missing or empty CHANGELOG section, or a
+      # heading without a title (`## [x.y.z] - date: Title`), fails here.
       - name: Build the release notes
+        id: notes
         env:
           TAG: ${{ steps.ref.outputs.tag }}
         run: |
+          title=$(bun .github/scripts/release-notes.ts "$TAG" --title)
           bun .github/scripts/release-notes.ts "$TAG" > "$RUNNER_TEMP/notes.md"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+          echo "Release title: $TAG: $title"
           cat "$RUNNER_TEMP/notes.md"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -116,13 +121,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.ref.outputs.tag }}
+          TITLE: ${{ steps.notes.outputs.title }}
         run: |
           flags=()
           case "$TAG" in *-*) flags+=(--prerelease) ;; esac
           if [ "$DRY_RUN" = true ]; then
-            echo "Dry run: would run gh release create $TAG ${flags[*]}"
+            echo "Dry run: would run gh release create $TAG --title \"$TAG: $TITLE\" ${flags[*]}"
           elif gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists, leaving it alone."
           else
-            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
+            gh release create "$TAG" --verify-tag --title "$TAG: $TITLE" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
           fi
