@@ -14,7 +14,21 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Concurrency caps and rate limits** ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54), [#86](https://github.com/jjjermiah/opencode-plugboard/issues/86), [#131](https://github.com/jjjermiah/opencode-plugboard/issues/131)). One runaway client could open dozens of parallel calls against your subscription and your OpenCode process. The new `limits` option caps model calls in flight, globally and per app, and how many calls each app may start per minute:
+
+  ```jsonc
+  "limits": { "maxConcurrent": 8, "perApp": { "maxConcurrent": 2, "requestsPerMinute": 30 } }
+  ```
+
+  A call over a cap gets an immediate 429 and never reaches a provider or creates a session. Nothing queues, so a burst can't pile up behind the cap. Built on `p-queue`; refusals are counted in `plugboard_limited_total`.
+- **Response cache** ([#59](https://github.com/jjjermiah/opencode-plugboard/issues/59)). Pollers and bots ask the same thing over and over. With `cache: { ttlSeconds: 300 }`, an identical request from the same app is answered from memory with zero token usage and no new session. Only completed answers without tool calls are kept, `n` above 1 is never cached, apps never share entries, and every answer says `x-plugboard-cache: hit` or `miss`. Changing `cache`, `apps`, `models` or `aliases` empties it, so a hit can never serve a model your current policy forbids. Built on `lru-cache`.
+- **Model ids that survive any UI** ([#61](https://github.com/jjjermiah/opencode-plugboard/issues/61)). Some chat UIs mangle the `/` and `#` in `anthropic/claude-haiku-4-5#high`. Set `modelIds: "slugs"` (or `"both"`) and `/v1/models` lists `anthropic--claude-haiku-4-5__high` instead. Requests accept either spelling regardless of the option, so a cached slug keeps working.
+
+### Changed
+
+- Internal runtime version 10. Restart OpenCode after upgrading.
 
 ## [0.14.0] - 2026-10-11: Standard Issue Gauges
 

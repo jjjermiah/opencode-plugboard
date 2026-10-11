@@ -30,7 +30,7 @@ export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.14.0",
+      "package": "opencode-plugboard@0.15.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
         "models": ["anthropic/claude-sonnet-4-6", "github-copilot/*", "opencode-go/glm-5.3-flash"],
@@ -78,7 +78,7 @@ Plugboard is early (0.x) and narrow on purpose.
 - **V2 only.** OpenCode V2 has no OpenAI endpoint, and the V1 plugins that had one stopped working when the plugin API changed. V1 is not planned.
 - **Two formats:** Chat Completions and Responses. `/v1/responses` is a stateless subset, see [docs/responses.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/responses.md). Anthropic Messages and Gemini front-ends are on the [roadmap](#roadmap).
 - **Not planned:** embeddings, audio, image generation, `logprobs`.
-- **No concurrency limit per app** yet ([#54](https://github.com/jjjermiah/opencode-plugboard/issues/54), [#86](https://github.com/jjjermiah/opencode-plugboard/issues/86)).
+- **Not a distributed gateway.** Limits, the response cache and metrics live in one OpenCode server process; two servers don't share them.
 - **Not a gateway with its own provider keys.** It only reuses what OpenCode is logged in to.
 
 How it differs from a standalone gateway:
