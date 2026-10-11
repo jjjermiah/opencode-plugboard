@@ -21,6 +21,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
 | `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`, with the same authentication as `/v1`. |
+| `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
 Changes to `listen` need a server restart; other option changes apply on config reload.
@@ -97,6 +98,29 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 `/v1/models`, `/v1/models/{id}` and the Gemini `/v1beta/models` routes list only what the calling app may use, and the model counts and example on the setup page and `/v1/status` follow the same scope.
 
 Without `keys` the only app is `default`, and `apps.default` configures it. Once any key exists `default` is never used, so `apps.default` is rejected. Every other app in `apps` must have a key. `system` is applied by the context hook that already rewrites a request session, so it shows up in the model request but not in the stored session transcript.
+
+## Response cache
+
+Pollers and bots often send the same prompt again and again. With `cache` set, plugboard keeps completed answers in memory and replays them for an identical request from the same app, without creating a session or spending quota.
+
+```json
+"cache": { "ttlSeconds": 300, "maxEntries": 1000, "maxBytes": 67108864, "apps": ["poller"] }
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `ttlSeconds` | required | How long an answer is served after it was stored (1 to 31536000). |
+| `maxEntries` | `1000` | Most answers kept. The least recently used goes first. |
+| `maxBytes` | `67108864` (64 MiB) | Most bytes kept. An answer bigger than this is served but not kept. |
+| `apps` | every app | App names that use the cache. Must be configured apps, or `default` when there are no keys. |
+
+What counts as the same request: the app, the resolved model and variant, messages, system prompt, tools, tool choice and sampling parameters (`temperature`, `top_p`, `max_tokens`, `stop`, penalties). An alias and the model it points to share entries. Apps never share entries.
+
+What is kept: answers that ended normally (`stop` or `length`) with text or reasoning. Answers with tool calls are never kept, and neither are errors, aborted requests and empty answers. Structured output (`response_format` `json_schema`) is answered through a tool call, so it is not kept either. Requests with `n` above 1 are never served from the cache or stored, because each choice must be a fresh sample.
+
+A hit replays the stored answer as JSON or as a stream (the text arrives in one chunk), with the same `x-plugboard-model` and `x-plugboard-policy` headers as the original, and reports zero token usage. Every answer carries `x-plugboard-cache: hit` or `miss`. Sampling still matters: with `temperature` above 0, a hit repeats the first answer instead of drawing a new one, so use `apps` to limit the cache to callers that want that.
+
+The cache lives in memory. A server restart, or a change to `cache` or to the `apps` option, empties it. With `metrics` on, `plugboard_cache_requests_total{app,result}` counts hits and misses.
 
 ## Limits and errors
 
