@@ -118,10 +118,16 @@ export function listModels(options: PlugboardOptions, catalog: ReadonlyArray<Cat
     plugboard: { capabilities: model.capabilities ?? {}, contextLimit: model.contextLimit },
   })
   const data: object[] = []
+  // The catalog can list a model more than once (and repeat variants); ids must be unique.
+  const seen = new Set<string>()
   for (const model of catalog) {
     const base = { providerID: model.providerID, id: model.id }
-    for (const ref of [base, ...model.variants.map((variant) => ({ ...base, variant }))])
-      if (allowed(options, ref)) data.push(entry(refToString(ref), ref, model))
+    for (const ref of [base, ...model.variants.map((variant) => ({ ...base, variant }))]) {
+      const id = refToString(ref)
+      if (seen.has(id) || !allowed(options, ref)) continue
+      seen.add(id)
+      data.push(entry(id, ref, model))
+    }
   }
   for (const [alias, target] of Object.entries(options.aliases)) {
     const ref = parseModelRef(target)
