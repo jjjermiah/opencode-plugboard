@@ -6,7 +6,7 @@ You logged in to ChatGPT, Claude, Copilot or OpenCode Go once, in OpenCode. Your
 
 OpenCode V2 has no such endpoint, and the V1 plugins that did this stopped working when the plugin API changed. Plugboard is V2 only. It was tested on OpenCode 2.0.26, and the peer range `>=2.0.26 <2.1` allows 2.0.x patch releases.
 
-Status: v0.1, in development and not published yet. Chat Completions and the model list only. There is no `/v1/responses`, see [Known gaps](#known-gaps) and the [roadmap](#roadmap).
+Status: early (0.x), [published on npm](https://www.npmjs.com/package/opencode-plugboard). Chat Completions and the model list today. There is no `/v1/responses`, see [Known gaps](#known-gaps) and the [roadmap](#roadmap).
 
 Docs: [architecture](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md), [development](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/development.md), [clients](#clients).
 
@@ -83,7 +83,7 @@ One short page per client, with a config snippet, a chat, a tool call, a structu
 | n8n | [n8n](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/n8n.md) | pass with "Use Responses API" off |
 | Anything else | [any-app](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md) | base URL, key, model id |
 
-Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass here is not a clean sweep, and the notes in the table and on each page say where it was not. The release-candidate record has not been written yet.
+Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass here is not a clean sweep, and the notes in the table and on each page say where it was not. The latest full acceptance run is in [compat/results/release-candidate.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/results/release-candidate.md).
 
 ## Known gaps
 
