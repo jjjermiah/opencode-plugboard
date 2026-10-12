@@ -22,7 +22,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `history` | none (keep forever) | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app, `maxAgeDays` deletes older ones; with both, the stricter wins. |
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
-| `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`, with the same authentication as `/v1`. |
+| `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` bound request bodies, see [Request bodies](#request-bodies). |
 | `budgets` | none (unlimited) | Per-app ceilings on requests, tokens and cost for a UTC day, week or month: `{ perApp?, apps? }`. Needs `usage` on. A call over a ceiling gets 429 `budget_exceeded`. See [Budgets](#budgets). |
@@ -92,7 +92,7 @@ A request for `fast` goes to the first target. If that call fails before any out
 - `/v1/models` lists the alias once, as its first target. The setup page and `GET /v1` show the whole chain.
 - A call that ends in an error has no served model, so those responses carry neither header.
 
-A response from a request that used a list alias carries `x-plugboard-model: <provider/model>` (the target that answered) and, when retries happened, `x-plugboard-fallbacks: <n>`. The `model` field of the response is that target too (with `n` above 1 the body keeps the alias, and the headers report the first choice that was served). The request log line has `served=` and `fallbacks=`, and each retry logs `model.fallback` with the failure code. With `metrics: true`, `plugboard_fallbacks_total{app}` counts retries.
+Every answer carries `x-plugboard-model: <provider/model>`, the target that answered, whether the request named an alias or a model id (a canonical id gets its own id back). A request that used a list alias also carries `x-plugboard-fallbacks: <n>` when retries happened, and the `model` field of its response is that target (with `n` above 1 the body keeps the alias, and the headers report the first choice that was served). A request for a single-target alias keeps the alias in the body. The request log line has `served=` and `fallbacks=`, and each retry logs `model.fallback` with the failure code. With `metrics: true`, `plugboard_fallbacks_total{app}` counts retries.
 
 ## Skills and agents
 
@@ -154,6 +154,7 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 | `maxTools` | Lowers the global `maxTools` for this app. A request with more tools gets 400 `too_many_tools`. It cannot be higher than the global cap. |
 | `serverTools` | Off by default. A list of exact OpenCode tool ids (for example `websearch`) that this app's sessions may run themselves, 1 to 32 entries. See the warning below. |
 | `maxServerToolSteps` | Model steps that may run server tools in one request, `8` by default, 1 to 100. Needs `serverTools`. |
+| `historyUrl` | The session link template for this app: a string with `{id}` (see [Session links](#session-links)), or `false` for no link, no `x-plugboard-session-url` and no `session_url=` log field. Absent: the global `historyUrl`. Set `false` for an app you do not trust with the OpenCode server address. |
 
 > **Security: `serverTools` lets an app's key run OpenCode tools on the server.** Anyone holding that app's key can make the model call each listed tool, and the tool runs with the server's own OpenCode credentials and permissions. The prompt steers which arguments the model passes. A tool that reads files or runs commands can reach what the server's OpenCode process can reach, within whatever limits that tool enforces itself. Give such a key only to a caller you would trust with those tools, list the fewest tools the app needs, and never list tools on the keyless `default` app or on a key shared with others. Plugboard checks that each listed tool is a direct tool of the server's OpenCode right now and denies every other tool, but it cannot limit what a listed tool does.
 
@@ -369,6 +370,8 @@ With it set, every response that carries `x-plugboard-session` also carries `x-p
 
 `{id}` and `{directory}` are URL-encoded, so a value cannot add a path segment or a query. `{directory}` is the app's directory on the OpenCode host. Putting it in the template shows that path to every caller that reads the header, so leave it out unless your UI needs it. The template is checked when the config loads: it must be an `http(s)` URL with `{id}`, and the only other placeholder allowed is `{directory}`.
 
+**The link reveals your OpenCode server's address to every app that receives it.** Whoever holds an app key can read the template's host and port from `x-plugboard-session-url`, and does not need the OpenCode server password to see where the server is. Set `apps.<name>.historyUrl` to `false` for an app you do not trust with that address: its responses then carry no `x-plugboard-session-url`, and its log line has no `session_url=`. A string in the same field gives that app its own template (the same checks apply, and the error names `apps.<name>.historyUrl`). An app without the field inherits the global `historyUrl`.
+
 ## Limits and errors
 
 Errors use the OpenAI error body shape with the matching HTTP status.
@@ -394,7 +397,7 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 
 Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. Calls over a cap in `limits` get 429 instead (see [Concurrency and rate limits](#concurrency-and-rate-limits)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 
-Supported request fields: messages with system, developer, user text and images, assistant `tool_calls` and tool results; `tools`, `tool_choice`, `response_format` (`json_object`, `json_schema`), `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `presence_penalty`, `frequency_penalty`, `reasoning_effort`, `n` (up to `maxN`), and streaming with a final usage chunk (`stream_options.include_usage`). The legacy `POST /v1/completions` is served too: see [completions](completions.md).
+Supported request fields: messages with system, developer, user text and images (a `file` content part must be a PDF given as a `data:application/pdf;base64,...` URL; any other file data is a 400 `invalid_file`), assistant `tool_calls` and tool results; `tools`, `tool_choice`, `response_format` (`json_object`, `json_schema`), `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `presence_penalty`, `frequency_penalty`, `reasoning_effort`, `n` (up to `maxN`), and streaming with a final usage chunk (`stream_options.include_usage`). The legacy `POST /v1/completions` is served too: see [completions](completions.md).
 
 Behaviours worth knowing:
 
@@ -414,3 +417,4 @@ Behaviours worth knowing:
 - Open `http://127.0.0.1:4010/` in a browser for a setup page: the listen address, a `models` suggestion built from what your server offers, and a curl example. With `keys` set, a visitor without a key sees only the address and endpoints; a valid key also shows its own app, the allowlist and the suggestion.
 - `/v1/models` entries carry `plugboard.limit`, `modalities`, `cost` (USD per million tokens), `status`, `family` and `released` when the catalog has them.
 - With `metrics: true`, `GET /metrics` exposes request counts and durations by app and route, in-flight requests, tokens by kind, dropped sampling params, history sweeps and event pump health. There is no model label, so cardinality stays bounded.
+- The series carry each app's name, so the scrape is a traffic profile of every app. With `adminKey` set, only the admin key reads `/metrics` (an app key gets 403 `admin_key_required`, #285). Without `adminKey`, the `/v1` authentication applies and any app key reads every app's series; that is the documented choice, so set `adminKey` before you scrape a server whose apps should not see each other.

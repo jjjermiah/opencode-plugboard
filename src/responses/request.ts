@@ -10,6 +10,7 @@
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
   isPlugError,
@@ -88,12 +89,16 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
       const url = typeof item.image_url === "string" ? item.image_url : isRecord(item.image_url) ? item.image_url.url : undefined
       if (typeof url !== "string")
         return unsupported(item.file_id != null ? "input_image.file_id is not supported (stateless); send image_url" : "input_image needs an image_url", `${at}.image_url`)
+      const problem = imageProblem(url)
+      if (problem) return bad(problem, `${at}.image_url`, "invalid_image")
       parts.push({ type: "media", url, ...(dataUrlType(url) ? { mediaType: dataUrlType(url) } : {}) })
     } else if (item.type === "input_file") {
       if (typeof item.file_data === "string") {
         const data = item.file_data
         const filename = typeof item.filename === "string" ? item.filename.toLowerCase() : ""
         const url = data.startsWith("data:") ? data : `data:${filename.endsWith(".pdf") ? "application/pdf" : "application/octet-stream"};base64,${data}`
+        const problem = pdfProblem(url)
+        if (problem) return bad(problem, `${at}.file_data`, "invalid_file")
         parts.push({ type: "media", url, mediaType: dataUrlType(url) })
       } else if (typeof item.file_url === "string") {
         parts.push({ type: "media", url: item.file_url })
@@ -246,6 +251,13 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
   return tools
 }
 
+/**
+ * A caller's tool as echoed on the response object. A function tool always carries `strict` (#289, the OpenAI
+ * FunctionTool schema requires it): the caller's boolean, or false when it was absent or null. Other entries are
+ * echoed as sent.
+ */
+const echoTool = (tool: unknown): unknown => (isRecord(tool) && tool.type === "function" ? { ...tool, strict: tool.strict === true } : tool)
+
 const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError => {
   if (raw == null) return undefined
   if (raw === "auto" || raw === "none" || raw === "required") return raw
@@ -319,6 +331,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   if (refused) return refused
   if (body.instructions != null && typeof body.instructions !== "string") return bad("instructions must be a string", "instructions")
   if (body.reasoning != null && !isRecord(body.reasoning)) return bad("reasoning must be an object", "reasoning")
+  if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
 
   const parsed = parseInput(body.input, resolve)
   if (isPlugError(parsed)) return parsed
@@ -381,7 +394,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
         temperature: generation.temperature ?? null,
         text: { format: isRecord(text?.format) ? text.format : { type: "text" } },
         tool_choice: body.tool_choice ?? "auto",
-        tools: Array.isArray(body.tools) ? body.tools : [],
+        tools: Array.isArray(body.tools) ? body.tools.map(echoTool) : [],
         top_p: generation.topP ?? null,
         truncation: "disabled",
         user: typeof body.user === "string" ? body.user : null,

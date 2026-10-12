@@ -68,6 +68,16 @@ export interface PlugboardOptions {
   readonly historyUrl?: string
 }
 
+/**
+ * The session link template that applies to `app` (#280): its own `apps.<name>.historyUrl` when set, `undefined`
+ * when that is `false`, else the global `historyUrl`. Routes call this with the authenticated app.
+ */
+export function historyTemplate(options: Pick<PlugboardOptions, "apps" | "historyUrl">, app: string): string | undefined {
+  const own = appPolicy(options, app)?.historyUrl
+  if (own === false) return undefined
+  return own ?? options.historyUrl
+}
+
 /** Option `usage` after defaults: on, and days of history kept. */
 export interface UsageConfig {
   readonly enabled: boolean
@@ -96,6 +106,11 @@ export interface AppPolicy {
   readonly serverTools?: ReadonlyArray<string>
   /** Server-tool steps one request may run before the turn is stopped (option `maxServerToolSteps`). */
   readonly maxServerToolSteps?: number
+  /**
+   * This app's session link template (option `apps.<name>.historyUrl`), or `false` for none. Absent: the global
+   * `historyUrl`. Look the effective template up with `historyTemplate`.
+   */
+  readonly historyUrl?: string | false
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -250,7 +265,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "historyUrl"])
 const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
 const MAX_SERVER_TOOLS = 32
 const MAX_SERVER_TOOL_STEPS = 100
@@ -311,6 +326,8 @@ function parseApps(
     const maxServerToolSteps =
       value.maxServerToolSteps === undefined ? undefined : positiveInt(value.maxServerToolSteps, `apps.${app}.maxServerToolSteps`, DEFAULT_SERVER_TOOL_STEPS, MAX_SERVER_TOOL_STEPS)
 
+    // `false` turns the link off for this app; a string is its own template (validated like the global one).
+    const historyUrl = value.historyUrl === false ? false : parseHistoryUrl(value.historyUrl, `plugboard option \`apps.${app}.historyUrl\``)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -319,9 +336,10 @@ function parseApps(
       ...(maxTools === undefined ? {} : { maxTools }),
       ...(serverTools === undefined ? {} : { serverTools }),
       ...(maxServerToolSteps === undefined ? {} : { maxServerToolSteps }),
+      ...(historyUrl === undefined ? {} : { historyUrl }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -502,9 +520,8 @@ function parseAgents(raw: unknown, models: ReadonlyArray<string>): Record<string
  * Option `historyUrl` (#77): an http(s) URL template that must contain `{id}`. Its only other placeholder is
  * `{directory}`, so a typo such as `{sesion}` fails at load instead of producing a link that is wrong.
  */
-function parseHistoryUrl(value: unknown): string | undefined {
+function parseHistoryUrl(value: unknown, at = "plugboard option `historyUrl`"): string | undefined {
   if (value === undefined) return undefined
-  const at = "plugboard option `historyUrl`"
   if (typeof value !== "string" || !value.includes("{id}")) throw new Error(`${at} must be a URL template with {id} (for example http://host:4096/session/{id})`)
   const unknown = (value.match(/\{[^{}]*\}/g) ?? []).find((placeholder) => placeholder !== "{id}" && placeholder !== "{directory}")
   if (unknown !== undefined) throw new Error(`${at} has the unknown placeholder ${unknown} (known: {id}, {directory})`)

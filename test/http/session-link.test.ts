@@ -52,6 +52,31 @@ describe("#77 x-plugboard-session-url", () => {
     expect(reply.headers["x-plugboard-session-url"]).toBe(ids.map((id: string) => `http://opencode.lan:4096/session/${id}`).join(","))
   })
 
+  test("#280 an app with historyUrl false gets no link, not even in the log line; another app gets its own template", async () => {
+    const srv = await start({
+      historyUrl: BASE,
+      maxN: 3,
+      keys: { alpha: "ka", beta: "kb", gamma: "kc" },
+      apps: { alpha: { historyUrl: false }, beta: { historyUrl: "http://beta.lan:4096/s/{id}" } },
+    })
+    const as = (key: string) => ({ method: "POST", path: "/v1/chat/completions", headers: { authorization: `Bearer ${key}` }, body: { model: "test/echo", messages: [{ role: "user", content: "hi" }] } }) as const
+    const alpha = await srv.send(as("ka"))
+    expect(alpha.headers["x-plugboard-session"]).toBe("ses_0")
+    expect(alpha.headers).not.toHaveProperty("x-plugboard-session-url")
+    expect(logs.of("request").at(-1)!.fields).not.toHaveProperty("session_url")
+    const beta = await srv.send(as("kb"))
+    expect(beta.headers["x-plugboard-session-url"]).toBe("http://beta.lan:4096/s/ses_1")
+    const gamma = await srv.send(as("kc"))
+    expect(gamma.headers["x-plugboard-session-url"]).toBe("http://opencode.lan:4096/session/ses_2")
+  })
+
+  test("#280 with n above 1, an app with historyUrl false gets no link header", async () => {
+    const srv = await start({ historyUrl: BASE, maxN: 3, keys: { alpha: "ka" }, apps: { alpha: { historyUrl: false } } })
+    const reply = await srv.send({ method: "POST", path: "/v1/chat/completions", headers: { authorization: "Bearer ka" }, body: { model: "test/echo", n: 2, messages: [{ role: "user", content: "hi" }] } })
+    expect(String(reply.headers["x-plugboard-session"]).split(",")).toHaveLength(2)
+    expect(reply.headers).not.toHaveProperty("x-plugboard-session-url")
+  })
+
   test("#77 without historyUrl no session link is sent, and the log line has none", async () => {
     const srv = await start({})
     const reply = await srv.send(requests[0]![1])

@@ -176,10 +176,9 @@ export interface CallContext {
   /** Called once, before the first event, with the id of the history record this call writes (if any). */
   readonly onRecord?: (recordID: string, directory?: string) => void
   /**
-   * Called once, before the first event, only for a request whose model is an alias with fallbacks
-   * (`src/fallback.ts`): which target answered and how many earlier targets failed first. A front-end
-   * uses it for `x-plugboard-model` and the `model` it echoes. A call that fails on every target never
-   * reports it.
+   * Called once, before the first event, for every answered call (`src/fallback.ts`): which target answered
+   * and how many earlier targets failed first. A front-end uses it for `x-plugboard-model`, and the `model`
+   * it echoes when `chain` is set. A call that fails never reports it.
    */
   readonly onServed?: (served: ServedModel) => void
   /** Called once, before the first event, with each change the app's policy made that the caller sent for. Front-ends report them in the `x-plugboard-policy` header. */
@@ -210,10 +209,14 @@ export interface CallTotals {
   readonly costUsd?: number
 }
 
-/** The target of an alias that answered: `provider/model[#variant]`, and the targets tried before it. */
+/**
+ * The target that answered: `provider/model[#variant]`, and the targets tried before it. `chain` is set
+ * when the request named a list alias, the only case where the response body echoes the target.
+ */
 export interface ServedModel {
   readonly model: string
   readonly fallbacks: number
+  readonly chain?: boolean
 }
 
 /** The seam between the core and a backend (the session backend now, `ctx.llm.stream` possibly later). */

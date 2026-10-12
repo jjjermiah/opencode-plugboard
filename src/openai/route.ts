@@ -22,7 +22,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, historyTemplate, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -209,6 +209,15 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // Usage has its own credentials: the admin key reads every app, any other key only its own app (`authenticateUsage`).
     if (route === "GET /v1/usage" && host.usage) return serveUsage(request, response, url, host.usage, info)
 
+    // `/metrics` with `adminKey` set: the admin key alone (#285). Its series name every app, so an app key may not read them.
+    // Without `adminKey` it keeps the `/v1` authentication, and any app key sees every app's series (documented).
+    if (route === "GET /metrics" && metrics && host.options.adminKey !== undefined) {
+      const who = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
+      if (isPlugError(who)) return fail(response, who)
+      if (!who.admin) return fail(response, { status: 403, kind: "permission", code: "admin_key_required", message: "Metrics need the admin key (option `adminKey`)" })
+      return sendText(response, 200, metrics.contentType, await metrics.render(runtimeStatus()))
+    }
+
     // Runtime app keys (#55): the admin routes answer the admin key only, and are a 404 without `adminKey`.
     if (path === "/v1/admin/keys" || path.startsWith("/v1/admin/keys/"))
       return serveAdmin({ options: liveOptions(host.options), keys: host.keys }, { path, request, response, scope, info })
@@ -305,7 +314,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         onRecord: (recordID, directory) => {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
-          setSessionLink(response, info, host.options.historyUrl, recordID, directory)
+          setSessionLink(response, info, historyTemplate(host.options, auth.app), recordID, directory)
         },
         // An alias with fallbacks: report which target answered, and echo it as the response model.
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),

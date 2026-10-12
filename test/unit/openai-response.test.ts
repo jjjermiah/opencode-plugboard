@@ -146,6 +146,13 @@ describe("collectCompletion: structured output (json_schema)", () => {
     expect(await collect(structured, ev.text("I refuse"), ev.finish("stop"))).toMatchObject({ status: 502, body: { error: { code: "structured_output_missing" } } })
   })
 
+  test("#282 the 502 says the JSON did not match the schema and names no internal tool", async () => {
+    const { body } = await collect(structured, ev.text("part 7Q-12"), ev.finish("stop"))
+    expect(body.error.message).toBe("The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt.")
+    expect(body.error.message).not.toContain("respond")
+    expect(body.error.code).toBe("structured_output_missing")
+  })
+
   test.each(["length", "content-filter"] as const)("#172 no respond call after a %s finish is a 502, never a 200 with null content", async (reason) => {
     const { status, body } = await collect(structured, ev.finish(reason))
     expect(status).toBe(502)

@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I24-metrics-app-key-reads-all-apps",
+    invariant: "I24",
+    file: "src/openai/route.ts",
+    find: 'if (!who.admin) return fail(response, { status: 403, kind: "permission", code: "admin_key_required"',
+    replace: 'if (false) return fail(response, { status: 403, kind: "permission", code: "admin_key_required"',
+    tests: ["test/http/observability.test.ts"],
+  },
+  {
     id: "I27-session-link-unencoded",
     invariant: "I27",
     file: "src/session/link.ts",

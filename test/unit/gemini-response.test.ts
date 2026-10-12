@@ -55,6 +55,13 @@ describe("runGenerate: GenerateContentResponse chunks and the aggregated body", 
     expect((await run(structured, ev.finish())).failure).toMatchObject({ status: 502, code: "structured_output_missing" })
   })
 
+  test("#282 a text answer that is not the schema's JSON is a 502 that names the schema, not the internal respond tool", async () => {
+    const { failure } = await run(structured, ev.text("The part number is 7Q-12."), ev.finish("stop"))
+    expect(failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+    expect(failure?.message).toBe("The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt.")
+    expect(failure?.message).not.toContain("respond")
+  })
+
   test("structured with caller tools: a caller call replaces the held answer", async () => {
     const { response } = await run({ ...structured, callerTools: true }, ev.call("c1", "respond", { a: 1 }), ev.call("c2", "search"), ev.finish("tool-calls"))
     expect(response.candidates[0].content.parts).toEqual([{ functionCall: { name: "search", args: {} } }])

@@ -56,10 +56,11 @@ export interface ServedInfo {
 }
 
 /**
- * The `CallContext.onServed` of a route: `x-plugboard-model` (and `x-plugboard-fallbacks` when targets
- * failed first) while the headers are still open, and the log fields. The first call wins, so several
- * choices of one request report the first answer. `then` runs for that first call (a single-call route
- * echoes the served model in the body there).
+ * The `CallContext.onServed` of a route: `x-plugboard-model` on every answer (alias or canonical id), and
+ * `x-plugboard-fallbacks` when targets failed first, while the headers are still open, plus the log fields.
+ * The first call wins, so several choices of one request report the first answer. `then` runs only for a
+ * list alias (`served.chain`): a single-call route echoes the target in the body for those, and keeps the
+ * model the caller sent for every other request.
  */
 export function reportServed(response: ServerResponse, info: ServedInfo, then?: (served: ServedModel) => void): (served: ServedModel) => void {
   return (served) => {
@@ -70,7 +71,7 @@ export function reportServed(response: ServerResponse, info: ServedInfo, then?: 
       response.setHeader(MODEL_HEADER, served.model)
       if (served.fallbacks > 0) response.setHeader(FALLBACKS_HEADER, String(served.fallbacks))
     }
-    then?.(served)
+    if (served.chain) then?.(served)
   }
 }
 
@@ -80,9 +81,24 @@ export const isRetryable = (error: PlugError): boolean => error.code !== undefin
 export function withFallbacks(inner: ModelCaller, deps: FallbackDeps): ModelCaller {
   return {
     stream(request, context) {
-      if (!Object.hasOwn(deps.options.fallbacks, request.model)) return inner.stream(request, context)
+      if (!Object.hasOwn(deps.options.fallbacks, request.model)) return reportPlain(inner.stream(request, context), context, request.ref)
       return chain(inner, deps, request, context)
     },
+  }
+}
+
+/**
+ * A call that is not a list alias: no retry, but the answer still names its model (`x-plugboard-model`, #279).
+ * Reported before the first non-error event, so a failed call reports nothing, as in `chain`.
+ */
+async function* reportPlain(events: AsyncIterable<PlugEvent>, context: CallContext, ref: ModelRef): AsyncGenerator<PlugEvent> {
+  let reported = false
+  for await (const event of events) {
+    if (!reported && event.type !== "error") {
+      reported = true
+      context.onServed?.({ model: refToString(ref), fallbacks: 0 })
+    }
+    yield event
   }
 }
 
@@ -130,7 +146,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     if (thrown) throw thrown.error
     if (first!.done) return
     // An error is not an answer: a call that fails (non-retryable, or on its last target) reports no served model.
-    if (reason === undefined && first!.value.type !== "error") context.onServed?.({ model: refToString(ref), fallbacks: attempt })
+    if (reason === undefined && first!.value.type !== "error") context.onServed?.({ model: refToString(ref), fallbacks: attempt, chain: true })
     try {
       yield first!.value
       for (let step = await iterator.next(); !step.done; step = await iterator.next()) yield step.value

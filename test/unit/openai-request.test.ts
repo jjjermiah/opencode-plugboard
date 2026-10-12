@@ -25,6 +25,8 @@ describe("parseChatRequest: every validation rule answers 400 with its param", (
     ["n = 0", body({ n: 0 }), { param: "n" }],
     ["#58 n above maxN (default 1)", body({ n: 2 }), { param: "n", code: "too_many_choices" }],
     ["a fractional n", body({ n: 1.5 }), { param: "n" }],
+    ["#287 a string stream", body({ stream: "yes" }), { param: "stream" }],
+    ["#287 a numeric stream", body({ stream: 1 }), { param: "stream" }],
     ["logprobs", body({ logprobs: true }), { param: "logprobs", code: "unsupported_parameter" }],
     ["top_logprobs", body({ top_logprobs: 2 }), { param: "top_logprobs", code: "unsupported_parameter" }],
     ["a message that is not an object", body({ messages: ["hi"] }), { param: "messages[0]" }],
@@ -79,15 +81,14 @@ describe("parseChatRequest: messages", () => {
     expect(request.system).toEqual(["be brief", "a\nb"])
   })
 
-  test("user parts: text, image_url (data URL media type kept), file (bare base64 wrapped)", () => {
+  test("user parts: text and image_url (data URL media type kept)", () => {
     const { request } = parse(
       body({
         messages: [
           user([
             { type: "text", text: "look" },
-            { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+            { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } },
             { type: "image_url", image_url: { url: "https://example.com/a.jpg" } },
-            { type: "file", file: { file_data: "QUJD" } },
           ]),
         ],
       }),
@@ -97,12 +98,18 @@ describe("parseChatRequest: messages", () => {
         role: "user",
         content: [
           { type: "text", text: "look" },
-          { type: "media", url: "data:image/png;base64,AAAA", mediaType: "image/png" },
+          { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" },
           { type: "media", url: "https://example.com/a.jpg" },
-          { type: "media", url: "data:application/octet-stream;base64,QUJD", mediaType: "application/octet-stream" },
         ],
       },
     ])
+  })
+
+  test("#288 a file part keeps a PDF data URL and refuses bare base64 or another type as invalid_file", () => {
+    const pdf = "data:application/pdf;base64,JVBERi0xLjQK"
+    expect(parse(body({ messages: [user([{ type: "file", file: { file_data: pdf } }])] })).request.messages[0]!.content).toEqual([{ type: "media", url: pdf, mediaType: "application/pdf" }])
+    expect(parseChatRequest(body({ messages: [user([{ type: "file", file: { file_data: "JVBERi0xLjQK" } }])] }), options)).toMatchObject({ status: 400, code: "invalid_file", param: "messages[0].content[0].file.file_data" })
+    expect(parseChatRequest(body({ messages: [user([{ type: "file", file: { file_data: "data:text/plain;base64,JVBERi0xLjQK" } }])] }), options)).toMatchObject({ status: 400, code: "invalid_file" })
   })
 
   test("an assistant tool turn and its result: arguments parsed, result named after the call", () => {
@@ -220,7 +227,8 @@ describe("parseChatRequest: generation and exchange", () => {
 
   test("the exchange carries the client's model string, stream and include_usage", () => {
     expect(parse(body({ stream: true, stream_options: { include_usage: true } })).exchange).toEqual({ model: "test/echo", stream: true, includeUsage: true })
-    expect(parse(body({ stream: "yes" })).exchange).toEqual({ model: "test/echo", stream: false, includeUsage: false })
+    expect(parse(body({ stream: null })).exchange).toEqual({ model: "test/echo", stream: false, includeUsage: false })
+    expect(parse(body({ stream: false })).exchange).toEqual({ model: "test/echo", stream: false, includeUsage: false })
   })
 
   test("reasoning_effort is passed on for variant selection", () => {

@@ -90,7 +90,7 @@ async function settle(events: AsyncIterable<PlugEvent>, exchange: CompletionsExc
   if (exchange.structuredTool !== undefined) {
     if (answer !== undefined) return { text: answer, reason: finish, usage }
     const fallback = exchange.structuredSchema === undefined ? undefined : textFallback(text, exchange.structuredSchema)
-    if (fallback === undefined) return structuredMissing(exchange.structuredTool)
+    if (fallback === undefined) return structuredMissing()
     return { text: fallback, reason: finish, usage, fallback: true }
   }
   if (finish === "stop") text = stripStopTail(text, exchange.stop ?? []).text

@@ -76,7 +76,7 @@ describe("withFallbacks", () => {
     const r = await run([[rateLimited], [ev.text("hi"), ev.finish()]])
     expect(r.targets).toEqual(["a/x", "b/y"])
     expect(r.events.map((e) => e.type)).toEqual(["text-delta", "finish"])
-    expect(r.served).toEqual([{ model: "b/y#low", fallbacks: 1 }])
+    expect(r.served).toEqual([{ model: "b/y#low", fallbacks: 1, chain: true }])
     expect(r.records).toEqual(["rec1"])
     expect(r.retried).toEqual(["app1"])
     expect(r.closed).toEqual([true, true])
@@ -85,7 +85,7 @@ describe("withFallbacks", () => {
   test("a thrown error or an empty stream counts as a failure", async () => {
     const r = await run([new Error("boom"), [], [ev.text("ok"), ev.finish()]])
     expect(r.targets).toEqual(["a/x", "b/y", "c/z"])
-    expect(r.served).toEqual([{ model: "c/z", fallbacks: 2 }])
+    expect(r.served).toEqual([{ model: "c/z", fallbacks: 2, chain: true }])
   })
 
   test("a failure after the first event is never retried", async () => {
@@ -133,9 +133,18 @@ describe("withFallbacks", () => {
     expect(events).toEqual([rateLimited])
   })
 
-  test("a plain alias or model id goes straight to the caller", async () => {
+  test("a plain alias or model id is not retried, and its answer names its model (#279)", async () => {
     const r = await run([[rateLimited], [ev.text("never")]], "plain")
     expect(r.targets).toEqual(["a/x"])
+    expect(r.retried).toEqual([])
+    expect(r.served).toEqual([])
+    const answered = await run([[ev.text("hi"), ev.finish()]], "plain")
+    expect(answered.targets).toEqual(["a/x"])
+    expect(answered.served).toEqual([{ model: "a/x", fallbacks: 0 }])
+  })
+
+  test("#279 a plain call that fails before any output reports no served model", async () => {
+    const r = await run([[ev.error({ status: 400, kind: "invalid_request", code: "context_length_exceeded" })]], "plain")
     expect(r.served).toEqual([])
   })
 

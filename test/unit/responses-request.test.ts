@@ -147,10 +147,9 @@ describe("parseResponsesRequest: input items", () => {
         input: [
           message("user", [
             { type: "input_text", text: "look" },
-            { type: "input_image", image_url: "data:image/jpeg;base64,AA" },
+            { type: "input_image", image_url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==" },
             { type: "image_url", image_url: { url: "https://example.com/x.png" } },
-            { type: "input_file", file_data: "JVBER", filename: "Doc.PDF" },
-            { type: "input_file", file_data: "AAAA" },
+            { type: "input_file", file_data: "JVBERi0xLjQK", filename: "Doc.PDF" },
             { type: "input_file", file_url: "https://example.com/f" },
           ]),
         ],
@@ -158,12 +157,16 @@ describe("parseResponsesRequest: input items", () => {
     )
     expect(request.messages[0]!.content).toEqual([
       { type: "text", text: "look" },
-      { type: "media", url: "data:image/jpeg;base64,AA", mediaType: "image/jpeg" },
+      { type: "media", url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==", mediaType: "image/jpeg" },
       { type: "media", url: "https://example.com/x.png" },
-      { type: "media", url: "data:application/pdf;base64,JVBER", mediaType: "application/pdf" },
-      { type: "media", url: "data:application/octet-stream;base64,AAAA", mediaType: "application/octet-stream" },
+      { type: "media", url: "data:application/pdf;base64,JVBERi0xLjQK", mediaType: "application/pdf" },
       { type: "media", url: "https://example.com/f" },
     ])
+  })
+
+  test("#288 input_file data that is not a PDF is a 400 invalid_file, not sent to backend preparation", () => {
+    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "AAAA" }])] }), options)).toMatchObject({ status: 400, code: "invalid_file", param: "input[0].content[0].file_data" })
+    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "data:text/plain;base64,JVBERi0xLjQK" }])] }), options)).toMatchObject({ status: 400, code: "invalid_file" })
   })
 
   test("adjacent assistant text and function calls become one assistant message, followed by the results", () => {
@@ -239,7 +242,7 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
         temperature: 0.5,
         text: { format: { type: "text" } },
         tool_choice: "auto",
-        tools,
+        tools: [{ ...tools[0], strict: false }],
         top_p: 0.5,
         truncation: "disabled",
         user: "u",

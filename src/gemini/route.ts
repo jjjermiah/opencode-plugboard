@@ -17,7 +17,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { bodyLimits } from "../config.js"
+import { bodyLimits, historyTemplate } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { listAvailableModels, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
@@ -163,7 +163,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
       onRecord: (recordID, directory) => {
         if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
         response.setHeader(SESSION_HEADER, recordID)
-        setSessionLink(response, info, host.options.historyUrl, recordID, directory)
+        setSessionLink(response, info, historyTemplate(host.options, app), recordID, directory)
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
