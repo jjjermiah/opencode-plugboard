@@ -68,6 +68,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/server-tools.test.ts"],
   },
   {
+    id: "I8-server-tool-no-rule-allowed",
+    invariant: "I8",
+    file: "src/session/seeds.ts",
+    find: "      { action: tool, resource: \"*\", effect: \"deny\" as const },",
+    replace: "      { action: tool, resource: \"*\", effect: \"allow\" as const },",
+    tests: ["test/session/server-tools.test.ts"],
+  },
+  {
+    id: "I8-server-tool-ask-as-allow",
+    invariant: "I8",
+    file: "src/session/seeds.ts",
+    find: "effect: rule.effect === \"allow\" ? (\"allow\" as const) : (\"deny\" as const)",
+    replace: "effect: rule.effect !== \"deny\" ? (\"allow\" as const) : (\"deny\" as const)",
+    tests: ["test/session/server-tools.test.ts"],
+  },
+  {
     id: "I24-metrics-app-key-reads-all-apps",
     invariant: "I24",
     file: "src/openai/route.ts",

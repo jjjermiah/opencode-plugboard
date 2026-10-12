@@ -26,7 +26,7 @@ import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, type SessionPort } from "./host.js"
 import { ImageError, prepareImages, type RemoteImages } from "./media.js"
-import { requestPermissions, seedToolsFor } from "./seeds.js"
+import { requestPermissions, seedToolsFor, ungrantedServerTool, type OperatorRule } from "./seeds.js"
 import type { SessionStore } from "./state.js"
 
 export interface SessionCallerDeps {
@@ -124,6 +124,17 @@ function checkServerToolNames(request: PlugRequest, policy: AppPolicy | undefine
     code: "server_tool_collision",
     param: "tools",
     message: `Tool \`${clash.name}\` is one of this app's OpenCode server tools (option \`apps.<name>.serverTools\`); rename the caller's tool`,
+  }
+}
+
+/** A listed server tool the operator's permissions for the agent do not allow (#194): nothing is created. */
+function deniedByOperator(tool: string): PlugError {
+  return {
+    status: 400,
+    kind: "invalid_request",
+    code: "server_tool_denied_by_operator",
+    param: "tools",
+    message: `The OpenCode permissions of this app's agent do not allow \`${tool}\` (option \`apps.<name>.serverTools\`). Add an allow rule for it to the agent, or remove it from serverTools`,
   }
 }
 
@@ -231,6 +242,15 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
         if (context.signal.aborted) return
 
+        // 3c. An app with server tools runs them under the agent's own rules (#194): read them now, for the agent this session runs as.
+        let operatorRules: ReadonlyArray<OperatorRule> = []
+        if (policy?.serverTools) {
+          operatorRules = (await raceAbort(port.agentRules(directory, persona?.kind === "agent" ? persona.agent : undefined), context.signal)) ?? []
+          const ungranted = ungrantedServerTool(policy.serverTools, operatorRules)
+          if (ungranted) return yield note({ type: "error", error: deniedByOperator(ungranted) })
+        }
+        if (context.signal.aborted) return
+
         collector = new RequestCollector({
           stopTurn: interrupt,
           requestID,
@@ -250,7 +270,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
           title: makeTitle(request),
           metadata: { plugboard: { app, model: request.model, requestID } },
-          permissions: requestPermissions(policy?.serverTools ?? []),
+          permissions: requestPermissions(policy?.serverTools ?? [], operatorRules),
         })
         const created = await raceAbort(creating, context.signal).catch((error) => {
           // The host keeps creating after the abort. A session that lands now is in no index, so it is removed.
