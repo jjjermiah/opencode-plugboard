@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Usage counts survive a restart** ([#241](https://github.com/jjjermiah/opencode-plugboard/issues/241)). Usage was written to storage at most every 10 seconds, so the newest changes sat in memory and a restart dropped them: a day could keep its tokens and model counts but show `requests: 0`. Each change is now written as it lands, one write at a time per day. Counts already lost before upgrading can't be recovered.
 
 ## [0.21.1] - 2026-10-11: Read Between the Fences
 
