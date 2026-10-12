@@ -22,7 +22,7 @@ Evidence from the OpenCode source:
 - `exports`: each entry is an object with `types` first, then `default`. `"."` maps to `./index.ts` and `"./rpc"` to `./src/rpc.ts`. Bun does not use the `types` condition at runtime, so it falls through to `default`.
 - `./tui` is not exported on main. When it is added, give it the same `types` / `default` pair.
 
-Known gap: a consumer that typechecks the package reads the `.ts` source, and `src/discovery.ts` imports `escape-html`, whose types are a devDependency here. Without `@types/escape-html` installed, the consumer gets `TS7016: Could not find a declaration file for module 'escape-html'`. With it installed, `tsc` passes under `moduleResolution` `bundler` and `node16`. This does not affect Bun at runtime. Open decision: add the types to `dependencies`, or ship a `declare module` shim.
+A consumer that typechecks the package reads the `.ts` source, and `src/discovery.ts` imports `escape-html`. Its types, `@types/escape-html`, are a runtime dependency (pinned exactly, types only, no install script), so the consumer gets them with the package and sees no `TS7016: Could not find a declaration file for module 'escape-html'`. This does not affect Bun at runtime.
 
 ## Engines
 

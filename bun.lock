@@ -6,6 +6,7 @@
       "name": "opencode-plugboard",
       "dependencies": {
         "@prometheus-io/client": "0.16.1",
+        "@types/escape-html": "1.0.4",
         "escape-html": "1.0.3",
         "ipaddr.js": "2.5.0",
         "lru-cache": "11.5.3",
@@ -30,7 +31,6 @@
         "@opentui/core": "0.5.17",
         "@opentui/solid": "0.5.17",
         "@types/bun": "1.4.2",
-        "@types/escape-html": "^1.0.4",
         "@types/lcov-parse": "1.0.2",
         "@types/node": "^26.6.2",
         "@types/semver": "7.8.0",
