@@ -216,7 +216,7 @@ export const LANGCHAIN_CLIENTS: ReadonlyArray<Client> = [
     },
   }),
   langchain("@langchain/anthropic", "messages", ({ origin, apiKey }, id) => new ChatAnthropic({ model: id ?? MODEL, apiKey, anthropicApiUrl: origin, maxTokens: 100, maxRetries: 0 }), {
-    // message_start carries input_tokens 0: the input count is only known when the model finishes (message_delta). LangChain sums the two, so its streamed usage has no input.
+    // message_start carries input_tokens 0, and LangChain's message_delta usage_metadata hard-codes input_tokens 0 (@langchain/anthropic dist/utils/message_outputs.js), whatever the event reports. So the streamed usage has no input count.
     gaps: { "stream-usage": "message_start reports input_tokens 0; the real input count arrives only in message_delta, so a client that reads usage from message_start sees 0" },
     extra: {
       // The class's `thinking` option: the reasoning comes back as a thinking block, then the answer.
