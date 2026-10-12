@@ -754,8 +754,6 @@ const aiChat = aiSdk("ai + @ai-sdk/openai (chat)", "chat", (target, id) => aiOpe
 })
 
 const aiResponses = aiSdk("ai + @ai-sdk/openai (responses)", "responses", (target, id) => aiOpenAI(target).responses(id ?? MODEL), {
-  // The default `store: true` makes the AI SDK resend the earlier answer as an item_reference, which plugboard refuses (#147).
-  gaps: { "multi-turn": "the AI SDK's default (store: true) resends the first answer as an item_reference, which plugboard refuses with a 400 (#147); the store: false row passes" },
   na: { "stop-sequence": NA_RESPONSES_STOP, thinking: NA_RESPONSES_THINKING, logprobs: NA_NO_LOGPROBS },
   extra: { document: pdfRun((target) => aiOpenAI(target).responses(MODEL)) },
 })

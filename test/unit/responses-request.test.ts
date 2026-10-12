@@ -24,7 +24,6 @@ describe("parseResponsesRequest: stateless and hosted features are refused with 
     ["stored prompts", { prompt: { id: "p" } }, "prompt"],
     ["top_logprobs", { top_logprobs: 2 }, "top_logprobs"],
     ["truncation auto", { truncation: "auto" }, "truncation"],
-    ["an item_reference", { input: [{ type: "item_reference", id: "msg_1" }] }, "input[0].type"],
     ["an unknown item type", { input: [{ type: "web_search_call" }] }, "input[0].type"],
     ["a hosted tool", { tools: [{ type: "web_search" }] }, "tools[0].type"],
     ["an input_image by file_id", { input: [message("user", [{ type: "input_image", file_id: "f" }])] }, "input[0].content[0].image_url"],
@@ -40,6 +39,47 @@ describe("parseResponsesRequest: stateless and hosted features are refused with 
 
   test("background false, top_logprobs 0 and truncation disabled are accepted", () => {
     expect(isPlugError(parseResponsesRequest(body({ background: false, top_logprobs: 0, truncation: "disabled" }), options))).toBe(false)
+  })
+})
+
+describe("#147 item_reference resolves to the output item an earlier answer returned", () => {
+  const answer = { id: "msg_1", type: "message", status: "completed", role: "assistant", content: [{ type: "output_text", text: "Hello", annotations: [] }] }
+  const call = { id: "fc_1", type: "function_call", status: "completed", call_id: "call_1", name: "weather", arguments: '{"city":"Oslo"}' }
+  const known = new Map<string, Record<string, unknown>>([
+    [answer.id, answer],
+    [call.id, call],
+  ])
+  const resolve = (id: string) => known.get(id)
+
+  test("a message reference is decoded as the assistant message it names, before the user's next turn", () => {
+    const parsed = parseResponsesRequest(body({ input: [{ type: "item_reference", id: "msg_1" }, message("user", "Again?")] }), options, resolve)
+    expect(isPlugError(parsed)).toBe(false)
+    expect((parsed as ParsedResponses).request.messages).toEqual([
+      { role: "assistant", content: [{ type: "text", text: "Hello" }] },
+      { role: "user", content: [{ type: "text", text: "Again?" }] },
+    ])
+  })
+
+  test("a function_call reference pairs with the function_call_output that answers it", () => {
+    const parsed = parseResponsesRequest(body({ input: [{ type: "item_reference", id: "fc_1" }, fnOutput("call_1", "sunny")] }), options, resolve)
+    expect((parsed as ParsedResponses).request.messages).toEqual([
+      { role: "assistant", content: [{ type: "tool-call", id: "call_1", name: "weather", input: { city: "Oslo" } }] },
+      { role: "tool", content: [{ type: "tool-result", id: "call_1", name: "weather", result: "sunny" }] },
+    ])
+  })
+
+  test("a reference the store does not hold is a 400 that suggests store: false", () => {
+    expect(parseResponsesRequest(body({ input: [{ type: "item_reference", id: "msg_gone" }] }), options, resolve)).toMatchObject({
+      status: 400,
+      code: "item_not_found",
+      param: "input[0].id",
+      message: expect.stringContaining("store: false"),
+    })
+    expect(parseResponsesRequest(body({ input: [{ type: "item_reference", id: "msg_gone" }] }), options)).toMatchObject({ code: "item_not_found" })
+  })
+
+  test("a reference without an id is a 400 on that id", () => {
+    expect(parseResponsesRequest(body({ input: [{ type: "item_reference" }] }), options, resolve)).toMatchObject({ status: 400, param: "input[0].id" })
   })
 })
 

@@ -39,7 +39,7 @@ Each API front-end has the same three files: `request.ts` decodes the wire body 
 | Directory | Job |
 |---|---|
 | `openai/` | Chat Completions and `/v1/models`. `route.ts` is also the front door: it checks Host and Origin, authenticates, and hands every other API to its own route. Also holds `fanout.ts` (`n` above 1: one call per choice, merged) and `sampling.ts` (sampling parameters a model rejects). |
-| `responses/` | `POST /v1/responses`, stateless. |
+| `responses/` | `POST /v1/responses`. Stateless except `store.ts`: the output items of recent answers per app (1000 for an hour, in memory), so an `item_reference` resolves (#147). |
 | `anthropic/` | `POST /v1/messages`. Takes the request over early: Anthropic error bodies and `x-api-key` auth. |
 | `gemini/` | `generateContent`, `streamGenerateContent` and the Gemini model list. The model is in the URL, errors use Google's body. |
 | `completions/` | Legacy `POST /v1/completions`. Always goes through the fan-out. |

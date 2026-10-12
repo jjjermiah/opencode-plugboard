@@ -34,7 +34,7 @@ console.log(r.output_text)
 A 400 with `code: "unsupported_parameter"` and `param` naming the field:
 
 - `previous_response_id`, `conversation`: need server-side state. Send the full `input` each time.
-- `item_reference` input items: same reason. See the Vercel AI SDK note below.
+- `item_reference` input items that name no output item plugboard holds (see the Vercel AI SDK note below). Plugboard keeps the output items of recent answers, so a reference to one of them works.
 - `background: true`, `prompt` (stored prompts), `top_logprobs`, `truncation: "auto"`.
 - Tools that are not `function` tools (`web_search`, `file_search`, `code_interpreter`, `computer_use`, `mcp`, `image_generation`, `custom`, ...). They run on OpenAI's servers; plugboard only hands function calls back to you.
 - `tool_choice` objects other than a function name (`allowed_tools`, hosted tool types), and a named tool together with `text.format` `json_schema`.
@@ -72,6 +72,6 @@ Tool calls arrive whole from the model, so each call is a single `function_call_
 
 ## Notes
 
-- Multi-turn with the Vercel AI SDK: its default `store: true` makes it replay earlier assistant text as `item_reference`, which plugboard rejects. Tool loops work (a tool call is replayed as a full `function_call` item). For multi-turn chats set `providerOptions: { openai: { store: false } }`.
+- Multi-turn with the Vercel AI SDK works with its default `store: true`. The SDK replays each earlier assistant output as an `item_reference`, and plugboard resolves it from an in-memory store of the output items it returned (#147): per app, the last 1000 answers, kept for one hour, in the process only and never on disk. A reference to an item the store does not hold (plugboard restarted, the answer expired, or another app's item) is a 400 `item_not_found`. Send the earlier items in full, or set `providerOptions: { openai: { store: false } }`, which sends them in full on every turn. Tool loops work either way (a tool call is replayed as a full `function_call` item).
 - `@langchain/openai` forces this API for ids containing `gpt-5.6`, `gpt-5.2-pro`, `gpt-5.4-pro`, `gpt-5.5-pro` and `codex`. It works now. LangChain's standard base64 image blocks reach plugboard as Chat-style `image_url` parts, so plugboard accepts that part type here too.
 - Sampling parameters are forwarded as sent and some providers reject them; see the client pages.

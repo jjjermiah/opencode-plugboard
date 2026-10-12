@@ -19,6 +19,7 @@ import { encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
 import { runResponse, sseFrame } from "./response.js"
+import { findItem, rememberAnswer } from "./store.js"
 
 const SESSION_HEADER = "x-plugboard-session"
 
@@ -34,7 +35,7 @@ export interface ResponsesCall {
 export async function serveResponses(host: RouteHost, { app, body, response, scope, info }: ResponsesCall): Promise<void> {
   const fail = (error: PlugError) => sendError(response, error, encodeError(error))
 
-  const parsed = parseResponsesRequest(body, host.options)
+  const parsed = parseResponsesRequest(body, host.options, (itemId) => findItem(app, itemId))
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())
   const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
@@ -62,11 +63,12 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
 
   if (exchange.stream) {
     const sse = sseWriter(response, scope.signal)
-    const { failure } = await runResponse(sse.paced(events), exchange, (event) => sse.write(sseFrame(event)), () => sse.started)
+    const run = await runResponse(sse.paced(events), exchange, (event) => sse.write(sseFrame(event)), () => sse.started)
+    if (run.response && !run.failure) rememberAnswer(app, run.response)
     if (!sse.started && !response.headersSent) {
-      if (!scope.signal.aborted || scope.timedOut) fail(failure ?? { status: 502, kind: "server", message: "No response from the model" })
+      if (!scope.signal.aborted || scope.timedOut) fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
     } else {
-      if (failure) info.failed = failure.code ?? failure.kind
+      if (run.failure) info.failed = run.failure.code ?? run.failure.kind
       if (!response.writableEnded) response.end()
     }
     return
@@ -74,5 +76,6 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
 
   const run = await runResponse(events, exchange, () => {})
   if (run.failure || !run.response) return fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
+  rememberAnswer(app, run.response)
   sendJson(response, 200, run.response)
 }
