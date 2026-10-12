@@ -78,6 +78,7 @@ export default defineConfig({
           { text: "SillyTavern", link: "/clients/sillytavern" },
           { text: "Cline", link: "/clients/cline" },
           { text: "Roo Code", link: "/clients/roo-code" },
+          { text: "LlamaIndex", link: "/clients/llamaindex" },
         ],
       },
       {
