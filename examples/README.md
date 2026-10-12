@@ -12,6 +12,7 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [librechat/](librechat/README.md) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` |
 | [lobechat/](lobechat/docker-compose.yml) | LobeChat in Docker: `OPENAI_PROXY_URL` and the model list, in a compose file and `.env.example` |
 | [jan/](jan/setup.sh) | Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example` |
+| [anythingllm/](anythingllm/docker-compose.yml) | AnythingLLM in Docker with the Generic OpenAI provider's env vars |
 | [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider |
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
 | [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |

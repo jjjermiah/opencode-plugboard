@@ -74,6 +74,7 @@ export default defineConfig({
           { text: "LobeChat", link: "/clients/lobechat" },
           { text: "Chatbox", link: "/clients/chatbox" },
           { text: "Jan", link: "/clients/jan" },
+          { text: "AnythingLLM", link: "/clients/anythingllm" },
         ],
       },
       {
