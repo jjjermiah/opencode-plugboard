@@ -19,8 +19,8 @@ Evidence from the OpenCode source:
 `types` points at the source, because there is no `.d.ts` output:
 
 - Top level: `"types": "./index.ts"`.
-- `exports`: each entry is an object with `types` first, then `default`. `"."` maps to `./index.ts` and `"./rpc"` to `./src/rpc.ts`. Bun does not use the `types` condition at runtime, so it falls through to `default`.
-- `./tui` is not exported on main. When it is added, give it the same `types` / `default` pair.
+- `exports`: each entry is an object with `types` first, then `default`. `"."` maps to `./index.ts` and `"./rpc"` to `./rpc.ts`. Bun does not use the `types` condition at runtime, so it falls through to `default`.
+- `./tui` maps to `types: ./tui.ts` and `default: ./dist/tui.js` (see the TUI section below). `./rpc` and `./tui` sit at the package root, next to `index.ts`.
 
 A consumer that typechecks the package reads the `.ts` source, and `src/discovery.ts` imports `escape-html`. Its types, `@types/escape-html`, are a runtime dependency (pinned exactly, types only, no install script), so the consumer gets them with the package and sees no `TS7016: Could not find a declaration file for module 'escape-html'`. This does not affect Bun at runtime.
 

@@ -1,6 +1,11 @@
+import { readFileSync } from "node:fs"
 import { defineConfig } from "vitepress"
 
 const repo = "https://github.com/jjjermiah/opencode-plugboard"
+
+// The latest release. package.json on main is the last release: the release pull request bumps it and
+// the tag is its merge commit. The theme shows it in a banner (theme/index.ts).
+const latest: string = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version
 
 // The site is built from docs/. The Guide page (index.md) includes the README, so the README stays
 // the single source for the quick start and the feature list.
@@ -11,6 +16,7 @@ export default defineConfig({
   base: "/opencode-plugboard/",
   cleanUrls: true,
   lastUpdated: false,
+  vite: { define: { __PLUGBOARD_LATEST__: JSON.stringify(latest) } },
   themeConfig: {
     nav: [
       { text: "Guide", link: "/" },
@@ -118,6 +124,9 @@ export default defineConfig({
           { text: "Security reviews", link: "/security-reviews" },
           { text: "Red team", link: "/red-team" },
           { text: "Best practices", link: "/best-practices" },
+          { text: "Packaging", link: "/packaging" },
+          { text: "TUI usage page", link: "/tui" },
+          { text: "Live matrix", link: "/live-matrix" },
         ],
       },
     ],
