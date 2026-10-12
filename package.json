@@ -16,11 +16,12 @@
   "main": "./index.ts",
   "exports": {
     ".": "./index.ts",
-    "./rpc": "./src/rpc.ts"
+    "./rpc": "./src/rpc.ts",
+    "./tui": "./src/tui.tsx"
   },
   "files": ["index.ts", "src/", "README.md", "LICENSE"],
   "scripts": {
-    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tui.json && tsc --noEmit -p test",
     "test": "bun test",
     "bench": "bun test/bench/request.bench.ts",
     "mutations": "bun .github/scripts/mutation-check.ts",
@@ -51,6 +52,8 @@
     "@langchain/google-genai": "2.3.2",
     "@langchain/openai": "1.6.2",
     "@opencode/plugin": "2.0.26",
+    "@opentui/core": "0.5.17",
+    "@opentui/solid": "0.5.17",
     "@types/bun": "1.4.2",
     "@types/escape-html": "^1.0.4",
     "@types/lcov-parse": "1.0.2",
@@ -66,10 +69,19 @@
     "lefthook": "2.2.1",
     "mitata": "1.0.34",
     "openai": "7.32.0",
+    "solid-js": "1.9.15",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "@opencode/plugin": ">=2.0.26 <2.1",
-    "effect": "4.0.0-rc.112"
+    "@opentui/core": ">=0.5.17",
+    "@opentui/solid": ">=0.5.17",
+    "effect": "4.0.0-rc.112",
+    "solid-js": ">=1.9.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/core": { "optional": true },
+    "@opentui/solid": { "optional": true },
+    "solid-js": { "optional": true }
   }
 }
