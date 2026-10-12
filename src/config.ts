@@ -63,6 +63,8 @@ export interface PlugboardOptions {
   readonly usage: UsageConfig
   /** A key that may read every app's usage on `GET /v1/usage`. Compared like app keys; must differ from every one of them. */
   readonly adminKey?: string
+  /** A template for the OpenCode session page of each request: `{id}`, and optional `{directory}` (see src/session/link.ts, #77). */
+  readonly historyUrl?: string
 }
 
 /** Option `usage` after defaults: on, and days of history kept. */
@@ -144,7 +146,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -430,6 +432,26 @@ function parseAgents(raw: unknown, models: ReadonlyArray<string>): Record<string
   return Object.fromEntries(entries)
 }
 
+/**
+ * Option `historyUrl` (#77): an http(s) URL template that must contain `{id}`. Its only other placeholder is
+ * `{directory}`, so a typo such as `{sesion}` fails at load instead of producing a link that is wrong.
+ */
+function parseHistoryUrl(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  const at = "plugboard option `historyUrl`"
+  if (typeof value !== "string" || !value.includes("{id}")) throw new Error(`${at} must be a URL template with {id} (for example http://host:4096/session/{id})`)
+  const unknown = (value.match(/\{[^{}]*\}/g) ?? []).find((placeholder) => placeholder !== "{id}" && placeholder !== "{directory}")
+  if (unknown !== undefined) throw new Error(`${at} has the unknown placeholder ${unknown} (known: {id}, {directory})`)
+  let url: URL
+  try {
+    url = new URL(value.replaceAll("{id}", "x").replaceAll("{directory}", "x"))
+  } catch {
+    throw new Error(`${at} must be an http(s) URL template`)
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`${at} must be http or https`)
+  return value
+}
+
 /** Validates raw plugin options and applies defaults. Throws `Error` with an actionable message. */
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
@@ -536,6 +558,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (budgets !== undefined && !usage.enabled) throw new Error("plugboard option `budgets` needs `usage` enabled: budgets are counted from the usage records")
   if (budgets !== undefined && usage.retentionDays < widestWindowDays(budgets))
     throw new Error(`plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`)
+  const historyUrl = parseHistoryUrl(input.historyUrl)
 
   return {
     listen: { host, port: port ?? DEFAULTS.port },
@@ -559,6 +582,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     usage,
     ...(budgets === undefined ? {} : { budgets }),
     ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
+    ...(historyUrl === undefined ? {} : { historyUrl }),
   }
 }
 
@@ -587,24 +611,32 @@ function digestsOf(keys: Readonly<Record<string, string>>): ReadonlyArray<readon
 /** Who may read `GET /v1/usage`: the admin key (every app), or one app (`default` when keyless). */
 export type UsageScope = { readonly admin: true } | { readonly admin: false; readonly app: string }
 
+/** The digest of a runtime key (src/keys.ts), with its app: checked like a config key (#55). */
+export type RuntimeDigest = readonly [app: string, digest: Buffer]
+
 /** The admin key is checked first; any other valid key (or keyless mode) is an app, as `authenticate` decides. */
-export function authenticateUsage(options: PlugboardOptions, authorization: string | undefined): UsageScope | PlugError {
+export function authenticateUsage(options: PlugboardOptions, authorization: string | undefined, runtime: ReadonlyArray<RuntimeDigest> = []): UsageScope | PlugError {
   const bearer = /^Bearer\s+(\S+)\s*$/i.exec(authorization ?? "")?.[1]
   if (options.adminKey !== undefined && bearer !== undefined && timingSafeEqual(sha256(bearer), sha256(options.adminKey))) return { admin: true }
-  const auth = authenticate(options, authorization)
+  const auth = authenticate(options, authorization, runtime)
   if (isPlugError(auth)) return auth
   return { admin: false, app: auth.app }
 }
 
-/** No keys -> app `default`; with keys every request needs `Authorization: Bearer <key>`. */
-export function authenticate(options: PlugboardOptions, authorization: string | undefined): { app: string } | PlugError {
+/**
+ * No config keys -> app `default` (keyless), as before. With config keys every request needs
+ * `Authorization: Bearer <key>`. A runtime key (#55) matches like a config key, so it names its app
+ * whenever it is presented. It never makes a keyless server require a key, so deleting the last
+ * runtime key cannot open or close access by itself.
+ */
+export function authenticate(options: PlugboardOptions, authorization: string | undefined, runtime: ReadonlyArray<RuntimeDigest> = []): { app: string } | PlugError {
   const entries = digestsOf(options.keys)
-  if (entries.length === 0) return { app: DEFAULT_APP }
   const token = /^Bearer\s+(\S+)\s*$/i.exec(authorization ?? "")?.[1]
-  if (!token) return UNAUTHORIZED
+  if (token === undefined) return entries.length === 0 ? { app: DEFAULT_APP } : UNAUTHORIZED
   const digest = sha256(token)
   let app: string | undefined
   // Every key is compared, no early exit.
-  for (const [name, expected] of entries) if (timingSafeEqual(digest, expected)) app = name
-  return app === undefined ? UNAUTHORIZED : { app }
+  for (const [name, expected] of [...entries, ...runtime]) if (timingSafeEqual(digest, expected)) app = name
+  if (app !== undefined) return { app }
+  return entries.length === 0 ? { app: DEFAULT_APP } : UNAUTHORIZED
 }

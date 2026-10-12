@@ -205,7 +205,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
 
         // The history id is known from here on: tell the front-end before the first event.
         try {
-          context.onRecord?.(sessionID)
+          context.onRecord?.(sessionID, directory)
         } catch (error) {
           logError("request.on_record_failed", { requestID, app, error: describeError(error) })
         }

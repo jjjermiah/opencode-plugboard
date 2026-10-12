@@ -92,6 +92,14 @@ function endpoints(options: PlugboardOptions): ReadonlyArray<Endpoint> {
         ]
       : []),
     ...(options.metrics ? [{ method: "GET", path: "/metrics", auth: true, description: "Prometheus metrics." }] : []),
+    // The admin key only (option `adminKey`); without it these paths are a 404 (src/admin/route.ts).
+    ...(options.adminKey === undefined
+      ? []
+      : [
+          { method: "GET", path: "/v1/admin/keys", auth: true, description: "Admin: the config and runtime app keys, without key values." },
+          { method: "POST", path: "/v1/admin/keys", auth: true, description: "Admin: a new app key for `{ app }`, returned once." },
+          { method: "DELETE", path: "/v1/admin/keys/{keyId}", auth: true, description: "Admin: revoke a runtime app key." },
+        ]),
   ]
 }
 

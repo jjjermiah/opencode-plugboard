@@ -175,6 +175,46 @@ export const ROWS: readonly Row[] = [
     at(HTTP + "usage.test.ts", "the admin key reads every app, and may narrow to one or name an empty one"),
     at(HTTP + "usage.test.ts", "an app key sees only its own app; naming another app is a 403"),
   ),
+  // Runtime app keys (#55): served only with `adminKey`; without it each path is a 404 (test/http/admin.test.ts).
+  {
+    route: "GET /v1/admin/keys",
+    format: "admin",
+    cells: {
+      json: at(HTTP + "admin.test.ts", "GET lists the config key and no runtime keys on a fresh server"),
+      stream: na("a list has no stream"),
+      tools: na("a list has no tools"),
+      images: na("a list has no images"),
+      structured: na("a list has no structured output"),
+      n: na("a list has no n"),
+      errors: at(HTTP + "admin.test.ts", "an app key, a wrong key and no key are all 401 on the admin routes"),
+    },
+  },
+  {
+    route: "POST /v1/admin/keys",
+    format: "admin",
+    cells: {
+      json: at(HTTP + "admin.test.ts", "POST returns the new key once, and that key authenticates on /v1/chat/completions"),
+      stream: na("a create answers one JSON object; it has no stream"),
+      tools: na("a create has no tools"),
+      images: na("a create has no images"),
+      structured: na("a create has no structured output"),
+      n: na("a create has no n"),
+      errors: at(HTTP + "admin.test.ts", "POST refuses a name that is not an app, the reserved default, and an app with a config key"),
+    },
+  },
+  {
+    route: "DELETE /v1/admin/keys/{keyId}",
+    format: "admin",
+    cells: {
+      json: at(HTTP + "admin.test.ts", "DELETE revokes a runtime key: the next request with it is a 401"),
+      stream: na("a revoke answers one JSON object; it has no stream"),
+      tools: na("a revoke has no tools"),
+      images: na("a revoke has no images"),
+      structured: na("a revoke has no structured output"),
+      n: na("a revoke has no n"),
+      errors: at(HTTP + "admin.test.ts", "a config key cannot be revoked through the API: 409, pointing at the config"),
+    },
+  },
 ]
 
 /** Every route name in the `src/**` route files: quoted `METHOD /path` literals, as the routers spell them. */

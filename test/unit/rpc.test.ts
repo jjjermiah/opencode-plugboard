@@ -23,7 +23,7 @@ describe("the usage RPC contract", () => {
 
   test("the input is the optional query fields; the errors include invalid_query", () => {
     const { input, errors } = UsageRpc.methods.get
-    expect(Object.keys((input as { properties: Record<string, unknown> }).properties)).toEqual(["from", "to", "app"])
+    expect(Object.keys((input as { properties: Record<string, unknown> }).properties)).toEqual(["from", "to", "app", "user"])
     expect(Object.keys(errors ?? {})).toEqual(["invalid_query"])
   })
 })

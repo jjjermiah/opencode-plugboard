@@ -29,6 +29,8 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `runtime.ts` | The process-wide runtime on `globalThis`: generations, confirmed app directories, `ensureBackend`, the listener, the event pump, the session store, history sweep state, the metrics registry. |
 | `discovery.ts` | Pure builders for `GET /`, `GET /v1` and `GET /v1/status`, and `sendText`. |
 | `dashboard/` | The usage dashboard (`GET /dashboard`, #141): `page.ts` is the static page, its CSP headers and route names; `assets.ts` serves the page and its files (`app.js`, `app.css`, uPlot from `node_modules`); `app.js` and `app.css` are the browser script and stylesheet, with no build step. |
+| `user.ts` | The end user of a request (#57): the sanitizer for `user` and `metadata.user_id`, the dropped header, pure (no node imports). |
+| `keys.ts` | Runtime app keys (#55): the store on the host storage (SHA-256 digests under `keys/`), the cache on the runtime, create, list and revoke. |
 | `metrics.ts` | The @prometheus-io/client registry and text rendering. No I/O. |
 | `log.ts` | The pino logger (text or JSON lines), the ambient request id and redaction. Ids and outcomes only. |
 | `usage.ts` | Per-app usage by UTC day: day records, the latency histogram, cost (mirrors OpenCode's `calculateCost`), the recorder with its debounced storage writes and retention, the query, and the `withUsage` model-caller wrapper. |
@@ -43,12 +45,13 @@ Each API front-end has the same three files: `request.ts` decodes the wire body 
 
 | Directory | Job |
 |---|---|
+| `admin/` | The admin routes for runtime keys (`/v1/admin/keys`), served only when `adminKey` is set (#55). |
 | `openai/` | Chat Completions and `/v1/models`. `route.ts` is also the front door: it checks Host and Origin, authenticates, and hands every other API to its own route. Also holds `fanout.ts` (`n` above 1: one call per choice, merged) and `sampling.ts` (sampling parameters a model rejects). |
 | `responses/` | `POST /v1/responses`. Stateless except `store.ts`: the output items of recent answers per app (1000 for an hour, in memory), so an `item_reference` resolves (#147). |
 | `anthropic/` | `POST /v1/messages`. Takes the request over early: Anthropic error bodies and `x-api-key` auth. |
 | `gemini/` | `generateContent`, `streamGenerateContent` and the Gemini model list. The model is in the URL, errors use Google's body. |
 | `completions/` | Legacy `POST /v1/completions`. Always goes through the fan-out. |
-| `session/` | The OpenCode back end. `host.ts` adapts the Effect plugin API to a Promise port. `caller.ts` runs one model call as one kept session. `context.ts` holds the context hook, seed tools and agent deny. `events.ts` turns bus events into `PlugEvent`s and host errors into safe `PlugError`s. `state.ts` is the session store shared by generations. `history.ts` has the data root, app directory and transcript. `prune.ts` has the history index and sweep. `media.ts` prepares images, including the remote fetch filter. `seeds.ts` has the seed names and the request permissions. |
+| `session/` | The OpenCode back end. `host.ts` adapts the Effect plugin API to a Promise port. `caller.ts` runs one model call as one kept session. `context.ts` holds the context hook, seed tools and agent deny. `events.ts` turns bus events into `PlugEvent`s and host errors into safe `PlugError`s. `state.ts` is the session store shared by generations. `history.ts` has the data root, app directory and transcript. `prune.ts` has the history index and sweep. `media.ts` prepares images, including the remote fetch filter. `seeds.ts` has the seed names and the request permissions. `link.ts` fills the session page link (`historyUrl`, #77). |
 
 ## Request flow
 

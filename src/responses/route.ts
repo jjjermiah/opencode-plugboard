@@ -16,6 +16,7 @@ import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
+import { setSessionLink } from "../session/link.js"
 import { encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
@@ -51,9 +52,10 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
     host.caller.stream(call, {
       app,
       signal: scope.signal,
-      onRecord: (recordID) => {
+      onRecord: (recordID, directory) => {
         if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
         response.setHeader(SESSION_HEADER, recordID)
+        setSessionLink(response, info, host.options.historyUrl, recordID, directory)
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),

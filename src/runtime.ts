@@ -64,6 +64,7 @@ import type { HistoryPort } from "./session/host.js"
 import { recordSession, sweepHistory, type HistoryLimits } from "./session/prune.js"
 import { createSessionStore, type SessionStore } from "./session/state.js"
 import { createBudgetState, type BudgetState } from "./budgets.js"
+import { createKeyState, type KeyState } from "./keys.js"
 import { createUsageState, type UsageState } from "./usage.js"
 
 export type Handler = (request: IncomingMessage, response: ServerResponse) => void
@@ -117,8 +118,8 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 13
+/** 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 14
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -184,6 +185,8 @@ interface Runtime {
   readonly usage: UsageState
   /** The budget warnings already logged (src/budgets.ts). */
   readonly budgets: BudgetState
+  /** The runtime app keys (src/keys.ts), loaded from storage on the first authentication. */
+  readonly runtimeKeys: KeyState
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
@@ -198,6 +201,7 @@ const detachedStartedAt = Date.now()
 const detachedLimits = createLimitState()
 const detachedUsage = createUsageState()
 const detachedBudgets = createBudgetState()
+const detachedKeys = createKeyState()
 let foreignVersionLogged = false
 
 /** The process runtime, created on first use; undefined when a different version already owns the process. */
@@ -216,6 +220,7 @@ function runtime(): Runtime | undefined {
       limits: createLimitState(),
       usage: createUsageState(),
       budgets: createBudgetState(),
+      runtimeKeys: createKeyState(),
       startedAt: Date.now(),
     }
     slot[KEY] = created
@@ -299,6 +304,9 @@ export const processUsage = (): UsageState => runtime()?.usage ?? detachedUsage
 
 /** The budget warning state shared by every generation in the process (detached under a foreign-version runtime). */
 export const processBudgets = (): BudgetState => runtime()?.budgets ?? detachedBudgets
+
+/** The runtime app keys' cache shared by every generation in the process (detached under a foreign-version runtime). */
+export const processKeys = (): KeyState => runtime()?.runtimeKeys ?? detachedKeys
 
 /**
  * The options authentication reads: `keys` is the live key set, not the serving generation's own

@@ -29,6 +29,7 @@ import { errorMessage, log, logError } from "./log.js"
 import type { Outcome } from "./metrics.js"
 import { parseModelRef } from "./models.js"
 import type { StoragePort } from "./session/host.js"
+import { sanitizeEndUser } from "./user.js"
 
 /** Upper bounds of the latency buckets in ms; one more bucket holds everything above the last. */
 export const LATENCY_BOUNDS_MS: ReadonlyArray<number> = [100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000, 120_000, 300_000, 600_000]
@@ -123,9 +124,19 @@ export interface UsageCounts<Latency = LatencyHistogram> {
   lastRequestAt?: string
 }
 
+/** One end user's counts (src/user.ts, #57): HTTP requests on the model routes, tokens and cost of the answered calls. */
+export interface UserUsage {
+  requests: number
+  /** Total tokens of those calls (the five kinds summed). */
+  tokens: number
+  costUsd: number
+}
+
 /** One stored day, at `usage/<app>/<date>`. */
 export interface DayRecord extends UsageCounts {
   perModel: Record<string, ModelUsage>
+  /** Per end user (see `USERS_PER_DAY`). Older stored days have none. */
+  users: Record<string, UserUsage>
 }
 
 /** Counters with latency percentiles, as a report carries them. */
@@ -153,6 +164,8 @@ export interface UsageAppReport {
   totals: UsageTotals
   /** Per model, summed over the range. The key is `provider/model`; the variant is not part of it. */
   models: Record<string, ModelUsage>
+  /** Per end user, summed over the range (src/user.ts). Past `USERS_PER_DAY` a day's extra users are under `_other`. With `user`, only that user. */
+  users?: Record<string, UserUsage>
   /** Days with any record in the range, oldest first. */
   days: UsageDay[]
   /** The app's budget state, when option `budgets` sets one for it. Read from the current window, not from the range. */
@@ -179,6 +192,8 @@ export interface UsageQuery {
   readonly to?: string
   /** One app. Absent: every app. */
   readonly app?: string
+  /** One end user (src/user.ts): `users` of each app then lists only that user. Absent: every user. */
+  readonly user?: string
 }
 
 // ---------------------------------------------------------------- pure helpers
@@ -213,6 +228,7 @@ export function emptyDay(): DayRecord {
     limited: 0,
     unpricedRequests: 0,
     perModel: {},
+    users: {},
   }
 }
 
@@ -296,7 +312,20 @@ export function sumDays(parts: ReadonlyArray<DayRecord>): DayRecord {
       total.perModel[model] = { requests: sum.requests + usage.requests, tokens: sum.tokens + usage.tokens, costUsd: sum.costUsd + usage.costUsd }
     }
   }
+  total.users = sumUsers(parts)
   return total
+}
+
+/** Per end user, summed over the day records (`only`: that user alone). */
+function sumUsers(parts: ReadonlyArray<DayRecord>, only?: string): Record<string, UserUsage> {
+  const out: Record<string, UserUsage> = {}
+  for (const part of parts)
+    for (const [user, usage] of Object.entries(part.users ?? {})) {
+      if (only !== undefined && user !== only) continue
+      const sum = out[user] ?? { requests: 0, tokens: 0, costUsd: 0 }
+      out[user] = { requests: sum.requests + usage.requests, tokens: sum.tokens + usage.tokens, costUsd: sum.costUsd + usage.costUsd }
+    }
+  return out
 }
 
 /** A day's counters with latency percentiles, as a report carries them. */
@@ -329,6 +358,11 @@ export function fromJson(value: unknown): DayRecord {
     const usage = object(item)
     perModel[model] = { requests: nonNegative(usage.requests), tokens: nonNegative(usage.tokens), costUsd: nonNegative(usage.costUsd) }
   }
+  const users: Record<string, UserUsage> = {}
+  for (const [user, item] of Object.entries(object(raw.users))) {
+    const usage = object(item)
+    users[user] = { requests: nonNegative(usage.requests), tokens: nonNegative(usage.tokens), costUsd: nonNegative(usage.costUsd) }
+  }
   return {
     requests: nonNegative(raw.requests),
     errors: { client: nonNegative(errors.client), server: nonNegative(errors.server), timeout: nonNegative(errors.timeout), disconnected: nonNegative(errors.disconnected) },
@@ -348,6 +382,7 @@ export function fromJson(value: unknown): DayRecord {
     unpricedRequests: nonNegative(raw.unpricedRequests),
     ...(typeof raw.lastRequestAt === "string" ? { lastRequestAt: raw.lastRequestAt } : {}),
     perModel,
+    users,
   }
 }
 
@@ -395,6 +430,8 @@ export interface RequestUsage {
   readonly status: number
   readonly outcome: Outcome
   readonly ms: number
+  /** The end user of the request, when kept (src/user.ts). */
+  readonly user?: string
 }
 
 /** One model call, when it ended. `answered` when its stream finished with an answer; `cache` when the response cache applied. */
@@ -405,6 +442,8 @@ export interface CallUsage {
   readonly answered: boolean
   readonly cache?: "hit" | "miss"
   readonly usage?: PlugUsage
+  /** The end user of the call, when kept (src/user.ts). */
+  readonly user?: string
 }
 
 export interface UsageRecorder {
@@ -442,6 +481,18 @@ async function readDay(storage: StoragePort, key: string): Promise<DayRecord | u
     logError("usage.unreadable", { key })
     return undefined
   }
+}
+
+/** Distinct end users a day keeps per app. Later users count under `_other` (the key cannot be an end user: no `_`). */
+export const USERS_PER_DAY = 200
+const OTHER_USER = "_other"
+
+/** The counts of one end user in a day, created on first use; past the cap the request counts under `_other`. */
+function userSlot(day: DayRecord, user: string): UserUsage {
+  if (day.users[user]) return day.users[user]
+  const distinct = Object.keys(day.users).length - (day.users[OTHER_USER] ? 1 : 0)
+  const key = distinct < USERS_PER_DAY ? user : OTHER_USER
+  return (day.users[key] ??= { requests: 0, tokens: 0, costUsd: 0 })
 }
 
 const addTokens = (into: UsageTokens, from: UsageTokens): UsageTokens => ({
@@ -558,6 +609,7 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
         day.latency.sumMs += ms
         day.latency.buckets[bucketIndex(ms)] = (day.latency.buckets[bucketIndex(ms)] ?? 0) + 1
         day.lastRequestAt = new Date(at).toISOString()
+        if (input.user !== undefined) userSlot(day, input.user).requests++
       })
     },
 
@@ -595,6 +647,11 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
           day.tokens = addTokens(day.tokens, tokens)
           day.costUsd += price
           if (unpriced) day.unpricedRequests++
+          if (input.user !== undefined) {
+            const slot = userSlot(day, input.user)
+            slot.tokens += totalTokens(tokens)
+            slot.costUsd += price
+          }
         })
       })().catch((error) => logError("usage.record_failed", { app: input.app, error: errorMessage(error) }))
     },
@@ -614,6 +671,8 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
       const at = now()
       if (input.app !== undefined && !APP_NAME_PATTERN.test(input.app))
         return { status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: "`app` must be an app name from the keys configuration" }
+      if (input.user !== undefined && sanitizeEndUser(input.user) === undefined)
+        return { status: 400, kind: "invalid_request", code: "invalid_user", param: "user", message: "`user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-`" }
       const range = resolveRange(input, at)
       if (isPlugError(range)) return range
       const prefix = input.app === undefined ? KEY_PREFIX : keyOf(input.app, "")
@@ -646,7 +705,7 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
         const total = sumDays(rows.map((row) => row.day))
         appTotals.push(total)
         const days: UsageDay[] = rows.map((row) => ({ date: row.date, ...summaryOf(row.day), perModel: { ...row.day.perModel } }))
-        apps[app] = { totals: summaryOf(total), models: { ...total.perModel }, days }
+        apps[app] = { totals: summaryOf(total), models: { ...total.perModel }, users: sumUsers(rows.map((row) => row.day), input.user), days }
       }
       return { from: range.from, to: range.to, generatedAt: new Date(at).toISOString(), totals: summaryOf(sumDays(appTotals)), apps }
     },
@@ -704,7 +763,7 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
           }
         } finally {
           const ref = served ? parseModelRef(served.model) : request.ref
-          recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered, ...(cache ? { cache } : {}), ...(usage ? { usage } : {}) })
+          recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered, ...(cache ? { cache } : {}), ...(usage ? { usage } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
         }
       })()
     },

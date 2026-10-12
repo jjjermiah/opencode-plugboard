@@ -11,7 +11,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start. |
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
-| `adminKey` | none | A key that reads every app's usage at `GET /v1/usage`. It must differ from every app key. It is not an app key: it cannot call the model routes. See [Usage statistics](#usage-statistics). |
+| `adminKey` | none | A key that reads every app's usage at `GET /v1/usage` and manages app keys at runtime under `/v1/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
 | `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools? }`: per-app model scope, system prompt and tool policy. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
@@ -27,6 +27,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). |
 | `budgets` | none (unlimited) | Per-app ceilings on requests, tokens and cost for a UTC day, week or month: `{ perApp?, apps? }`. Needs `usage` on. A call over a ceiling gets 429 `budget_exceeded`. See [Budgets](#budgets). |
 | `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
+| `historyUrl` | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
@@ -290,6 +291,48 @@ Persistence: each day is written to OpenCode's plugin storage at most every 10 s
 - The charts use [uPlot](https://github.com/leeoniya/uPlot) (MIT), a pinned dependency that plugboard serves itself from `/dashboard/uplot.js` and `/dashboard/uplot.css`. Nothing loads from another origin, and the page sends no inline script or style. The policy is `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ...` (see `src/dashboard/page.ts`).
 - Days are UTC, so "today" starts at 00:00 UTC.
 - With `usage: { "enabled": false }` the page and its files are not served, and the discovery pages do not link them.
+
+## Admin keys
+
+With `adminKey` set, the admin key also adds and revokes app keys at runtime, so a tool gets a key without a config edit and an OpenCode reload.
+
+- `GET /v1/admin/keys` lists the config keys and the runtime keys as `{ keys: [{ id, app, source, createdAt? }] }`. `source` is `config` or `runtime`. No key value is ever listed.
+- `POST /v1/admin/keys` with body `{ "app": "bot" }` creates a random key for that app and answers 201 with `{ id, app, key, createdAt }`. The `key` is shown once. Store it then; the server keeps only a digest.
+- `DELETE /v1/admin/keys/{id}` revokes a runtime key. The next request with it gets 401.
+
+```sh
+curl -H "Authorization: Bearer $ADMIN_KEY" -H "content-type: application/json" -d '{"app":"bot"}' http://127.0.0.1:4010/v1/admin/keys
+```
+
+Rules:
+
+- Without `adminKey` these paths are 404. Any credential other than the admin key is 401.
+- The app name follows the config rule (`[a-z0-9-]+`, and not `default`). An app that already has a key in `keys` is 409: change that key in the config.
+- A config key cannot be revoked through the API (409). Remove it from `keys` and reload.
+- A runtime key is stored under the plugin's host storage as the SHA-256 of the key, not as the key. Its `id` is the first 8 hex characters of that digest. Runtime keys survive a config reload and a server restart.
+- A runtime key names its app on every request that presents it. It does not make a keyless server require a key: with no config keys, a request without a key stays the app `default`. Deleting the last runtime key therefore never opens or closes access by itself.
+- Runtime apps have no `apps` policy. An `apps` entry needs a key in `keys`, so a runtime app gets the global settings only.
+
+## End users
+
+A bot that serves many people is one app, so its history and usage would be one pile. Plugboard reads the caller's end user from the request and keeps the users apart:
+
+- OpenAI Chat Completions, Responses and legacy completions read the `user` field. Anthropic Messages reads `metadata.user_id`. Gemini has no such field.
+- The value is trimmed and kept when it is at most 64 characters of `A-Z a-z 0-9 . _ @ : -`. Anything else is dropped, and the response carries `x-plugboard-user-dropped: 1`. A kept value is only ever a label: it never names a directory or a file.
+- A kept user prefixes the session title, as `[alice] first words of the prompt`, and is logged as `user=` on the request line.
+- `GET /v1/usage` gains a `users` object per app, with `requests`, `tokens` and `costUsd` per user, summed over the range. A day keeps at most 200 distinct users per app; later ones count under `_other`. `GET /v1/usage?user=alice` restricts `users` to that user. The app totals and models still cover every user.
+
+## Session links
+
+A response names its history record in `x-plugboard-session`, but the OpenCode web UI has no URL a plugin can read. Option `historyUrl` is the template you fill in, and it depends on how you reach OpenCode:
+
+```json
+{ "historyUrl": "http://opencode.lan:4096/session/{id}" }
+```
+
+With it set, every response that carries `x-plugboard-session` also carries `x-plugboard-session-url`, and the request log line gets `session_url=`. A call with `n` above 1 lists the links in choice order, like the session ids. A cache hit has neither, because it writes no session.
+
+`{id}` and `{directory}` are URL-encoded, so a value cannot add a path segment or a query. `{directory}` is the app's directory on the OpenCode host. Putting it in the template shows that path to every caller that reads the header, so leave it out unless your UI needs it. The template is checked when the config loads: it must be an `http(s)` URL with `{id}`, and the only other placeholder allowed is `{directory}`.
 
 ## Limits and errors
 

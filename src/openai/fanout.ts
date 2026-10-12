@@ -26,6 +26,7 @@ import { reportServed, type ServedInfo } from "../fallback.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
+import { SESSION_URL_HEADER, sessionUrl } from "../session/link.js"
 import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { chatUsageChunk, collectCompletion, encodeError, streamCompletion, type OpenAiExchange, type StreamChoice, type StreamResult } from "./response.js"
 import type { RouteHost } from "./route.js"
@@ -155,7 +156,7 @@ const addUsage = (a: PlugUsage, b: PlugUsage): PlugUsage => {
   return out
 }
 
-export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls, response, scope, info, codec }: ChoicesCall): Promise<void> {
+export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, { app, calls, response, scope, info, codec }: ChoicesCall): Promise<void> {
   const fail = (error: PlugError) => sendError(response, error, encodeError(error))
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason
@@ -165,6 +166,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
   const gscope = groupScope(scope, AbortSignal.any([scope.signal, group.signal]))
   /** History record ids as the callers report them, in choice order, for the response header (comma separated). */
   const records: Array<string | undefined> = []
+  /** The session page links of the same records, in choice order (option `historyUrl`, src/session/link.ts). */
+  const links: Array<string | undefined> = []
   // Headers: the first choice to be served wins. Body model: only a single call echoes the served model.
   const served = reportServed(response, info, (s) => {
     if (calls.length === 1) codec.setModel(s.model)
@@ -179,10 +182,15 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
       host.caller.stream(calls[index]!, {
         app,
         signal: gscope.signal,
-        onRecord: (recordID) => {
+        onRecord: (recordID, directory) => {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           records[index] = recordID
           response.setHeader(SESSION_HEADER, records.filter((id) => id !== undefined).join(","))
+          if (host.options.historyUrl !== undefined) {
+            links[index] = sessionUrl(host.options.historyUrl, recordID, directory)
+            info.sessionUrl = links.filter((link) => link !== undefined).join(",")
+            response.setHeader(SESSION_URL_HEADER, info.sessionUrl)
+          }
         },
         onServed: served,
         onPolicy: policy,

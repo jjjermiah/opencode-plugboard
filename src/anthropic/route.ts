@@ -14,6 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { authenticate } from "../config.js"
 import { liveOptions } from "../runtime.js"
+import { bodyUserId, noteEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import {
   BodyError,
@@ -32,6 +33,7 @@ import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
+import { setSessionLink } from "../session/link.js"
 import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
@@ -54,7 +56,7 @@ export interface MessagesCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the route name, the app, the resolved model, dropped parameters, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string }
+  readonly info: ServedInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string; user?: string }
 }
 
 const header = (request: IncomingMessage, name: string): string | undefined => {
@@ -63,11 +65,12 @@ const header = (request: IncomingMessage, name: string): string | undefined => {
 }
 
 /** `Authorization: Bearer` first (Claude Code with ANTHROPIC_AUTH_TOKEN), then `x-api-key` (the Anthropic SDKs). One key store. */
-const authenticateRequest = (host: RouteHost, request: IncomingMessage) => {
+const authenticateRequest = async (host: RouteHost, request: IncomingMessage) => {
   const options = liveOptions(host.options)
-  const bearer = authenticate(options, request.headers.authorization)
+  const runtime = host.keys ? await host.keys.digests() : []
+  const bearer = authenticate(options, request.headers.authorization, runtime)
   const apiKey = header(request, "x-api-key")
-  return isPlugError(bearer) && apiKey ? authenticate(options, `Bearer ${apiKey}`) : bearer
+  return isPlugError(bearer) && apiKey ? authenticate(options, `Bearer ${apiKey}`, runtime) : bearer
 }
 
 export async function serveMessages(host: RouteHost, call: MessagesCall): Promise<void> {
@@ -94,7 +97,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const rejected = checkOrigin(request, host.options)
     if (rejected) return fail(rejected)
     // Authenticate before the method check, so an unauthenticated caller cannot map this path (#137).
-    const auth = authenticateRequest(host, request)
+    const auth = await authenticateRequest(host, request)
     if (isPlugError(auth)) return fail(auth)
     info.app = auth.app
     if (request.method !== "POST")
@@ -103,6 +106,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     if (unsupported) return fail(unsupported)
 
     const body = await readJsonBody(request, scope.signal)
+    noteEndUser(response, info, bodyUserId(body))
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.
     const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : body
@@ -130,9 +134,10 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
       host.caller.stream(model, {
         app: auth.app,
         signal: scope.signal,
-        onRecord: (recordID) => {
+        onRecord: (recordID, directory) => {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
+          setSessionLink(response, info, host.options.historyUrl, recordID, directory)
         },
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),

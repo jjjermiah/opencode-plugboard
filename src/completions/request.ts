@@ -10,6 +10,7 @@
  */
 import type { PlugboardOptions } from "../config.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
+import { bodyUser, userField } from "../user.js"
 import { parseChoiceCount, parseGeneration } from "../openai/request.js"
 import type { CompletionsExchange } from "./response.js"
 
@@ -85,6 +86,7 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
   return {
     requests: prompts.map((prompt) => ({
       model: body.model as string,
+      ...userField(bodyUser(body)),
       system: suffix ? [SUFFIX_INSTRUCTION(suffix)] : [],
       messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
       tools: [],
