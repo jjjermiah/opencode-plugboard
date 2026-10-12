@@ -146,6 +146,18 @@ const CONTEXT_OVERFLOW =
   /context[_ ](?:length|window)|maximum context|prompt (?:is )?too long|too many tokens|token limit|input length.*exceeds|exceeds the (?:available )?context|reduce the length of the messages/i
 
 /**
+ * Provider wording that the status does not settle (#171). A ChatGPT subscription at its limit is a
+ * `provider.invalid-request` with `subscription_sharing_usage_limit_exceeded` and no status. These
+ * are matched on the message and the raw body, and only ever decide a class; the text never leaves.
+ */
+const USAGE_LIMIT = /usage[_ ]limit|quota/i
+const RATE_LIMIT = /rate[_ ]limit|too many requests/i
+const AUTH_FAILURE = /unauthori[sz]ed|invalid[_ ]api[_ ]key|incorrect api key|not logged in|log in again|sign in|permission denied/i
+const MODEL_NOT_FOUND = /model[^\n]{0,60}(?:not found|does not exist|not supported|unknown)|unknown model|model_not_found/i
+
+const AUTH_MESSAGE = "The model provider rejected its credentials; the plugboard host needs to sign in again"
+
+/**
  * Host `SessionError` (`{ type, message, status?, response? }`) to a `PlugError`. Provider and host
  * error text can carry endpoints, account or organization ids, so it never reaches the caller:
  * the caller gets a stable `code` and a fixed message per class. The classes a caller can act on
@@ -167,10 +179,9 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
     return { status: 400, kind: "invalid_request", code: "context_length_exceeded", param: "messages", message: "The request is longer than the model's context window" }
   }
   if (type === "provider.auth" || status === 401 || status === 403) {
-    const message = "The model provider rejected its credentials; the plugboard host needs to sign in again"
-    if (status === 401) return { status, kind: "authentication", code: "provider_auth_failed", message }
-    if (status === 403) return { status, kind: "permission", code: "provider_auth_failed", message }
-    return { status: 502, kind: "server", code: "provider_auth_failed", message }
+    if (status === 401) return { status, kind: "authentication", code: "provider_auth_failed", message: AUTH_MESSAGE }
+    if (status === 403) return { status, kind: "permission", code: "provider_auth_failed", message: AUTH_MESSAGE }
+    return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
   }
   if (type === "provider.content-filter") {
     return { status: 400, kind: "invalid_request", code: "content_filter", message: "The model provider's content filter blocked the request" }
@@ -179,6 +190,11 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
     return { status: 504, kind: "timeout", code: "provider_timeout", message: "The model provider timed out" }
   }
   if (type.startsWith("provider.")) {
+    const detail = `${error?.message ?? ""}\n${error?.response?.body ?? ""}`
+    if (USAGE_LIMIT.test(detail)) return { status: 429, kind: "rate_limit", code: "quota_exceeded", message: "The model provider's usage quota is exhausted" }
+    if (RATE_LIMIT.test(detail)) return { status: 429, kind: "rate_limit", code: "rate_limited", message: "The model provider is rate limiting requests; retry later" }
+    if (MODEL_NOT_FOUND.test(detail)) return { status: 404, kind: "not_found", code: "model_not_found", param: "model", message: "The model provider does not know the requested model" }
+    if (AUTH_FAILURE.test(detail)) return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
     if (status === 404) return { status, kind: "not_found", code: "provider_rejected_request", message: "The model provider rejected the request" }
     if (status !== undefined && status < 500) return { status, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the request" }
     return { status: status ?? 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" }
@@ -349,13 +365,15 @@ export class RequestCollector {
   /** Fail with the caller-safe mapping of a host error; the raw text is logged here and goes nowhere else. */
   private failFromHost(raw: RawError | undefined, fallback: string): void {
     if (this.finished) return
+    const error = toPlugError(raw, fallback)
     logError("model.failed", {
       requestID: this.hooks.requestID,
       type: raw?.type,
       status: raw?.status,
+      code: error.code,
       message: raw?.message?.slice(0, 500),
     })
-    this.fail(toPlugError(raw, fallback))
+    this.fail(error)
   }
 
   private fail(error: PlugError): void {
