@@ -11,6 +11,30 @@ const tool = (name: string, extra: Record<string, unknown> = {}) => ({ name, inp
 const toolUse = (id: string, name: string, input: unknown = {}) => ({ type: "tool_use", id, name, input })
 const image = (source: unknown) => ({ type: "image", source })
 
+describe("#275 cache_control on content blocks", () => {
+  test("an ephemeral breakpoint on a text, image or tool_result block is carried as a caller breakpoint; its ttl is not", () => {
+    const cache = { type: "ephemeral", ttl: "1h" }
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    const { request } = parse(
+      body({
+        messages: [
+          { role: "user", content: [{ type: "text", text: "big context", cache_control: cache }, { type: "image", source: { type: "base64", media_type: "image/png", data: png }, cache_control: { type: "ephemeral" } }] },
+          assistant([{ type: "text", text: "ok", cache_control: cache }, toolUse("t1", "read")]),
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "data", cache_control: { type: "ephemeral" } }] },
+        ],
+      }),
+    )
+    expect(request.messages[0]!.content).toEqual([{ type: "text", text: "big context", cache: true }, { type: "media", url: `data:image/png;base64,${png}`, mediaType: "image/png", cache: true }])
+    expect(request.messages[1]!.content[0]).toEqual({ type: "text", text: "ok", cache: true })
+    expect(request.messages[2]!.content).toEqual([{ type: "tool-result", id: "t1", name: "read", result: "data", cache: true }])
+  })
+
+  test("a block without cache_control carries no cache field", () => {
+    const { request } = parse(body({ messages: [user("plain")] }))
+    expect(request.messages[0]!.content[0]).not.toHaveProperty("cache")
+  })
+})
+
 describe("#202 disable_parallel_tool_use", () => {
   test("tool_choice.disable_parallel_tool_use true asks for one tool call per answer; false and absent do not", () => {
     const tools = [tool("a")]

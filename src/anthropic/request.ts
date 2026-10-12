@@ -96,14 +96,19 @@ const toolResultContent = (content: unknown, at: string): { text: string; media:
 }
 
 /** Plain content blocks (text, image, document) of a user message, in order. */
+/** A caller's `cache_control` breakpoint on a content block (#275): the default 5-minute one, whatever its `ttl`. */
+const cached = (block: JsonObject): { cache?: true } => (isRecord(block.cache_control) && block.cache_control.type === "ephemeral" ? { cache: true } : {})
+
 const userBlock = (block: JsonObject, at: string): PlugPart | undefined | PlugError => {
   switch (block.type) {
     case "text":
       if (typeof block.text !== "string") return bad(`${at}.text: must be a string`)
-      return block.text.length > 0 ? { type: "text", text: block.text } : undefined
+      return block.text.length > 0 ? { type: "text", text: block.text, ...cached(block) } : undefined
     case "image":
-    case "document":
-      return mediaPart(block, at, block.type)
+    case "document": {
+      const part = mediaPart(block, at, block.type)
+      return isPlugError(part) ? part : { ...part, ...cached(block) }
+    }
     default:
       return bad(`${at}.type: "${String(block.type)}" is not supported in user messages (use text, image, document or tool_result)`)
   }
@@ -132,7 +137,7 @@ const parseMessages = (raw: unknown): PlugMessage[] | PlugError => {
         if (typeof block.type === "string" && IGNORED.has(block.type)) continue
         if (block.type === "text") {
           if (typeof block.text !== "string") return bad(`${here}.text: must be a string`)
-          if (block.text.length > 0) parts.push({ type: "text", text: block.text })
+          if (block.text.length > 0) parts.push({ type: "text", text: block.text, ...cached(block) })
         } else if (block.type === "tool_use") {
           if (typeof block.id !== "string" || block.id.length === 0) return bad(`${here}.id: Field required`)
           if (typeof block.name !== "string" || block.name.length === 0) return bad(`${here}.name: Field required`)
@@ -171,7 +176,7 @@ const parseMessages = (raw: unknown): PlugMessage[] | PlugError => {
         flushUser()
         messages.push({
           role: "tool",
-          content: [{ type: "tool-result", id: block.tool_use_id, name, result: result.text, ...(block.is_error === true ? { isError: true } : {}) }],
+          content: [{ type: "tool-result", id: block.tool_use_id, name, result: result.text, ...(block.is_error === true ? { isError: true } : {}), ...cached(block) }],
         })
         hoisted.push(...result.media)
         continue

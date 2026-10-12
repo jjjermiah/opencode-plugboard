@@ -17,8 +17,11 @@ import { FAILURE_EVENT, type SessionStore } from "./state.js"
 
 const text = (value: string): HostPart => ({ type: "text", text: value })
 
+/** The host's cache breakpoint: the default 5-minute one, the only kind plugboard carries (#275). */
+const EPHEMERAL = { type: "ephemeral" } as const
+
 /** Placeholder for a caller image; swapped for the host-built media part in `applyContext`. */
-const mediaPlaceholder = (index: number): HostPart => ({ type: "media", __attachment: index })
+const mediaPlaceholder = (index: number, cache: boolean | undefined): HostPart => ({ type: "media", __attachment: index, ...(cache ? { cache: EPHEMERAL } : {}) })
 
 /** Caller messages as host `Message` objects. Media placeholders are swapped in `applyContext`. */
 function toHostMessages(messages: ReadonlyArray<PlugMessage>): Array<{ role: string; content: HostPart[] }> {
@@ -26,13 +29,13 @@ function toHostMessages(messages: ReadonlyArray<PlugMessage>): Array<{ role: str
   const part = (item: PlugMessage["content"][number]): HostPart => {
     switch (item.type) {
       case "text":
-        return text(item.text)
+        return item.cache ? { ...text(item.text), cache: EPHEMERAL } : text(item.text)
       case "media":
-        return mediaPlaceholder(image++)
+        return mediaPlaceholder(image++, item.cache)
       case "tool-call":
         return { type: "tool-call", id: item.id, name: item.name, input: item.input }
       case "tool-result":
-        return { type: "tool-result", id: item.id, name: item.name, result: { type: "text", value: item.result } }
+        return { type: "tool-result", id: item.id, name: item.name, result: { type: "text", value: item.result }, ...(item.cache ? { cache: EPHEMERAL } : {}) }
     }
   }
   return messages.map((message) => ({ role: message.role, content: message.content.map(part) }))
@@ -146,7 +149,7 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   const swap = (part: HostPart) => {
     if (typeof part.__attachment !== "number") return part
     const media = hostMedia[part.__attachment]
-    if (media) return media
+    if (media) return part.cache ? { ...media, cache: EPHEMERAL } : media
     missingMedia++
     return text("[image unavailable]")
   }

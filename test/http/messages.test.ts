@@ -79,6 +79,13 @@ describe("#4 the route", () => {
     expect(withPolicy - plain).toBe(100)
   })
 
+  test("#275 a caller's cache_control breakpoint reaches the model call; the request is still answered", async () => {
+    const caller = await route([ev.finish()])
+    const reply = await server!.send(messages({ messages: [{ role: "user", content: [{ type: "text", text: "context", cache_control: { type: "ephemeral", ttl: "1h" } }] }] }))
+    expect(reply.status).toBe(200)
+    expect(caller.call.request.messages[0]!.content).toEqual([{ type: "text", text: "context", cache: true }])
+  })
+
   test("#137 an unauthenticated GET is a 401, not a 405, so the path is not revealed", async () => {
     await route([ev.finish()], { keys: { app: "secret" } })
     const reply = await server!.send({ path: "/v1/messages" })

@@ -53,15 +53,21 @@ export interface CatalogModel {
 
 // ---------------------------------------------------------------- request
 
+/**
+ * `cache`: the caller placed a cache breakpoint on this part (Anthropic `cache_control`). It is always the default 5-minute
+ * breakpoint (#275); a `ttl` of 1h is not carried, because Anthropic rejects a 1h breakpoint after a 5-minute one.
+ */
 export interface TextPart {
   readonly type: "text"
   readonly text: string
+  readonly cache?: boolean
 }
 /** Image or file. `url` is a data: URL or http(s) URL; the backend turns it into a host media asset. */
 export interface MediaPart {
   readonly type: "media"
   readonly url: string
   readonly mediaType?: string
+  readonly cache?: boolean
 }
 export interface ToolCallPart {
   readonly type: "tool-call"
@@ -76,6 +82,8 @@ export interface ToolResultPart {
   /** Text content as the caller sent it (JSON strings stay strings). */
   readonly result: string
   readonly isError?: boolean
+  /** A caller cache breakpoint on the result (see `TextPart.cache`). */
+  readonly cache?: boolean
 }
 
 export type PlugPart = TextPart | MediaPart | ToolCallPart | ToolResultPart
