@@ -31,6 +31,8 @@ Benchmarks (`bun run bench`) are not part of `bun test`. The CI job that gates t
 
 Run `bun run flake-hunt` after adding a test that touches `globalThis`, the data root or another file's state (see [test/README.md](test/README.md#flake-hunting-115)). A guard listed in `test/mutations/catalogue.ts` (the invariants in `docs/architecture.md`) must keep a test that fails when it breaks. Run `bun run mutations` after touching one. A new guard gets an entry in the same change.
 
+A new route gets a row in `test/coverage-manifest.ts` (every mode, with a test or a reason) in the same change. The manifest test fails until it does (see [test/README.md](test/README.md#route-coverage-manifest-116)).
+
 The tests do not replace a live run for host behaviour: run the change on an isolated server too.
 
 ## Never try a change on your real OpenCode
