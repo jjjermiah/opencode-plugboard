@@ -45,3 +45,22 @@ jobs:
         run: bun .github/scripts/check-pack.ts
       - name: Smoke-test the packed tarball
         run: bun .github/scripts/smoke-pack.ts
+
+  # #115: shuffled, parallel and per-file runs of the suite, to catch order-dependent or leaky tests.
+  # Not a required check; a flagged test is printed with the seed that reproduces it.
+  flake-hunt:
+    name: Flake hunt
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Shuffled, parallel and isolated runs
+        run: bun run flake-hunt -- --runs 10 --summary

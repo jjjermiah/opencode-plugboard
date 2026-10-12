@@ -62,6 +62,10 @@ bun .github/scripts/bench-gate.ts run.json --summary
 
 Adding a guard: pick a snippet that occurs once, make sure a test names the behaviour, and run `bun run mutations -- --only <id>`.
 
+## Flake hunting (#115)
+
+`bun run flake-hunt` runs the suite several ways and reports tests whose outcome depends on how they are run: Bun's shuffle (`--randomize --seed=N`, N printed), `--parallel`, and each test file alone. A test that fails in some runs and passes in others, fails in every run, or differs between a file alone and the suite is flagged, and the script exits 1. Runtime tests share `globalThis` and the data root, so this is where leaks show up. Options: `--runs N` (shuffles, default 10), `--seed S` (base seed), `--file <path>` (repeat one file, shuffled), `--summary`. Nightly in `.github/workflows/nightly.yml`, not on every push. A failing seed replays with `bun test --randomize --seed=N`.
+
 ## Shared fakes (`support/`)
 
 ### `fixtures.ts`
