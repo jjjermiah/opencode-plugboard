@@ -394,6 +394,10 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 503 | `budget_unavailable` | The usage records for the budget check cannot be read | Could not read the usage records for the budget check |
 | 503 | `server_busy` | The request body would take the bytes being read over `limits.maxBodyBytesInFlight` (see [Request bodies](#request-bodies)) | Too many request bodies are being read; retry shortly |
 | 408 | `body_read_timeout` | The request body did not arrive within `limits.bodyReadTimeoutMs` | Request body was not received within &lt;n&gt; ms (option limits.bodyReadTimeoutMs) |
+| 413 | (none, no `code` field) | A request body over 32 MiB | Request body too large |
+| 415 | `unsupported_media_type` | A `POST` body whose `Content-Type` is not `application/json` | Content-Type must be application/json |
+| 400 | `invalid_user` | The `user` query parameter of `GET /v1/usage` is not 1 to 64 characters of the allowed set | `user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-` |
+| 502 | `structured_output_missing` | A `json_schema` answer with neither a `respond` call nor text that matches the schema | The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt. |
 
 Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. Calls over a cap in `limits` get 429 instead (see [Concurrency and rate limits](#concurrency-and-rate-limits)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 

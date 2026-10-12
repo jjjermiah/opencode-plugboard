@@ -458,7 +458,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | --- | --- | --- |
 | OpenAI Python SDK | [openai-python][client-openai-python] | pass |
 | OpenAI JS SDK | [openai-js][client-openai-js] | pass |
-| Vercel AI SDK | [vercel-ai-sdk][client-vercel-ai-sdk] | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `openai(id)` call works through `/v1/responses` (set `store: false` for multi-turn) |
+| Vercel AI SDK | [vercel-ai-sdk][client-vercel-ai-sdk] | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `openai(id)` call works through `/v1/responses` (multi-turn chats work with the default `store: true`, and `store: false` also works) |
 | LangChain Python | [langchain-python][client-langchain-python] | pass; `json_mode` on `fast` was unreliable |
 | LangChain JS | [langchain-js][client-langchain-js] | pass except `gpt-5.6*` ids, which force the Responses API, and `json_mode` on `fast` |
 | pydantic-ai | [pydantic-ai][client-pydantic-ai] | pass with `OpenAIChatModel` |
