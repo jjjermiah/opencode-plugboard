@@ -1,0 +1,24 @@
+# Copy to Continue's config (config.yaml). Replace <your app key> with the plugboard app key
+# from the `keys` option. Keep this file out of version control.
+name: Plugboard
+version: 1.0.0
+schema: v1
+models:
+  - name: Plugboard fast (chat)
+    provider: openai
+    model: fast
+    apiBase: http://127.0.0.1:4010/v1
+    apiKey: <your app key>
+    useResponsesApi: false
+    capabilities:
+      - tool_use
+      - image_input
+  - name: Plugboard fast (responses)
+    provider: openai
+    model: fast
+    apiBase: http://127.0.0.1:4010/v1
+    apiKey: <your app key>
+    useResponsesApi: true
+    capabilities:
+      - tool_use
+      - image_input
