@@ -61,7 +61,7 @@ export interface Endpoint {
 /**
  * Every endpoint plugboard serves, in the order the document lists them. Dispatch lives in
  * `src/openai/route.ts` and the front-end routes; `test/http/discovery.test.ts` probes each served
- * route and fails when this list omits one (#136). `/v1/usage` and `/metrics` are added only when their options are on.
+ * route and fails when this list omits one (#136). `/v1/usage`, `/dashboard` and `/metrics` are added only when their options are on.
  */
 export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "GET", path: "/", auth: false, description: "This page." },
@@ -85,7 +85,12 @@ export const ENDPOINTS: ReadonlyArray<Endpoint> = [
 function endpoints(options: PlugboardOptions): ReadonlyArray<Endpoint> {
   return [
     ...ENDPOINTS,
-    ...(options.usage.enabled ? [{ method: "GET", path: "/v1/usage", auth: true, description: "Per-app usage by day: requests, tokens, cost, latency. The admin key reads every app." }] : []),
+    ...(options.usage.enabled
+      ? [
+          { method: "GET", path: "/v1/usage", auth: true, description: "Per-app usage by day: requests, tokens, cost, latency. The admin key reads every app." },
+          { method: "GET", path: "/dashboard", auth: false, description: "Usage dashboard page. Its data needs a key (`/v1/usage`)." },
+        ]
+      : []),
     ...(options.metrics ? [{ method: "GET", path: "/metrics", auth: true, description: "Prometheus metrics." }] : []),
   ]
 }
@@ -238,6 +243,7 @@ export function renderDiscoveryHtml(doc: Discovery): string {
     const more = doc.catalog.moreProviders ? `<p>${escapeHtml(doc.catalog.moreProviders)} more providers not listed.</p>` : ""
     sections.push(`<h2>Catalog</h2><table><tr><th>Provider</th><th>Models</th><th>Examples</th></tr>${rows}</table>${more}`)
   }
+  if (doc.endpoints.some((endpoint) => endpoint.path === "/dashboard")) sections.push(`<p><a href="/dashboard">Usage dashboard</a></p>`)
   sections.push(`<h2>Try it</h2>${pre(doc.example.curl)}`)
   sections.push(
     `<h2>Endpoints</h2><table><tr><th>Method</th><th>Path</th><th>Key</th><th></th></tr>${doc.endpoints

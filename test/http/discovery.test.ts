@@ -34,6 +34,7 @@ const PROBES: ReadonlyArray<readonly [string, string, string]> = [
   ["GET", "/v1/status", "/v1/status"],
   ["GET", "/metrics", "/metrics"],
   ["GET", "/v1/usage", "/v1/usage"],
+  ["GET", "/dashboard", "/dashboard"],
 ]
 
 let server: RouteServer | undefined

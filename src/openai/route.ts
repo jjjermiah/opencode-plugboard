@@ -3,7 +3,8 @@
  * `POST /v1/chat/completions` (`n` > 1 through `./fanout.ts`), and the dispatch of `POST /v1/responses`
  * and `POST /v1/completions` to `src/responses/route.ts` and `src/completions/route.ts`.
  * Observability and first-run routes (`src/discovery.ts`, `src/metrics.ts`): `GET /` and `GET /v1`
- * (keyless discovery), the authenticated `GET /v1/status`, and `GET /metrics` (option `metrics`).
+ * (keyless discovery), the authenticated `GET /v1/status`, `GET /metrics` (option `metrics`), and the
+ * usage dashboard `GET /dashboard` with its assets (option `usage`, `src/dashboard/`).
  *
  * The flow is: establish cancellation and the deadline, check origin, authenticate, parse, resolve
  * the model, call the ModelCaller, encode. Parsing, policy and encoding are imported directly;
@@ -50,6 +51,8 @@ import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import type { UsageRecorder } from "../usage.js"
+import { DASHBOARD_ROUTES } from "../dashboard/page.js"
+import { serveDashboard } from "../dashboard/assets.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
@@ -120,7 +123,10 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   const host: RouteHost = metrics ? { ...routeHost, caller: metered(routeHost.caller, metrics) } : routeHost
   /** Routes with a handler of their own. `GET /metrics` exists only when enabled; otherwise it is an unknown path. */
   const known = (route: string) =>
-    KNOWN_ROUTES.includes(route) || DISCOVERY_ROUTES.includes(route) || (metrics !== undefined && route === "GET /metrics") || (host.usage !== undefined && route === "GET /v1/usage")
+    KNOWN_ROUTES.includes(route) ||
+    DISCOVERY_ROUTES.includes(route) ||
+    (metrics !== undefined && route === "GET /metrics") ||
+    (host.usage !== undefined && (route === "GET /v1/usage" || DASHBOARD_ROUTES.has(route)))
   /** Responses to Gemini routes: errors there use Google's body. */
   const googleErrors = new WeakSet<ServerResponse>()
   const fail = (response: ServerResponse, error: PlugError, close = false) =>
@@ -175,6 +181,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       if (route === "GET /v1") return sendJson(response, 200, doc)
       return sendText(response, 200, "text/html; charset=utf-8", renderDiscoveryHtml(doc), PAGE_HEADERS)
     }
+
+    // The usage dashboard (#141): a page and its files, keyless like the discovery pages. Its data comes from `GET /v1/usage`, behind a key.
+    if (host.usage && DASHBOARD_ROUTES.has(route)) return serveDashboard(request, response, route)
 
     // Usage has its own credentials: the admin key reads every app, any other key only its own app (`authenticateUsage`).
     if (route === "GET /v1/usage" && host.usage) return serveUsage(request, response, url, host.usage, info)
