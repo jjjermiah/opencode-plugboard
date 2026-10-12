@@ -32,6 +32,8 @@ export interface SessionPort {
   }): Promise<{ id: string }>
   prompt(input: { readonly sessionID: string; readonly text: string; readonly files: ReadonlyArray<{ uri: string; name: string }> }): Promise<unknown>
   interrupt(sessionID: string): Promise<void>
+  /** Deletes a host session. Used only for a session that was created after its request was aborted (#155). */
+  remove(sessionID: string): Promise<void>
   /** The content of skill `id` in the Location at `directory`, or undefined when there is none. Briefly cached per directory. */
   skill(directory: string, id: string): Promise<string | undefined>
   /** The agent `id` in the Location at `directory` (its `system` prompt may be absent), or undefined when there is none. */
@@ -112,6 +114,7 @@ export function createSessionPort(ctx: HostContext): SessionPort {
       ),
     interrupt: (sessionID) =>
       run(ctx.session.interrupt({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["interrupt"]>[0])).then(() => undefined),
+    remove: (sessionID) => run(ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0])).then(() => undefined),
   }
 }
 

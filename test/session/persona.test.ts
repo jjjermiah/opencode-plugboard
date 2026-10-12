@@ -206,6 +206,12 @@ describe("#79 #6 the host adapter reads skills and agents from the app directory
     expect(named).toMatchObject({ agent: "review", permissions: REQUEST_PERMISSIONS })
     expect(plain).not.toHaveProperty("agent")
   })
+
+  test("#155 remove deletes the host session by its id", async () => {
+    const spy = spyContext({ directory: "/data/app", respond: { "session.remove": () => Effect.void } })
+    await createSessionPort(spy.ctx).remove("ses_late")
+    expect(spy.calls.find((call) => call.path === "session.remove")!.args[0]).toEqual({ sessionID: "ses_late" })
+  })
 })
 
 describe("#79 #6 a persona answer is never cached", () => {

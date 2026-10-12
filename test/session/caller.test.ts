@@ -139,8 +139,41 @@ describe("failures before anything is created", () => {
     run.controller.abort()
     expect(await events).toEqual([])
     creating.open({ id: "ses_late" })
+    // #155: the session that lands after the abort is deleted, so no unindexed session is left behind.
+    await until(() => run.port.removed.length > 0, 1_000, "the late session to be deleted")
+    expect(run.port.removed).toEqual(["ses_late"])
     expect(run.sessions.size()).toBe(0)
     expect(run.port.prompted).toEqual([])
+  })
+
+  test("#155 a late session whose delete fails is logged, not thrown", async () => {
+    const creating = gate<{ id: string }>()
+    const asked = gate()
+    const run = setup()
+    run.port.script.create = () => (asked.open(), creating.promise)
+    run.port.script.remove = () => Promise.reject(new Error("database locked"))
+    const events = drain(run.caller.stream(plugRequest(), run.context))
+    await asked.promise
+    run.controller.abort()
+    expect(await events).toEqual([])
+    creating.open({ id: "ses_late" })
+    await until(() => logs.of("session.late_remove_failed").length > 0, 1_000, "the failed delete to be logged")
+    expect(logs.of("session.late_remove_failed")[0]!.fields.error).toBe("database locked")
+  })
+
+  test("#155 a create that fails after the abort leaves no session to delete", async () => {
+    const asked = gate()
+    let fail: (error: Error) => void = () => {}
+    const run = setup()
+    run.port.script.create = () => (asked.open(), new Promise((_resolve, reject) => (fail = reject)))
+    const events = drain(run.caller.stream(plugRequest(), run.context))
+    await asked.promise
+    run.controller.abort()
+    expect(await events).toEqual([])
+    fail(new Error("create failed"))
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(run.port.removed).toEqual([])
+    expect(logs.of("session.late_remove_failed")).toEqual([])
   })
 
   test("session.create failing is a generic 502 backend_failed; the cause goes to the log", async () => {
