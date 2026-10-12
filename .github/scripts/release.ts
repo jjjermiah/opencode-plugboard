@@ -18,10 +18,10 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import semver from "semver"
 import { changelogBlock, collectCommits } from "./commit-detail.ts"
 
 const PLACEHOLDER = "Nothing yet."
-const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
 
 const USAGE =
   'usage: bun run release <version> --title "Short Creative Title" [--push [--no-watch]] [--dry-run]\n       bun run release <version> --watch-only'
@@ -60,34 +60,10 @@ function git(...gitArgs: string[]): string {
   return run.stdout.toString().trim()
 }
 
-function parse(v: string) {
-  const m = SEMVER.exec(v)
-  if (!m) return undefined
-  return { core: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4]?.split(".") }
-}
-
-// Standard semver precedence: core first, a prerelease sorts before its release.
-function compare(a: string, b: string): number {
-  const x = parse(a)!
-  const y = parse(b)!
-  for (let i = 0; i < 3; i++) if (x.core[i] !== y.core[i]) return x.core[i] < y.core[i] ? -1 : 1
-  if (!x.pre && !y.pre) return 0
-  if (!x.pre) return 1
-  if (!y.pre) return -1
-  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
-    const p = x.pre[i]
-    const q = y.pre[i]
-    if (p === undefined) return -1
-    if (q === undefined) return 1
-    if (p === q) continue
-    const pn = /^\d+$/.test(p)
-    const qn = /^\d+$/.test(q)
-    if (pn && qn) return Number(p) < Number(q) ? -1 : 1
-    if (pn) return -1
-    if (qn) return 1
-    return p < q ? -1 : 1
-  }
-  return 0
+// Exact form only: semver.valid also accepts a leading "v", surrounding spaces and build metadata,
+// and returns them stripped, so comparing the result back to the input rejects those.
+function validVersion(v: string): boolean {
+  return semver.valid(v) === v
 }
 
 const PUBLISH_TIMEOUT_MS = 5 * 60_000
@@ -166,7 +142,7 @@ async function watchRelease(): Promise<number> {
 
 if (watchOnly) {
   if (push || flags.has("--watch") || flags.has("--no-watch") || dryRun || title !== undefined) fail(`--watch-only takes only a version. ${USAGE}`)
-  if (!parse(version)) fail(`"${version}" is not a valid semver version (expected x.y.z)`)
+  if (!validVersion(version)) fail(`"${version}" is not a valid semver version (expected x.y.z)`)
   if (!git("tag", "--list", tag)) fail(`tag ${tag} does not exist locally; fetch it or run the release first`)
   process.exit(await watchRelease())
 }
@@ -182,11 +158,11 @@ if (words.length < 2 || words.length > 5) fail(`title "${title}" has ${words.len
 if (title.replace(/^v/i, "") === version) fail("title must be more than the version number")
 
 const problems: string[] = []
-if (!parse(version)) fail(`"${version}" is not a valid semver version (expected x.y.z)`)
+if (!validVersion(version)) fail(`"${version}" is not a valid semver version (expected x.y.z)`)
 
 const pkgText = readFileSync("package.json", "utf8")
 const current = (JSON.parse(pkgText) as { version: string }).version
-if (compare(version, current) <= 0) fail(`${version} does not increase on package.json version ${current}`)
+if (!semver.gt(version, current)) fail(`${version} does not increase on package.json version ${current}`)
 
 if (git("status", "--porcelain")) problems.push("working tree is not clean")
 const branch = git("branch", "--show-current")
@@ -206,7 +182,7 @@ const linkAt = lines.findIndex((l) => l.startsWith("[Unreleased]: "))
 const link = /^\[Unreleased\]: (.+)\/compare\/v(.+)\.\.\.HEAD$/.exec(lines[linkAt] ?? "")
 if (!link) fail('CHANGELOG.md needs a "[Unreleased]: <repo url>/compare/v<previous>...HEAD" link ref at the bottom')
 const [, repoUrl, previous] = link
-if (compare(version, previous) <= 0) fail(`${version} does not increase on the last released version ${previous}`)
+if (!semver.gt(version, previous)) fail(`${version} does not increase on the last released version ${previous}`)
 
 // The commit-level detail: every commit since the previous tag, grouped by type, in a
 // collapsed block under the curated notes. release-notes.ts rebuilds it for the GitHub release.
