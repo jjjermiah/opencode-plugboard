@@ -16,7 +16,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-HARNESSES: list[str] = []  # one harness file per client, added with the client
+HARNESSES = ["openai_agents.py"]  # one harness file per client, added with the client
 
 
 def start_fake() -> tuple[subprocess.Popen[str], str, str]:

@@ -6,6 +6,7 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | --- | --- |
 | [open-webui/](open-webui/README.md) | Open WebUI in Docker, pointed at plugboard on the host, with the plugboard options it needs |
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
+| [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |
 | [curl](#curl) | One request per API: chat, responses, messages, Gemini, models and usage |
 
 Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option.
@@ -19,6 +20,15 @@ PLUGBOARD_KEY=<your key> bun index.ts "What is the weather in Paris?"
 ```
 
 `PLUGBOARD_URL` (default `http://127.0.0.1:4010/v1`) and `PLUGBOARD_MODEL` (default `fast`) override the endpoint and model.
+
+## OpenAI Agents SDK
+
+```sh
+cd examples/openai-agents
+PLUGBOARD_KEY=<your key> uv run agent.py
+```
+
+`PLUGBOARD_URL` (default `http://127.0.0.1:4010`) and `PLUGBOARD_API=chat_completions` change the endpoint and the API. `uv` reads the dependency pin from the script header, so there is no install step.
 
 ## curl
 

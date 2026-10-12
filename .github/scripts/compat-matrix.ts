@@ -8,7 +8,7 @@
  *
  * Exits nonzero when a case failed (the test run already did; this keeps a summary-only step honest).
  */
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs"
 import { CLIENTS, ENDPOINTS } from "../../test/compat/clients.js"
 import type { MatrixResult } from "../../test/compat/matrix.test.js"
 import { SCENARIO_DESCRIPTIONS, SCENARIOS } from "../../test/compat/scenarios.js"
@@ -55,6 +55,9 @@ if (flags.includes("--summary")) {
 }
 const docs = flags[flags.indexOf("--docs") + 1]
 if (flags.includes("--docs") && docs) {
+  // The Python section (#206) is written by hand from compat/results/; keep it when regenerating.
+  const previous = existsSync(docs) ? readFileSync(docs, "utf8") : ""
+  const kept = previous.indexOf("\n## Python clients\n")
   writeFileSync(
     docs,
     [
@@ -70,7 +73,7 @@ if (flags.includes("--docs") && docs) {
       "Each official SDK runs the same scenarios against plugboard, in CI on every push. The model behind plugboard is scripted, so this checks the clients against plugboard's wire formats, not a provider's behaviour; the live provider matrix is tracked in #99. **pass**: the client worked as its docs describe. **gap**: a known incompatibility, explained in the notes. **n/a**: the endpoint has no such feature. **todo**: no case written yet (#148); a todo is work left, not a verdict.",
       "",
       body,
-    ].join("\n"),
+    ].join("\n") + (kept === -1 ? "" : previous.slice(kept)),
   )
   console.log(`wrote ${docs}`)
 }

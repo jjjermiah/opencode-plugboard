@@ -60,3 +60,13 @@ Scenarios:
 - **prompt-array**: Legacy completions with an array prompt: one choice per prompt, each with its index (#106).
 - **logprobs**: Logprobs absent: a client that does not ask gets null logprobs; one that asks is refused with a 400 (#105).
 - **cancel**: The client aborts mid-stream and the server sees the abort on the model call (#101).
+
+## Python clients
+
+Run by hand with `bun run compat:python` (`compat/py/clients/`, a uv project pinned by `compat/py/uv.lock`). They are not in CI: the packages were not timed against the CI budget, and the run needs a Python environment CI does not set up. With no `PLUGBOARD_URL` the run starts the scripted fake (`test/support/fake-server.ts`); with `PLUGBOARD_URL` and `PLUGBOARD_KEY` set it runs against that server. Each client's record is in [`compat/results/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/compat/results); the scenarios are the harnesses themselves.
+
+| Client | Package | Fake (2026-10-12) | Live (isolated dev server) |
+|---|---|---|---|
+| [OpenAI Agents SDK](clients/openai-agents.md), Responses and Chat Completions | `openai-agents` 0.23.1 | 8 pass, 0 fail | not run: no listener on :4010 |
+
+The fake is a scripted model, so a fake pass shows the client and plugboard agree on the wire format. Only a live run shows the model's own answers. A row marked "not run" has no live evidence yet.
