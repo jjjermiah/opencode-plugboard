@@ -6,6 +6,8 @@ on:
   pull_request:
   # Reused by publish.yml so a release runs the same gates as CI.
   workflow_call:
+  # host-bump.yml starts this on its own pull request: a PR opened with GITHUB_TOKEN starts no workflow.
+  workflow_dispatch:
 
 permissions: {}
 
