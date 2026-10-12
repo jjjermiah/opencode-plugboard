@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { cachedCaller, createCacheStore, type CacheConfig } from "../../src/cache.js"
+import { withUsage, type UsageRecorder } from "../../src/usage.js"
 import { ev } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { sseData, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
@@ -100,6 +101,20 @@ describe("x-plugboard-cache on every front-end", () => {
 })
 
 describe("streams", () => {
+  test.each([
+    ["Responses", (body: Record<string, unknown>) => responses({ ...body, stream: true }), "Hello"],
+    ["Anthropic Messages", (body: Record<string, unknown>) => messages({ ...body, stream: true }), "Hello"],
+    ["Gemini", (body: Record<string, unknown>) => gemini(body, "/v1beta/models/fast:streamGenerateContent?alt=sse"), "Hello"],
+  ])("#278 %s: a streamed hit replays the stored text with no new model call", async (_, request, text) => {
+    const fake = await cachedRoute([ev.text("Hel"), ev.text("lo"), ev.finish()])
+    await server!.send(request({}))
+    const hit = await server!.send(request({}))
+    expect(hit.status).toBe(200)
+    expect(hit.headers["x-plugboard-cache"]).toBe("hit")
+    expect(hit.text).toContain(text)
+    expect(fake.calls).toHaveLength(1)
+  })
+
   test("a streamed hit replays the same text as one delta, then the finish, and [DONE]", async () => {
     const fake = await cachedRoute([ev.text("Hel"), ev.text("lo"), ev.finish()])
     await server!.send(chat({ stream: true, stream_options: { include_usage: true } }))
@@ -109,6 +124,36 @@ describe("streams", () => {
     const content = text.map((chunk) => chunk.choices?.[0]?.delta?.content).filter((piece) => typeof piece === "string" && piece !== "")
     expect(content).toEqual(["Hello"])
     expect(text.at(-1)).toMatchObject({ usage: { total_tokens: 0 } })
+    expect(fake.calls).toHaveLength(1)
+  })
+})
+
+describe("#278 keys across routes and wire options", () => {
+  test("the same app and resolved request on Chat Completions, then Messages, share one entry", async () => {
+    const fake = await cachedRoute(answer)
+    const first = await server!.send(chat({ max_tokens: 64 }))
+    const second = await server!.send(messages())
+    expect(first.headers["x-plugboard-cache"]).toBe("miss")
+    expect(second.headers["x-plugboard-cache"]).toBe("hit")
+    expect(fake.calls).toHaveLength(1)
+  })
+
+  test("response_format json_object and json_schema are different entries", async () => {
+    const fake = await cachedRoute(answer)
+    await server!.send(chat({ response_format: { type: "json_object" } }))
+    await server!.send(chat({ response_format: { type: "json_schema", json_schema: { name: "reply", schema: { type: "object" } } } }))
+    expect(fake.calls).toHaveLength(2)
+  })
+
+  test("a non-streaming hit carries x-plugboard-usage with zero tokens (usage recording on)", async () => {
+    const fake = new FakeModelCaller(answer)
+    const cached = cachedCaller(fake, CONFIG, createCacheStore({ ttlMs: 60_000, maxEntries: 100, maxBytes: 10_000_000 }))
+    const priced = { call: () => {}, price: async () => 0 } as unknown as UsageRecorder
+    server = await startRoute({ caller: withUsage(cached, priced), options: { aliases: { fast: "test/echo" } } })
+    await server!.send(chat())
+    const hit = await server!.send(chat())
+    expect(hit.headers["x-plugboard-cache"]).toBe("hit")
+    expect(hit.headers["x-plugboard-usage"]).toBe("input=0; output=0; cache_read=0; cache_write=0; cost_usd=0.000000")
     expect(fake.calls).toHaveLength(1)
   })
 })

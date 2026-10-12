@@ -4,7 +4,7 @@
  * hit replays. The route side (headers, n > 1) is in test/http/cache.test.ts.
  */
 import { describe, expect, test } from "bun:test"
-import { cachedCaller, cacheKey, createCacheStore, type CacheConfig } from "../../src/cache.js"
+import { cachedCaller, cacheKey, createCacheStore, type CacheConfig, type Entry } from "../../src/cache.js"
 import type { CallContext, ModelCaller, PlugEvent, PlugRequest, PolicyNote, ServedModel } from "../../src/contract.js"
 import { createLimitState, withLimits } from "../../src/limits.js"
 import { collect, ev, gate, plugRequest, until } from "../support/fixtures.js"
@@ -66,6 +66,11 @@ describe("the key", () => {
     ["max tokens", plugRequest({ generation: { maxTokens: 9 } })],
     ["a tool", plugRequest({ tools: [{ name: "t", description: "", parameters: {} }] })],
     ["the tool choice", plugRequest({ toolChoice: "required" })],
+    ["the stop sequences", plugRequest({ generation: { stop: ["END"] } })],
+    ["top_p", plugRequest({ generation: { topP: 0.5 } })],
+    ["presence_penalty", plugRequest({ generation: { presencePenalty: 0.5 } })],
+    ["frequency_penalty", plugRequest({ generation: { frequencyPenalty: 0.5 } })],
+    ["an image", plugRequest({ messages: [{ role: "user", content: [{ type: "media", url: "https://example.com/a.png" }] }] })],
   ]
 
   test.each(changed)("a different %s is a different entry", async (_, other) => {
@@ -74,6 +79,25 @@ describe("the key", () => {
     await collect(cached.stream(base, context().ctx))
     await collect(cached.stream(other, context().ctx))
     expect(fake.calls).toHaveLength(2)
+  })
+
+  test("#278 an image with a different URL is a different entry", async () => {
+    const image = (url: string) => plugRequest({ messages: [{ role: "user", content: [{ type: "media", url }] }] })
+    const fake = new FakeModelCaller(answer)
+    const cached = cachedCaller(fake, CONFIG, store())
+    await collect(cached.stream(image("https://example.com/a.png"), context().ctx))
+    await collect(cached.stream(image("https://example.com/b.png"), context().ctx))
+    expect(fake.calls).toHaveLength(2)
+  })
+
+  test("#278 the end user is not part of the key: two users with identical content share one entry", async () => {
+    const fake = new FakeModelCaller(answer)
+    const cached = cachedCaller(fake, CONFIG, store())
+    await collect(cached.stream(plugRequest({ user: "alice" }), context().ctx))
+    const { ctx, seen } = context()
+    await collect(cached.stream(plugRequest({ user: "bob" }), ctx))
+    expect(fake.calls).toHaveLength(1)
+    expect(seen.cache).toEqual(["hit"])
   })
 
   test("the alias string the caller sent is not part of the key: two names for one model share an entry", async () => {
@@ -91,6 +115,19 @@ describe("the key", () => {
     const b = plugRequest({ tools: [{ parameters: { properties: { a: { type: "string" } }, type: "object" }, description: "d", name: "t" }] })
     expect(cacheKey("default", a)).toBe(cacheKey("default", b))
     expect(cacheKey("default", base)).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
+describe("#278 maxBytes counts the per-entry overhead", () => {
+  test("an entry whose JSON is just under maxBytes is rejected, because the 128-byte overhead is added to its size", () => {
+    const entry: Entry = { events: [{ type: "text-delta", text: "x".repeat(1000) }, { type: "finish", reason: "stop" }] }
+    const payload = Buffer.byteLength(JSON.stringify(entry))
+    const tight = store({ maxBytes: payload + 100 })
+    tight.set("k", entry)
+    expect(tight.get("k")).toBeUndefined()
+    const roomy = store({ maxBytes: payload + 128 })
+    roomy.set("k", entry)
+    expect(roomy.get("k")).toEqual(entry)
   })
 })
 
