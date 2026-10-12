@@ -13,6 +13,7 @@ import type { Plugin } from "@opencode/plugin/effect"
 import type { SessionContext } from "@opencode/plugin/effect/session"
 import { Effect } from "effect"
 import type { CatalogCost, CatalogModel } from "../contract.js"
+import type { OperatorRule } from "./seeds.js"
 
 export type HostContext = Plugin.Context
 
@@ -45,6 +46,12 @@ export interface SessionPort {
    * not listed either: the session's permission rules are written by id.
    */
   directTools(): Promise<ReadonlyArray<string>>
+  /**
+   * The permission rules of the agent a request session runs as: `agent`, or the host's selected default when absent
+   * (the first selectable agent of the list). Undefined when there is no such agent. Read per request for an app with
+   * `serverTools` (#194), never at setup.
+   */
+  agentRules(directory: string, agent: string | undefined): Promise<ReadonlyArray<OperatorRule> | undefined>
 }
 
 type HostSession = HostContext["session"]
@@ -122,6 +129,11 @@ export function createSessionPort(ctx: HostContext): SessionPort {
     interrupt: (sessionID) =>
       run(ctx.session.interrupt({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["interrupt"]>[0])).then(() => undefined),
     remove: (sessionID) => run(ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0])).then(() => undefined),
+    agentRules: async (directory, id) => {
+      const listed = await run(ctx.agent.list({ location: { directory } }))
+      const agent = id === undefined ? listed.data.find((item) => item.mode !== "subagent" && !item.hidden) : listed.data.find((item) => item.id === id)
+      return agent?.permissions.map((rule) => ({ action: rule.action, resource: rule.resource, effect: rule.effect }))
+    },
     directTools: () =>
       run(ctx.tool.list()).then((tools) =>
         tools.filter((tool) => tool.options?.codemode === false && (tool.options?.permission ?? tool.id) === tool.id).map((tool) => tool.id),

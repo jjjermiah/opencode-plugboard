@@ -34,19 +34,66 @@ export const SEED_RESULT = "Returned to caller (opencode-plugboard)"
  * Session permissions of a request session. The host takes the last matching rule (session rules
  * come after the agent's): everything is denied, then the seeds are allowed again.
  */
-export const REQUEST_PERMISSIONS: ReadonlyArray<{ action: string; resource: string; effect: "allow" | "deny" }> = [
+/** One permission rule of a request session. */
+export interface PermissionRule {
+  readonly action: string
+  readonly resource: string
+  readonly effect: "allow" | "deny"
+}
+
+export const REQUEST_PERMISSIONS: ReadonlyArray<PermissionRule> = [
   { action: "*", resource: "*", effect: "deny" },
   { action: `${SEED_PREFIX}*`, resource: "*", effect: "allow" },
 ]
 
+/** One rule of an OpenCode permission ruleset, as the operator's agent has it (`Permission.Rule`). */
+export interface OperatorRule {
+  readonly action: string
+  readonly resource: string
+  readonly effect: "allow" | "deny" | "ask"
+}
+
 /**
- * Session permissions of a request session of an app with option `serverTools`: the same deny-all, then
- * each listed OpenCode tool id allowed by its exact name (no wildcard). The host takes the last matching
- * rule (`Permission.evaluate`, findLast), so the later allows win over the deny. An app without
+ * The host's wildcard match (`Wildcard.match` in OpenCode's core): `*` is any run of characters, `?` one character,
+ * and a pattern that ends in ` *` also matches without the space and the star.
+ */
+export function wildcardMatch(input: string, pattern: string): boolean {
+  const escaped = pattern
+    .replaceAll("\\", "/")
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".")
+  const source = escaped.endsWith(" .*") ? `${escaped.slice(0, -3)}( .*)?` : escaped
+  return new RegExp(`^${source}$`, "s").test(input.replaceAll("\\", "/"))
+}
+
+/** The operator's rules for one tool, in the order the host evaluates them (a later rule wins). */
+const rulesFor = (tool: string, rules: ReadonlyArray<OperatorRule>): ReadonlyArray<OperatorRule> => rules.filter((rule) => wildcardMatch(tool, rule.action))
+
+/**
+ * The first listed server tool that the operator's rules do not allow, or undefined when each one has an allow rule.
+ * A tool with no matching rule is not allowed: the host would ask, and a request session cannot answer a prompt.
+ */
+export function ungrantedServerTool(serverTools: ReadonlyArray<string>, rules: ReadonlyArray<OperatorRule>): string | undefined {
+  return serverTools.find((tool) => !rulesFor(tool, rules).some((rule) => rule.effect === "allow"))
+}
+
+/**
+ * Session permissions of a request session of an app with option `serverTools` (#194). The host takes the last
+ * matching rule (`Permission.evaluate`, findLast) and the session rules come after the agent's, so for each listed
+ * tool: a deny for every resource, then the operator's own rules for that tool, rewritten to the tool's id, in their
+ * order. A resource the operator's rules name is decided by them (a deny stays a deny, an allow allows); any other
+ * resource is denied. An `ask` is a deny: nobody answers a prompt from a request session. An app without
  * `serverTools` gets exactly `REQUEST_PERMISSIONS`.
  */
-export function requestPermissions(serverTools: ReadonlyArray<string>): ReadonlyArray<{ action: string; resource: string; effect: "allow" | "deny" }> {
-  return [...REQUEST_PERMISSIONS, ...serverTools.map((tool) => ({ action: tool, resource: "*", effect: "allow" as const }))]
+export function requestPermissions(serverTools: ReadonlyArray<string>, operatorRules: ReadonlyArray<OperatorRule> = []): ReadonlyArray<PermissionRule> {
+  return [
+    ...REQUEST_PERMISSIONS,
+    ...serverTools.flatMap((tool) => [
+      { action: tool, resource: "*", effect: "deny" as const },
+      ...rulesFor(tool, operatorRules).map((rule) => ({ action: tool, resource: rule.resource, effect: rule.effect === "allow" ? ("allow" as const) : ("deny" as const) })),
+    ]),
+  ]
 }
 
 /** The caller tools that get a seed in the model request (`tool_choice` none offers none, a named tool only that one). */

@@ -756,6 +756,7 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
                   inputTokens: usage?.inputTokens ?? 0,
                   outputTokens: usage?.outputTokens ?? 0,
                   cacheReadTokens: usage?.cacheReadTokens ?? 0,
+                  cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
                   ...(costUsd === undefined ? {} : { costUsd }),
                 })
               }

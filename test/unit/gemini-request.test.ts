@@ -182,6 +182,8 @@ describe("parseGeminiRequest: tools, tool config and structured output", () => {
     const parsed = parse(body({ generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { a: { type: "STRING", nullable: true } }, propertyOrdering: ["a"] } } }))
     expect(parsed.request.tools).toEqual([{ name: "respond", description: expect.any(String), parameters: { type: "object", properties: { a: { type: ["string", "null"] } } } }])
     expect(parsed.request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    // The request carries the structured tool's name, so `tools: false` keeps respond (#252).
+    expect(parsed.request.structuredTool).toBe("respond")
     expect(parsed.exchange).toMatchObject({ structuredTool: "respond" })
     expect(parsed.exchange).not.toHaveProperty("wrapped")
   })

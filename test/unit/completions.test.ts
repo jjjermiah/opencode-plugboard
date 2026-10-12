@@ -140,6 +140,7 @@ describe("#169 response_format on legacy completions, as on Chat Completions", (
     expect(parsed.requests[0]).toMatchObject({
       tools: [{ name: "respond", parameters: { type: "object", required: ["a"] } }],
       toolChoice: { type: "tool", name: "respond" },
+      structuredTool: "respond", // #252: tools: false keeps respond
     })
     expect(parsed.exchange).toMatchObject({ structuredTool: "respond" })
     expect(parsed.exchange.jsonObject).toBeUndefined()

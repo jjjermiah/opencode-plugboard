@@ -1,16 +1,27 @@
 // Runs INSIDE the throwaway project that smoke-pack.ts installs the tarball into.
-// Loads the plugin the way a host would (import the package entry, run the plugin
-// effect against a spy context) and checks the freeze-safety and single-copy rules.
+// effect and @opencode/plugin are optional peers, so the project does not have them: they
+// come from ./host, which stands in for OpenCode. The probe loads the host's runtime the way
+// OpenCode does (@opencode/plugin/runtime registers effect and @opencode/plugin for every
+// import), then loads the plugin and runs its setup against a spy context. Checks the
+// freeze-safety rules and that the plugin gets the host's effect with no copy of its own.
 // Not shipped in the package.
 import { existsSync, realpathSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { Effect } from "effect"
 
 const failures: string[] = []
 const check = (ok: boolean, message: string) => {
   if (!ok) failures.push(message)
   console.log(`${ok ? "ok  " : "FAIL"} ${message}`)
 }
+
+const here = process.cwd()
+const host = join(here, "host")
+
+// ---- 0. Host runtime, before the plugin is imported. Bun.plugin then serves "effect" and
+// "@opencode/plugin/*" from the host for every importer, as OpenCode does.
+const runtime = (await import(Bun.resolveSync("@opencode/plugin/runtime", host))) as { ensurePluginRuntime: () => unknown }
+runtime.ensurePluginRuntime()
+const { Effect } = await import("effect")
 
 // ---- 1. The entry imports and has the plugin shape.
 const mod = (await import("opencode-plugboard")) as { default?: { id?: string; effect?: unknown } }
@@ -33,7 +44,7 @@ const port = await freePort()
 const ctx = new Proxy(
   {
     options: { listen: { host: "127.0.0.1", port } },
-    location: { directory: join(process.cwd(), "not-a-plugboard-app") },
+    location: { directory: join(here, "not-a-plugboard-app") },
   },
   { get: (target, key) => (key in target ? target[key as keyof typeof target] : typeof key === "string" ? spy(key) : undefined) },
 )
@@ -43,7 +54,7 @@ const ctx = new Proxy(
 let threw: unknown
 const start = performance.now()
 try {
-  Effect.runSync(Effect.scoped((plugin.effect as (c: unknown) => Effect.Effect<void, never, import("effect").Scope.Scope>)(ctx)))
+  Effect.runSync(Effect.scoped((plugin.effect as (c: unknown) => any)(ctx)))
 } catch (error) {
   threw = error
 }
@@ -57,20 +68,17 @@ check(
 const forbidden = calls.filter((c) => /\.(list|create|prompt|interrupt|remove|reload|subscribe|scan|get|set)$/.test(c))
 check(forbidden.length === 0, `setup made no host calls that wait or do work${forbidden.length ? `: ${forbidden.join(", ")}` : ""}`)
 
-// ---- 4. One copy of effect and @opencode/plugin in the install.
-const real = (p: string) => realpathSync(p)
-const here = process.cwd()
-const entryDir = dirname(real(Bun.resolveSync("opencode-plugboard/package.json", here)))
-const pluginDir = dirname(real(Bun.resolveSync("@opencode/plugin/package.json", here)))
-const effectFrom = (dir: string) => dirname(real(Bun.resolveSync("effect/package.json", dir)))
-const effects = new Set([effectFrom(here), effectFrom(entryDir), effectFrom(pluginDir)])
-check(effects.size === 1, `effect resolves to one copy from the project, the plugin and the host package (${[...effects].join(" | ")})`)
-const pluginFrom = (dir: string) => dirname(real(Bun.resolveSync("@opencode/plugin/package.json", dir)))
-check(pluginFrom(entryDir) === pluginDir, "@opencode/plugin resolves to one copy from the plugin and the project")
+// ---- 4. Optional peers: the install has no effect or @opencode/plugin copy, and the plugin's
+// effect is the host's instance.
+const entryDir = dirname(realpathSync(Bun.resolveSync("opencode-plugboard/package.json", here)))
+check(!existsSync(join(here, "node_modules", "effect")), "effect is not installed in the project (optional peer)")
+check(!existsSync(join(here, "node_modules", "@opencode", "plugin")), "@opencode/plugin is not installed in the project (optional peer)")
 for (const name of ["effect", "@opencode/plugin"]) {
-  const copies = [...new Bun.Glob(`**/node_modules/${name}/package.json`).scanSync({ cwd: here })]
-  check(copies.length === 1, `exactly one ${name} directory in node_modules (${copies.join(", ")})`)
+  const copies = [...new Bun.Glob(`**/node_modules/${name}/package.json`).scanSync({ cwd: join(here, "node_modules") })]
+  check(copies.length === 0, `no ${name} copy anywhere under node_modules (${copies.join(", ") || "none"})`)
 }
+const hostEffect = (await import(Bun.resolveSync("effect", host))) as { Effect: unknown }
+check(hostEffect.Effect === Effect, "the effect the plugin uses is the host's instance")
 check(!existsSync(join(entryDir, "node_modules")), "the plugin has no nested node_modules")
 
 if (failures.length) {

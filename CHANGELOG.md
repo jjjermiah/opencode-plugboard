@@ -14,7 +14,18 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **OpenCode 2.0.27 is supported and tested.** `@opencode/plugin` 2.0.27 pins `effect` 4.0.1, so the dev dependencies move to `@opencode/plugin` 2.0.27 and `effect` 4.0.1. The code needed no change: the typecheck passes and the suite passes on both pairs (2050 pass, 126 live tests skipped), and a live run on each host (chat, tool call, `opencode run` pong) passes from the packed tarball. Minimum OpenCode version is still 2.0.26.
+
+### Changed
+
+- The `effect` peer is `4.0.0-rc.112 || 4.0.1`. A plugin runs on the host's `effect` (`packages/plugin/src/runtime.ts` serves it), so the peer only has to match the types of the host you install, and both copies of the code compile and run. The peer range `@opencode/plugin >=2.0.26 <2.1` is unchanged.
+
+### Fixed
+
+- The host matrix in CI installed `@opencode/plugin` for each host but left `effect` at rc.112, so the 2.0.27 typecheck failed with TS2741 and Effect type mismatches. It now installs each host's own `effect` pin.
+- A fresh install of the packed tarball with `@opencode/plugin` 2.0.27 resolved two copies of `effect` (4.0.1 under the host, rc.112 in plugboard), which failed the smoke check. The peer range now lets npm dedupe to one copy.
 
 ## [0.23.0] - 2026-10-12: What the Red Team Found
 
