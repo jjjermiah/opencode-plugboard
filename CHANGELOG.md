@@ -14,12 +14,151 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.22.0] - 2026-10-11: Eleven New Friends
+
+**Full diff:** [v0.21.2...v0.22.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.2...v0.22.0)
+
 Eleven more clients documented, five of them tested automatically. This is the start of epic [#206](https://github.com/jjjermiah/opencode-plugboard/issues/206): 34 popular clients, each with a verified setup.
 
 ### Added
 
 - **Python clients, tested** ([#221](https://github.com/jjjermiah/opencode-plugboard/issues/221), [#227](https://github.com/jjjermiah/opencode-plugboard/issues/227), [#225](https://github.com/jjjermiah/opencode-plugboard/issues/225), [#224](https://github.com/jjjermiah/opencode-plugboard/issues/224), [#215](https://github.com/jjjermiah/opencode-plugboard/issues/215)). The OpenAI Agents SDK (on both the Responses and Chat Completions paths), LiteLLM, Instructor, DSPy and Aider each have a setup page, an example and a harness. `bun run compat:python` runs them against a standalone fake plugboard or a live one; all 18 scenarios and the Aider check pass on both.
 - **Coding agents and chat apps** ([#213](https://github.com/jjjermiah/opencode-plugboard/issues/213), [#214](https://github.com/jjjermiah/opencode-plugboard/issues/214), [#216](https://github.com/jjjermiah/opencode-plugboard/issues/216), [#219](https://github.com/jjjermiah/opencode-plugboard/issues/219), [#207](https://github.com/jjjermiah/opencode-plugboard/issues/207), [#220](https://github.com/jjjermiah/opencode-plugboard/issues/220)). Claude Code, Codex CLI, Continue, Kilo Code, LibreChat and Zed have setup pages and example configs, checked against each client's current docs. Claude Code was also run live: text and a tool turn work through `/v1/messages`, once `maxTools` is above its 36 tools (the page shows how; the default is [#242](https://github.com/jjjermiah/opencode-plugboard/issues/242)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (15 commits)</summary>
+
+#### Tests
+
+**test(compat): shared harness and standalone fake plugboard for python clients** ([`fa342dd`](https://github.com/jjjermiah/opencode-plugboard/commit/fa342dd0a42ab1b607a9176105ba5391d0d6d526))
+
+The Python client harnesses (#221, #224, #225, #227) need a plugboard they can run against without a live server. test/support/fake-server.ts starts the real OpenAI route (startRoute) on a free loopback port with a fake model. Unlike the matrix's fake (test/compat/scenarios.ts), it does not read [scenario:...] tags, because these clients send their own prompts. It answers from the request: a forced or required tool is called with arguments built from its JSON Schema, a prompt that mentions the weather calls the first tool once, the answer after a tool result is text, a DSPy [[ ## field ## ]] prompt gets those fields back, and anything else answers "pong". It prints PLUGBOARD_URL and PLUGBOARD_KEY and stops when its stdin ends or on SIGTERM.
+
+compat/py/clients/_common.py gives every harness the same contract: scenarios are functions that raise on a wrong answer, and each prints one JSON line {client, scenario, status, detail}. The detail is redacted of the key. require() replaces assert so checks still run under python -O.
+
+compat/py/clients/run_all.py runs the registered harnesses. With PLUGBOARD_URL unset it starts the fake; with PLUGBOARD_URL and PLUGBOARD_KEY set it runs against that server instead. A harness that crashes before any scenario counts as one failure. bun run compat:python wraps it. The harness list is empty here; each client commit adds its own file.
+
+Checked: bun run typecheck passes, and the runner starts the fake and stops it with an empty harness list.
+
+Refs #206
+
+**test(tests): openai agents sdk python harness, docs and example (#221)** ([`ffbeddb`](https://github.com/jjjermiah/opencode-plugboard/commit/ffbeddb2f390446bd9a36b6d56de21ef12f41953))
+
+The OpenAI Agents SDK is OpenAI's own agent framework, and it defaults to the Responses API, so it exercises /v1/responses. compat/py/clients/openai_agents.py runs four scenarios on both the Responses path and the Chat Completions path (set_default_openai_api("chat_completions")): a text reply, a streamed reply, a function_tool round trip, and structured output through output_type. It pins openai-agents 0.23.1 in the compat/py uv lock, which resolves against the existing openai 3.29.0 pin. Tracing is off, so no request goes to OpenAI.
+
+Against the scripted fake plugboard all 8 scenarios pass (run 2026-10-12). The live run on the isolated dev server could not happen: nothing listened on :4010 at the time, and the server was left alone. compat/results/openai-agents.md records both.
+
+docs/clients/openai-agents.md is the setup page (client injection, the API switch, the tool and structured snippets, the gotchas). examples/openai-agents is a PEP 723 script, so uv runs it with no install step. The page is in the sidebar and examples/README.md lists it.
+
+scripts/compat-matrix.ts rewrites docs/compatibility.md from the test matrix, which would have dropped the new Python section. It now keeps everything from the "## Python clients" heading on. Regenerating from the current results changes only the added lines (checked), so the CI staleness check still passes.
+
+Fixes #221
+
+**test(tests): litellm as a client python harness, docs and example (#227)** ([`7f955f3`](https://github.com/jjjermiah/opencode-plugboard/commit/7f955f3af83b5c89f7eaa7da52f62c3d8f439fd4))
+
+LiteLLM is usually a gateway, but as a client, litellm.completion normalises the request and sends it to any OpenAI-compatible api_base. compat/py/clients/ litellm_client.py calls it with the openai/ prefix, which selects Chat Completions, and runs four scenarios: a completion, a stream, a tool round trip (the tool result goes back in a tool message) and structured output through a pydantic response_format.
+
+LiteLLM needs openai below 3, and the Agents SDK needs openai 3, so these clients cannot share compat/py. compat/py-litellm is a second uv project that pins litellm 1.105.0 with openai 2.54.0. Its pins also cover dspy 3.4.0 and instructor 1.17.0, which are used by the next two commits. instructor 1.17 caps jiter below 0.15, which is incompatible with openai 3.29, so the three clients share this environment. run_all.py runs each harness in its project with uv run --project, and strips the parent's VIRTUAL_ENV so uv does not warn.
+
+Against the scripted fake all 4 scenarios pass (run 2026-10-12). The live run could not happen: nothing listened on :4010, and the server was left alone. compat/results/litellm.md records both.
+
+docs/clients/litellm-client.md covers the completion call, streaming, tools, structured output, and the gotchas that were actually observed (api_base takes /v1 and no path, the openai/ prefix, the price-map fetch on import). Model ids other than fast were not run through LiteLLM and are marked untested. The example is a PEP 723 script (examples/litellm-client), and the page is in the sidebar and the compatibility table.
+
+Refs #227
+
+**test(tests): instructor python harness, docs and example (#225)** ([`0c55e71`](https://github.com/jjjermiah/opencode-plugboard/commit/0c55e71ab8c3d7db13d011346c69dc8866fe1abf))
+
+Instructor wraps the OpenAI client and returns a validated Pydantic object, so a custom base_url carries through. compat/py/clients/instructor_client.py extracts a Person (name: str, age: int, bounded) in three ways: Mode.TOOLS (a tool forced by tool_choice), Mode.JSON_SCHEMA (response_format json_schema, which plugboard serves as a forced tool), and create_partial over a stream. max_retries is 0 in the harness, so a validation failure shows instead of being retried.
+
+It runs in compat/py-litellm (openai 2.54.0), where instructor 1.17.0 was pinned in the previous commit: instructor caps jiter below 0.15, which conflicts with openai 3.29 in compat/py. Against the scripted fake all 3 scenarios pass (run 2026-10-12). The live run could not happen: nothing listened on :4010, and the server was left alone. compat/results/instructor.md records both, and lists what was not tested: the validation-retry path (the fake is deterministic, so it cannot send a bad value first) and the tools-plus-schema case from #225.
+
+docs/clients/instructor.md covers both client forms, the modes, partial streaming and the gotchas, with the claims that were not run marked as such. The example is a PEP 723 script in examples/instructor. The page is in the sidebar and the compatibility table.
+
+Refs #225
+
+**test(tests): dspy python harness, docs and example (#224)** ([`1921579`](https://github.com/jjjermiah/opencode-plugboard/commit/1921579236ec805a29b4ef3e8c2ed9e0d75fcc11))
+
+DSPy routes its models through LiteLLM, and the openai/ prefix sends them to Chat Completions. compat/py/clients/dspy_client.py runs three scenarios on dspy.LM: Predict on a question -> answer signature, ChainOfThought, and a typed output (an OutputField typed with a pydantic model, which DSPy asks for through a JSON schema after its text format does not parse).
+
+The typed scenario first failed on the fake, and the cause was on the fake side: it answered the bare word pong for every output field, and the typed field needs a JSON object. fake-server.ts now answers {"answer": "pong"} when the prompt carries a JSON schema ("type": "object"). This is test-only; plugboard was not changed.
+
+Against the scripted fake all 3 scenarios pass (run 2026-10-12), and the full fake run is 18 of 18 across the four clients. The live run could not happen: nothing listened on :4010, and the server was left alone. compat/results/dspy.md records both, plus what was not tested (dspy.streamify, a real model's own JSON fallback).
+
+docs/clients/dspy.md covers dspy.LM with api_base and the openai/ prefix, a typed output, and the gotchas. The example is a PEP 723 script (examples/dspy). The page is in the sidebar and the compatibility table.
+
+Refs #224
+
+#### Docs
+
+**docs(docs): add Claude Code client guide** ([`056eccb`](https://github.com/jjjermiah/opencode-plugboard/commit/056eccb3946cffd85d920d0837b5035258fcb7a9))
+
+Claude Code speaks the Anthropic Messages API, so the page points ANTHROPIC_BASE_URL at plugboard's root (no /v1) and maps the haiku, sonnet and opus tiers to two aliases. examples/claude-code/ has the shell exports and a settings.json env block. The gateway notes cover the two checks that still reach api.anthropic.com. Checked against the Claude Code docs, not run against plugboard.
+
+Refs #213
+
+**docs(docs): add Codex CLI client guide** ([`d0e0e1e`](https://github.com/jjjermiah/opencode-plugboard/commit/d0e0e1ee65068b5f8263fc5e5556470646220426))
+
+Codex CLI accepts only wire_api = "responses", so the page points a custom provider at plugboard's /v1 root and exercises /v1/responses end to end. examples/codex-cli/ has the config.toml. The notes cover the request shapes plugboard refuses: previous_response_id, custom tool types and hosted tools. Checked against the Codex docs, not run against plugboard.
+
+Refs #214
+
+**docs(docs): add Continue client guide** ([`3c0a95c`](https://github.com/jjjermiah/opencode-plugboard/commit/3c0a95c4dee8ca88b764f24ebb6bc66654a25bbd))
+
+Continue picks Chat Completions or Responses per model. The page adds one plugboard model on each route, with the capabilities Continue cannot detect for the alias. examples/continue/ has the config.yaml, which replaces the JSON form Continue marks as deprecated. Checked against the Continue docs, not run against plugboard.
+
+Refs #216
+
+**docs(docs): add Kilo Code client guide** ([`b2fee01`](https://github.com/jjjermiah/opencode-plugboard/commit/b2fee014dcd9fbc660c2cda449bf416bb6b60d31))
+
+Kilo Code lets a custom provider pick Chat Completions, Responses or Anthropic Messages, so it is the one client here that can exercise all three plugboard routes. The page lists the three VS Code settings and marks what Kilo's docs do not cover: the CLI config shape (third-party guides) and the base URL form for the Anthropic choice. examples/kilo-code/ has the provider block. Checked against the Kilo docs, not run against plugboard.
+
+Refs #219
+
+**docs(docs): add LibreChat client guide** ([`a961580`](https://github.com/jjjermiah/opencode-plugboard/commit/a96158000f476ae9fc3dd128dd2c8111b88097b8))
+
+LibreChat has two kinds of custom endpoint, and the page sets up both against plugboard: an OpenAI-shaped endpoint (base URL ending in /v1) and a native Anthropic endpoint (root base URL, provider: anthropic). It covers the Docker bind and key, the fields LibreChat needs before it keeps an endpoint, and the title call that each new conversation adds. examples/librechat/ has the yaml, the compose override and the .env key. Checked against the LibreChat docs, not run against plugboard.
+
+Refs #207
+
+**docs(docs): add Zed client guide** ([`c972d1d`](https://github.com/jjjermiah/opencode-plugboard/commit/c972d1d2e867979d035ad47c7e875402229ff3fc))
+
+Zed has an OpenAI-compatible provider and an Anthropic-compatible provider. The page sets up both against plugboard: the OpenAI one on a /v1 base URL, the Anthropic one on the root. It covers the context window in max_tokens, the capability flags, and where keys go (the UI or a derived variable, not settings.json). examples/zed/ has the settings.json fragment. Checked against the Zed docs, not run against plugboard.
+
+Refs #220
+
+**docs(docs): verify Claude Code live and list the new client pages in the README** ([`0c468dd`](https://github.com/jjjermiah/opencode-plugboard/commit/0c468dd692727678c0ef015f5b241b2a3a1ded8d))
+
+Ran Claude Code 2.1.293 against plugboard main on the isolated dev server (opencode-go/glm-5.3-flash): `claude -p` answered pong and a Bash tool turn ran the tool in Claude Code and answered with its output. The first run failed with `400 tools: 36 tools; plugboard allows 32`, so the page now sets maxTools to 64 and explains why, plus the unrecognized-model notice. The README client table lists the six new pages with honest status (Claude Code run, the rest docs-only), and compat/docker/README.md no longer says /v1/responses is missing.
+
+Refs #213
+
+**docs(docs): aider setup page, example and scripted check (#215)** ([`c5d24cf`](https://github.com/jjjermiah/opencode-plugboard/commit/c5d24cf1bd6359397dcaff153981338df712a61a))
+
+Aider is a terminal coding tool that talks to any OpenAI-compatible endpoint. Its package is heavy (about 300 dependencies, Python below 3.13), so it does not join the uv harnesses. compat/py/clients/aider_check.sh runs aider-chat 0.86.2 from PyPI with uv tool run, in a throwaway git repo: one --message request through plugboard on openai/fast, with a weak model set too. It prints one JSON line like the harnesses and exits 1 if Aider fails or the answer lacks pong. The install was quick enough to try on Python 3.12 once.
+
+Against the scripted fake the check passes (run 2026-10-12). The check proves the request path and a streamed text answer. It does not prove a file edit, because the fake answers in plain text and not with an edit block. The live run could not happen: nothing listened on :4010, and the server was left alone.
+
+docs/clients/aider.md gives the env-var setup, the openai/ prefix, the multi-request note, the check command, and a list of what was and was not tested. The example is examples/aider: .aider.conf.yml (its keys are verified as command-line flags only, which the page says) and .env.example, since .env stays out of Git. The page is in the sidebar, the examples index and the compatibility table.
+
+Refs #215
+
+**docs(docs): record the live python client runs on the dev server** ([`c0b6452`](https://github.com/jjjermiah/opencode-plugboard/commit/c0b6452d57c34fdfbd8d26d6f8d7eb433fa5bd55))
+
+The five Python client pages, their results records and the compatibility table were written while the isolated dev server on :4010 was down, so they said "not run" for the live column. The listener came up later the same day (2026-10-12), and every client was run against it with the compat app and the fast alias (opencode-go/glm-5.3-flash): the OpenAI Agents SDK 8 of 8 on both API paths, LiteLLM 4 of 4, Instructor 3 of 3, DSPy 3 of 3, and the Aider check. The live results are now in each page and record, and the compatibility table. The earlier failed curl check stays in each results file as a dated note, since results are evidence and are not rewritten.
+
+Live results show the model's own answers (for example, Instructor extracted Ada, 36 from the sentence), which the fake cannot. No plugboard bug was found in either run. The fake run and the live run used the same harnesses.
+
+Refs #206
+
+**docs(changelog): notes for the new client pages and the python client harnesses** ([`c726ba6`](https://github.com/jjjermiah/opencode-plugboard/commit/c726ba6964175a219120989a2bcb6e2de392bb95))
+
+README client table gains the five Python clients with their tested scenarios. Curated [Unreleased] notes for the eleven new client pages (#207 #213 #214 #215 #216 #219 #220 #221 #224 #225 #227), the compat:python harnesses and the live Claude Code check. Pinned install examples bumped to 0.22.0.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.21.2] - 2026-10-11: Nothing Left Unsaved
 
@@ -2769,7 +2908,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.2...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.2...v0.22.0
 [0.21.2]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.20.0...v0.21.0
