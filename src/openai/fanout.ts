@@ -25,6 +25,7 @@ import type { PlugError, PlugEvent, PlugRequest, PlugUsage } from "../contract.j
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
+import { reportUsage } from "../usage-header.js"
 import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { chatUsageChunk, collectCompletion, encodeError, streamCompletion, type OpenAiExchange, type StreamChoice, type StreamResult } from "./response.js"
 import type { RouteHost } from "./route.js"
@@ -169,6 +170,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
     if (calls.length === 1) codec.setModel(s.model)
   })
   const policy = reportPolicy(response)
+  // One header for all choices: each answered call adds its tokens and cost (`x-plugboard-usage`, #52).
+  const usageHeader = reportUsage(response, codec.stream)
   // Each choice is a fresh sample: the response cache never serves or stores fan-out calls.
   const cache = reportCache(response)
   const open = (index: number) =>
@@ -183,6 +186,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller">, { app, calls
         },
         onServed: served,
         onPolicy: policy,
+        onUsage: usageHeader,
         onCache: cache,
         noCache: calls.length > 1,
       }),

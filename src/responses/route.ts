@@ -15,6 +15,7 @@ import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "
 import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
+import { reportUsage } from "../usage-header.js"
 import { encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
@@ -56,6 +57,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
+      onUsage: reportUsage(response, exchange.stream),
       onCache: reportCache(response),
     }),
     scope,

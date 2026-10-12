@@ -30,6 +30,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `metrics.ts` | The @prometheus-io/client registry and text rendering. No I/O. |
 | `log.ts` | The pino logger (text or JSON lines), the ambient request id and redaction. Ids and outcomes only. |
 | `usage.ts` | Per-app usage by UTC day: day records, the latency histogram, cost (mirrors OpenCode's `calculateCost`), the recorder with its debounced storage writes and retention, the query, and the `withUsage` model-caller wrapper. |
+| `usage-header.ts` | The `x-plugboard-usage` response header (#52): the format and the per-response accumulator behind `CallContext.onUsage`. |
 | `rpc.ts` | The usage RPC (`opencode-plugboard.usage`, package entry `./rpc`): the definition and its handler builder. Registered by `index.ts`. |
 
 ## `src/` directories
