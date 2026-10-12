@@ -223,6 +223,15 @@ Retention: days older than `retentionDays` are deleted while requests are served
 
 Persistence: each day is written to OpenCode's plugin storage at most every 10 seconds, by the request that finds the last write that old. The newest changes can therefore be in memory only: a restart before the next request loses the last few seconds of traffic, or the whole tail of an idle period. Reports read memory first, so they are never behind.
 
+### Dashboard
+
+`GET /dashboard` on plugboard's own port is a page for the same report: totals for today, 7, 30 or 90 days, a table of apps (sortable by requests, tokens or cost, with errors, p95 latency and the last request), daily charts per app for requests, cost and tokens, and the models by cost. It works on a phone, and follows light or dark mode.
+
+- The page itself needs no key, and it holds no usage. Enter a key on it; the page reads `/v1/usage` with that key and keeps the key in `sessionStorage`, so it lasts for the browser tab and is gone when the tab closes. Sign out clears it.
+- The charts use [uPlot](https://github.com/leeoniya/uPlot) (MIT), a pinned dependency that plugboard serves itself from `/dashboard/uplot.js` and `/dashboard/uplot.css`. Nothing loads from another origin, and the page sends no inline script or style. The policy is `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ...` (see `src/dashboard/page.ts`).
+- Days are UTC, so "today" starts at 00:00 UTC.
+- With `usage: { "enabled": false }` the page and its files are not served, and the discovery pages do not link them.
+
 ## Limits and errors
 
 Errors use the OpenAI error body shape with the matching HTTP status.
