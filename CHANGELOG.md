@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.20.0] - 2026-10-11: Keys, Users, Personas
+
+**Full diff:** [v0.19.0...v0.20.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.19.0...v0.20.0)
+
 ### Added
 
 - **Manage app keys without touching the config** ([#55](https://github.com/jjjermiah/opencode-plugboard/issues/55)). With `adminKey` set:
@@ -38,6 +44,137 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - Internal runtime version 14. Restart OpenCode after upgrading.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (11 commits)</summary>
+
+#### Features
+
+**feat(config): accept skill aliases and the agents option** ([`36fabe4`](https://github.com/jjjermiah/opencode-plugboard/commit/36fabe4d51ee3ed9a6a033fe7964c925b0f0f965))
+
+An alias target can now be `skill:<id>@provider/model[#variant]`, which binds a skill from the OpenCode server to a model (#79). A new option `agents` takes `{ name, model }` entries for OpenCode agents to expose as `agent/<name>` (#6). Both are checked at load: the model must pass `models`, a skill target takes one model and no fallback list, agent names must be unique and shaped like OpenCode agent names, and unknown fields are refused like everywhere else in the options.
+
+The agent's model comes from its entry, not from the agent's own configuration. Reading the agent's setting would let an agent run a model the operator never put on the allowlist. Taking `agents` as plain names and reading each agent's model at request time was rejected too: listing and the allowlist check would then need a host call on every /v1/models request, and the policy could not be checked at load.
+
+Resolution and listing read both forms in src/models.ts: parseAliasTarget splits a skill target, personaOf says which persona a request name is, and ListedModel carries the skill or agent for the model list. Session behaviour follows in the next commit.
+
+Checked with new unit tests (test/unit/config.test.ts, test/unit/personas.test.ts) and bun run typecheck.
+
+Refs #79
+Refs #6
+
+**feat(session): run skill aliases and agents in the session caller** ([`19c1c05`](https://github.com/jjjermiah/opencode-plugboard/commit/19c1c05d0bed52acc026ae2e519afcd24442f719))
+
+A request for a skill alias gets the skill's content as the first system part of its session, before the app's system policy and the caller's own prompt (#79). The skill is read with ctx.skill.list in the app directory after the backend is ready, and the list is reused for 30 seconds per directory. A skill that is not there is a 404 model_not_found that names it, and nothing is created.
+
+A request for agent/<name> runs its session as that OpenCode agent (session.create with `agent`), on the model of its entry, with the agent's system prompt in place of the caller's (#6). Caller messages still replace the history and caller tools still go back unexecuted. Every session still gets REQUEST_PERMISSIONS (deny all, then the seed tools), so the agent's own permission rules come before the session's deny and cannot widen it. Agents never run a server-side tool in this release. A missing agent is a 404 model_not_found. The app's system policy still applies to the agent's prompt.
+
+Response-cache keys do not cover the skill content or the agent prompt, so persona calls bypass the cache (cachedCaller takes a bypass predicate). A hit would otherwise serve an answer from a skill or agent that has since changed.
+
+Rejected: putting the skill in the transcript as a user message, because the context hook is the one place that owns the system parts and the app's system policy must still order them. Rejected: letting an agent prompt replace the app's policy, because an operator's `replace` must keep winning.
+
+Checked with test/session/persona.test.ts (caller, 404s, the hook order, host adapter reads and the agent on create), test/http/personas.test.ts (listing and a chat request over loopback), and the new mutation I8-agent-session-keeps-deny-all, which is killed by two tests. Full catalogue: 19 of 20 killed. The one that is not (I15-unknown-route-before- auth) has an anchor that no longer exists in src/openai/route.ts; it was already stale before this change and is not touched here. Not run against a live OpenCode server: the ctx.skill.list and ctx.agent.list calls and session.create with `agent` are checked against the v2.0.26 types and source only.
+
+Fixes #79
+Refs #6
+
+**feat(http): manage app keys at runtime through /v1/admin/keys** ([`22a42cc`](https://github.com/jjjermiah/opencode-plugboard/commit/22a42cca5e0b3652c7cb8eb5d6c66fcd84b1ec46))
+
+Adding or revoking an app key meant editing options.keys and reloading OpenCode. This adds an admin surface, guarded by the existing adminKey: GET /v1/admin/keys lists config and runtime keys without values, POST /v1/admin/keys with { app } creates a random key and returns it once, and DELETE /v1/admin/keys/{keyId} revokes a runtime key. The key id is the first 8 hex chars of the SHA-256 of the key.
+
+Runtime keys are stored in the plugin's host storage (ctx.storage) under keys/<id> as the SHA-256 digest of the key, so the key value is never kept. The records are read lazily from request handling, on the first request that authenticates, and cached on the process runtime, so the cache holds across plugin generations (runtime VERSION 13). Create and revoke write storage before the cache, so a revoked key stops working on the next request. A failed read fails closed for runtime keys and is retried by the next request.
+
+Decisions. Without adminKey the admin paths are 404, and with it any credential other than the admin key is 401, so an app key cannot list or mint keys. A config key cannot be revoked through the API (409), because the config is the source of truth for it. An app that already has a config key is 409 on create, so a second key cannot silently shadow it. A runtime key authenticates its app whenever it is presented, but it does not make a keyless loopback server keyed: the config keys alone decide that. The alternative, keyed-by-any-key, would let deleting the last runtime key open a loopback server that had no config keys, and I rejected it for that reason. Runtime apps get no per-app policy, because an apps entry still needs a config key.
+
+Checked with unit tests for the store (digests only in storage, id derivation, list and revoke, persistence round trip, failed read and retry, failed write returns no key, timing-safe digest comparison on a keyed server) and loopback HTTP tests for every admin answer (404 without adminKey, 401 for app keys, create then chat with the new key, revoke then 401, config key 409, bad app names). Two mutations were added to test/mutations/catalogue.ts for I25, and both are killed. The coverage manifest and the discovery probes list the admin endpoints. Ratchet floors are raised. Typecheck, bun test, check-pack and smoke-pack pass. Not run on a live server: the dev server loads the main checkout, so the live check waits for the merge.
+
+Invariant I25 in docs/architecture.md.
+
+Fixes #55
+
+**feat(http): group history and usage by end user through the user field** ([`f142c97`](https://github.com/jjjermiah/opencode-plugboard/commit/f142c978e4c9f7668e0643e24658d54e10c7a7ec))
+
+A bot that serves many people is one app, so every conversation landed in one pile, and the OpenAI `user` field was ignored. Plugboard now reads the caller's end user: `user` on Chat Completions, Responses and legacy completions, and `metadata.user_id` on Anthropic Messages. Gemini has no such field.
+
+A kept user prefixes the session title as "[alice] ...", is logged as user= on the request line, and gets per-user counts in the usage day records of requests, tokens and cost. GET /v1/usage gains a users object per app and a ?user= filter. The filter narrows only users; totals and models still cover the whole app, so the report shape stays the same apart from that new field. The RPC input schema gained the same user field, and its test now expects it.
+
+Decisions. The value is trimmed and kept only when it is 1 to 64 of A-Z a-z 0-9 . _ @ : -. Anything else is dropped rather than truncated, and the response says so with x-plugboard-user-dropped: 1, so a caller can see that its id did not stick. The value is only ever a label: it is a key in a record and never part of a path, so it cannot pick a directory outside the app folder. A day keeps at most 200 distinct users per app; the rest count under _other. I chose a cap over an unbounded map because the day record is stored as one JSON value, so an open-ended map would grow without limit under a caller that sends a new id on every request. The user is a field on PlugRequest, set by the pure decoders, so every front-end and the session caller see the same sanitized value. The decoders call one helper, so the rule lives in one place (src/user.ts).
+
+Checked with unit tests for the sanitizer table, the dropped rule, the per-user counts, the 200-user cap (201 users give _other) and the user filter, a caller test for the title prefix, and loopback tests for every front-end's user reaching the log line, the dropped header, the usage report and the filter. Two mutations were added for I26 (the cap off by one, and an unsanitized value), and both are killed. Ratchet floors are raised. Typecheck, bun test, check-pack and smoke-pack pass.
+
+Invariant I26 in docs/architecture.md.
+
+Fixes #57
+
+**feat(session): link a request to its OpenCode session page** ([`8aa2d6a`](https://github.com/jjjermiah/opencode-plugboard/commit/8aa2d6a75dc2e84389377e15d42e8f16322a8c4b))
+
+x-plugboard-session gives an id, but nothing an operator can click. The host exposes no UI URL to a plugin, and the right URL depends on how the operator reaches OpenCode, so this adds option historyUrl: a template with {id} and an optional {directory}. When it is set, every response that carries x-plugboard-session also carries x-plugboard-session-url with the filled link, and the request log line gains session_url=.
+
+Decisions. The template is checked when the config loads. It must be an http(s) URL that contains {id}, and the only other placeholder allowed is {directory}, so a typo such as {sesion} fails at load instead of producing links that point nowhere. Both values are URL-encoded when they are filled in, so a session id or a path cannot add a segment or a query to the operator's URL (I27). {directory} is the app's real directory on the OpenCode host. I kept it because a UI link may need it, but it shows that path to every caller that reads the header, so the docs say to leave it out unless it is needed. The caller passes the directory with onRecord as an optional second argument, so the record id contract stays the same for every existing caller. A cache hit writes no session and so has no link. With n above 1 the links are comma separated in choice order, like the session ids.
+
+Checked with unit tests for the template rules (accepted forms, refused forms with their messages) and the encoding of both placeholders, loopback tests for Chat Completions, Responses and Messages (header and log field), the n fan-out ordering, and the absence of both without the option, and a caller test that onRecord receives the app directory. One mutation was added for I27 (the id unencoded), and it is killed. Ratchet floors are raised. Typecheck, bun test, check-pack and smoke-pack pass. Not run on a live server: the dev server loads the main checkout, so the live check waits for the merge.
+
+Fixes #77
+
+#### Tests
+
+**test(tests): raise the floors for the persona tests** ([`5ab7b56`](https://github.com/jjjermiah/opencode-plugboard/commit/5ab7b56768d721e1be7a1a623fe78fe65bc6e631))
+
+The skill and agent tests added 48 tests across the unit, session and http layers, and new session and runtime code moved line coverage to 97.7% and function coverage to 92.2%. Ran `bun .github/scripts/test-gates.ts .coverage --ratchet` after a full coverage run: test-count floors go from session 194 to 209, unit 798 to 830 and http 257 to 261; coverage floors go from 97.5 to 97.7 lines and 91.7 to 92.2 functions. No floor was lowered.
+
+Before the host-adapter tests were added, the new closures in src/session/host.ts left coverage at 97.3% and 91.5%, below the existing floors, so the ratchet was not run until they were covered.
+
+Refs #79
+Refs #6
+
+**test(tests): ratchet floors after rebasing onto 0.18** ([`81f7b82`](https://github.com/jjjermiah/opencode-plugboard/commit/81f7b8286a5e8b7fcde965e0a35984aee6224e78))
+
+Rebasing the persona work onto main (budgets, stop sequences, usage on the call context) brought in more tests. The merged floors took the maximum per key, and the ratchet then raised them to the counts of the rebased tree: http 277 to 299, unit 835 to 921, and the other layers unchanged. Coverage rose to 97.9% lines and 92.7% functions, so the floors go from 97.7 and 92.2 to the same values. No floor was lowered.
+
+Checked with bun test --coverage and bun .github/scripts/test-gates.ts .coverage --ratchet on the rebased tree (1727 pass, 0 fail).
+
+Refs #6
+Refs #79
+
+**test(tests): point the I15 mutation at the current auth line, and fix VERSION** ([`ea44be6`](https://github.com/jjjermiah/opencode-plugboard/commit/ea44be6ce45f2e29350d7077293cc5c341279c77))
+
+The I15-unknown-route-before-auth mutation searched for an auth line that no longer exists. Since the route read the live options, the Gemini credential check was renamed googleShaped, and runtime app keys added an await runtimeDigests() argument, the find text occurred zero times. So bun run mutations reported this entry as "not killed" and exited 1, which hid whether the guard was still tested at all. The find and replace now match the line as it is on main after the rebase, and the replacement keeps the same unknown-route check before authentication.
+
+The 25 entries all pass now: 25 of 25 killed, exit 0. The guard is still covered by test/http/ingress.test.ts and test/http/observability.test.ts, which fail under the mutation (6 failing lines).
+
+docs/architecture.md said the runtime VERSION was "currently 11". It is 14 after the runtime key store (#55) and the budgets already on main. The number is now 14, as approved, and no other text in that section changed.
+
+The test floors and the coverage floors are raised to the current values (test-count: http 321, unit 929, session 197; lines 97.7, functions 92.5). Nothing was lowered.
+
+Checked with bun run typecheck (exit 0), bun test (1745 pass, 0 fail), bun test --coverage with bun .github/scripts/test-gates.ts (all floors met), bun run coverage-manifest (matches the router), bun run mutations (25 of 25 killed), check-pack (62 files, matched by files) and smoke-pack (smoke ok).
+
+#### Docs
+
+**docs(docs): document skill aliases and agents** ([`9e38f04`](https://github.com/jjjermiah/opencode-plugboard/commit/9e38f04deb3702da631cc611a1c22fb1dd11b238))
+
+docs/configuration.md gets the `skill:` alias target, the `agents` option and a section on both, including the permission model: agents never run a server-side tool in this release, every OpenCode tool stays denied, and caller tools go back to the caller. The option table lists both options, the response cache note says persona answers are never cached, and the architecture page gains a section on how a skill and an agent enter the context hook, which invariants they keep (I8, I9, I10, I11) and why the permissions do not change.
+
+The agents section links #82 for the trusted-tools question, which is where server-side tool execution would be decided.
+
+Refs #79
+Refs #6
+
+**docs(docs): spell out the permission model for agents** ([`d8623ae`](https://github.com/jjjermiah/opencode-plugboard/commit/d8623ae38de61bc49f1a55e7c6f3626a9bcdb470))
+
+The agents section of docs/configuration.md now has its own permission model: agents never run a server tool, every OpenCode tool stays denied, caller tools go back to the caller unexecuted, and persistent "always" approvals do not reopen a denied tool. docs/architecture.md now cites the host source for the order the rules are combined in, instead of relying on a comment in src/session/seeds.ts.
+
+The order was checked in anomalyco/opencode at v2.0.26. The session stores the create input's agent and permissions (packages/core/src/session.ts:284-288). Rules are merged agent first, session last (packages/core/src/permission.ts: 158-163, merge at :99-101). evaluate takes the last matching rule (:87-97), so the session's deny * wins over any agent allow. The deny check runs before saved rules are appended (:165-176). No host behaviour changed and no code changed, so there was no bug to fix. A live check on an isolated server is still the real proof of the host behaviour.
+
+Refs #6
+Refs #79
+
+**docs(changelog): notes for runtime keys, end users, session links, skills and agents** ([`6d80758`](https://github.com/jjjermiah/opencode-plugboard/commit/6d807585427161cfd2eedb57dc7d65469cb24100))
+
+Curated [Unreleased] entries for #55, #57, #77, #79 and #6 (first part), plus runtime version 14. Checked live on the isolated dev server: an admin key created a runtime key that then answered a chat call, the user field showed up under users in GET /v1/usage, x-plugboard-session and x-plugboard-usage were present, and agent/plan was listed and answered. Pinned install examples bumped to 0.20.0.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.19.0] - 2026-10-11: Spend Within Your Means
 
@@ -2181,7 +2318,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.16.0...v0.17.0
