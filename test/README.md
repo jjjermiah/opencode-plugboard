@@ -56,6 +56,12 @@ bun .github/scripts/bench-gate.ts run.json --summary
 
 `.ci/bench-baseline.json` holds the median per benchmark (ns) from one machine. The gate fails when a median is more than 2x its baseline, or when a baseline entry did not run. Runners differ from that machine, so the CI job is advisory. To move the baseline after an intended change, run the bench on the same kind of machine, `bun .github/scripts/bench-gate.ts run.json --update`, and commit it with the change.
 
+## Mutation catalogue (#111)
+
+`test/mutations/catalogue.ts` lists the guards that must never break silently, each as one exact text in one source file, the replacement that breaks it, and the test files that must fail. Invariant numbers cite `docs/architecture.md`. `bun run mutations` copies the source and tests to a temporary directory, checks that the named tests pass unmodified, then applies each entry there and requires a failing test. The working tree is never touched. A surviving entry is a gap in the tests: add the test, never delete the entry. The weekly workflow `.github/workflows/mutations.yml` runs it; it is not part of `bun test`.
+
+Adding a guard: pick a snippet that occurs once, make sure a test names the behaviour, and run `bun run mutations -- --only <id>`.
+
 ## Shared fakes (`support/`)
 
 ### `fixtures.ts`

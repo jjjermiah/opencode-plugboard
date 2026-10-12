@@ -29,6 +29,8 @@ The suite runs on `bun test`. It is fast and never talks to a real OpenCode serv
 
 Benchmarks (`bun run bench`) are not part of `bun test`. The CI job that gates them against `.ci/bench-baseline.json` is advisory. See [test/README.md](test/README.md#benchmarks-118). Move the baseline only for a change that is meant to move the numbers, and say why in the commit.
 
+A guard listed in `test/mutations/catalogue.ts` (the invariants in `docs/architecture.md`) must keep a test that fails when it breaks. Run `bun run mutations` after touching one. A new guard gets an entry in the same change.
+
 The tests do not replace a live run for host behaviour: run the change on an isolated server too.
 
 ## Never try a change on your real OpenCode

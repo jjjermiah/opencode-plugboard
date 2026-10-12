@@ -22,6 +22,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
     "test": "bun test",
     "bench": "bun test/bench/request.bench.ts",
+    "mutations": "bun .github/scripts/mutation-check.ts",
     "smoke:pack": "bun .github/scripts/smoke-pack.ts",
     "release": "bun .github/scripts/release.ts"
   },

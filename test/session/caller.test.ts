@@ -68,6 +68,14 @@ describe("one request, one kept session", () => {
     expect(logs.of("request.finished")[0]!.fields).toMatchObject({ app: "app", model: "fast", outcome: "finish:stop" })
   })
 
+  // The other tests compare against REQUEST_PERMISSIONS itself, so a flipped entry would pass them. Pin the list.
+  test("I8 request sessions deny every tool, then allow only the seed tools", () => {
+    expect(REQUEST_PERMISSIONS).toEqual([
+      { action: "*", resource: "*", effect: "deny" },
+      { action: "plugboard_seed_*", resource: "*", effect: "allow" },
+    ])
+  })
+
   test("data URL images become prompt files named by position", async () => {
     const run = setup()
     run.answer((id) => [bus(id).stepEnded(), bus(id).executionSucceeded()])
