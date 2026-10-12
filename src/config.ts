@@ -50,6 +50,8 @@ export interface PlugboardOptions {
   readonly modelIds: ModelIds
   /** Concurrency caps and requests per minute per app (see `src/limits.ts`). Absent: unlimited. */
   readonly limits?: Limits
+  /** Per-app budgets (see `src/budgets.ts`): ceilings on requests, tokens and cost per UTC day, week or month. Needs `usage`. Absent: no budgets. */
+  readonly budgets?: Budgets
   /** Opt-in exact-match response cache (see `src/cache.ts`). Absent: off. */
   readonly cache?: CacheConfig
   /** Per-app usage statistics (see `src/usage.ts`): recorded and served by `GET /v1/usage` and the RPC. */
@@ -99,6 +101,34 @@ export interface Limits {
   readonly apps?: Readonly<Record<string, LimitCaps>>
 }
 
+/** What a budget counts: HTTP requests on the model routes (refusals by `limits` or budgets left out), tokens, or cost in USD. */
+export type BudgetMetric = "requests" | "tokens" | "costUsd"
+/** The windows a budget resets on: a UTC calendar day, an ISO week (Monday start) or a calendar month (UTC). */
+export type BudgetWindow = "day" | "week" | "month"
+
+/** Ceilings per window. A window that is not set has no ceiling. */
+export interface BudgetWindows {
+  readonly day?: number
+  readonly week?: number
+  readonly month?: number
+}
+
+/** One set of ceilings. A metric that is not set is unlimited. `costUsd` is an estimate at list prices. */
+export interface Budget {
+  readonly requests?: BudgetWindows
+  readonly tokens?: BudgetWindows
+  readonly costUsd?: BudgetWindows
+}
+
+/**
+ * Option `budgets`. `perApp` applies to every app; `apps.<name>` replaces `perApp` metric by metric for
+ * that app (its `requests` replaces `perApp.requests`, the other metrics still come from `perApp`).
+ */
+export interface Budgets {
+  readonly perApp?: Budget
+  readonly apps?: Readonly<Record<string, Budget>>
+}
+
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
 export const DEFAULT_APP = "default"
 const DEFAULTS = {
@@ -109,7 +139,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "cache", "usage"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -304,6 +334,68 @@ function parseCache(value: unknown, keys: Readonly<Record<string, string>>): Cac
   return { ttlSeconds, maxEntries, maxBytes, apps: [...new Set(value.apps as string[])] }
 }
 
+const BUDGET_METRICS: ReadonlyArray<BudgetMetric> = ["requests", "tokens", "costUsd"]
+const BUDGET_WINDOWS: ReadonlyArray<BudgetWindow> = ["day", "week", "month"]
+/** The most days a window can span: a month is up to 31. Retention must keep at least that many, or a budget would count from pruned records. */
+const WINDOW_DAYS: Readonly<Record<BudgetWindow, number>> = { day: 1, week: 7, month: 31 }
+
+/** The longest window any ceiling of `budgets` uses, in days (0 without budgets). */
+function widestWindowDays(budgets: Budgets | undefined): number {
+  let most = 0
+  for (const budget of [budgets?.perApp, ...Object.values(budgets?.apps ?? {})])
+    for (const metric of [budget?.requests, budget?.tokens, budget?.costUsd])
+      for (const window of Object.keys(metric ?? {}) as BudgetWindow[]) most = Math.max(most, WINDOW_DAYS[window])
+  return most
+}
+
+/**
+ * Validates `budgets`: `{ perApp?, apps? }`, each a budget of `requests`, `tokens` and `costUsd`, each of
+ * those a map of window (`day`, `week`, `month`) to a positive limit. Counts are integers, costs any positive
+ * number of USD. An `apps` entry must name a configured app, as in `limits`.
+ */
+function parseBudgets(raw: unknown, keys: Readonly<Record<string, string>>): Budgets | undefined {
+  if (raw === undefined) return undefined
+  if (!isRecord(raw)) throw new Error("plugboard option `budgets` must be an object")
+  for (const key of Object.keys(raw))
+    if (key !== "perApp" && key !== "apps") throw new Error(`Unknown plugboard option \`budgets.${key}\` (known: perApp, apps)`)
+
+  const budget = (value: unknown, at: string): Budget => {
+    if (!isRecord(value)) throw new Error(`plugboard option \`${at}\` must be an object`)
+    for (const key of Object.keys(value))
+      if (!BUDGET_METRICS.includes(key as BudgetMetric)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${BUDGET_METRICS.join(", ")})`)
+    const parsed: Record<string, Record<string, number>> = {}
+    for (const metric of BUDGET_METRICS) {
+      const windows = value[metric]
+      if (windows === undefined) continue
+      const field = `${at}.${metric}`
+      if (!isRecord(windows)) throw new Error(`plugboard option \`${field}\` must be an object of window (${BUDGET_WINDOWS.join(", ")}) to limit`)
+      const limits: Record<string, number> = {}
+      for (const window of Object.keys(windows)) {
+        if (!BUDGET_WINDOWS.includes(window as BudgetWindow)) throw new Error(`Unknown plugboard option \`${field}.${window}\` (known: ${BUDGET_WINDOWS.join(", ")})`)
+        const limit = windows[window]
+        if (limit === undefined) continue
+        if (metric === "costUsd") {
+          if (typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0) throw new Error(`plugboard option \`${field}.${window}\` must be a positive number of USD`)
+          limits[window] = limit
+        } else limits[window] = positiveInt(limit, `${field}.${window}`, 0, Number.MAX_SAFE_INTEGER)
+      }
+      parsed[metric] = limits
+    }
+    return parsed as Budget
+  }
+
+  const perApp = raw.perApp === undefined ? undefined : budget(raw.perApp, "budgets.perApp")
+  if (raw.apps !== undefined && !isRecord(raw.apps)) throw new Error("plugboard option `budgets.apps` must be an object of app name -> budget")
+  const apps: Record<string, Budget> = {}
+  for (const [app, value] of Object.entries(isRecord(raw.apps) ? raw.apps : {})) {
+    const at = `budgets.apps.${app}`
+    const configured = app === DEFAULT_APP ? Object.keys(keys).length === 0 : Object.hasOwn(keys, app)
+    if (!configured) throw new Error(`plugboard option \`${at}\` must name a configured app (a key in \`keys\`; \`${DEFAULT_APP}\` only without keys)`)
+    apps[app] = budget(value, at)
+  }
+  return { ...(perApp === undefined ? {} : { perApp }), ...(raw.apps === undefined ? {} : { apps }) }
+}
+
 /** Validates raw plugin options and applies defaults. Throws `Error` with an actionable message. */
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
@@ -397,6 +489,10 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const limits = parseLimits(input.limits, keys)
   const cache = parseCache(input.cache, keys)
   const usage = parseUsage(input.usage)
+  const budgets = parseBudgets(input.budgets, keys)
+  if (budgets !== undefined && !usage.enabled) throw new Error("plugboard option `budgets` needs `usage` enabled: budgets are counted from the usage records")
+  if (budgets !== undefined && usage.retentionDays < widestWindowDays(budgets))
+    throw new Error(`plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`)
 
   return {
     listen: { host, port: port ?? DEFAULTS.port },
@@ -417,6 +513,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     ...(limits === undefined ? {} : { limits }),
     ...(cache ? { cache } : {}),
     usage,
+    ...(budgets === undefined ? {} : { budgets }),
     ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
   }
 }

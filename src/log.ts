@@ -142,5 +142,8 @@ export const log = (event: string, fields?: LogFields): void => state().logger.i
 
 export const logError = (event: string, fields?: LogFields): void => state().logger.error(record(event, fields))
 
+/** A line for something that needs attention but did not fail a request (a budget at 80%). Info-level destination, `warn` in the level field. */
+export const logWarn = (event: string, fields?: LogFields): void => state().logger.warn(record(event, fields))
+
 /** The message of a thrown value, without its stack or attached properties. */
 export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))

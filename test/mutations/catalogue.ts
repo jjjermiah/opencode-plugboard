@@ -148,6 +148,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/unit/limits.test.ts"],
   },
   {
+    id: "budget-refuses-at-the-ceiling",
+    invariant: "budgets",
+    file: "src/budgets.ts",
+    find: "    if (used >= limit) {",
+    replace: "    if (used > limit) {",
+    tests: ["test/unit/budgets.test.ts", "test/http/budgets.test.ts"],
+  },
+  {
     id: "fallback-retries-after-abort",
     invariant: "fallback",
     file: "src/fallback.ts",

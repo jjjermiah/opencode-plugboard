@@ -51,6 +51,7 @@ import { isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
+import { budgetFor, budgetStatus } from "../budgets.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
@@ -331,6 +332,14 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       app: who.admin ? app : who.app,
     })
     if (isPlugError(report)) return fail(response, report)
+    // Each app's budget state, read from its current window rather than from the report's range (src/budgets.ts).
+    if (host.options.budgets) {
+      const at = Date.now()
+      for (const [name, entry] of Object.entries(report.apps)) {
+        const budget = budgetFor(host.options.budgets, name)
+        if (budget) entry.budgets = await budgetStatus(usage, budget, name, at)
+      }
+    }
     return sendJson(response, 200, report)
   }
 

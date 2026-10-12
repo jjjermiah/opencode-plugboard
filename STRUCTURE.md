@@ -24,6 +24,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. |
 | `limits.ts` | Concurrency caps and requests per minute per app (option `limits`): a `ModelCaller` wrapper outside the fallbacks, with its queues on the runtime. |
 | `stop.ts` | Caller stop sequences on the answer text: the tail check of a plain stop and the streamed holdback, shared by every front-end that has `stop` (#145, #149). |
+| `budgets.ts` | Per-app budgets (option `budgets`): requests, tokens and cost per UTC day, week or month, read from the usage records. A `ModelCaller` wrapper outside `limits.ts`, with its warning state on the runtime. |
 | `http.ts` | Ingress and transport: body limits, Host and Origin checks, disconnect abort, the one deadline, JSON and SSE writers. |
 | `runtime.ts` | The process-wide runtime on `globalThis`: generations, confirmed app directories, `ensureBackend`, the listener, the event pump, the session store, history sweep state, the metrics registry. |
 | `discovery.ts` | Pure builders for `GET /`, `GET /v1` and `GET /v1/status`, and `sendText`. |

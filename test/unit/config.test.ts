@@ -168,6 +168,45 @@ describe("usage and adminKey options", () => {
   })
 })
 
+describe("#60 budgets option", () => {
+  test("budgets are kept as given per app, and absent when not set", () => {
+    const budgets = {
+      perApp: { requests: { day: 100 }, tokens: { week: 10_000 }, costUsd: { month: 2.5 } },
+      apps: { a: { requests: { day: 5, month: 50 } } },
+    }
+    expect(parseOptions({ keys: { a: "k" }, budgets }).budgets).toEqual(budgets)
+    expect(parseOptions({ budgets: {} }).budgets).toEqual({})
+    expect(parseOptions({}).budgets).toBeUndefined()
+  })
+
+  test("the retention keeps every day a window in use can span", () => {
+    expect(parseOptions({ budgets: { perApp: { requests: { month: 5 } } }, usage: { retentionDays: 31 } }).budgets).toEqual({ perApp: { requests: { month: 5 } } })
+    expect(parseOptions({ budgets: { perApp: { requests: { day: 5 } } }, usage: { retentionDays: 1 } }).budgets).toEqual({ perApp: { requests: { day: 5 } } })
+  })
+
+  test("budgets need usage recording: they are refused when usage is off", () => {
+    expect(() => parseOptions({ budgets: { perApp: { requests: { day: 1 } } }, usage: { enabled: false } })).toThrow("needs `usage` enabled")
+  })
+
+  test.each([
+    ["a budgets that is not an object", { budgets: 5 }, /`budgets` must be an object/],
+    ["an unknown budgets key", { budgets: { global: {} } }, /Unknown plugboard option `budgets.global`/],
+    ["an unknown budget metric", { budgets: { perApp: { rate: { day: 1 } } } }, /Unknown plugboard option `budgets.perApp.rate`/],
+    ["an unknown window", { budgets: { perApp: { requests: { hour: 1 } } } }, /Unknown plugboard option `budgets.perApp.requests.hour`/],
+    ["a metric that is a number, not windows", { budgets: { perApp: { requests: 5 } } }, /`budgets.perApp.requests` must be an object of window/],
+    ["a request ceiling of 0", { budgets: { perApp: { requests: { day: 0 } } } }, /`budgets.perApp.requests.day` must be an integer between 1/],
+    ["a fractional token ceiling", { budgets: { perApp: { tokens: { day: 1.5 } } } }, /`budgets.perApp.tokens.day` must be an integer/],
+    ["a cost ceiling of 0", { budgets: { perApp: { costUsd: { day: 0 } } } }, /`budgets.perApp.costUsd.day` must be a positive number of USD/],
+    ["a cost ceiling given as a string", { budgets: { perApp: { costUsd: { day: "1" } } } }, /must be a positive number of USD/],
+    ["an apps entry for an app with no key", { keys: { a: "k" }, budgets: { apps: { b: { requests: { day: 1 } } } } }, /`budgets.apps.b` must name a configured app/],
+    ["an apps entry for default when keys exist", { keys: { a: "k" }, budgets: { apps: { default: { requests: { day: 1 } } } } }, /`budgets.apps.default` must name a configured app/],
+    ["a monthly ceiling with retention under 31 days", { budgets: { perApp: { requests: { month: 5 } } }, usage: { retentionDays: 30 } }, /`usage.retentionDays` must be at least 31/],
+    ["a weekly ceiling with retention under 7 days", { budgets: { perApp: { tokens: { week: 5 } } }, usage: { retentionDays: 6 } }, /`usage.retentionDays` must be at least 7/],
+  ])("%s is refused at load", (_name, input, message) => {
+    expect(() => parseOptions({ usage: {}, ...input })).toThrow(message)
+  })
+})
+
 describe("isLoopbackHost: exactly the Host check's set", () => {
   test.each([
     ["localhost", true],
