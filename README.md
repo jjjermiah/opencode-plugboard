@@ -43,7 +43,7 @@ export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.19.0",
+      "package": "opencode-plugboard@0.20.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
         "models": ["anthropic/claude-sonnet-4-6", "github-copilot/*", "opencode-go/glm-5.3-flash"],
@@ -390,7 +390,7 @@ A server shared by a Discord bot, n8n, Open WebUI and a coding agent, with most 
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.19.0",
+      "package": "opencode-plugboard@0.20.0",
       "options": {
         // Reachable from the LAN. Non-loopback hosts refuse to start without keys.
         "listen": { "host": "10.0.1.50", "port": 4010 },

@@ -14,7 +14,30 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Manage app keys without touching the config** ([#55](https://github.com/jjjermiah/opencode-plugboard/issues/55)). With `adminKey` set:
+
+  ```sh
+  curl -X POST http://127.0.0.1:4010/v1/admin/keys -H "Authorization: Bearer $ADMIN" -d '{"app":"n8n"}'
+  # {"id":"057fcda3","app":"n8n","key":"kxwn...","createdAt":"..."}   the key is shown once
+  curl http://127.0.0.1:4010/v1/admin/keys -H "Authorization: Bearer $ADMIN"
+  curl -X DELETE http://127.0.0.1:4010/v1/admin/keys/057fcda3 -H "Authorization: Bearer $ADMIN"
+  ```
+
+  Runtime keys are stored as SHA-256 digests in plugboard's storage, survive restarts, and stop working on the next request after a delete. Config keys can't be deleted this way (409).
+- **Know who is talking** ([#57](https://github.com/jjjermiah/opencode-plugboard/issues/57)). The OpenAI `user` field and Anthropic `metadata.user_id` now prefix the session title (`[alice] ...`), appear in the request log, and get their own counts in `GET /v1/usage` (`users` per app, `?user=` to filter). A value that can't be kept safely (over 64 characters, or characters outside letters, digits and `. _ @ : -`) is dropped and the answer says `x-plugboard-user-dropped: 1`.
+- **Click through to the session** ([#77](https://github.com/jjjermiah/opencode-plugboard/issues/77)). Set `"historyUrl": "http://aihub:4096/session/{id}"` and every answer carries `x-plugboard-session-url`, also logged as `session_url`.
+- **Skills as models** ([#79](https://github.com/jjjermiah/opencode-plugboard/issues/79)). Bind an OpenCode skill to a model with an alias, and a client calls it by name without knowing the instructions:
+
+  ```jsonc
+  "aliases": { "invoice-parser": "skill:invoice-parser@anthropic/claude-sonnet-4-6" }
+  ```
+- **Agents as models** ([#6](https://github.com/jjjermiah/opencode-plugboard/issues/6), first part). `"agents": [{ "name": "review", "model": "anthropic/claude-sonnet-4-6" }]` lists `agent/review`, which answers with that OpenCode agent's system prompt. It never runs a tool on the server: OpenCode merges agent rules before the session's deny-all and the last match wins.
+
+### Changed
+
+- Internal runtime version 14. Restart OpenCode after upgrading.
 
 ## [0.19.0] - 2026-10-11: Spend Within Your Means
 
