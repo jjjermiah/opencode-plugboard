@@ -35,6 +35,7 @@ import { reportCache } from "../cache.js"
 import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
+import { reportAffinity } from "../session/affinity.js"
 import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
@@ -142,6 +143,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
         },
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),
+        onAffinity: reportAffinity(response),
         onUsage: reportUsage(response, exchange.stream),
         onServerTools: reportServerTools(response, exchange.stream),
         onCache: reportCache(response),

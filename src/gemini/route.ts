@@ -24,6 +24,7 @@ import { reportCache } from "../cache.js"
 import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
+import { reportAffinity } from "../session/affinity.js"
 import type { RouteHost } from "../openai/route.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
 import { dropRejected } from "../openai/sampling.js"
@@ -167,6 +168,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
+      onAffinity: reportAffinity(response),
       onUsage: reportUsage(response, match.stream),
       onServerTools: reportServerTools(response, match.stream),
       onCache: reportCache(response),

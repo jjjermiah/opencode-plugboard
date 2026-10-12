@@ -60,6 +60,8 @@ export interface PlugboardOptions {
   readonly budgets?: Budgets
   /** Opt-in exact-match response cache (see `src/cache.ts`). Absent: off. */
   readonly cache?: CacheConfig
+  /** Provider prompt-cache affinity (see `src/session/affinity.ts`, #80, #81). Absent: off. Per app: `apps.<name>.promptCache`. */
+  readonly promptCache?: PromptCache
   /** Per-app usage statistics (see `src/usage.ts`): recorded and served by `GET /v1/usage` and the RPC. */
   readonly usage: UsageConfig
   /** A key that may read every app's usage on `GET /v1/usage`. Compared like app keys; must differ from every one of them. */
@@ -87,6 +89,19 @@ export interface UsageConfig {
 export type SystemMode = "prepend" | "append" | "replace"
 
 /**
+ * Provider prompt-cache affinity (option `promptCache`, src/session/affinity.ts). `off`: a fresh top-level session per
+ * request. `anchor`: each request session is a child of one long-lived anchor session per scope key, so OpenCode's
+ * affinity (the parent id) and the provider's cache key stay stable. `scope`: `app` (one anchor per app) or `user` (one
+ * per end user, from the request's `user` field).
+ */
+export type AffinityMode = "off" | "anchor"
+export type AffinityScope = "app" | "user"
+export interface PromptCache {
+  readonly affinity: AffinityMode
+  readonly scope: AffinityScope
+}
+
+/**
  * What the operator fixes for one app, whatever the caller sends (option `apps`). `models` only narrows the
  * global allowlist: entries are `provider/model[#variant]`, `provider/*` or alias names.
  */
@@ -111,6 +126,8 @@ export interface AppPolicy {
    * `historyUrl`. Look the effective template up with `historyTemplate`.
    */
   readonly historyUrl?: string | false
+  /** This app's prompt-cache affinity (option `apps.<name>.promptCache`). Absent: the global `promptCache`. */
+  readonly promptCache?: PromptCache
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -187,7 +204,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -265,7 +282,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "historyUrl"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "historyUrl", "promptCache"])
 const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
 const MAX_SERVER_TOOLS = 32
 const MAX_SERVER_TOOL_STEPS = 100
@@ -328,6 +345,7 @@ function parseApps(
 
     // `false` turns the link off for this app; a string is its own template (validated like the global one).
     const historyUrl = value.historyUrl === false ? false : parseHistoryUrl(value.historyUrl, `plugboard option \`apps.${app}.historyUrl\``)
+    const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -337,12 +355,28 @@ function parseApps(
       ...(serverTools === undefined ? {} : { serverTools }),
       ...(maxServerToolSteps === undefined ? {} : { maxServerToolSteps }),
       ...(historyUrl === undefined ? {} : { historyUrl }),
+      ...(promptCache === undefined ? {} : { promptCache }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
+}
+
+const AFFINITY_MODES = new Set(["off", "anchor"])
+const AFFINITY_SCOPES = new Set(["app", "user"])
+const PROMPT_CACHE_KNOWN = new Set(["affinity", "scope"])
+
+/** Option `promptCache` (global or per app): `undefined` when absent. Both fields are required once the object is given. */
+export function parsePromptCache(raw: unknown, at: string): PromptCache | undefined {
+  if (raw === undefined) return undefined
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object: { affinity, scope }`)
+  for (const key of Object.keys(raw))
+    if (!PROMPT_CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: affinity, scope)`)
+  if (typeof raw.affinity !== "string" || !AFFINITY_MODES.has(raw.affinity)) throw new Error(`plugboard option \`${at}.affinity\` must be \`off\` or \`anchor\``)
+  if (typeof raw.scope !== "string" || !AFFINITY_SCOPES.has(raw.scope)) throw new Error(`plugboard option \`${at}.scope\` must be \`app\` or \`user\``)
+  return { affinity: raw.affinity as AffinityMode, scope: raw.scope as AffinityScope }
 }
 
 /** Validates one set of caps (`limits.perApp`, or one `limits.apps` entry): each cap is a positive integer. */
@@ -642,8 +676,10 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (budgets !== undefined && usage.retentionDays < widestWindowDays(budgets))
     throw new Error(`plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`)
   const historyUrl = parseHistoryUrl(input.historyUrl)
+  const promptCache = parsePromptCache(input.promptCache, "promptCache")
 
   return {
+    ...(promptCache === undefined ? {} : { promptCache }),
     listen: { host, port: port ?? DEFAULTS.port },
     keys,
     apps,

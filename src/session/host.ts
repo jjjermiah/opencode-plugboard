@@ -29,6 +29,8 @@ export interface SessionPort {
     readonly title: string
     readonly metadata: { readonly [key: string]: Json }
     readonly permissions: ReadonlyArray<{ action: string; resource: string; effect: "allow" | "deny" }>
+    /** The anchor session this one is a child of (`promptCache` affinity `anchor`). A child takes its parent's location, so `directory` is not sent. */
+    readonly parentID?: string
   }): Promise<{ id: string }>
   prompt(input: { readonly sessionID: string; readonly text: string; readonly files: ReadonlyArray<{ uri: string; name: string }> }): Promise<unknown>
   interrupt(sessionID: string): Promise<void>
@@ -88,14 +90,22 @@ export function createSessionPort(ctx: HostContext): SessionPort {
   return {
     create: (input) =>
       run(
-        ctx.session.create({
-          model: hostModel(input.model),
-          ...(input.agent === undefined ? {} : { agent: input.agent as HostAgent }),
-          title: input.title,
-          metadata: input.metadata,
-          permissions: input.permissions,
-          location: { directory: hostDirectory(input.directory) },
-        } satisfies HostCreate),
+        input.parentID === undefined
+          ? ctx.session.create({
+              model: hostModel(input.model),
+              ...(input.agent === undefined ? {} : { agent: input.agent as HostAgent }),
+              title: input.title,
+              metadata: input.metadata,
+              permissions: input.permissions,
+              location: { directory: hostDirectory(input.directory) },
+            } satisfies HostCreate)
+          : ctx.session.create({
+              model: hostModel(input.model),
+              title: input.title,
+              metadata: input.metadata,
+              permissions: input.permissions,
+              parentID: input.parentID as NonNullable<HostCreate["parentID"]>,
+            } satisfies HostCreate),
       ).then((created) => ({ id: String(created.id) })),
     skill: async (directory, id) => {
       const now = Date.now()

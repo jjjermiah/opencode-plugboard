@@ -27,6 +27,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` bound request bodies, see [Request bodies](#request-bodies). |
 | `budgets` | none (unlimited) | Per-app ceilings on requests, tokens and cost for a UTC day, week or month: `{ perApp?, apps? }`. Needs `usage` on. A call over a ceiling gets 429 `budget_exceeded`. See [Budgets](#budgets). |
 | `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
+| `promptCache` | `{ affinity: "off", scope: "app" }` | Provider prompt-cache affinity: `affinity` `off` or `anchor`, `scope` `app` or `user`. Also per app as `apps.<name>.promptCache`. See [Prompt-cache affinity](#prompt-cache-affinity). |
 | `historyUrl` | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
@@ -251,6 +252,27 @@ What is kept: answers that ended normally (`stop` or `length`) with text or reas
 A hit replays the stored answer as JSON or as a stream (the text arrives in one chunk), with the same `x-plugboard-model` and `x-plugboard-policy` headers as the original, and reports zero token usage. A hit is answered before the [budgets](#budgets) and the [limits](#concurrency-and-rate-limits): it spends no budget, takes no concurrency slot and counts toward no requests-per-minute window. Every answer carries `x-plugboard-cache: hit` or `miss`. Sampling still matters: with `temperature` above 0, a hit repeats the first answer instead of drawing a new one, so use `apps` to limit the cache to callers that want that.
 
 The cache lives in memory. A server restart, or a change to `cache`, `apps`, `models` or `aliases`, empties it, so a hit can never serve a model the current policy no longer allows. With `metrics` on, `plugboard_cache_requests_total{app,result}` counts hits and misses.
+
+## Prompt-cache affinity
+
+Providers cache a prompt by its prefix. Some also route by a session key: OpenAI takes `prompt_cache_key`, and the ChatGPT subscription takes a `session-id` header. OpenCode derives that key from the session's affinity, which is the session's parent when it has one, else the session itself. Each plugboard request is a new session, so with the default the key changes on every request and the provider cannot route to the cache it wrote.
+
+```jsonc
+"promptCache": { "affinity": "anchor", "scope": "app" }
+```
+
+With `anchor`, plugboard creates one long-lived anchor session per scope key and makes each request session its child. The anchor is never prompted, and it is not pruned. The request session still runs in the app directory, with its own history entry, session link and usage. Only the affinity changes: it stays the anchor's id.
+
+| `scope` | One anchor per | A request without the key |
+|---|---|---|
+| `app` (default) | app | not applicable: every request has it |
+| `user` | end user (the `user` field of the request) | no affinity: a fresh session, as with `off` |
+
+Set it for every app as `promptCache`, or for one app as `apps.<name>.promptCache`; the app's own value wins. Every response from an app with affinity carries `x-plugboard-affinity: anchor`.
+
+Measured on the dev server (2026-10-12, runs 2 to 4 of a repeated prompt, about 4,000 tokens): ChatGPT subscription models (`openai/*`) hit the cache on 8 of 9 repeat runs with `anchor` and 2 of 9 with `off`. Anthropic, Copilot GPT and Qwen already cached without it and were unchanged. GLM and Copilot Gemini showed no cache reads in any mode. Expect a gain on ChatGPT only.
+
+Anchors are kept. There is one per app, or one per user under `scope: "user"`, and each is a session in OpenCode's list. A restart keeps them, because they are stored in the host.
 
 ## Usage statistics
 

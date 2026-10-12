@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I29-anchor-shared-across-apps",
+    invariant: "I29",
+    file: "src/session/affinity.ts",
+    find: "const id = recordKey(app, scope, key)",
+    replace: 'const id = recordKey("shared", scope, key)',
+    tests: ["test/session/affinity.test.ts"],
+  },
+  {
     id: "I24-metrics-app-key-reads-all-apps",
     invariant: "I24",
     file: "src/openai/route.ts",

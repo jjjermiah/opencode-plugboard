@@ -187,6 +187,8 @@ export interface CallContext {
   readonly onCache?: (result: "hit" | "miss") => void
   /** Bypass the response cache for this call. Fan-out sets it: each choice of `n` above 1 repeats one request and must be a fresh sample. */
   readonly noCache?: boolean
+  /** Called once, before the first event, when prompt-cache affinity (`promptCache` mode `anchor`) applied to the call. The chat front-end reports it in `x-plugboard-affinity`. */
+  readonly onAffinity?: () => void
   /**
    * Called once per answered call, before its finish event, when usage recording is on (`withUsage`,
    * src/usage.ts): the call's tokens and USD cost. Front-ends set `x-plugboard-usage` from it while the
