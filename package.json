@@ -32,6 +32,8 @@
     "flake-hunt": "bun .github/scripts/flake-hunt.ts",
     "coverage-manifest": "bun .github/scripts/coverage-manifest.ts",
     "smoke:pack": "bun .github/scripts/smoke-pack.ts",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
     "release": "bun .github/scripts/release.ts"
   },
   "dependencies": {
@@ -77,7 +79,8 @@
     "openai": "7.32.0",
     "semver": "7.8.5",
     "solid-js": "1.9.15",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitepress": "1.6.4"
   },
   "peerDependencies": {
     "@opencode/plugin": ">=2.0.26 <2.1",

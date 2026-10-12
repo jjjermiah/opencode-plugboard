@@ -1,0 +1,29 @@
+# Open WebUI, pointed at plugboard on the host. Plugboard must already run, bound to a
+# non-loopback address with `keys` set (see README.md next to this file).
+#
+#   export PLUGBOARD_KEY_OPEN_WEBUI=<the same value as the open-webui key in plugboard's options>
+#   docker compose up -d
+#
+# Then open http://127.0.0.1:3000 and pick `fast` in the model list.
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:0.12.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:8080"
+    # Lets the container reach the host's plugboard port on Linux. Docker Desktop and Colima
+    # already provide the name; the entry is harmless there.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      OPENAI_API_BASE_URL: http://host.docker.internal:4010/v1
+      OPENAI_API_KEY: ${PLUGBOARD_KEY_OPEN_WEBUI:?set PLUGBOARD_KEY_OPEN_WEBUI to the open-webui plugboard key}
+      # Only the plugboard connection: no local Ollama.
+      ENABLE_OLLAMA_API: "false"
+      # Preselect the alias from plugboard's `aliases` option in new chats.
+      DEFAULT_MODELS: fast
+    volumes:
+      - open-webui:/app/backend/data
+
+volumes:
+  open-webui:
