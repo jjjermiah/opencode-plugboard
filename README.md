@@ -33,7 +33,7 @@ client ──▶ plugboard listener ──▶ OpenCode session ──▶ provide
 
 ## Quick start
 
-Tested on OpenCode 2.0.26. The peer range `>=2.0.26 <2.1` allows 2.0.x patch releases.
+Tested on OpenCode 2.0.26 and 2.0.27. The peer range `>=2.0.26 <2.1` allows 2.0.x patch releases; only 2.0.26 and 2.0.27 are tested.
 
 **1. Pick a key** for your app, in the environment OpenCode starts from:
 
