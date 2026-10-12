@@ -14,7 +14,18 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Usage dashboard** ([#141](https://github.com/jjjermiah/opencode-plugboard/issues/141)). Open `http://<host>:4010/dashboard`, paste a key, and see requests, tokens, estimated cost, errors, cache hits, fallbacks, 429s and p95 latency for today, 7, 30 or 90 days, with a per-app table, daily charts and a models table. The admin key sees every app; an app key sees only its own. The page loads nothing from other sites (charts are uPlot, served by plugboard itself) and keeps the key in the tab's session storage only.
+- **`/plugboard` in the OpenCode TUI** ([#142](https://github.com/jjjermiah/opencode-plugboard/issues/142)). Type `/plugboard` (or pick "Plugboard usage" in the command palette) and the TUI shows the same numbers for the server it is connected to, with `t`/`w`/`m`/`q` for today, 7, 30 and 90 days. It reads the usage RPC through OpenCode's own authenticated API, so no key is needed. OpenTUI and Solid are optional peers, so server-only installs don't pull them.
+- **Copyable examples** ([#71](https://github.com/jjjermiah/opencode-plugboard/issues/71)): an Open WebUI compose file, a 50-line tool-calling bot and curl one-liners for every API, in `examples/`.
+- **Docs site** ([#72](https://github.com/jjjermiah/opencode-plugboard/issues/72)): the docs now build into a searchable site at https://jjjermiah.github.io/opencode-plugboard/, and the repository is public with Discussions open.
+
+### Changed
+
+- **The README is rewritten around real usage**: the endpoints are a table, and every feature has its own heading with a config snippet you can paste.
+- **Packaging** ([#69](https://github.com/jjjermiah/opencode-plugboard/issues/69)): the package declares `engines.bun >=1.4.2` and `types`, exports `./tui` and `./rpc` from root files (so local-path installs find them too), and keeps shipping TypeScript source; `docs/packaging.md` explains why.
+- **Test tooling** ([#111](https://github.com/jjjermiah/opencode-plugboard/issues/111), [#115](https://github.com/jjjermiah/opencode-plugboard/issues/115), [#116](https://github.com/jjjermiah/opencode-plugboard/issues/116), [#118](https://github.com/jjjermiah/opencode-plugboard/issues/118), [#124](https://github.com/jjjermiah/opencode-plugboard/issues/124)): request-path benchmarks with an advisory CI gate, a 19-guard mutation catalogue (all caught) run weekly, a nightly flake hunt, a route x format coverage manifest, and the release script on the `semver` package.
 
 ## [0.17.0] - 2026-10-11: Counting Every Call
 
