@@ -251,6 +251,13 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
   return tools
 }
 
+/**
+ * A caller's tool as echoed on the response object. A function tool always carries `strict` (#289, the OpenAI
+ * FunctionTool schema requires it): the caller's boolean, or false when it was absent or null. Other entries are
+ * echoed as sent.
+ */
+const echoTool = (tool: unknown): unknown => (isRecord(tool) && tool.type === "function" ? { ...tool, strict: tool.strict === true } : tool)
+
 const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError => {
   if (raw == null) return undefined
   if (raw === "auto" || raw === "none" || raw === "required") return raw
@@ -387,7 +394,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
         temperature: generation.temperature ?? null,
         text: { format: isRecord(text?.format) ? text.format : { type: "text" } },
         tool_choice: body.tool_choice ?? "auto",
-        tools: Array.isArray(body.tools) ? body.tools : [],
+        tools: Array.isArray(body.tools) ? body.tools.map(echoTool) : [],
         top_p: generation.topP ?? null,
         truncation: "disabled",
         user: typeof body.user === "string" ? body.user : null,

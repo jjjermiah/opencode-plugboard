@@ -242,7 +242,7 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
         temperature: 0.5,
         text: { format: { type: "text" } },
         tool_choice: "auto",
-        tools,
+        tools: [{ ...tools[0], strict: false }],
         top_p: 0.5,
         truncation: "disabled",
         user: "u",

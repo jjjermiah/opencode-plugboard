@@ -146,6 +146,19 @@ describe("#107 OpenAI responses conform to the vendored OpenAPI schemas", () => 
     expectConforms("openai", "Response", reply.json(), RESPONSE_GAPS)
   })
 
+  test("#289 a function tool echoed on a Response carries strict: false when the caller omitted it", async () => {
+    const reply = await server.send(json("/v1/responses", { model: "fast", input: tag("text"), tools: [{ type: "function", name: "weather", parameters: { type: "object", properties: {} } }] }))
+    expect(reply.status).toBe(200)
+    expect(reply.json().tools).toEqual([{ type: "function", name: "weather", parameters: { type: "object", properties: {} }, strict: false }])
+    expectConforms("openai", "Response", reply.json(), RESPONSE_GAPS)
+  })
+
+  test("#289 a function tool with strict: true is echoed with strict: true", async () => {
+    const reply = await server.send(json("/v1/responses", { model: "fast", input: tag("text"), tools: [{ type: "function", name: "weather", strict: true, parameters: { type: "object", properties: {} } }] }))
+    expect(reply.json().tools).toEqual([expect.objectContaining({ name: "weather", strict: true })])
+    expectConforms("openai", "Response", reply.json(), RESPONSE_GAPS)
+  })
+
   test.failing("#107 gap: a Response carries access_programs and usage.input_tokens_details.cache_write_tokens, which plugboard omits", async () => {
     const reply = await server.send(json("/v1/responses", { model: "fast", input: tag("text") }))
     expectConforms("openai", "Response", reply.json())
