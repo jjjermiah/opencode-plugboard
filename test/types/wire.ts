@@ -233,7 +233,8 @@ export const responsesResponse = {
             "type": "string"
           }
         }
-      }
+      },
+      "strict": false
     }
   ],
   "top_p": null,
@@ -293,7 +294,8 @@ export const responsesEvents = [
                 "type": "string"
               }
             }
-          }
+          },
+          "strict": false
         }
       ],
       "top_p": null,
@@ -341,7 +343,8 @@ export const responsesEvents = [
                 "type": "string"
               }
             }
-          }
+          },
+          "strict": false
         }
       ],
       "top_p": null,
@@ -528,7 +531,8 @@ export const responsesEvents = [
                 "type": "string"
               }
             }
-          }
+          },
+          "strict": false
         }
       ],
       "top_p": null,

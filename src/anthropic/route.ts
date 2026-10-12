@@ -12,7 +12,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { authenticate, bodyLimits } from "../config.js"
+import { authenticate, bodyLimits, historyTemplate } from "../config.js"
 import { liveOptions } from "../runtime.js"
 import { bodyUserId, noteEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
@@ -138,7 +138,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
         onRecord: (recordID, directory) => {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
-          setSessionLink(response, info, host.options.historyUrl, recordID, directory)
+          setSessionLink(response, info, historyTemplate(host.options, auth.app), recordID, directory)
         },
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),

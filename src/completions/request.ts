@@ -59,6 +59,7 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (body.prompt == null) return bad("prompt is required", "prompt")
+  if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
 
   if (body.logprobs != null) return unsupported("logprobs is not supported", "logprobs")
   if (body.best_of != null) {

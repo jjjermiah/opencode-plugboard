@@ -26,6 +26,7 @@ import { reportServed, type ServedInfo } from "../fallback.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
+import { historyTemplate } from "../config.js"
 import { SESSION_URL_HEADER, sessionUrl } from "../session/link.js"
 import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import {
@@ -198,8 +199,9 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           records[index] = recordID
           response.setHeader(SESSION_HEADER, records.filter((id) => id !== undefined).join(","))
-          if (host.options.historyUrl !== undefined) {
-            links[index] = sessionUrl(host.options.historyUrl, recordID, directory)
+          const template = historyTemplate(host.options, app)
+          if (template !== undefined) {
+            links[index] = sessionUrl(template, recordID, directory)
             info.sessionUrl = links.filter((link) => link !== undefined).join(",")
             response.setHeader(SESSION_URL_HEADER, info.sessionUrl)
           }

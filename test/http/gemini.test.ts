@@ -254,7 +254,7 @@ describe("#151 generateContent JSON answers: tool calls and structured output", 
     await route([ev.text("Sure, Oslo."), ev.finish("stop")])
     const reply = await server!.send(generate(undefined, { generationConfig: { responseMimeType: "application/json", responseSchema: city } }))
     expect(reply.status).toBe(502)
-    expect(reply.json()).toMatchObject({ error: { code: 502, status: "INTERNAL", message: expect.stringContaining("respond") } })
+    expect(reply.json()).toMatchObject({ error: { code: 502, status: "INTERNAL", message: expect.stringContaining("did not return JSON matching the response schema") } })
   })
 })
 
@@ -281,7 +281,7 @@ describe("#173 structured output as text, on generateContent and streamGenerateC
     await route([ev.finish("length")])
     const reply = await server!.send(generate(undefined, config))
     expect(reply.status).toBe(502)
-    expect(reply.json()).toMatchObject({ error: { code: 502, message: expect.stringContaining("respond") } })
+    expect(reply.json()).toMatchObject({ error: { code: 502, message: expect.stringContaining("did not return JSON matching the response schema") } })
   })
 
   test("a streamed JSON text answer that matches the schema streams it as one text chunk, with no error", async () => {

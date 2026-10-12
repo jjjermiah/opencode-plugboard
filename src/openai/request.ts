@@ -6,6 +6,7 @@
  * the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
   isPlugError,
@@ -80,10 +81,13 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
     if (item.type === "text" && typeof item.text === "string") parts.push({ type: "text", text: item.text })
     else if (item.type === "image_url" && isRecord(item.image_url) && typeof item.image_url.url === "string") {
       const url = item.image_url.url
+      const problem = imageProblem(url)
+      if (problem) return bad(problem, `${at}.image_url.url`, "invalid_image")
       parts.push({ type: "media", url, ...(dataUrlType(url) ? { mediaType: dataUrlType(url) } : {}) })
     } else if (item.type === "file" && isRecord(item.file) && typeof item.file.file_data === "string") {
-      const data = item.file.file_data
-      const url = data.startsWith("data:") ? data : `data:application/octet-stream;base64,${data}`
+      const url = item.file.file_data
+      const problem = pdfProblem(url)
+      if (problem) return bad(problem, `${at}.file.file_data`, "invalid_file")
       parts.push({ type: "media", url, mediaType: dataUrlType(url) })
     } else return bad(`Unsupported content part type "${String(item.type)}"`, `${at}.type`, "unsupported_parameter")
   }
@@ -279,6 +283,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   // Parameters the session backend cannot honour are rejected, not ignored.
   const n = parseChoiceCount(body, options)
   if (typeof n === "object") return n
+  if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
   if (body.logprobs === true) return bad("logprobs is not supported", "logprobs", "unsupported_parameter")
   if (body.top_logprobs != null) return bad("top_logprobs is not supported", "top_logprobs", "unsupported_parameter")
 

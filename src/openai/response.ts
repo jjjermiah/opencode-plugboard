@@ -166,12 +166,15 @@ const noFinish = (): PlugError => ({
 
 const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
 
-/** The 502 for a structured turn that ended without its answer (the forced tool, or a valid JSON text). Shared with the legacy completions encoder. */
-export const structuredMissing = (tool: string): PlugError => ({
+/**
+ * The 502 for a structured turn that ended without its answer (no forced-tool call, and no text that is the
+ * schema's JSON). Shared by every front-end. The message names no internal tool: the caller never sees one (#282).
+ */
+export const structuredMissing = (): PlugError => ({
   status: 502,
   kind: "server",
   code: "structured_output_missing",
-  message: `The model finished without calling the \`${tool}\` tool, so there is no structured output`,
+  message: "The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt.",
 })
 
 /**
@@ -186,7 +189,7 @@ const structured = {
   content: (call: ToolCall) => args(call.input),
   /** The failure for a finished structured exchange, if any. */
   failure: (exchange: OpenAiExchange, answered: boolean): PlugError | undefined =>
-    exchange.structuredTool === undefined || answered ? undefined : structuredMissing(exchange.structuredTool),
+    exchange.structuredTool === undefined || answered ? undefined : structuredMissing(),
 }
 
 const isObjectValue = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)

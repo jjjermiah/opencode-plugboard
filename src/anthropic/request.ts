@@ -9,6 +9,7 @@
  * afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { imageProblem } from "../image.js"
 import { bodyUserId, userField } from "../user.js"
 import {
   isPlugError,
@@ -54,7 +55,10 @@ const mediaPart = (block: JsonObject, at: string, what: "image" | "document"): P
   if (source.type === "base64") {
     if (typeof source.media_type !== "string" || !MEDIA_TYPE.test(source.media_type)) return bad(`${at}.source.media_type: must be a media type such as image/png`)
     if (typeof source.data !== "string") return bad(`${at}.source.data: must be a base64 string`)
-    return { type: "media", url: `data:${source.media_type};base64,${source.data}`, mediaType: source.media_type }
+    const url = `data:${source.media_type};base64,${source.data}`
+    const problem = what === "image" ? imageProblem(url) : undefined
+    if (problem) return bad(`${at}.source.data: ${problem}`)
+    return { type: "media", url, mediaType: source.media_type }
   }
   if (source.type === "url") {
     if (typeof source.url !== "string" || source.url.length === 0) return bad(`${at}.source.url: must be a non-empty string`)

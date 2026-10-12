@@ -180,7 +180,7 @@ describe("#169 the text_completion codec with structured output", () => {
   test("collect: no respond call is a 502 structured_output_missing", async () => {
     expect(await completionsCodec(structured).collect(events(ev.text("6 × 7 = 42"), ev.finish("stop")), 0)).toEqual({
       status: 502,
-      body: { error: { message: "The model finished without calling the `respond` tool, so there is no structured output", type: "server_error", param: null, code: "structured_output_missing" } },
+      body: { error: { message: "The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt.", type: "server_error", param: null, code: "structured_output_missing" } },
     })
   })
 

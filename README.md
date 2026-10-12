@@ -129,7 +129,7 @@ Nothing is exposed by accident. A model is callable only if `models` lists it, a
 A model outside the list gets a 404:
 
 ```json
-{"error": {"message": "Model openai/gpt-5 is not available", "code": "model_not_found", "type": "not_found_error", "param": null}}
+{"error": {"message": "Model openai/gpt-5 is not available", "code": "model_not_found", "type": "not_found_error", "param": "model"}}
 ```
 
 #### Per-app policy
@@ -233,7 +233,7 @@ retry-after: 12
 {"error": {"message": "Too many requests per minute", "code": "rate_limit_exceeded", "type": "rate_limit_error", "param": null}}
 ```
 
-A full concurrency cap returns `too_many_requests` with `retry-after: 1`. The limits live in the server process, so a restart clears them.
+A full concurrency cap returns `too_many_requests` with `retry-after: 1`. The `code` is on the OpenAI and Gemini routes; the Anthropic `/v1/messages` error has a `type` and a `message` only (see [Anthropic Messages](https://jjjermiah.github.io/opencode-plugboard/messages)). The limits live in the server process, so a restart clears them.
 
 #### Response cache
 

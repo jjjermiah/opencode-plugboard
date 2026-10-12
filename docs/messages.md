@@ -77,7 +77,7 @@ A message object: `id` (`msg_...`), `type: "message"`, `role: "assistant"`, `mod
 
 `usage` has `input_tokens`, `output_tokens` (including reasoning), `cache_read_input_tokens` and `cache_creation_input_tokens`. As in Anthropic's API, `input_tokens` excludes the cached tokens that the other two fields report. The `x-plugboard-session` header works as on Chat Completions, and every response carries a `request-id` header.
 
-Errors use Anthropic's body, `{"type":"error","error":{"type":"...","message":"..."}}`, from the first check on (auth, origin, body, model, provider errors), with these types: `invalid_request_error` (400, 405, 415), `authentication_error` (401), `permission_error` (403), `not_found_error` (404), `request_too_large` (413), `rate_limit_error` (429), `timeout_error` (504), `overloaded_error` (529) and `api_error` for the rest.
+Errors use Anthropic's body, `{"type":"error","error":{"type":"...","message":"..."}}`, from the first check on (auth, origin, body, model, provider errors), with these types: `invalid_request_error` (400, 405, 415), `authentication_error` (401), `permission_error` (403), `not_found_error` (404), `request_too_large` (413), `rate_limit_error` (429), `timeout_error` (504), `overloaded_error` (529) and `api_error` for the rest. The error object has no `code` or `param` field, as in Anthropic's API, so a full concurrency cap (429) is `rate_limit_error` with its message only, and `too_many_requests` is not sent here.
 
 ## Streaming
 

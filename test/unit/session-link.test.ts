@@ -4,7 +4,7 @@
  * URL-encoded (src/session/link.ts).
  */
 import { describe, expect, test } from "bun:test"
-import { parseOptions } from "../../src/config.js"
+import { historyTemplate, parseOptions } from "../../src/config.js"
 import { sessionUrl } from "../../src/session/link.js"
 
 describe("#77 option historyUrl: validated at load", () => {
@@ -38,5 +38,38 @@ describe("#77 the template fills with the id and directory", () => {
   test("#77 {directory} is URL-encoded, so a path cannot add segments or a query", () => {
     expect(sessionUrl("http://h/{directory}/session/{id}", "ses_1", "/data/app")).toBe("http://h/%2Fdata%2Fapp/session/ses_1")
     expect(sessionUrl("http://h/session/{id}", "ses_1?x=1#y")).toBe("http://h/session/ses_1%3Fx%3D1%23y")
+  })
+})
+
+describe("#280 option apps.<name>.historyUrl: a per-app template, or false for none", () => {
+  const GLOBAL = "http://global.lan:4096/session/{id}"
+  const own = (value: unknown) => parseOptions({ historyUrl: GLOBAL, keys: { alpha: "ka" }, apps: { alpha: { historyUrl: value } } })
+
+  test("#280 an app's own template, and false, are accepted and stored on its policy", () => {
+    expect(own("http://alpha.lan/s/{id}").apps.alpha!.historyUrl).toBe("http://alpha.lan/s/{id}")
+    expect(own(false).apps.alpha!.historyUrl).toBe(false)
+  })
+
+  test.each([
+    ["a template without {id}", "http://alpha.lan/session", "`apps.alpha.historyUrl` must be a URL template with {id}"],
+    ["a non-http scheme", "ftp://alpha.lan/{id}", "`apps.alpha.historyUrl` must be http or https"],
+    ["an unknown placeholder", "http://alpha.lan/{id}/{sesion}", "`apps.alpha.historyUrl` has the unknown placeholder {sesion}"],
+    ["a non-string, non-false value", true, "`apps.alpha.historyUrl` must be a URL template with {id}"],
+  ])("#280 %s is refused at load, naming the app's option", (_name, value, message) => {
+    expect(() => own(value)).toThrow(message)
+  })
+
+  test("#280 historyTemplate: an app's own template, none for false, the global one when unset", () => {
+    const options = parseOptions({ historyUrl: GLOBAL, keys: { alpha: "ka", beta: "kb", gamma: "kc" }, apps: { alpha: { historyUrl: "http://alpha.lan/s/{id}" }, beta: { historyUrl: false }, gamma: { tools: false } } })
+    expect(historyTemplate(options, "alpha")).toBe("http://alpha.lan/s/{id}")
+    expect(historyTemplate(options, "beta")).toBeUndefined()
+    expect(historyTemplate(options, "gamma")).toBe(GLOBAL)
+    expect(historyTemplate(options, "unknown")).toBe(GLOBAL)
+  })
+
+  test("#280 with no global historyUrl, an app's own template still applies and others get none", () => {
+    const options = parseOptions({ keys: { alpha: "ka", beta: "kb" }, apps: { alpha: { historyUrl: "http://alpha.lan/s/{id}" } } })
+    expect(historyTemplate(options, "alpha")).toBe("http://alpha.lan/s/{id}")
+    expect(historyTemplate(options, "beta")).toBeUndefined()
   })
 })

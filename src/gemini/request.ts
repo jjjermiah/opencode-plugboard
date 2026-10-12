@@ -13,6 +13,7 @@
  * API also accepts.
  */
 import type { PlugboardOptions } from "../config.js"
+import { imageProblem } from "../image.js"
 import {
   isPlugError,
   type PlugError,
@@ -212,7 +213,10 @@ const parseContents = (raw: unknown): PlugMessage[] | PlugError => {
         if (role === "model") return unsupported("inlineData is not supported in a model turn", `${at}.inlineData`)
         if (!isRecord(inline) || typeof inline.data !== "string" || typeof inline.mimeType !== "string")
           return bad("inlineData needs mimeType and base64 data", `${at}.inlineData`)
-        parts.push({ type: "media", url: dataUrl(inline.mimeType, inline.data), mediaType: inline.mimeType })
+        const url = dataUrl(inline.mimeType, inline.data)
+        const problem = inline.mimeType.toLowerCase().startsWith("image/") ? imageProblem(url) : undefined
+        if (problem) return bad(problem, `${at}.inlineData`, "invalid_image")
+        parts.push({ type: "media", url, mediaType: inline.mimeType })
       } else if (file !== undefined) {
         if (role === "model") return unsupported("fileData is not supported in a model turn", `${at}.fileData`)
         const uri = isRecord(file) ? field(file, "fileUri") : undefined
