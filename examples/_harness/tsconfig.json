@@ -1,0 +1,9 @@
+{
+  // The harness and its unit-tested helpers. Bun's types for the scripts; the client examples keep their own pins.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "bun"],
+    "resolveJsonModule": true
+  },
+  "include": ["./**/*.ts", "../_shared/**/*.ts"]
+}

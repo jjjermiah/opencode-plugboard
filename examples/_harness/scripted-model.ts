@@ -1,0 +1,56 @@
+/**
+ * The scripted model behind `scripted-server.ts`. It answers only the prompts in `_shared/scenarios.json`,
+ * so a scripted run is byte-identical from one run to the next. Anything else gets an error event, which
+ * fails the scenario instead of inventing an answer.
+ *
+ * Built on `FakeModelCaller` and `ev` from test/support, the same fake the HTTP tests use.
+ */
+import type { PlugEvent, PlugRequest } from "../../src/contract.js"
+import { FakeModelCaller } from "../../test/support/model-caller.js"
+import { ev } from "../../test/support/fixtures.js"
+import scenarios from "../_shared/scenarios.json" with { type: "json" }
+
+const CALL_ID = "call_scripted_1"
+const USAGE = { inputTokens: 11, outputTokens: 7 }
+/** The meal the model estimates, as text and as a forced tool's arguments. */
+export const MEAL = { calories: 180, protein_g: 13 }
+
+const prompt = (id: string): string => scenarios.scenarios.find((s) => s.id === id)?.prompt ?? ""
+const userText = (request: PlugRequest): string =>
+  request.messages
+    .filter((message) => message.role === "user")
+    .flatMap((message) => message.content)
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("\n")
+const hasPngPart = (request: PlugRequest): boolean =>
+  request.messages.some((message) => message.content.some((part) => part.type === "media" && part.url.startsWith("data:image/png")))
+const answered = (request: PlugRequest): boolean => request.messages.some((message) => message.role === "tool")
+
+/** Text as two deltas, so a streaming client has to accumulate. */
+function say(answer: string): PlugEvent[] {
+  const half = Math.ceil(answer.length / 2)
+  return [ev.text(answer.slice(0, half)), ev.text(answer.slice(half)), ev.finish("stop", USAGE)]
+}
+
+/** The events of one model call for `request`. */
+export function answer(request: PlugRequest): PlugEvent[] {
+  const forced = typeof request.toolChoice === "object" ? request.toolChoice.name : undefined
+  if (forced) {
+    const properties = (request.tools.find((tool) => tool.name === forced)?.parameters as { properties?: object } | undefined)?.properties ?? {}
+    const input = "calories" in properties ? MEAL : {}
+    return [ev.call(CALL_ID, forced, input), ev.finish("tool-calls", USAGE)]
+  }
+  const text = userText(request)
+  if (text.includes(prompt("S1"))) return say("pong")
+  if (text.includes(prompt("S2"))) {
+    if (answered(request)) return say("18 C and cloudy")
+    if (request.tools.some((tool) => tool.name === "get_weather") && request.toolChoice !== "none") {
+      return [ev.call(CALL_ID, "get_weather", { city: "Paris" }), ev.finish("tool-calls", USAGE)]
+    }
+  }
+  if (text.includes(prompt("S5"))) return say(hasPngPart(request) ? "red" : "no image")
+  if (text.includes(prompt("S6"))) return say(JSON.stringify(MEAL))
+  return [ev.error({ status: 500, kind: "server", message: `scripted model has no answer for this prompt: ${text.slice(0, 80)}` })]
+}
+
+export const scriptedModel = new FakeModelCaller((request) => answer(request))

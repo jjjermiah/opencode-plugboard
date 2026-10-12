@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "example": "golden",
+  "target": "scripted",
+  "client": {
+    "name": "example-client",
+    "version": "1.0.0",
+    "runtime": {
+      "name": "python",
+      "version": "3.13"
+    }
+  },
+  "models": ["fast", "anthropic/claude-haiku-4-5"],
+  "verdict": "partial",
+  "scenarios": [
+    {
+      "id": "S1",
+      "model": "fast",
+      "required": true,
+      "status": "pass",
+      "checks": [
+        { "name": "answer contains pong", "ok": true },
+        { "name": "finish_reason is stop", "ok": true },
+        { "name": "usage present", "ok": true }
+      ],
+      "note": null,
+      "error": null,
+      "transcript": "transcripts/S1.fast.json"
+    },
+    {
+      "id": "S4",
+      "model": "fast",
+      "required": true,
+      "status": "gap",
+      "checks": [
+        { "name": "finish_reason is tool_calls", "ok": false },
+        { "name": "streamed get_weather call", "ok": true }
+      ],
+      "note": "Fixture only: shows the gap shape. Real gaps link their issue.",
+      "error": null,
+      "transcript": "transcripts/S4.fast.json"
+    },
+    {
+      "id": "E2",
+      "model": "nope",
+      "required": false,
+      "status": "fail",
+      "checks": [
+        { "name": "status is 404", "ok": false },
+        { "name": "code is model_not_found", "ok": false }
+      ],
+      "note": null,
+      "error": "NotFoundError: Error code: 404 - {'error': {'message': 'Model nope is not available', 'code': 'model_not_found'}}",
+      "transcript": "transcripts/E2.nope.json"
+    }
+  ]
+}

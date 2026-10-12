@@ -1,0 +1,98 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "Reply with exactly: pong"
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/fast:streamGenerateContent?alt=sse"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "po"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "fast",
+                "responseId": "<id-1>"
+              }
+            },
+            {
+              "data": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "ng"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "fast",
+                "responseId": "<id-1>"
+              }
+            },
+            {
+              "data": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": ""
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "fast",
+                "responseId": "<id-1>",
+                "usageMetadata": {
+                  "candidatesTokenCount": 7,
+                  "promptTokenCount": 11,
+                  "totalTokenCount": 18
+                }
+              }
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

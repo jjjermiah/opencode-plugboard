@@ -38,7 +38,7 @@ export default {
       "always",
       [
         "openai", "responses", "anthropic", "gemini", "completions", "session", "runtime", "http",
-        "config", "metrics", "discovery", "cache", "fallback", "tests", "ci", "docs", "changelog", "deps",
+        "config", "metrics", "discovery", "cache", "fallback", "tests", "ci", "docs", "changelog", "deps", "examples",
       ],
     ],
     "body-empty": [2, "never"],

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jjjermiah/opencode-plugboard/examples/_harness/run.schema.json",
+  "title": "Example run summary (summary.json)",
+  "description": "Written by examples/_harness/run.ts. Scripted runs carry no dates, commits, durations or runtime patch versions; live runs add date, plugboard, opencode and duration_ms.",
+  "type": "object",
+  "required": ["schema", "example", "target", "client", "models", "verdict", "scenarios"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "example": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "target": { "enum": ["scripted", "live"] },
+    "client": {
+      "type": "object",
+      "required": ["name", "version", "runtime"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "runtime": {
+          "type": "object",
+          "required": ["name", "version"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" }
+          }
+        }
+      }
+    },
+    "models": { "type": "array", "items": { "type": "string" } },
+    "verdict": { "enum": ["pass", "partial", "fail"] },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "plugboard": {
+      "type": "object",
+      "required": ["version", "commit"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string" },
+        "commit": { "type": "string" }
+      }
+    },
+    "opencode": { "type": "string" },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "model", "required", "status", "checks", "note", "error", "transcript"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[SE][0-9]+$" },
+          "model": { "type": "string" },
+          "variant": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "required": { "type": "boolean" },
+          "status": { "enum": ["pass", "fail", "gap", "n/a"] },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "ok"],
+              "additionalProperties": false,
+              "properties": { "name": { "type": "string" }, "ok": { "type": "boolean" } }
+            }
+          },
+          "note": { "type": ["string", "null"] },
+          "error": { "type": ["string", "null"] },
+          "transcript": { "type": ["string", "null"] },
+          "duration_ms": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

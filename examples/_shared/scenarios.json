@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "routes": {
+    "generate": ["/v1/chat/completions", "/v1/completions", "/v1/responses", "/v1/messages", "/v1beta/models/"],
+    "models": ["/v1/models"]
+  },
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "plain chat, non-stream",
+      "required": true,
+      "models": ["fast", "anthropic/claude-haiku-4-5", "openai/gpt-5.6-luna#low"],
+      "routes": "generate",
+      "prompt": "Reply with exactly: pong",
+      "observes": ["text", "finish_reason", "usage"],
+      "checks": [
+        { "name": "answer contains pong", "path": "text", "containsAny": ["pong"] },
+        { "name": "finish_reason is stop", "path": "finish_reason", "equals": "stop" },
+        { "name": "usage present", "path": "usage", "present": true }
+      ]
+    },
+    {
+      "id": "S2",
+      "name": "tool call, then a tool-result turn",
+      "required": true,
+      "models": ["fast", "anthropic/claude-haiku-4-5", "openai/gpt-5.6-luna#low"],
+      "routes": "generate",
+      "prompt": "What is the weather in Paris? Use the tool.",
+      "observes": ["finish_reason", "tool_name", "tool_city", "tool_call_id", "final_text", "final_finish_reason"],
+      "checks": [
+        { "name": "turn 1 finish_reason is tool_calls", "path": "finish_reason", "equals": "tool_calls" },
+        { "name": "one get_weather call", "path": "tool_name", "equals": "get_weather" },
+        { "name": "city is Paris", "path": "tool_city", "containsAny": ["paris"] },
+        { "name": "call id present", "path": "tool_call_id", "present": true },
+        { "name": "turn 2 mentions 18 or cloudy", "path": "final_text", "containsAny": ["18", "cloudy"] },
+        { "name": "turn 2 finish_reason is stop", "path": "final_finish_reason", "equals": "stop" }
+      ]
+    },
+    {
+      "id": "S3",
+      "name": "streaming text, with and without usage",
+      "required": true,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": "Reply with exactly: pong",
+      "observes": ["text", "finish_reason", "usage", "done"],
+      "checks": [
+        { "name": "streamed text contains pong", "path": "text", "containsAny": ["pong"] },
+        { "name": "finish_reason is stop", "path": "finish_reason", "equals": "stop" },
+        { "name": "usage chunk present when requested", "path": "usage", "present": true },
+        { "name": "stream ended with [DONE]", "path": "done", "equals": true }
+      ]
+    },
+    {
+      "id": "S4",
+      "name": "streaming tool call",
+      "required": true,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": "What is the weather in Paris? Use the tool.",
+      "observes": ["finish_reason", "tool_name", "tool_city", "tool_call_id"],
+      "checks": [
+        { "name": "finish_reason is tool_calls", "path": "finish_reason", "equals": "tool_calls" },
+        { "name": "streamed get_weather call", "path": "tool_name", "equals": "get_weather" },
+        { "name": "city is Paris", "path": "tool_city", "containsAny": ["paris"] },
+        { "name": "call id present", "path": "tool_call_id", "present": true }
+      ]
+    },
+    {
+      "id": "S5",
+      "name": "image as data URL",
+      "required": true,
+      "models": ["fast", "anthropic/claude-haiku-4-5", "openai/gpt-5.6-luna#low"],
+      "routes": "generate",
+      "prompt": "What color is this image? One word.",
+      "observes": ["text"],
+      "checks": [{ "name": "answer says red", "path": "text", "containsAny": ["red"] }]
+    },
+    {
+      "id": "S6",
+      "name": "structured output",
+      "required": true,
+      "models": ["fast", "anthropic/claude-haiku-4-5", "openai/gpt-5.6-luna#low"],
+      "routes": "generate",
+      "prompt": "Estimate: 2 boiled eggs and a slice of toast.",
+      "observes": ["calories", "protein_g", "extra_keys"],
+      "checks": [
+        { "name": "calories is a number", "path": "calories", "number": true },
+        { "name": "protein_g is a number", "path": "protein_g", "number": true },
+        { "name": "no extra keys", "path": "extra_keys", "equals": [] }
+      ]
+    },
+    {
+      "id": "S7",
+      "name": "list models",
+      "required": true,
+      "models": ["-"],
+      "routes": "models",
+      "prompt": null,
+      "observes": ["model_ids", "has_fast", "has_claude", "has_gpt_low"],
+      "checks": [
+        { "name": "fast listed", "path": "has_fast", "equals": true },
+        { "name": "claude listed", "path": "has_claude", "equals": true },
+        { "name": "gpt low variant listed", "path": "has_gpt_low", "equals": true }
+      ]
+    },
+    {
+      "id": "E1",
+      "name": "wrong key",
+      "required": false,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": "Reply with exactly: pong",
+      "observes": ["status", "code"],
+      "checks": [
+        { "name": "status is 401", "path": "status", "equals": 401 },
+        { "name": "code is invalid_api_key", "path": "code", "equals": "invalid_api_key" }
+      ]
+    },
+    {
+      "id": "E2",
+      "name": "unknown model",
+      "required": false,
+      "models": ["nope"],
+      "routes": "generate",
+      "prompt": "Reply with exactly: pong",
+      "observes": ["status", "code"],
+      "checks": [
+        { "name": "status is 404", "path": "status", "equals": 404 },
+        { "name": "code is model_not_found", "path": "code", "equals": "model_not_found" }
+      ]
+    }
+  ]
+}
