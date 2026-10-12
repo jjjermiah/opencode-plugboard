@@ -61,7 +61,7 @@ OpenCode may load this module once per Location, or re-evaluate it on reload. An
 - **the metrics registry and start time**: counters and histograms must survive a generation being replaced, so they live here too (see [Observability](#observability)).
 - **the limiter's queues and rate windows**: a concurrency cap or a requests-per-minute window must hold across generations (see [Concurrency and rate limits](#concurrency-and-rate-limits)).
 
-If a runtime written by a different version (runtime `VERSION`, currently 11) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
+If a runtime written by a different version (runtime `VERSION`, currently 14) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
 
 **Runtime keys (#55).** Keys added through `/v1/admin/keys` live in the host storage under `keys/<id>` (`src/keys.ts`), and their digests are cached on the process runtime (`Runtime.runtimeKeys`, runtime `VERSION` 13) so they hold across plugin generations. `authenticate` compares a presented token with the config digests and then the runtime ones, in one pass with no early exit. A runtime key never decides whether a server is keyed: that stays with the config keys, so a keyless loopback server cannot be locked out or opened by deleting its last runtime key.
 
