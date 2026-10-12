@@ -24,6 +24,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`, with the same authentication as `/v1`. |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). |
+| `budgets` | none (unlimited) | Per-app ceilings on requests, tokens and cost for a UTC day, week or month: `{ perApp?, apps? }`. Needs `usage` on. A call over a ceiling gets 429 `budget_exceeded`. See [Budgets](#budgets). |
 | `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
@@ -134,7 +135,29 @@ Without `keys` the only app is `default`, and `apps.default` configures it. Once
 - `requestsPerMinute` is a fixed window of 60 seconds per app, starting at the app's first call in it. A call over the limit gets 429 `rate_limit_exceeded`.
 - A refused call takes no slot and counts toward no window.
 - The counts live in the server process: a restart clears them, and two servers do not share them.
-- With `metrics: true`, `plugboard_limited_total{app,reason}` counts refusals, where `reason` is `concurrency` or `rate`.
+- With `metrics: true`, `plugboard_limited_total{app,reason}` counts refusals, where `reason` is `concurrency`, `rate` or `budget` (see [Budgets](#budgets)).
+
+## Budgets
+
+`budgets` caps what each app may use in a window: requests, tokens and cost. It reads the same records as [usage statistics](#usage-statistics), so it needs `usage` on (the default). With `usage: { "enabled": false }` the server refuses to load the option. Retention must cover the windows in use: a `month` ceiling needs `usage.retentionDays` of at least 31 and a `week` ceiling at least 7, or the server refuses to load it, since older days would stop counting.
+
+```json
+"budgets": {
+  "perApp": { "requests": { "day": 1000 }, "tokens": { "month": 20000000 } },
+  "apps": { "coding": { "costUsd": { "month": 50 } } }
+}
+```
+
+- A ceiling is a metric and a window. The metrics are `requests`, `tokens` and `costUsd`. The windows are `day` (a UTC calendar day), `week` (an ISO week, Monday to Sunday in UTC) and `month` (a calendar month in UTC). Counts are positive integers, and a cost is a positive number of USD. A metric or window that is not set has no ceiling.
+- `requests` counts HTTP requests on the model routes, except the ones [limits](#concurrency-and-rate-limits) or a budget refused. `tokens` counts the tokens of answered calls, as usage does. `costUsd` is an estimate at the catalog's list prices. A subscription login does not bill per token, so read it as a comparison between apps, not as a bill.
+- `perApp` applies to every app. `apps.<name>` replaces `perApp` metric by metric: in the example, `coding` has its own `costUsd` and keeps `perApp`'s requests and tokens. Each name must be a configured app, as in `limits`.
+- Once an app has used a ceiling in the current window, its next call gets 429 `budget_exceeded` before any session is created, so the provider never sees it. The message names each exceeded ceiling, for example `Budget for coding exceeded: cost (USD) month`. `Retry-After` is the seconds until the latest of those windows resets.
+- The check runs before a call starts, so the call that crosses a ceiling is still served and the next one is refused. Calls still in flight are not counted until they end, so a burst can pass a ceiling by the calls it started. Budgets are a guard against runaway use, not an exact meter.
+- A refused call takes no concurrency slot and spends no requests-per-minute count, because budgets are checked before limits. It counts under `limited` in the usage report and as `plugboard_limited_total{reason="budget"}`. If the usage records cannot be read, the call gets 503 `budget_unavailable` and is not sent to a model.
+- At 80% of a ceiling the server logs `budget.warning`, once per app, budget and window. The warning comes back in the next window.
+- `GET /v1/usage` adds a `budgets` list to each app: one entry per ceiling, with `metric`, `window`, `limit`, `used` (the current window's count) and `resetsAt`. It reads the current window, not the report's range. An admin report without `app` lists budgets only for apps that have records in its range, so ask for `app=<name>` to see another.
+- The counts survive a restart the way usage does: they come from the stored day records, which are written every few seconds.
+
 ## Response cache
 
 Pollers and bots often send the same prompt again and again. With `cache` set, plugboard keeps completed answers in memory and replays them for an identical request from the same app, without creating a session or spending quota.
@@ -216,7 +239,7 @@ The fields, in short:
 - `latency` is a histogram over fixed buckets (up to 100 ms, 250 ms, 500 ms, 1 s, 2.5 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, and one above). `p50Ms` and `p95Ms` are estimates: the upper bound of the bucket holding that percentile. Slower requests land in the last bucket, reported as 600000.
 - `tokens` splits the usage without overlap, as `plugboard_tokens_total` does: `input` is uncached prompt tokens, `cacheRead` and `cacheWrite` are cached ones, `output` excludes `reasoning`. Only answered model calls count; a cache hit spends none.
 - `costUsd` is an estimate at list prices from the catalog (per million tokens, with OpenCode's context tiers). A subscription login does not bill per token, so read it as a comparison between apps, not as a bill. A model with no price adds its calls to `unpricedRequests` and costs 0.
-- `cacheHits` and `cacheMisses` count the calls the [response cache](#response-cache) applied to. `fallbacks` counts retries on the next target of an alias. `limited` counts 429 refusals from [limits](#concurrency-and-rate-limits).
+- `cacheHits` and `cacheMisses` count the calls the [response cache](#response-cache) applied to. `fallbacks` counts retries on the next target of an alias. `limited` counts 429 refusals from [limits](#concurrency-and-rate-limits) and [budgets](#budgets).
 - `models` and `perModel` are keyed by `provider/model`; the variant is not part of the key.
 
 Retention: days older than `retentionDays` are deleted while requests are served, a page of keys at a time. An idle server keeps them until the next request.
@@ -238,6 +261,8 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 400 | `unsupported_parameter` | `logprobs`, `top_logprobs`, `best_of` above 1, token-array prompts | names the parameter |
 | 429 | `too_many_requests` | A cap on concurrent calls in `limits` is full | Too many concurrent requests |
 | 429 | `rate_limit_exceeded` | The app's requests per minute in `limits` are used up | Too many requests per minute |
+| 429 | `budget_exceeded` | The app has used a ceiling of its `budgets` in the current window | Budget for &lt;app&gt; exceeded: &lt;metric&gt; &lt;window&gt; |
+| 503 | `budget_unavailable` | The usage records for the budget check cannot be read | Could not read the usage records for the budget check |
 
 Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. Calls over a cap in `limits` get 429 instead (see [Concurrency and rate limits](#concurrency-and-rate-limits)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 

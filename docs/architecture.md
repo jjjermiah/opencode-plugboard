@@ -230,6 +230,18 @@ Per-app usage is recorded from the seams the other counters already use, and rea
 - **Cost.** `priceCall` mirrors OpenCode's `calculateCost` (`packages/core/src/session/usage.ts`): the largest context tier the prompt exceeds, else the base entry, with cache reads and writes priced separately. A model with no price is counted in `unpricedRequests`.
 - **RPC.** `src/rpc.ts` defines `opencode-plugboard.usage` with `Rpc.define` (from `@opencode/plugin/rpc`, the module the host's docs use). `index.ts` registers the handler with `ctx.rpc.register` in each accepted generation. That registration is a synchronous `acquireRelease` on the host's own in-memory table, so it waits for nothing. Its error channel is typed `unknown`, so a failed registration is logged (`rpc.register_failed`) and the plugin keeps loading.
 
+## Budgets
+
+Option `budgets` (`src/budgets.ts`, `withBudgets`) is a `ModelCaller` wrapper that refuses a call once its app has used a ceiling for the current UTC day, ISO week or calendar month. The operator's view is in [configuration.md](configuration.md#budgets).
+
+- **Placement.** `index.ts` puts it inside `withUsage` and outside `withLimits`. A budget refusal therefore takes no concurrency slot and spends no requests-per-minute count, and it is still recorded as a request and as `limited`.
+- **Reading.** The check reads the app's days for the window through `UsageRecorder.spent` (src/usage.ts): memory first, then storage for days not yet held. It never writes. A read that fails refuses the call with 503 `budget_unavailable`, so a broken store cannot lift a ceiling.
+- **Counts.** `requests` is the day's `requests` less its `limited`; `tokens` is the sum of the day's token kinds; `costUsd` is the day's cost. Refusals are counted in `limited`, so a refused call does not use up the budget it was refused by.
+- **Refusal.** One `error` event: `rate_limit` kind, status 429, code `budget_exceeded`, with `retryAfterSeconds` set to the latest reset among the exceeded ceilings. Every route answers it through `sendError`, so it carries `Retry-After`.
+- **Warnings.** At 80% of a ceiling, `budget.warning` is logged once per app, budget and window, keyed by the window's first day. The map lives on the runtime (`processBudgets`, runtime `VERSION` 13), so it survives a plugin generation and holds one entry per app, budget and window.
+- **Status.** `budgetStatus` reports each ceiling of the app's budget with its used count and reset instant. `serveUsage` adds it as `budgets` to each app in `GET /v1/usage`, from the current window and not from the report's range. The RPC does not carry it.
+- **Config.** `parseBudgets` (src/config.ts) refuses budgets when `usage` is off, because the counts come from the usage records. An `apps` entry replaces `perApp` metric by metric, the same rule as `limits`.
+
 ## Module map
 
 ```text
@@ -239,6 +251,7 @@ src/config.ts               options type, defaults, parseOptions (rejects `__pro
 src/models.ts               allowlist/alias policy: resolveModel, listAvailableModels, fallbackRefs, checkAppModel (per-app scope) (neutral)
 src/fallback.ts             `withFallbacks`: ordered alias fallbacks as a ModelCaller wrapper (see Model fallbacks)
 src/limits.ts               `withLimits`: concurrency caps and requests per minute per app, a ModelCaller wrapper outside the fallbacks (see Concurrency and rate limits)
+src/budgets.ts              `withBudgets`: per-app ceilings on requests, tokens and cost per UTC day, week or month, read from the usage records; a ModelCaller wrapper outside the limiter (see Budgets)
 src/policy.ts               `x-plugboard-policy` header writer (`reportPolicy`) for `CallContext.onPolicy`
 src/log.ts                  pino logger (text or JSON lines), ambient request id, redaction; ids and outcomes only, never keys, bodies or URLs
 src/metrics.ts              @prometheus-io/client registry and text rendering (no I/O)
