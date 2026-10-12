@@ -3,7 +3,7 @@
 import { createHash, timingSafeEqual } from "node:crypto"
 import type { CacheConfig } from "./cache.js"
 import { isPlugError, type PlugError } from "./contract.js"
-import { allowedBy, parseModelRef } from "./models.js"
+import { allowedBy, parseAliasTarget, parseModelRef, SKILL_PREFIX } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
 
@@ -21,6 +21,11 @@ export interface PlugboardOptions {
   readonly models: ReadonlyArray<string>
   /** Alias -> `provider/model[#variant]`. Targets must also pass the allowlist. */
   readonly aliases: Readonly<Record<string, string>>
+  /**
+   * Agent name -> `provider/model[#variant]` (option `agents`): each is listed as `agent/<name>` and runs its
+   * OpenCode agent's system prompt on that model. The model must pass the allowlist.
+   */
+  readonly agents: Readonly<Record<string, string>>
   /**
    * Alias -> the targets after the first, in order, for an alias written as an array. `aliases` holds the
    * first target, so everything that resolves an alias keeps working; the model caller retries the rest
@@ -139,7 +144,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -396,6 +401,35 @@ function parseBudgets(raw: unknown, keys: Readonly<Record<string, string>>): Bud
   return { ...(perApp === undefined ? {} : { perApp }), ...(raw.apps === undefined ? {} : { apps }) }
 }
 
+const AGENT_KNOWN = new Set(["name", "model"])
+/** An OpenCode agent name: letters, digits, `_` and `-`, starting with a letter or digit. */
+const AGENT_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
+
+/**
+ * Option `agents`: `{ name, model }` per OpenCode agent to expose. `model` is required and must pass the
+ * allowlist, so an agent's own configured model never runs outside `models` (the agent's model setting is
+ * not read). Names must be unique.
+ */
+function parseAgents(raw: unknown, models: ReadonlyArray<string>): Record<string, string> {
+  if (raw === undefined) return {}
+  if (!Array.isArray(raw)) throw new Error("plugboard option `agents` must be an array of { name, model } objects")
+  const entries: Array<[string, string]> = []
+  for (const item of raw) {
+    if (!isRecord(item)) throw new Error("plugboard option `agents` entries must be objects of the form { name, model }")
+    for (const key of Object.keys(item))
+      if (!AGENT_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`agents.${key}\` (known: ${[...AGENT_KNOWN].join(", ")})`)
+    const { name, model } = item
+    if (typeof name !== "string" || !AGENT_NAME.test(name)) throw new Error(`plugboard agent name \`${String(name)}\` must match ${AGENT_NAME} (an OpenCode agent name)`)
+    if (entries.some(([known]) => known === name)) throw new Error(`plugboard agent \`${name}\` is listed more than once in \`agents\``)
+    if (typeof model !== "string" || !ALIAS_TARGET.test(model))
+      throw new Error(`plugboard agent \`${name}\` must set \`model\` to \`provider/model\` or \`provider/model#variant\``)
+    if (!allowedBy(models as string[], parseModelRef(model)!))
+      throw new Error(`plugboard agent \`${name}\` model \`${model}\` is not allowed by the \`models\` option`)
+    entries.push([name, model])
+  }
+  return Object.fromEntries(entries)
+}
+
 /** Validates raw plugin options and applies defaults. Throws `Error` with an actionable message. */
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
@@ -452,6 +486,14 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     const chain = Array.isArray(target) ? target : [target]
     if (chain.length === 0) throw new Error(`plugboard alias \`${alias}\` must list at least one target`)
     for (const entry of chain) {
+      // A skill target binds one model and takes no fallbacks; like a list entry it must pass the allowlist at load.
+      if (typeof entry === "string" && entry.startsWith(SKILL_PREFIX)) {
+        const parsed = parseAliasTarget(entry)
+        if (parsed?.skill === undefined) throw new Error(`plugboard alias \`${alias}\` skill target \`${entry}\` must be \`skill:<id>@provider/model\` or \`skill:<id>@provider/model#variant\``)
+        if (Array.isArray(target)) throw new Error(`plugboard alias \`${alias}\` binds a skill, so it takes one target and no list of fallbacks`)
+        if (!allowedBy(models as string[], parsed.ref)) throw new Error(`plugboard alias \`${alias}\` target \`${entry}\` is not allowed by the \`models\` option`)
+        continue
+      }
       if (typeof entry !== "string" || !ALIAS_TARGET.test(entry))
         throw new Error(`plugboard alias \`${alias}\` must target \`provider/model\` or \`provider/model#variant\` (or a list of them)`)
       // A list is new, so it is strict: a target the allowlist would refuse can never serve, so fail at load.
@@ -465,6 +507,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   }
   const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
   const fallbacks: Record<string, string[]> = Object.fromEntries(fallbackEntries)
+  const agents = parseAgents(input.agents, models as string[])
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
   const apps = parseApps(input.apps, { keys, aliases, maxTools })
@@ -500,6 +543,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     apps,
     models: models as string[],
     aliases,
+    agents,
     fallbacks,
     maxTools,
     maxN: positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64),

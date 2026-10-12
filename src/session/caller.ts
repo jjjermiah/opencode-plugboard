@@ -21,7 +21,7 @@ import { raceAbort } from "../abort.js"
 import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { log, logError } from "../log.js"
-import { checkAppModel } from "../models.js"
+import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, type SessionPort } from "./host.js"
@@ -44,6 +44,11 @@ export interface SessionCallerDeps {
    * called right before `session.create`. An error ends the request without creating anything.
    */
   readonly ensureBackend?: (app: string, signal: AbortSignal) => Promise<PlugError | undefined>
+  /**
+   * What the requested name stands for beyond a plain model (`personaOf` in src/models.ts): a skill alias adds
+   * the skill's content to the system prompt, an agent runs its own system prompt and OpenCode agent.
+   */
+  readonly persona?: (model: string) => Persona | undefined
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
@@ -53,6 +58,8 @@ const failure = (status: number, message: string, code: string): PlugEvent => ({
   type: "error",
   error: { status, kind: status >= 500 ? "server" : "invalid_request", message, code },
 })
+
+const notFound = (message: string): PlugError => ({ status: 404, kind: "not_found", message, code: "model_not_found", param: "model" })
 
 const countMedia = (request: PlugRequest): number =>
   request.messages.reduce((sum, message) => sum + message.content.filter((part) => part.type === "media").length, 0)
@@ -123,7 +130,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       const policy = appPolicy({ apps }, app)
       const outOfScope = checkAppModel(policy, called.model, called.ref)
       if (outOfScope) return yield note({ type: "error", error: outOfScope })
-      const { request, stripped } = applyToolPolicy(called, policy)
+      let { request, stripped } = applyToolPolicy(called, policy)
       const tooMany = checkAppTools(request, app, policy)
       if (tooMany) return yield note({ type: "error", error: tooMany })
       if (stripped) {
@@ -166,16 +173,32 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (unavailable) return yield note({ type: "error", error: unavailable })
         if (context.signal.aborted) return
 
+        // 3b. A persona (see `Persona`). A skill's content leads the system prompt; an agent's prompt replaces the
+        // caller's, and the session runs as that agent. Its permissions are still REQUEST_PERMISSIONS (deny all, then seeds).
+        const persona = deps.persona?.(called.model)
+        let prelude: ReadonlyArray<string> = []
+        if (persona?.kind === "skill") {
+          const content = await port.skill(directory, persona.skill)
+          if (content === undefined) return yield note({ type: "error", error: notFound(`Skill ${persona.skill} is not available`) })
+          prelude = [content]
+        } else if (persona?.kind === "agent") {
+          const agent = await port.agent(directory, persona.agent)
+          if (agent === undefined) return yield note({ type: "error", error: notFound(`Agent ${persona.agent} is not available`) })
+          request = { ...request, system: agent.system ? [agent.system] : [] }
+        }
+        if (context.signal.aborted) return
+
         collector = new RequestCollector({ stopTurn: interrupt, requestID })
         const created = await raceAbort(port.create({
           directory,
           model: { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) },
+          ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
           title: makeTitle(request),
           metadata: { plugboard: { app, model: request.model, requestID } },
           permissions: REQUEST_PERMISSIONS,
         }), context.signal)
         sessionID = String(created.id)
-        sessions.register({ sessionID, app, requestID, request, collector })
+        sessions.register({ sessionID, app, requestID, request, collector, prelude })
 
         context.signal.addEventListener("abort", onAbort, { once: true })
         if (context.signal.aborted) return onAbort()

@@ -10,6 +10,7 @@ describe("parseOptions: defaults", () => {
       apps: {},
       models: [],
       aliases: {},
+      agents: {},
       fallbacks: {},
       maxTools: 32,
       maxN: 1,
@@ -248,5 +249,58 @@ describe("authenticate", () => {
     ["two tokens", "Bearer key-alpha extra"],
   ])("%s is a 401 invalid_api_key", (_name, header) => {
     expect(authenticate(keyed, header)).toEqual({ status: 401, kind: "authentication", code: "invalid_api_key", message: "Missing or invalid API key" })
+  })
+})
+
+const MODELS = ["anthropic/*", "openai/gpt-mini"]
+
+describe("parseOptions: skill aliases (#79)", () => {
+  test("#79 a skill target is kept as written and its model is checked against the allowlist", () => {
+    const options = parseOptions({ models: MODELS, aliases: { "invoice-parser": "skill:invoice-parser@anthropic/claude-sonnet-4-6" } })
+    expect(options.aliases).toEqual({ "invoice-parser": "skill:invoice-parser@anthropic/claude-sonnet-4-6" })
+    expect(options.fallbacks).toEqual({})
+  })
+
+  test.each([
+    ["no model after the skill id", "skill:invoice-parser", /must be `skill:<id>@provider\/model`/],
+    ["an empty skill id", "skill:@anthropic/claude-sonnet-4-6", /must be `skill:<id>@provider\/model`/],
+    ["a skill id with a slash", "skill:a/b@anthropic/claude-sonnet-4-6", /must be `skill:<id>@provider\/model`/],
+    ["a model the allowlist refuses", "skill:invoice-parser@openai/gpt-4", /target `skill:invoice-parser@openai\/gpt-4` is not allowed/],
+  ])("#79 a skill alias with %s is rejected at load", (_name, target, message) => {
+    expect(() => parseOptions({ models: MODELS, aliases: { "invoice-parser": target } })).toThrow(message)
+  })
+
+  test("#79 a skill target cannot be part of a list of fallbacks", () => {
+    expect(() =>
+      parseOptions({ models: MODELS, aliases: { "invoice-parser": ["skill:invoice-parser@anthropic/claude-sonnet-4-6", "openai/gpt-mini"] } }),
+    ).toThrow(/binds a skill, so it takes one target and no list of fallbacks/)
+  })
+})
+
+describe("parseOptions: agents (#6)", () => {
+  test("#6 an agent is kept as { name: model }", () => {
+    const options = parseOptions({ models: MODELS, agents: [{ name: "review", model: "anthropic/claude-sonnet-4-6#high" }] })
+    expect(options.agents).toEqual({ review: "anthropic/claude-sonnet-4-6#high" })
+  })
+
+  test("#6 no agents option means no agents", () => {
+    expect(parseOptions({ models: MODELS }).agents).toEqual({})
+  })
+
+  test.each([
+    ["a string instead of an object", { agents: ["review"] }, /entries must be objects of the form \{ name, model \}/],
+    ["a missing model", { agents: [{ name: "review" }] }, /must set `model` to `provider\/model`/],
+    ["a model that is not a model reference", { agents: [{ name: "review", model: "claude" }] }, /must set `model` to `provider\/model`/],
+    ["a model the allowlist refuses", { agents: [{ name: "review", model: "openai/gpt-4" }] }, /model `openai\/gpt-4` is not allowed by the `models` option/],
+    ["a name with a slash", { agents: [{ name: "a/b", model: "anthropic/claude-sonnet-4-6" }] }, /must match/],
+    ["a name starting with an underscore", { agents: [{ name: "__proto__", model: "anthropic/claude-sonnet-4-6" }] }, /must match/],
+    ["an unknown field", { agents: [{ name: "review", model: "anthropic/claude-sonnet-4-6", tools: true }] }, /Unknown plugboard option `agents.tools`/],
+    [
+      "the same name twice",
+      { agents: [{ name: "review", model: "anthropic/claude-sonnet-4-6" }, { name: "review", model: "openai/gpt-mini" }] },
+      /listed more than once/,
+    ],
+  ])("#6 an agent option with %s is rejected at load", (_name, extra, message) => {
+    expect(() => parseOptions({ models: MODELS, ...extra })).toThrow(message)
   })
 })

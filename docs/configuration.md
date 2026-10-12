@@ -14,7 +14,8 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `adminKey` | none | A key that reads every app's usage at `GET /v1/usage`. It must differ from every app key. It is not an app key: it cannot call the model routes. See [Usage statistics](#usage-statistics). |
 | `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools? }`: per-app model scope, system prompt and tool policy. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
-| `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks). |
+| `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
+| `agents` | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
 | `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
 | `maxN` | `1` | Most model calls one request may fan out to: `n` on Chat Completions and `/v1/completions`, or prompts times `n` for a prompt array. Each is a full call and a kept session, so `n: 4` costs four times. Above the cap, 400 `too_many_choices`. See [completions](completions.md). |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
@@ -84,6 +85,39 @@ A request for `fast` goes to the first target. If that call fails before any out
 - A call that ends in an error has no served model, so those responses carry neither header.
 
 A response from a request that used a list alias carries `x-plugboard-model: <provider/model>` (the target that answered) and, when retries happened, `x-plugboard-fallbacks: <n>`. The `model` field of the response is that target too (with `n` above 1 the body keeps the alias, and the headers report the first choice that was served). The request log line has `served=` and `fallbacks=`, and each retry logs `model.fallback` with the failure code. With `metrics: true`, `plugboard_fallbacks_total{app}` counts retries.
+
+## Skills and agents
+
+Two kinds of name sit beside plain models. Both are off until you configure them, and both leave `models` as the one rule for which models run.
+
+**Skill aliases.** An alias target can bind a skill from the OpenCode server:
+
+```json
+"aliases": {
+  "invoice-parser": "skill:invoice-parser@anthropic/claude-sonnet-4-6"
+}
+```
+
+The text between `skill:` and `@` is the skill's `id`, as OpenCode lists it. The model after `@` must pass `models`, like any target. A skill target takes one model: it cannot be a list and has no fallbacks. A request with `model: "invoice-parser"` gets the skill's content as the first system part, before the app's `system` policy and the caller's own system prompt. The skill is read from the app directory when the request runs and reused for 30 seconds, so an edit shows up within that window. A skill the server does not have is a 404 `model_not_found` that names it, and nothing runs.
+
+**Agents.** Option `agents` exposes OpenCode agents (see the [permission model](#permission-model) below):
+
+```json
+"agents": [{ "name": "review", "model": "anthropic/claude-sonnet-4-6" }]
+```
+
+Each entry is listed in `/v1/models` as `agent/review`. A request for it runs a session as that OpenCode agent, on the `model` given in the entry, with the agent's system prompt in place of the caller's. `model` is required and must pass `models`. The agent's own model setting is not read, so the allowlist stays the one rule. An agent the server does not have is a 404 `model_not_found`.
+
+### Permission model
+
+**Agents never run a tool on the server in this release.** The permission model, for an agent entry and for any model request:
+
+- Agents never run server tools. Every OpenCode tool is denied for the session, so an agent answers with its configured persona and model and nothing more. Running tools on the server is a separate decision, tracked for trusted tools in [#82](https://github.com/jjjermiah/opencode-plugboard/issues/82).
+- Every OpenCode tool stays denied, whatever the agent's own rules allow. Each session is created with `deny *`, then `allow plugboard_seed_*`. OpenCode merges the agent's rules first and the session's last, and the last matching rule wins, so the session's deny holds over an agent that allows everything. The evidence is in [docs/architecture.md](architecture.md#skills-and-agents-in-the-context-hook).
+- Caller tools go back to the caller unexecuted, as for any model. Caller messages replace the history. The seed tools only record the call, and the turn ends.
+- Persistent "always" approvals in OpenCode are not consulted for these tools, because the session's deny is checked before them.
+
+Both kinds appear in `/v1/models` with `plugboard.skill` or `plugboard.agent` set. Their answers are never cached (see [Response cache](#response-cache)). Architecture: [docs/architecture.md](architecture.md#skills-and-agents-in-the-context-hook).
 
 ## Apps and keys
 
@@ -173,7 +207,7 @@ Pollers and bots often send the same prompt again and again. With `cache` set, p
 | `maxBytes` | `67108864` (64 MiB) | Most bytes kept. An answer bigger than this is served but not kept. |
 | `apps` | every app | App names that use the cache. Must be configured apps, or `default` when there are no keys. |
 
-What counts as the same request: the app, the resolved model and variant, messages, system prompt, tools, tool choice and sampling parameters (`temperature`, `top_p`, `max_tokens`, `stop`, penalties). An alias and the model it points to share entries. Apps never share entries.
+What counts as the same request: the app, the resolved model and variant, messages, system prompt, tools, tool choice and sampling parameters (`temperature`, `top_p`, `max_tokens`, `stop`, penalties). An alias and the model it points to share entries. Apps never share entries. A skill alias or an `agent/<name>` request is never cached, because its answer depends on the skill's content or the agent's prompt, which the key does not cover.
 
 What is kept: answers that ended normally (`stop` or `length`) with text or reasoning. Answers with tool calls are never kept, and neither are errors, aborted requests and empty answers. Structured output (`response_format` `json_schema`) is answered through a tool call, so it is not kept either. Requests with `n` above 1 are never served from the cache or stored, because each choice must be a fresh sample.
 
