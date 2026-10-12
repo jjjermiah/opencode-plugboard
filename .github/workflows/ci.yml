@@ -48,6 +48,9 @@ jobs:
           bun test test/compat > /dev/null
           bun .github/scripts/compat-matrix.ts "$PLUGBOARD_COMPAT_RESULTS" --summary --docs docs/compatibility.md
           git diff --exit-code docs/compatibility.md || { echo "docs/compatibility.md is stale: regenerate it (see the file's header)"; exit 1; }
+      # dist/tui.js (the compiled ./tui entry) is built here, not by prepack: `npm pack --ignore-scripts` skips prepack.
+      - name: Build the compiled TUI entry
+        run: bun run build:tui
       - name: Check the packed file list
         run: bun .github/scripts/check-pack.ts
       - name: Smoke-test the packed tarball

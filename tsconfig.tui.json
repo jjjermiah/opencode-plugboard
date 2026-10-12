@@ -1,11 +1,12 @@
 {
-  // The TUI entry is the only JSX in the repo (OpenTUI's Solid JSX). It is checked on its own so the
-  // root config (src/ and index.ts, Node types, no JSX) keeps its settings. The file also carries
-  // the same `@jsxImportSource` pragma, which the OpenCode TUI loader relies on at runtime.
+  // The TUI source is the only JSX in the repo (OpenTUI's Solid JSX). It is checked on its own so the
+  // root config (src/ and index.ts, Node types, no JSX) keeps its settings. Only src/tui.tsx is
+  // checked: tui.ts re-exports dist/tui.js, which exists only after `bun run build:tui`, and typecheck
+  // must not depend on a build.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid"
   },
-  "include": ["tui.ts", "src/tui.tsx"]
+  "include": ["src/tui.tsx"]
 }

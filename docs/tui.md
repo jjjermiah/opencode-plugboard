@@ -36,3 +36,7 @@ If the server has no plugboard, or plugboard runs with `usage` disabled, the pag
 The page calls the `opencode-plugboard.usage` RPC (`src/rpc.ts`) through OpenCode's client, so it talks to the server over OpenCode's own authenticated API. It does not call `GET /v1/usage` and does not need the admin key. The RPC returns every app, which is what the page needs.
 
 The page code is `src/tui.tsx` (Solid and OpenTUI, not in the server entry). Its pure helpers (ranges, rows, formats) are in `src/tui-format.ts` and are unit tested.
+
+## Install
+
+Nothing extra. An npm install loads `dist/tui.js`, the compiled page (`./tui` export). OpenCode installs the package without its optional OpenTUI and Solid peers, and the compiled file uses the host's copies. A local checkout needs `bun run build:tui` once first. Why it is compiled: [packaging.md](packaging.md).
