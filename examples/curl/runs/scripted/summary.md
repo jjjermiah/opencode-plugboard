@@ -1,6 +1,6 @@
 # curl · scripted
 
-Verdict: **pass** · curl 8.7.1 on bash 5.3 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
+Verdict: **pass** · curl 8 on bash 5 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
