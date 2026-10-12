@@ -477,6 +477,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | SillyTavern | [sillytavern][client-sillytavern] | docs only, not run yet (web app); Custom (OpenAI-compatible) source |
 | Cline | [cline][client-cline] | docs only, not run yet (VS Code extension); OpenAI Compatible provider |
 | Roo Code | [roo-code][client-roo-code] | docs only, not run yet (VS Code extension); needs native tool calling |
+| Mastra | [mastra][client-mastra] | pass against the scripted fake: text, stream, tool call, tool round trip; needs `plugboard/fast`, not bare `fast` |
 | Haystack | [haystack][client-haystack] | pass against the scripted fake: pipeline text, stream, tool call, tool round trip |
 | LlamaIndex | [llamaindex][client-llamaindex] | pass against the scripted fake: text, stream, tool call, tool round trip; `OpenAILike` (the `OpenAI` class rejects `fast`) |
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
@@ -577,6 +578,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-roo-code]: https://jjjermiah.github.io/opencode-plugboard/clients/roo-code
 [client-llamaindex]: https://jjjermiah.github.io/opencode-plugboard/clients/llamaindex
 [client-haystack]: https://jjjermiah.github.io/opencode-plugboard/clients/haystack
+[client-mastra]: https://jjjermiah.github.io/opencode-plugboard/clients/mastra
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
