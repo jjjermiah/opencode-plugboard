@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { log, logError } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
@@ -26,7 +26,7 @@ import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, type SessionPort } from "./host.js"
 import { ImageError, prepareImages, type RemoteImages } from "./media.js"
-import { REQUEST_PERMISSIONS, seedToolsFor } from "./seeds.js"
+import { requestPermissions, seedToolsFor } from "./seeds.js"
 import type { SessionStore } from "./state.js"
 
 export interface SessionCallerDeps {
@@ -106,6 +106,33 @@ function checkAppTools(request: PlugRequest, app: string, policy: AppPolicy | un
     message: `Request has ${request.tools.length} tools; app ${app} allows ${max} (option \`apps.${app}.maxTools\`)`,
   }
 }
+/** A caller tool may not share a name with one of the app's server tools: the model would see two tools under one name. */
+function checkServerToolNames(request: PlugRequest, policy: AppPolicy | undefined): PlugError | undefined {
+  const clash = request.tools.find((tool) => policy?.serverTools?.includes(tool.name))
+  if (!clash) return undefined
+  return {
+    status: 400,
+    kind: "invalid_request",
+    code: "server_tool_collision",
+    param: "tools",
+    message: `Tool \`${clash.name}\` is one of this app's OpenCode server tools (option \`apps.<name>.serverTools\`); rename the caller's tool`,
+  }
+}
+
+/** Every server tool must be a direct tool of this location right now (fail closed; checked per request, never at setup). */
+async function checkServerToolsAvailable(port: SessionPort, policy: AppPolicy | undefined, signal: AbortSignal): Promise<PlugError | undefined> {
+  if (!policy?.serverTools) return undefined
+  const offered = new Set(await raceAbort(port.directTools(), signal))
+  const missing = policy.serverTools.filter((tool) => !offered.has(tool))
+  if (missing.length === 0) return undefined
+  return {
+    status: 400,
+    kind: "invalid_request",
+    code: "server_tool_unavailable",
+    message: `OpenCode tool(s) not available in this location: ${missing.join(", ")} (option \`apps.<name>.serverTools\`). CodeMode tools, including MCP tools by default, cannot be listed; set codemode: false on the tool`,
+  }
+}
+
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port, sessions, maxTools, ensureBackend } = deps
   const apps = deps.apps ?? {}
@@ -133,6 +160,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       let { request, stripped } = applyToolPolicy(called, policy)
       const tooMany = checkAppTools(request, app, policy)
       if (tooMany) return yield note({ type: "error", error: tooMany })
+      const clash = checkServerToolNames(request, policy)
+      if (clash) return yield note({ type: "error", error: clash })
       if (stripped) {
         try {
           context.onPolicy?.(["tools-stripped"])
@@ -172,6 +201,9 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const unavailable = await ensureBackend?.(app, context.signal)
         if (unavailable) return yield note({ type: "error", error: unavailable })
         if (context.signal.aborted) return
+        const missingServerTools = await checkServerToolsAvailable(port, policy, context.signal)
+        if (missingServerTools) return yield note({ type: "error", error: missingServerTools })
+        if (context.signal.aborted) return
 
         // 3b. A persona (see `Persona`). A skill's content leads the system prompt; an agent's prompt replaces the
         // caller's, and the session runs as that agent. Its permissions are still REQUEST_PERMISSIONS (deny all, then seeds).
@@ -188,14 +220,22 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
         if (context.signal.aborted) return
 
-        collector = new RequestCollector({ stopTurn: interrupt, requestID })
+        collector = new RequestCollector({
+          stopTurn: interrupt,
+          requestID,
+          app,
+          ...(policy?.serverTools
+            ? { serverTools: new Set(policy.serverTools), maxServerToolSteps: policy.maxServerToolSteps ?? DEFAULT_SERVER_TOOL_STEPS }
+            : {}),
+        })
+
         const creating = port.create({
           directory,
           model: { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) },
           ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
           title: makeTitle(request),
           metadata: { plugboard: { app, model: request.model, requestID } },
-          permissions: REQUEST_PERMISSIONS,
+          permissions: requestPermissions(policy?.serverTools ?? []),
         })
         const created = await raceAbort(creating, context.signal).catch((error) => {
           // The host keeps creating after the abort. A session that lands now is in no index, so it is removed.
@@ -248,6 +288,14 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           // The response ends here, the host execution may not have: the guard is kept until it does.
           if (promptStarted) sessions.retire(sessionID, { timeoutMs: CLEANUP_TIMEOUT_MS, onTimeout: interrupt })
           else sessions.release(sessionID)
+        }
+        const serverToolCalls = collector?.serverCallCount ?? 0
+        if (serverToolCalls > 0 && context.onServerTools) {
+          try {
+            context.onServerTools(serverToolCalls)
+          } catch (error) {
+            logError("request.on_server_tools_failed", { requestID, app, error: describeError(error) })
+          }
         }
         log("request.finished", { requestID, app, model: request.model, durationMs: Date.now() - startedAt, outcome })
       }

@@ -20,6 +20,8 @@ export class FakeSessionPort implements SessionPort {
   /** Skills and agents the fake app directory has: `skills.set(id, content)`, `agents.set(id, { system })`. */
   readonly skills = new Map<string, string>()
   readonly agents = new Map<string, { readonly system?: string }>()
+  /** The OpenCode tool ids `directTools()` reports (the location's direct tools). Empty by default. */
+  readonly toolIDs: string[] = []
   /** Answers per method; default: create returns `ses_<n>`, prompt and interrupt resolve. */
   readonly script: {
     create?: (input: CreateInput) => Promise<{ id: string }>
@@ -55,6 +57,10 @@ export class FakeSessionPort implements SessionPort {
 
   async agent(_directory: string, id: string): Promise<{ readonly system?: string } | undefined> {
     return this.agents.get(id)
+  }
+
+  directTools(): Promise<ReadonlyArray<string>> {
+    return Promise.resolve([...this.toolIDs])
   }
 }
 
@@ -128,5 +134,7 @@ export function bus(sessionID: string) {
     executionSucceeded: () => envelope("session.execution.succeeded"),
     executionFailed: (error: HostError = { type: "unknown" }) => envelope("session.execution.failed", { error }),
     executionInterrupted: () => envelope("session.execution.interrupted"),
+    toolSucceeded: (id: string) => envelope("session.tool.success", { id, content: [{ type: "text", text: "result" }], executed: true }),
+    toolFailed: (id: string) => envelope("session.tool.failed", { id, error: { type: "unknown" }, executed: true }),
   }
 }

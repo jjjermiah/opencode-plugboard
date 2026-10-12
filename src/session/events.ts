@@ -6,13 +6,18 @@
  * ModelCaller streams out through `events()` (not buffered beyond the queue).
  *
  * The turn is stopped from inside the model loop (see `session/seeds.ts`): once the step has ended
- * (`session.step.ended`) with at least one tool call, the owner is asked to interrupt the
+ * (`session.step.ended`) with at least one caller tool call, the owner is asked to interrupt the
  * session before a second model step can start, and the request finishes as `tool-calls`.
  * The collector never calls the host itself; the owner passes `stopTurn`.
+ *
+ * A call to one of the app's `serverTools` is not the caller's: OpenCode runs it, the runner starts
+ * the next step with its result, and the collector neither emits it nor stops the turn. A step with
+ * only server calls continues; a step that also holds a caller call is returned to the caller as usual.
+ * Server steps are counted and capped (`maxServerToolSteps`); each server call is logged once.
  */
 
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
-import { logError } from "../log.js"
+import { log, logError } from "../log.js"
 import type { BusEvent } from "./host.js"
 import { FAILURE_EVENT } from "./state.js"
 
@@ -191,6 +196,18 @@ export interface CollectorHooks {
   readonly stopTurn: () => void
   /** The request's id, for the log line that carries a failure's raw host text. */
   readonly requestID?: string
+  /** The app, for the `server_tool.call` log lines. */
+  readonly app?: string
+  /** The app's `serverTools` (option `apps`): OpenCode runs these calls, the caller never sees them. */
+  readonly serverTools?: ReadonlySet<string>
+  /** Steps that may run server tools before the turn is stopped. The owner passes it with `serverTools`. */
+  readonly maxServerToolSteps?: number
+}
+
+interface ServerCall {
+  readonly name: string
+  readonly startedAt: number
+  done: boolean
 }
 
 export class RequestCollector {
@@ -198,6 +215,9 @@ export class RequestCollector {
   private readonly emittedText = new Map<number, number>()
   private readonly toolNames = new Map<string, string>()
   private readonly calls = new Set<string>()
+  private readonly serverCalls = new Map<string, ServerCall>()
+  private stepServerCalls = 0
+  private serverSteps = 0
   private usage?: RawUsage
   private finished = false
   private executionDone = false
@@ -219,6 +239,11 @@ export class RequestCollector {
   /** True once a step ended with a plain `stop` and no tool calls: the runner finishes by itself, nothing needs interrupting. */
   get turnSettled(): boolean {
     return this.settled
+  }
+
+  /** How many server tool calls OpenCode ran in this session (each counted when it started). */
+  get serverCallCount(): number {
+    return this.serverCalls.size
   }
 
   /** True once the owner cancelled the request (client gone or timeout). */
@@ -274,23 +299,48 @@ export class RequestCollector {
       case "session.tool.called": {
         if (this.finished) return
         const id = String(item.id)
-        if (this.calls.has(id)) return
+        if (this.calls.has(id) || this.serverCalls.has(id)) return
+        const name = String(item.name ?? this.toolNames.get(id) ?? "")
+        if (this.hooks.serverTools?.has(name)) {
+          this.serverCalls.set(id, { name, startedAt: Date.now(), done: false })
+          this.stepServerCalls++
+          return
+        }
         this.calls.add(id)
-        this.emit({ type: "tool-call", id, name: String(item.name ?? this.toolNames.get(id) ?? ""), input: item.input })
+        this.emit({ type: "tool-call", id, name, input: item.input })
+        return
+      }
+      case "session.tool.success":
+      case "session.tool.failed": {
+        const call = this.serverCalls.get(String(item.id))
+        if (!call || call.done) return
+        call.done = true
+        log("server_tool.call", {
+          requestID: this.hooks.requestID,
+          app: this.hooks.app,
+          tool: call.name,
+          durationMs: Date.now() - call.startedAt,
+          ok: item.type === "session.tool.success",
+        })
         return
       }
       case "session.usage.updated":
         // Assumed invariant: `tokens` is the host's token-usage record (RawUsage shape).
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         return
-      case "session.step.ended":
+      case "session.step.ended": {
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
+        const serverCalls = this.stepServerCalls
+        this.stepServerCalls = 0
         // Also after the response finished: a later step that ended with calls means the first
         // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
         if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
-        if (this.calls.size === 0 && toFinish(item.finish) === "stop") this.settled = true
-        this.finishWith(withCalls(toFinish(item.finish), this.calls.size > 0))
+        const reason = toFinish(item.finish)
+        if (this.calls.size === 0 && serverCalls > 0) return this.serverStepEnded(reason)
+        if (this.calls.size === 0 && reason === "stop") this.settled = true
+        this.finishWith(withCalls(reason, this.calls.size > 0))
         return
+      }
       case FAILURE_EVENT:
         // Synthetic, from inside the process (lost event stream, preparation mismatch).
         if (isPlugError(item.error)) this.abort(item.error)
@@ -308,12 +358,14 @@ export class RequestCollector {
       }
       case "session.execution.failed":
         this.executionDone = true
+        this.logUnfinishedServerCalls()
         if (!this.finished) this.failFromHost(item.error as RawError | undefined, "Session execution failed")
         this.end()
         return
       case "session.execution.interrupted":
       case "session.execution.succeeded":
         this.executionDone = true
+        this.logUnfinishedServerCalls()
         if (!this.finished) {
           if (this.calls.size > 0) this.finishWith("tool-calls")
           else if (this.wasCancelled) this.end()
@@ -344,6 +396,40 @@ export class RequestCollector {
     if (this.finished) return
     this.emit({ type: "finish", reason, usage: toUsage(this.usage) })
     this.end()
+  }
+
+  /**
+   * A step that ran only server tools: the runner starts the next step with their results. The cap is
+   * checked on each such step; past it the request fails and the turn is stopped.
+   */
+  private serverStepEnded(reason: PlugFinish): void {
+    this.serverSteps++
+    if (this.serverSteps > (this.hooks.maxServerToolSteps ?? 0)) {
+      this.abort({
+        status: 502,
+        kind: "server",
+        code: "server_tool_steps_exceeded",
+        message: "The model used more OpenCode tool steps than this app allows",
+      })
+      return
+    }
+    if (reason === "stop" || reason === "tool-calls") return
+    this.finishWith(reason)
+  }
+
+  /** Server calls the execution ended before they reported back are logged as not ok, once each. */
+  private logUnfinishedServerCalls(): void {
+    for (const call of this.serverCalls.values()) {
+      if (call.done) continue
+      call.done = true
+      log("server_tool.call", {
+        requestID: this.hooks.requestID,
+        app: this.hooks.app,
+        tool: call.name,
+        durationMs: Date.now() - call.startedAt,
+        ok: false,
+      })
+    }
   }
 
   /** Fail with the caller-safe mapping of a host error; the raw text is logged here and goes nowhere else. */

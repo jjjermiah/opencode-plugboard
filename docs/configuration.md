@@ -12,7 +12,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
 | `adminKey` | none | A key that reads every app's usage at `GET /v1/usage` and manages app keys at runtime under `/v1/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
-| `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools? }`: per-app model scope, system prompt and tool policy. See [Apps and keys](#apps-and-keys). |
+| `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools?, serverTools?, maxServerToolSteps? }`: per-app model scope, system prompt, tool policy and OpenCode tools the app may run. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
 | `agents` | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
@@ -152,6 +152,21 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 | `systemMode` | `prepend` (default), `append` or `replace`. `replace` drops the caller's system prompt, including the instruction a `json_object` response format adds. |
 | `tools` | `false` drops every tool the caller sends before the model sees it. The request still succeeds, and the response carries `x-plugboard-policy: tools-stripped`. A `json_schema` response format is answered through a tool, so it is dropped too. History that already holds tool calls may be rejected by the provider. |
 | `maxTools` | Lowers the global `maxTools` for this app. A request with more tools gets 400 `too_many_tools`. It cannot be higher than the global cap. |
+| `serverTools` | Off by default. A list of exact OpenCode tool ids (for example `websearch`) that this app's sessions may run themselves, 1 to 32 entries. See the warning below. |
+| `maxServerToolSteps` | Model steps that may run server tools in one request, `8` by default, 1 to 100. Needs `serverTools`. |
+
+> **Security: `serverTools` lets an app's key run OpenCode tools on the server.** Anyone holding that app's key can make the model call each listed tool, and the tool runs with the server's own OpenCode credentials and permissions. The prompt steers which arguments the model passes. A tool that reads files or runs commands can reach what the server's OpenCode process can reach, within whatever limits that tool enforces itself. Give such a key only to a caller you would trust with those tools, list the fewest tools the app needs, and never list tools on the keyless `default` app or on a key shared with others. Plugboard checks that each listed tool is a direct tool of the server's OpenCode right now and denies every other tool, but it cannot limit what a listed tool does.
+
+Rules:
+
+- Each id is checked when the request arrives, not at startup. If the server does not offer a listed tool, the request gets 400 `server_tool_unavailable` and nothing is created. Only direct tools can be listed. CodeMode tools cannot, and MCP tools are CodeMode tools by default, so to list an MCP tool, configure its server in OpenCode with `codemode: false`. Ids may not contain wildcards, may not repeat, and may not be `execute` (CodeMode, which would run everything it wraps) or a `plugboard_seed_*` name. The keyless `default` app cannot have `serverTools`.
+- The app's sessions allow exactly the listed ids. An app without `serverTools` is unchanged: every OpenCode tool is denied.
+- OpenCode runs a server tool and the model continues with its result. Server tool calls are not returned as `tool_calls`; the final answer comes back as usual. A step that mixes server and caller tool calls returns the caller's calls to the caller and interrupts the rest.
+- A caller tool may not share a name with a server tool (400 `server_tool_collision`). A request with `tool_choice` `none` is offered no server tools.
+- A request runs at most `maxServerToolSteps` steps that use server tools. The next such step fails the request with 502 `server_tool_steps_exceeded`.
+- Answers of these apps bypass the response cache, because a tool's output is live.
+- A non-streaming answer that ran server tools carries `x-plugboard-server-tools: <n>`, the number of server tool calls OpenCode ran for it (the choices of `n` add up). The header is absent when no server tool ran, and a stream never gets it, because its headers are sent first.
+- Each server tool call writes one `server_tool.call` log line (app, tool, duration, `ok`). Its arguments and output are never logged.
 
 `/v1/models`, `/v1/models/{id}` and the Gemini `/v1beta/models` routes list only what the calling app may use, and the model counts and example on the setup page and `/v1/status` follow the same scope.
 
@@ -365,6 +380,9 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 403 | `no_models_configured` | The `models` option is empty | No models are allowed: set the plugboard `models` option |
 | 400 | `too_many_tools` | More tools than `maxTools` | Request has &lt;n&gt; tools; plugboard allows &lt;max&gt; (option `maxTools`) |
 | 400 | `too_many_tools` | More tools than the app's `apps.<name>.maxTools` | Request has &lt;n&gt; tools; app &lt;app&gt; allows &lt;max&gt; (option `apps.<app>.maxTools`) |
+| 400 | `server_tool_unavailable` | A tool in the app's `apps.<name>.serverTools` is not a direct tool of the server right now | OpenCode tool(s) not available in this location: &lt;tools&gt; (option `apps.<name>.serverTools`). CodeMode tools, including MCP tools by default, cannot be listed; set codemode: false on the tool |
+| 400 | `server_tool_collision` | A caller tool has the name of one of the app's `serverTools` | Tool &lt;name&gt; is one of this app's OpenCode server tools (option `apps.<name>.serverTools`); rename the caller's tool |
+| 502 | `server_tool_steps_exceeded` | The model ran more server-tool steps than `maxServerToolSteps` | The model used more OpenCode tool steps than this app allows |
 | 400 | `too_many_choices` | `n` (or prompts times `n`) above `maxN` | n=&lt;n&gt; is above the limit of &lt;max&gt; (option `maxN`; each choice is a full model call) |
 | 400 | `unsupported_parameter` | `logprobs`, `top_logprobs`, `best_of` above 1, token-array prompts | names the parameter |
 | 429 | `too_many_requests` | A cap on concurrent calls in `limits` is full | Too many concurrent requests |

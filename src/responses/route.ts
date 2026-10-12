@@ -14,7 +14,7 @@ import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy } from "../policy.js"
+import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { encodeError } from "../openai/response.js"
@@ -60,6 +60,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
       onUsage: reportUsage(response, exchange.stream),
+      onServerTools: reportServerTools(response, exchange.stream),
       onCache: reportCache(response),
     }),
     scope,

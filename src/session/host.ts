@@ -38,6 +38,13 @@ export interface SessionPort {
   skill(directory: string, id: string): Promise<string | undefined>
   /** The agent `id` in the Location at `directory` (its `system` prompt may be absent), or undefined when there is none. */
   agent(directory: string, id: string): Promise<{ readonly system?: string } | undefined>
+  /**
+   * The ids of the OpenCode tools this location offers directly to a model (`codemode: false`), the only
+   * ones a request session can call by name. CodeMode-wrapped tools are reached through `execute`, which a
+   * request session denies, so they are not listed. A tool whose permission name differs from its id is
+   * not listed either: the session's permission rules are written by id.
+   */
+  directTools(): Promise<ReadonlyArray<string>>
 }
 
 type HostSession = HostContext["session"]
@@ -115,6 +122,10 @@ export function createSessionPort(ctx: HostContext): SessionPort {
     interrupt: (sessionID) =>
       run(ctx.session.interrupt({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["interrupt"]>[0])).then(() => undefined),
     remove: (sessionID) => run(ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0])).then(() => undefined),
+    directTools: () =>
+      run(ctx.tool.list()).then((tools) =>
+        tools.filter((tool) => tool.options?.codemode === false && (tool.options?.permission ?? tool.id) === tool.id).map((tool) => tool.id),
+      ),
   }
 }
 

@@ -76,6 +76,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/caller.test.ts"],
   },
   {
+    id: "I8-untrusted-app-gets-server-tools",
+    invariant: "I8",
+    file: "src/session/caller.ts",
+    find: "          permissions: requestPermissions(policy?.serverTools ?? []),",
+    replace: `          permissions: requestPermissions(policy?.serverTools ?? ["websearch"]),`,
+    tests: ["test/session/server-tools.test.ts"],
+  },
+  {
     id: "I15-unknown-route-before-auth",
     invariant: "I15",
     file: "src/openai/route.ts",

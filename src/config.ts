@@ -6,6 +6,7 @@ import { isPlugError, type PlugError } from "./contract.js"
 import { allowedBy, parseAliasTarget, parseModelRef, SKILL_PREFIX } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
+import { SEED_PREFIX } from "./session/seeds.js"
 
 /** How `/v1/models` spells a model id: the canonical `provider/model#variant`, a UI-safe slug, or both. Resolution accepts either. */
 export type ModelIds = "canonical" | "slugs" | "both"
@@ -88,6 +89,13 @@ export interface AppPolicy {
   readonly tools: boolean
   /** Lowers the global `maxTools` for this app. */
   readonly maxTools?: number
+  /**
+   * Exact OpenCode tool ids this app's sessions may run themselves (option `apps.<name>.serverTools`).
+   * Absent: none, the session denies every real tool. Trusted apps only, see docs/configuration.md.
+   */
+  readonly serverTools?: ReadonlyArray<string>
+  /** Server-tool steps one request may run before the turn is stopped (option `maxServerToolSteps`). */
+  readonly maxServerToolSteps?: number
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -154,6 +162,8 @@ export interface Budgets {
 
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
 export const DEFAULT_APP = "default"
+/** Server-tool steps per request when `maxServerToolSteps` is not set. */
+export const DEFAULT_SERVER_TOOL_STEPS = 8
 const DEFAULTS = {
   host: "127.0.0.1",
   port: 4010,
@@ -240,7 +250,26 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps"])
+const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
+const MAX_SERVER_TOOLS = 32
+const MAX_SERVER_TOOL_STEPS = 100
+
+/** `apps.<name>.serverTools`: exact OpenCode tool ids. No wildcards, no duplicates, and not the seeds or CodeMode's `execute`. */
+function parseServerTools(value: unknown, at: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SERVER_TOOLS)
+    throw new Error(`${at}.serverTools must be an array of 1 to ${MAX_SERVER_TOOLS} OpenCode tool ids`)
+  const tools: string[] = []
+  for (const tool of value) {
+    if (typeof tool !== "string" || !SERVER_TOOL_PATTERN.test(tool))
+      throw new Error(`${at}.serverTools entry \`${String(tool)}\` must be an exact OpenCode tool id (letters, digits, \`_\`, \`.\`, \`:\`, \`-\`; no wildcards)`)
+    if (tool === "execute") throw new Error(`${at}.serverTools cannot name \`execute\`: it is OpenCode's CodeMode tool and would run every tool it wraps`)
+    if (tool.startsWith(SEED_PREFIX)) throw new Error(`${at}.serverTools cannot name \`${tool}\`: plugboard's own seed tools are reserved`)
+    if (tools.includes(tool)) throw new Error(`${at}.serverTools lists \`${tool}\` twice`)
+    tools.push(tool)
+  }
+  return tools
+}
 const SYSTEM_MODES: ReadonlySet<string> = new Set(["prepend", "append", "replace"])
 const MODEL_IDS: ReadonlySet<string> = new Set(["canonical", "slugs", "both"])
 
@@ -275,6 +304,12 @@ function parseApps(
     if (value.systemMode !== undefined && value.system === undefined) throw new Error(`${at}.systemMode needs \`system\``)
     if (value.tools !== undefined && typeof value.tools !== "boolean") throw new Error(`${at}.tools must be a boolean`)
     const maxTools = value.maxTools === undefined ? undefined : positiveInt(value.maxTools, `apps.${app}.maxTools`, 0, context.maxTools)
+    if (value.serverTools !== undefined && app === DEFAULT_APP)
+      throw new Error(`${at}.serverTools needs a key: the keyless app cannot run OpenCode tools; name the app and give it a key`)
+    const serverTools = value.serverTools === undefined ? undefined : parseServerTools(value.serverTools, at)
+    if (value.maxServerToolSteps !== undefined && serverTools === undefined) throw new Error(`${at}.maxServerToolSteps needs \`serverTools\``)
+    const maxServerToolSteps =
+      value.maxServerToolSteps === undefined ? undefined : positiveInt(value.maxServerToolSteps, `apps.${app}.maxServerToolSteps`, DEFAULT_SERVER_TOOL_STEPS, MAX_SERVER_TOOL_STEPS)
 
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
@@ -282,9 +317,12 @@ function parseApps(
       systemMode: (value.systemMode as SystemMode | undefined) ?? "prepend",
       tools: value.tools !== false,
       ...(maxTools === undefined ? {} : { maxTools }),
+      ...(serverTools === undefined ? {} : { serverTools }),
+      ...(maxServerToolSteps === undefined ? {} : { maxServerToolSteps }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined) entries.push([app, policy])
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined)
+      entries.push([app, policy])
   }
   return Object.fromEntries(entries)
 }

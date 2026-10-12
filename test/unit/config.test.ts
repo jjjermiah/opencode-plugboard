@@ -315,3 +315,41 @@ describe("parseOptions: agents (#6)", () => {
     expect(() => parseOptions({ models: MODELS, ...extra })).toThrow(message)
   })
 })
+
+describe("#82 apps.<name>.serverTools and maxServerToolSteps", () => {
+  const bot = (policy: Record<string, unknown>) => parseOptions({ keys: { bot: "k" }, apps: { bot: policy } }).apps.bot
+
+  test("absent by default: the policy carries no server tools", () => {
+    expect(bot({ tools: false })).toEqual({ systemMode: "prepend", tools: false })
+  })
+
+  test("accepts exact OpenCode tool ids and keeps the step limit when set", () => {
+    expect(bot({ serverTools: ["websearch", "mcp.lookup:v2", "my_tool-1"], maxServerToolSteps: 3 })).toEqual({
+      systemMode: "prepend",
+      tools: true,
+      serverTools: ["websearch", "mcp.lookup:v2", "my_tool-1"],
+      maxServerToolSteps: 3,
+    })
+  })
+
+  test.each([
+    ["an empty list", { serverTools: [] }, "serverTools must be an array of 1 to 32 OpenCode tool ids"],
+    ["a string instead of a list", { serverTools: "websearch" }, "serverTools must be an array of 1 to 32 OpenCode tool ids"],
+    ["more than 32 entries", { serverTools: Array.from({ length: 33 }, (_, i) => `tool${i}`) }, "must be an array of 1 to 32 OpenCode tool ids"],
+    ["a wildcard", { serverTools: ["web*"] }, "must be an exact OpenCode tool id"],
+    ["a space in the id", { serverTools: ["web search"] }, "must be an exact OpenCode tool id"],
+    ["an empty id", { serverTools: [""] }, "must be an exact OpenCode tool id"],
+    ["a duplicate id", { serverTools: ["websearch", "websearch"] }, "lists `websearch` twice"],
+    ["CodeMode's execute tool", { serverTools: ["execute"] }, "cannot name `execute`"],
+    ["a seed tool", { serverTools: ["plugboard_seed_0"] }, "plugboard's own seed tools are reserved"],
+    ["a step limit without server tools", { maxServerToolSteps: 3 }, "maxServerToolSteps needs `serverTools`"],
+    ["a step limit of zero", { serverTools: ["websearch"], maxServerToolSteps: 0 }, "`apps.bot.maxServerToolSteps` must be an integer between 1 and 100"],
+    ["a step limit above 100", { serverTools: ["websearch"], maxServerToolSteps: 101 }, "`apps.bot.maxServerToolSteps` must be an integer between 1 and 100"],
+  ])("rejects %s", (_name, policy, message) => {
+    expect(() => bot(policy)).toThrow(message)
+  })
+
+  test("the keyless default app cannot run server tools", () => {
+    expect(() => parseOptions({ apps: { default: { serverTools: ["websearch"] } } })).toThrow("needs a key")
+  })
+})

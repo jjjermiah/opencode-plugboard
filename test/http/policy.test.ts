@@ -4,6 +4,7 @@
  * scope, tools stripped). The enforcement itself is in test/session/policy.test.ts.
  */
 import { afterEach, describe, expect, test } from "bun:test"
+import type { ModelCaller } from "../../src/contract.js"
 import { createSessionCaller } from "../../src/session/caller.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { ev } from "../support/fixtures.js"
@@ -158,5 +159,36 @@ describe("the real session caller behind the route", () => {
     expect(reply.status).toBe(200)
     expect(reply.headers["x-plugboard-policy"]).toBeUndefined()
     expect(seen).toEqual([{ tools: 1, system: [] }])
+  })
+})
+
+describe("x-plugboard-server-tools on the wire (#82)", () => {
+  /** A caller whose every call ran two server tools, as a trusted app's session reports them. */
+  const ranTwo: ModelCaller = {
+    async *stream(_request, context) {
+      context.onServerTools?.(2)
+      yield { type: "text-delta", text: "ok" }
+      yield { type: "finish", reason: "stop" }
+    },
+  }
+  const chat = (extra: Record<string, unknown> = {}) => post("/v1/chat/completions", { model: "test/echo", messages: [{ role: "user", content: "hi" }], ...extra })
+
+  test("a non-streaming answer carries the count of its server tool calls", async () => {
+    server = await startRoute({ caller: ranTwo, options: OPTIONS })
+    const reply = await server.send(chat())
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-server-tools"]).toBe("2")
+  })
+
+  test("the choices of n add their counts", async () => {
+    server = await startRoute({ caller: ranTwo, options: OPTIONS })
+    expect((await server.send(chat({ n: 2 }))).headers["x-plugboard-server-tools"]).toBe("4")
+  })
+
+  test("a stream gets no header", async () => {
+    server = await startRoute({ caller: ranTwo, options: OPTIONS })
+    const open = await server.open(chat({ stream: true }))
+    expect(open.headers["x-plugboard-server-tools"]).toBeUndefined()
+    expect(sseData(await open.ended).length).toBeGreaterThan(0)
   })
 })

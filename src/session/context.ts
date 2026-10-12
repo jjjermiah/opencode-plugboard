@@ -59,10 +59,13 @@ function generationOptions(request: PlugRequest): Record<string, unknown> {
  * Returns how many caller tools got no seed (zero unless the seed pool is smaller than the request
  * needs, or two caller tools share a name and would collapse into one key).
  *
+ * The app's `serverTools` (option `apps`) are kept as the host offered them: their descriptors were
+ * never rewritten, so the host runs the real tool. Not offered when the caller set `tool_choice` none.
+ *
  * The map is built with `Object.fromEntries`: a tool named `__proto__` becomes an own key like any
  * other instead of assigning the prototype and vanishing.
  */
-function remapSeedTools(session: ContextHookEvent, request: PlugRequest): number {
+function remapSeedTools(session: ContextHookEvent, request: PlugRequest, serverTools: ReadonlyArray<string>): number {
   const seeds = Object.entries(session.tools ?? {}).filter(([name]) => name.startsWith(SEED_PREFIX))
   const tools = seedToolsFor(request)
   const next = new Map<string, HostToolDescriptor>()
@@ -77,8 +80,16 @@ function remapSeedTools(session: ContextHookEvent, request: PlugRequest): number
     descriptor.input = tool.parameters
     next.set(tool.name, descriptor)
   }
+  const missing = tools.length - next.size
+  if (request.toolChoice !== "none") {
+    const offered = session.tools ?? {}
+    for (const name of serverTools) {
+      if (!Object.hasOwn(offered, name) || next.has(name)) continue
+      next.set(name, offered[name] as HostToolDescriptor)
+    }
+  }
   session.tools = Object.fromEntries(next)
-  return tools.length - next.size
+  return missing
 }
 
 /**
@@ -109,6 +120,7 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   const state = sessions.lookup(String(session.sessionID))
   if (!state) return
   const { request } = state
+  const policy = appPolicy({ apps }, state.app)
 
   // Swap media placeholders for the Asset-carrying parts the host built from the prompt files.
   const hostMedia = (session.messages ?? [])
@@ -125,7 +137,7 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
 
   // Order: the skill's content (prelude), then the app's system policy over the caller's (or an agent's) prompt,
   // then the tool-choice steering below.
-  const system = [...(state.prelude ?? []), ...systemFor(request.system, appPolicy({ apps }, state.app))].map(text)
+  const system = [...(state.prelude ?? []), ...systemFor(request.system, policy)].map(text)
   // The OpenCode session API has no tool-choice control, so a forced or required tool is steered by instruction.
   const choice = request.toolChoice
   if (choice === "required") system.push(text("You must respond by calling one of the provided tools."))
@@ -134,7 +146,7 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   session.messages = toHostMessages(request.messages).map((message) => ({ ...message, content: message.content.map(swap) }))
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 
-  const missingTools = remapSeedTools(session, request)
+  const missingTools = remapSeedTools(session, request, policy?.serverTools ?? [])
 
   // The caller validates both before dispatch; this only fires if the host disagrees. The request is
   // already rewritten (no real tool can run); fail it instead of answering from a truncated prompt.

@@ -194,6 +194,12 @@ export interface CallContext {
    * headers are open, so a stream (headers sent first) never gets it.
    */
   readonly onUsage?: (totals: CallTotals) => void
+  /**
+   * Called once when the call ends, only if OpenCode ran server tools for it (option `apps.<name>.serverTools`),
+   * with how many. Front-ends set `x-plugboard-server-tools` from it while the headers are open, so a stream
+   * (headers sent first) never gets it, and a choice of `n` adds to the count of the others.
+   */
+  readonly onServerTools?: (count: number) => void
 }
 
 /** One answered call's totals for the caller: `inputTokens` and `outputTokens` as the response body reports them (cache reads inside input, reasoning inside output), and `costUsd` when the model has a price. */

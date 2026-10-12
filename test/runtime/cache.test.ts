@@ -30,6 +30,14 @@ describe("the store", () => {
     expect(fake.calls).toHaveLength(1)
   })
 
+  test("#82 an app with serverTools is never answered from the cache, so each request reaches the model", async () => {
+    const fake = new FakeModelCaller(answer)
+    const options = testOptions({ keys: { bot: "k" }, apps: { bot: { serverTools: ["websearch"] } }, cache })
+    await collect(withResponseCache(fake, options).stream(plugRequest(), ctx("bot")))
+    await collect(withResponseCache(fake, options).stream(plugRequest(), ctx("bot")))
+    expect(fake.calls).toHaveLength(2)
+  })
+
   test("a changed `apps` policy starts a fresh store, because the key does not cover policy", async () => {
     const fake = new FakeModelCaller(answer)
     await collect(withResponseCache(fake, testOptions({ cache })).stream(plugRequest(), ctx()))

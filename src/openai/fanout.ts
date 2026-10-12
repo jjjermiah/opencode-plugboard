@@ -24,7 +24,7 @@ import type { ServerResponse } from "node:http"
 import type { PlugError, PlugEvent, PlugRequest, PlugUsage } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy } from "../policy.js"
+import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { SESSION_URL_HEADER, sessionUrl } from "../session/link.js"
 import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
@@ -175,6 +175,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
   const policy = reportPolicy(response)
   // One header for all choices: each answered call adds its tokens and cost (`x-plugboard-usage`, #52).
   const usageHeader = reportUsage(response, codec.stream)
+  // One header for all choices too: the server tool calls of every choice add up (`x-plugboard-server-tools`).
+  const serverToolsHeader = reportServerTools(response, codec.stream)
   // Each choice is a fresh sample: the response cache never serves or stores fan-out calls.
   const cache = reportCache(response)
   const open = (index: number) =>
@@ -195,6 +197,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
         onServed: served,
         onPolicy: policy,
         onUsage: usageHeader,
+        onServerTools: serverToolsHeader,
         onCache: cache,
         noCache: calls.length > 1,
       }),
