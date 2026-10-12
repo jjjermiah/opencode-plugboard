@@ -81,6 +81,7 @@ export default defineConfig({
           { text: "LlamaIndex", link: "/clients/llamaindex" },
           { text: "Haystack", link: "/clients/haystack" },
           { text: "Mastra", link: "/clients/mastra" },
+          { text: "smolagents", link: "/clients/smolagents" },
         ],
       },
       {
