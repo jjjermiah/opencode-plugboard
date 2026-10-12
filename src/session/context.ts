@@ -109,6 +109,20 @@ function systemFor(caller: ReadonlyArray<string>, policy: AppPolicy | undefined)
   }
 }
 
+/**
+ * The system prompts the model reads for a request, in order: the skill prelude, the caller's system prompts with the app's
+ * `system` policy applied, then the tool-choice steering (the OpenCode session API has no tool-choice control, so a forced or
+ * required tool is steered by instruction). The context hook sends these, and `count_tokens` counts them (#201), so the two
+ * cannot drift.
+ */
+export function requestSystem(request: Pick<PlugRequest, "system" | "toolChoice">, prelude: ReadonlyArray<string>, policy: AppPolicy | undefined): string[] {
+  const system = [...prelude, ...systemFor(request.system, policy)]
+  const choice = request.toolChoice
+  if (choice === "required") system.push("You must respond by calling one of the provided tools.")
+  if (typeof choice === "object") system.push(`You must respond by calling the \`${choice.name}\` tool.`)
+  return system
+}
+
 /** The one 500 message for a request plugboard could not prepare. What was missing is logged, never sent: it names host internals (#288). */
 const preparationFailed = (): PlugError => ({ status: 500, kind: "server", code: "backend_preparation_failed", message: "Could not prepare the model request" })
 
@@ -137,14 +151,7 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
     return text("[image unavailable]")
   }
 
-  // Order: the skill's content (prelude), then the app's system policy over the caller's (or an agent's) prompt,
-  // then the tool-choice steering below.
-  const system = [...(state.prelude ?? []), ...systemFor(request.system, policy)].map(text)
-  // The OpenCode session API has no tool-choice control, so a forced or required tool is steered by instruction.
-  const choice = request.toolChoice
-  if (choice === "required") system.push(text("You must respond by calling one of the provided tools."))
-  if (typeof choice === "object") system.push(text(`You must respond by calling the \`${choice.name}\` tool.`))
-  session.system = system
+  session.system = requestSystem(request, state.prelude ?? [], policy).map(text)
   session.messages = toHostMessages(request.messages).map((message) => ({ ...message, content: message.content.map(swap) }))
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 

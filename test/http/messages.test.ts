@@ -70,6 +70,15 @@ describe("#4 the route", () => {
     expect(count.json()).toEqual({ input_tokens: expect.any(Number) })
   })
 
+  test("#201 count_tokens includes the app's system policy, which every request sends", async () => {
+    await route([ev.finish()])
+    const plain = (await server!.send({ ...messages(), path: "/v1/messages/count_tokens" })).json().input_tokens
+    await server!.close()
+    await route([ev.finish()], { apps: { default: { system: "P".repeat(400), systemMode: "prepend" } } })
+    const withPolicy = (await server!.send({ ...messages(), path: "/v1/messages/count_tokens" })).json().input_tokens
+    expect(withPolicy - plain).toBe(100)
+  })
+
   test("#137 an unauthenticated GET is a 401, not a 405, so the path is not revealed", async () => {
     await route([ev.finish()], { keys: { app: "secret" } })
     const reply = await server!.send({ path: "/v1/messages" })
