@@ -100,7 +100,7 @@ Two kinds of name sit beside plain models. Both are off until you configure them
 
 The text between `skill:` and `@` is the skill's `id`, as OpenCode lists it. The model after `@` must pass `models`, like any target. A skill target takes one model: it cannot be a list and has no fallbacks. A request with `model: "invoice-parser"` gets the skill's content as the first system part, before the app's `system` policy and the caller's own system prompt. The skill is read from the app directory when the request runs and reused for 30 seconds, so an edit shows up within that window. A skill the server does not have is a 404 `model_not_found` that names it, and nothing runs.
 
-**Agents.** Option `agents` exposes OpenCode agents:
+**Agents.** Option `agents` exposes OpenCode agents (see the [permission model](#permission-model) below):
 
 ```json
 "agents": [{ "name": "review", "model": "anthropic/claude-sonnet-4-6" }]
@@ -108,7 +108,14 @@ The text between `skill:` and `@` is the skill's `id`, as OpenCode lists it. The
 
 Each entry is listed in `/v1/models` as `agent/review`. A request for it runs a session as that OpenCode agent, on the `model` given in the entry, with the agent's system prompt in place of the caller's. `model` is required and must pass `models`. The agent's own model setting is not read, so the allowlist stays the one rule. An agent the server does not have is a 404 `model_not_found`.
 
-**Agents never run a tool on the server in this release.** Caller messages replace the history and caller tools go back to the caller unexecuted, as for any model. Every OpenCode tool stays denied for the session, so an agent answers with its configured persona and model and nothing more. Running tools on the server is a separate decision, tracked for trusted tools in [#82](https://github.com/jjjermiah/opencode-plugboard/issues/82).
+### Permission model
+
+**Agents never run a tool on the server in this release.** The permission model, for an agent entry and for any model request:
+
+- Agents never run server tools. Every OpenCode tool is denied for the session, so an agent answers with its configured persona and model and nothing more. Running tools on the server is a separate decision, tracked for trusted tools in [#82](https://github.com/jjjermiah/opencode-plugboard/issues/82).
+- Every OpenCode tool stays denied, whatever the agent's own rules allow. Each session is created with `deny *`, then `allow plugboard_seed_*`. OpenCode merges the agent's rules first and the session's last, and the last matching rule wins, so the session's deny holds over an agent that allows everything. The evidence is in [docs/architecture.md](architecture.md#skills-and-agents-in-the-context-hook).
+- Caller tools go back to the caller unexecuted, as for any model. Caller messages replace the history. The seed tools only record the call, and the turn ends.
+- Persistent "always" approvals in OpenCode are not consulted for these tools, because the session's deny is checked before them.
 
 Both kinds appear in `/v1/models` with `plugboard.skill` or `plugboard.agent` set. Their answers are never cached (see [Response cache](#response-cache)). Architecture: [docs/architecture.md](architecture.md#skills-and-agents-in-the-context-hook).
 
