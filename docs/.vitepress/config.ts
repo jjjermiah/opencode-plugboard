@@ -73,6 +73,7 @@ export default defineConfig({
           { text: "Zed", link: "/clients/zed" },
           { text: "LobeChat", link: "/clients/lobechat" },
           { text: "Chatbox", link: "/clients/chatbox" },
+          { text: "Jan", link: "/clients/jan" },
         ],
       },
       {
