@@ -65,6 +65,7 @@ export default defineConfig({
           { text: "Continue", link: "/clients/continue" },
           { text: "Kilo Code", link: "/clients/kilo-code" },
           { text: "LibreChat", link: "/clients/librechat" },
+          { text: "Zed", link: "/clients/zed" },
         ],
       },
       {
