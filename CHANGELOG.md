@@ -14,7 +14,29 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+The first red-team round ([#269](https://github.com/jjjermiah/opencode-plugboard/issues/269), run by [docs/red-team.md](https://jjjermiah.github.io/opencode-plugboard/red-team)) attacked a dev server and, within strict limits, a real deployment. Auth, app isolation, server tools, SSRF and body limits held. These are its findings, all fixed. This release also adds the security workflows and moves releases to pull requests.
+
+### Fixed
+
+- **Every answer names its model** ([#279](https://github.com/jjjermiah/opencode-plugboard/issues/279)). `x-plugboard-model` now comes on every answer, streamed or not, alias or model id. Before, only list aliases set it.
+- **`/metrics` with an admin key** ([#285](https://github.com/jjjermiah/opencode-plugboard/issues/285)). Any app key could read every app's counters. With `adminKey` set, `/metrics` now takes the admin key only (an app key gets 403 `admin_key_required`). Without `adminKey`, it behaves as before, and the docs say so.
+- **Bad input is a 400, not a 500** ([#286](https://github.com/jjjermiah/opencode-plugboard/issues/286), [#288](https://github.com/jjjermiah/opencode-plugboard/issues/288), [#287](https://github.com/jjjermiah/opencode-plugboard/issues/287)). A `data:` image that isn't a real PNG, JPEG, GIF or WebP, file data that isn't a PDF, and a `stream` that isn't a boolean are refused up front. A 500 from request preparation no longer names host internals.
+- **Clearer structured-output failures** ([#282](https://github.com/jjjermiah/opencode-plugboard/issues/282)): the 502 says the model did not return JSON matching the schema, and no longer names the internal tool.
+- **Responses echoes `strict`** on function tools, as the OpenAI schema requires ([#289](https://github.com/jjjermiah/opencode-plugboard/issues/289)), and the README and Anthropic docs match the actual error bodies ([#283](https://github.com/jjjermiah/opencode-plugboard/issues/283)).
+
+### Added
+
+- **Hide the session link from an app** ([#280](https://github.com/jjjermiah/opencode-plugboard/issues/280)). `x-plugboard-session-url` reveals your OpenCode server's address. Turn it off, or give an app its own template:
+
+  ```jsonc
+  "apps": { "public-bot": { "key": "{env:BOT_KEY}", "historyUrl": false } }
+  ```
+- **Security workflows**: CodeQL and OpenSSF Scorecard run on every change. Each GitHub release attaches a CycloneDX SBOM and a build provenance attestation for the exact tarball published to npm (`gh attestation verify`). SECURITY.md gives response targets (7 days to acknowledge, 30 to fix). [Security reviews](https://jjjermiah.github.io/opencode-plugboard/security-reviews) records the AI-assisted reviews and what they changed: they were not an audit.
+- **The red-team playbook** ([docs/red-team.md](https://jjjermiah.github.io/opencode-plugboard/red-team)) and pages for 10 self-hosted apps (Karakeep, Frigate, paperless-gpt, Mealie, Khoj, Nextcloud Assistant, Mattermost, Open Notebook, Langflow, SparkyFitness).
+
+### Changed
+
+- **Releases go through a pull request**: `main` is protected, the release script opens a `release/vX.Y.Z` PR, merges it once CI passes and tags the merge commit.
 
 ## [0.22.0] - 2026-10-11: Eleven New Friends
 
