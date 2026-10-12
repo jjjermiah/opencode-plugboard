@@ -14,7 +14,7 @@ The layers follow docs/architecture.md, from pure code out to the host.
 | `runtime/` | `src/runtime.ts` generations, listener, `ensureBackend`, and `index.ts` freeze safety | spy plugin context, runtime helpers |
 | `compat/` | The client compatibility matrix (#101): official SDKs run a shared scenario set against a real route | `FakeModelCaller` scripted by `compat/scenarios.ts` |
 | `types/` | No tests: the SDK-typed wire goldens checked by `bun run typecheck` (#132) | none |
-| `live/` | Opt-in suite against an isolated server (not written yet, #99) | none |
+| `live/` | Opt-in suite against an isolated server, and the provider x endpoint matrix (#99, #108). Skipped unless `PLUGBOARD_LIVE=1` | none: real models |
 
 The top-level `compat/` directory is a different thing: the manual kit run against a real server.
 
@@ -34,6 +34,37 @@ The top-level `compat/` directory is a different thing: the manual kit run again
 - **SDK wire types** (`types/`, #132): `types/wire.ts` holds one golden per wire shape, generated from the encoders by `bun test/types/generate.ts`. Each golden `satisfies Wire<SdkType>` (every field we send exists in `openai`, `@anthropic-ai/sdk` or `@google/genai` with a compatible type) and goes through `exact<SdkType>()` (required fields we leave out). Known gaps have a `@ts-expect-error` naming them, listed in `GAPS` in `generate.ts`; when one closes, the unused directive fails the type check. `unit/wire.test.ts` checks the encoders still produce the goldens. After an intended wire change: regenerate, then `bun run typecheck`.
 - **Compatibility matrix** (`compat/`, #101): `compat/clients.ts` lists each client (package, endpoint) and its cases per scenario in `compat/scenarios.ts`; `compat/langchain.ts` holds the LangChain JS clients (#102-#106). A scenario a client does not apply to is `na` with its reason in `na` (#148); a scenario with neither a case nor an `na` is a **todo**, which the CI summary counts. A known incompatibility is `{ gap, run }` and runs as `test.failing`. To add a client, add a `Client`; to add a scenario, add it to `SCENARIOS`, script the fake model's answer in `script()`, and give every client a case or an `na` reason. `docs/compatibility.md` is generated from the results (`.github/scripts/compat-matrix.ts`); CI fails when it is stale. `compat/abort.ts` checks the server saw a client's abort (cancellation).
 - **Conformance** (`compat/conformance.test.ts`, #107): responses are validated with `ajv` against the response schemas vendored in `fixtures/specs/` (OpenAI's OpenAPI 3.1 document and Gemini's discovery document). Unknown fields and missing required fields fail; a known deviation is a `test.failing` that waives only the named field. `fixtures/specs/vendor.ts` regenerates the fixtures (run by hand; the output is committed, with its source URL and date). No public Anthropic Messages spec was found, so Anthropic is covered by the SDK types (`types/`). `compat/model-ids.test.ts` pins the `/` and `#` rules for model ids (#103).
+
+## Live layer (#99, #108)
+
+The only layer that calls real models. Opt-in: `bun test` skips it, and it never runs in CI. It drives an isolated OpenCode server (its own HOME, XDG dirs, port and throwaway project, see `docs/development.md`), through the wrapper the maintainer set up. Nothing in it edits that server's config.
+
+```sh
+# the matrix: one call per cell, writes docs/live-matrix.md and docs/live-matrix.json
+PLUGBOARD_LIVE_KEY=... bun run live-matrix
+
+# the suite: the same cells as tests, plus lifecycle checks
+PLUGBOARD_LIVE=1 PLUGBOARD_LIVE_KEY=... bun test test/live
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PLUGBOARD_LIVE` | unset | `1` turns the suite on (`bun test test/live` is skipped otherwise) |
+| `PLUGBOARD_LIVE_KEY` | required | An app key of the isolated server. Read from the environment only; never written to a file or a report |
+| `PLUGBOARD_LIVE_URL` | `http://127.0.0.1:4010` | Plugboard's listener on the isolated server |
+| `PLUGBOARD_LIVE_MODELS` | one per provider: `opencode-go/glm-5.3-flash`, `anthropic/claude-haiku-4-5`, `openai/gpt-5.6-luna#low`, `github-copilot/gpt-5.5` | Comma list. Each id must appear in `GET /v1/models` |
+| `PLUGBOARD_LIVE_OC` | `$REAL_HOME/.cache/opencode-adapter-dev/oc` | The wrapper that runs `oc api` against the isolated server |
+| `PLUGBOARD_LIVE_CHECKOUT` | `$REAL_HOME/projects/repos/open-source/opencode-plugboard` | The checkout the server loads plugboard from; the report names its version and commit |
+
+`test/setup.ts` moves HOME into a sandbox for `bun test`, so it records the real home first (`PLUGBOARD_REAL_HOME`); the suite needs it to reach the wrapper. The matrix runs outside `bun test` and uses HOME as it is.
+
+**Cells.** `test/live/cells.ts` is the table both use: endpoints `chat`, `responses`, `messages`, `gemini`, `completions` against scenarios `text`, `stream`, `tool-call` (returned unexecuted), `tool-result` (one call with the result in the history), `image` (a 16x16 red PNG), `json` (JSON Schema output) and `tools-json` (a tool and a schema together). A scenario an endpoint does not carry is `n-a` with its reason (`naReason`). Each cell is one call with `max_tokens` 512. Failing cells read the provider's own error from the session, because plugboard answers a provider failure with a generic 502.
+
+**Cost.** Every run spends real tokens: the matrix is 4 models x 30 applicable cells, about 120 calls, plus the suite's lifecycle calls. Each call is short, on a cheap model. Sessions the run creates are deleted at the end (`cleanup`, or `--keep-sessions` for the matrix).
+
+**Known failures.** `test/live/known.ts` lists the cells that fail today, with what was observed. Each runs as `test.failing`: it must keep failing. A fix (or a provider that works again) turns it red, and the entry is removed in the same change. A cell that fails most runs is listed with its rate. A cell that fails only now and then (one failure in about 25 calls, `glm-5.3-flash` on `responses stream` in this log) is not listed: it runs as a plain test, and a failing run is the signal.
+
+**Lifecycle.** Covered: a client disconnect mid-stream interrupts the request's session (`sessionGuards` drains, the host records `interrupted`); a tool-call turn and a tool-result turn are one clean assistant message each. Not covered: the request deadline (`requestTimeoutMs` needs a server started with a short one) and reloading the plugin during a request (needs the server restarted or its plugin edited). Both need a separate, dedicated server and are left out on purpose.
 
 ## Gates (`.github/floors/`)
 

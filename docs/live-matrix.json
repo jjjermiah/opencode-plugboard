@@ -1,0 +1,1526 @@
+{
+  "generatedAt": "2026-10-12T01:03:35.139Z",
+  "plugboard": {
+    "version": "0.20.0",
+    "commit": "914dec6"
+  },
+  "models": [
+    "opencode-go/glm-5.3-flash",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-5.6-luna#low",
+    "github-copilot/gpt-5.5"
+  ],
+  "summary": {
+    "pass": 84,
+    "fail": 36,
+    "n-a": 20,
+    "total": 140
+  },
+  "sessions": {
+    "created": 120,
+    "deleted": 120,
+    "guardsAfterRun": 0
+  },
+  "cells": [
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "chat",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e5c8affemTaUZG5gEYMs6N"
+      ],
+      "ms": 637
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "chat",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e5a12ffeLvS96aam4ESX6D"
+      ],
+      "ms": 1110
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "chat",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e55bdffeBXtumU9KWjHzTP"
+      ],
+      "ms": 17122
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "chat",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e12d6ffegcKjJyknrAj0DQ"
+      ],
+      "ms": 609
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "chat",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e1077ffeCPMpp39WXPJgEF"
+      ],
+      "ms": 1288
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "chat",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e0b71ffeZUUg3F1ToXn0qI"
+      ],
+      "ms": 1285
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "chat",
+      "scenario": "tools-json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e066cffe6gMgJNOFuMNeDG"
+      ],
+      "ms": 1114
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "responses",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e0212ffeMKjXOj8VFjhFDU"
+      ],
+      "ms": 2475
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "responses",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25df862ffeZDIw4NZcHHq5iR"
+      ],
+      "ms": 1484
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "responses",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25df299ffe8f66RZ1bUL6oKB"
+      ],
+      "ms": 1059
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "responses",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dee70ffeRwGOUqVmUKTVbt"
+      ],
+      "ms": 1171
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "responses",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25de9e1ffedIj6TwbtNw7m9I"
+      ],
+      "ms": 3961
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "responses",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dda6affeVXRZ3BoTMulsGH"
+      ],
+      "ms": 918
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "responses",
+      "scenario": "tools-json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dd6d3ffeI64OA85DdV1TfV"
+      ],
+      "ms": 1394
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "messages",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dd162ffeX5DvCxZ7S9XpNs"
+      ],
+      "ms": 1462
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "messages",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dcbaaffepPu8wIkHIB0842"
+      ],
+      "ms": 623
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "messages",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dc93bffegsuIbV4h19dPzI"
+      ],
+      "ms": 1345
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "messages",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dc3faffe250b2E9S5Pp7bc"
+      ],
+      "ms": 6321
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "messages",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dab49ffe2MZ2wD3QVlm4wB"
+      ],
+      "ms": 689
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "messages",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25da898ffeSNbP1E7G3100zq"
+      ],
+      "ms": 2684
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "messages",
+      "scenario": "tools-json",
+      "status": "n-a",
+      "detail": "Messages structured output is a forced tool; output_config.format is not supported (docs/messages.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "gemini",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d9e1dffeXa2c0LLVRd4rkV"
+      ],
+      "ms": 2235
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "gemini",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d9561ffexI1woAbe26oHCf"
+      ],
+      "ms": 1108
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "gemini",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d910bffeSJh9tJ3jOpXbLM"
+      ],
+      "ms": 1465
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "gemini",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d8b53ffe0qz5AYp7I8jyiU"
+      ],
+      "ms": 718
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "gemini",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d8886ffebwPyP3yqSKwnHn"
+      ],
+      "ms": 2154
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "gemini",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d801affe5PLvePtBosdUiR"
+      ],
+      "ms": 839
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "gemini",
+      "scenario": "tools-json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d7cd4ffey1ai3FC0CS4WB4"
+      ],
+      "ms": 2528
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "completions",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d72f4ffeCYa3ie4miET3R4"
+      ],
+      "ms": 867
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "completions",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25d6f91ffeQqvyLLc2MXouuq"
+      ],
+      "ms": 1436
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "completions",
+      "scenario": "tool-call",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "completions",
+      "scenario": "tool-result",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "completions",
+      "scenario": "image",
+      "status": "n-a",
+      "detail": "legacy completions: the prompt is a string, no image input (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "completions",
+      "scenario": "json",
+      "status": "fail",
+      "detail": "JSON answer is not 42; got **42** 6 × 7 = 42",
+      "sessions": [
+        "ses_ed25d69f4ffek3WB9VfgyfemVw"
+      ],
+      "ms": 912
+    },
+    {
+      "model": "opencode-go/glm-5.3-flash",
+      "endpoint": "completions",
+      "scenario": "tools-json",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "chat",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e5c8affb1LXUhO53HbZPYw"
+      ],
+      "ms": 872
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "chat",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e5927ffeH14UQ7dw2qjsse"
+      ],
+      "ms": 553
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "chat",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e56fdffeYt3bHXb9TVJy6K"
+      ],
+      "ms": 963
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "chat",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e533affe2XMO5WkkK9hhB0"
+      ],
+      "ms": 749
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "chat",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e504dffefwEEHuNE4GjHGm"
+      ],
+      "ms": 548
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "chat",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e4e29ffeVPwfITWetZEwqU"
+      ],
+      "ms": 920
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "chat",
+      "scenario": "tools-json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model finished without calling the `respond` tool, so there is no structure",
+      "sessions": [
+        "ses_ed25e4a91ffe24YScrodVuqTGg"
+      ],
+      "ms": 1702
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "responses",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e43a0ffexXPCS7nxeJr73m"
+      ],
+      "ms": 508
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "responses",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e419effef1UE0047HtBx5Y"
+      ],
+      "ms": 554
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "responses",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e3f78ffenqyHNtNHUVo6z3"
+      ],
+      "ms": 946
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "responses",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e3bc7ffeW091L0MJU8JoeO"
+      ],
+      "ms": 766
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "responses",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e38c8ffeaftJWonpUB3Tjj"
+      ],
+      "ms": 536
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "responses",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e36b1ffeBjcVUuqHrg1ztW"
+      ],
+      "ms": 923
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "responses",
+      "scenario": "tools-json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model finished without calling the `respond` tool, so there is no structure",
+      "sessions": [
+        "ses_ed25e3316ffex2PUE1jRwWlGAx"
+      ],
+      "ms": 2013
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "messages",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e2af0ffec9zHEtKbHpDw1i"
+      ],
+      "ms": 525
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "messages",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e28e0ffeM5okojSWjdVxZX"
+      ],
+      "ms": 555
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "messages",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e26b7ffepnTKuYeRQPMuLl"
+      ],
+      "ms": 938
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "messages",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e230effe6UugzBGJiICSkd"
+      ],
+      "ms": 745
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "messages",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e2024ffesdmMHk8OMp7mdF"
+      ],
+      "ms": 510
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "messages",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e1e26ffef9I40P47gtHyAm"
+      ],
+      "ms": 926
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "messages",
+      "scenario": "tools-json",
+      "status": "n-a",
+      "detail": "Messages structured output is a forced tool; output_config.format is not supported (docs/messages.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "gemini",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e1a84ffeXKUbjump002ya6"
+      ],
+      "ms": 558
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "gemini",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e1857ffe3K9uQmSGQnpudX"
+      ],
+      "ms": 511
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "gemini",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e1656ffeD66ZaUlOOKbtaP"
+      ],
+      "ms": 987
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "gemini",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e127fffevIC7Ssu3MtrSf3"
+      ],
+      "ms": 736
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "gemini",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e0f9effe158Id95DyGd0Lj"
+      ],
+      "ms": 584
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "gemini",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e0d55ffez0wO9zbtWsrFVR"
+      ],
+      "ms": 1065
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "gemini",
+      "scenario": "tools-json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"code\":502,\"message\":\"The model finished without calling the `respond` tool, so there is n",
+      "sessions": [
+        "ses_ed25e092dffeycWxCsP7zHzbhe"
+      ],
+      "ms": 1615
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "completions",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e0293ffezWs8ySMt1w3mRJ"
+      ],
+      "ms": 585
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "completions",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e0046ffeNhipCKtzz38aPT"
+      ],
+      "ms": 563
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "completions",
+      "scenario": "tool-call",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "completions",
+      "scenario": "tool-result",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "completions",
+      "scenario": "image",
+      "status": "n-a",
+      "detail": "legacy completions: the prompt is a string, no image input (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "completions",
+      "scenario": "json",
+      "status": "fail",
+      "detail": "JSON answer is not 42; got 6 times 7 equals **42**.",
+      "sessions": [
+        "ses_ed25dfe14ffeKGqNmTmEyYqRkR"
+      ],
+      "ms": 638
+    },
+    {
+      "model": "anthropic/claude-haiku-4-5",
+      "endpoint": "completions",
+      "scenario": "tools-json",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "chat",
+      "scenario": "text",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e5c8affdIX4Rc2N7Qlifes"
+      ],
+      "ms": 1043
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "chat",
+      "scenario": "stream",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e5831ffek7A4cOn3HcEle0"
+      ],
+      "ms": 1185
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "chat",
+      "scenario": "tool-call",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e5352ffeY578a618HzPb6D"
+      ],
+      "ms": 3112
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "chat",
+      "scenario": "tool-result",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e46d6ffeIpeqp7SeHKQLRP"
+      ],
+      "ms": 3027
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "chat",
+      "scenario": "image",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e3ac5ffebO4F1VdIh5iwYr"
+      ],
+      "ms": 1236
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "chat",
+      "scenario": "json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e35a1ffe9GPFtVFxuvSuJR"
+      ],
+      "ms": 2843
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "chat",
+      "scenario": "tools-json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e2a45ffe23zjK1y14D4MDF"
+      ],
+      "ms": 3005
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "responses",
+      "scenario": "text",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e1e1affePtuVrhpdVB8HJh"
+      ],
+      "ms": 997
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "responses",
+      "scenario": "stream",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e19eeffe7UKxkClNq5YI1e"
+      ],
+      "ms": 2577
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "responses",
+      "scenario": "tool-call",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25e0f89ffeGoBiZcgIaPzRSP"
+      ],
+      "ms": 7862
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "responses",
+      "scenario": "tool-result",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25df083ffeFqD4bZRpFe092e"
+      ],
+      "ms": 3099
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "responses",
+      "scenario": "image",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25de413ffee1Yk73oh4SNw0F"
+      ],
+      "ms": 1646
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "responses",
+      "scenario": "json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25ddd4dffe843uwqCOzLSFAP"
+      ],
+      "ms": 3009
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "responses",
+      "scenario": "tools-json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25dd136ffeqVWSp2E48yPxOB"
+      ],
+      "ms": 2951
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "messages",
+      "scenario": "text",
+      "status": "fail",
+      "detail": "HTTP 502: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"The model provider is unavailable or returned | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25dc554ffeR3xoRxbBmCHMUW"
+      ],
+      "ms": 1705
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "messages",
+      "scenario": "stream",
+      "status": "fail",
+      "detail": "HTTP 502: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"The model provider is unavailable or returned | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25dbe5cffeyyAsQckTvYioMP"
+      ],
+      "ms": 1949
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "messages",
+      "scenario": "tool-call",
+      "status": "fail",
+      "detail": "HTTP 502: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"The model provider is unavailable or returned | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25db668ffeULz9r8zfbqEF5o"
+      ],
+      "ms": 3559
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "messages",
+      "scenario": "tool-result",
+      "status": "fail",
+      "detail": "HTTP 502: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"The model provider is unavailable or returned | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25da841ffeOIRbZs9qlTozbG"
+      ],
+      "ms": 2934
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "messages",
+      "scenario": "image",
+      "status": "fail",
+      "detail": "HTTP 502: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"The model provider is unavailable or returned | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d9c80ffe5AvdskeJVmonQc"
+      ],
+      "ms": 1899
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "messages",
+      "scenario": "json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"The model provider is unavailable or returned | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d94c8ffekJ9yLVwINwXuYE"
+      ],
+      "ms": 3032
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "messages",
+      "scenario": "tools-json",
+      "status": "n-a",
+      "detail": "Messages structured output is a forced tool; output_config.format is not supported (docs/messages.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "gemini",
+      "scenario": "text",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"code\":502,\"message\":\"The model provider is unavailable or returned an error\",\"status\":\"IN | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d88acffea0E0qiPIHqEQrC"
+      ],
+      "ms": 1225
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "gemini",
+      "scenario": "stream",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"code\":502,\"message\":\"The model provider is unavailable or returned an error\",\"status\":\"IN | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d8393ffeEHv1ISArNBeJsm"
+      ],
+      "ms": 2783
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "gemini",
+      "scenario": "tool-call",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"code\":502,\"message\":\"The model provider is unavailable or returned an error\",\"status\":\"IN | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d786cffe71gaSd8co07NL1"
+      ],
+      "ms": 3141
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "gemini",
+      "scenario": "tool-result",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"code\":502,\"message\":\"The model provider is unavailable or returned an error\",\"status\":\"IN | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d6bddffeN3YJqJA9Juil72"
+      ],
+      "ms": 3049
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "gemini",
+      "scenario": "image",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"code\":502,\"message\":\"The model provider is unavailable or returned an error\",\"status\":\"IN | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d5fa7ffeAqNuDQq0UbUjPL"
+      ],
+      "ms": 1123
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "gemini",
+      "scenario": "json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"code\":502,\"message\":\"The model provider is unavailable or returned an error\",\"status\":\"IN | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d5b02ffekeefQAMmRT3sts"
+      ],
+      "ms": 2958
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "gemini",
+      "scenario": "tools-json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"code\":502,\"message\":\"The model provider is unavailable or returned an error\",\"status\":\"IN | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d4f23ffe9CcCb5aXQH78da"
+      ],
+      "ms": 2923
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "completions",
+      "scenario": "text",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d4373ffes1Xeht3C7B8AJZ"
+      ],
+      "ms": 1446
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "completions",
+      "scenario": "stream",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d3d00ffevQ7FhIu9HoASPj"
+      ],
+      "ms": 1568
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "completions",
+      "scenario": "tool-call",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "completions",
+      "scenario": "tool-result",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "completions",
+      "scenario": "image",
+      "status": "n-a",
+      "detail": "legacy completions: the prompt is a string, no image input (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "completions",
+      "scenario": "json",
+      "status": "fail",
+      "detail": "HTTP 502: {\"error\":{\"message\":\"The model provider is unavailable or returned an error\",\"type\":\"server_error\",\" | provider: provider.invalid-request: subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached. Check ChatGPT Settings → Usage for details.",
+      "sessions": [
+        "ses_ed25d3685ffeVSlPCULJOCNskr"
+      ],
+      "ms": 1613
+    },
+    {
+      "model": "openai/gpt-5.6-luna#low",
+      "endpoint": "completions",
+      "scenario": "tools-json",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "chat",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e5c8affcd9PhAKrfj2cwPo"
+      ],
+      "ms": 1189
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "chat",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e57eaffeNFAeRdAE1uYA38"
+      ],
+      "ms": 1646
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "chat",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e517cffeZdrS0fBEoC7z8w"
+      ],
+      "ms": 876
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "chat",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e4e11ffecOWC4T2YtYQidC"
+      ],
+      "ms": 970
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "chat",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e4a46ffeHo1R6d3eGohkhs"
+      ],
+      "ms": 906
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "chat",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e46bcffe1ul1unMU5YayFR"
+      ],
+      "ms": 1160
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "chat",
+      "scenario": "tools-json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e4234ffedkdnS0HYrQgkZP"
+      ],
+      "ms": 1415
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "responses",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e3cabffeLBgIoot5WBgxt8"
+      ],
+      "ms": 1317
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "responses",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e3782ffei88lGyse2qIo0T"
+      ],
+      "ms": 1227
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "responses",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e32bcffeooDK9Y5CLwuhFX"
+      ],
+      "ms": 860
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "responses",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e2f5fffesFmau7ddSGKOxH"
+      ],
+      "ms": 1045
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "responses",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e2b3cffevKwrjVzcWlAQJU"
+      ],
+      "ms": 1076
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "responses",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e2716ffeqwg5uhNUx34mDg"
+      ],
+      "ms": 1169
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "responses",
+      "scenario": "tools-json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e227effeFrAU3IYO9x2Kqp"
+      ],
+      "ms": 1398
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "messages",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e1d0dffeSg66xwsEl4nhKO"
+      ],
+      "ms": 1444
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "messages",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e1769ffeAoiOkJMq35WOur"
+      ],
+      "ms": 1145
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "messages",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e12ecffeHoMfgu6evG5NGu"
+      ],
+      "ms": 901
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "messages",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e0f6dffezop3ao0adPGRTB"
+      ],
+      "ms": 814
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "messages",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e0c3cffedGdLQcqUoJoRGq"
+      ],
+      "ms": 1185
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "messages",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e079bffeS5YdF3D7chBLVm"
+      ],
+      "ms": 912
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "messages",
+      "scenario": "tools-json",
+      "status": "n-a",
+      "detail": "Messages structured output is a forced tool; output_config.format is not supported (docs/messages.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "gemini",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25e040cffeW991dn5UUSLnIi"
+      ],
+      "ms": 1125
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "gemini",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dffa8ffeP4swZ1ROCkxm4v"
+      ],
+      "ms": 1167
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "gemini",
+      "scenario": "tool-call",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dfb19ffeOt1LVhibylQE0q"
+      ],
+      "ms": 828
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "gemini",
+      "scenario": "tool-result",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25df7ddffeqxdhJXEe7mgpqU"
+      ],
+      "ms": 1400
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "gemini",
+      "scenario": "image",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25df265ffep4I5lnp7zTLmWg"
+      ],
+      "ms": 1110
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "gemini",
+      "scenario": "json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25dee0fffe4R2WIgdexUj2BB"
+      ],
+      "ms": 1368
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "gemini",
+      "scenario": "tools-json",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25de8b5ffesqTxAfkDdyyqcw"
+      ],
+      "ms": 1958
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "completions",
+      "scenario": "text",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25de110ffeC4dLdGN54RWRlE"
+      ],
+      "ms": 1154
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "completions",
+      "scenario": "stream",
+      "status": "pass",
+      "detail": "ok",
+      "sessions": [
+        "ses_ed25ddc8fffekGDg7RjQfl0t5k"
+      ],
+      "ms": 1241
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "completions",
+      "scenario": "tool-call",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "completions",
+      "scenario": "tool-result",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "completions",
+      "scenario": "image",
+      "status": "n-a",
+      "detail": "legacy completions: the prompt is a string, no image input (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "completions",
+      "scenario": "json",
+      "status": "fail",
+      "detail": "JSON answer is not 42; got 42",
+      "sessions": [
+        "ses_ed25dd7b2ffejJYVzw3miJpGB2"
+      ],
+      "ms": 1148
+    },
+    {
+      "model": "github-copilot/gpt-5.5",
+      "endpoint": "completions",
+      "scenario": "tools-json",
+      "status": "n-a",
+      "detail": "legacy completions: text_completion has no tool_calls field (docs/completions.md)",
+      "sessions": [],
+      "ms": 0
+    }
+  ]
+}
