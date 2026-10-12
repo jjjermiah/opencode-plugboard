@@ -34,6 +34,8 @@ export interface RunOptions {
   readonly gaps?: Readonly<Record<string, Gap>>
   /** Scenarios the client does not have, by id, with the reason: reported as `n/a`, nothing is sent. */
   readonly na?: Readonly<Record<string, string>>
+  /** Scenarios run once per API, by id, e.g. `{ S1: ["chat", "messages"] }`. The function gets the variant as its second argument. */
+  readonly variants?: Readonly<Record<string, ReadonlyArray<string>>>
 }
 
 /** The scenarios in their file order. */
@@ -58,10 +60,11 @@ export function evaluate(checks: ReadonlyArray<Check>, observations: Observation
 }
 
 /** Tells the capture proxy a scenario starts. Waits there until earlier requests have finished. */
-export async function mark(scenario: string, model: string): Promise<void> {
+export async function mark(scenario: string, model: string, variant?: string): Promise<void> {
   const url = process.env.PLUGBOARD_CAPTURE_URL
   if (!url) throw new Error("PLUGBOARD_CAPTURE_URL is not set: run this through examples/_harness/run.ts")
-  const response = await fetch(`${url}/__mark`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scenario, model }) })
+  const body = JSON.stringify(variant === undefined ? { scenario, model } : { scenario, model, variant })
+  const response = await fetch(`${url}/__mark`, { method: "POST", headers: { "content-type": "application/json" }, body })
   if (!response.ok) throw new Error(`capture refused the mark for ${scenario} on ${model}: ${response.status}`)
 }
 
@@ -82,36 +85,40 @@ const errorText = (error: unknown): string => (error instanceof Error ? `${error
  * A function gets the model id and returns the observations; the checks decide pass or fail.
  */
 export async function runAll(
-  functions: Readonly<Record<string, (model: string) => Promise<Observations>>>,
+  functions: Readonly<Record<string, (model: string, variant?: string) => Promise<Observations>>>,
   options: RunOptions = {},
 ): Promise<void> {
   const planned = SCENARIOS.filter((scenario) => scenario.id in functions || scenario.id in (options.na ?? {}))
   emit({ kind: "plan", scenarios: planned.map((scenario) => scenario.id) })
   for (const scenario of planned) {
     for (const model of scenario.models) {
-      const na = options.na?.[scenario.id]
-      if (na !== undefined) {
-        emit({ kind: "result", scenario: scenario.id, model, status: "n/a", checks: [], error: null, note: na })
-        continue
+      for (const variant of options.variants?.[scenario.id] ?? [undefined]) {
+        const tag = variant === undefined ? {} : { variant }
+        const na = options.na?.[scenario.id]
+        if (na !== undefined) {
+          emit({ kind: "result", scenario: scenario.id, model, ...tag, status: "n/a", checks: [], error: null, note: na })
+          continue
+        }
+        await mark(scenario.id, model, variant)
+        let checks: Array<{ name: string; ok: boolean }> = []
+        let error: string | null = null
+        let observations: Observations = {}
+        try {
+          observations = await functions[scenario.id]!(model, variant)
+          checks = evaluate(scenario.checks, observations)
+        } catch (caught) {
+          error = errorText(caught)
+        }
+        let status: "pass" | "fail" | "gap" = error === null && checks.every((check) => check.ok) ? "pass" : "fail"
+        let note: string | null = null
+        const gap = options.gaps?.[`${scenario.id}|${model}`] ?? options.gaps?.[scenario.id]
+        if (status === "fail" && gap) {
+          status = "gap"
+          note = `${gap.note} (${gap.issue})`
+        }
+        emit({ kind: "result", scenario: scenario.id, model, ...tag, status, checks, error, note, observations })
       }
-      await mark(scenario.id, model)
-      let checks: Array<{ name: string; ok: boolean }> = []
-      let error: string | null = null
-      let observations: Observations = {}
-      try {
-        observations = await functions[scenario.id]!(model)
-        checks = evaluate(scenario.checks, observations)
-      } catch (caught) {
-        error = errorText(caught)
-      }
-      let status: "pass" | "fail" | "gap" = error === null && checks.every((check) => check.ok) ? "pass" : "fail"
-      let note: string | null = null
-      const gap = options.gaps?.[`${scenario.id}|${model}`] ?? options.gaps?.[scenario.id]
-      if (status === "fail" && gap) {
-        status = "gap"
-        note = `${gap.note} (${gap.issue})`
-      }
-      emit({ kind: "result", scenario: scenario.id, model, status, checks, error, note, observations })
     }
   }
+  emit({ kind: "done" })
 }

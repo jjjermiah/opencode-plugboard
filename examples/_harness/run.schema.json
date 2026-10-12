@@ -50,6 +50,7 @@
         "properties": {
           "id": { "type": "string", "pattern": "^[SE][0-9]+$" },
           "model": { "type": "string" },
+          "variant": { "type": "string", "pattern": "^[a-z0-9-]+$" },
           "required": { "type": "boolean" },
           "status": { "enum": ["pass", "fail", "gap", "n/a"] },
           "checks": {

@@ -38,6 +38,7 @@ interface ResultLine {
   readonly kind: "result"
   readonly scenario: string
   readonly model: string
+  readonly variant?: string
   readonly status: Status
   readonly checks: ReadonlyArray<{ readonly name: string; readonly ok: boolean }>
   readonly error: string | null
@@ -60,8 +61,11 @@ export function exampleDir(name: string): string {
   return existsSync(direct) ? direct : join(EXAMPLES, "_harness", name)
 }
 
-const slug = (model: string) => model.replace(/[/#]/g, "-")
-const pairKey = (scenario: string, model: string) => `${scenario}\u0000${model}`
+/** `openai-gpt-5.6-luna-low`; a scenario with no model (`-`, S7) is `none`. */
+const slug = (model: string) => (model === "-" ? "none" : model.replace(/[/#]/g, "-"))
+const pairKey = (scenario: string, model: string, variant?: string) => `${scenario}\u0000${variant ?? ""}\u0000${model}`
+/** `S1.messages.fast.json`, `S1.fast.json`: the transcript a scenario, API and model write. */
+const fileName = (scenario: string, model: string, variant?: string) => `${scenario}${variant === undefined ? "" : `.${variant}`}.${slug(model)}.json`
 
 export function hasRunner(dir: string): boolean {
   return ["run.py", "run.ts", "run.sh"].some((file) => existsSync(join(dir, file)))
@@ -79,6 +83,7 @@ function parseRunnerOutput(text: string) {
   const plan: string[] = []
   const results: ResultLine[] = []
   let client: ClientLine | undefined
+  let done = false
   for (const raw of text.split("\n")) {
     const line = raw.trim()
     if (!line.startsWith("{")) {
@@ -89,8 +94,9 @@ function parseRunnerOutput(text: string) {
     if (data.kind === "plan") plan.push(...(data as PlanLine).scenarios)
     else if (data.kind === "client") client = data as ClientLine
     else if (data.kind === "result") results.push(data as ResultLine)
+    else if (data.kind === "done") done = true
   }
-  return { plan, results, client }
+  return { plan, results, client, done }
 }
 
 /** The plugboard commit a live run is recorded against: PLUGBOARD_COMMIT, else the checkout's HEAD. */
@@ -149,11 +155,13 @@ async function runExample(name: string, target: "scripted" | "live"): Promise<Sc
     })
     const timer = setTimeout(() => proc.kill(), RUNNER_TIMEOUT_MS)
     const output = await new Response(proc.stdout).text()
-    await proc.exited
+    const exit = await proc.exited
     clearTimeout(timer)
     const endedAt = Date.now()
     await capture.close()
-    const { plan, results, client } = parseRunnerOutput(output)
+    const { plan, results, client, done } = parseRunnerOutput(output)
+    // A runner that exits before its last line writes a partial run: refuse it rather than record a gap as a pass.
+    if (!done) throw new Error(`${name}: the runner did not finish (exit ${exit}); nothing was written`)
     return await writeExample(name, target, scenarios, { plan, results, client, capture, key, endedAt, started })
   } finally {
     await capture.close()
@@ -175,8 +183,10 @@ async function writeExample(name: string, target: "scripted" | "live", scenarios
   const { marks, exchanges } = got.capture
   const planned = scenarios.scenarios.filter((spec) => got.plan.includes(spec.id))
   const markIndexes = new Map<string, number[]>()
-  marks.forEach((mark, index) => markIndexes.set(pairKey(mark.scenario, mark.model), [...(markIndexes.get(pairKey(mark.scenario, mark.model)) ?? []), index]))
-  const resultFor = new Map(got.results.map((result) => [pairKey(result.scenario, result.model), result]))
+  marks.forEach((mark, index) => {
+    const key = pairKey(mark.scenario, mark.model, mark.variant)
+    markIndexes.set(key, [...(markIndexes.get(key) ?? []), index])
+  })
 
   // Slice exchanges by mark; a route outside the scenario's own list goes to the background transcript.
   const byMark = new Map<number, Exchange[]>()
@@ -191,29 +201,39 @@ async function writeExample(name: string, target: "scripted" | "live", scenarios
   marks.forEach((mark, index) => {
     const own = byMark.get(index) ?? []
     background.push(...own.filter((exchange) => !onRoute(exchange, mark.scenario)))
-    transcripts[`${mark.scenario}.${slug(mark.model)}.json`] = normaliseTranscript(own.filter((exchange) => onRoute(exchange, mark.scenario)))
+    transcripts[fileName(mark.scenario, mark.model, mark.variant)] = normaliseTranscript(own.filter((exchange) => onRoute(exchange, mark.scenario)))
     durations[index] = (marks[index + 1]?.at ?? got.endedAt) - mark.at
   })
   background.sort((a, b) => a.seq - b.seq)
   transcripts["_background.json"] = normaliseTranscript(background)
 
+  // One row per result the runner printed, in its order; a planned scenario with no result at all is a failure.
+  for (const result of got.results) {
+    const spec = scenarios.scenarios.find((candidate) => candidate.id === result.scenario)
+    const index = markIndexes.get(pairKey(result.scenario, result.model, result.variant))?.shift()
+    const transcript = index === undefined || result.status === "n/a" ? null : `transcripts/${fileName(result.scenario, result.model, result.variant)}`
+    const duration = index === undefined || target === "scripted" ? {} : { duration_ms: durations[index] ?? 0 }
+    rows.push({
+      id: result.scenario,
+      model: result.model,
+      ...(result.variant === undefined ? {} : { variant: result.variant }),
+      required: spec?.required ?? false,
+      status: result.status,
+      checks: result.checks,
+      note: result.note,
+      error: result.error,
+      transcript,
+      ...duration,
+    })
+  }
   for (const spec of planned) {
-    for (const model of spec.models) {
-      const key = pairKey(spec.id, model)
-      const result = resultFor.get(key)
-      const index = markIndexes.get(key)?.shift()
-      const transcript = index === undefined ? null : `transcripts/${spec.id}.${slug(model)}.json`
-      const duration = index === undefined || target === "scripted" ? {} : { duration_ms: durations[index] ?? 0 }
-      if (!result) {
-        rows.push({ id: spec.id, model, required: spec.required, status: "fail", checks: [], note: null, error: "runner printed no result for this scenario", transcript, ...duration })
-        continue
-      }
-      rows.push({ id: spec.id, model, required: spec.required, status: result.status, checks: result.checks, note: result.note, error: result.error, transcript: result.status === "n/a" ? null : transcript, ...duration })
-    }
+    if (got.results.some((result) => result.scenario === spec.id)) continue
+    rows.push({ id: spec.id, model: spec.models[0] ?? "-", required: spec.required, status: "fail", checks: [], note: null, error: "runner printed no result for this scenario", transcript: null })
   }
 
   const client = got.client ?? { kind: "client" as const, name: name, version: "unknown", runtime: { name: "unknown", version: "0.0" } }
-  const models = [...new Set(rows.map((row) => row.model))]
+  // `-` marks a scenario with no model (S7, list models): it is not a model the run used.
+  const models = [...new Set(rows.map((row) => row.model))].filter((model) => model !== "-")
   const summary: RunSummary = {
     schema: 1,
     example: name,

@@ -11,6 +11,8 @@
 export interface Mark {
   readonly scenario: string
   readonly model: string
+  /** The API a scenario ran on, when one example runs it on several (curl). */
+  readonly variant?: string
   readonly at: number
 }
 
@@ -64,10 +66,11 @@ export async function startCapture(upstream: string): Promise<Capture> {
     async fetch(request) {
       const url = new URL(request.url)
       if (url.pathname === "/__mark" && request.method === "POST") {
-        const body = (await request.json()) as { scenario?: unknown; model?: unknown }
+        const body = (await request.json()) as { scenario?: unknown; model?: unknown; variant?: unknown }
         if (typeof body.scenario !== "string" || typeof body.model !== "string") return new Response("mark needs scenario and model", { status: 400 })
         await settle()
-        marks.push({ scenario: body.scenario, model: body.model, at: Date.now() })
+        const variant = typeof body.variant === "string" ? body.variant : undefined
+        marks.push({ scenario: body.scenario, model: body.model, ...(variant === undefined ? {} : { variant }), at: Date.now() })
         return new Response(null, { status: 204 })
       }
       inFlight++

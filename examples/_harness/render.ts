@@ -14,6 +14,8 @@ export type Status = "pass" | "fail" | "gap" | "n/a"
 export interface ScenarioRow {
   readonly id: string
   readonly model: string
+  /** The API, for a scenario an example runs once per API. */
+  readonly variant?: string
   readonly required: boolean
   readonly status: Status
   readonly checks: ReadonlyArray<{ readonly name: string; readonly ok: boolean }>
@@ -61,13 +63,14 @@ export function renderSummaryMd(summary: RunSummary): string {
   lines.push("", "| Scenario | Model | Required | Status | Checks |", "| --- | --- | --- | --- | --- |")
   for (const row of summary.scenarios) {
     const ok = row.checks.filter((check) => check.ok).length
-    lines.push(`| ${row.id} | ${row.model} | ${row.required ? "yes" : "no"} | ${row.status} | ${row.checks.length === 0 ? "" : `${ok}/${row.checks.length}`} |`)
+    const label = row.variant === undefined ? row.id : `${row.id} (${row.variant})`
+    lines.push(`| ${label} | ${row.model} | ${row.required ? "yes" : "no"} | ${row.status} | ${row.checks.length === 0 ? "" : `${ok}/${row.checks.length}`} |`)
   }
   const notable = summary.scenarios.filter((row) => row.status === "fail" || row.status === "gap")
   if (notable.length > 0) {
     lines.push("", "## Failures and gaps", "")
     for (const row of notable) {
-      lines.push(`### ${row.id} on ${row.model}: ${row.status}`, "")
+      lines.push(`### ${row.variant === undefined ? row.id : `${row.id} (${row.variant})`} on ${row.model}: ${row.status}`, "")
       if (row.note) lines.push(row.note, "")
       const failed = row.checks.filter((check) => !check.ok).map((check) => check.name)
       if (failed.length > 0) lines.push(`Failed checks: ${failed.join("; ")}`, "")

@@ -12,7 +12,9 @@ const RESPONSE_HEADERS = ["content-type"]
 const PLUGBOARD_HEADER = /^x-plugboard-/
 const NEVER_HEADER = /^(date|host|user-agent|x-stainless-.*|content-length|x-plugboard-request-id)$/
 /** Keys whose value is an id, replaced by placeholder (except on a GET of a models route, where `id` is a model name). */
-const ID_KEYS = /^(id|created|created_at|request-id|.*_id)$/
+const ID_KEYS = /^(id|request-id|responseId|.*_id)$/
+/** Timestamps: numbered by occurrence, not by value, because two responses in one second share a value and a run that crosses a second does not. */
+const TIME_KEYS = /^(created|created_at)$/
 const ID_PATTERNS: ReadonlyArray<RegExp> = [
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,
   /\b(?:chatcmpl|msg|resp|req|toolu|call|ses)_[A-Za-z0-9_-]+/g,
@@ -22,6 +24,11 @@ const LOOPBACK_URL = /https?:\/\/127\.0\.0\.1:\d+/g
 /** Placeholders for one file: the same value always gets the same `<id-N>`, numbered by first appearance. */
 export class IdMap {
   private readonly seen = new Map<string, string>()
+  private times = 0
+  time(): string {
+    this.times++
+    return `<time-${this.times}>`
+  }
   place(value: string): string {
     let placeholder = this.seen.get(value)
     if (placeholder === undefined) {
@@ -45,7 +52,9 @@ export function normaliseValue(value: unknown, ids: IdMap, idKeys: boolean): unk
     const out: Record<string, unknown> = {}
     for (const key of Object.keys(value).sort()) {
       const child = (value as Record<string, unknown>)[key]
-      if (idKeys && ID_KEYS.test(key) && (typeof child === "string" || typeof child === "number")) out[key] = ids.place(String(child))
+      const scalar = typeof child === "string" || typeof child === "number"
+      if (idKeys && ID_KEYS.test(key) && scalar) out[key] = ids.place(String(child))
+      else if (idKeys && TIME_KEYS.test(key) && scalar) out[key] = ids.time()
       else out[key] = normaliseValue(child, ids, idKeys)
     }
     return out

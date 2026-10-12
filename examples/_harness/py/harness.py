@@ -42,12 +42,15 @@ def evaluate(checks: list[dict[str, Any]], observations: dict[str, Any]) -> list
     return [{"name": check["name"], "ok": _passes(check, _pick(observations, check["path"]))} for check in checks]
 
 
-def mark(scenario: str, model: str) -> None:
+def mark(scenario: str, model: str, variant: Optional[str] = None) -> None:
     """Tells the capture proxy a scenario starts. The proxy waits there until earlier requests have finished."""
     url = os.environ.get("PLUGBOARD_CAPTURE_URL")
     if not url:
         raise RuntimeError("PLUGBOARD_CAPTURE_URL is not set: run this through examples/_harness/run.ts")
-    body = json.dumps({"scenario": scenario, "model": model}).encode()
+    payload: dict[str, Any] = {"scenario": scenario, "model": model}
+    if variant is not None:
+        payload["variant"] = variant
+    body = json.dumps(payload).encode()
     request = urllib.request.Request(f"{url}/__mark", data=body, method="POST", headers={"content-type": "application/json"})
     with urllib.request.urlopen(request, timeout=60) as response:
         response.read()
@@ -68,38 +71,46 @@ def _error_text(error: BaseException) -> str:
 
 
 def run_all(
-    functions: Mapping[str, Callable[[str], dict[str, Any]]],
+    functions: Mapping[str, Callable[..., dict[str, Any]]],
     *,
     na: Optional[Mapping[str, str]] = None,
     gaps: Optional[Mapping[str, Mapping[str, str]]] = None,
+    variants: Optional[Mapping[str, list[str]]] = None,
 ) -> None:
     """Runs every scenario the runner covers, on each of its models, in file order.
 
+    A function gets the model, and the variant as a second argument when the scenario has variants (`variants` maps an id
+    to the APIs it runs on, e.g. {"S1": ["chat", "messages"]}).
     `gaps` maps `id` or `id|model` to {"note", "issue"}: a failure there is reported as `gap`.
     `na` maps an id to the reason the client does not have it: reported as `n/a`, nothing is sent.
     """
     na = dict(na or {})
+    variants = dict(variants or {})
     planned = [scenario for scenario in SCENARIOS if scenario["id"] in functions or scenario["id"] in na]
     emit({"kind": "plan", "scenarios": [scenario["id"] for scenario in planned]})
     for scenario in planned:
         for model in scenario["models"]:
-            if scenario["id"] in na:
-                emit({"kind": "result", "scenario": scenario["id"], "model": model, "status": "n/a", "checks": [], "error": None, "note": na[scenario["id"]]})
-                continue
-            mark(scenario["id"], model)
-            checks: list[dict[str, Any]] = []
-            error: Optional[str] = None
-            observations: dict[str, Any] = {}
-            try:
-                observations = functions[scenario["id"]](model)
-                checks = evaluate(scenario["checks"], observations)
-            except Exception as caught:  # noqa: BLE001 - the error text is the result
-                traceback.print_exc(file=sys.stderr)
-                error = _error_text(caught)
-            status = "pass" if error is None and all(check["ok"] for check in checks) else "fail"
-            note: Optional[str] = None
-            gap = (gaps or {}).get(f"{scenario['id']}|{model}") or (gaps or {}).get(scenario["id"])
-            if status == "fail" and gap:
-                status = "gap"
-                note = f"{gap['note']} ({gap['issue']})"
-            emit({"kind": "result", "scenario": scenario["id"], "model": model, "status": status, "checks": checks, "error": error, "note": note, "observations": observations})
+            for variant in variants.get(scenario["id"], [None]):
+                tag = {} if variant is None else {"variant": variant}
+                if scenario["id"] in na:
+                    emit({"kind": "result", "scenario": scenario["id"], "model": model, **tag, "status": "n/a", "checks": [], "error": None, "note": na[scenario["id"]]})
+                    continue
+                mark(scenario["id"], model, variant)
+                checks: list[dict[str, Any]] = []
+                error: Optional[str] = None
+                observations: dict[str, Any] = {}
+                try:
+                    call = functions[scenario["id"]]
+                    observations = call(model) if variant is None else call(model, variant)
+                    checks = evaluate(scenario["checks"], observations)
+                except Exception as caught:  # noqa: BLE001 - the error text is the result
+                    traceback.print_exc(file=sys.stderr)
+                    error = _error_text(caught)
+                status = "pass" if error is None and all(check["ok"] for check in checks) else "fail"
+                note: Optional[str] = None
+                gap = (gaps or {}).get(f"{scenario['id']}|{model}") or (gaps or {}).get(scenario["id"])
+                if status == "fail" and gap:
+                    status = "gap"
+                    note = f"{gap['note']} ({gap['issue']})"
+                emit({"kind": "result", "scenario": scenario["id"], "model": model, **tag, "status": status, "checks": checks, "error": error, "note": note, "observations": observations})
+    emit({"kind": "done"})

@@ -32,8 +32,8 @@
               }
             }
           ],
-          "created": "<id-1>",
-          "id": "<id-2>",
+          "created": "<time-1>",
+          "id": "<id-1>",
           "model": "fast",
           "object": "chat.completion",
           "usage": {

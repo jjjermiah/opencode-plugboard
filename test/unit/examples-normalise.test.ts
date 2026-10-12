@@ -49,6 +49,17 @@ describe("placeholders for ids", () => {
     expect((second.exchanges[0]!.response.body as { id: string }).id).toBe("<id-1>")
   })
 
+  test("Gemini's unprefixed responseId is replaced under its key, so two runs match", () => {
+    const { exchanges } = normaliseTranscript([exchange({ resBody: JSON.stringify({ candidates: [], responseId: "cc8873367ce847bb8995d5" }) })])
+    expect(exchanges[0]!.response.body).toEqual({ candidates: [], responseId: "<id-1>" })
+  })
+
+  test("two equal timestamps in one file are two placeholders, so a second boundary does not change the file", () => {
+    const same = JSON.stringify({ created: 1791749771 })
+    const { exchanges } = normaliseTranscript([exchange({ resBody: same, seq: 0 }), exchange({ resBody: same, seq: 1 })])
+    expect(exchanges.map((item) => (item.response.body as { created: string }).created)).toEqual(["<time-1>", "<time-2>"])
+  })
+
   test("a UUID inside a string is replaced by pattern, not only under an id key", () => {
     const { exchanges } = normaliseTranscript([exchange({ resBody: JSON.stringify({ error: "request 1f2e3d4c-0000-4000-8000-123456789abc failed" }) })])
     expect(exchanges[0]!.response.body).toEqual({ error: "request <id-1> failed" })
