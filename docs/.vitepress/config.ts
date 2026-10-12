@@ -60,6 +60,12 @@ export default defineConfig({
           { text: "pydantic-ai", link: "/clients/pydantic-ai" },
           { text: "Open WebUI", link: "/clients/open-webui" },
           { text: "n8n", link: "/clients/n8n" },
+          { text: "Claude Code", link: "/clients/claude-code" },
+          { text: "Codex CLI", link: "/clients/codex-cli" },
+          { text: "Continue", link: "/clients/continue" },
+          { text: "Kilo Code", link: "/clients/kilo-code" },
+          { text: "LibreChat", link: "/clients/librechat" },
+          { text: "Zed", link: "/clients/zed" },
         ],
       },
       {

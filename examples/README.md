@@ -5,6 +5,12 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | Example | Shows |
 | --- | --- |
 | [open-webui/](open-webui/README.md) | Open WebUI in Docker, pointed at plugboard on the host, with the plugboard options it needs |
+| [claude-code/](claude-code/README.md) | Claude Code through `ANTHROPIC_BASE_URL`: shell exports and a `settings.json` `env` block |
+| [codex-cli/](codex-cli/README.md) | Codex CLI through a custom `responses` provider: a `config.toml` |
+| [continue/](continue/README.md) | Continue `config.yaml` with one plugboard model on Chat Completions and one on Responses |
+| [kilo-code/](kilo-code/README.md) | Kilo Code CLI provider block for plugboard's Chat Completions route |
+| [librechat/](librechat/README.md) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` |
+| [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider |
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
 | [curl](#curl) | One request per API: chat, responses, messages, Gemini, models and usage |
 

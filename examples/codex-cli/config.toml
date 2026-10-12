@@ -1,0 +1,11 @@
+# Copy to ~/.codex/config.toml (or $CODEX_HOME/config.toml).
+# Export the plugboard app key first:  export PLUGBOARD_KEY_CODEX_CLI="<your app key>"
+model = "fast"
+model_provider = "plugboard"
+
+[model_providers.plugboard]
+name = "Plugboard"
+base_url = "http://127.0.0.1:4010/v1"
+env_key = "PLUGBOARD_KEY_CODEX_CLI"
+# The only value Codex accepts. Plugboard serves it at /v1/responses.
+wire_api = "responses"

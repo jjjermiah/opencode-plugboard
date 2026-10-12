@@ -1,0 +1,10 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:4010",
+    "ANTHROPIC_AUTH_TOKEN": "<your app key>",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "fast",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "smart",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "smart",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  }
+}

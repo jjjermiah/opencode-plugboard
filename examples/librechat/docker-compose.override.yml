@@ -1,0 +1,10 @@
+# Put this file next to LibreChat's docker-compose.yml. It mounts librechat.yaml into the api service.
+services:
+  api:
+    volumes:
+      - type: bind
+        source: ./librechat.yaml
+        target: /app/librechat.yaml
+    extra_hosts:
+      # Linux only. Docker Desktop already provides host.docker.internal.
+      - "host.docker.internal:host-gateway"
