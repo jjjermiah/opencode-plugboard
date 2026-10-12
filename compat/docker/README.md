@@ -30,4 +30,4 @@ Tool calls: leave a model's Function Calling setting at its default. In 0.12.0 a
 
 `n8n/run.sh` drives n8n headless: `./run.sh up`, `./run.sh scenarios`, `./run.sh down`, or `./run.sh all`. It creates a throwaway owner, API key and credential, and imports the workflows in `n8n/*.json`.
 
-By hand: run `docker.n8n.io/n8nio/n8n:2.42.6` with `-p 127.0.0.1:5678:5678`, create an OpenAI API credential with the plugboard key and Base URL `http://host.docker.internal:4010/v1`, and use an OpenAI Chat Model node. Turn **Use Responses API off**: it defaults to on, and plugboard has no `/v1/responses` yet, so the node fails with a 404.
+By hand: run `docker.n8n.io/n8nio/n8n:2.42.6` with `-p 127.0.0.1:5678:5678`, create an OpenAI API credential with the plugboard key and Base URL `http://host.docker.internal:4010/v1`, and use an OpenAI Chat Model node. Turn **Use Responses API off** to test the Chat Completions path (it defaults to on). Plugboard serves `/v1/responses` too, so leaving it on tests that path instead.

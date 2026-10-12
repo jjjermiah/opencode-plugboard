@@ -460,6 +460,12 @@ One page per client, with the config, a chat, a tool call, structured output and
 | pydantic-ai | [pydantic-ai][client-pydantic-ai] | pass with `OpenAIChatModel` |
 | Open WebUI | [open-webui][client-open-webui] | pass over its HTTP API; no browser, no structured output in its UI |
 | n8n | [n8n][client-n8n] | pass with "Use Responses API" off |
+| Claude Code | [claude-code][client-claude-code] | pass: text and a tool turn through `/v1/messages`; needs `maxTools` above 36 |
+| Codex CLI | [codex-cli][client-codex-cli] | docs only, not run yet (Responses API) |
+| Continue | [continue][client-continue] | docs only, not run yet |
+| Kilo Code | [kilo-code][client-kilo-code] | docs only, not run yet |
+| LibreChat | [librechat][client-librechat] | docs only, not run yet |
+| Zed | [zed][client-zed] | docs only, not run yet |
 | Anything else | [any-app][client-any-app] | base URL, key, model id |
 
 Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass is not a clean sweep, and the notes say where it was not. The latest full run is in [compat/results/release-candidate.md][release-candidate].
@@ -538,4 +544,10 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-pydantic-ai]: https://jjjermiah.github.io/opencode-plugboard/clients/pydantic-ai
 [client-open-webui]: https://jjjermiah.github.io/opencode-plugboard/clients/open-webui
 [client-n8n]: https://jjjermiah.github.io/opencode-plugboard/clients/n8n
+[client-claude-code]: https://jjjermiah.github.io/opencode-plugboard/clients/claude-code
+[client-codex-cli]: https://jjjermiah.github.io/opencode-plugboard/clients/codex-cli
+[client-continue]: https://jjjermiah.github.io/opencode-plugboard/clients/continue
+[client-kilo-code]: https://jjjermiah.github.io/opencode-plugboard/clients/kilo-code
+[client-librechat]: https://jjjermiah.github.io/opencode-plugboard/clients/librechat
+[client-zed]: https://jjjermiah.github.io/opencode-plugboard/clients/zed
 [client-any-app]: https://jjjermiah.github.io/opencode-plugboard/clients/any-app

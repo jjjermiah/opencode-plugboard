@@ -1,6 +1,6 @@
 # Claude Code
 
-Verified: docs only. The environment variables, the `settings.json` `env` key, the model tier variables and the gateway notes were checked against code.claude.com. Not run: the dev server at `127.0.0.1:4010` was down, so `claude -p` against plugboard is still to do.
+Verified: run on 2026-10-12 with Claude Code 2.1.293 against plugboard main on an isolated OpenCode server, model `opencode-go/glm-5.3-flash`: `claude -p "reply with exactly: pong"` answered `pong`, and a Bash tool turn (`--allowedTools Bash`, `echo hello-from-tool`) ran the tool in Claude Code and answered with its output. The environment variables and the `settings.json` `env` key were checked against code.claude.com.
 
 Claude Code is Anthropic's terminal coding agent. It speaks the Anthropic Messages API, so it calls plugboard's `POST /v1/messages` route, as the Anthropic SDKs do ([Anthropic Messages](../messages.md)).
 
@@ -15,11 +15,17 @@ One app for Claude Code, and two aliases for the tiers it uses:
   "aliases": {
     "fast": "anthropic/claude-haiku-4-5",
     "smart": "anthropic/claude-sonnet-4-6"
-  }
+  },
+  // Claude Code sends about 36 tools per request; the default cap is 32.
+  "maxTools": 64
 }
 ```
 
 Every alias target must also be in `models`. Swap the ids for models your OpenCode server is signed in to. `fast` and `smart` are names this page uses, not names plugboard requires.
+
+`maxTools` matters: with the default of 32, every Claude Code request fails with `400 tools: 36 tools; plugboard allows 32 (option maxTools)`. It is a global option (an app can only lower it).
+
+A model id Claude Code does not know (anything that is not a Claude model name) prints a `claude-code:unrecognized_model` notice and assumes a 200k context window; the request still works. Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the real window if it differs.
 
 ## Claude Code config
 
