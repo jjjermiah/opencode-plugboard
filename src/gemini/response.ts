@@ -227,7 +227,7 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
 
   const passthrough = exchange.callerTools === true && calls > 0
   const fallback = exchange.structuredTool !== undefined && !passthrough && !answered && exchange.structuredSchema !== undefined ? textFallback(collected, exchange.structuredSchema) : undefined
-  const missing = passthrough || answered || fallback !== undefined || exchange.structuredTool === undefined ? undefined : structuredMissing(exchange.structuredTool)
+  const missing = passthrough || answered || fallback !== undefined || exchange.structuredTool === undefined ? undefined : structuredMissing()
   failure ??= finish ? missing : noFinish()
   if (failure) return { failure, started }
   flush()

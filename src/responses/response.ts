@@ -201,7 +201,7 @@ export async function runResponse(
   const passthrough = exchange.callerTools === true && calls > 0
   const structuredAnswer = exchange.structuredTool !== undefined && !passthrough
   const fallback = structuredAnswer && !answered && exchange.structuredSchema !== undefined ? textFallback(collected, exchange.structuredSchema) : undefined
-  const missing = passthrough || answered || fallback !== undefined || exchange.structuredTool === undefined ? undefined : structuredMissing(exchange.structuredTool)
+  const missing = passthrough || answered || fallback !== undefined || exchange.structuredTool === undefined ? undefined : structuredMissing()
   failure ??= finish ? missing : noFinish()
   if (failure) {
     if (!started && !committed()) return { failure, started }
