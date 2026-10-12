@@ -41,7 +41,7 @@ Caddy, private bind. Streamed answers are sent as they arrive with `flush_interv
 
 ```
 plugboard.example.com {
-	reverse_proxy 10.0.1.50:4010 {
+	reverse_proxy 192.0.2.10:4010 {
 		flush_interval -1
 	}
 }
@@ -96,7 +96,7 @@ The client then uses `http://127.0.0.1:4010/v1` with a key. Keep the local port 
 Whichever bind you choose, let only the clients that need it reach the port, and drop the rest. Example with `ufw` on the plugboard host. Rules match in order, so the allow comes first:
 
 ```sh
-sudo ufw allow from 10.0.1.0/24 to any port 4010 proto tcp
+sudo ufw allow from 192.0.2.0/24 to any port 4010 proto tcp
 sudo ufw deny 4010/tcp
 ```
 

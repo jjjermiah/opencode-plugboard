@@ -397,7 +397,7 @@ A server shared by a Discord bot, n8n, Open WebUI and a coding agent, with most 
       "package": "opencode-plugboard@0.23.0",
       "options": {
         // Reachable from the LAN. Non-loopback hosts refuse to start without keys.
-        "listen": { "host": "10.0.1.50", "port": 4010 },
+        "listen": { "host": "192.0.2.10", "port": 4010 },
 
         // One key per app. Each app's history, usage and limits are separate.
         "keys": {

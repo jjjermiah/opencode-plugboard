@@ -129,7 +129,7 @@ Both kinds appear in `/v1/models` with `plugboard.skill` or `plugboard.agent` se
 
 ## Apps and keys
 
-Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line. Removing a key, or changing its value, takes effect on the running server at once. Adding a key needs a restart. See [Reloads and restarts](#reloads-and-restarts).
+Each key name is an app. A request made with the `my-app` key is the app `my-app`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line. Removing a key, or changing its value, takes effect on the running server at once. Adding a key needs a restart. See [Reloads and restarts](#reloads-and-restarts).
 
 ### Per-app policy (`apps`)
 
@@ -363,7 +363,7 @@ A bot that serves many people is one app, so its history and usage would be one 
 A response names its history record in `x-plugboard-session`, but the OpenCode web UI has no URL a plugin can read. Option `historyUrl` is the template you fill in, and it depends on how you reach OpenCode:
 
 ```json
-{ "historyUrl": "http://opencode.lan:4096/session/{id}" }
+{ "historyUrl": "http://opencode.example:4096/session/{id}" }
 ```
 
 With it set, every response that carries `x-plugboard-session` also carries `x-plugboard-session-url`, and the request log line gets `session_url=`. A call with `n` above 1 lists the links in choice order, like the session ids. A cache hit has neither, because it writes no session.

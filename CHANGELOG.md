@@ -945,7 +945,7 @@ Not on the verdaccio path yet: the local-path install is the same node_modules f
 
   Runtime keys are stored as SHA-256 digests in plugboard's storage, survive restarts, and stop working on the next request after a delete. Config keys can't be deleted this way (409).
 - **Know who is talking** ([#57](https://github.com/jjjermiah/opencode-plugboard/issues/57)). The OpenAI `user` field and Anthropic `metadata.user_id` now prefix the session title (`[alice] ...`), appear in the request log, and get their own counts in `GET /v1/usage` (`users` per app, `?user=` to filter). A value that can't be kept safely (over 64 characters, or characters outside letters, digits and `. _ @ : -`) is dropped and the answer says `x-plugboard-user-dropped: 1`.
-- **Click through to the session** ([#77](https://github.com/jjjermiah/opencode-plugboard/issues/77)). Set `"historyUrl": "http://aihub:4096/session/{id}"` and every answer carries `x-plugboard-session-url`, also logged as `session_url`.
+- **Click through to the session** ([#77](https://github.com/jjjermiah/opencode-plugboard/issues/77)). Set `"historyUrl": "http://opencode.example:4096/session/{id}"` and every answer carries `x-plugboard-session-url`, also logged as `session_url`.
 - **Skills as models** ([#79](https://github.com/jjjermiah/opencode-plugboard/issues/79)). Bind an OpenCode skill to a model with an alias, and a client calls it by name without knowing the instructions:
 
   ```jsonc
