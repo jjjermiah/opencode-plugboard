@@ -113,6 +113,11 @@ export interface PlugRequest {
   readonly messages: ReadonlyArray<PlugMessage>
   readonly tools: ReadonlyArray<PlugTool>
   readonly toolChoice?: PlugToolChoice
+  /**
+   * The forced tool that carries a `json_schema` answer (`respond`), set by the front-end when the request asked for
+   * structured output. The app's `tools: false` keeps only this tool (#252); every other tool is the caller's.
+   */
+  readonly structuredTool?: string
   readonly generation: PlugGeneration
   /** The end user the caller named, when kept (src/user.ts, #57). Labels the session title and the usage counts. */
   readonly user?: string

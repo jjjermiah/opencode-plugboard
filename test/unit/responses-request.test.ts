@@ -210,6 +210,8 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
     const alone = parse(body({ text: { format: { type: "json_schema", name: "out", schema } } }))
     expect(alone.request.toolChoice).toEqual({ type: "tool", name: "respond" })
     expect(alone.exchange.structuredTool).toBe("respond")
+    // The request carries the structured tool's name, so `tools: false` keeps respond (#252).
+    expect(alone.request.structuredTool).toBe("respond")
     const withTools = parse(body({ tools: [fn("a")], text: { format: { type: "json_schema", schema } } }))
     expect(withTools.request.tools.map((tool) => tool.name)).toEqual(["a", "respond"])
     expect(withTools.request.toolChoice).toBe("required")

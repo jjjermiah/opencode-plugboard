@@ -334,6 +334,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
     messages: parsed.messages,
     tools,
     ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),
+    ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
     generation,
   }
   const streamOptions = isRecord(body.stream_options) ? body.stream_options : {}

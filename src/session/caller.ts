@@ -86,14 +86,20 @@ function checkPreparation(request: PlugRequest, images: number, maxTools: number
 }
 
 /**
- * The app's tool policy applied to the request: `tools: false` drops every tool (and a tool choice that
- * would refer to them). Returns the request the session is built from, and whether anything was dropped.
- * Note that a `response_format` of `json_schema` is answered through a tool, so it is dropped too.
+ * The app's tool policy applied to the request: `tools: false` drops the caller's tools (and a tool choice that
+ * would refer to them). A structured answer (`json_schema`) is carried by the `respond` tool (`structuredTool`), which
+ * stays and is forced, so the app keeps its structured output (#252). Returns the request the session is built from,
+ * and whether a caller tool was dropped.
  */
 function applyToolPolicy(request: PlugRequest, policy: AppPolicy | undefined): { request: PlugRequest; stripped: boolean } {
   if (policy?.tools !== false) return { request, stripped: false }
-  const { toolChoice: _dropped, ...rest } = request
-  return { request: { ...rest, tools: [] }, stripped: request.tools.length > 0 }
+  const structured = request.structuredTool
+  const kept = structured === undefined ? [] : request.tools.filter((tool) => tool.name === structured)
+  if (structured === undefined || kept.length === 0) {
+    const { toolChoice: _dropped, ...rest } = request
+    return { request: { ...rest, tools: [] }, stripped: request.tools.length > 0 }
+  }
+  return { request: { ...request, tools: kept, toolChoice: { type: "tool", name: structured } }, stripped: request.tools.length > kept.length }
 }
 
 /** An app's own `maxTools`, checked on top of the global one (which `checkPreparation` and the request decoders enforce). */

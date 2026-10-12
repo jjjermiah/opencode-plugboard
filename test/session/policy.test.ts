@@ -101,6 +101,30 @@ describe("tools", () => {
     expect(run.port.prompted[0]!.text).not.toContain("tool")
   })
 
+  test("#252 tools: false keeps the structured respond tool and forces it, and drops the caller's tools", async () => {
+    const run = setup()
+    const respond = tool("respond")
+    const events = await run.call("bot", request("fast", { ...echo, variant: "low" }, { tools: [tool("a"), respond], toolChoice: "required", structuredTool: "respond" }))
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop" })
+    expect(run.seen[0]!.tools).toEqual([respond])
+    expect(run.seen[0]!.toolChoice).toEqual({ type: "tool", name: "respond" })
+    expect(run.notes).toEqual([["tools-stripped"]])
+  })
+
+  test("#252 a structured request with no caller tools keeps respond and reports nothing", async () => {
+    const run = setup()
+    await run.call("bot", request("fast", { ...echo, variant: "low" }, { tools: [tool("respond")], toolChoice: { type: "tool", name: "respond" }, structuredTool: "respond" }))
+    expect(run.seen[0]!.tools).toEqual([tool("respond")])
+    expect(run.notes).toEqual([])
+  })
+
+  test("#252 a caller tool named respond is still dropped when the request has no structured output", async () => {
+    const run = setup()
+    await run.call("bot", request("fast", { ...echo, variant: "low" }, { tools: [tool("respond")] }))
+    expect(run.seen[0]!.tools).toEqual([])
+    expect(run.notes).toEqual([["tools-stripped"]])
+  })
+
   test("nothing is reported when the caller sent no tools", async () => {
     const run = setup()
     await run.call("bot", request("fast", { ...echo, variant: "low" }, { toolChoice: "required" }))

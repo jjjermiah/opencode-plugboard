@@ -44,6 +44,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/http/admin.test.ts"],
   },
   {
+    id: "I9-tools-off-drops-structured-tool",
+    invariant: "I9",
+    file: "src/session/caller.ts",
+    find: "if (structured === undefined || kept.length === 0) {",
+    replace: "if (true) {",
+    tests: ["test/session/policy.test.ts"],
+  },
+  {
     id: "I24-metrics-app-key-reads-all-apps",
     invariant: "I24",
     file: "src/openai/route.ts",
