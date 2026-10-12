@@ -269,6 +269,8 @@ const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "ma
 const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
 const MAX_SERVER_TOOLS = 32
 const MAX_SERVER_TOOL_STEPS = 100
+/** Tools that start a child session. The child runs with its own agent's rules, not the request session's deny-all (#195). */
+const SESSION_SPAWNING_TOOLS: ReadonlySet<string> = new Set(["subagent", "task"])
 
 /** `apps.<name>.serverTools`: exact OpenCode tool ids. No wildcards, no duplicates, and not the seeds or CodeMode's `execute`. */
 function parseServerTools(value: unknown, at: string): string[] {
@@ -279,6 +281,8 @@ function parseServerTools(value: unknown, at: string): string[] {
     if (typeof tool !== "string" || !SERVER_TOOL_PATTERN.test(tool))
       throw new Error(`${at}.serverTools entry \`${String(tool)}\` must be an exact OpenCode tool id (letters, digits, \`_\`, \`.\`, \`:\`, \`-\`; no wildcards)`)
     if (tool === "execute") throw new Error(`${at}.serverTools cannot name \`execute\`: it is OpenCode's CodeMode tool and would run every tool it wraps`)
+    if (SESSION_SPAWNING_TOOLS.has(tool))
+      throw new Error(`${at}.serverTools cannot name \`${tool}\`: it starts a child session with its own agent rules, outside this app's deny-all`)
     if (tool.startsWith(SEED_PREFIX)) throw new Error(`${at}.serverTools cannot name \`${tool}\`: plugboard's own seed tools are reserved`)
     if (tools.includes(tool)) throw new Error(`${at}.serverTools lists \`${tool}\` twice`)
     tools.push(tool)

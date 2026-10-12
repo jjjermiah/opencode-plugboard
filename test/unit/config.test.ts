@@ -342,6 +342,8 @@ describe("#82 apps.<name>.serverTools and maxServerToolSteps", () => {
     ["a duplicate id", { serverTools: ["websearch", "websearch"] }, "lists `websearch` twice"],
     ["CodeMode's execute tool", { serverTools: ["execute"] }, "cannot name `execute`"],
     ["a seed tool", { serverTools: ["plugboard_seed_0"] }, "plugboard's own seed tools are reserved"],
+    ["the subagent tool (#195)", { serverTools: ["subagent"] }, "cannot name `subagent`: it starts a child session"],
+    ["the task tool, subagent's old name (#195)", { serverTools: ["task"] }, "cannot name `task`: it starts a child session"],
     ["a step limit without server tools", { maxServerToolSteps: 3 }, "maxServerToolSteps needs `serverTools`"],
     ["a step limit of zero", { serverTools: ["websearch"], maxServerToolSteps: 0 }, "`apps.bot.maxServerToolSteps` must be an integer between 1 and 100"],
     ["a step limit above 100", { serverTools: ["websearch"], maxServerToolSteps: 101 }, "`apps.bot.maxServerToolSteps` must be an integer between 1 and 100"],

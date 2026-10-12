@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I8-server-tools-reject-subagent",
+    invariant: "I8",
+    file: "src/config.ts",
+    find: "if (SESSION_SPAWNING_TOOLS.has(tool))",
+    replace: "if (false)",
+    tests: ["test/unit/config.test.ts"],
+  },
+  {
     id: "I24-metrics-app-key-reads-all-apps",
     invariant: "I24",
     file: "src/openai/route.ts",
