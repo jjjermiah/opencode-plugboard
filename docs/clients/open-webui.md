@@ -14,7 +14,7 @@ docker run -d --name open-webui -p 127.0.0.1:3000:8080 \
   ghcr.io/open-webui/open-webui:0.12.0
 ```
 
-The container example needs plugboard bound to a non-loopback address with `keys` set. A loopback bind is not reachable from a container, and its `Host` check would reject `host.docker.internal` anyway. See [reaching plugboard from another host or container](any-app.md#reaching-plugboard-from-another-host-or-container). Outside Docker use `http://localhost:4010/v1`. The test setup is in [compat/docker/README.md](../../compat/docker/README.md).
+The container example needs plugboard bound to a non-loopback address with `keys` set. A loopback bind is not reachable from a container, and its `Host` check would reject `host.docker.internal` anyway. See [reaching plugboard from another host or container](any-app.md#reaching-plugboard-from-another-host-or-container). Outside Docker use `http://localhost:4010/v1`. The test setup is in [compat/docker/README.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/docker/README.md).
 
 ## Chat
 
