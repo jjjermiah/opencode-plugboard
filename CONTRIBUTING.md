@@ -18,7 +18,7 @@ The type check also checks host compatibility: it fails when the pinned `@openco
 
 ## Tests
 
-The suite runs on `bun test`. It is fast and never talks to a real OpenCode server: HOME and the XDG directories point at a temporary directory for the run. [test/README.md](test/README.md) explains the layout (`unit`, `http`, `session`, `runtime`, `compat`, `types`, `live`), the shared fakes, the property tests, the SDK wire-type checks and the client compatibility matrix ([docs/compatibility.md](docs/compatibility.md)).
+The suite runs on `bun test`. It is fast and never talks to a real OpenCode server: HOME and the XDG directories point at a temporary directory for the run. [test/README.md](test/README.md) explains the layout (`unit`, `http`, `session`, `runtime`, `compat`, `types`, `live`), the shared fakes, the property tests, the SDK wire-type checks and the client compatibility matrix ([docs/compatibility.md](docs/compatibility.md)). The opt-in live layer (`test/live`, `bun run live-matrix`) calls real models on an isolated server and costs tokens; see [test/README.md](test/README.md#live-layer-99-108).
 
 - Add or change a test with every behaviour change. Name it after the behaviour, and the issue it protects: `"#38 a failure before the first output keeps its HTTP status"`.
 - Use the shared fakes instead of new ones, and tables when cases differ only in data.

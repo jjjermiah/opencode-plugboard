@@ -26,6 +26,7 @@
     "mutations": "bun .github/scripts/mutation-check.ts",
     "flake-hunt": "bun .github/scripts/flake-hunt.ts",
     "coverage-manifest": "bun .github/scripts/coverage-manifest.ts",
+    "live-matrix": "bun test/live/matrix.ts",
     "smoke:pack": "bun .github/scripts/smoke-pack.ts",
     "release": "bun .github/scripts/release.ts"
   },
