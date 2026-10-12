@@ -13,7 +13,9 @@
  * A call to one of the app's `serverTools` is not the caller's: OpenCode runs it, the runner starts
  * the next step with its result, and the collector neither emits it nor stops the turn. A step with
  * only server calls continues; a step that also holds a caller call is returned to the caller as usual.
- * Server steps are counted and capped (`maxServerToolSteps`); each server call is logged once.
+ * Server steps are counted and capped (`maxServerToolSteps`), and so are the calls (`maxServerToolCalls`); each
+ * server call is logged once. A server call that lands after the request ended is logged as
+ * `server_tool.after_request` and its step stops the turn again (#196).
  */
 
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
@@ -235,6 +237,10 @@ export class RequestCollector {
   private readonly calls = new Set<string>()
   private readonly serverCalls = new Map<string, ServerCall>()
   private stepServerCalls = 0
+  /** Server calls that landed after the request ended (#196), by id, and their count; `lateStepCalls` is the current step's. */
+  private readonly lateIDs = new Set<string>()
+  private lateCalls = 0
+  private lateStepCalls = 0
   private serverSteps = 0
   private usage?: RawUsage
   private finished = false
@@ -315,10 +321,13 @@ export class RequestCollector {
         this.toolNames.set(String(item.id), String(item.name ?? ""))
         return
       case "session.tool.called": {
-        if (this.finished) return
         const id = String(item.id)
-        if (this.calls.has(id) || this.serverCalls.has(id)) return
         const name = String(item.name ?? this.toolNames.get(id) ?? "")
+        if (this.finished) {
+          if (this.hooks.serverTools?.has(name)) this.lateServerCall(id, name)
+          return
+        }
+        if (this.calls.has(id) || this.serverCalls.has(id)) return
         if (this.hooks.serverTools?.has(name)) {
           this.serverCalls.set(id, { name, startedAt: Date.now(), done: false })
           this.stepServerCalls++
@@ -358,6 +367,10 @@ export class RequestCollector {
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         const serverCalls = this.stepServerCalls
         this.stepServerCalls = 0
+        // A late step that ran server calls: the host is still running the session, so the turn is stopped again (#196).
+        const late = this.lateStepCalls
+        this.lateStepCalls = 0
+        if (this.finished && late > 0 && !this.executionDone) this.hooks.stopTurn()
         // Also after the response finished: a later step that ended with calls means the first
         // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
         if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
@@ -441,6 +454,26 @@ export class RequestCollector {
     }
     if (reason === "stop" || reason === "tool-calls") return
     this.finishWith(reason)
+  }
+
+  /**
+   * A server call that lands after the request ended (the client left, the timeout ran or the answer returned)
+   * while the host still runs the session (#196). It is never returned to anyone: it is counted and logged once
+   * under its own event name, and the step that ran it stops the turn (`session.step.ended`).
+   */
+  private lateServerCall(id: string, name: string): void {
+    if (this.lateIDs.has(id)) return
+    this.lateIDs.add(id)
+    this.lateCalls++
+    this.lateStepCalls++
+    log("server_tool.after_request", {
+      requestID: this.hooks.requestID,
+      app: this.hooks.app,
+      tool: name,
+      lateCalls: this.lateCalls,
+      serverCalls: this.serverCalls.size,
+      serverSteps: this.serverSteps,
+    })
   }
 
   /** Server calls the execution ended before they reported back are logged as not ok, once each. */

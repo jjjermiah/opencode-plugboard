@@ -60,6 +60,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/server-tools.test.ts"],
   },
   {
+    id: "I12-late-server-call-not-stopped",
+    invariant: "I12",
+    file: "src/session/events.ts",
+    find: "if (this.finished && late > 0 && !this.executionDone) this.hooks.stopTurn()",
+    replace: "if (false) this.hooks.stopTurn()",
+    tests: ["test/session/server-tools.test.ts"],
+  },
+  {
     id: "I24-metrics-app-key-reads-all-apps",
     invariant: "I24",
     file: "src/openai/route.ts",

@@ -293,6 +293,48 @@ describe("x-plugboard-server-tools (#82)", () => {
   })
 })
 
+describe("server calls after the request ended (#196)", () => {
+  test("a server call after the client left is logged as server_tool.after_request, and its step stops the turn", async () => {
+    const run = collectorRun()
+    run.collector.cancel()
+    run.send(run.host.toolCalled("s1", "websearch", { query: "secret query" }), run.host.stepEnded("tool-calls"))
+    expect(run.stops()).toBe(1)
+    const lines = logs.of("server_tool.after_request")
+    expect(lines).toHaveLength(1)
+    expect(lines[0]!.fields).toMatchObject({ requestID: "req_1", app: "app", tool: "websearch", lateCalls: "1" })
+    expect(lines[0]!.raw).not.toContain("secret query")
+  })
+
+  test("each late step that ran a server call stops the turn again, and a repeated call id is logged once", async () => {
+    const run = collectorRun()
+    run.collector.cancel()
+    run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolCalled("s1", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
+    expect(run.stops()).toBe(2)
+    expect(logs.of("server_tool.after_request")).toHaveLength(2)
+  })
+
+  test("a caller call after the request ended is ignored: no log, no stop", async () => {
+    const run = collectorRun()
+    run.collector.cancel()
+    run.send(run.host.toolCalled("c1", "lookup", {}), run.host.stepEnded("tool-calls"))
+    expect(run.stops()).toBe(0)
+    expect(logs.of("server_tool.after_request")).toHaveLength(0)
+  })
+
+  test("the answer returned and the host still runs a server tool: the session is interrupted again (fake session)", async () => {
+    const run = setup({ serverTools: ["websearch"] })
+    run.port.toolIDs.push("websearch")
+    run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop")])
+    await drain(run.caller.stream(plugRequest(), run.context))
+    expect(run.port.interrupted).toEqual([])
+    run.sessions.dispatch(bus("ses_1").toolCalled("late1", "websearch", {}))
+    run.sessions.dispatch(bus("ses_1").stepEnded("tool-calls"))
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(logs.of("server_tool.after_request")[0]!.fields).toMatchObject({ tool: "websearch", lateCalls: "1" })
+  })
+})
+
 describe("server_tool.call log lines (#82)", () => {
   test("one line per server call with the tool, outcome and duration, and no arguments", async () => {
     const run = collectorRun()
