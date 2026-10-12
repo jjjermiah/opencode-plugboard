@@ -13,6 +13,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { authenticate } from "../config.js"
+import { liveOptions } from "../runtime.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import {
   BodyError,
@@ -59,9 +60,10 @@ const header = (request: IncomingMessage, name: string): string | undefined => {
 
 /** `Authorization: Bearer` first (Claude Code with ANTHROPIC_AUTH_TOKEN), then `x-api-key` (the Anthropic SDKs). One key store. */
 const authenticateRequest = (host: RouteHost, request: IncomingMessage) => {
-  const bearer = authenticate(host.options, request.headers.authorization)
+  const options = liveOptions(host.options)
+  const bearer = authenticate(options, request.headers.authorization)
   const apiKey = header(request, "x-api-key")
-  return isPlugError(bearer) && apiKey ? authenticate(host.options, `Bearer ${apiKey}`) : bearer
+  return isPlugError(bearer) && apiKey ? authenticate(options, `Bearer ${apiKey}`) : bearer
 }
 
 export async function serveMessages(host: RouteHost, call: MessagesCall): Promise<void> {

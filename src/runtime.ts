@@ -112,8 +112,8 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 10
+/** 11: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 11
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -167,6 +167,12 @@ interface Runtime {
   readonly limits: LimitState
   /** When this runtime was created, epoch ms. */
   readonly startedAt: number
+  /**
+   * The app keys authentication checks (app name -> key), once a generation has registered. Replaced
+   * when a newer generation only revokes or rotates keys (`registerGeneration`, #90). Absent means
+   * the handler's own options are used.
+   */
+  keys?: Readonly<Record<string, string>>
   /** The response cache store (src/cache.ts) and the fingerprint of the config and `apps` policy it was built for. */
   cache?: { readonly fingerprint: string; readonly store: CacheStore }
   listener?: Listener
@@ -274,6 +280,15 @@ export const processMetrics = (): Metrics => runtime()?.metrics ?? detachedMetri
 
 /** The request limiter's state shared by every generation in the process (detached under a foreign-version runtime). */
 export const processLimits = (): LimitState => runtime()?.limits ?? detachedLimits
+
+/**
+ * The options authentication reads: `keys` is the live key set, not the serving generation's own
+ * (a generation that is still live after a key revocation keeps its old keys otherwise, #90).
+ */
+export function liveOptions(options: PlugboardOptions): PlugboardOptions {
+  const keys = runtime()?.keys
+  return keys === undefined || keys === options.keys ? options : { ...options, keys }
+}
 
 /**
  * Wraps `caller` with the response cache when option `cache` is set (a no-op without it). The store
@@ -423,6 +438,12 @@ function closeListener(rt: Runtime, listener: Listener): void {
  * generation's options are adopted. A different `listen` needs a server restart and is rejected.
  * A rejected generation is not in the generation list: it never serves, supplies no catalog, and
  * the caller must not install hooks or seeds for it.
+ *
+ * The key set (`keys`) has one more rule (#90). While generations are live, a newer generation whose
+ * keys only revoke or rotate those of apps the listener already has (no app added, at least one
+ * left) replaces `Runtime.keys` at once, so a Location still on an older generation stops accepting
+ * a removed key. Any other key change is rejected like any other option difference. The listener's
+ * `fingerprint` covers the options without `keys`.
  */
 export function registerGeneration(input: GenerationInput): Registration {
   const rt = runtime()
@@ -444,7 +465,8 @@ export function registerGeneration(input: GenerationInput): Registration {
       },
     }
   }
-  const fingerprint = canonicalJson(input.options)
+  const fingerprint = canonicalJson({ ...(input.options as Record<string, unknown>), keys: undefined })
+  const keys = (input.options as { readonly keys?: Readonly<Record<string, string>> } | null)?.keys ?? {}
   const listener = (rt.listener ??= startListener(rt, listen, fingerprint))
   if (listener.listen.host !== listen.host || listener.listen.port !== listen.port) {
     if (!listener.mismatchLogged) {
@@ -457,16 +479,28 @@ export function registerGeneration(input: GenerationInput): Registration {
     }
     return reject()
   }
-  if (listener.fingerprint !== fingerprint) {
-    if (rt.generations.length > 0) {
-      if (!listener.mismatchLogged) {
-        listener.mismatchLogged = true
-        logError("listener.options_mismatch", { action: "this Location is rejected; global config is authoritative" })
-      }
-      return reject()
+  const rejectOptions = (): Registration => {
+    if (!listener.mismatchLogged) {
+      listener.mismatchLogged = true
+      logError("listener.options_mismatch", { action: "this Location is rejected; global config is authoritative" })
     }
+    return reject()
+  }
+  if (listener.fingerprint !== fingerprint) {
+    if (rt.generations.length > 0) return rejectOptions()
     listener.fingerprint = fingerprint
     listener.mismatchLogged = false
+    rt.keys = keys
+  } else if (canonicalJson(keys) !== canonicalJson(rt.keys ?? {})) {
+    const live = rt.keys ?? {}
+    if (rt.generations.length === 0) rt.keys = keys
+    else if (revokesOrRotatesOnly(live, keys)) {
+      log("listener.keys_updated", {
+        removed: Object.keys(live).filter((app) => !Object.hasOwn(keys, app)).length,
+        rotated: Object.keys(keys).filter((app) => Object.hasOwn(live, app) && live[app] !== keys[app]).length,
+      })
+      rt.keys = keys
+    } else return rejectOptions()
   }
   if (listener.graceTimer) clearTimeout(listener.graceTimer)
   listener.graceTimer = undefined
@@ -508,6 +542,12 @@ export function registerGeneration(input: GenerationInput): Registration {
       listener.graceTimer.unref?.()
     },
   }
+}
+
+/** #90: `next` names no app that `live` lacks, and names at least one app: it only removes or changes keys. */
+function revokesOrRotatesOnly(live: Readonly<Record<string, string>>, next: Readonly<Record<string, string>>): boolean {
+  const apps = Object.keys(next)
+  return apps.length > 0 && apps.every((app) => Object.hasOwn(live, app))
 }
 
 /**

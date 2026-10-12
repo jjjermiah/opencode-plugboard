@@ -84,7 +84,7 @@ A response from a request that used a list alias carries `x-plugboard-model: <pr
 
 ## Apps and keys
 
-Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line.
+Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line. Removing a key, or changing its value, takes effect on the running server at once, even when a plugin instance from before the edit is still live; adding a key still needs a server restart.
 
 ### Per-app policy (`apps`)
 

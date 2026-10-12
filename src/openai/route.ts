@@ -48,7 +48,7 @@ import { reportPolicy } from "../policy.js"
 import { isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
-import { processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
+import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
@@ -162,7 +162,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const keyed = Object.keys(host.options.keys).length > 0
       let app: string | undefined = keyed ? undefined : DEFAULT_APP
       if (keyed && request.headers.authorization !== undefined) {
-        const auth = authenticate(host.options, request.headers.authorization)
+        const auth = authenticate(liveOptions(host.options), request.headers.authorization)
         if (isPlugError(auth)) return fail(response, auth)
         app = auth.app
       }
@@ -174,7 +174,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but /healthz and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
-    const auth = authenticate(host.options, gemini ? geminiAuthorization(request, url) : request.headers.authorization)
+    const auth = authenticate(liveOptions(host.options), gemini ? geminiAuthorization(request, url) : request.headers.authorization)
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
 
