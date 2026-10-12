@@ -81,12 +81,13 @@ export default Plugin.define({
         // Usage is outermost, so it records the answer the client gets (src/usage.ts).
         // Caps are outside the fallbacks, so one request takes one slot even when it falls back (src/limits.ts).
         // Aliases written as a list retry the next target before the first output (src/fallback.ts).
-        // The response cache sits outside the fallbacks, so a hit never reaches a provider (src/cache.ts).
+        // The response cache is outside budgets and limits: a hit spends nothing, takes no slot and counts toward no
+        // rate window, and never reaches a provider (src/cache.ts). Only a miss is budgeted and limited.
         caller: withUsage(
-          // Budgets sit outside the limiter, so a budget refusal never takes a slot (src/budgets.ts).
-          withBudgets(
-            withLimits(
-              withResponseCache(
+          withResponseCache(
+            // Budgets sit outside the limiter, so a budget refusal never takes a slot (src/budgets.ts).
+            withBudgets(
+              withLimits(
                 withFallbacks(createSessionCaller(callerDeps), {
                   options,
                   loadCatalog: servingCatalog,
@@ -95,26 +96,26 @@ export default Plugin.define({
                     usage?.fallback(app)
                   },
                 }),
-                options,
+                () => limits,
+                processLimits(),
+                {
+                  onLimited: (app, reason) => {
+                    if (options.metrics) processMetrics().limited(app, reason)
+                    usage?.limited(app)
+                  },
+                },
               ),
-              () => limits,
-              processLimits(),
+              options.budgets,
+              usage,
+              processBudgets(),
               {
-                onLimited: (app, reason) => {
-                  if (options.metrics) processMetrics().limited(app, reason)
+                onRefused: (app) => {
+                  if (options.metrics) processMetrics().limited(app, "budget")
                   usage?.limited(app)
                 },
               },
             ),
-            options.budgets,
-            usage,
-            processBudgets(),
-            {
-              onRefused: (app) => {
-                if (options.metrics) processMetrics().limited(app, "budget")
-                usage?.limited(app)
-              },
-            },
+            options,
           ),
           usage,
         ),

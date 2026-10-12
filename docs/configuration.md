@@ -168,6 +168,7 @@ Without `keys` the only app is `default`, and `apps.default` configures it. Once
 - Nothing queues. A call that finds a cap full gets 429 `too_many_requests` at once, before any session is created, so the provider never sees it. The response carries `Retry-After`: 1 second for a full concurrency cap, the seconds left in the window for `rate_limit_exceeded`.
 - `requestsPerMinute` is a fixed window of 60 seconds per app, starting at the app's first call in it. A call over the limit gets 429 `rate_limit_exceeded`.
 - A refused call takes no slot and counts toward no window.
+- A [response cache](#response-cache) hit takes no slot and counts toward no window either. `requestsPerMinute` counts only the calls that reach a model.
 - The counts live in the server process: a restart clears them, and two servers do not share them.
 - With `metrics: true`, `plugboard_limited_total{app,reason}` counts refusals, where `reason` is `concurrency`, `rate` or `budget` (see [Budgets](#budgets)).
 
@@ -183,7 +184,7 @@ Without `keys` the only app is `default`, and `apps.default` configures it. Once
 ```
 
 - A ceiling is a metric and a window. The metrics are `requests`, `tokens` and `costUsd`. The windows are `day` (a UTC calendar day), `week` (an ISO week, Monday to Sunday in UTC) and `month` (a calendar month in UTC). Counts are positive integers, and a cost is a positive number of USD. A metric or window that is not set has no ceiling.
-- `requests` counts HTTP requests on the model routes, except the ones [limits](#concurrency-and-rate-limits) or a budget refused. `tokens` counts the tokens of answered calls, as usage does. `costUsd` is an estimate at the catalog's list prices. A subscription login does not bill per token, so read it as a comparison between apps, not as a bill.
+- `requests` counts HTTP requests on the model routes, except the ones [limits](#concurrency-and-rate-limits) or a budget refused, and [response cache](#response-cache) hits. `tokens` counts the tokens of answered calls, as usage does. `costUsd` is an estimate at the catalog's list prices. A subscription login does not bill per token, so read it as a comparison between apps, not as a bill.
 - `perApp` applies to every app. `apps.<name>` replaces `perApp` metric by metric: in the example, `coding` has its own `costUsd` and keeps `perApp`'s requests and tokens. Each name must be a configured app, as in `limits`.
 - Once an app has used a ceiling in the current window, its next call gets 429 `budget_exceeded` before any session is created, so the provider never sees it. The message names each exceeded ceiling, for example `Budget for coding exceeded: cost (USD) month`. `Retry-After` is the seconds until the latest of those windows resets.
 - The check runs before a call starts, so the call that crosses a ceiling is still served and the next one is refused. Calls still in flight are not counted until they end, so a burst can pass a ceiling by the calls it started. Budgets are a guard against runaway use, not an exact meter.
@@ -211,7 +212,7 @@ What counts as the same request: the app, the resolved model and variant, messag
 
 What is kept: answers that ended normally (`stop` or `length`) with text or reasoning. Answers with tool calls are never kept, and neither are errors, aborted requests and empty answers. Structured output (`response_format` `json_schema`) is answered through a tool call, so it is not kept either. Requests with `n` above 1 are never served from the cache or stored, because each choice must be a fresh sample.
 
-A hit replays the stored answer as JSON or as a stream (the text arrives in one chunk), with the same `x-plugboard-model` and `x-plugboard-policy` headers as the original, and reports zero token usage. Every answer carries `x-plugboard-cache: hit` or `miss`. Sampling still matters: with `temperature` above 0, a hit repeats the first answer instead of drawing a new one, so use `apps` to limit the cache to callers that want that.
+A hit replays the stored answer as JSON or as a stream (the text arrives in one chunk), with the same `x-plugboard-model` and `x-plugboard-policy` headers as the original, and reports zero token usage. A hit is answered before the [budgets](#budgets) and the [limits](#concurrency-and-rate-limits): it spends no budget, takes no concurrency slot and counts toward no requests-per-minute window. Every answer carries `x-plugboard-cache: hit` or `miss`. Sampling still matters: with `temperature` above 0, a hit repeats the first answer instead of drawing a new one, so use `apps` to limit the cache to callers that want that.
 
 The cache lives in memory. A server restart, or a change to `cache`, `apps`, `models` or `aliases`, empties it, so a hit can never serve a model the current policy no longer allows. With `metrics` on, `plugboard_cache_requests_total{app,result}` counts hits and misses.
 

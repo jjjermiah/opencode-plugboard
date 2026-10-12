@@ -6,7 +6,8 @@
 import { describe, expect, test } from "bun:test"
 import { cachedCaller, cacheKey, createCacheStore, type CacheConfig } from "../../src/cache.js"
 import type { CallContext, ModelCaller, PlugEvent, PlugRequest, PolicyNote, ServedModel } from "../../src/contract.js"
-import { collect, ev, plugRequest } from "../support/fixtures.js"
+import { createLimitState, withLimits } from "../../src/limits.js"
+import { collect, ev, gate, plugRequest, until } from "../support/fixtures.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
 
 const CONFIG: CacheConfig = { ttlSeconds: 60, maxEntries: 100, maxBytes: 10_000_000 }
@@ -324,5 +325,42 @@ describe("stored events", () => {
     expect(first.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 99, outputTokens: 42 } })
     const replay = await collect(cached.stream(plugRequest(), context().ctx))
     expect(replay.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 0, outputTokens: 0 } })
+  })
+})
+
+describe("#154 a hit takes no concurrency slot and no rate window count", () => {
+  // The order index.ts builds: the cache outside the limiter. A miss is limited; a hit is answered before the limiter.
+  const other = plugRequest({ messages: [{ role: "user", content: [{ type: "text", text: "another prompt" }] }] })
+
+  test("a hit is answered while a miss holds the app's only concurrency slot", async () => {
+    const fake = new FakeModelCaller(answer)
+    const hold = gate()
+    let calls = 0
+    const gated: ModelCaller = {
+      async *stream(request, callContext) {
+        calls++
+        if (calls === 2) await hold.promise
+        yield* fake.stream(request, callContext)
+      },
+    }
+    const cached = cachedCaller(withLimits(gated, () => ({ maxConcurrent: 1 }), createLimitState()), CONFIG, store())
+    await collect(cached.stream(plugRequest(), context().ctx))
+    const slow = collect(cached.stream(other, context().ctx))
+    await until(() => calls === 2, 1_000, "the second miss to take the slot")
+
+    const hit = await collect(cached.stream(plugRequest(), context().ctx))
+    expect(hit.map((event) => event.type)).toEqual(["text-delta", "finish"]) // the replay coalesces same-kind deltas
+    hold.open()
+    expect((await slow).some((event) => event.type === "error")).toBe(false)
+    expect(fake.calls).toHaveLength(2)
+  })
+
+  test("a rate window counts only misses: repeated hits pass, and the next new prompt is refused", async () => {
+    const fake = new FakeModelCaller(answer)
+    const cached = cachedCaller(withLimits(fake, () => ({ perApp: { requestsPerMinute: 1 } }), createLimitState()), CONFIG, store())
+    await collect(cached.stream(plugRequest(), context().ctx))
+    for (let i = 0; i < 3; i++) expect((await collect(cached.stream(plugRequest(), context().ctx))).some((event) => event.type === "error")).toBe(false)
+    expect(await collect(cached.stream(other, context().ctx))).toEqual([{ type: "error", error: expect.objectContaining({ status: 429, code: "rate_limit_exceeded" }) }])
+    expect(fake.calls).toHaveLength(1) // the refused prompt never reached the model
   })
 })
