@@ -12,7 +12,7 @@ Plugboard must accept connections from the container, so it binds a non-loopback
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.20.0",
+      "package": "opencode-plugboard@0.21.0",
       "options": {
         // Reachable from the container. Bind the docker bridge address (`ip addr show docker0`)
         // or 0.0.0.0, and keep the host firewall closed to everything else.

@@ -74,6 +74,15 @@ jobs:
         with:
           bun-version: 1.4.2
 
+      # The TUI entry ships precompiled (dist/tui.js, see docs/packaging.md). npm publish runs
+      # prepack, which needs the Babel devDependencies, so install them and build up front;
+      # a missing build fails here, before anything irreversible.
+      - name: Build the TUI entry
+        run: |
+          bun install --frozen-lockfile
+          bun run build:tui
+          test -s dist/tui.js
+
       # Before anything irreversible: a missing or empty CHANGELOG section, or a
       # heading without a title (`## [x.y.z] - date: Title`), fails here.
       - name: Build the release notes

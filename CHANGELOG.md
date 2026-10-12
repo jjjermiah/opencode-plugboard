@@ -14,7 +14,35 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+This release is mostly the answer to three staff-engineer reviews and a first live run against real providers. If you installed 0.18.0 to 0.20.0 from npm, the `/plugboard` TUI page never loaded; it does now.
+
+### Fixed
+
+- **The `/plugboard` TUI page loads after an npm install.** OpenCode only compiles a TUI plugin's Solid JSX when the file is outside `node_modules`, so the shipped `src/tui.tsx` failed with `Cannot find package '@opentui/solid'`. The TUI entry is now precompiled to `dist/tui.js` with the same Solid transform OpenCode uses, and the smoke check inspects the installed file.
+- **Structured output is honest everywhere** ([#169](https://github.com/jjjermiah/opencode-plugboard/issues/169), [#170](https://github.com/jjjermiah/opencode-plugboard/issues/170), [#172](https://github.com/jjjermiah/opencode-plugboard/issues/172), [#173](https://github.com/jjjermiah/opencode-plugboard/issues/173)). Legacy `/v1/completions` now honours `response_format`. When a model answers with schema-valid JSON text instead of calling the `respond` tool (Claude often does when it also has caller tools), that answer is used and marked `x-plugboard-structured-fallback: text`. A structured request that gets no answer is a 502 `structured_output_missing` on every API, never an empty 200.
+- **Provider errors say what happened** ([#171](https://github.com/jjjermiah/opencode-plugboard/issues/171)). A subscription usage limit is now 429 `quota_exceeded`, a rate limit 429 `rate_limited`, a rejected login `provider_auth_failed`, an unknown model 404, instead of one generic `provider_unavailable`. The raw provider text is still never sent.
+- **Revoking the last key fails closed** ([#152](https://github.com/jjjermiah/opencode-plugboard/issues/152)): every request gets 401 until restart, where before the removed key kept working.
+- **Memory and cache** ([#153](https://github.com/jjjermiah/opencode-plugboard/issues/153), [#154](https://github.com/jjjermiah/opencode-plugboard/issues/154)): streamed Anthropic and Gemini answers keep no full copy in memory, the cache stops recording past `maxBytes`, and cached answers are served before budgets and limits, so a hit costs no slot and no budget.
+- **No orphaned sessions** ([#155](https://github.com/jjjermiah/opencode-plugboard/issues/155)): a session that finishes creating after the client disconnected is deleted.
+
+### Added
+
+- **`/readyz` and loud config errors** ([#159](https://github.com/jjjermiah/opencode-plugboard/issues/159), [#160](https://github.com/jjjermiah/opencode-plugboard/issues/160)). An invalid option now fails the plugin's setup with the field and reason, so OpenCode lists the plugin as failed instead of active and silent. `GET /readyz` answers 503 with the first missing piece until plugboard can serve, for service units and load balancers.
+- **OpenCode tools for a trusted app** ([#82](https://github.com/jjjermiah/opencode-plugboard/issues/82)). Off by default:
+
+  ```jsonc
+  "apps": { "research-bot": { "key": "{env:RESEARCH_KEY}", "serverTools": ["websearch"], "maxServerToolSteps": 4 } }
+  ```
+
+  That app's requests may run exactly those OpenCode tools on the server and get the final answer back; every other app keeps pure deny-all. Anyone holding that key can make the server run those tools with the server's credentials, so list only what the app needs.
+- **Request bodies are admitted before they are read** ([#156](https://github.com/jjjermiah/opencode-plugboard/issues/156)): at most `limits.maxBodyBytesInFlight` (128 MiB) of bodies are buffered at once (503 `server_busy` beyond that), and a body that takes over `limits.bodyReadTimeoutMs` (30 s) gets 408.
+- **A live test layer** ([#99](https://github.com/jjjermiah/opencode-plugboard/issues/99), [#108](https://github.com/jjjermiah/opencode-plugboard/issues/108)): `PLUGBOARD_LIVE=1 bun test test/live` runs every API and scenario against a real OpenCode server, and `bun run live-matrix` writes the provider x endpoint table in `docs/live-matrix.md`. Its first run found the structured-output and error-reporting bugs above.
+- **Docs**: a remote access guide (Tailscale, TLS proxy, SSH tunnel, one replica) ([#168](https://github.com/jjjermiah/opencode-plugboard/issues/168)), third-party notices for vendored test fixtures ([#163](https://github.com/jjjermiah/opencode-plugboard/issues/163)), a non-affiliation line ([#164](https://github.com/jjjermiah/opencode-plugboard/issues/164)), and fixes for every doc the reviews found contradicting the code ([#161](https://github.com/jjjermiah/opencode-plugboard/issues/161)).
+
+### Changed
+
+- CI builds the docs site on pull requests ([#167](https://github.com/jjjermiah/opencode-plugboard/issues/167)), the host-bump workflow tests with read-only permissions and opens its PR from a separate clean job ([#157](https://github.com/jjjermiah/opencode-plugboard/issues/157)), the compat log proxy redacts every key header ([#162](https://github.com/jjjermiah/opencode-plugboard/issues/162)), and `@types/escape-html` ships as a dependency so TypeScript consumers compile ([#166](https://github.com/jjjermiah/opencode-plugboard/issues/166)).
+- Internal runtime version 15. Restart OpenCode after upgrading.
 
 ## [0.20.0] - 2026-10-11: Keys, Users, Personas
 
