@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.18.0] - 2026-10-11: A Window Into Usage
+
+**Full diff:** [v0.17.0...v0.18.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.17.0...v0.18.0)
+
 ### Added
 
 - **Usage dashboard** ([#141](https://github.com/jjjermiah/opencode-plugboard/issues/141)). Open `http://<host>:4010/dashboard`, paste a key, and see requests, tokens, estimated cost, errors, cache hits, fallbacks, 429s and p95 latency for today, 7, 30 or 90 days, with a per-app table, daily charts and a models table. The admin key sees every app; an app key sees only its own. The page loads nothing from other sites (charts are uPlot, served by plugboard itself) and keeps the key in the tab's session storage only.
@@ -26,6 +32,286 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - **The README is rewritten around real usage**: the endpoints are a table, and every feature has its own heading with a config snippet you can paste.
 - **Packaging** ([#69](https://github.com/jjjermiah/opencode-plugboard/issues/69)): the package declares `engines.bun >=1.4.2` and `types`, exports `./tui` and `./rpc` from root files (so local-path installs find them too), and keeps shipping TypeScript source; `docs/packaging.md` explains why.
 - **Test tooling** ([#111](https://github.com/jjjermiah/opencode-plugboard/issues/111), [#115](https://github.com/jjjermiah/opencode-plugboard/issues/115), [#116](https://github.com/jjjermiah/opencode-plugboard/issues/116), [#118](https://github.com/jjjermiah/opencode-plugboard/issues/118), [#124](https://github.com/jjjermiah/opencode-plugboard/issues/124)): request-path benchmarks with an advisory CI gate, a 19-guard mutation catalogue (all caught) run weekly, a nightly flake hunt, a route x format coverage manifest, and the release script on the `semver` package.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (21 commits)</summary>
+
+#### Features
+
+**feat(runtime): add the /plugboard usage page to OpenCode's TUI** ([`040705d`](https://github.com/jjjermiah/opencode-plugboard/commit/040705da442a88f6cbe2b1166e466376358c024c))
+
+Plugboard's usage statistics were only reachable over HTTP. The TUI now has a /plugboard command (and a palette entry) that opens a page with the per-app numbers for the connected server: requests, tokens, estimated cost, errors, cache hit rate, fallbacks, 429s and p95, a row per app with a cost bar, and the top models.
+
+The page reads the usage RPC (opencode-plugboard.usage) through context.client.rpc, so it uses OpenCode's authenticated API and sees every app without the admin key. The entry is src/tui.tsx under the ./tui export. The server entry never imports it, so server installs keep no Solid.
+
+Keys: t, w, m, q pick today, 7, 30 or 90 UTC days; r reloads; esc goes back. When the RPC is unavailable (plugboard not loaded there, or usage off), the page and a toast say so instead of failing.
+
+Rejected: a chart library (a text bar per app does the job); a second HTTP route for the TUI (the RPC already carries the report and the auth).
+
+Pure shaping (ranges, rows, formats) is in src/tui-format.ts with 30 unit tests. No render test: OpenCode exports no TUI test harness to a plugin. Floors raised to the new test counts.
+
+Validation: bun run typecheck, bun test (1566 pass), check-pack, smoke-pack. No live TUI run in this session: the isolated wrapper pins its project directory, so a scratch project's plugin config was never read.
+
+Fixes #142
+
+**feat(http): usage dashboard at /dashboard** ([`9e42516`](https://github.com/jjjermiah/opencode-plugboard/commit/9e42516fbda66dc54fb49e89dc6685753c775332))
+
+GET /dashboard serves one page on plugboard's listener: totals for today, 7, 30 or 90 days, a per-app table sortable by requests, tokens or cost, daily charts per app (requests, cost, tokens), the models by cost, and the last request per app. It works on a phone and follows light or dark mode.
+
+The page holds no data. It asks for a key, keeps it in sessionStorage only, and reads GET /v1/usage from the same origin with it, so the admin key sees every app and an app key only its own (I24). The page, app.js, app.css and uPlot's browser build are keyless, like the discovery pages (I15), and only while option usage is on. With usage off they are unknown routes: no key gets 401, a valid key gets 404.
+
+Responses carry Content-Security-Policy default-src 'none', with script and style from 'self' only and form-action and frame-ancestors none. The page has no inline script or style. Assets send no-cache and an ETag, so a 304 costs nothing. All values reach the DOM through textContent. uPlot is read from node_modules when first requested, never at setup (I3). Discovery lists /dashboard and links it.
+
+Checked: test/http/dashboard.test.ts, the #136 probe for /dashboard, the full suite, and a headless Chromium run at 390 px and in dark mode against 90 days of fake usage for three apps (admin and app keys, sorting, ranges, sign-out, a stale key).
+
+Fixes #141
+
+#### Fixes
+
+**fix(runtime): root tui.ts and rpc.ts entries so local-path installs load the TUI** ([`cba4b0b`](https://github.com/jjjermiah/opencode-plugboard/commit/cba4b0b1778eb39f05eadf97d3befd86982b5a5c))
+
+OpenCode resolves a package's ./tui and ./rpc entries through package.json exports only when the plugin comes from npm. A plugin configured by local path is resolved as <directory>/tui and <directory>/rpc with no exports lookup (packages/plugin/src/host.ts:17-43 in OpenCode 2.0.26), so the dev server listed plugboard with features { server } only and /plugboard was "No matching commands". Two small re-export files at the package root fix both paths; exports and files point at them.
+
+Checked live on the isolated dev server: /api/plugin now reports features { server, tui, rpc }, and /plugboard in the TUI opens the usage page with the compat app's requests, tokens, cost, p95 and top models. Also added a .github/scripts/merge-floors.ts helper that resolves floor-file merge conflicts by taking the higher value per key.
+
+#### Tests
+
+**test(tests): benchmark the request path and gate regressions** ([`477cb8b`](https://github.com/jjjermiah/opencode-plugboard/commit/477cb8b76cc2b7f8ae3fa238278f1ac78ceb146b))
+
+Plugboard is a gateway, so latency per request is part of its contract, and nothing measured it. This adds a benchmark of every front-end over real loopback HTTP, with a replayed model, and a gate that fails CI when a median regresses by more than 2x against a committed baseline.
+
+What is measured (test/bench/request.bench.ts, `bun run bench`): chat completion (json, n=3 fan-out, time to first byte, total, a 2,000-delta stream), responses, messages, gemini generateContent, and the pure decode and model resolution (with a 1,000-model allowlist). mitata is the runner: it is popular, pure JS, has no dependencies and no install script, which the host requires for registry plugins. It is pinned exactly and lives in devDependencies, so it never ships.
+
+Decisions:
+- Not FakeModelCaller for the model. It keeps a record of every call, so across mitata's iterations it would grow the heap and measure that. The bench uses a replay that keeps nothing.
+- Keep-alive connections. The support client opens a TCP connection per request. On this machine that moved the medians between 0.2 ms and 150 ms from one run to the next (the time to first byte and responses swung hardest). With a kept-alive agent, three runs stayed within about 15% of each other. Time to first byte still opens a fresh connection, because it must hang up mid-stream.
+- The gate compares medians (p50), not means: means move with GC pauses, and p99 is in milliseconds on a shared runner.
+- Tolerance 2x, generous on purpose. The baseline comes from one laptop and CI runners are not that machine. The CI job is advisory (continue-on-error), so it never blocks a merge.
+- A baseline entry that does not run fails the gate, so a renamed benchmark cannot silently drop out of the check.
+- Memory of the event queue is not measured here; the issue asks for it and it needs its own bench with heap sampling. Follow-up.
+
+Files: test/bench/request.bench.ts, .github/scripts/bench-gate.ts (`--summary` writes the job summary, `--update` rewrites the baseline), .ci/bench-baseline.json, an advisory `bench` job in ci.yml, bun run bench in package.json, and short notes in test/README.md and CONTRIBUTING.md.
+
+Checked: bun run typecheck (exit 0), bun test (1276 pass, unchanged runtime, the bench file does not match the test glob), bun run bench (three runs, all within 1.25x of the committed baseline), the gate on a fresh run (passes), check-pack (43 files, no bench or gate file shipped). actionlint is not installed here; the workflow was parsed as YAML instead.
+
+Fixes #118
+
+**test(tests): add a mutation catalogue for the guards that must not break** ([`cd6390f`](https://github.com/jjjermiah/opencode-plugboard/commit/cd6390fca8408d158c3cfbd2a27989eba28614e7))
+
+Some guards fail silently and expensively: a request session that can run a real tool, a Host check that stops rebinding protection, a remote image fetch that reaches a private address, a finalizer that starts awaiting the host. The suite asserts them, but nothing proved that a deliberate break turns a test red. This adds that proof.
+
+test/mutations/catalogue.ts lists 19 entries, one per guard (invariants I2 to I22, plus the cache, limits, fallback and duplicate-tool rules). Each entry is one exact text that occurs once in one source file, the replacement that breaks the guard, and the test files that must fail.
+
+.github/scripts/mutation-check.ts (`bun run mutations`) copies index.ts, src/, test/ and the bun config to a temporary directory and links node_modules. It never edits the working tree. It first requires the named tests to pass unmodified (otherwise a kill proves nothing), then applies each entry there and requires `bun test` to exit nonzero with at least one (fail) line. A missing anchor, a green run or a crash that is not a test failure is reported. The table goes to the job summary with --summary.
+
+Runs weekly and on demand (.github/workflows/mutations.yml), not on every push, since the full catalogue takes about two minutes locally.
+
+Decisions:
+- The entries are edits a careless refactor makes, not random operators: they stay plausible so a survivor means a real gap.
+- The first run had three survivors. Each is a real finding, handled differently:
+  - I8, permissions. The caller test compares the session permissions with the REQUEST_PERMISSIONS constant itself, so flipping the entry to `allow *` changed nothing. Added a test that pins the literal list (deny *, then allow plugboard_seed_*).
+  - I22, request id. The mutant read x-request-id, a header nothing sends. The threat is a client-chosen x-plugboard-request-id, which the existing test already covers, so the mutant was corrected to read that header. This was a bad mutant, not a weak test.
+  - I19, abandoned requests. The first mutant removed the abort check after the catalog await. That line is unreachable: scope.race already throws when the request aborts during the await, and nothing awaits between the two, so the mutant cannot change behaviour (an equivalent mutant). Replaced with the disconnect abort in beginRequest, which the chat and transport tests exercise.
+- A surviving entry is never deleted to get a green run. The check exits 1 and names it.
+- Not run in `bun test`, so the suite's runtime does not change.
+
+Also: a session test count of 194 in .ci/test-count-floors.json (from 193, for the new I8 test). The ratchet would also raise http, runtime, unit and the coverage floors, but those rise from earlier commits, so they stay for a separate change.
+
+Checked: bun run mutations (19 of 19 killed on the final run, exit 0), bun run typecheck (exit 0), bun test (1277 pass, 0 fail), test-gates (all floors met), check-pack (43 files, the catalogue and the script are not shipped), the workflow parsed as YAML. actionlint is not installed here.
+
+Fixes #111
+
+**test(tests): hunt for order-dependent and leaky tests** ([`f893ec9`](https://github.com/jjjermiah/opencode-plugboard/commit/f893ec93c7345bc33462606459c2bf3f6a9fd83f))
+
+The runtime tests touch globalThis and the data root, the classic shape of a flake that passes on every local run and fails on one CI run in twenty. Nothing checked whether the suite depends on its own order or on which files ran before a test. This adds that check.
+
+.github/scripts/flake-hunt.ts (`bun run flake-hunt`) runs the suite in several modes and reads the (pass) and (fail) lines bun prints:
+- serial, the reference order;
+- N shuffles with Bun's own `--randomize --seed=S`, seeds printed, so a failing order can be replayed with `bun test --randomize --seed=S`;
+- one `--parallel` run, the files in worker processes;
+- each test file alone, the isolation probe.
+
+A test is flagged when it fails in some runs and passes in others (order-dependent), when it fails in every run, when it fails alone but passes with the suite (it needs another file's leftovers), or when it passes alone but fails with the suite (another file breaks it). The script exits 1 on any flag. It also exits 2 when a run prints no results, so a compile error or a crash cannot look like a clean run.
+
+`--file <path>` repeats one file with shuffled orders (the repeat-runner for a suspect file). Nightly, in a new flake-hunt job in nightly.yml with 10 shuffles, not on every push.
+
+Decisions:
+- Bun's shuffle instead of shuffling the file list by hand. Bun 1.4.2 shuffles the tests and keeps the file order fixed, so file-order effects are covered by the alone probe and the parallel run, not by the shuffle.
+- Bun's --parallel is used as the second mode. Files then run in their own processes, which exposes state that only the single shared process hides.
+- The flagged names are matched by test name. Two tests with one name in different files would be compared as one. The suite has none today; the report notes it in the code, and a duplicate would show as a mismatch to look at, not a silent pass.
+
+Checked:
+- bun run flake-hunt -- --runs 3: 1277 tests in every mode, 0 failing, all 46 files probed alone, exit 0.
+- A planted fault (a test that needs an earlier test's state, a test that always fails, temporary file under test/, removed afterwards): flagged as order-dependent (3 of 8 runs), fails every run, and an isolation mismatch; exit 1.
+- bun run flake-hunt -- --file test/runtime/plugin.test.ts --runs 4: exit 0.
+- bun run typecheck (exit 0), bun test (1277 pass, 0 fail), check-pack (43 files), nightly.yml parsed as YAML. actionlint is not installed here.
+
+Fixes #115
+
+**test(tests): add a route x format x mode coverage manifest** ([`2647c0d`](https://github.com/jjjermiah/opencode-plugboard/commit/2647c0d89e577e142684b1c9ce440d7a0f34921c))
+
+Plugboard now serves five request formats over one model caller: Chat Completions, Responses, legacy completions, Anthropic Messages and Gemini, plus the read routes. A route could ship with no test for one of its modes, and nothing would say so. This commits the table of what is covered and fails the build when the table and the router disagree.
+
+test/coverage-manifest.ts has one row per route and request format, with one cell per mode: json, stream, tools, images, structured output, n > 1 and errors. A cell names its covering tests (a file and a literal from a test title or table row), says n/a with a reason, or is a gap that names its issue. There are 16 rows: 6 generation rows (Gemini split into generateContent and streamGenerateContent), 9 read routes, and count_tokens, which answers 404 by design.
+
+test/http/coverage-manifest.test.ts fails when:
+- the router has a route with no row, or a row names a route it lacks;
+- a cell is empty, a covering file is missing, or a title is not in it;
+- a gap does not name an issue, or a row is duplicated. It also probes the five routes that are spelled by a template or constant in src/ (MANUAL_ROUTES) on the live router: each must answer, not the unknown-route 404. A second test checks that an unknown path does get that 404, so the probe means something.
+
+The rest of the routes are read from the quoted METHOD /path literals in src/**/route.ts. The source cannot be edited to export its route table (src/ is out of scope for this change), so the scan is the inventory.
+
+Decisions:
+- A route written as a template is listed by hand and probed. A new one in that style fails the probe until it is listed; a new route written as a literal is found by the scan and fails until it has a row.
+- Cells name tests by file and a literal of the title, not by test id. The check proves the text exists, not that the test asserts the mode, so a row is a claim a reviewer reads, backed by the check that it resolves.
+- Two gaps are recorded, not hidden: the JSON answer of generateContent has no tool-call or structured-output test. Its unit tests run the streamed encoder. They fail nothing today, and the summary lists them under #116.
+- The job summary prints the table (bun run coverage-manifest --summary in the package job) and exits 1 when the manifest disagrees with the router.
+
+Checked:
+- bun run coverage-manifest: 51 covered cells, 59 n/a, 2 gaps across 16 rows and 16 routes; the manifest matches the router, exit 0.
+- The new tests: 10 pass (problem detection for an empty selection, a missing file, a missing title, an unexplained gap, a missing and an extra route; the five manual routes served; the unknown-path 404).
+- bun run typecheck (exit 0), bun test (1287 pass, 0 fail), check-pack (43 files), ci.yml parsed as YAML. actionlint is not installed here.
+- Not done here: the test-count floor for test/http (187) is below the current count, as it was before this change; raising it is left to the ratchet in its own commit.
+
+Fixes #116
+
+#### Docs
+
+**docs(docs): rewrite README around usage examples** ([`fb45aa4`](https://github.com/jjjermiah/opencode-plugboard/commit/fb45aa4d6708bacb67f7b0113e10d98bce79dd0f))
+
+Owner feedback: show more features as real config, and split the intro, which listed every endpoint in one run-on sentence.
+
+What changed:
+- Intro is two short paragraphs. Endpoints are a table (API, endpoint, typical clients). "OpenCode never runs your tools" is its own line.
+- Quick start: pinned install, minimal config, one curl, one OpenAI Python SDK call.
+- Features section: one heading per feature, a sentence on why, a minimal jsonc snippet, and the request or response header where it helps. Covers apps and keys, model allowlist, per-app policy, aliases, fallback chains, UI-safe model ids, limits with Retry-After, the response cache, streaming, tools, structured output, images, n, token counting, dropped sampling params, usage, history, metrics.
+- Full example config, client table, known gaps, security notes and reference links.
+
+Removed the LiteLLM comparison, and the roadmap list that still named the Anthropic and Gemini front-ends as future work (both ship now).
+
+package.json description now names the Anthropic and Gemini APIs. It listed only the OpenAI endpoints.
+
+**docs(docs): correct Retry-After and token counting after 0.16 and 0.17** ([`769dabc`](https://github.com/jjjermiah/opencode-plugboard/commit/769dabc7a0929fe48ff314c34095d67640699fc0))
+
+docs/configuration.md still said the limits 429 carries no Retry-After header; since 0.16.0 it does (1 second for a full concurrency cap, the seconds left in the window for rate_limit_exceeded, src/limits.ts). docs/messages.md and docs/gemini.md still said count_tokens and countTokens answer 404; since 0.17.0 they return an estimate. Found by the README lane and the aihub deploy check.
+
+**docs(docs): describe the /plugboard usage page in the TUI** ([`ce588ca`](https://github.com/jjjermiah/opencode-plugboard/commit/ce588ca5833867bc01905dcdc95b56a830b2f467))
+
+docs/tui.md covers opening the page, what it shows, the keys, what happens when the server has no usage, and that the page reads the usage RPC rather than GET /v1/usage. STRUCTURE.md lists tui.tsx and tui-format.ts.
+
+Refs #142
+
+**docs(docs): describe the usage dashboard and its CSP** ([`b083c4f`](https://github.com/jjjermiah/opencode-plugboard/commit/b083c4fbc659f0ab4690b4ad51d2503e0d5fe8d5))
+
+configuration.md gets a Dashboard subsection under Usage statistics: what the page shows, where the key is kept, the uPlot dependency and the CSP, UTC days, and what usage enabled false removes. architecture.md adds the Dashboard bullet to Usage statistics, lists the dashboard files in the module map, and names the dashboard page and its files in I15. STRUCTURE.md maps src/dashboard/. Refs #141.
+
+**docs(docs): build docs/ as a VitePress site** ([`5d13cb3`](https://github.com/jjjermiah/opencode-plugboard/commit/5d13cb354d1f9879ba7d31d50f579b7d57eb9734))
+
+The docs are good but only reachable as GitHub blob links. The site adds a nav, a sidebar and local search. docs/index.md includes README.md as the Guide page, so the quick start and feature list keep one source.
+
+Five links in docs/ pointed outside docs/ (STRUCTURE.md, CONTRIBUTING.md, compat/). They do not resolve in the built site, so they now point at the GitHub blob URL. No other page text changed.
+
+The nav covers Configuration, Architecture, Clients, the API endpoints, Community (Discussions, Issues, Contributing) and the Changelog. Discussions returns a 404 until the repository enables it. base is /opencode-plugboard/ for GitHub Pages. docs/.vitepress/cache and dist are ignored.
+
+Checked: bun run docs:build renders 22 pages with no dead links. A script over README.md and docs/ finds no broken heading anchors. check-pack still lists only the package files, because docs/ is not in files.
+
+Refs #72
+
+**docs(docs): add examples for Open WebUI and a tool-calling bot** ([`cf1b442`](https://github.com/jjjermiah/opencode-plugboard/commit/cf1b442af3f7e7fd28321e26ae0ec568c2e1a3c2))
+
+The examples asked for in #71 are two folders and an index, kept out of the npm package (check-pack still lists only files) and out of compat/, which holds the test harnesses.
+
+open-webui/ is a compose file that runs Open WebUI 0.12.0 against plugboard on the host, plus the plugboard options it needs: a non-loopback bind (a container cannot reach a loopback listener), a key for the app, and the fast alias. DEFAULT_MODELS=fast is not verified against 0.12.0.
+
+tool-bot/ is about 50 lines of TypeScript on the openai SDK, pinned to 7.32.0 to match the repo's devDependency, run with bun. It shows the round trip. Plugboard returns tool_calls and never runs them, so the bot runs the tool, sends a tool message with the same tool_call_id, and asks again until the model answers in text. The weather tool is a stub.
+
+examples/README.md is the index. It also has curl one-liners for chat, responses, messages, Gemini, models and usage.
+
+Checked: tool-bot passes tsc --noEmit (strict, bun types). Against a local stub that returns tool_calls and then text, the second request carried the tool message with the matching id, and the bot printed the answer. Each curl line ran against the same stub and sent the method, path and key header its API uses. The compose file parses as YAML. docker compose config was not run: the local Docker has no compose plugin. Neither example was run against a live plugboard or a real Open WebUI.
+
+Fixes #71
+
+**docs(docs): draft the awesome-opencode listing for submission** ([`2620389`](https://github.com/jjjermiah/opencode-plugboard/commit/26203893d1bc73de4ae836132d7ef3c07f0fa0a8))
+
+awesome-opencode takes one YAML file per entry under data/plugins/. This is the entry for opencode-plugboard, checked against that repo's data/schema.json at commit bcc5c03 (2026-07-03) with ajv: it validates. The tagline is 96 characters against the 120 limit.
+
+Not submitted. The maintainer opens the pull request. The installation snippet pins 0.17.0, so bump it with each release.
+
+Refs #72
+
+**docs(changelog): notes for the dashboard, the TUI page, examples and the docs site** ([`57b4685`](https://github.com/jjjermiah/opencode-plugboard/commit/57b468531d99ac907b55d870f54b821a14621baa))
+
+Curated [Unreleased] entries for #141 (usage dashboard), #142 (the /plugboard TUI page, checked live on the isolated dev server), #71 (examples), #72 (docs site, public repo, Discussions), the README rewrite, #69 packaging and the test tooling (#111 #115 #116 #118 #124). Pinned install examples, the examples and the awesome-opencode listing bumped to 0.18.0.
+
+#### CI and tooling
+
+**ci(docs): deploy the docs site to GitHub Pages** ([`5aec17e`](https://github.com/jjjermiah/opencode-plugboard/commit/5aec17e7a34b6590f6869b99d500550ccbb98859))
+
+Nothing publishes the site without a deploy step, and a hand-run deploy drifts. This workflow builds the site and publishes it on every push to main that touches docs/, README.md or the package inputs, and on demand from the Actions tab.
+
+It uses the Pages Actions flow (configure-pages, upload-pages-artifact, deploy-pages) in two jobs. The build job has read-only permissions, and only the deploy job holds pages and id-token write. Every action is pinned to a commit SHA with its release tag in a comment, as the other workflows are. The pages concurrency group queues deployments and never cancels one that is running.
+
+The repository setting Settings, Pages, Source must be GitHub Actions before the first run. Until then the deploy job cannot publish.
+
+actionlint 1.7.12 passes on every workflow file.
+
+Refs #72
+
+#### Dependencies
+
+**chore(deps): add OpenTUI and Solid for the TUI usage page** ([`de562f9`](https://github.com/jjjermiah/opencode-plugboard/commit/de562f941c4800328702d3b3153f382266f592b2))
+
+The TUI entry (./tui) renders with OpenTUI's Solid JSX, so a published plugin needs @opentui/core, @opentui/solid and solid-js. They are optional peers: a server-only install does not pull them, and OpenCode provides them to the TUI. The devDependencies pin the versions OpenCode 2.0.26 uses (0.5.17 and 1.9.15) so typecheck sees the same APIs.
+
+tsconfig.tui.json checks the one JSX file on its own, leaving the root config (Node types, no JSX) unchanged. typecheck runs it.
+
+Refs #142
+
+**build(deps): add uplot for the usage dashboard** ([`2fca981`](https://github.com/jjjermiah/opencode-plugboard/commit/2fca9813a8ea66da38e5926bb124830d497c4d00))
+
+uPlot 1.6.32 draws the per-app daily charts on /dashboard (#141). It is pinned exactly, because the host installs runtime dependencies unattended. Checked with npm view: no dependencies of its own, and its scripts are only build and test, so no install script runs. Plugboard serves its browser build and stylesheet itself, so the page loads nothing from another origin.
+
+**chore(deps): use the semver package in the release script** ([`5757c7a`](https://github.com/jjjermiah/opencode-plugboard/commit/5757c7ab02707d885ef7bead97da12052aaa0c8d))
+
+.github/scripts/release.ts hand-rolled a semver regex, a parser and a precedence compare. Replace them with the semver package (ISC, no dependencies, no install scripts), pinned as a devDependency, with @types/semver for the editor. The script is tooling and is not shipped.
+
+What changed in release.ts: validVersion() is semver.valid(v) === v, so a leading "v", surrounding spaces and build metadata are still rejected as before. The two precedence checks are now !semver.gt(next, current) and !semver.gt(next, previous), which use the same ordering.
+
+One accepted input is now rejected: a numeric prerelease with a leading zero, such as 1.0.0-01. The old regex accepted it, but the semver spec forbids it and semver.valid does not. No real release version has this shape. Ordering of every other valid pair matched the old compare in a scratch check.
+
+Checked: a dry run for 0.17.1, v0.18.0 and 0.18.0-rc.1 in a throwaway clone prints the expected diff. 0.17.0, 0.16.9, 1.0.0-01, 1.0.0+b, " 1.2.3" and 0.17 fail with the same messages as before.
+
+Fixes #124
+
+**build(deps): declare engines and types, and record the ship-source decision** ([`625b568`](https://github.com/jjjermiah/opencode-plugboard/commit/625b568521271c86116b995822ec44abc4fed107))
+
+package.json shipped raw TypeScript (main ./index.ts) with no engines and no types. That works because OpenCode loads the entry with Bun, but the runtime floor was undeclared and TypeScript consumers had no types entry.
+
+Decision: keep shipping the .ts source, with no dist/ build. OpenCode 2.0.26 resolves the entry with Bun.resolveSync and imports it directly (packages/plugin/src/host.ts, packages/util/src/runtime/import.bun.ts). Its npm install runs with ignoreScripts: true (packages/util/src/npm.ts:225), so a prepack build would never run for a user, and the host does not read engines. The reasoning and file references are in docs/packaging.md.
+
+Changes: engines.bun is >=1.4.2, the Bun that OpenCode 2.0.26 pins (package.json packageManager and bun-types). types points at index.ts. The "." and "./rpc" exports become objects with a types condition first, then default. Bun ignores the types condition, so it still resolves to the same files; smoke-pack and a bun import of opencode-plugboard/rpc from the packed tarball both confirm this. There is no ./tui export on main, so none was added.
+
+Known gap, left open: a TypeScript consumer that checks the package reads the .ts source, and src/discovery.ts imports escape-html, whose types are a devDependency. Without @types/escape-html the consumer gets TS7016. With it installed, tsc passes under bundler and node16 resolution. Adding the types to dependencies or shipping a declare-module shim is a separate decision.
+
+Checked: bun run typecheck, bun test (1547 pass), check-pack, smoke-pack, and a consumer tsc run against the packed tarball.
+
+Fixes #69
+
+**build(deps): pin vitepress 1.6.4 for the docs site** ([`c999daa`](https://github.com/jjjermiah/opencode-plugboard/commit/c999daaf4330b5c7b56931a0da723e8938235fbc))
+
+The docs/ folder becomes a static site (issue #72). VitePress builds it from the existing Markdown with a small config, so no page has to move. It is an exact-pinned devDependency like the other tools here, so a site build never picks up a new minor on its own. Its manifest has no install or postinstall script.
+
+Starlight was the other option. It needs Astro and content collections, which means moving the pages before the site can build at all. VitePress is the smaller change.
+
+Adds the scripts docs:dev and docs:build. Nothing in src/ or test/ uses them, so bun run typecheck and bun test do not change.
+
+Checked: bun install resolves vitepress 1.6.4 and adds only lockfile entries. npm view vitepress@1.6.4 scripts lists no install hook.
+
+Refs #72
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.17.0] - 2026-10-11: Counting Every Call
 
@@ -1716,7 +2002,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.14.0...v0.15.0
