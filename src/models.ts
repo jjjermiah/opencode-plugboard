@@ -3,6 +3,12 @@
 import { appPolicy, type AppPolicy, type PlugboardOptions } from "./config.js"
 import type { CatalogModel, ModelRef, PlugError } from "./contract.js"
 
+/** Alias target prefix that binds a skill: `skill:<id>@provider/model[#variant]` (see `parseAliasTarget`). */
+export const SKILL_PREFIX = "skill:"
+/** Listed id prefix of an agent (option `agents`): `agent/<name>`. Aliases cannot contain `/`, so the two never collide. */
+export const AGENT_PREFIX = "agent/"
+const SKILL_TARGET = /^skill:([^@\s#*/]+)@([^@/#*\s]+\/[^@#*\s]+(#[^#*\s]+)?)$/
+
 /** `provider/model[#variant]`. The model id may contain slashes (`openrouter/vendor/model`). */
 export function parseModelRef(s: string): ModelRef | undefined {
   if (typeof s !== "string") return undefined
@@ -58,6 +64,42 @@ export function allowedBy(models: ReadonlyArray<string>, ref: ModelRef): boolean
 
 const allowed = (options: PlugboardOptions, ref: ModelRef): boolean => allowedBy(options.models, ref)
 
+/** An alias target as written in `aliases`: `provider/model[#variant]`, or `skill:<id>@` in front of one. */
+export interface AliasTarget {
+  readonly ref: ModelRef
+  /** The skill the alias binds, for a `skill:` target. */
+  readonly skill?: string
+}
+
+/** The model (and skill) an alias target names, or undefined when it is neither form. */
+export function parseAliasTarget(target: string): AliasTarget | undefined {
+  if (!target.startsWith(SKILL_PREFIX)) {
+    const ref = parseModelRef(target)
+    return ref === undefined ? undefined : { ref }
+  }
+  const match = SKILL_TARGET.exec(target)
+  const ref = match ? parseModelRef(match[2]!) : undefined
+  return match && ref ? { ref, skill: match[1]! } : undefined
+}
+
+/**
+ * What a request name stands for, beyond a plain model: a skill alias (its skill id) or an agent (its name
+ * in option `agents`). Undefined for plain model ids and plain aliases. The caller reads it to add the
+ * skill's content or the agent's system prompt to the session.
+ */
+export type Persona = { readonly kind: "skill"; readonly skill: string } | { readonly kind: "agent"; readonly agent: string }
+
+export function personaOf(options: Pick<PlugboardOptions, "aliases" | "agents">, name: string): Persona | undefined {
+  const target = own(options.aliases, name)
+  if (target !== undefined) {
+    const skill = parseAliasTarget(target)?.skill
+    return skill === undefined ? undefined : { kind: "skill", skill }
+  }
+  if (!name.startsWith(AGENT_PREFIX)) return undefined
+  const agent = name.slice(AGENT_PREFIX.length)
+  return Object.hasOwn(options.agents, agent) ? { kind: "agent", agent } : undefined
+}
+
 /**
  * Per-app narrowing (`apps.<name>.models`), applied on top of the global allowlist, never instead of it.
  * `name` is what the caller sent (an alias or a model id). An entry that is an alias name admits that
@@ -108,7 +150,15 @@ export function resolveModel(
     param: "model",
   }
   // Aliases keep priority over slugs; a slug and a canonical id both resolve, whatever `modelIds` lists.
-  let ref = parseModelRef(own(options.aliases, model) ?? fromSlug(model) ?? model)
+  // An agent runs on the model its `agents` entry names (the allowlist still applies below).
+  const target = own(options.aliases, model)
+  const persona = personaOf(options, model)
+  let ref =
+    target !== undefined
+      ? parseAliasTarget(target)?.ref
+      : persona?.kind === "agent"
+        ? parseModelRef(options.agents[persona.agent]!)
+        : parseModelRef(fromSlug(model) ?? model)
   if (!ref) return notAvailable
   if (!ref.variant && reasoningEffort && find(catalog, { ...ref, variant: reasoningEffort }))
     ref = { ...ref, variant: reasoningEffort }
@@ -120,6 +170,10 @@ export interface ListedModel {
   readonly id: string
   readonly ref: ModelRef
   readonly model: CatalogModel
+  /** The skill an alias binds (`skill:` target), listed as `plugboard.skill`. */
+  readonly skill?: string
+  /** The agent an `agent/<name>` id runs, listed as `plugboard.agent`. */
+  readonly agent?: string
 }
 
 /**
@@ -146,9 +200,16 @@ export function listAvailableModels(options: PlugboardOptions, catalog: Readonly
     }
   }
   for (const [alias, target] of Object.entries(options.aliases)) {
-    const ref = parseModelRef(target)
+    const parsed = parseAliasTarget(target)
+    const ref = parsed?.ref
     const model = ref && allowed(options, ref) && inAppScope(policy, alias, ref) ? find(catalog, ref) : undefined
-    if (ref && model) data.push(entry(alias, ref, model))
+    if (ref && model) data.push({ ...entry(alias, ref, model), ...(parsed.skill === undefined ? {} : { skill: parsed.skill }) })
+  }
+  for (const [name, target] of Object.entries(options.agents)) {
+    const id = `${AGENT_PREFIX}${name}`
+    const ref = parseModelRef(target)
+    const model = ref && allowed(options, ref) && inAppScope(policy, id, ref) ? find(catalog, ref) : undefined
+    if (ref && model) data.push({ ...entry(id, ref, model), agent: name })
   }
   return data
 }
