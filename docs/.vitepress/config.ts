@@ -74,6 +74,22 @@ export default defineConfig({
         ],
       },
       {
+        text: "Self-hosted apps",
+        items: [
+          { text: "Overview", link: "/self-hosted" },
+          { text: "Karakeep", link: "/self-hosted/karakeep" },
+          { text: "Frigate", link: "/self-hosted/frigate" },
+          { text: "paperless-gpt", link: "/self-hosted/paperless-gpt" },
+          { text: "Mealie", link: "/self-hosted/mealie" },
+          { text: "Khoj", link: "/self-hosted/khoj" },
+          { text: "Nextcloud Assistant", link: "/self-hosted/nextcloud-assistant" },
+          { text: "Mattermost AI plugin", link: "/self-hosted/mattermost" },
+          { text: "Open Notebook", link: "/self-hosted/open-notebook" },
+          { text: "Langflow", link: "/self-hosted/langflow" },
+          { text: "SparkyFitness", link: "/self-hosted/sparkyfitness" },
+        ],
+      },
+      {
         text: "API",
         items: [
           { text: "Responses", link: "/responses" },

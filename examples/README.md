@@ -17,9 +17,18 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
 | [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script |
 | [aider/](aider/.aider.conf.yml) | Aider (a terminal coding tool) pointed at plugboard: `.aider.conf.yml` and `.env.example` |
+| [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt. Page per app in [docs/self-hosted](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted.md) |
 | [curl](#curl) | One request per API: chat, responses, messages, Gemini, models and usage |
 
 Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option.
+
+## Self-hosted apps
+
+The examples in [self-hosted/](self-hosted/) are for apps that already run in Docker or take a YAML file. Each has a README, and the app's page in [docs/self-hosted](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted.md) lists what works through plugboard. They are docs-verified, not run.
+
+- [Karakeep](self-hosted/karakeep/README.md): `.env.example` and a compose override for the upstream `docker-compose.yml`
+- [Frigate](self-hosted/frigate/README.md): a `genai` provider in `config.yml`
+- [paperless-gpt](self-hosted/paperless-gpt/README.md): a compose service and `.env.example`
 
 ## Tool bot
 

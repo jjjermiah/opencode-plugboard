@@ -1,0 +1,20 @@
+# Merge into Frigate's config/config.yml. Cameras and detectors stay as they are.
+# Plugboard serves chat and descriptions. Semantic search uses a local Jina model,
+# because plugboard serves no embeddings.
+
+genai:
+  plugboard:
+    provider: openai
+    base_url: http://host.docker.internal:4010/v1
+    # Read from the environment: FRIGATE_PLUGBOARD_KEY, the plugboard `frigate` app key.
+    api_key: "{FRIGATE_PLUGBOARD_KEY}"
+    # An alias from plugboard's `aliases` option. It must accept images.
+    model: vision
+    roles:
+      - chat
+      - descriptions
+
+semantic_search:
+  enabled: true
+  model: jinav1
+  model_size: small
