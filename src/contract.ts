@@ -114,6 +114,8 @@ export interface PlugRequest {
   readonly tools: ReadonlyArray<PlugTool>
   readonly toolChoice?: PlugToolChoice
   readonly generation: PlugGeneration
+  /** The end user the caller named, when kept (src/user.ts, #57). Labels the session title and the usage counts. */
+  readonly user?: string
 }
 
 // ---------------------------------------------------------------- events

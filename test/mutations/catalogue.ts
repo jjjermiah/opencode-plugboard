@@ -28,6 +28,22 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I26-user-cap-off-by-one",
+    invariant: "I26",
+    file: "src/usage.ts",
+    find: "const key = distinct < USERS_PER_DAY ? user : OTHER_USER",
+    replace: "const key = distinct <= USERS_PER_DAY ? user : OTHER_USER",
+    tests: ["test/unit/end-user.test.ts"],
+  },
+  {
+    id: "I26-end-user-unsanitized",
+    invariant: "I26",
+    file: "src/user.ts",
+    find: "return END_USER.test(trimmed) ? trimmed : undefined",
+    replace: "return trimmed.length > 0 ? trimmed : undefined",
+    tests: ["test/unit/end-user.test.ts"],
+  },
+  {
     id: "I25-app-key-reads-admin-routes",
     invariant: "I25",
     file: "src/admin/route.ts",

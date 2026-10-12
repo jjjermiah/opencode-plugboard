@@ -278,6 +278,15 @@ Rules:
 - A runtime key names its app on every request that presents it. It does not make a keyless server require a key: with no config keys, a request without a key stays the app `default`. Deleting the last runtime key therefore never opens or closes access by itself.
 - Runtime apps have no `apps` policy. An `apps` entry needs a key in `keys`, so a runtime app gets the global settings only.
 
+## End users
+
+A bot that serves many people is one app, so its history and usage would be one pile. Plugboard reads the caller's end user from the request and keeps the users apart:
+
+- OpenAI Chat Completions, Responses and legacy completions read the `user` field. Anthropic Messages reads `metadata.user_id`. Gemini has no such field.
+- The value is trimmed and kept when it is at most 64 characters of `A-Z a-z 0-9 . _ @ : -`. Anything else is dropped, and the response carries `x-plugboard-user-dropped: 1`. A kept value is only ever a label: it never names a directory or a file.
+- A kept user prefixes the session title, as `[alice] first words of the prompt`, and is logged as `user=` on the request line.
+- `GET /v1/usage` gains a `users` object per app, with `requests`, `tokens` and `costUsd` per user, summed over the range. A day keeps at most 200 distinct users per app; later ones count under `_other`. `GET /v1/usage?user=alice` restricts `users` to that user. The app totals and models still cover every user.
+
 ## Limits and errors
 
 Errors use the OpenAI error body shape with the matching HTTP status.

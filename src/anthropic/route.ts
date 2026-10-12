@@ -14,6 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { authenticate } from "../config.js"
 import { liveOptions } from "../runtime.js"
+import { bodyUserId, noteEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import {
   BodyError,
@@ -54,7 +55,7 @@ export interface MessagesCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the route name, the app, the resolved model, dropped parameters, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string }
+  readonly info: ServedInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string; user?: string }
 }
 
 const header = (request: IncomingMessage, name: string): string | undefined => {
@@ -104,6 +105,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     if (unsupported) return fail(unsupported)
 
     const body = await readJsonBody(request, scope.signal)
+    noteEndUser(response, info, bodyUserId(body))
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.
     const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : body

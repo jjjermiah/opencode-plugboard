@@ -10,6 +10,7 @@
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { bodyUser, userField } from "../user.js"
 import {
   isPlugError,
   type PlugError,
@@ -353,6 +354,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   const instructions = typeof body.instructions === "string" && body.instructions.length > 0 ? [body.instructions] : []
   const system = [...instructions, ...parsed.system, ...(format.instruction ? [format.instruction] : [])]
   const request: Omit<PlugRequest, "ref"> = {
+    ...userField(bodyUser(body)),
     model: body.model,
     system,
     messages: parsed.messages,

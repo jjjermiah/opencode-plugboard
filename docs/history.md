@@ -1,6 +1,6 @@
 # History
 
-Every request is kept as an OpenCode session, so you can see what each app asked and what the model answered. Plugboard keeps the full caller transcript in each session (system prompt, messages, images as attachments, tool calls and results) plus the reply. The title is the first user message. A ten-turn chat is ten sessions, each complete. Every chat response carries an `x-plugboard-session` header with the id of its session.
+Every request is kept as an OpenCode session, so you can see what each app asked and what the model answered. Plugboard keeps the full caller transcript in each session (system prompt, messages, images as attachments, tool calls and results) plus the reply. The title is the first user message. When the caller sent an end user (`user`, or Anthropic's `metadata.user_id`), the title starts with it, as `[alice] ...`; see [End users](configuration.md#end-users). A ten-turn chat is ten sessions, each complete. Every chat response carries an `x-plugboard-session` header with the id of its session.
 
 Each session is filed under a per-app directory, so it never shows up in your real projects:
 

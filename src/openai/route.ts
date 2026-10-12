@@ -57,6 +57,7 @@ import type { KeyStore } from "../keys.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
+import { bodyUser, noteEndUser } from "../user.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
@@ -120,6 +121,8 @@ interface RequestInfo extends ServedInfo {
   failed?: string
   /** Sampling parameters dropped for this model (comma list), when any. */
   dropped?: string
+  /** The end user the body named, when kept (src/user.ts). */
+  user?: string
 }
 
 export function createOpenAiRoute(routeHost: RouteHost) {
@@ -263,6 +266,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (unsupported) return fail(response, unsupported)
 
     const body = await readJsonBody(request, scope.signal)
+    noteEndUser(response, info, bodyUser(body))
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
     const parsed = parseChatRequest(body, host.options)
@@ -340,6 +344,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       from: url.searchParams.get("from") ?? undefined,
       to: url.searchParams.get("to") ?? undefined,
       app: who.admin ? app : who.app,
+      user: url.searchParams.get("user") || undefined,
     })
     if (isPlugError(report)) return fail(response, report)
     // Each app's budget state, read from its current window rather than from the report's range (src/budgets.ts).
@@ -406,10 +411,10 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       } catch {}
       const ms = Date.now() - started
       metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
-      if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
+      if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms, ...(info.user === undefined ? {} : { user: info.user }) })
       // Probes and scrapes that succeed are not worth a line each.
       if ((info.route !== "GET /healthz" && info.route !== "GET /metrics") || outcome !== "ok") {
-        const fields = { id, route: info.route, app: info.app, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
+        const fields = { id, route: info.route, app: info.app, user: info.user, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
         else log("request", fields)
       }

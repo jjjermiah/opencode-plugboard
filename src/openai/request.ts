@@ -6,6 +6,7 @@
  * the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { bodyUser, userField } from "../user.js"
 import {
   isPlugError,
   type PlugError,
@@ -322,6 +323,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
 
   const forced: PlugToolChoice | undefined = respond ? (withCallerTools ? "required" : { type: "tool", name: RESPOND_TOOL }) : toolChoice
   const request: Omit<PlugRequest, "ref"> = {
+    ...userField(bodyUser(body)),
     model: body.model,
     system: format.instruction ? [...parsed.system, format.instruction] : parsed.system,
     messages: parsed.messages,

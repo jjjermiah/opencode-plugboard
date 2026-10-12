@@ -61,10 +61,16 @@ const CONTROLS_KEEP_LAYOUT = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u20
 /** One display line: whitespace (including line breaks) collapsed to single spaces, then control and bidi characters removed. */
 export const oneLine = (text: string): string => text.replace(/\s+/g, " ").replace(CONTROLS, "").trim()
 
-/** Session title: the first user text, one line, control and bidi characters removed, cut to 60 characters. */
+/**
+ * Session title: the end user as `[user] ` when the caller named one (#57), then the first user text, one
+ * line, control and bidi characters removed. The whole title is cut to 60 characters.
+ */
 export const makeTitle = (request: PlugRequest): string => {
+  const prefix = request.user === undefined ? "" : `[${request.user}] `
   const flat = oneLine(firstUserText(request))
-  return flat.length > TITLE_LENGTH ? flat.slice(0, TITLE_LENGTH - 1) + "…" : flat
+  const room = TITLE_LENGTH - prefix.length
+  const text = flat.length > room ? flat.slice(0, room - 1) + "…" : flat
+  return (prefix + text).trimEnd()
 }
 
 /** Readable transcript stored as the session's prompt; images are listed by attachment number. */

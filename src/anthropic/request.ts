@@ -9,6 +9,7 @@
  * afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { bodyUserId, userField } from "../user.js"
 import {
   isPlugError,
   type PlugError,
@@ -327,6 +328,7 @@ export function parseMessagesRequest(body: unknown, options: PlugboardOptions): 
     return bad(`tool_choice.name: "${toolChoice.name}" is not in tools`)
 
   const request: Omit<PlugRequest, "ref"> = {
+    ...userField(bodyUserId(body)),
     model: body.model,
     system,
     messages,

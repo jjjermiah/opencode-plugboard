@@ -38,6 +38,22 @@ async function drain(stream: AsyncIterable<PlugEvent>): Promise<PlugEvent[]> {
   return out
 }
 
+describe("#57 the end user labels the session title", () => {
+  test("#57 a kept end user is the title prefix `[user] ` before the first words of the prompt", async () => {
+    const run = setup()
+    run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop"), bus(id).executionSucceeded()])
+    await drain(run.caller.stream(plugRequest({ user: "alice" }), run.context))
+    expect(run.port.created[0]!.title).toBe("[alice] hello")
+  })
+
+  test("#57 without an end user the title is the first words, as before", async () => {
+    const run = setup()
+    run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop"), bus(id).executionSucceeded()])
+    await drain(run.caller.stream(plugRequest(), run.context))
+    expect(run.port.created[0]!.title).toBe("hello")
+  })
+})
+
 describe("one request, one kept session", () => {
   test("creates the session in the app directory with the request permissions, registers it, reports it, then prompts", async () => {
     const run = setup()
