@@ -276,6 +276,8 @@ jobs:
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          # This job has no checkout, so gh needs the repository named.
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.publish.outputs.tag }}
           TITLE: ${{ needs.publish.outputs.title }}
         run: |
