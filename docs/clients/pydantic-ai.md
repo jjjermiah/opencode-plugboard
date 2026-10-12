@@ -40,7 +40,7 @@ pydantic-ai runs the tool and makes the second request itself.
 
 ## Gotchas
 
-- Use `OpenAIChatModel`. `OpenAIResponsesModel` calls `/v1/responses`, which plugboard does not serve yet.
+- Use `OpenAIChatModel`, the path this page was run on. `OpenAIResponsesModel` calls `/v1/responses`, which plugboard serves (see [Responses API](../responses.md)); it has not been run with pydantic-ai here.
 - pydantic-ai always sends `stream_options.include_usage`, so streaming usage needs no setup.
 - It has no list-models call. Use the provider's OpenAI client, `provider.client.models.list()`, with `provider` the `OpenAIProvider` you built.
 - `openai_reasoning_effort` and `max_tokens` in model settings are accepted.

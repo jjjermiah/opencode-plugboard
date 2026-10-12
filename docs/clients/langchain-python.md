@@ -47,6 +47,6 @@ print(bound.invoke(history).content)
 
 ## Gotchas
 
-- Set `use_responses_api=False`. Left unset, an id that starts with `gpt-5.6` can switch the client to the Responses API, which plugboard does not serve yet. A `provider/` prefix avoids it, but set the flag anyway.
+- Set `use_responses_api=False`. Left unset, an id that starts with `gpt-5.6` can switch the client to the Responses API. Plugboard serves that API (see [Responses API](../responses.md)), but this page's runs used Chat Completions. A `provider/` prefix avoids it, but set the flag anyway.
 - LangChain has no list-models call. Use the wrapped OpenAI client (`llm.root_client.models.list()`).
 - A wrong key raises `OpenAIAuthenticationError` (401). An unknown model raises `OpenAIModelNotFoundError` (404).

@@ -64,7 +64,7 @@ Keep the version pinned. A bare `"opencode-plugboard"` means `latest`, so a cach
 opencode api get /api/agent
 ```
 
-For an always-on server, run that from the service unit. See [warm-up](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/warm-up.md).
+For an always-on server, run that from the service unit. See [warm-up][warm-up].
 
 **4. Call it.** The listener is on `127.0.0.1:4010`. This prints `pong`:
 
@@ -107,7 +107,7 @@ Give every tool its own key. Traffic, history and usage are then separated by ap
 }
 ```
 
-Callers send the key as `Authorization: Bearer <key>` (or `x-api-key` on the Anthropic routes). They never need the OpenCode server password. Removing a key takes effect on the running server at once.
+Callers send the key as `Authorization: Bearer <key>` (or `x-api-key` on the Anthropic routes). They never need the OpenCode server password. Removing a key takes effect on the running server at once; see [reloads and restarts][configuration-reload].
 
 #### Model allowlist
 
@@ -468,8 +468,8 @@ The protocol-level results are in the [compatibility matrix][compatibility]. It 
 
 ## Known gaps
 
-- **Responses is stateless.** Every request carries the whole conversation, and nothing is stored. Clients that default to `store: true` fail on a second turn ([#147](https://github.com/jjjermiah/opencode-plugboard/issues/147)). Set `store: false`. For n8n, turn "Use Responses API" off.
-- **Stop sequences** are removed from the answer only on `/v1/messages` ([#145](https://github.com/jjjermiah/opencode-plugboard/issues/145)). Other endpoints return the matched text.
+- **Responses keeps no conversation.** Every request carries the whole conversation, and `previous_response_id` and `conversation` are rejected. The output items of recent answers are held in memory for an hour, so the `item_reference`s that the Vercel AI SDK sends back resolve; a restart clears them ([#147](https://github.com/jjjermiah/opencode-plugboard/issues/147)). For n8n, turn "Use Responses API" off.
+- **Stop sequences** are removed from the answer when they end it, on the Anthropic, OpenAI and Gemini routes. The host reports only that the turn stopped, so a sequence the provider ended on without returning it is not removed.
 - **Anthropic structured outputs** (`output_config.format`) are refused with a 400. Use `json_schema` on the OpenAI or Gemini endpoints.
 - **Gemini `candidateCount` above 1** is refused. The OpenAI endpoints serve `n`.
 - **Gemini model ids with a `/`** sent by the AI SDK's Google provider or LangChain's `google-genai` lack the `models/` prefix and get a 401. The `@google/genai` SDK works.
@@ -485,7 +485,7 @@ Open work is tracked in the [v0.1 milestone](https://github.com/jjjermiah/openco
 ## Security
 
 - **Bind address.** The listener binds `127.0.0.1` by default. A non-loopback `listen.host` refuses to start without `keys`. On a loopback bind, a `Host` header that is not `localhost`, `127.0.0.1` or `[::1]` gets a 403.
-- **Keys cross the network in clear text.** The endpoint speaks plain HTTP. For remote access, allow only known addresses in the firewall, tunnel over SSH, or put a TLS-terminating proxy in front. See [reaching plugboard from another host or container][reach].
+- **Keys cross the network in clear text.** The endpoint speaks plain HTTP. For remote access, allow only known addresses in the firewall, tunnel over SSH, or put a TLS-terminating proxy in front. See [reaching plugboard from another host or container][reach] and [remote access][remote-access].
 - **Keep keys out of the config file.** Use `{env:VAR}` and keep the values in the environment or a secret store. Every app needs its own key.
 - **`adminKey` reads usage only.** It cannot call the model routes, and it must differ from every app key.
 - **Keyless mode is loopback only.** Without `keys`, the one app is `default`, and only local callers can reach it.
@@ -510,28 +510,32 @@ The plugin swaps the caller's prompt, messages and tools in for OpenCode's own. 
 
 MIT
 
-[configuration]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md
-[configuration-apps]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md#apps-and-keys
-[configuration-aliases]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md#aliases-and-fallbacks
-[configuration-limits]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md#concurrency-and-rate-limits
-[configuration-usage]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md#usage-statistics
-[responses]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/responses.md
-[messages]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/messages.md
-[gemini]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/gemini.md
-[completions]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/completions.md
-[history]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/history.md
-[warm-up]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/warm-up.md
-[architecture]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md
-[development]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/development.md
-[compatibility]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/compatibility.md
+Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsoft. Product names are trademarks of their owners.
+
+[configuration]: https://jjjermiah.github.io/opencode-plugboard/configuration
+[configuration-apps]: https://jjjermiah.github.io/opencode-plugboard/configuration#apps-and-keys
+[configuration-aliases]: https://jjjermiah.github.io/opencode-plugboard/configuration#aliases-and-fallbacks
+[configuration-limits]: https://jjjermiah.github.io/opencode-plugboard/configuration#concurrency-and-rate-limits
+[configuration-usage]: https://jjjermiah.github.io/opencode-plugboard/configuration#usage-statistics
+[configuration-reload]: https://jjjermiah.github.io/opencode-plugboard/configuration#reloads-and-restarts
+[responses]: https://jjjermiah.github.io/opencode-plugboard/responses
+[messages]: https://jjjermiah.github.io/opencode-plugboard/messages
+[gemini]: https://jjjermiah.github.io/opencode-plugboard/gemini
+[completions]: https://jjjermiah.github.io/opencode-plugboard/completions
+[history]: https://jjjermiah.github.io/opencode-plugboard/history
+[warm-up]: https://jjjermiah.github.io/opencode-plugboard/warm-up
+[architecture]: https://jjjermiah.github.io/opencode-plugboard/architecture
+[development]: https://jjjermiah.github.io/opencode-plugboard/development
+[compatibility]: https://jjjermiah.github.io/opencode-plugboard/compatibility
 [release-candidate]: https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/results/release-candidate.md
-[reach]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md#reaching-plugboard-from-another-host-or-container
-[client-openai-python]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-python.md
-[client-openai-js]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-js.md
-[client-vercel-ai-sdk]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/vercel-ai-sdk.md
-[client-langchain-python]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-python.md
-[client-langchain-js]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-js.md
-[client-pydantic-ai]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/pydantic-ai.md
-[client-open-webui]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/open-webui.md
-[client-n8n]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/n8n.md
-[client-any-app]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md
+[reach]: https://jjjermiah.github.io/opencode-plugboard/clients/any-app#reaching-plugboard-from-another-host-or-container
+[remote-access]: https://jjjermiah.github.io/opencode-plugboard/remote-access
+[client-openai-python]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-python
+[client-openai-js]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-js
+[client-vercel-ai-sdk]: https://jjjermiah.github.io/opencode-plugboard/clients/vercel-ai-sdk
+[client-langchain-python]: https://jjjermiah.github.io/opencode-plugboard/clients/langchain-python
+[client-langchain-js]: https://jjjermiah.github.io/opencode-plugboard/clients/langchain-js
+[client-pydantic-ai]: https://jjjermiah.github.io/opencode-plugboard/clients/pydantic-ai
+[client-open-webui]: https://jjjermiah.github.io/opencode-plugboard/clients/open-webui
+[client-n8n]: https://jjjermiah.github.io/opencode-plugboard/clients/n8n
+[client-any-app]: https://jjjermiah.github.io/opencode-plugboard/clients/any-app

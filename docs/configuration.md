@@ -8,7 +8,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start. |
+| `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start, and serves plain HTTP. See [Remote access](remote-access.md). |
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
 | `adminKey` | none | A key that reads every app's usage at `GET /v1/usage` and manages app keys at runtime under `/v1/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
@@ -31,9 +31,16 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
-Changes to `listen` need a server restart; other option changes apply on config reload.
+### Reloads and restarts
 
-OpenCode loads the plugin once per project directory, and all of those loads share one listener. The first one to load decides the options. A load elsewhere with different options logs once and stays inert, so a project entry cannot serve with weaker auth than the live one. When none is live, for example during a config reload, the next load's options are adopted. Requests are served from plugboard's own data directory when it is loaded, so a project's provider config doesn't change what callers get. So install it in the global config, which every project loads, and don't repeat it per project.
+Each plugin load is checked against the listener that is already running:
+
+- `listen` (`host` or `port`) needs an OpenCode restart. A different `listen` is rejected while the listener is up.
+- Removing a key, or changing a key's value, applies at once, even while an older generation still serves. This holds when the new `keys` add no app and leave at least one app.
+- Adding a key, or changing any other option, is rejected while an older generation still serves. The server keeps the options it started with and logs `listener.options_mismatch`. Restart OpenCode to apply it.
+- When no accepted generation is live (the listener is in its grace period after the last generation closed, or the server has just started), the next load's options are adopted.
+
+OpenCode loads the plugin once per project directory, and all of those loads share one listener. The first one to load decides the options. A load elsewhere with different options logs once and stays inert, so a project entry cannot serve with weaker auth than the live one. Requests are served from plugboard's own data directory when it is loaded, so a project's provider config doesn't change what callers get. So install it in the global config, which every project loads, and don't repeat it per project.
 
 On a loopback `listen.host`, requests with a `Host` header other than `127.0.0.1`, `localhost` or `[::1]` (on the listen port) get 403 `invalid_host`, and without `keys` a request with an `Origin` header gets 403 `cross_origin_forbidden`. The `Host` check only applies when `listen.host` is loopback. `POST` bodies must be `application/json` (415 otherwise).
 
@@ -122,7 +129,7 @@ Both kinds appear in `/v1/models` with `plugboard.skill` or `plugboard.agent` se
 
 ## Apps and keys
 
-Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line. Removing a key, or changing its value, takes effect on the running server at once, even when a plugin instance from before the edit is still live; adding a key still needs a server restart.
+Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line. Removing a key, or changing its value, takes effect on the running server at once. Adding a key needs a restart. See [Reloads and restarts](#reloads-and-restarts).
 
 ### Per-app policy (`apps`)
 

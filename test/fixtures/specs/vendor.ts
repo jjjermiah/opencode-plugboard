@@ -9,6 +9,7 @@
  *
  * Each output keeps only the closure of the response roots (every schema they reference, through
  * `$ref`), and records its source URL and the retrieval date in `$source` and `$retrieved`.
+ * Terms for each source (MIT for openai.json, unclear for gemini.json): THIRD_PARTY_NOTICES.md.
  */
 import { mkdir } from "node:fs/promises"
 
