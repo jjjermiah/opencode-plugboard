@@ -303,6 +303,17 @@ describe("TTL and caps", () => {
     expect(fake.calls).toHaveLength(2)
     expect(kept.size()).toBe(0)
   })
+  test("#153 capture stops once the answer passes maxBytes, even when the store itself would hold it", async () => {
+    // The store's cap is large; only the config's (the capture budget) is over.
+    const fake = new FakeModelCaller([ev.text("y".repeat(200)), ev.text("y".repeat(200)), ev.finish()])
+    const kept = store()
+    const cached = cachedCaller(fake, { ...CONFIG, maxBytes: 300 }, kept)
+    const first = await collect(cached.stream(plugRequest(), context().ctx))
+    expect(first).toHaveLength(3)
+    expect(kept.size()).toBe(0)
+    await collect(cached.stream(plugRequest(), context().ctx))
+    expect(fake.calls).toHaveLength(2)
+  })
 })
 
 describe("stored events", () => {

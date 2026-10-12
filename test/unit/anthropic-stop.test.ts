@@ -9,7 +9,7 @@ import { ev, events } from "../support/fixtures.js"
 
 async function run(list: Parameters<typeof events>, stop?: string[]) {
   const emitted: MessagesStreamEvent[] = []
-  const result = await runMessage(events(...list), { model: "test/echo", stream: true, thinking: false, ...(stop ? { stop } : {}) }, (event) => emitted.push(event))
+  const result = await runMessage(events(...list), { model: "test/echo", stream: false, thinking: false, ...(stop ? { stop } : {}) }, (event) => emitted.push(event))
   const text = emitted.filter((event) => event.type === "content_block_delta").map((event) => (event.delta as { text?: string }).text ?? "")
   const delta = emitted.find((event) => event.type === "message_delta")!.delta as { stop_reason: string; stop_sequence: string | null }
   return { result, emitted, streamed: text.join(""), delta, message: result.message as { content: Array<Record<string, unknown>>; stop_reason: string; stop_sequence: string | null } }

@@ -56,11 +56,12 @@ export async function scenarios() {
   const completionStream: string[] = []
   await completions.streamChoice(events(...TEXT_TURN()), (chunk) => void completionStream.push(chunk), { id: "cmpl-ID", created: 0, index: 0 })
 
+  // The bodies below are the aggregates, which only a non-streamed run builds (#153); the emitted events are the same either way.
   const messagesEvents: object[] = []
-  const message = await runMessage(events(ev.reasoning("Let me think."), ...TOOL_TURN()), { model: "fast", stream: true, thinking: true }, (event) => void messagesEvents.push(event))
+  const message = await runMessage(events(ev.reasoning("Let me think."), ...TOOL_TURN()), { model: "fast", stream: false, thinking: true }, (event) => void messagesEvents.push(event))
 
   const geminiChunks: object[] = []
-  const gemini = await runGenerate(events(...TOOL_TURN()), { model: "fast", stream: true }, (chunk) => void geminiChunks.push(JSON.parse(JSON.stringify(chunk))))
+  const gemini = await runGenerate(events(...TOOL_TURN()), { model: "fast", stream: false }, (chunk) => void geminiChunks.push(JSON.parse(JSON.stringify(chunk))))
 
   const listed = listAvailableModels(testOptions({ models: ["test/echo"] }), CATALOG).slice(0, 1)
   return normalize({

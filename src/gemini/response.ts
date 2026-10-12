@@ -145,6 +145,8 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
     responseId,
   })
 
+  // Only a non-streamed body needs the aggregated parts: a stream is already on the wire, so nothing grows (#153).
+  const aggregate = !exchange.stream
   /** The aggregated parts: adjacent text merges into one part. */
   const parts: Part[] = []
   let started = false
@@ -158,9 +160,11 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
 
   const push = (part: Part) => {
     started = true
-    const last = parts.at(-1)
-    if (typeof part.text === "string" && last && typeof last.text === "string") last.text += part.text
-    else parts.push(part)
+    if (aggregate) {
+      const last = parts.at(-1)
+      if (typeof part.text === "string" && last && typeof last.text === "string") last.text += part.text
+      else parts.push(part)
+    }
     emit(envelope([part]))
   }
   // A stop sequence is held back until the finish decides it (src/stop.ts). Structured output has none.

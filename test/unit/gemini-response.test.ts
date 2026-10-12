@@ -4,7 +4,8 @@ import { encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerat
 import { listAvailableModels } from "../../src/models.js"
 import { CATALOG, ev, events, testOptions } from "../support/fixtures.js"
 
-const plain: GeminiExchange = { model: "fast", stream: true }
+// Non-streamed: the tests below read the aggregated body, which a stream does not build (#153).
+const plain: GeminiExchange = { model: "fast", stream: false }
 const structured: GeminiExchange = { ...plain, structuredTool: "respond" }
 
 async function run(exchange: GeminiExchange, ...list: PlugEvent[]) {
@@ -99,5 +100,19 @@ describe("Google error bodies and model entries", () => {
       ],
     })
     expect(encodeGeminiModel(listAvailableModels(testOptions({ models: ["test/vision"] }), CATALOG)[0]!)).toMatchObject({ name: "models/test/vision", displayName: "test/vision" })
+  })
+})
+
+describe("#153 a stream keeps no aggregate", () => {
+  test("a long streamed answer leaves the aggregated body empty, while every chunk still goes out", async () => {
+    const list = Array.from({ length: 2_000 }, (_, index) => ev.text(`chunk ${index} `))
+    const { response, chunks } = await run({ ...plain, stream: true }, ...list, ev.finish("stop"))
+    expect(response.candidates[0].content.parts).toEqual([{ text: "" }])
+    expect(chunks.length).toBeGreaterThan(2_000)
+  })
+
+  test("a non-streamed answer keeps its parts for the JSON body", async () => {
+    const { response } = await run({ ...plain, stream: false }, ev.text("Hi"), ev.finish("stop"))
+    expect(response.candidates[0].content.parts).toEqual([{ text: "Hi" }])
   })
 })

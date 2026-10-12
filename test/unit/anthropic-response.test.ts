@@ -3,7 +3,8 @@ import { encodeError, runMessage, sseFrame, type MessagesExchange, type Messages
 import type { PlugErrorKind, PlugEvent } from "../../src/contract.js"
 import { ev, events } from "../support/fixtures.js"
 
-const plain: MessagesExchange = { model: "fast", stream: true, thinking: false }
+// Non-streamed: the tests below read the aggregated message body, which a stream does not build (#153).
+const plain: MessagesExchange = { model: "fast", stream: false, thinking: false }
 const thinking: MessagesExchange = { ...plain, thinking: true }
 
 async function run(exchange: MessagesExchange, ...list: PlugEvent[]) {
@@ -112,5 +113,19 @@ describe("#4 encodeError: Anthropic's error body", () => {
 
   test("sseFrame names the event", () => {
     expect(sseFrame({ type: "ping" })).toBe('event: ping\ndata: {"type":"ping"}\n\n')
+  })
+})
+
+describe("#153 a stream keeps no aggregate", () => {
+  test("a long streamed answer leaves the message content empty, while every delta still goes out", async () => {
+    const list = Array.from({ length: 2_000 }, (_, index) => ev.text(`chunk ${index} `))
+    const { message, types } = await run({ ...plain, stream: true }, ...list, ev.finish("stop"))
+    expect(message.content).toEqual([])
+    expect(types.filter((type) => type === "content_block_delta")).toHaveLength(2_000)
+  })
+
+  test("a non-streamed answer keeps its content for the JSON body", async () => {
+    const { message } = await run({ ...plain, stream: false }, ev.text("Hi"), ev.finish("stop"))
+    expect(message.content).toEqual([{ type: "text", text: "Hi" }])
   })
 })
