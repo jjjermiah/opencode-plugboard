@@ -44,7 +44,7 @@ Keep `/v1` in `api_base_url`. The full example is a pipeline: a `ChatPromptBuild
 
 ## Quirks
 
-- Haystack reads `OPENAI_API_KEY`, `OPENAI_TIMEOUT` and `OPENAI_MAX_RETRIES` from the environment as fallbacks. Pass `api_key` explicitly so the plugboard key is the one used.
+- Unverified: the issue says Haystack reads `OPENAI_API_KEY`, `OPENAI_TIMEOUT` and `OPENAI_MAX_RETRIES` from the environment as fallbacks. This run did not test that. Pass `api_key` explicitly so the plugboard key is the one used.
 - `api_key` takes a `Secret`. A plain string does not work; use `Secret.from_token`.
 - The tool result must reference the originating call (`origin=`) so the follow-up turn is well formed.
 
