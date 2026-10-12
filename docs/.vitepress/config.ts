@@ -82,6 +82,7 @@ export default defineConfig({
           { text: "Haystack", link: "/clients/haystack" },
           { text: "Mastra", link: "/clients/mastra" },
           { text: "smolagents", link: "/clients/smolagents" },
+          { text: "promptfoo", link: "/clients/promptfoo" },
         ],
       },
       {

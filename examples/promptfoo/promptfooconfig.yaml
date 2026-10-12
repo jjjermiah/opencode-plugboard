@@ -1,0 +1,37 @@
+# promptfoo against plugboard. Deterministic assertions only: model-graded ones (llm-rubric, ...)
+# default to OpenAI as the grader unless defaultTest.options.provider points at plugboard.
+# Run: PLUGBOARD_URL=http://127.0.0.1:4010/v1 PLUGBOARD_KEY=<app key> npx promptfoo@latest eval --no-cache
+# Docs: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/promptfoo.md
+prompts:
+  - "{{input}}"
+
+providers:
+  - id: openai:chat:fast
+    config:
+      apiBaseUrl: "{{ env.PLUGBOARD_URL }}"
+      apiKey: "{{ env.PLUGBOARD_KEY }}"
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: Current weather for a city.
+            parameters:
+              type: object
+              properties:
+                city:
+                  type: string
+              required: [city]
+
+tests:
+  - vars:
+      input: "Reply with exactly: pong"
+    assert:
+      - type: icontains
+        value: pong
+
+  - vars:
+      input: "What is the weather in Paris? Use the tool."
+    assert:
+      - type: is-valid-openai-tools-call
+      - type: javascript
+        value: "Array.isArray(output.tool_calls ?? output) && (output.tool_calls ?? output).length > 0"
