@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
 import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
-import { log, logError } from "../log.js"
+import { log, logError, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
@@ -120,9 +120,12 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       const requestID = randomUUID()
       const startedAt = Date.now()
       let outcome = "cancelled"
+      // Whether the model produced anything at all (text, reasoning or a tool call), for `answer.empty` (#172).
+      let produced = false
       const note = (event: PlugEvent): PlugEvent => {
         if (event.type === "finish") outcome = `finish:${event.reason}`
         else if (event.type === "error") outcome = `error:${event.error.status}${event.error.code ? `:${event.error.code}` : ""}`
+        else produced = true
         return event
       }
 
@@ -249,6 +252,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           if (promptStarted) sessions.retire(sessionID, { timeoutMs: CLEANUP_TIMEOUT_MS, onTimeout: interrupt })
           else sessions.release(sessionID)
         }
+        // A turn that stopped with nothing in it is kept as a session for inspection: the session id finds it.
+        if (outcome === "finish:stop" && !produced) logWarn("answer.empty", { requestID, app, model: request.model, sessionID, tools: request.tools.length })
         log("request.finished", { requestID, app, model: request.model, durationMs: Date.now() - startedAt, outcome })
       }
     },

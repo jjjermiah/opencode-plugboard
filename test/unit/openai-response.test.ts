@@ -146,10 +146,15 @@ describe("collectCompletion: structured output (json_schema)", () => {
     expect(await collect(structured, ev.text("I refuse"), ev.finish("stop"))).toMatchObject({ status: 502, body: { error: { code: "structured_output_missing" } } })
   })
 
-  test.each(["length", "content-filter"] as const)("no respond call after a %s finish keeps the reason with null content", async (reason) => {
+  test.each(["length", "content-filter"] as const)("#172 no respond call after a %s finish is a 502, never a 200 with null content", async (reason) => {
     const { status, body } = await collect(structured, ev.finish(reason))
-    expect(status).toBe(200)
-    expect(body.choices[0].message.content).toBeNull()
+    expect(status).toBe(502)
+    expect(body.error.code).toBe("structured_output_missing")
+  })
+
+  test("#172 an empty structured turn (stop, no text, no tool call) is a 502, not a 200", async () => {
+    expect(await collect(structured, ev.finish("stop"))).toMatchObject({ status: 502, body: { error: { code: "structured_output_missing" } } })
+    expect(await collect(structured, ev.reasoning("hm"), ev.finish("stop"))).toMatchObject({ status: 502, body: { error: { code: "structured_output_missing" } } })
   })
 
   test("with caller tools, a caller tool call wins over the structured answer", async () => {
@@ -228,6 +233,12 @@ describe("streamCompletion: SSE frames", () => {
 
   test("structured without an answer fails before any output", async () => {
     expect((await stream(structured, ev.text("prose"), ev.finish("stop"))).result).toMatchObject({ started: false, failure: { code: "structured_output_missing" } })
+  })
+
+  test.each(["length", "content-filter"] as const)("#172 streamed: no respond call after a %s finish fails before any output", async (reason) => {
+    const { text, result } = await stream(structured, ev.finish(reason))
+    expect(text).toBe("")
+    expect(result).toMatchObject({ started: false, failure: { status: 502, code: "structured_output_missing" } })
   })
 
   test("#50 json_object: a fenced answer is held and arrives unfenced as one chunk", async () => {

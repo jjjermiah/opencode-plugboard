@@ -178,17 +178,15 @@ export const structuredMissing = (tool: string): PlugError => ({
  * Structured-output projection, shared by the JSON and SSE encoders so both give the same body.
  * In structured mode (`exchange.structuredTool` set) the content is exactly the arguments of
  * the first call to that tool: prose, reasoning and any other tool call are suppressed, and
- * later calls to it are ignored. Without an answer the exchange fails, except when the model
- * stopped for `length` or `content-filter`, which keep their finish reasons with empty content.
+ * later calls to it are ignored. Without an answer the exchange fails with 502 (#172): a turn that
+ * ends with no structured output is never a 200 with empty content, whatever its finish reason.
  */
 const structured = {
   isAnswer: (exchange: OpenAiExchange, call: ToolCall) => exchange.structuredTool !== undefined && call.name === exchange.structuredTool,
   content: (call: ToolCall) => args(call.input),
   /** The failure for a finished structured exchange, if any. */
-  failure: (exchange: OpenAiExchange, finish: Exclude<PlugFinish, "error">, answered: boolean): PlugError | undefined =>
-    exchange.structuredTool === undefined || answered || finish === "length" || finish === "content-filter"
-      ? undefined
-      : structuredMissing(exchange.structuredTool),
+  failure: (exchange: OpenAiExchange, answered: boolean): PlugError | undefined =>
+    exchange.structuredTool === undefined || answered ? undefined : structuredMissing(exchange.structuredTool),
 }
 
 const isObjectValue = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
@@ -305,7 +303,7 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
   const passthrough = exchange.callerTools === true && others.length > 0
   const isStructured = exchange.structuredTool !== undefined && !passthrough
   const fallback = isStructured && answer === undefined && exchange.structuredSchema !== undefined ? textFallback(text, exchange.structuredSchema) : undefined
-  const missing = passthrough ? undefined : structured.failure(exchange, finish, answer !== undefined || fallback !== undefined)
+  const missing = passthrough ? undefined : structured.failure(exchange, answer !== undefined || fallback !== undefined)
   if (missing) return { status: missing.status, body: encodeError(missing) }
   const toolCalls = isStructured ? [] : others
   const message: Record<string, unknown> = {
@@ -466,7 +464,7 @@ export async function streamCompletion(
   const passthrough = exchange.callerTools === true && calls > 0
   const isStructured = exchange.structuredTool !== undefined && !passthrough
   const fallback = isStructured && !answered && exchange.structuredSchema !== undefined ? textFallback(collected, exchange.structuredSchema) : undefined
-  failure ??= finish ? (passthrough ? undefined : structured.failure(exchange, finish, answered || fallback !== undefined)) : noFinish()
+  failure ??= finish ? (passthrough ? undefined : structured.failure(exchange, answered || fallback !== undefined)) : noFinish()
   if (failure) {
     if (!started) return { failure, started }
     if (!choice) {
