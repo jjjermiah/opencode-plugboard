@@ -319,4 +319,12 @@ describe("#170 matchesSchema and textFallback: the schema subset", () => {
     expect(textFallback("", schema)).toBeUndefined()
     expect(textFallback('{"b":1}', schema)).toBeUndefined()
   })
+
+  test("textFallback: one fenced block inside prose is the answer; two blocks or a non-matching one are not", () => {
+    const schema = { type: "object", required: ["city"] }
+    const prose = 'I cannot call any tool. However, here is the JSON:\n\n```json\n{\n  "city": "Oslo"\n}\n```\n\nHope that helps.'
+    expect(textFallback(prose, schema)).toBe('{\n  "city": "Oslo"\n}')
+    expect(textFallback('A:\n```json\n{"city":"Oslo"}\n```\nB:\n```json\n{"city":"Bergen"}\n```', schema)).toBeUndefined()
+    expect(textFallback('Here:\n```json\n{"town":"Oslo"}\n```', schema)).toBeUndefined()
+  })
 })

@@ -240,15 +240,24 @@ export function matchesSchema(value: unknown, schema: Readonly<Record<string, un
  * the schema asks for (one code fence is stripped first). Undefined for any other text.
  */
 export function textFallback(text: string, schema: Readonly<Record<string, unknown>>): string | undefined {
-  const candidate = unfence(text.trim())
-  let value: unknown
-  try {
-    value = JSON.parse(candidate)
-  } catch {
-    return undefined
+  // The whole text (fenced or not), else the one fenced block inside prose: Claude, told not to call
+  // tools, skips `respond` and answers "Here is the JSON: ```json {...}```" (found by the live suite).
+  const fenced = [...text.matchAll(FENCE_ANYWHERE)].map((match) => match[1]!.trim())
+  const candidates = [unfence(text.trim()), ...(fenced.length === 1 ? fenced : [])]
+  for (const candidate of candidates) {
+    let value: unknown
+    try {
+      value = JSON.parse(candidate)
+    } catch {
+      continue
+    }
+    if (matchesSchema(value, schema)) return candidate
   }
-  return matchesSchema(value, schema) ? candidate : undefined
+  return undefined
 }
+
+/** Every fenced code block (```json or a bare ```) anywhere in the text. */
+const FENCE_ANYWHERE = /```[ \t]*(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n?[ \t]*```/gi
 
 /** One markdown code fence (```json or a bare ```) around the whole text. */
 const FENCED = /^```[ \t]*(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n?[ \t]*```$/i
