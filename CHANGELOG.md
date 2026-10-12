@@ -14,7 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+Eleven more clients documented, five of them tested automatically. This is the start of epic [#206](https://github.com/jjjermiah/opencode-plugboard/issues/206): 34 popular clients, each with a verified setup.
+
+### Added
+
+- **Python clients, tested** ([#221](https://github.com/jjjermiah/opencode-plugboard/issues/221), [#227](https://github.com/jjjermiah/opencode-plugboard/issues/227), [#225](https://github.com/jjjermiah/opencode-plugboard/issues/225), [#224](https://github.com/jjjermiah/opencode-plugboard/issues/224), [#215](https://github.com/jjjermiah/opencode-plugboard/issues/215)). The OpenAI Agents SDK (on both the Responses and Chat Completions paths), LiteLLM, Instructor, DSPy and Aider each have a setup page, an example and a harness. `bun run compat:python` runs them against a standalone fake plugboard or a live one; all 18 scenarios and the Aider check pass on both.
+- **Coding agents and chat apps** ([#213](https://github.com/jjjermiah/opencode-plugboard/issues/213), [#214](https://github.com/jjjermiah/opencode-plugboard/issues/214), [#216](https://github.com/jjjermiah/opencode-plugboard/issues/216), [#219](https://github.com/jjjermiah/opencode-plugboard/issues/219), [#207](https://github.com/jjjermiah/opencode-plugboard/issues/207), [#220](https://github.com/jjjermiah/opencode-plugboard/issues/220)). Claude Code, Codex CLI, Continue, Kilo Code, LibreChat and Zed have setup pages and example configs, checked against each client's current docs. Claude Code was also run live: text and a tool turn work through `/v1/messages`, once `maxTools` is above its 36 tools (the page shows how; the default is [#242](https://github.com/jjjermiah/opencode-plugboard/issues/242)).
 
 ## [0.21.2] - 2026-10-11: Nothing Left Unsaved
 

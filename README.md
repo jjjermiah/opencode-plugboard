@@ -43,7 +43,7 @@ export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.21.2",
+      "package": "opencode-plugboard@0.22.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
         "models": ["anthropic/claude-sonnet-4-6", "github-copilot/*", "opencode-go/glm-5.3-flash"],
@@ -390,7 +390,7 @@ A server shared by a Discord bot, n8n, Open WebUI and a coding agent, with most 
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.21.2",
+      "package": "opencode-plugboard@0.22.0",
       "options": {
         // Reachable from the LAN. Non-loopback hosts refuse to start without keys.
         "listen": { "host": "10.0.1.50", "port": 4010 },
@@ -466,6 +466,11 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Kilo Code | [kilo-code][client-kilo-code] | docs only, not run yet |
 | LibreChat | [librechat][client-librechat] | docs only, not run yet |
 | Zed | [zed][client-zed] | docs only, not run yet |
+| OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
+| LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
+| Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
+| DSPy | [dspy][client-dspy] | pass: Predict, ChainOfThought, typed output |
+| Aider | [aider][client-aider] | pass: one scripted `--message` run |
 | Anything else | [any-app][client-any-app] | base URL, key, model id |
 
 Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass is not a clean sweep, and the notes say where it was not. The latest full run is in [compat/results/release-candidate.md][release-candidate].
@@ -550,4 +555,9 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-kilo-code]: https://jjjermiah.github.io/opencode-plugboard/clients/kilo-code
 [client-librechat]: https://jjjermiah.github.io/opencode-plugboard/clients/librechat
 [client-zed]: https://jjjermiah.github.io/opencode-plugboard/clients/zed
+[client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
+[client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
+[client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
+[client-dspy]: https://jjjermiah.github.io/opencode-plugboard/clients/dspy
+[client-aider]: https://jjjermiah.github.io/opencode-plugboard/clients/aider
 [client-any-app]: https://jjjermiah.github.io/opencode-plugboard/clients/any-app
