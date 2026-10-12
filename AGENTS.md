@@ -4,6 +4,9 @@ OpenCode V2 plugin that serves an OpenAI-compatible API (`/v1/chat/completions`,
 
 `STRUCTURE.md` maps every directory and says where new code goes. The numbered invariants (I1 to I24) in `docs/architecture.md` are the rules a change must not break; cite them by number in commits and reviews.
 
+## Tools
+
+Use the dedicated tools, not bash, for code and files: `aft_search`, `aft_outline`, `aft_zoom`, `aft_inspect`, `aft_safety`, `ast_grep_search`/`ast_grep_replace`, `read`, `write`, `edit`, `glob`, `grep`. Never `grep`/`rg`/`find`/`cat`/`sed`/`awk`/heredocs or python scripts in bash to find, read or change files. Bash is for running things: `bun test`, `bun run …`, git, gh. Lanes work in worktrees under `.agents/worktrees/`: always pass absolute paths to read/write/edit, because relative paths resolve against the session's project root, not the worktree. Write a commit message to a file with `write`, then `git commit -F <file>`.
 ## Commands
 
 - `bun install`, then `bun run typecheck` and `bun test`. The typecheck checks `src/` with Node types, then the tests (`test/tsconfig.json`); it doubles as the host-compatibility check (`HostContextMatches` in `src/session/host.ts` fails it when the pinned `@opencode/plugin` changes shape).
