@@ -25,6 +25,7 @@ import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import type { RouteHost } from "../openai/route.js"
+import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
 import { dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
 import { parseGeminiRequest } from "./request.js"
@@ -191,5 +192,6 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
 
   const run = await runGenerate(events, exchange, () => {})
   if (run.failure || !run.response) return fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
+  if (run.structuredFallback) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
   sendJson(response, 200, run.response)
 }

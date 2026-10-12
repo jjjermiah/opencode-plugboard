@@ -116,3 +116,37 @@ describe("#153 a stream keeps no aggregate", () => {
     expect(response.candidates[0].content.parts).toEqual([{ text: "Hi" }])
   })
 })
+
+describe("#173 runGenerate: a text answer and the 502 for every finish", () => {
+  const schema = { type: "object", required: ["a"], properties: { a: { type: "number" } } }
+  const withSchema: GeminiExchange = { ...structured, structuredSchema: schema }
+
+  test("the final text is the answer when it is the schema's JSON, flagged as a fallback", async () => {
+    const { response, failure, structuredFallback } = await run(withSchema, ev.text('{"a":3}'), ev.finish("stop"))
+    expect(failure).toBeUndefined()
+    expect(response.candidates[0].content.parts).toEqual([{ text: '{"a":3}' }])
+    expect(structuredFallback).toBe(true)
+  })
+
+  test("a respond call wins over the text and is not flagged", async () => {
+    const { response, structuredFallback } = await run(withSchema, ev.text('{"a":9}'), ev.call("c1", "respond", { a: 1 }), ev.finish("tool-calls"))
+    expect(response.candidates[0].content.parts).toEqual([{ text: '{"a":1}' }])
+    expect(structuredFallback).toBeUndefined()
+  })
+
+  test("a wrapped (array) schema takes its text as the answer when the text is that JSON", async () => {
+    const wrapped: GeminiExchange = { ...structured, wrapped: true, structuredSchema: { type: "array" } }
+    expect((await run(wrapped, ev.text('["x"]'), ev.finish("stop"))).response.candidates[0].content.parts).toEqual([{ text: '["x"]' }])
+  })
+
+  test("text that does not match the schema is a 502 before any output", async () => {
+    const { failure, started, chunks } = await run(withSchema, ev.text("prose"), ev.finish("stop"))
+    expect(failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+    expect(started).toBe(false)
+    expect(chunks).toEqual([])
+  })
+
+  test.each(["length", "content-filter"] as const)("#173 a %s finish with no answer is a 502, not a candidate with no content", async (reason) => {
+    expect((await run(withSchema, ev.finish(reason))).failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+  })
+})

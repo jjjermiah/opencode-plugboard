@@ -351,7 +351,7 @@ const parseGeneration = (config: JsonObject): PlugGeneration | PlugError => {
 }
 
 /** `responseMimeType` / `responseSchema` / `responseJsonSchema`: same outcomes as `response_format` in the other front-ends. */
-const parseResponseFormat = (config: JsonObject): { structured?: PlugTool; wrap?: boolean; instruction?: string } | PlugError => {
+const parseResponseFormat = (config: JsonObject): { structured?: PlugTool; schema?: JsonObject; wrap?: boolean; instruction?: string } | PlugError => {
   const mime = field(config, "responseMimeType")
   const schema = field(config, "responseJsonSchema") ?? field(config, "responseSchema")
   if (mime != null && typeof mime !== "string") return bad("responseMimeType must be a string", "generationConfig.responseMimeType")
@@ -364,6 +364,7 @@ const parseResponseFormat = (config: JsonObject): { structured?: PlugTool; wrap?
   const wrap = converted.type !== undefined && converted.type !== "object"
   return {
     wrap,
+    schema: converted,
     structured: {
       name: RESPOND_TOOL,
       description: "Give your final answer by calling this tool with JSON matching its schema.",
@@ -437,7 +438,7 @@ export function parseGeminiRequest(model: string, stream: boolean, body: unknown
     exchange: {
       model,
       stream,
-      ...(respond ? { structuredTool: RESPOND_TOOL, ...(format.wrap ? { wrapped: true } : {}), ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+      ...(respond ? { structuredTool: RESPOND_TOOL, ...(format.schema ? { structuredSchema: format.schema } : {}), ...(format.wrap ? { wrapped: true } : {}), ...(withCallerTools ? { callerTools: true } : {}) } : {}),
       ...(format.instruction ? { jsonObject: true } : {}),
       ...(generation.stop ? { stop: generation.stop } : {}),
     },
