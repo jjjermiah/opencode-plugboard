@@ -104,6 +104,7 @@ export default defineConfig({
           { text: "Development", link: "/development" },
           { text: "Releasing", link: "/releasing" },
           { text: "Security reviews", link: "/security-reviews" },
+          { text: "Red team", link: "/red-team" },
           { text: "Best practices", link: "/best-practices" },
         ],
       },
