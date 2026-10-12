@@ -7,6 +7,7 @@
  * shapes change, change them here once.
  */
 import type { HistoryPort, Json, SessionPort } from "../../src/session/host.js"
+import type { OperatorRule } from "../../src/session/seeds.js"
 
 type CreateInput = Parameters<SessionPort["create"]>[0]
 type PromptInput = Parameters<SessionPort["prompt"]>[0]
@@ -61,6 +62,13 @@ export class FakeSessionPort implements SessionPort {
 
   directTools(): Promise<ReadonlyArray<string>> {
     return Promise.resolve([...this.toolIDs])
+  }
+
+  /** The operator's rules for the agent the request sessions run as (`agentRules`). Default: every tool allowed. */
+  operatorRules: OperatorRule[] | undefined = [{ action: "*", resource: "*", effect: "allow" }]
+
+  async agentRules(_directory: string, _agent: string | undefined): Promise<ReadonlyArray<OperatorRule> | undefined> {
+    return this.operatorRules
   }
 }
 

@@ -434,6 +434,7 @@ export function parseGeminiRequest(model: string, stream: boolean, body: unknown
     messages,
     tools,
     ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),
+    ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
     generation,
   }
   const reasoningEffort = effortOf(field(config, "thinkingConfig"))

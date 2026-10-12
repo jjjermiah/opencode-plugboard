@@ -184,6 +184,8 @@ describe("parseChatRequest: structured output", () => {
     const parsed = parse(body({ response_format: jsonSchema }))
     expect(parsed.request.tools).toEqual([{ name: "respond", description: "Give your final answer by calling this tool with JSON matching its schema. The answer.", parameters: schema }])
     expect(parsed.request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    // The request carries the structured tool's name, so `tools: false` keeps respond (#252).
+    expect(parsed.request.structuredTool).toBe("respond")
     expect(parsed.exchange).toMatchObject({ structuredTool: "respond" })
     expect(parsed.exchange).not.toHaveProperty("callerTools")
   })

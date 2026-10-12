@@ -123,6 +123,11 @@ export interface PlugRequest {
   readonly toolChoice?: PlugToolChoice
   /** `false` when the caller asked for at most one tool call per answer (`parallel_tool_calls: false`, `disable_parallel_tool_use`). The host has no switch for it on every route, so the session collector keeps the first call and drops the rest (#202). */
   readonly parallelToolCalls?: boolean
+  /**
+   * The forced tool that carries a `json_schema` answer (`respond`), set by the front-end when the request asked for
+   * structured output. The app's `tools: false` keeps only this tool (#252); every other tool is the caller's.
+   */
+  readonly structuredTool?: string
   readonly generation: PlugGeneration
   /** The end user the caller named, when kept (src/user.ts, #57). Labels the session title and the usage counts. */
   readonly user?: string
