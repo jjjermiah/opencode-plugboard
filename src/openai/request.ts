@@ -6,7 +6,7 @@
  * the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
-import { imageProblem } from "../image.js"
+import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
   isPlugError,
@@ -85,8 +85,9 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
       if (problem) return bad(problem, `${at}.image_url.url`, "invalid_image")
       parts.push({ type: "media", url, ...(dataUrlType(url) ? { mediaType: dataUrlType(url) } : {}) })
     } else if (item.type === "file" && isRecord(item.file) && typeof item.file.file_data === "string") {
-      const data = item.file.file_data
-      const url = data.startsWith("data:") ? data : `data:application/octet-stream;base64,${data}`
+      const url = item.file.file_data
+      const problem = pdfProblem(url)
+      if (problem) return bad(problem, `${at}.file.file_data`, "invalid_file")
       parts.push({ type: "media", url, mediaType: dataUrlType(url) })
     } else return bad(`Unsupported content part type "${String(item.type)}"`, `${at}.type`, "unsupported_parameter")
   }

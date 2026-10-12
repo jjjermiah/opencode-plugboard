@@ -56,7 +56,7 @@ export const ROWS: readonly Row[] = [
       json: at(HTTP + "chat.test.ts", "a text answer is a chat.completion"),
       stream: at(HTTP + "chat.test.ts", "a text answer streams chunks and ends with [DONE]"),
       tools: at(UNIT + "openai-response.test.ts", "tool calls become tool_calls with string arguments and force finish_reason tool_calls"),
-      images: at(UNIT + "openai-request.test.ts", "user parts: text, image_url (data URL media type kept), file (bare base64 wrapped)"),
+      images: at(UNIT + "openai-request.test.ts", "user parts: text and image_url (data URL media type kept)"),
       structured: at(UNIT + "openai-response.test.ts", "structured: the answer is one content chunk; prose is suppressed; finish is stop"),
       n: at(HTTP + "fanout.test.ts", "one model call per choice, merged in choice order with summed usage and every session id"),
       errors: at(HTTP + "chat.test.ts", "a model error keeps its status and wire error", "#38 a failure before the first output keeps its HTTP status"),

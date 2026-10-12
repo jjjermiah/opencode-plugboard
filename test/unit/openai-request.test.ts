@@ -81,7 +81,7 @@ describe("parseChatRequest: messages", () => {
     expect(request.system).toEqual(["be brief", "a\nb"])
   })
 
-  test("user parts: text, image_url (data URL media type kept), file (bare base64 wrapped)", () => {
+  test("user parts: text and image_url (data URL media type kept)", () => {
     const { request } = parse(
       body({
         messages: [
@@ -89,7 +89,6 @@ describe("parseChatRequest: messages", () => {
             { type: "text", text: "look" },
             { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } },
             { type: "image_url", image_url: { url: "https://example.com/a.jpg" } },
-            { type: "file", file: { file_data: "QUJD" } },
           ]),
         ],
       }),
@@ -101,10 +100,16 @@ describe("parseChatRequest: messages", () => {
           { type: "text", text: "look" },
           { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" },
           { type: "media", url: "https://example.com/a.jpg" },
-          { type: "media", url: "data:application/octet-stream;base64,QUJD", mediaType: "application/octet-stream" },
         ],
       },
     ])
+  })
+
+  test("#288 a file part keeps a PDF data URL and refuses bare base64 or another type as invalid_file", () => {
+    const pdf = "data:application/pdf;base64,JVBERi0xLjQK"
+    expect(parse(body({ messages: [user([{ type: "file", file: { file_data: pdf } }])] })).request.messages[0]!.content).toEqual([{ type: "media", url: pdf, mediaType: "application/pdf" }])
+    expect(parseChatRequest(body({ messages: [user([{ type: "file", file: { file_data: "JVBERi0xLjQK" } }])] }), options)).toMatchObject({ status: 400, code: "invalid_file", param: "messages[0].content[0].file.file_data" })
+    expect(parseChatRequest(body({ messages: [user([{ type: "file", file: { file_data: "data:text/plain;base64,JVBERi0xLjQK" } }])] }), options)).toMatchObject({ status: 400, code: "invalid_file" })
   })
 
   test("an assistant tool turn and its result: arguments parsed, result named after the call", () => {

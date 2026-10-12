@@ -10,6 +10,7 @@
 import { Effect } from "effect"
 import { appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
 import type { PlugError, PlugMessage, PlugRequest } from "../contract.js"
+import { log } from "../log.js"
 import type { ContextHookEvent, HostContext, HostPart, HostToolDescriptor } from "./host.js"
 import { SEED_PREFIX, SEED_RESULT, seedToolsFor } from "./seeds.js"
 import { FAILURE_EVENT, type SessionStore } from "./state.js"
@@ -108,7 +109,8 @@ function systemFor(caller: ReadonlyArray<string>, policy: AppPolicy | undefined)
   }
 }
 
-const preparationFailed = (message: string): PlugError => ({ status: 500, kind: "server", code: "backend_preparation_failed", message })
+/** The one 500 message for a request plugboard could not prepare. What was missing is logged, never sent: it names host internals (#288). */
+const preparationFailed = (): PlugError => ({ status: 500, kind: "server", code: "backend_preparation_failed", message: "Could not prepare the model request" })
 
 /**
  * `session.hook("context")` body: swap the request session's system, messages, tools and
@@ -151,11 +153,8 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   // The caller validates both before dispatch; this only fires if the host disagrees. The request is
   // already rewritten (no real tool can run); fail it instead of answering from a truncated prompt.
   if (missingMedia > 0 || missingTools > 0) {
-    const detail = [missingMedia > 0 ? `${missingMedia} attachment(s) not delivered by the host` : "", missingTools > 0 ? `${missingTools} tool(s) without a seed tool` : ""]
-    state.collector.push({
-      type: FAILURE_EVENT,
-      error: preparationFailed(`Could not prepare the model request: ${detail.filter(Boolean).join(", ")}`),
-    })
+    log("request.preparation_failed", { missing_media: missingMedia, missing_tools: missingTools })
+    state.collector.push({ type: FAILURE_EVENT, error: preparationFailed() })
   }
 }
 

@@ -68,7 +68,9 @@ const countMedia = (request: PlugRequest): number =>
 function checkPreparation(request: PlugRequest, images: number, maxTools: number): PlugError | undefined {
   const wanted = countMedia(request)
   if (images !== wanted) {
-    return { status: 500, kind: "server", code: "backend_preparation_failed", message: `Prepared ${images} attachment(s) for a request with ${wanted}` }
+    // The counts are for the log only; the caller gets the generic message (#288).
+    log("request.preparation_failed", { images, wanted })
+    return { status: 500, kind: "server", code: "backend_preparation_failed", message: "Could not prepare the model request" }
   }
   const tools = seedToolsFor(request).length
   if (tools > maxTools) {

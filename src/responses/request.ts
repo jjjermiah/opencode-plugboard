@@ -10,7 +10,7 @@
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
-import { imageProblem } from "../image.js"
+import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
   isPlugError,
@@ -97,6 +97,8 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
         const data = item.file_data
         const filename = typeof item.filename === "string" ? item.filename.toLowerCase() : ""
         const url = data.startsWith("data:") ? data : `data:${filename.endsWith(".pdf") ? "application/pdf" : "application/octet-stream"};base64,${data}`
+        const problem = pdfProblem(url)
+        if (problem) return bad(problem, `${at}.file_data`, "invalid_file")
         parts.push({ type: "media", url, mediaType: dataUrlType(url) })
       } else if (typeof item.file_url === "string") {
         parts.push({ type: "media", url: item.file_url })

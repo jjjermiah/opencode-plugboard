@@ -10,8 +10,11 @@ import type { PlugRequest } from "../../src/contract.js"
 import { installSessionHooks } from "../../src/session/context.js"
 import type { ContextHookEvent, HostToolDescriptor } from "../../src/session/host.js"
 import { createSessionStore } from "../../src/session/state.js"
+import { captureLogs } from "../support/logs.js"
 import { plugRequest } from "../support/fixtures.js"
 import { spyContext } from "../support/plugin-context.js"
+
+const logs = captureLogs()
 
 const tool = (name: string) => ({ name, description: `${name} tool`, parameters: { type: "object", properties: { [name]: { type: "string" } } } })
 const seeds = (count: number): Record<string, HostToolDescriptor> =>
@@ -102,7 +105,9 @@ describe("the context hook", () => {
     const { run, pushed } = hook(plugRequest({ messages: [{ role: "user", content: [{ type: "media", url: "data:x" }] }] }))
     const after = run(event())
     expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "[image unavailable]" }] }])
-    expect(pushed).toEqual([{ type: "plugboard.failure", error: expect.objectContaining({ code: "backend_preparation_failed", message: expect.stringContaining("1 attachment(s) not delivered") }) }])
+    // #288: the caller sees the generic message; the missing count goes to the log only.
+    expect(pushed).toEqual([{ type: "plugboard.failure", error: { status: 500, kind: "server", code: "backend_preparation_failed", message: "Could not prepare the model request" } }])
+    expect(logs.of("request.preparation_failed")[0]!.fields).toMatchObject({ missing_media: "1", missing_tools: "0" })
   })
 })
 
@@ -131,6 +136,7 @@ describe("seed tools are re-keyed by descriptor identity", () => {
   test("more caller tools than seeds fails the request", () => {
     const { run, pushed } = hook(plugRequest({ tools: [tool("a"), tool("b"), tool("c")] }))
     run(event({ tools: seeds(2) }))
-    expect(pushed).toEqual([{ type: "plugboard.failure", error: expect.objectContaining({ code: "backend_preparation_failed", message: expect.stringContaining("1 tool(s) without a seed tool") }) }])
+    expect(pushed).toEqual([{ type: "plugboard.failure", error: { status: 500, kind: "server", code: "backend_preparation_failed", message: "Could not prepare the model request" } }])
+    expect(logs.of("request.preparation_failed")[0]!.fields).toMatchObject({ missing_media: "0", missing_tools: "1" })
   })
 })

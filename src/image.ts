@@ -19,6 +19,20 @@ const SIGNATURES: ReadonlyArray<(head: Buffer) => boolean> = [
   (head) => head.subarray(0, 4).toString("latin1") === "RIFF" && head.subarray(8, 12).toString("latin1") === "WEBP",
 ]
 
+/**
+ * The message for a file part (`file_data`, Chat Completions or Responses `input_file`) that cannot be sent (#288).
+ * Only a PDF given as a `data:application/pdf;base64,` URL is accepted: the compatibility matrix sends one on
+ * OpenAI Chat. A bare base64 string has no media type, and any other type is refused here instead of failing
+ * later in backend preparation.
+ */
+export function pdfProblem(url: string): string | undefined {
+  const match = /^data:application\/pdf;base64,(.*)$/is.exec(url)
+  if (!match) return "File data must be a PDF data URL (data:application/pdf;base64,...); other file types are not supported"
+  const data = match[1]!
+  if (data.length === 0 || !BASE64.test(data) || data.length % 4 === 1) return "File data is not valid base64"
+  return Buffer.from(data.slice(0, 8), "base64").subarray(0, 4).toString("latin1") === "%PDF" ? undefined : "File data is not a PDF"
+}
+
 /** The message for a `data:` image URL that cannot be sent to a provider, or undefined when it can (or is not a data URL). */
 export function imageProblem(url: string): string | undefined {
   if (!url.startsWith("data:")) return undefined

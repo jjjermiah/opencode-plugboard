@@ -1,6 +1,6 @@
 /** #286 `imageProblem`: a `data:` image URL is usable by a provider, or it is refused with a message. */
 import { describe, expect, test } from "bun:test"
-import { imageProblem } from "../../src/image.js"
+import { imageProblem, pdfProblem } from "../../src/image.js"
 
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 const JPEG = "/9j/4AAQSkZJRgABAQ=="
@@ -31,6 +31,14 @@ describe("#286 imageProblem: a data: image URL must be a real image", () => {
     ["text bytes labelled as an image", `data:image/png;base64,${Buffer.from("hello world").toString("base64")}`, "not a PNG, JPEG, GIF or WebP image"],
   ])("%s is refused", (_name, url, message) => {
     expect(imageProblem(url)).toContain(message)
+  })
+
+  test("#288 pdfProblem: a PDF data URL with a %PDF signature is accepted; anything else is refused", () => {
+    expect(pdfProblem("data:application/pdf;base64,JVBERi0xLjQK")).toBeUndefined()
+    expect(pdfProblem("JVBERi0xLjQK")).toContain("must be a PDF data URL")
+    expect(pdfProblem("data:application/octet-stream;base64,JVBERi0xLjQK")).toContain("must be a PDF data URL")
+    expect(pdfProblem("data:application/pdf;base64,AAAA")).toContain("not a PDF")
+    expect(pdfProblem("data:application/pdf;base64,")).toContain("not valid base64")
   })
 
   test("a remote or non-data URL is not checked here", () => {
