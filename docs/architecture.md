@@ -203,6 +203,19 @@ Per call: take the first event of an attempt and nothing more. If it is an `erro
 
 `onRecord` is forwarded once, for the attempt that answers (or the last one), so `x-plugboard-session` names the response's session; failed attempts remain in history. `onServed({ model, fallbacks })` is called once, before the first event, for chain aliases only; every route passes `reportServed` (`src/fallback.ts`) as its `onServed`: it sets `x-plugboard-model` and `x-plugboard-fallbacks` (only above 0) while headers are open, fills `info.served` and `info.fallbacks` for the request log line, and the first call wins when several choices run. A single-call route also sets `exchange.model` to the served target, so the body echoes it (the encoders read it lazily); with several choices the body keeps the requested model. A call that ends in an error never reports a served model. The wrapper logs `model.fallback` (`from`, `to`, `reason`, `attempt`) per retry and `model.fallback_exhausted`, and counts retries in `plugboard_fallbacks_total{app}`.
 
+## Skills and agents in the context hook
+
+A skill alias (#79) and an agent (#6) change one thing each, and they reuse the seams the rest of the design already has. Neither changes an invariant.
+
+- **Resolution is policy only.** `resolveModel` and `listAvailableModels` (`src/models.ts`) read a skill alias as the model it binds (`parseAliasTarget` splits `skill:<id>@<ref>`), and an `agent/<name>` id as the model its `agents` entry names. `personaOf` says which persona a request name is, if any. The allowlist applies to that model exactly as it does to any target.
+- **The caller looks up the persona, from request handling only.** After `ensureBackend` (I11) and before `session.create`, `src/session/caller.ts` asks the port for the skill (`port.skill`, `ctx.skill.list({ location })`, cached per directory for 30 seconds in `src/session/host.ts`) or the agent (`port.agent`, `ctx.agent.list({ location })`). A missing one is a 404 `model_not_found` and nothing is created. A skill's content is kept in the request state as `prelude`. An agent's system prompt replaces the request's system parts, and the session is created with `agent` set to the agent's name.
+- **The context hook orders the system parts.** `applyContext` (`src/session/context.ts`) builds the system as: the prelude (skill content), then the app's `system` policy applied to the request's system (the caller's, or the agent's), then the tool-choice steer. Messages, tools and seed remapping are unchanged (I9, I10).
+- **Permissions do not change.** Every request session, agent sessions included, is created with `REQUEST_PERMISSIONS` (`deny *`, then the seeds, I8). The host applies an agent's own permission rules before the session's, so the session's `deny *` is the last word, and a configured agent that allows every tool still cannot run one. `test/session/persona.test.ts` pins the list, and the mutation `I8-agent-session-keeps-deny-all` breaks it.
+- **Personas bypass the response cache.** `cachedCaller` takes a `bypass` predicate (`withResponseCache` passes `personaOf`), because the cache key covers the request's system and messages but not the skill's content or the agent's prompt. The predicate is checked before the key is built.
+- **No chains.** A skill target takes one model. Agents have no fallbacks. `parseOptions` rejects both at load.
+
+`/v1/models` lists a skill alias under its name with `plugboard.skill`, and each agent as `agent/<name>` with `plugboard.agent` (`encodeModelList` in `src/openai/response.ts`).
+
 ## Concurrency and rate limits
 
 Option `limits` (`src/limits.ts`, `withLimits`) is a `ModelCaller` wrapper, outermost in `index.ts`, around the fallback chain. A request therefore takes one slot however many targets it tries. Before the inner caller runs, a call is checked against the global `maxConcurrent`, its app's `maxConcurrent` and its app's requests-per-minute window, all at once. A refused call yields one `error` event (`rate_limit` kind, status 429, code `too_many_requests` or `rate_limit_exceeded`, with `retryAfterSeconds`) and never reaches the session caller, so no session is created and the front-ends' normal error path answers it. Nothing waits in a queue.
@@ -250,7 +263,7 @@ Option `budgets` (`src/budgets.ts`, `withBudgets`) is a `ModelCaller` wrapper th
 index.ts                    the plugin: compose one generation, gated app-directory registrations, synchronous finalizer
 src/contract.ts             neutral vocabulary: PlugRequest/PlugEvent/PlugError, CatalogModel, ModelCaller
 src/config.ts               options type, defaults, parseOptions (rejects `__proto__` aliases and two apps sharing a key value), `apps` policy parsing, authenticate, loopback check (localhost, 127.0.0.1, ::1: the Host check's set)
-src/models.ts               allowlist/alias policy: resolveModel, listAvailableModels, fallbackRefs, checkAppModel (per-app scope) (neutral)
+src/models.ts               allowlist/alias policy: resolveModel, listAvailableModels, fallbackRefs, checkAppModel (per-app scope), skill targets and personaOf for skills and agents (neutral)
 src/fallback.ts             `withFallbacks`: ordered alias fallbacks as a ModelCaller wrapper (see Model fallbacks)
 src/limits.ts               `withLimits`: concurrency caps and requests per minute per app, a ModelCaller wrapper outside the fallbacks (see Concurrency and rate limits)
 src/budgets.ts              `withBudgets`: per-app ceilings on requests, tokens and cost per UTC day, week or month, read from the usage records; a ModelCaller wrapper outside the limiter (see Budgets)
