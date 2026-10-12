@@ -8,6 +8,7 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
 | [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |
 | [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script |
+| [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
 | [curl](#curl) | One request per API: chat, responses, messages, Gemini, models and usage |
 
 Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option.
@@ -39,6 +40,15 @@ PLUGBOARD_KEY=<your key> uv run example.py
 ```
 
 `PLUGBOARD_URL` defaults to `http://127.0.0.1:4010`. The `openai/` prefix is what routes the call to Chat Completions.
+
+## Instructor
+
+```sh
+cd examples/instructor
+PLUGBOARD_KEY=<your key> uv run example.py
+```
+
+`PLUGBOARD_URL` defaults to `http://127.0.0.1:4010`.
 
 ## curl
 

@@ -69,5 +69,6 @@ Run by hand with `bun run compat:python` (`compat/py/clients/`, a uv project pin
 |---|---|---|---|
 | [OpenAI Agents SDK](clients/openai-agents.md), Responses and Chat Completions | `openai-agents` 0.23.1 | 8 pass, 0 fail | not run: no listener on :4010 |
 | [LiteLLM as a client](clients/litellm-client.md) | `litellm` 1.105.0 | 4 pass, 0 fail | not run: no listener on :4010 |
+| [Instructor](clients/instructor.md), TOOLS, JSON_SCHEMA and partial stream | `instructor` 1.17.0 | 3 pass, 0 fail | not run: no listener on :4010 |
 
 The fake is a scripted model, so a fake pass shows the client and plugboard agree on the wire format. Only a live run shows the model's own answers. A row marked "not run" has no live evidence yet.

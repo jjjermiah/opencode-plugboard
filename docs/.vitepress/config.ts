@@ -60,6 +60,7 @@ export default defineConfig({
           { text: "pydantic-ai", link: "/clients/pydantic-ai" },
           { text: "OpenAI Agents SDK", link: "/clients/openai-agents" },
           { text: "LiteLLM (as a client)", link: "/clients/litellm-client" },
+          { text: "Instructor", link: "/clients/instructor" },
           { text: "Open WebUI", link: "/clients/open-webui" },
           { text: "n8n", link: "/clients/n8n" },
         ],
