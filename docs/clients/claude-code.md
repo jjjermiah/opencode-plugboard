@@ -16,14 +16,14 @@ One app for Claude Code, and two aliases for the tiers it uses:
     "fast": "anthropic/claude-haiku-4-5",
     "smart": "anthropic/claude-sonnet-4-6"
   },
-  // Claude Code sends about 36 tools per request; the default cap is 32.
+  // Claude Code sends about 36 tools per request; the default cap is 64.
   "maxTools": 64
 }
 ```
 
 Every alias target must also be in `models`. Swap the ids for models your OpenCode server is signed in to. `fast` and `smart` are names this page uses, not names plugboard requires.
 
-`maxTools` matters: with the default of 32, every Claude Code request fails with `400 tools: 36 tools; plugboard allows 32 (option maxTools)`. It is a global option (an app can only lower it).
+`maxTools` matters: the default is 64 (it was 32 before 0.25.0, when every Claude Code request failed with `400 tools: 36 tools; plugboard allows 32 (option maxTools)`). Claude Code with MCP servers can send more than 64; raise it if a request is refused. It is a global option (an app can only lower it).
 
 A model id Claude Code does not know (anything that is not a Claude model name) prints a `claude-code:unrecognized_model` notice and assumes a 200k context window; the request still works. Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the real window if it differs.
 

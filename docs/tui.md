@@ -1,6 +1,6 @@
 # Usage page in the OpenCode TUI
 
-Plugboard adds a `/plugboard` page to OpenCode's terminal UI. It shows the per-app usage statistics of the server the TUI is connected to, the same numbers as [Usage statistics](configuration.md#usage-statistics) and `GET /v1/usage`.
+Plugboard adds a `/plugboard` page to OpenCode's terminal UI. It shows the per-app usage statistics of the server the TUI is connected to, the same numbers as [Usage statistics](configuration.md#usage-statistics) and `GET /plugboard/usage`.
 
 ## Opening it
 
@@ -33,7 +33,7 @@ If the server has no plugboard, or plugboard runs with `usage` disabled, the pag
 
 ## How it reads the data
 
-The page calls the `opencode-plugboard.usage` RPC (`src/rpc.ts`) through OpenCode's client, so it talks to the server over OpenCode's own authenticated API. It does not call `GET /v1/usage` and does not need the admin key. The RPC returns every app, which is what the page needs.
+The page calls the `opencode-plugboard.usage` RPC (`src/rpc.ts`) through OpenCode's client, so it talks to the server over OpenCode's own authenticated API. It does not call `GET /plugboard/usage` and does not need the admin key. The RPC returns every app, which is what the page needs.
 
 The page code is `src/tui.tsx` (Solid and OpenTUI, not in the server entry). Its pure helpers (ranges, rows, formats) are in `src/tui-format.ts` and are unit tested.
 

@@ -1,7 +1,7 @@
 /**
- * Admin routes for runtime app keys (#55): `GET /v1/admin/keys` (keys without values),
- * `POST /v1/admin/keys` with body `{ "app": "<name>" }` (a new random key, returned once) and
- * `DELETE /v1/admin/keys/{keyId}` (revokes a runtime key; a config key is a 409).
+ * Admin routes for runtime app keys (#55): `GET /plugboard/admin/keys` (keys without values),
+ * `POST /plugboard/admin/keys` with body `{ "app": "<name>" }` (a new random key, returned once) and
+ * `DELETE /plugboard/admin/keys/{keyId}` (revokes a runtime key; a config key is a 409). Errors are problem+json.
  *
  * The routes exist only when option `adminKey` is set: without it every path here is a 404. Only the
  * admin key passes; an app key, a wrong key or no key is a 401. src/openai/route.ts dispatches here
@@ -11,10 +11,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, authenticateUsage, type PlugboardOptions } from "../config.js"
 import { isPlugError, type PlugError } from "../contract.js"
-import { checkJsonContentType, readJsonBody, sendError, sendJson, type RequestScope } from "../http.js"
+import { checkJsonContentType, readJsonBody, sendJson, sendProblem, type RequestScope } from "../http.js"
 import type { KeyStore } from "../keys.js"
 import { log } from "../log.js"
-import { encodeError } from "../openai/response.js"
 
 export interface AdminHost {
   /** The live options (`liveOptions`): the config keys, and `adminKey`. */
@@ -32,12 +31,12 @@ export interface AdminCall {
   readonly info: { route: string; app?: string }
 }
 
-const KEYS = "/v1/admin/keys"
-const ONE_KEY = /^\/v1\/admin\/keys\/([0-9a-f]{8})$/
+const KEYS = "/plugboard/admin/keys"
+const ONE_KEY = /^\/plugboard\/admin\/keys\/([0-9a-f]{8})$/
 
 export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void> {
   const { path, request, response, scope, info } = call
-  const fail = (error: PlugError) => sendError(response, error, encodeError(error))
+  const fail = (error: PlugError) => sendProblem(response, error, request.url ?? path)
   const { keys } = host
   if (host.options.adminKey === undefined || keys === undefined)
     return fail({ status: 404, kind: "not_found", code: "not_found", message: `No route for ${request.method} ${path}` })
@@ -47,11 +46,11 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
 
   const id = ONE_KEY.exec(path)?.[1]
   if (path === KEYS && request.method === "GET") {
-    info.route = "GET /v1/admin/keys"
+    info.route = "GET /plugboard/admin/keys"
     return sendJson(response, 200, { keys: await keys.list(host.options.keys) })
   }
   if (path === KEYS && request.method === "POST") {
-    info.route = "POST /v1/admin/keys"
+    info.route = "POST /plugboard/admin/keys"
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
     const body = await readJsonBody(request, scope.signal)
@@ -70,7 +69,7 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
     return sendJson(response, 201, created)
   }
   if (id !== undefined && request.method === "DELETE") {
-    info.route = "DELETE /v1/admin/keys/{keyId}"
+    info.route = "DELETE /plugboard/admin/keys/{keyId}"
     const result = await keys.revoke(id, host.options.keys)
     if (result === "config")
       return fail({ status: 409, kind: "invalid_request", code: "config_key", message: "This key is set in the plugboard config (`keys`). Remove it there and reload OpenCode." })

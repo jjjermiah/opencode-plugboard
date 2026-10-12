@@ -1,5 +1,5 @@
 /**
- * The usage RPC, `opencode-plugboard.usage` (package entry `./rpc`): the report `GET /v1/usage` serves,
+ * The usage RPC, `opencode-plugboard.usage` (package entry `./rpc`): the report `GET /plugboard/usage` serves,
  * for OpenCode's own clients. A TUI plugin reads it with `client.rpc(UsageRpc).get({ ... })` over the
  * server's password-authenticated API, so the method sees every app.
  *

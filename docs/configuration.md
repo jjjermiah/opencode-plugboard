@@ -11,25 +11,25 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start, and serves plain HTTP. See [Remote access](remote-access.md). |
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
-| `adminKey` | none | A key that reads every app's usage at `GET /v1/usage` and manages app keys at runtime under `/v1/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
+| `adminKey` | none | A key that reads every app's usage at `GET /plugboard/usage` and manages app keys at runtime under `/plugboard/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
 | `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools?, serverTools?, maxServerToolSteps? }`: per-app model scope, system prompt, tool policy and OpenCode tools the app may run. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model, since 0.20.0). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
 | `agents` (since 0.20.0) | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
-| `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
+| `maxTools` | `64` | Most tools one request may carry. Fixed when the plugin loads. Each slot is a registered placeholder tool (a few KiB per Location), so the default covers coding agents with MCP servers (Claude Code sends 36). A request over the cap gets a 400 that names this option. |
 | `maxN` | `1` | Most model calls one request may fan out to: `n` on Chat Completions and `/v1/completions`, or prompts times `n` for a prompt array. Each is a full call and a kept session, so `n: 4` costs four times. Above the cap, 400 `too_many_choices`. See [completions](completions.md). |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
-| `history` | none (keep forever) | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app, `maxAgeDays` deletes older ones; with both, the stricter wins. |
+| `history` | `{ maxAgeDays: 30 }` | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app (unset: no count limit). `maxAgeDays` deletes older ones: 30 by default, `0` turns the age limit off (keep forever). With both, the stricter wins. See [History](history.md). |
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
-| `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
+| `metrics` | `false` | Serve Prometheus metrics at `GET /plugboard/metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` (since 0.21.0) bound request bodies, see [Request bodies](#request-bodies). |
 | `budgets` | none (unlimited) | Per-app ceilings on requests, tokens and cost for a UTC day, week or month: `{ perApp?, apps? }`. Needs `usage` on. A call over a ceiling gets 429 `budget_exceeded`. See [Budgets](#budgets). |
 | `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
 | `promptCache` | `{ affinity: "off", scope: "app", maxAnchors? }` | Provider prompt-cache affinity: `affinity` `off` or `anchor`, `scope` `app` or `user`, `maxAnchors` (default 1000) the most anchors one app may hold. Also per app as `apps.<name>.promptCache`. See [Prompt-cache affinity](#prompt-cache-affinity). |
 | `historyUrl` (since 0.20.0) | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
-| `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
+| `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /plugboard/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
 ### Reloads and restarts
@@ -173,7 +173,7 @@ Rules:
 - A non-streaming answer that ran server tools carries `x-plugboard-server-tools: <n>`, the number of server tool calls OpenCode ran for it (the choices of `n` add up). The header is absent when no server tool ran, and a stream never gets it, because its headers are sent first.
 - Each server tool call writes one `server_tool.call` log line (app, tool, duration, `ok`). Its arguments and output are never logged.
 
-`/v1/models`, `/v1/models/{id}` and the Gemini `/v1beta/models` routes list only what the calling app may use, and the model counts and example on the setup page and `/v1/status` follow the same scope.
+`/v1/models`, `/v1/models/{id}` and the Gemini `/v1beta/models` routes list only what the calling app may use, and the model counts and example on the setup page and `/plugboard/status` follow the same scope.
 
 Without `keys` the only app is `default`, and `apps.default` configures it. Once any key exists `default` is never used, so `apps.default` is rejected. Every other app in `apps` must have a key. `system` is applied by the context hook that already rewrites a request session, so it shows up in the model request but not in the stored session transcript.
 
@@ -230,7 +230,7 @@ Every route reads its JSON body through one check, before any of it is buffered.
 - The check runs before a call starts, so the call that crosses a ceiling is still served and the next one is refused. Calls still in flight are not counted until they end, so a burst can pass a ceiling by the calls it started. Budgets are a guard against runaway use, not an exact meter.
 - A refused call takes no concurrency slot and spends no requests-per-minute count, because budgets are checked before limits. It counts under `limited` in the usage report and as `plugboard_limited_total{reason="budget"}`. If the usage records cannot be read, the call gets 503 `budget_unavailable` and is not sent to a model.
 - At 80% of a ceiling the server logs `budget.warning`, once per app, budget and window. The warning comes back in the next window.
-- `GET /v1/usage` adds a `budgets` list to each app: one entry per ceiling, with `metric`, `window`, `limit`, `used` (the current window's count) and `resetsAt`. It reads the current window, not the report's range. An admin report without `app` lists budgets only for apps that have records in its range, so ask for `app=<name>` to see another.
+- `GET /plugboard/usage` adds a `budgets` list to each app: one entry per ceiling, with `metric`, `window`, `limit`, `used` (the current window's count) and `resetsAt`. It reads the current window, not the report's range. An admin report without `app` lists budgets only for apps that have records in its range, so ask for `app=<name>` to see another.
 - The counts survive a restart the way usage does: they come from the stored day records, which are written every few seconds.
 
 ## Response cache
@@ -289,10 +289,10 @@ Plugboard counts what each app does, per UTC day: model requests and their error
 
 With recording on, each non-streaming model answer also carries `x-plugboard-usage` for that one request: `input=<n>; output=<n>; cache_read=<n>; cache_write=<n>; cost_usd=<x.xxxxxx>`. `input` and `output` are the totals the response body reports (cache reads and writes are inside `input`, reasoning inside `output`); `cache_write` is the input the provider wrote to its cache (0 when none), and `cost_usd` is priced from the same tokens. A request that fans out with `n` sums its choices. The cost part is left out when the model has no price in the catalog. A streamed answer has no such header: its headers are sent before the usage is known.
 
-Read it with `GET /v1/usage`. `from` and `to` are UTC days (`YYYY-MM-DD`, both inclusive); the default is the 30 days ending today, and a range may span at most 366 days. `app` names one app.
+Read it with `GET /plugboard/usage`. `from` and `to` are UTC days (`YYYY-MM-DD`, both inclusive); the default is the 30 days ending today, and a range may span at most 366 days. `app` names one app.
 
 ```sh
-curl -s "http://127.0.0.1:4010/v1/usage?from=2026-10-01&to=2026-10-11" -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
+curl -s "http://127.0.0.1:4010/plugboard/usage?from=2026-10-01&to=2026-10-11" -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
 ```
 
 Who may read what:
@@ -352,10 +352,10 @@ Persistence: each day is written to OpenCode's plugin storage as its changes lan
 
 ### Dashboard
 
-`GET /dashboard` on plugboard's own port is a page for the same report: totals for today, 7, 30 or 90 days, a table of apps (sortable by requests, tokens or cost, with errors, p95 latency and the last request), daily charts per app for requests, cost and tokens, and the models by cost. It works on a phone, and follows light or dark mode.
+`GET /plugboard/dashboard` on plugboard's own port is a page for the same report: totals for today, 7, 30 or 90 days, a table of apps (sortable by requests, tokens or cost, with errors, p95 latency and the last request), daily charts per app for requests, cost and tokens, and the models by cost. It works on a phone, and follows light or dark mode.
 
-- The page itself needs no key, and it holds no usage. Enter a key on it; the page reads `/v1/usage` with that key and keeps the key in `sessionStorage`, so it lasts for the browser tab and is gone when the tab closes. Sign out clears it.
-- The charts use [uPlot](https://github.com/leeoniya/uPlot) (MIT), a pinned dependency that plugboard serves itself from `/dashboard/uplot.js` and `/dashboard/uplot.css`. Nothing loads from another origin, and the page sends no inline script or style. The policy is `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ...` (see `src/dashboard/page.ts`).
+- The page itself needs no key, and it holds no usage. Enter a key on it; the page reads `/plugboard/usage` with that key and keeps the key in `sessionStorage`, so it lasts for the browser tab and is gone when the tab closes. Sign out clears it.
+- The charts use [uPlot](https://github.com/leeoniya/uPlot) (MIT), a pinned dependency that plugboard serves itself from `/plugboard/dashboard/uplot.js` and `/plugboard/dashboard/uplot.css`. Nothing loads from another origin, and the page sends no inline script or style. The policy is `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ...` (see `src/dashboard/page.ts`).
 - Days are UTC, so "today" starts at 00:00 UTC.
 - With `usage: { "enabled": false }` the page and its files are not served, and the discovery pages do not link them.
 
@@ -363,12 +363,12 @@ Persistence: each day is written to OpenCode's plugin storage as its changes lan
 
 With `adminKey` set, the admin key also adds and revokes app keys at runtime, so a tool gets a key without a config edit and an OpenCode reload.
 
-- `GET /v1/admin/keys` lists the config keys and the runtime keys as `{ keys: [{ id, app, source, createdAt? }] }`. `source` is `config` or `runtime`. No key value is ever listed.
-- `POST /v1/admin/keys` with body `{ "app": "bot" }` creates a random key for that app and answers 201 with `{ id, app, key, createdAt }`. The `key` is shown once. Store it then; the server keeps only a digest.
-- `DELETE /v1/admin/keys/{id}` revokes a runtime key. The next request with it gets 401.
+- `GET /plugboard/admin/keys` lists the config keys and the runtime keys as `{ keys: [{ id, app, source, createdAt? }] }`. `source` is `config` or `runtime`. No key value is ever listed.
+- `POST /plugboard/admin/keys` with body `{ "app": "bot" }` creates a random key for that app and answers 201 with `{ id, app, key, createdAt }`. The `key` is shown once. Store it then; the server keeps only a digest.
+- `DELETE /plugboard/admin/keys/{id}` revokes a runtime key. The next request with it gets 401.
 
 ```sh
-curl -H "Authorization: Bearer $ADMIN_KEY" -H "content-type: application/json" -d '{"app":"bot"}' http://127.0.0.1:4010/v1/admin/keys
+curl -H "Authorization: Bearer $ADMIN_KEY" -H "content-type: application/json" -d '{"app":"bot"}' http://127.0.0.1:4010/plugboard/admin/keys
 ```
 
 Rules:
@@ -387,7 +387,7 @@ A bot that serves many people is one app, so its history and usage would be one 
 - OpenAI Chat Completions, Responses and legacy completions read the `user` field. Anthropic Messages reads `metadata.user_id`. Gemini has no such field.
 - The value is trimmed and kept when it is at most 64 characters of `A-Z a-z 0-9 . _ @ : -`. Anything else is dropped, and the response carries `x-plugboard-user-dropped: 1`. A kept value is only ever a label: it never names a directory or a file.
 - A kept user prefixes the session title, as `[alice] first words of the prompt`, and is logged as `user=` on the request line.
-- `GET /v1/usage` gains a `users` object per app, with `requests`, `tokens` and `costUsd` per user, summed over the range. A day keeps at most 200 distinct users per app; later ones count under `_other`. `GET /v1/usage?user=alice` restricts `users` to that user. The app totals and models still cover every user.
+- `GET /plugboard/usage` gains a `users` object per app, with `requests`, `tokens` and `costUsd` per user, summed over the range. A day keeps at most 200 distinct users per app; later ones count under `_other`. `GET /plugboard/usage?user=alice` restricts `users` to that user. The app totals and models still cover every user.
 
 ## Session links
 
@@ -414,7 +414,7 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 403 | `no_models_configured` | The `models` option is empty | No models are allowed: set the plugboard `models` option |
 | 400 | `too_many_tools` | More tools than `maxTools` | Request has &lt;n&gt; tools; plugboard allows &lt;max&gt; (option `maxTools`) |
 | 400 | `too_many_tools` | More tools than the app's `apps.<name>.maxTools` | Request has &lt;n&gt; tools; app &lt;app&gt; allows &lt;max&gt; (option `apps.<app>.maxTools`) |
-| 409 | `app_has_server_tools` | `POST /v1/admin/keys` for an app with `apps.<name>.serverTools` | App &lt;name&gt; runs OpenCode tools; a runtime key would give the same power, so none is minted. Set the key in the plugboard config |
+| 409 | `app_has_server_tools` | `POST /plugboard/admin/keys` for an app with `apps.<name>.serverTools` | App &lt;name&gt; runs OpenCode tools; a runtime key would give the same power, so none is minted. Set the key in the plugboard config |
 | 400 | `server_tool_unavailable` | A tool in the app's `apps.<name>.serverTools` is not a direct tool of the server right now | OpenCode tool(s) not available in this location: &lt;tools&gt; (option `apps.<name>.serverTools`). CodeMode tools, including MCP tools by default, cannot be listed; set codemode: false on the tool |
 | 400 | `server_tool_denied_by_operator` | A listed server tool has no `allow` rule in the OpenCode permissions of the agent the request runs as | The OpenCode permissions of this app's agent do not allow `<tool>` (option `apps.<name>.serverTools`). Add an allow rule for it to the agent, or remove it from serverTools |
 | 400 | `server_tool_collision` | A caller tool has the name of one of the app's `serverTools` | Tool &lt;name&gt; is one of this app's OpenCode server tools (option `apps.<name>.serverTools`); rename the caller's tool |
@@ -430,7 +430,7 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 408 | `body_read_timeout` | The request body did not arrive within `limits.bodyReadTimeoutMs` | Request body was not received within &lt;n&gt; ms (option limits.bodyReadTimeoutMs) |
 | 413 | (none, no `code` field) | A request body over 32 MiB | Request body too large |
 | 415 | `unsupported_media_type` | A `POST` body whose `Content-Type` is not `application/json` | Content-Type must be application/json |
-| 400 | `invalid_user` | The `user` query parameter of `GET /v1/usage` is not 1 to 64 characters of the allowed set | `user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-` |
+| 400 | `invalid_user` | The `user` query parameter of `GET /plugboard/usage` is not 1 to 64 characters of the allowed set | `user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-` |
 | 502 | `structured_output_missing` | A `json_schema` answer with neither a `respond` call nor text that matches the schema | The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt. |
 
 Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. Calls over a cap in `limits` get 429 instead (see [Concurrency and rate limits](#concurrency-and-rate-limits)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
@@ -449,10 +449,10 @@ Behaviours worth knowing:
 ## Operating
 
 - Every response has an `x-plugboard-request-id` header. The same id is the `id` field on that request's log lines, so a client error can be matched to a server line.
-- `GET /healthz` is a cheap liveness check. `GET /v1/status` (needs a key when keys are set) reports uptime, listen address, generation count, event pump state and model count.
-- An invalid plugboard option fails the plugin's setup. OpenCode lists the plugin as `failed` with the field and the reason, the server log has an `options.invalid` line at error level, and the port stays closed for that project. When another project's earlier good config still serves the port, `GET /v1/status` shows `configError: { message, at }` and `GET /readyz` returns 503 with the same message as its reason. The next Location that loads valid options clears it.
+- `GET /healthz` is a cheap liveness check. `GET /plugboard/status` (needs a key when keys are set) reports uptime, listen address, generation count, event pump state and model count.
+- An invalid plugboard option fails the plugin's setup. OpenCode lists the plugin as `failed` with the field and the reason, the server log has an `options.invalid` line at error level, and the port stays closed for that project. When another project's earlier good config still serves the port, `GET /plugboard/status` shows `configError: { message, at }` and `GET /readyz` returns 503 with the same message as its reason. The next Location that loads valid options clears it.
 - `GET /readyz` needs no key. It answers `{"ready":true}` once a generation serves, the event pump runs and the model catalog has loaded. Otherwise it answers 503 `{"ready":false,"reason":...}`, naming the first missing piece. Use it for a load balancer or a service check; [warm-up](warm-up.md#readiness-readyz) explains what makes it ready after a restart.
 - Open `http://127.0.0.1:4010/` in a browser for a setup page: the listen address, a `models` suggestion built from what your server offers, and a curl example. With `keys` set, a visitor without a key sees only the address and endpoints; a valid key also shows its own app, the allowlist and the suggestion.
 - `/v1/models` entries carry `plugboard.limit`, `modalities`, `cost` (USD per million tokens), `status`, `family` and `released` when the catalog has them.
-- With `metrics: true`, `GET /metrics` exposes request counts and durations by app and route, in-flight requests, tokens by kind, dropped sampling params, history sweeps and event pump health. There is no model label, so cardinality stays bounded.
-- The series carry each app's name, so the scrape is a traffic profile of every app. With `adminKey` set, only the admin key reads `/metrics` (an app key gets 403 `admin_key_required`, #285). Without `adminKey`, the `/v1` authentication applies and any app key reads every app's series; that is the documented choice, so set `adminKey` before you scrape a server whose apps should not see each other.
+- With `metrics: true`, `GET /plugboard/metrics` exposes request counts and durations by app and route, in-flight requests, tokens by kind, dropped sampling params, history sweeps and event pump health. There is no model label, so cardinality stays bounded.
+- The series carry each app's name, so the scrape is a traffic profile of every app. With `adminKey` set, only the admin key reads `/plugboard/metrics` (an app key gets 403 `admin_key_required`, #285). Without `adminKey`, the `/v1` authentication applies and any app key reads every app's series; that is the documented choice, so set `adminKey` before you scrape a server whose apps should not see each other.

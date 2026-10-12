@@ -1,8 +1,8 @@
 /**
- * The usage dashboard page (`GET /dashboard`, #141): static HTML, its headers and the routes that
- * serve it. The page holds no data. It asks for a key, then reads `GET /v1/usage` from the same
+ * The usage dashboard page (`GET /plugboard/dashboard`, #141): static HTML, its headers and the routes that
+ * serve it. The page holds no data. It asks for a key, then reads `GET /plugboard/usage` from the same
  * origin with that key (the data never reaches the page's HTML). No inline script or style: the
- * script and stylesheets are plugboard's own files under `/dashboard/`, served by `src/dashboard/assets.ts`.
+ * script and stylesheets are plugboard's own files under `/plugboard/dashboard/`, served by `src/dashboard/assets.ts`.
  */
 
 /** Scripts and styles from this origin only; nothing else may load, frame or submit. */
@@ -17,11 +17,11 @@ export const DASHBOARD_HEADERS: Readonly<Record<string, string>> = {
 
 /** Routes of the dashboard: the page and its four files. Served only when option `usage` is on. */
 export const DASHBOARD_ROUTES: ReadonlySet<string> = new Set([
-  "GET /dashboard",
-  "GET /dashboard/app.js",
-  "GET /dashboard/app.css",
-  "GET /dashboard/uplot.js",
-  "GET /dashboard/uplot.css",
+  "GET /plugboard/dashboard",
+  "GET /plugboard/dashboard/app.js",
+  "GET /plugboard/dashboard/app.css",
+  "GET /plugboard/dashboard/uplot.js",
+  "GET /plugboard/dashboard/uplot.css",
 ])
 
 export const DASHBOARD_PAGE = `<!doctype html>
@@ -31,10 +31,10 @@ export const DASHBOARD_PAGE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>plugboard usage</title>
-<link rel="stylesheet" href="/dashboard/uplot.css">
-<link rel="stylesheet" href="/dashboard/app.css">
-<script src="/dashboard/uplot.js" defer></script>
-<script src="/dashboard/app.js" defer></script>
+<link rel="stylesheet" href="/plugboard/dashboard/uplot.css">
+<link rel="stylesheet" href="/plugboard/dashboard/app.css">
+<script src="/plugboard/dashboard/uplot.js" defer></script>
+<script src="/plugboard/dashboard/app.js" defer></script>
 </head>
 <body>
 <header class="top">

@@ -26,7 +26,7 @@ Finding numbers run #152 to #168. Issue states below are as of writing; the link
 | [#163](https://github.com/jjjermiah/opencode-plugboard/issues/163) | Third-party notice missing for the vendored OpenAI and Gemini schema fixtures (legal lens) | Closed | [fbc1436](https://github.com/jjjermiah/opencode-plugboard/commit/fbc1436) |
 | [#164](https://github.com/jjjermiah/opencode-plugboard/issues/164) | README needed a non-affiliation and trademark line (legal lens) | Closed | [fb89d02](https://github.com/jjjermiah/opencode-plugboard/commit/fb89d02) |
 | [#165](https://github.com/jjjermiah/opencode-plugboard/issues/165) | Transitive dependencies can resolve differently per install, since the package ships no lock file | Open | none yet |
-| [#158](https://github.com/jjjermiah/opencode-plugboard/issues/158) | History is kept forever by default (both staff reviews) | Open | none yet; a decision on a default retention is pending |
+| [#158](https://github.com/jjjermiah/opencode-plugboard/issues/158) | History is kept forever by default (both staff reviews) | Fixed in 0.25.0 | `history.maxAgeDays` defaults to 30; `0` opts out |
 
 ## Architecture and bugs
 
@@ -69,7 +69,7 @@ Before these, a fresh reviewer read the 0.1.0 code cold and found eighteen thing
 
 ## Still open
 
-- [#158](https://github.com/jjjermiah/opencode-plugboard/issues/158): the default history retention is unlimited. A finite default or an explicit opt-in is a design decision the maintainer has not made.
+- [#158](https://github.com/jjjermiah/opencode-plugboard/issues/158): the default history retention was unlimited. Fixed in 0.25.0: 30 days by default, and `history.maxAgeDays: 0` is the explicit opt-out.
 - [#165](https://github.com/jjjermiah/opencode-plugboard/issues/165): transitive dependency drift under a pinned plugboard version. Being investigated.
 
 ## What this is not

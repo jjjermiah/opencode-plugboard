@@ -1,6 +1,6 @@
 /**
  * Serves the usage dashboard (`src/dashboard/page.ts`): the page, the page's own script and
- * stylesheet, and uPlot's browser build and stylesheet from its npm package. Files are read on the
+ * stylesheet, and uPlot's browser build and stylesheet from its npm package (all under `/plugboard/dashboard/`). Files are read on the
  * first request and kept in memory. Setup does no filesystem work (I3). The bytes never change
  * while plugboard runs, so the ETag is their hash and a revalidation answers 304.
  */
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url"
 import { sendText } from "../discovery.js"
 import { DASHBOARD_HEADERS, DASHBOARD_PAGE } from "./page.js"
 
-const PAGE_PREFIX = "GET /dashboard/"
+const PAGE_PREFIX = "GET /plugboard/dashboard/"
 const here = dirname(fileURLToPath(import.meta.url))
 const resolveFrom = createRequire(import.meta.url)
 
@@ -22,7 +22,7 @@ interface AssetFile {
   readonly contentType: string
 }
 
-/** The asset named by the last segment of `/dashboard/<name>`. */
+/** The asset named by the last segment of `/plugboard/dashboard/<name>`. */
 const ASSETS: Readonly<Record<string, AssetFile>> = {
   "app.js": { path: () => join(here, "app.js"), contentType: "text/javascript; charset=utf-8" },
   "app.css": { path: () => join(here, "app.css"), contentType: "text/css; charset=utf-8" },
@@ -59,7 +59,7 @@ function asset(name: string): Promise<Asset> {
 
 /** Answers one dashboard route (`DASHBOARD_ROUTES`, already matched by the caller). */
 export async function serveDashboard(request: IncomingMessage, response: ServerResponse, route: string): Promise<void> {
-  if (route === "GET /dashboard") return sendText(response, 200, "text/html; charset=utf-8", DASHBOARD_PAGE, DASHBOARD_HEADERS)
+  if (route === "GET /plugboard/dashboard") return sendText(response, 200, "text/html; charset=utf-8", DASHBOARD_PAGE, DASHBOARD_HEADERS)
   const found = await asset(route.slice(PAGE_PREFIX.length))
   // Assets revalidate on every use: a plugboard upgrade changes them, and the ETag makes that check free.
   const headers = { ...DASHBOARD_HEADERS, "cache-control": "no-cache", etag: found.etag }

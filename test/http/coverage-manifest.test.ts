@@ -27,7 +27,7 @@ afterAll(() => server?.close())
 describe("#116 route x format coverage manifest", () => {
   captureLogs()
   test("#116 the scan finds the routes the routers spell out", async () => {
-    expect(await scanRouteNames()).toEqual(expect.arrayContaining(["POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /v1/status", "GET /metrics", "GET /healthz", "GET /v1beta/models"]))
+    expect(await scanRouteNames()).toEqual(expect.arrayContaining(["POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status", "GET /plugboard/metrics", "GET /healthz", "GET /v1beta/models"]))
   })
 
   // Each problem names its route and mode, so a failure says which cell to fix.

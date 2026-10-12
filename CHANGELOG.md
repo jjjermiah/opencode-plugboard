@@ -14,7 +14,29 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Breaking
+
+No users yet, so these changes ship without a deprecation period. Old paths are not aliased (except the two probes): each returns its namespace's 404.
+
+**Routes moved under `/plugboard/`** ([#253](https://github.com/jjjermiah/opencode-plugboard/issues/253)). The model routes did not move.
+
+- `GET /v1/usage` is now `GET /plugboard/usage` (the usage RPC is unchanged).
+- `GET /v1/admin/keys`, `POST /v1/admin/keys` and `DELETE /v1/admin/keys/{keyId}` are now `/plugboard/admin/keys` and `/plugboard/admin/keys/{keyId}`.
+- `GET /v1/status` is now `GET /plugboard/status`.
+- `GET /metrics` is now `GET /plugboard/metrics`.
+- `GET /dashboard` and its files are now `GET /plugboard/dashboard` and `/plugboard/dashboard/*`.
+- New `GET /plugboard/health` and `GET /plugboard/ready`. `GET /healthz` and `GET /readyz` stay at the root for probes, with the same answers.
+
+**Errors under `/plugboard/` are problem details** ([#254](https://github.com/jjjermiah/opencode-plugboard/issues/254)). Every error on a `/plugboard/` route is `application/problem+json` (RFC 9457) with `type` (an anchor in the new [error page](https://jjjermiah.github.io/opencode-plugboard/errors)), `title`, `status`, `detail`, `instance`, `code`, `param` when there is one, and `requestId`. A client that read `error.code` from these routes now reads `code`, and `error.message` is `detail`. The model routes keep their provider's error shape (OpenAI, Anthropic, Gemini), unchanged.
+
+**New defaults**
+
+- `history` keeps sessions for 30 days ([#158](https://github.com/jjjermiah/opencode-plugboard/issues/158)). Before, it kept them forever. Set `history: { maxAgeDays: 0 }` to keep them forever. The index that makes pruning possible is now always on, so sessions created before 0.25.0 are not indexed and are never pruned. OpenCode's own backups keep copies of pruned sessions.
+- `maxTools` defaults to 64, up from 32 ([#242](https://github.com/jjjermiah/opencode-plugboard/issues/242)): Claude Code sends 36 tools per request and was refused. Each slot is a registered placeholder tool; registering 64 costs a few microseconds and about 20 KiB per Location.
+
+### Changed
+
+- The usage dashboard reads `/plugboard/usage` and shows the `detail` of a refusal.
 
 ## [0.24.0] - 2026-10-12: Smaller, Faster, Stricter
 

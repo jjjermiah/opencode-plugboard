@@ -64,7 +64,7 @@ describe("apps: parsing", () => {
     ["a bad systemMode", { keys: { a: "k" }, apps: { a: { system: "S", systemMode: "before" } } }, /systemMode must be `prepend`, `append` or `replace`/],
     ["a systemMode without system", { keys: { a: "k" }, apps: { a: { systemMode: "append" } } }, /systemMode needs `system`/],
     ["tools that is not a boolean", { keys: { a: "k" }, apps: { a: { tools: "no" } } }, /tools must be a boolean/],
-    ["a maxTools of 0", { keys: { a: "k" }, apps: { a: { maxTools: 0 } } }, /`apps.a.maxTools` must be an integer between 1 and 32/],
+    ["a maxTools of 0", { keys: { a: "k" }, apps: { a: { maxTools: 0 } } }, /`apps.a.maxTools` must be an integer between 1 and 64/],
     ["a maxTools above the global cap", { maxTools: 4, keys: { a: "k" }, apps: { a: { maxTools: 5 } } }, /`apps.a.maxTools` must be an integer between 1 and 4/],
   ]
   test.each(cases)("rejects %s", (_name, raw, message) => {

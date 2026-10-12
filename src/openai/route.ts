@@ -2,9 +2,11 @@
  * OpenAI front-end route table: `GET /healthz`, `GET /readyz`, `GET /v1/models`, `GET /v1/models/{id}`,
  * `POST /v1/chat/completions` (`n` > 1 through `./fanout.ts`), and the dispatch of `POST /v1/responses`
  * and `POST /v1/completions` to `src/responses/route.ts` and `src/completions/route.ts`.
- * Observability and first-run routes (`src/discovery.ts`, `src/metrics.ts`): `GET /` and `GET /v1`
- * (keyless discovery), the authenticated `GET /v1/status`, `GET /metrics` (option `metrics`), and the
- * usage dashboard `GET /dashboard` with its assets (option `usage`, `src/dashboard/`).
+ * Plugboard's own routes live under `/plugboard/` (`/plugboard/usage`, `/plugboard/admin/keys`,
+ * `/plugboard/status`, `/plugboard/metrics`, `/plugboard/dashboard`, `/plugboard/health`, `/plugboard/ready`),
+ * with `/healthz` and `/readyz` kept at the root for probes. Keyless discovery is `GET /` and `GET /v1`
+ * (`src/discovery.ts`). Their errors are `application/problem+json` (`sendProblem`, `src/http.ts`), while the
+ * model routes keep their provider's error shape.
  *
  * The flow is: establish cancellation and the deadline, check origin, authenticate, parse, resolve
  * the model, call the ModelCaller, encode. Parsing, policy and encoding are imported directly;
@@ -28,6 +30,7 @@ import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText }
 import {
   BodyError,
   bodyPlugError,
+  REQUEST_ID_HEADER,
   RequestAborted,
   beginRequest,
   boundEvents,
@@ -37,6 +40,7 @@ import {
   readJsonBody,
   sendError,
   sendJson,
+  sendProblem,
   sseWriter,
   type RequestScope,
 } from "../http.js"
@@ -74,19 +78,23 @@ export interface RouteHost {
   loadCatalog(): Promise<ReadonlyArray<CatalogModel>>
   /** Metrics registry; the process runtime's by default. Only written to when option `metrics` is on. */
   readonly metrics?: Metrics
-  /** Runtime facts for `/v1/status` and `/metrics`; the process runtime's by default. */
+  /** Runtime facts for `/plugboard/status` and `/plugboard/metrics`; the process runtime's by default. */
   readonly status?: () => RuntimeStatus
-  /** Per-app usage (`src/usage.ts`): fed from the request log point, and served by `GET /v1/usage` when present. */
+  /** Per-app usage (`src/usage.ts`): fed from the request log point, and served by `GET /plugboard/usage` when present. */
   readonly usage?: UsageRecorder
   /** Runtime app keys (src/keys.ts, #55): their digests authenticate, and the admin routes (src/admin/route.ts) read them. */
   readonly keys?: KeyStore
 }
 
 const SESSION_HEADER = "x-plugboard-session"
-const REQUEST_ID_HEADER = "x-plugboard-request-id"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
-const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /v1/status"]
+const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status"]
+/** Plugboard's own routes: the namespace whose errors are problem+json. */
+const PLUGBOARD_PREFIX = "/plugboard"
+/** The liveness and readiness probes: at the root (kept for probes) and under `/plugboard/`. */
+const HEALTH_ROUTES = ["GET /healthz", "GET /plugboard/health"]
+const READY_ROUTES = ["GET /readyz", "GET /plugboard/ready"]
 /** Pages anyone may fetch; they decide for themselves how much to show (see `src/discovery.ts`). */
 const DISCOVERY_ROUTES = ["GET /", "GET /v1"]
 /** Allows a page's inline style and nothing else: no scripts, images, fonts or frames. */
@@ -135,16 +143,21 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   const host: RouteHost = metrics ? { ...routeHost, caller: metered(routeHost.caller, metrics) } : routeHost
   /** The runtime app keys that authenticate (loaded from storage on first use, #55). */
   const runtimeDigests = async () => (host.keys ? await host.keys.digests() : [])
-  /** Routes with a handler of their own. `GET /metrics` exists only when enabled; otherwise it is an unknown path. */
+  /** Routes with a handler of their own. `GET /plugboard/metrics` exists only when enabled; otherwise it is an unknown path. */
   const known = (route: string) =>
     KNOWN_ROUTES.includes(route) ||
     DISCOVERY_ROUTES.includes(route) ||
-    (metrics !== undefined && route === "GET /metrics") ||
-    (host.usage !== undefined && (route === "GET /v1/usage" || DASHBOARD_ROUTES.has(route)))
+    (metrics !== undefined && route === "GET /plugboard/metrics") ||
+    (host.usage !== undefined && (route === "GET /plugboard/usage" || DASHBOARD_ROUTES.has(route)))
   /** Responses to Gemini routes: errors there use Google's body. */
   const googleErrors = new WeakSet<ServerResponse>()
-  const fail = (response: ServerResponse, error: PlugError, close = false) =>
-    sendError(response, error, googleErrors.has(response) ? encodeGeminiError(error) : encodeError(error), { close })
+  /** Responses on `/plugboard/` routes: errors there are problem+json, with the request target as `instance`. */
+  const plugboardErrors = new WeakMap<ServerResponse, string>()
+  const fail = (response: ServerResponse, error: PlugError, close = false) => {
+    const instance = plugboardErrors.get(response)
+    if (instance !== undefined) return sendProblem(response, error, instance, { close })
+    return sendError(response, error, googleErrors.has(response) ? encodeGeminiError(error) : encodeError(error), { close })
+  }
 
   /** The catalog for a page that can do without it: a failure is logged and reported as absent; an abort still ends the request. */
   async function optionalCatalog(scope: RequestScope): Promise<ReadonlyArray<CatalogModel> | undefined> {
@@ -166,6 +179,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       return fail(response, { status: 400, kind: "invalid_request", code: "invalid_request_target", message: "Malformed request target" })
     }
     const path = url.pathname
+    if (path === PLUGBOARD_PREFIX || path.startsWith(`${PLUGBOARD_PREFIX}/`)) plugboardErrors.set(response, request.url ?? path)
     const modelId = request.method === "GET" && path.startsWith(MODEL_PREFIX) && path.length > MODEL_PREFIX.length ? decodeSegment(path.slice(MODEL_PREFIX.length)) : undefined
     const gemini = matchGeminiRoute(request.method, path)
     // Any /v1beta path is Google's API, even one that matches no Gemini route (#150): its errors use Google's body.
@@ -173,19 +187,22 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (googleShaped) googleErrors.add(response)
     const route = gemini?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
-    info.route = gemini || modelId !== undefined || known(route) || route === "GET /healthz" || route === "GET /readyz" ? route : "unknown"
+    info.route = gemini || modelId !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
     // Anthropic Messages: its own error shape and x-api-key auth, so it takes the request from here.
     if (isMessagesPath(path)) return serveMessages(host, { path, request, response, scope, info })
 
     const rejected = checkOrigin(request, host.options)
     if (rejected) return fail(response, rejected)
 
-    if (route === "GET /healthz") return sendJson(response, 200, { ok: true })
+    if (HEALTH_ROUTES.includes(route)) return sendJson(response, 200, { ok: true })
 
-    // Readiness (#160): no key, like /healthz. 503 until a generation serves, the pump runs and the catalog has loaded.
-    if (route === "GET /readyz") {
+    // Readiness (#160): no key, like the liveness probe. 503 until a generation serves, the pump runs and the catalog has loaded.
+    // `/readyz` answers its document as before; `/plugboard/ready` answers a refusal as a problem (`not_ready`).
+    if (READY_ROUTES.includes(route)) {
       const verdict = readiness(runtimeStatus())
-      return sendJson(response, verdict.ready ? 200 : 503, verdict)
+      if (route === "GET /readyz") return sendJson(response, verdict.ready ? 200 : 503, verdict)
+      if (verdict.ready) return sendJson(response, 200, verdict)
+      return fail(response, { status: 503, kind: "server", code: "not_ready", message: verdict.reason })
     }
 
     // First-run pages: reachable without a key, so what they show depends on the caller (`buildDiscovery`).
@@ -204,15 +221,15 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       return sendText(response, 200, "text/html; charset=utf-8", renderDiscoveryHtml(doc), PAGE_HEADERS)
     }
 
-    // The usage dashboard (#141): a page and its files, keyless like the discovery pages. Its data comes from `GET /v1/usage`, behind a key.
+    // The usage dashboard (#141): a page and its files, keyless like the discovery pages. Its data comes from `GET /plugboard/usage`, behind a key.
     if (host.usage && DASHBOARD_ROUTES.has(route)) return serveDashboard(request, response, route)
 
     // Usage has its own credentials: the admin key reads every app, any other key only its own app (`authenticateUsage`).
-    if (route === "GET /v1/usage" && host.usage) return serveUsage(request, response, url, host.usage, info)
+    if (route === "GET /plugboard/usage" && host.usage) return serveUsage(request, response, url, host.usage, info)
 
-    // `/metrics` with `adminKey` set: the admin key alone (#285). Its series name every app, so an app key may not read them.
-    // Without `adminKey` it keeps the `/v1` authentication, and any app key sees every app's series (documented).
-    if (route === "GET /metrics" && metrics && host.options.adminKey !== undefined) {
+    // `/plugboard/metrics` with `adminKey` set: the admin key alone (#285). Its series name every app, so an app key may not read them.
+    // Without `adminKey` it keeps the usual authentication, and any app key sees every app's series (documented).
+    if (route === "GET /plugboard/metrics" && metrics && host.options.adminKey !== undefined) {
       const who = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
       if (isPlugError(who)) return fail(response, who)
       if (!who.admin) return fail(response, { status: 403, kind: "permission", code: "admin_key_required", message: "Metrics need the admin key (option `adminKey`)" })
@@ -220,10 +237,10 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     // Runtime app keys (#55): the admin routes answer the admin key only, and are a 404 without `adminKey`.
-    if (path === "/v1/admin/keys" || path.startsWith("/v1/admin/keys/"))
+    if (path === "/plugboard/admin/keys" || path.startsWith("/plugboard/admin/keys/"))
       return serveAdmin({ options: liveOptions(host.options), keys: host.keys }, { path, request, response, scope, info })
 
-    // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but /healthz and the first-run pages.
+    // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but the probes and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
     const auth = authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
     if (isPlugError(auth)) return fail(response, auth)
@@ -249,12 +266,12 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     if (gemini) return serveGemini(host, { match: gemini, request, url, app: auth.app, response, scope, info })
 
-    if (route === "GET /v1/status") {
+    if (route === "GET /plugboard/status") {
       const catalog = await optionalCatalog(scope)
       return sendJson(response, 200, buildStatus({ options: host.options, app: auth.app, runtime: runtimeStatus(), catalog }))
     }
 
-    if (route === "GET /metrics" && metrics) {
+    if (route === "GET /plugboard/metrics" && metrics) {
       return sendText(response, 200, metrics.contentType, await metrics.render(runtimeStatus()))
     }
 
@@ -353,7 +370,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     sendJson(response, result.status, result.body, { retryAfterSeconds: result.retryAfterSeconds })
   }
 
-  /** `GET /v1/usage?from=&to=&app=`. An app key may name only its own app (another one is a 403); the admin key may name any app or none. */
+  /** `GET /plugboard/usage?from=&to=&app=`. An app key may name only its own app (another one is a 403); the admin key may name any app or none. */
   async function serveUsage(request: IncomingMessage, response: ServerResponse, url: URL, usage: UsageRecorder, info: RequestInfo): Promise<void> {
     const who = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
     if (isPlugError(who)) return fail(response, who)
@@ -436,7 +453,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
       if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms, ...(info.user === undefined ? {} : { user: info.user }) })
       // Probes and scrapes that succeed are not worth a line each. A readiness probe is never logged: it repeats until the backend is ready.
-      const probe = info.route === "GET /readyz" || ((info.route === "GET /healthz" || info.route === "GET /metrics") && outcome === "ok")
+      const probe = READY_ROUTES.includes(info.route) || ((HEALTH_ROUTES.includes(info.route) || info.route === "GET /plugboard/metrics") && outcome === "ok")
       if (!probe) {
         const fields = { id, route: info.route, app: info.app, user: info.user, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)

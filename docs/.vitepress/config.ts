@@ -47,6 +47,7 @@ export default defineConfig({
         text: "Reference",
         items: [
           { text: "Configuration", link: "/configuration" },
+          { text: "Errors", link: "/errors" },
           { text: "Remote access", link: "/remote-access" },
           { text: "Architecture", link: "/architecture" },
           { text: "Completions", link: "/completions" },

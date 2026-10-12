@@ -20,8 +20,10 @@ const headers = { authorization: `Bearer ${KEYS.alpha}` }
 const PROBES: ReadonlyArray<readonly [string, string, string]> = [
   ["GET", "/", "/"],
   ["GET", "/v1", "/v1"],
-  ["GET", "/healthz", "/healthz"],
-  ["GET", "/readyz", "/readyz"],
+  ["GET", "/healthz", "/plugboard/health"],
+  ["GET", "/plugboard/health", "/plugboard/health"],
+  ["GET", "/readyz", "/plugboard/ready"],
+  ["GET", "/plugboard/ready", "/plugboard/ready"],
   ["GET", "/v1/models", "/v1/models"],
   ["GET", "/v1/models/test%2Fecho", "/v1/models/{id}"],
   ["POST", "/v1/chat/completions", "/v1/chat/completions"],
@@ -34,10 +36,10 @@ const PROBES: ReadonlyArray<readonly [string, string, string]> = [
   ["POST", "/v1beta/models/fast:generateContent", "/v1beta/models/{model}:generateContent"],
   ["POST", "/v1beta/models/fast:streamGenerateContent?alt=sse", "/v1beta/models/{model}:streamGenerateContent"],
   ["POST", "/v1beta/models/fast:countTokens", "/v1beta/models/{model}:countTokens"],
-  ["GET", "/v1/status", "/v1/status"],
-  ["GET", "/metrics", "/metrics"],
-  ["GET", "/v1/usage", "/v1/usage"],
-  ["GET", "/dashboard", "/dashboard"],
+  ["GET", "/plugboard/status", "/plugboard/status"],
+  ["GET", "/plugboard/metrics", "/plugboard/metrics"],
+  ["GET", "/plugboard/usage", "/plugboard/usage"],
+  ["GET", "/plugboard/dashboard", "/plugboard/dashboard"],
 ]
 
 let server: RouteServer | undefined
@@ -55,9 +57,9 @@ const listed = async (): Promise<Array<{ method: string; path: string }>> => (aw
 
 /** Admin endpoints (#55) are listed and served only when `adminKey` is set. */
 const ADMIN_PROBES: ReadonlyArray<readonly [string, string, string]> = [
-  ["GET", "/v1/admin/keys", "/v1/admin/keys"],
-  ["POST", "/v1/admin/keys", "/v1/admin/keys"],
-  ["DELETE", "/v1/admin/keys/00000000", "/v1/admin/keys/{keyId}"],
+  ["GET", "/plugboard/admin/keys", "/plugboard/admin/keys"],
+  ["POST", "/plugboard/admin/keys", "/plugboard/admin/keys"],
+  ["DELETE", "/plugboard/admin/keys/00000000", "/plugboard/admin/keys/{keyId}"],
 ]
 
 describe("#136 the discovery document lists every endpoint the router serves", () => {
@@ -70,7 +72,8 @@ describe("#136 the discovery document lists every endpoint the router serves", (
 
   test("the document lists no endpoint that the probes do not reach", async () => {
     await start()
-    expect((await listed()).map((endpoint) => `${endpoint.method} ${endpoint.path}`).sort()).toEqual(PROBES.map(([method, , template]) => `${method} ${template}`).sort())
+    // Two probes may reach one endpoint (the root alias and the `/plugboard/` path), so compare the set of templates.
+    expect((await listed()).map((endpoint) => `${endpoint.method} ${endpoint.path}`).sort()).toEqual([...new Set(PROBES.map(([method, , template]) => `${method} ${template}`))].sort())
   })
 })
 
@@ -94,6 +97,6 @@ describe("#55 the admin endpoints are listed and served only with adminKey", () 
     await server!.close()
     await start()
     const without = (await listed()).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
-    expect(without.some((line) => line.includes("/v1/admin/keys"))).toBe(false)
+    expect(without.some((line) => line.includes("/plugboard/admin/keys"))).toBe(false)
   })
 })

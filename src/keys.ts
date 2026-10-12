@@ -1,5 +1,5 @@
 /**
- * Runtime app keys (#55): keys created through `/v1/admin/keys` (src/admin/route.ts), kept beside
+ * Runtime app keys (#55): keys created through `/plugboard/admin/keys` (src/admin/route.ts), kept beside
  * the keys of the config.
  *
  * Each runtime key is one record in the plugin's host storage (`ctx.storage`, the table the history

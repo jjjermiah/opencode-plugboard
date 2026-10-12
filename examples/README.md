@@ -144,10 +144,10 @@ Gemini `generateContent`, with the key in `x-goog-api-key`:
 curl -s "$PLUGBOARD_URL/v1beta/models/fast:generateContent" -H "x-goog-api-key: $PLUGBOARD_KEY" -H "Content-Type: application/json" -d '{"contents": [{"parts": [{"text": "reply with exactly: pong"}]}]}'
 ```
 
-Usage (`/v1/usage`) needs the admin key from the `adminKey` option, not an app key. Dates are UTC and inclusive:
+Usage (`/plugboard/usage`) needs the admin key from the `adminKey` option, not an app key. Dates are UTC and inclusive:
 
 ```sh
-curl -s "$PLUGBOARD_URL/v1/usage?from=2026-10-01&to=2026-10-11" -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
+curl -s "$PLUGBOARD_URL/plugboard/usage?from=2026-10-01&to=2026-10-11" -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
 ```
 
 Replace `fast` with any id from `/v1/models`, or with an alias you defined.

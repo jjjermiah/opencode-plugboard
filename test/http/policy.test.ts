@@ -101,11 +101,11 @@ describe("model lists show only what the calling app may use", () => {
     expect((await server!.send({ path: "/v1beta/models/test%2Fecho", headers: OPEN })).status).toBe(200)
   })
 
-  test("the setup page and /v1/status count only the caller's models", async () => {
+  test("the setup page and /plugboard/status count only the caller's models", async () => {
     await route([])
     expect((await server!.send({ path: "/v1", headers: BOT })).json().models).toMatchObject({ available: 1 })
     expect((await server!.send({ path: "/v1", headers: OPEN })).json().models.available).toBeGreaterThan(1)
-    expect((await server!.send({ path: "/v1/status", headers: BOT })).json().models).toMatchObject({ available: 1 })
+    expect((await server!.send({ path: "/plugboard/status", headers: BOT })).json().models).toMatchObject({ available: 1 })
   })
 })
 
