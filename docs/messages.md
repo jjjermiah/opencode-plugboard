@@ -50,6 +50,8 @@ Define the aliases in the plugboard `aliases` option (for example `"claude-sonne
 
 Sampling parameters follow the same `dropUnsupportedParams` rule as Chat Completions: parameters a model is known to reject are dropped and listed in `x-plugboard-dropped-params`.
 
+**System messages inside `messages` are lifted, not rejected.** Claude Code sends a `role: "system"` entry for models it does not know, and the real API refuses it. Plugboard moves each one out of `messages` and appends its text after the top-level `system`, in the order they were sent. The system prompt is therefore the top-level `system` first, then the lifted entries in their `messages` order. A lifted entry's `content` takes the same string or text-block forms as `system`.
+
 ## What is rejected
 
 A 400 `invalid_request_error` whose message names the field, for example `tools.0.type: "web_search_20250305" is not supported`:
