@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.21.1] - 2026-10-11: Read Between the Fences
+
+**Full diff:** [v0.21.0...v0.21.1](https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.0...v0.21.1)
+
 ### Fixed
 
 - **Structured output when the model answers in prose.** Told "don't call any tool", Claude also skips the `respond` tool and writes "Here is the JSON: ```json {...}```". The text fallback now takes a single fenced JSON block from inside prose when it matches the schema, so this is an answer instead of a 502. Two blocks, or a block that doesn't match, still fail. Found by the live suite; all three Claude tools-plus-schema cells now pass.
@@ -21,6 +27,31 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - **Wider docs pages.** The docs site now uses most of the window: the text column grows to 1280px beside the outline, and wide tables scroll inside themselves, so diagrams and endpoint tables have room.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Fixes
+
+**fix(openai): take the one fenced JSON block from prose in the structured fallback** ([`543a541`](https://github.com/jjjermiah/opencode-plugboard/commit/543a5419c75118960b8f243476abc0d727a8370d))
+
+The live suite still failed Claude Haiku 4.5 on tools plus json_schema (chat, responses and gemini) after #170: told "Do not call any tool", the model also skips the respond tool and answers in prose around a fenced block ("I cannot call any tool. However, here is the JSON: ```json {...}```"). textFallback only accepted text that was entirely JSON or entirely one fence, so this became a 502.
+
+The fallback now also tries the single fenced code block anywhere in the text, when there is exactly one, and returns it only if it parses and matches the schema subset. Two blocks, or a block that does not match, still give the 502. Unit tests cover all three; PLUGBOARD_LIVE=1 with anthropic/claude-haiku-4-5 now passes the three tools-json cells (3 pass, 0 fail) on the isolated dev server.
+
+#### Docs
+
+**docs(docs): widen the docs site pages** ([`227b059`](https://github.com/jjjermiah/opencode-plugboard/commit/227b0591dcf9e613a7a1c9e46d4996cf3658567e))
+
+The default VitePress theme caps the layout at 1440px and the text column at 688px, which squeezed the architecture diagrams, endpoint tables and config blocks. A small custom theme (docs/.vitepress/theme) lifts the layout cap, lets the text column grow to 1280px beside the outline, makes wide tables scroll inside themselves, and lets images and SVG use the full column. The theme's own rules are scoped, so the overrides use !important. Checked with headless Chrome at 1920px on the guide and architecture pages: the text column roughly doubled and the outline stays on the right.
+
+**docs(changelog): notes for 0.21.1** ([`a9d2a77`](https://github.com/jjjermiah/opencode-plugboard/commit/a9d2a779b607afc221266621606018697eeb5e83))
+
+Curated [Unreleased] entries for the structured-output fallback taking a single fenced JSON block from prose (found by the live suite with Claude Haiku 4.5) and the wider docs pages. Pinned install examples bumped to 0.21.1.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.21.0] - 2026-10-11: Answers to the Reviewers
 
@@ -2696,7 +2727,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.1...HEAD
+[0.21.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.18.0...v0.19.0
