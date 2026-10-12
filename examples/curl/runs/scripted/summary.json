@@ -3,9 +3,9 @@
     "name": "curl",
     "runtime": {
       "name": "bash",
-      "version": "5.3"
+      "version": "5"
     },
-    "version": "8.7.1"
+    "version": "8"
   },
   "example": "curl",
   "models": [

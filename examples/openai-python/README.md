@@ -24,7 +24,7 @@ cd examples/openai-python
 uv sync --frozen
 ```
 
-The versions are exact pins (`openai==3.29.0`, `pydantic==2.14.1`, `httpx==0.28.1`), locked in `uv.lock`. Python 3.12 or later.
+The versions are exact pins (`openai==3.29.0`, `pydantic==2.14.1`, `httpx==0.28.1`), locked in `uv.lock`. `.python-version` pins Python 3.13, so `uv` runs the same interpreter everywhere, including CI.
 
 ## Run one file
 

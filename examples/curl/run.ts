@@ -28,9 +28,11 @@ async function shell(file: string, scenario: string, model: string): Promise<Obs
   return JSON.parse(out.trim()) as Observations
 }
 
-const curlVersion = (await output(["curl", "--version"])).split("\n")[0]!.split(" ")[1] ?? "unknown"
-const bashVersion = await output(["bash", "-c", 'echo "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"'])
-emit({ kind: "client", name: "curl", version: curlVersion, runtime: { name: "bash", version: bashVersion } })
+// curl and bash are system tools with no lockfile, and their minor versions differ between hosts (a CI runner and a laptop
+// do not agree). So the summary records the major version only; a scripted run must not depend on the machine it ran on.
+const curlMajor = ((await output(["curl", "--version"])).split("\n")[0]!.split(" ")[1] ?? "0").split(".")[0]!
+const bashMajor = (await output(["bash", "-c", 'echo "${BASH_VERSINFO[0]}"']))
+emit({ kind: "client", name: "curl", version: curlMajor, runtime: { name: "bash", version: bashMajor } })
 
 await runAll(
   {
