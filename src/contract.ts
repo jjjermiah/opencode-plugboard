@@ -201,11 +201,13 @@ export interface CallContext {
   readonly onServerTools?: (count: number) => void
 }
 
-/** One answered call's totals for the caller: `inputTokens` and `outputTokens` as the response body reports them (cache reads inside input, reasoning inside output), and `costUsd` when the model has a price. */
+/** One answered call's totals for the caller: `inputTokens` and `outputTokens` as the response body reports them (cache reads and writes inside input, reasoning inside output), and `costUsd` when the model has a price. */
 export interface CallTotals {
   readonly inputTokens: number
   readonly outputTokens: number
   readonly cacheReadTokens: number
+  /** Input tokens written to the provider's cache by this call (0 or absent when the provider reports none). */
+  readonly cacheWriteTokens?: number
   readonly costUsd?: number
 }
 
