@@ -30,6 +30,8 @@ These are the rules a change must not break. Tests, reviews and the mutation cat
 - **I20. Front-ends talk to the back end only through `src/contract.ts`.** Wire presentation state stays in the front-end's `Exchange`, and the pure codecs import no `node:http`, Effect, filesystem or host types (`src/contract.ts`, `src/*/request.ts`, `src/*/response.ts`).
 - **I21. The history index is written only while a limit is set.** Sweeps start from request handling, do bounded work and skip a session whose request guard is still active (`src/runtime.ts` `trackSession`, `src/session/prune.ts`).
 - **I22. The request id is made by the server.** It is never taken from the client, because it is echoed in a header and written to logs (`src/openai/route.ts` `handle`).
+- **I23. Usage is written from request handling only.** Setup builds the recorder from closures and makes no storage call. A change lands in a day held in memory, and the persist is debounced per day; a failed write is logged and the day stays in memory (`src/usage.ts` `createUsageRecorder`, `withUsage`).
+- **I24. Usage reads are scoped by key.** The admin key reads every app. An app key reads only its own app, and asking for another is a 403. The RPC returns every app, because OpenCode's own API is already authenticated by the server password (`src/config.ts` `authenticateUsage`, `src/openai/route.ts` `serveUsage`, `src/rpc.ts`).
 
 ## Three lifetimes
 
@@ -56,7 +58,7 @@ OpenCode may load this module once per Location, or re-evaluate it on reload. An
 - **the metrics registry and start time**: counters and histograms must survive a generation being replaced, so they live here too (see [Observability](#observability)).
 - **the limiter's queues and rate windows**: a concurrency cap or a requests-per-minute window must hold across generations (see [Concurrency and rate limits](#concurrency-and-rate-limits)).
 
-If a runtime written by a different version (runtime `VERSION`, currently 9) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
+If a runtime written by a different version (runtime `VERSION`, currently 11) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
 
 **Key revocation (#90).** Every accepted generation runs with the same options (the fingerprint rule above), so authentication uses the listener's options whichever generation serves. A config edit makes the host reload every Location's plugin at once (verified live: a removed key answered 401 on the next request, an app directory in use included), and the next generation adopts the new options. A generation with different options is never allowed to override live ones, because a project config entry must not be able to weaken authentication; so a Location that somehow kept an old generation alive past a reload would keep the old options until the server restarts.
 
@@ -216,6 +218,18 @@ The opt-in `cache` option (`src/cache.ts`) is a `ModelCaller` wrapper, so no fro
 - **Context flags** (`CallContext`): `onCache("hit" | "miss")` fires once, before the first event, when the cache applies. `reportCache` (`src/cache.ts`) turns it into `x-plugboard-cache` on every route; the first writer wins. `noCache` bypasses the cache; fan-out sets it when it makes more than one call, so every choice of `n` is a fresh sample.
 - **Metrics**: `plugboard_cache_requests_total{app,result}`, counted only with option `metrics` and only for calls the cache applies to.
 
+## Usage statistics
+
+Per-app usage is recorded from the seams the other counters already use, and read by `GET /v1/usage` and the usage RPC. Nothing here runs during setup (I23). The operator's view is in [configuration.md](configuration.md#usage-statistics).
+
+- **Recording.** `withUsage` (`src/usage.ts`) is the outermost `ModelCaller` in `index.ts`. It sees the finish usage, the model that answered (the fallback chain's `onServed`, else the requested ref) and the cache answer (`onCache`). The limiter's `onLimited` and the fallback chain's `onFallback` feed the rest. The route's request log point (`run` in `src/openai/route.ts`) counts each request on a model route, with its status and outcome, once the app is known.
+- **Live aggregate.** The days are in memory on the process runtime (`processUsage`, runtime `VERSION` 11), so they survive a plugin generation. A day is read from storage on its first access.
+- **Storage.** A day is one JSON value under `usage/<app>/<YYYY-MM-DD>` in the plugin's host storage (`createStoragePort`, the table the history index uses, under its own prefix). A changed day is written at most every 10 s, by the request that finds the last write that old. Retention deletes days past `retentionDays` one page of keys at a time, at most every 10 minutes, from request handling.
+- **Queries.** `query` scans the stored keys in range, adds the days held in memory, and sums them. It never writes. The keys read from storage are cached in memory, so a later report reads memory.
+- **Access.** `authenticateUsage` checks the admin key first, then `authenticate`. `serveUsage` gives an app key its own app only. The RPC gives every app (I24).
+- **Cost.** `priceCall` mirrors OpenCode's `calculateCost` (`packages/core/src/session/usage.ts`): the largest context tier the prompt exceeds, else the base entry, with cache reads and writes priced separately. A model with no price is counted in `unpricedRequests`.
+- **RPC.** `src/rpc.ts` defines `opencode-plugboard.usage` with `Rpc.define` (from `@opencode/plugin/rpc`, the module the host's docs use). `index.ts` registers the handler with `ctx.rpc.register` in each accepted generation. That registration is a synchronous `acquireRelease` on the host's own in-memory table, so it waits for nothing. Its error channel is typed `unknown`, so a failed registration is logged (`rpc.register_failed`) and the plugin keeps loading.
+
 ## Module map
 
 ```text
@@ -258,6 +272,8 @@ src/session/history.ts      data root, app directory (async, symlink containment
 src/session/prune.ts        history index keys, `recordSession`, the bounded `sweepHistory` (see History pruning)
 src/session/media.ts        bounded image preparation (data URLs; opt-in remote fetch: public addresses only unless allowed, resolved address pinned)
 src/session/seeds.ts        seed name prefix and result text
+src/usage.ts               per-app usage: day records, histogram, cost (mirrors OpenCode's calculateCost), the recorder and its debounced storage writes, the query, withUsage (see Usage statistics)
+src/rpc.ts                 the usage RPC definition (`./rpc` entry) and its handler builder
 ```
 
 Dependency direction: `index` -> `runtime`, `session/*`, `openai/route`. `openai/route` -> `http`, `models`, `config`, `discovery`, `metrics`, `runtime` (only the `processMetrics` / `processStatus` defaults, overridable through `RouteHost`), `openai/request`, `openai/response`, `openai/fanout`, `openai/sampling` and the other routes (`anthropic/route`, `completions/route`, `gemini/route`, `responses/route`). Each of those imports from `openai/route` only the `RouteHost` type, and otherwise `http`, `models`, `contract` and its own `request` / `response`. Extras: `anthropic/route` -> `config` (`authenticate`) and `openai/sampling`; `completions/route` -> `openai/fanout`, `openai/sampling` and the Chat error encoder; `responses/route` -> the Chat error encoder (same body shape); `gemini/route` -> `openai/sampling`. `runtime` -> `session/history` (`ensureAppDir`), `session/prune`, `session/state`; `session/caller` -> `config` (app name pattern), `history`, `media`, `events`, `seeds`; `session/events` -> `contract`; `session/context` -> `state`, `seeds`; `config` -> `session/media` (`parseAllowEntry`). Pure codecs (`openai/request`, `openai/response`, `completions/request`, `completions/response`, `responses/request`, `responses/response`, `anthropic/request`, `anthropic/response`, `gemini/request`, `gemini/response`) import no `node:http`, Effect, filesystem or host types. Session code does not import the OpenAI front-end or reach for a global accessor: the process store is passed in.

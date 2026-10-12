@@ -2,7 +2,7 @@
 
 OpenCode V2 plugin that serves an OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`, `/v1/models/{id}`, `/healthz`) from inside an OpenCode server, using that server's connected providers. Tool calls go back to the caller; OpenCode never runs them. Start with `docs/architecture.md`: it explains the three lifetimes (plugin generation, HTTP request, host execution) that most bugs here come from mixing up.
 
-`STRUCTURE.md` maps every directory and says where new code goes. The numbered invariants (I1 to I22) in `docs/architecture.md` are the rules a change must not break; cite them by number in commits and reviews.
+`STRUCTURE.md` maps every directory and says where new code goes. The numbered invariants (I1 to I24) in `docs/architecture.md` are the rules a change must not break; cite them by number in commits and reviews.
 
 ## Commands
 
