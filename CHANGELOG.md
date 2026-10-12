@@ -14,7 +14,28 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Per-app usage statistics** ([#139](https://github.com/jjjermiah/opencode-plugboard/issues/139), [#140](https://github.com/jjjermiah/opencode-plugboard/issues/140)). Plugboard now keeps, per app and per UTC day: requests, errors by class, latency (p50/p95), tokens by kind, estimated cost at catalog list prices, cache hits, fallbacks, 429 refusals and each model's share. Read it with `GET /v1/usage?from=2026-10-01&to=2026-10-12`. An app key sees only its own app; the new `adminKey` option sees every app:
+
+  ```jsonc
+  "adminKey": "{env:PLUGBOARD_ADMIN_KEY}",
+  "usage": { "retentionDays": 90 }   // on by default; { "enabled": false } turns it off
+  ```
+
+  OpenCode clients can read the same report over OpenCode's own API through the new `opencode-plugboard/rpc` entry (`opencode-plugboard.usage` / `get`), which is what the upcoming dashboard and TUI page build on. Records reach OpenCode's plugin storage at most every ten seconds, so a restart during a quiet stretch can lose the last few seconds of counts. Cost is an estimate, not a bill.
+- **Token counting endpoints** ([#143](https://github.com/jjjermiah/opencode-plugboard/issues/143), [#144](https://github.com/jjjermiah/opencode-plugboard/issues/144)). `POST /v1/messages/count_tokens` and Gemini `:countTokens` answer instead of 404, so clients that budget context before sending (Claude Code, the Anthropic and Gemini SDKs) work. The count is an estimate (characters / 4 plus a fixed cost per image or file), not the provider's exact tokenizer.
+- **Anthropic stop sequences** ([#145](https://github.com/jjjermiah/opencode-plugboard/issues/145)). When one of your `stop_sequences` ends the answer, `/v1/messages` reports `stop_reason: "stop_sequence"` with the matched sequence and strips it from the text.
+- **Spec conformance tests** ([#107](https://github.com/jjjermiah/opencode-plugboard/issues/107), [#148](https://github.com/jjjermiah/opencode-plugboard/issues/148)). OpenAI and Gemini responses are validated against vendored upstream schemas, and the compat matrix (now 203 passing cells) separates "not applicable" from "not written yet".
+
+### Fixed
+
+- **Removing or rotating a key takes effect immediately** ([#90](https://github.com/jjjermiah/opencode-plugboard/issues/90)). Before, a removed key kept working until restart while an older plugin instance (for example an app directory that had not reloaded) was still serving. Adding a new key, or any other option change, still needs a restart.
+
+### Changed
+
+- The ratcheting test floors moved from `.ci/` to `.github/floors/`.
+- Internal runtime version 12. Restart OpenCode after upgrading.
 
 ## [0.16.0] - 2026-10-11: Knock Before Entering
 
