@@ -57,7 +57,7 @@ Sampling parameters follow the same `dropUnsupportedParams` rule as Chat Complet
 A 400 `invalid_request_error` whose message names the field, for example `tools.0.type: "web_search_20250305" is not supported`:
 
 - Tools that are not custom tools: server tools (`web_search`, `web_fetch`, `code_execution`, ...) run on Anthropic's side, and the versioned `computer`, `bash` and `text_editor` tools are not available.
-- `mcp_servers`, `output_config.format` (structured outputs).
+- `mcp_servers`, `output_config.format` (structured outputs). For JSON, see [structured extraction with a forced tool](#structured-extraction-with-a-forced-tool).
 - Content blocks plugboard cannot use: `server_tool_use`, `web_search_tool_result`, `mcp_tool_use`, `search_result`, files by `file_id`, and so on.
 - A `tool_result` whose `tool_use_id` no earlier `tool_use` block has, and `tool_choice` naming a tool that is not in `tools`.
 - A missing `max_tokens`, `messages` or `model`, values out of range, and more tools than the `maxTools` option.
@@ -99,3 +99,74 @@ message_stop
 ```
 
 Tool calls arrive whole from the model, so each call is a single `input_json_delta`. Thinking blocks carry an empty `signature`. Nothing is sent until there is output, so a failure before the first token is a real HTTP error. A failure after that ends the stream with an `event: error` frame (`{"type":"error","error":{"type","message"}}`) and no `message_stop`.
+
+## Structured extraction with a forced tool
+
+Anthropic structured outputs (`output_config.format`) are refused here. A client that speaks only the Anthropic API can still get JSON: define a tool whose `input_schema` is the schema you want, and set `tool_choice` to that tool. The `input` of the tool call is the answer.
+
+Plugboard applies a named `tool_choice` as an instruction, because the OpenCode session has no tool-choice control. So the model can still answer in text. Handle a reply with no `tool_use` block, and check the input against the schema in your own code: the schema is not enforced, the same as `json_schema` on the other routes. One optional field came back as the string `"null"` in one of three samples, for example.
+
+Python, with pydantic:
+
+```python
+import os
+
+import anthropic
+from pydantic import BaseModel
+
+
+class Invoice(BaseModel):
+    vendor: str
+    total: float
+    currency: str | None = None
+
+
+client = anthropic.Anthropic(base_url="http://localhost:4010", api_key=os.environ["PLUGBOARD_KEY"])
+
+
+def extract_invoice(text: str) -> Invoice:
+    r = client.messages.create(
+        model="fast",
+        max_tokens=1024,
+        tools=[{"name": "record_invoice", "description": "Record the invoice.", "input_schema": Invoice.model_json_schema()}],
+        tool_choice={"type": "tool", "name": "record_invoice"},
+        messages=[{"role": "user", "content": text}],
+    )
+    calls = [b for b in r.content if b.type == "tool_use"]
+    if not calls:
+        raise ValueError("the model answered in text, not with record_invoice")
+    return Invoice.model_validate(calls[0].input)  # the schema is not enforced: validate here
+```
+
+TypeScript:
+
+```ts
+import Anthropic from "@anthropic-ai/sdk"
+
+const client = new Anthropic({ baseURL: "http://localhost:4010", apiKey: process.env.PLUGBOARD_KEY })
+
+const invoiceSchema: Anthropic.Tool.InputSchema = {
+  type: "object",
+  properties: {
+    vendor: { type: "string" },
+    total: { type: "number" },
+    currency: { type: ["string", "null"] },
+  },
+  required: ["vendor", "total"],
+}
+
+export async function extractInvoice(text: string): Promise<unknown> {
+  const r = await client.messages.create({
+    model: "fast",
+    max_tokens: 1024,
+    tools: [{ name: "record_invoice", description: "Record the invoice.", input_schema: invoiceSchema }],
+    tool_choice: { type: "tool", name: "record_invoice" },
+    messages: [{ role: "user", content: text }],
+  })
+  const call = r.content.find((b) => b.type === "tool_use")
+  if (call?.type !== "tool_use") throw new Error("the model answered in text, not with record_invoice")
+  return call.input // the schema is not enforced: validate before use
+}
+```
+
+The recipe works through plugboard's own Anthropic route, so it needs the same key and model setup as any other call on `/v1/messages`.
