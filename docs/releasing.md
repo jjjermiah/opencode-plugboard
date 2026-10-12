@@ -83,6 +83,23 @@ gh attestation verify opencode-plugboard-X.Y.Z.tgz --repo jjjermiah/opencode-plu
 - **Nightly** (`nightly.yml`, 03:17 UTC, also "Run workflow"): a fresh install without `bun.lock` or the package cache, then typecheck, tests, pack check and the smoke test. It catches drift in unpinned dependencies. Not required.
 - **Host bump** (`host-bump.yml`, Mondays, also "Run workflow"): when a newer 2.0.x is published, opens a PR that bumps the pinned `@opencode/plugin` and `effect` dev dependencies, with the typecheck and test result in the body (a draft when either failed). Not required. The repository setting "Allow GitHub Actions to create and approve pull requests" must be on, and a PR made with the default token does not start CI by itself, so push an empty commit to it or close and reopen it.
 
+## OpenCode releases
+
+Two daily jobs watch for a new OpenCode, so a host release reaches a pull request within a day, not a week.
+
+- **`host-bump.yml`** (06:23 UTC). When `@opencode/plugin` has a newer version inside the peer range than the pinned one, it opens or updates `build(deps): support opencode <v>` (branch `deps/opencode-<v>`). The pull request pins that version and the `effect` it pins, widens the peers only where the new version needs it, and runs typecheck, tests, the TUI build, check-pack and smoke-pack. The `effect` peer gets the new version appended to its `||` list. The `@opencode/plugin` upper bound moves only when the new version is 2.1 or later, and the pull request says so. The host matrix (`.github/scripts/host-versions.ts`) reads the peer range, so the new version joins the `host` job without any list edit.
+- **`opencode-release.yml`** (05:41 UTC). Installs the newest `@opencode/cli-linux-x64` in CI, starts `opencode serve` with its own HOME and plugboard loaded from the checkout as a local plugin, and checks that `/api/plugin` lists plugboard as active and `/healthz` answers 200. No provider credentials, so no model call. The same check runs by hand: `bun .github/scripts/opencode-load-check.ts --bin <opencode>`.
+
+What happens:
+
+- **All gates green.** The pull request is labelled `dependencies` and set to auto-merge. A pull request opened with `GITHUB_TOKEN` starts no workflow, so `host-bump.yml` starts `ci.yml` and `commits.yml` on its branch. Those are the required checks, so the merge waits for them and lands on its own.
+- **A gate red.** The pull request is a draft with the failing log tails, and the issue `OpenCode <v> breaks plugboard` links the run. A host type change usually shows in `src/session/host.ts` (`HostContextMatches`). Fix it on the branch, or close the pull request and keep the issue.
+- **The load check red** (`opencode-release.yml`). No pull request, only the issue. Plugboard does not load in that host: reproduce with the command above.
+- **A new major of `@opencode/plugin`.** `host-bump.ts` stops, because the peer range for a new major is a decision. The run fails and the issue is filed.
+- **The pong gate stays manual.** CI has no provider credentials, so a host change still needs a real prompt on an isolated server (`docs/development.md`) before the change counts.
+
+The jobs read the default branch. A new script or workflow only starts running after it merges to `main`.
+
 ## Prove the pipeline without releasing
 
 Actions tab, "Publish", "Run workflow" on `main` with `dry_run` ticked (the default), or:
