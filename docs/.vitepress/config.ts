@@ -77,6 +77,7 @@ export default defineConfig({
           { text: "AnythingLLM", link: "/clients/anythingllm" },
           { text: "SillyTavern", link: "/clients/sillytavern" },
           { text: "Cline", link: "/clients/cline" },
+          { text: "Roo Code", link: "/clients/roo-code" },
         ],
       },
       {
