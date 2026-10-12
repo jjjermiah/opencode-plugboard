@@ -1,0 +1,71 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Reply with exactly: pong",
+              "role": "user"
+            }
+          ],
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": null,
+                "refusal": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{}",
+                      "name": "Realtime-2.5-flash-2025-15‸none…I'm just a language model, so I can't actually play ping pong — but if you'd like, I can type \"pong\" back at you. 😄"
+                    },
+                    "id": "<id-2>",
+                    "type": "function"
+                  }
+                ]
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-3>",
+          "model": "fast",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 52,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 17,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 69
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=17; output=52; cache_read=0; cache_write=0; cost_usd=0.000029"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

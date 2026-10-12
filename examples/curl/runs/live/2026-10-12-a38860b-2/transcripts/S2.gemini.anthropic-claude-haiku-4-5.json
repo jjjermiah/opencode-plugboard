@@ -1,0 +1,188 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "What is the weather in Paris? Use the tool."
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "description": "Current weather for a city",
+                  "name": "get_weather",
+                  "parameters": {
+                    "properties": {
+                      "city": {
+                        "description": "City name",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "city"
+                    ],
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/anthropic%2Fclaude-haiku-4-5:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "functionCall": {
+                      "args": {
+                        "city": "Paris"
+                      },
+                      "name": "get_weather"
+                    }
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "anthropic/claude-haiku-4-5",
+          "responseId": "<id-2>",
+          "usageMetadata": {
+            "candidatesTokenCount": 69,
+            "promptTokenCount": 606,
+            "totalTokenCount": 675
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=606; output=69; cache_read=0; cache_write=0; cost_usd=0.000951"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "What is the weather in Paris? Use the tool."
+                }
+              ],
+              "role": "user"
+            },
+            {
+              "parts": [
+                {
+                  "functionCall": {
+                    "args": {
+                      "city": "Paris"
+                    },
+                    "name": "get_weather"
+                  }
+                }
+              ],
+              "role": "model"
+            },
+            {
+              "parts": [
+                {
+                  "functionResponse": {
+                    "name": "get_weather",
+                    "response": {
+                      "sky": "cloudy",
+                      "temp_c": 18
+                    }
+                  }
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "description": "Current weather for a city",
+                  "name": "get_weather",
+                  "parameters": {
+                    "properties": {
+                      "city": {
+                        "description": "City name",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "city"
+                    ],
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/anthropic%2Fclaude-haiku-4-5:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "The weather in Paris is currently:\n- **Temperature**: 18°C (about 64°F)\n- **Sky**: Cloudy\n\nIt's a mild, overcast day in Paris."
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "anthropic/claude-haiku-4-5",
+          "responseId": "<id-4>",
+          "usageMetadata": {
+            "candidatesTokenCount": 46,
+            "promptTokenCount": 699,
+            "totalTokenCount": 745
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-3>",
+          "x-plugboard-usage": "input=699; output=46; cache_read=0; cache_write=0; cost_usd=0.000929"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

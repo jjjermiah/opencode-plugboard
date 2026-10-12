@@ -1,0 +1,188 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "What is the weather in Paris? Use the tool."
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "description": "Current weather for a city",
+                  "name": "get_weather",
+                  "parameters": {
+                    "properties": {
+                      "city": {
+                        "description": "City name",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "city"
+                    ],
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/fast:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "functionCall": {
+                      "args": {
+                        "city": "Paris"
+                      },
+                      "name": "get_weather"
+                    }
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "fast",
+          "responseId": "<id-2>",
+          "usageMetadata": {
+            "candidatesTokenCount": 23,
+            "promptTokenCount": 177,
+            "totalTokenCount": 200
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=177; output=23; cache_read=0; cache_write=0; cost_usd=0.000038"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "What is the weather in Paris? Use the tool."
+                }
+              ],
+              "role": "user"
+            },
+            {
+              "parts": [
+                {
+                  "functionCall": {
+                    "args": {
+                      "city": "Paris"
+                    },
+                    "name": "get_weather"
+                  }
+                }
+              ],
+              "role": "model"
+            },
+            {
+              "parts": [
+                {
+                  "functionResponse": {
+                    "name": "get_weather",
+                    "response": {
+                      "sky": "cloudy",
+                      "temp_c": 18
+                    }
+                  }
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "description": "Current weather for a city",
+                  "name": "get_weather",
+                  "parameters": {
+                    "properties": {
+                      "city": {
+                        "description": "City name",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "city"
+                    ],
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/fast:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "The current weather in Paris is **18°C** with a **cloudy** sky. 🌥️"
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "fast",
+          "responseId": "<id-4>",
+          "usageMetadata": {
+            "candidatesTokenCount": 46,
+            "promptTokenCount": 204,
+            "totalTokenCount": 250
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-3>",
+          "x-plugboard-usage": "input=204; output=46; cache_read=0; cache_write=0; cost_usd=0.000054"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
