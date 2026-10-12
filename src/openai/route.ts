@@ -148,7 +148,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const path = url.pathname
     const modelId = request.method === "GET" && path.startsWith(MODEL_PREFIX) && path.length > MODEL_PREFIX.length ? decodeSegment(path.slice(MODEL_PREFIX.length)) : undefined
     const gemini = matchGeminiRoute(request.method, path)
-    if (gemini) googleErrors.add(response)
+    // Any /v1beta path is Google's API, even one that matches no Gemini route (#150): its errors use Google's body.
+    const googleShaped = gemini !== undefined || path === "/v1beta" || path.startsWith("/v1beta/")
+    if (googleShaped) googleErrors.add(response)
     const route = gemini?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
     info.route = gemini || modelId !== undefined || known(route) || route === "GET /healthz" ? route : "unknown"
@@ -181,9 +183,18 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but /healthz and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
-    const auth = authenticate(liveOptions(host.options), gemini ? geminiAuthorization(request, url) : request.headers.authorization)
+    const auth = authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization)
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
+
+    // A /v1beta path no Gemini route matches: the AI SDK and LangChain send a model id with a slash and no `models/` prefix (#150).
+    if (googleShaped && !gemini)
+      return fail(response, {
+        status: 404,
+        kind: "not_found",
+        code: "not_found",
+        message: `No Gemini route for ${request.method} ${path}. Expected POST /v1beta/models/{model}:generateContent or POST /v1beta/models/{model}:streamGenerateContent; the path must start with /v1beta/models/. GET /v1beta/models lists the models.`,
+      })
 
     if (!gemini && modelId === undefined && !known(route)) {
       return fail(response, {
