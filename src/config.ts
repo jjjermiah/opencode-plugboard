@@ -543,24 +543,32 @@ function digestsOf(keys: Readonly<Record<string, string>>): ReadonlyArray<readon
 /** Who may read `GET /v1/usage`: the admin key (every app), or one app (`default` when keyless). */
 export type UsageScope = { readonly admin: true } | { readonly admin: false; readonly app: string }
 
+/** The digest of a runtime key (src/keys.ts), with its app: checked like a config key (#55). */
+export type RuntimeDigest = readonly [app: string, digest: Buffer]
+
 /** The admin key is checked first; any other valid key (or keyless mode) is an app, as `authenticate` decides. */
-export function authenticateUsage(options: PlugboardOptions, authorization: string | undefined): UsageScope | PlugError {
+export function authenticateUsage(options: PlugboardOptions, authorization: string | undefined, runtime: ReadonlyArray<RuntimeDigest> = []): UsageScope | PlugError {
   const bearer = /^Bearer\s+(\S+)\s*$/i.exec(authorization ?? "")?.[1]
   if (options.adminKey !== undefined && bearer !== undefined && timingSafeEqual(sha256(bearer), sha256(options.adminKey))) return { admin: true }
-  const auth = authenticate(options, authorization)
+  const auth = authenticate(options, authorization, runtime)
   if (isPlugError(auth)) return auth
   return { admin: false, app: auth.app }
 }
 
-/** No keys -> app `default`; with keys every request needs `Authorization: Bearer <key>`. */
-export function authenticate(options: PlugboardOptions, authorization: string | undefined): { app: string } | PlugError {
+/**
+ * No config keys -> app `default` (keyless), as before. With config keys every request needs
+ * `Authorization: Bearer <key>`. A runtime key (#55) matches like a config key, so it names its app
+ * whenever it is presented. It never makes a keyless server require a key, so deleting the last
+ * runtime key cannot open or close access by itself.
+ */
+export function authenticate(options: PlugboardOptions, authorization: string | undefined, runtime: ReadonlyArray<RuntimeDigest> = []): { app: string } | PlugError {
   const entries = digestsOf(options.keys)
-  if (entries.length === 0) return { app: DEFAULT_APP }
   const token = /^Bearer\s+(\S+)\s*$/i.exec(authorization ?? "")?.[1]
-  if (!token) return UNAUTHORIZED
+  if (token === undefined) return entries.length === 0 ? { app: DEFAULT_APP } : UNAUTHORIZED
   const digest = sha256(token)
   let app: string | undefined
   // Every key is compared, no early exit.
-  for (const [name, expected] of entries) if (timingSafeEqual(digest, expected)) app = name
-  return app === undefined ? UNAUTHORIZED : { app }
+  for (const [name, expected] of [...entries, ...runtime]) if (timingSafeEqual(digest, expected)) app = name
+  if (app !== undefined) return { app }
+  return entries.length === 0 ? { app: DEFAULT_APP } : UNAUTHORIZED
 }

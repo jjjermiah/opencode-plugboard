@@ -26,10 +26,11 @@ import { withFallbacks } from "./src/fallback.js"
 import { withBudgets } from "./src/budgets.js"
 import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processLimits, processMetrics, processUsage, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
+import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processKeys, processLimits, processMetrics, processUsage, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
+import { createKeyStore } from "./src/keys.js"
 import { usageHandlers, UsageRpc } from "./src/rpc.js"
 import { createUsageRecorder, withUsage } from "./src/usage.js"
 
@@ -118,6 +119,8 @@ export default Plugin.define({
         ),
         loadCatalog: servingCatalog,
         usage,
+        // Runtime app keys (#55): read from storage on the first authentication, cached on the runtime.
+        keys: createKeyStore({ state: processKeys(), storage: createStoragePort(ctx) }),
       })
       const registration = registerGeneration({
         listen: options.listen,

@@ -11,7 +11,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start. |
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
-| `adminKey` | none | A key that reads every app's usage at `GET /v1/usage`. It must differ from every app key. It is not an app key: it cannot call the model routes. See [Usage statistics](#usage-statistics). |
+| `adminKey` | none | A key that reads every app's usage at `GET /v1/usage` and manages app keys at runtime under `/v1/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
 | `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools? }`: per-app model scope, system prompt and tool policy. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks). |
@@ -256,6 +256,27 @@ Persistence: each day is written to OpenCode's plugin storage at most every 10 s
 - The charts use [uPlot](https://github.com/leeoniya/uPlot) (MIT), a pinned dependency that plugboard serves itself from `/dashboard/uplot.js` and `/dashboard/uplot.css`. Nothing loads from another origin, and the page sends no inline script or style. The policy is `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ...` (see `src/dashboard/page.ts`).
 - Days are UTC, so "today" starts at 00:00 UTC.
 - With `usage: { "enabled": false }` the page and its files are not served, and the discovery pages do not link them.
+
+## Admin keys
+
+With `adminKey` set, the admin key also adds and revokes app keys at runtime, so a tool gets a key without a config edit and an OpenCode reload.
+
+- `GET /v1/admin/keys` lists the config keys and the runtime keys as `{ keys: [{ id, app, source, createdAt? }] }`. `source` is `config` or `runtime`. No key value is ever listed.
+- `POST /v1/admin/keys` with body `{ "app": "bot" }` creates a random key for that app and answers 201 with `{ id, app, key, createdAt }`. The `key` is shown once. Store it then; the server keeps only a digest.
+- `DELETE /v1/admin/keys/{id}` revokes a runtime key. The next request with it gets 401.
+
+```sh
+curl -H "Authorization: Bearer $ADMIN_KEY" -H "content-type: application/json" -d '{"app":"bot"}' http://127.0.0.1:4010/v1/admin/keys
+```
+
+Rules:
+
+- Without `adminKey` these paths are 404. Any credential other than the admin key is 401.
+- The app name follows the config rule (`[a-z0-9-]+`, and not `default`). An app that already has a key in `keys` is 409: change that key in the config.
+- A config key cannot be revoked through the API (409). Remove it from `keys` and reload.
+- A runtime key is stored under the plugin's host storage as the SHA-256 of the key, not as the key. Its `id` is the first 8 hex characters of that digest. Runtime keys survive a config reload and a server restart.
+- A runtime key names its app on every request that presents it. It does not make a keyless server require a key: with no config keys, a request without a key stays the app `default`. Deleting the last runtime key therefore never opens or closes access by itself.
+- Runtime apps have no `apps` policy. An `apps` entry needs a key in `keys`, so a runtime app gets the global settings only.
 
 ## Limits and errors
 

@@ -9,9 +9,11 @@ import { ev } from "../support/fixtures.js"
 import { startRoute, type RouteServer } from "../support/loopback.js"
 import { FakeStorage } from "../support/usage.js"
 import { createUsageRecorder, createUsageState } from "../../src/usage.js"
+import { createKeyState, createKeyStore } from "../../src/keys.js"
 import { FakeModelCaller } from "../support/model-caller.js"
 
 const KEYS = { alpha: "key-alpha-secret" }
+const ADMIN = "admin-root-secret"
 const headers = { authorization: `Bearer ${KEYS.alpha}` }
 
 /** [method, a path the router answers, the template the document lists]. */
@@ -50,6 +52,13 @@ const start = async () => {
 }
 const listed = async (): Promise<Array<{ method: string; path: string }>> => (await server!.send({ path: "/v1", headers })).json().endpoints
 
+/** Admin endpoints (#55) are listed and served only when `adminKey` is set. */
+const ADMIN_PROBES: ReadonlyArray<readonly [string, string, string]> = [
+  ["GET", "/v1/admin/keys", "/v1/admin/keys"],
+  ["POST", "/v1/admin/keys", "/v1/admin/keys"],
+  ["DELETE", "/v1/admin/keys/00000000", "/v1/admin/keys/{keyId}"],
+]
+
 describe("#136 the discovery document lists every endpoint the router serves", () => {
   test.each(PROBES)("%s %s is served and listed as %s", async (method, path, template) => {
     await start()
@@ -61,5 +70,29 @@ describe("#136 the discovery document lists every endpoint the router serves", (
   test("the document lists no endpoint that the probes do not reach", async () => {
     await start()
     expect((await listed()).map((endpoint) => `${endpoint.method} ${endpoint.path}`).sort()).toEqual(PROBES.map(([method, , template]) => `${method} ${template}`).sort())
+  })
+})
+
+describe("#55 the admin endpoints are listed and served only with adminKey", () => {
+  const startAdmin = async () => {
+    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { keys: KEYS, adminKey: ADMIN }, keys: createKeyStore({ state: createKeyState(), storage: new FakeStorage() }) })
+    return server
+  }
+
+  test.each(ADMIN_PROBES)("%s %s is served with the admin key and listed as %s", async (method, path, template) => {
+    await startAdmin()
+    const reply = await server!.send({ method, path, headers: { authorization: `Bearer ${ADMIN}` }, ...(method === "POST" ? { body: { app: "bot" } } : {}) })
+    expect(reply.status === 404 && reply.text.includes("No route for")).toBe(false)
+    expect(await listed()).toContainEqual(expect.objectContaining({ method, path: template }))
+  })
+
+  test("the document lists the admin endpoints when adminKey is set, and not without it", async () => {
+    await startAdmin()
+    const withAdmin = (await listed()).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
+    expect(withAdmin).toEqual(expect.arrayContaining(ADMIN_PROBES.map(([method, , template]) => `${method} ${template}`)))
+    await server!.close()
+    await start()
+    const without = (await listed()).map((endpoint) => `${endpoint.method} ${endpoint.path}`)
+    expect(without.some((line) => line.includes("/v1/admin/keys"))).toBe(false)
   })
 })

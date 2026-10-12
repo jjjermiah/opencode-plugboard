@@ -28,6 +28,22 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I25-app-key-reads-admin-routes",
+    invariant: "I25",
+    file: "src/admin/route.ts",
+    find: "  if (isPlugError(who) || !who.admin) return fail(",
+    replace: "  if (isPlugError(who)) return fail(",
+    tests: ["test/http/admin.test.ts"],
+  },
+  {
+    id: "I25-runtime-key-stored-in-clear",
+    invariant: "I25",
+    file: "src/keys.ts",
+    find: "await storage.put(PREFIX + id, JSON.stringify({ app, digest: digest.toString(\"hex\"), createdAt }))",
+    replace: "await storage.put(PREFIX + id, JSON.stringify({ app, digest: digest.toString(\"hex\"), createdAt, key }))",
+    tests: ["test/unit/keys.test.ts"],
+  },
+  {
     id: "I8-request-session-allows-tools",
     invariant: "I8",
     file: "src/session/seeds.ts",

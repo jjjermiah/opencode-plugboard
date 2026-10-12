@@ -21,6 +21,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
+import { serveAdmin } from "../admin/route.js"
 import { DEFAULT_APP, authenticate, authenticateUsage, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, renderDiscoveryHtml, sendText } from "../discovery.js"
@@ -52,6 +53,7 @@ import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import { budgetFor, budgetStatus } from "../budgets.js"
+import type { KeyStore } from "../keys.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
@@ -72,6 +74,8 @@ export interface RouteHost {
   readonly status?: () => RuntimeStatus
   /** Per-app usage (`src/usage.ts`): fed from the request log point, and served by `GET /v1/usage` when present. */
   readonly usage?: UsageRecorder
+  /** Runtime app keys (src/keys.ts, #55): their digests authenticate, and the admin routes (src/admin/route.ts) read them. */
+  readonly keys?: KeyStore
 }
 
 const SESSION_HEADER = "x-plugboard-session"
@@ -123,6 +127,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   const metrics = routeHost.options.metrics ? (routeHost.metrics ?? processMetrics()) : undefined
   const runtimeStatus = routeHost.status ?? processStatus
   const host: RouteHost = metrics ? { ...routeHost, caller: metered(routeHost.caller, metrics) } : routeHost
+  /** The runtime app keys that authenticate (loaded from storage on first use, #55). */
+  const runtimeDigests = async () => (host.keys ? await host.keys.digests() : [])
   /** Routes with a handler of their own. `GET /metrics` exists only when enabled; otherwise it is an unknown path. */
   const known = (route: string) =>
     KNOWN_ROUTES.includes(route) ||
@@ -176,7 +182,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const keyed = Object.keys(host.options.keys).length > 0
       let app: string | undefined = keyed ? undefined : DEFAULT_APP
       if (keyed && request.headers.authorization !== undefined) {
-        const auth = authenticate(liveOptions(host.options), request.headers.authorization)
+        const auth = authenticate(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
         if (isPlugError(auth)) return fail(response, auth)
         app = auth.app
       }
@@ -192,9 +198,13 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // Usage has its own credentials: the admin key reads every app, any other key only its own app (`authenticateUsage`).
     if (route === "GET /v1/usage" && host.usage) return serveUsage(request, response, url, host.usage, info)
 
+    // Runtime app keys (#55): the admin routes answer the admin key only, and are a 404 without `adminKey`.
+    if (path === "/v1/admin/keys" || path.startsWith("/v1/admin/keys/"))
+      return serveAdmin({ options: liveOptions(host.options), keys: host.keys }, { path, request, response, scope, info })
+
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but /healthz and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
-    const auth = authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization)
+    const auth = authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
 
@@ -318,7 +328,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
   /** `GET /v1/usage?from=&to=&app=`. An app key may name only its own app (another one is a 403); the admin key may name any app or none. */
   async function serveUsage(request: IncomingMessage, response: ServerResponse, url: URL, usage: UsageRecorder, info: RequestInfo): Promise<void> {
-    const who = authenticateUsage(liveOptions(host.options), request.headers.authorization)
+    const who = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
     if (isPlugError(who)) return fail(response, who)
     const app = url.searchParams.get("app") ?? undefined
     if (!who.admin) {

@@ -63,11 +63,12 @@ const header = (request: IncomingMessage, name: string): string | undefined => {
 }
 
 /** `Authorization: Bearer` first (Claude Code with ANTHROPIC_AUTH_TOKEN), then `x-api-key` (the Anthropic SDKs). One key store. */
-const authenticateRequest = (host: RouteHost, request: IncomingMessage) => {
+const authenticateRequest = async (host: RouteHost, request: IncomingMessage) => {
   const options = liveOptions(host.options)
-  const bearer = authenticate(options, request.headers.authorization)
+  const runtime = host.keys ? await host.keys.digests() : []
+  const bearer = authenticate(options, request.headers.authorization, runtime)
   const apiKey = header(request, "x-api-key")
-  return isPlugError(bearer) && apiKey ? authenticate(options, `Bearer ${apiKey}`) : bearer
+  return isPlugError(bearer) && apiKey ? authenticate(options, `Bearer ${apiKey}`, runtime) : bearer
 }
 
 export async function serveMessages(host: RouteHost, call: MessagesCall): Promise<void> {
@@ -94,7 +95,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const rejected = checkOrigin(request, host.options)
     if (rejected) return fail(rejected)
     // Authenticate before the method check, so an unauthenticated caller cannot map this path (#137).
-    const auth = authenticateRequest(host, request)
+    const auth = await authenticateRequest(host, request)
     if (isPlugError(auth)) return fail(auth)
     info.app = auth.app
     if (request.method !== "POST")

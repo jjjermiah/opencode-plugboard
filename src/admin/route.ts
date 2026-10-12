@@ -1,0 +1,81 @@
+/**
+ * Admin routes for runtime app keys (#55): `GET /v1/admin/keys` (keys without values),
+ * `POST /v1/admin/keys` with body `{ "app": "<name>" }` (a new random key, returned once) and
+ * `DELETE /v1/admin/keys/{keyId}` (revokes a runtime key; a config key is a 409).
+ *
+ * The routes exist only when option `adminKey` is set: without it every path here is a 404. Only the
+ * admin key passes; an app key, a wrong key or no key is a 401. src/openai/route.ts dispatches here
+ * after the origin check and before app authentication, so an app key never reaches them.
+ */
+
+import type { IncomingMessage, ServerResponse } from "node:http"
+import { APP_NAME_PATTERN, DEFAULT_APP, authenticateUsage, type PlugboardOptions } from "../config.js"
+import { isPlugError, type PlugError } from "../contract.js"
+import { checkJsonContentType, readJsonBody, sendError, sendJson, type RequestScope } from "../http.js"
+import type { KeyStore } from "../keys.js"
+import { log } from "../log.js"
+import { encodeError } from "../openai/response.js"
+
+export interface AdminHost {
+  /** The live options (`liveOptions`): the config keys, and `adminKey`. */
+  readonly options: PlugboardOptions
+  /** The runtime key store; absent means the admin routes are not served. */
+  readonly keys?: KeyStore
+}
+
+export interface AdminCall {
+  readonly path: string
+  readonly request: IncomingMessage
+  readonly response: ServerResponse
+  readonly scope: RequestScope
+  /** The route's log fields: the route name is set here, so the request log names the admin route. */
+  readonly info: { route: string; app?: string }
+}
+
+const KEYS = "/v1/admin/keys"
+const ONE_KEY = /^\/v1\/admin\/keys\/([0-9a-f]{8})$/
+
+export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void> {
+  const { path, request, response, scope, info } = call
+  const fail = (error: PlugError) => sendError(response, error, encodeError(error))
+  const { keys } = host
+  if (host.options.adminKey === undefined || keys === undefined)
+    return fail({ status: 404, kind: "not_found", code: "not_found", message: `No route for ${request.method} ${path}` })
+
+  const who = authenticateUsage(host.options, request.headers.authorization, await keys.digests())
+  if (isPlugError(who) || !who.admin) return fail({ status: 401, kind: "authentication", code: "invalid_api_key", message: "Missing or invalid admin key" })
+
+  const id = ONE_KEY.exec(path)?.[1]
+  if (path === KEYS && request.method === "GET") {
+    info.route = "GET /v1/admin/keys"
+    return sendJson(response, 200, { keys: await keys.list(host.options.keys) })
+  }
+  if (path === KEYS && request.method === "POST") {
+    info.route = "POST /v1/admin/keys"
+    const unsupported = checkJsonContentType(request)
+    if (unsupported) return fail(unsupported)
+    const body = await readJsonBody(request, scope.signal)
+    const app = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as { app?: unknown }).app : undefined
+    if (typeof app !== "string" || app === DEFAULT_APP || !APP_NAME_PATTERN.test(app))
+      return fail({ status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: `\`app\` must match ${APP_NAME_PATTERN} and must not be \`${DEFAULT_APP}\`` })
+    if (Object.hasOwn(host.options.keys, app))
+      return fail({ status: 409, kind: "invalid_request", code: "app_has_config_key", param: "app", message: `App ${app} already has a key in the plugboard config; edit \`keys\` to change it` })
+    const created = await keys.create(app, host.options.keys)
+    log("admin.key_created", { id: created.id, app })
+    // The key value is shown once: a cache or a log of this response must not keep it.
+    response.setHeader("cache-control", "no-store")
+    return sendJson(response, 201, created)
+  }
+  if (id !== undefined && request.method === "DELETE") {
+    info.route = "DELETE /v1/admin/keys/{keyId}"
+    const result = await keys.revoke(id, host.options.keys)
+    if (result === "config")
+      return fail({ status: 409, kind: "invalid_request", code: "config_key", message: "This key is set in the plugboard config (`keys`). Remove it there and reload OpenCode." })
+    if (result === "not_found") return fail({ status: 404, kind: "not_found", code: "key_not_found", message: `No runtime key ${id}` })
+    log("admin.key_revoked", { id })
+    return sendJson(response, 200, { id, revoked: true })
+  }
+  if (path === KEYS || id !== undefined)
+    return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}` })
+  return fail({ status: 404, kind: "not_found", code: "not_found", message: `No route for ${request.method} ${path}` })
+}

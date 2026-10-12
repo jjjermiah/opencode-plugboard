@@ -15,6 +15,7 @@ import type { CatalogModel, ModelCaller } from "../../src/contract.js"
 import { createMetrics, type Metrics } from "../../src/metrics.js"
 import { createOpenAiRoute } from "../../src/openai/route.js"
 import type { UsageRecorder } from "../../src/usage.js"
+import type { KeyStore } from "../../src/keys.js"
 import type { RuntimeStatus } from "../../src/runtime.js"
 import { CATALOG, testOptions } from "./fixtures.js"
 
@@ -187,6 +188,8 @@ export interface RouteSetup {
   readonly status?: () => RuntimeStatus
   /** The usage recorder behind `GET /v1/usage` (and the request log point). Absent: no usage route. */
   readonly usage?: UsageRecorder
+  /** The runtime app key store (src/keys.ts, #55) behind the admin routes and runtime keys. Absent: no runtime keys. */
+  readonly keys?: KeyStore
 }
 
 /** The real OpenAI route behind a loopback listener, with a fake model caller and a fixed catalog. */
@@ -203,6 +206,7 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
     metrics,
     status: setup.status ?? (() => TEST_STATUS),
     ...(setup.usage ? { usage: setup.usage } : {}),
+    ...(setup.keys ? { keys: setup.keys } : {}),
   })
   return { ...server, options, metrics }
 }

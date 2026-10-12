@@ -32,6 +32,7 @@ These are the rules a change must not break. Tests, reviews and the mutation cat
 - **I22. The request id is made by the server.** It is never taken from the client, because it is echoed in a header and written to logs (`src/openai/route.ts` `handle`).
 - **I23. Usage is written from request handling only.** Setup builds the recorder from closures and makes no storage call. A change lands in a day held in memory, and the persist is debounced per day; a failed write is logged and the day stays in memory (`src/usage.ts` `createUsageRecorder`, `withUsage`).
 - **I24. Usage reads are scoped by key.** The admin key reads every app. An app key reads only its own app, and asking for another is a 403. The RPC returns every app, because OpenCode's own API is already authenticated by the server password (`src/config.ts` `authenticateUsage`, `src/openai/route.ts` `serveUsage`, `src/rpc.ts`).
+- **I25. Runtime app keys are stored as digests, read only from request handling, and the admin routes answer the admin key alone.** A key is shown once, by its create call; its record holds the SHA-256 of the key, never the key. The cache is filled by the first request that authenticates, never by setup, and a create or revoke writes storage before the cache, so a revoked key stops authenticating on the next request. Without `adminKey` the admin paths are 404; with it, every other credential is 401 (`src/keys.ts`, `src/admin/route.ts`, `src/config.ts` `authenticate`).
 
 ## Three lifetimes
 
@@ -59,6 +60,8 @@ OpenCode may load this module once per Location, or re-evaluate it on reload. An
 - **the limiter's queues and rate windows**: a concurrency cap or a requests-per-minute window must hold across generations (see [Concurrency and rate limits](#concurrency-and-rate-limits)).
 
 If a runtime written by a different version (runtime `VERSION`, currently 11) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
+
+**Runtime keys (#55).** Keys added through `/v1/admin/keys` live in the host storage under `keys/<id>` (`src/keys.ts`), and their digests are cached on the process runtime (`Runtime.runtimeKeys`, runtime `VERSION` 13) so they hold across plugin generations. `authenticate` compares a presented token with the config digests and then the runtime ones, in one pass with no early exit. A runtime key never decides whether a server is keyed: that stays with the config keys, so a keyless loopback server cannot be locked out or opened by deleting its last runtime key.
 
 **Key revocation (#90).** Authentication reads the live key set (`Runtime.keys`, through `liveOptions`), not the options captured by whichever generation serves. A config edit normally makes the host reload every Location's plugin at once, and the next generation adopts the new options. A Location that never reloaded (an app directory whose older generation stays live and serves) would otherwise keep the removed key, so a newer generation whose keys only remove apps or change their values replaces the live key set at once. The rule: no app added, at least one app left, and nothing else in the options differs. Any other difference is rejected until restart, because a project config entry must not be able to widen access or weaken authentication.
 
@@ -262,6 +265,8 @@ src/discovery.ts            `GET /`, `GET /v1` and `GET /v1/status` documents, H
 src/dashboard/page.ts        the usage dashboard page: static HTML, its CSP headers and its route names (pure)
 src/dashboard/assets.ts      serves the dashboard page and its files (`app.js`, `app.css`, uPlot), read once per process
 src/dashboard/app.js         the page's script (plain browser JS, no build); app.css is its stylesheet
+src/keys.ts                 runtime app keys (#55): the store on `ctx.storage` (`keys/<id>`, SHA-256 digests), the lazy cache on the runtime, create, list and revoke (see I25)
+src/admin/route.ts          the admin routes `/v1/admin/keys` (`GET`, `POST`) and `/v1/admin/keys/{keyId}` (`DELETE`), served only with `adminKey`
 src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store, history sweep state, metrics registry
 src/http.ts                 ingress: body limits, origin checks, disconnect abort, deadline, JSON/SSE transport
 src/openai/route.ts         front door and Chat Completions and /v1/models orchestration; dispatches POST /v1/messages, /v1/responses, /v1/completions and the Gemini paths
