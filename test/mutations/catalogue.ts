@@ -148,6 +148,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/caller.test.ts", "test/runtime/ensure-backend.test.ts"],
   },
   {
+    id: "I5-revoked-last-key-goes-keyless",
+    invariant: "I5",
+    file: "src/runtime.ts",
+    find: "rt.keys = REVOKED_KEYS",
+    replace: "rt.keys = keys",
+    tests: ["test/runtime/key-revocation.test.ts"],
+  },
+  {
     id: "I4-context-hook-active-without-confirmation",
     invariant: "I4",
     file: "src/session/context.ts",

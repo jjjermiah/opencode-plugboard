@@ -114,6 +114,8 @@ export async function runMessage(
   emit: (event: MessagesStreamEvent) => void,
 ): Promise<MessageRun> {
   const id = newId("msg")
+  // Only a non-streamed body needs the aggregate: a stream is already on the wire, so nothing grows (#153).
+  const aggregate = !exchange.stream
   const content: Block[] = []
   /** Blocks opened so far: the next block's `index`. */
   let nextIndex = 0
@@ -155,7 +157,7 @@ export async function runMessage(
     emit({ type: "content_block_stop", index: open.index })
     // The signature is always empty: the host does not expose the provider's thinking signature (#146), so a
     // replayed thinking block cannot carry the real one. Clients that replay thinking are told by the docs.
-    content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: "" })
+    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: "" })
     open = undefined
   }
   const releaseHeld = () => delta("text", holdback.release())
@@ -173,7 +175,7 @@ export async function runMessage(
       })
       ping()
     }
-    open.text += text
+    if (aggregate) open.text += text
     emit({
       type: "content_block_delta",
       index: open.index,
@@ -192,7 +194,7 @@ export async function runMessage(
     ping()
     emit({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } })
     emit({ type: "content_block_stop", index })
-    content.push({ type: "tool_use", id: toolUseId, name: call.name, input })
+    if (aggregate) content.push({ type: "tool_use", id: toolUseId, name: call.name, input })
     calls++
   }
 

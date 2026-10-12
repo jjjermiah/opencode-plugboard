@@ -161,9 +161,16 @@ export function cachedCaller(
       }
       const recorded: PlugEvent[] = []
       let storable = true
+      // Text bytes seen so far. An answer over `maxBytes` could never be stored, so capture stops there and frees what it kept (#153).
+      let captured = 0
       for await (const event of inner.stream(request, forward)) {
-        if (event.type === "text-delta" || event.type === "reasoning-delta") append(recorded, event)
-        else if (event.type === "finish") {
+        if (event.type === "text-delta" || event.type === "reasoning-delta") {
+          captured += Buffer.byteLength(event.text)
+          if (captured > config.maxBytes) {
+            storable = false
+            recorded.length = 0
+          } else if (storable) append(recorded, event)
+        } else if (event.type === "finish") {
           // Stored before the event is handed on, so a consumer that stops reading at `finish` still fills the cache.
           if (storable && CACHEABLE_FINISH.has(event.reason) && recorded.length > 0 && !context.signal.aborted)
             store.set(key, { events: [...recorded, { type: "finish", reason: event.reason }], ...(served ? { served } : {}), ...(policy?.length ? { policy } : {}) })

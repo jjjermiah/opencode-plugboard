@@ -189,14 +189,23 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (context.signal.aborted) return
 
         collector = new RequestCollector({ stopTurn: interrupt, requestID })
-        const created = await raceAbort(port.create({
+        const creating = port.create({
           directory,
           model: { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) },
           ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
           title: makeTitle(request),
           metadata: { plugboard: { app, model: request.model, requestID } },
           permissions: REQUEST_PERMISSIONS,
-        }), context.signal)
+        })
+        const created = await raceAbort(creating, context.signal).catch((error) => {
+          // The host keeps creating after the abort. A session that lands now is in no index, so it is removed.
+          if (context.signal.aborted)
+            void creating.then(
+              (late) => port.remove(late.id).catch((removeError) => logError("session.late_remove_failed", { requestID, app, sessionID: late.id, error: describeError(removeError) })),
+              () => {},
+            )
+          throw error
+        })
         sessionID = String(created.id)
         sessions.register({ sessionID, app, requestID, request, collector, prelude })
 

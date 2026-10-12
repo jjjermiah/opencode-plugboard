@@ -521,7 +521,13 @@ export function registerGeneration(input: GenerationInput): Registration {
   } else if (canonicalJson(keys) !== canonicalJson(rt.keys ?? {})) {
     const live = rt.keys ?? {}
     if (rt.generations.length === 0) rt.keys = keys
-    else if (revokesOrRotatesOnly(live, keys)) {
+    else if (Object.keys(keys).length === 0) {
+      // #152: removing the last key fails closed. The old key must not keep working, and the set must not go keyless.
+      if (canonicalJson(live) !== canonicalJson(REVOKED_KEYS)) {
+        log("listener.keys_updated", { removed: Object.keys(live).length, rotated: 0 })
+        rt.keys = REVOKED_KEYS
+      }
+    } else if (revokesOrRotatesOnly(live, keys)) {
       log("listener.keys_updated", {
         removed: Object.keys(live).filter((app) => !Object.hasOwn(keys, app)).length,
         rotated: Object.keys(keys).filter((app) => Object.hasOwn(live, app) && live[app] !== keys[app]).length,
@@ -570,6 +576,13 @@ export function registerGeneration(input: GenerationInput): Registration {
     },
   }
 }
+
+/**
+ * #152: the live key set once the last key is revoked while a generation serves. An empty key set means
+ * keyless, so this one keeps an entry no request can match: `*` is not a valid app name, and its key is
+ * empty, which `Bearer` (it needs a non-empty token) never presents. Every request gets 401 until restart.
+ */
+const REVOKED_KEYS: Readonly<Record<string, string>> = { "*": "" }
 
 /** #90: `next` names no app that `live` lacks, and names at least one app: it only removes or changes keys. */
 function revokesOrRotatesOnly(live: Readonly<Record<string, string>>, next: Readonly<Record<string, string>>): boolean {

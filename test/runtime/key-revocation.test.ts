@@ -35,6 +35,26 @@ async function answers(port: number, key: string): Promise<number> {
   return (await fetch(`http://127.0.0.1:${port}/v1/models`, { headers: { authorization: `Bearer ${key}` } })).status
 }
 
+describe("#152 removing the last key while an older generation serves fails closed", () => {
+  test("every request gets 401 (no key, the old key, a keyless request) and adding a key back needs a restart", async () => {
+    const port = await freePort()
+    const old = registerGeneration(serving("old", port, { alpha: "key-alpha" }, {}, "/projects/app-a"))
+    expect(old.accepted).toBe(true)
+    confirm("/projects/app-a") // the older generation keeps serving; it has not reloaded
+    await until(() => logs.of("listener.listening").length > 0, 1_000, "the listener to bind")
+    expect(await answers(port, "key-alpha")).toBe(200)
+
+    // The reload removes the last key. The new generation is accepted (the removal applies at once), but keyless is not.
+    expect(registerGeneration(serving("next", port, {}, {}, "/projects/app-b")).accepted).toBe(true)
+    expect(await answers(port, "key-alpha")).toBe(401)
+    expect((await fetch(`http://127.0.0.1:${port}/v1/models`)).status).toBe(401)
+
+    // A key added by a later reload is a change the live listener rejects until restart (I5).
+    expect(registerGeneration(serving("again", port, { alpha: "key-alpha" }, {}, "/projects/app-c")).accepted).toBe(false)
+    expect(await answers(port, "key-alpha")).toBe(401)
+  })
+})
+
 describe("#90 a key dropped by a config reload is rejected by the live listener", () => {
   test("after the reload the dropped key gets a 401 and the kept key still answers", async () => {
     const port = await freePort()

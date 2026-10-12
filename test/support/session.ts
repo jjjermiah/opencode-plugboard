@@ -16,6 +16,7 @@ export class FakeSessionPort implements SessionPort {
   readonly created: Array<CreateInput & { readonly id: string }> = []
   readonly prompted: PromptInput[] = []
   readonly interrupted: string[] = []
+  readonly removed: string[] = []
   /** Skills and agents the fake app directory has: `skills.set(id, content)`, `agents.set(id, { system })`. */
   readonly skills = new Map<string, string>()
   readonly agents = new Map<string, { readonly system?: string }>()
@@ -24,6 +25,7 @@ export class FakeSessionPort implements SessionPort {
     create?: (input: CreateInput) => Promise<{ id: string }>
     prompt?: (input: PromptInput) => Promise<unknown>
     interrupt?: (sessionID: string) => Promise<void>
+    remove?: (sessionID: string) => Promise<void>
   } = {}
 
   async create(input: CreateInput): Promise<{ id: string }> {
@@ -40,6 +42,11 @@ export class FakeSessionPort implements SessionPort {
   interrupt(sessionID: string): Promise<void> {
     this.interrupted.push(sessionID)
     return this.script.interrupt ? this.script.interrupt(sessionID) : Promise.resolve()
+  }
+
+  async remove(sessionID: string): Promise<void> {
+    this.removed.push(sessionID)
+    if (this.script.remove) await this.script.remove(sessionID)
   }
 
   async skill(_directory: string, id: string): Promise<string | undefined> {
