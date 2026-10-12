@@ -142,6 +142,15 @@ describe("#4 answers", () => {
     expect(reply.json()).toEqual({ type: "error", error: { type: "overloaded_error", message: "The model provider is overloaded; retry later" } })
   })
 
+  test("#202 disable_parallel_tool_use is passed to the caller and answered with x-plugboard-parallel-tools: limited", async () => {
+    const caller = await route([ev.finish()])
+    const tools = [{ name: "read", input_schema: { type: "object" } }]
+    const reply = await server!.send(messages({ tools, tool_choice: { type: "auto", disable_parallel_tool_use: true } }))
+    expect(reply.headers["x-plugboard-parallel-tools"]).toBe("limited")
+    expect(caller.call.request.parallelToolCalls).toBe(false)
+    expect((await server!.send(messages({ tools }))).headers).not.toHaveProperty("x-plugboard-parallel-tools")
+  })
+
   test("a stream is Anthropic's named event sequence, with no [DONE]", async () => {
     await route([ev.text("Hi"), ev.call("t1", "read", { p: 1 }), ev.finish()])
     const stream = await server!.open(messages({ stream: true }))

@@ -40,7 +40,7 @@ Define the aliases in the plugboard `aliases` option (for example `"claude-sonne
 | `messages` | `user` and `assistant` turns with a string or content blocks: `text`, `image` (`base64` or `url` source), `document` (`base64`, `url` or `text` source), `tool_use` (assistant), `tool_result` (user). `thinking` and `redacted_thinking` blocks are accepted and dropped. `cache_control` is ignored. |
 | `tool_result` | `content` as a string or text and image blocks, `is_error` passed on. Each result must answer a `tool_use` block from an earlier assistant turn. Images inside a result are passed as user media after the results. |
 | `tools` | Custom tools with `name`, `description` and `input_schema`. |
-| `tool_choice` | `auto`, `any`, `none`, `{"type":"tool","name":"..."}`. `disable_parallel_tool_use` is ignored. |
+| `tool_choice` | `auto`, `any`, `none`, `{"type":"tool","name":"..."}`. `disable_parallel_tool_use: true` keeps only the first tool call of the answer, as `parallel_tool_calls: false` does on Chat Completions; the response carries `x-plugboard-parallel-tools: limited`. |
 | `temperature`, `top_p` | Passed to the model, minus the ones the model is known to reject (see below). |
 | `top_k` | Ignored. Plugboard has no `top_k` option. The response header `x-plugboard-dropped-params` lists it. |
 | `stop_sequences` | Passed to the model. |

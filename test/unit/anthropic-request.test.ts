@@ -11,6 +11,15 @@ const tool = (name: string, extra: Record<string, unknown> = {}) => ({ name, inp
 const toolUse = (id: string, name: string, input: unknown = {}) => ({ type: "tool_use", id, name, input })
 const image = (source: unknown) => ({ type: "image", source })
 
+describe("#202 disable_parallel_tool_use", () => {
+  test("tool_choice.disable_parallel_tool_use true asks for one tool call per answer; false and absent do not", () => {
+    const tools = [tool("a")]
+    expect(parse(body({ tools, tool_choice: { type: "auto", disable_parallel_tool_use: true } })).request.parallelToolCalls).toBe(false)
+    expect(parse(body({ tools, tool_choice: { type: "any", disable_parallel_tool_use: false } })).request).not.toHaveProperty("parallelToolCalls")
+    expect(parse(body({ tools, tool_choice: { type: "auto" } })).request).not.toHaveProperty("parallelToolCalls")
+  })
+})
+
 function parse(raw: unknown): ParsedMessages {
   const parsed = parseMessagesRequest(raw, options)
   if (isPlugError(parsed)) throw new Error(`unexpected rejection: ${parsed.message}`)

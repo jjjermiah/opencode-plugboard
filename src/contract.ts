@@ -113,6 +113,8 @@ export interface PlugRequest {
   readonly messages: ReadonlyArray<PlugMessage>
   readonly tools: ReadonlyArray<PlugTool>
   readonly toolChoice?: PlugToolChoice
+  /** `false` when the caller asked for at most one tool call per answer (`parallel_tool_calls: false`, `disable_parallel_tool_use`). The host has no switch for it on every route, so the session collector keeps the first call and drops the rest (#202). */
+  readonly parallelToolCalls?: boolean
   readonly generation: PlugGeneration
   /** The end user the caller named, when kept (src/user.ts, #57). Labels the session title and the usage counts. */
   readonly user?: string

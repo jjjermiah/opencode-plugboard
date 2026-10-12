@@ -229,6 +229,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           stopTurn: interrupt,
           requestID,
           app,
+          ...(request.parallelToolCalls === false ? { singleToolCall: true } : {}),
           ...(policy?.serverTools
             ? { serverTools: new Set(policy.serverTools), maxServerToolSteps: policy.maxServerToolSteps ?? DEFAULT_SERVER_TOOL_STEPS }
             : {}),

@@ -222,6 +222,8 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
 }
 
 export interface CollectorHooks {
+  /** The request asked for one tool call per answer (#202): the first caller tool call is kept, the rest are dropped. */
+  readonly singleToolCall?: boolean
   /** The step ended with tool calls: stop the turn before the runner starts another model step. */
   readonly stopTurn: () => void
   /** The request's id, for the log line that carries a failure's raw host text. */
@@ -343,6 +345,7 @@ export class RequestCollector {
           this.stepServerCalls++
           return
         }
+        if (this.hooks.singleToolCall && this.calls.size > 0) return
         this.calls.add(id)
         this.emit({ type: "tool-call", id, name, input: item.input })
         return

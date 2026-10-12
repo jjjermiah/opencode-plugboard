@@ -32,7 +32,7 @@ import {
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy, reportServerTools } from "../policy.js"
+import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { dropRejected } from "../openai/sampling.js"
@@ -127,6 +127,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
       response.setHeader(DROPPED_HEADER, info.dropped)
     }
     const model: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
+    reportParallelTools(response, model)
     const { exchange } = parsed
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.

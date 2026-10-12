@@ -1,10 +1,20 @@
 /** The response side of per-app policy (option `apps`): what a route tells the caller about changes the policy made. */
 
 import type { ServerResponse } from "node:http"
-import type { PolicyNote } from "./contract.js"
+import type { PlugRequest, PolicyNote } from "./contract.js"
 
 export const POLICY_HEADER = "x-plugboard-policy"
 export const SERVER_TOOLS_HEADER = "x-plugboard-server-tools"
+/** Set when the request asked for one tool call per answer and plugboard keeps only the first (#202). */
+export const PARALLEL_TOOLS_HEADER = "x-plugboard-parallel-tools"
+
+/**
+ * `x-plugboard-parallel-tools: limited` for a request that asked for one tool call per answer. The host has no
+ * switch for it on every route, so the session collector keeps the first call; the header says so before any body.
+ */
+export function reportParallelTools(response: ServerResponse, request: Pick<PlugRequest, "parallelToolCalls">): void {
+  if (request.parallelToolCalls === false) response.setHeader(PARALLEL_TOOLS_HEADER, "limited")
+}
 
 /**
  * The `CallContext.onPolicy` of a route: `x-plugboard-policy` (the notes, comma separated) while the

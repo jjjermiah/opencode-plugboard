@@ -339,6 +339,8 @@ export function parseMessagesRequest(body: unknown, options: PlugboardOptions): 
     tools,
     ...(toolChoice && tools.length > 0 ? { toolChoice } : {}),
     generation,
+    // `tool_choice.disable_parallel_tool_use` (#202): one tool call per answer.
+    ...(isRecord(body.tool_choice) && body.tool_choice.disable_parallel_tool_use === true ? { parallelToolCalls: false } : {}),
   }
   return {
     request,
