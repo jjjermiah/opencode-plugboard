@@ -32,6 +32,7 @@
     "flake-hunt": "bun .github/scripts/flake-hunt.ts",
     "coverage-manifest": "bun .github/scripts/coverage-manifest.ts",
     "live-matrix": "bun test/live/matrix.ts",
+    "compat:python": "uv run --project compat/py python compat/py/clients/run_all.py",
     "build:tui": "bun .github/scripts/build-tui.ts",
     "prepack": "bun run build:tui",
     "smoke:pack": "bun .github/scripts/smoke-pack.ts",
