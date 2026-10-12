@@ -17,7 +17,7 @@ import { createSessionPort, type ContextHookEvent, type HostToolDescriptor } fro
 import { RequestCollector } from "../../src/session/events.js"
 import { reportServerTools } from "../../src/policy.js"
 import type { ServerResponse } from "node:http"
-import { REQUEST_PERMISSIONS, requestPermissions } from "../../src/session/seeds.js"
+import { REQUEST_PERMISSIONS, requestPermissions, ungrantedServerTool, wildcardMatch, type OperatorRule } from "../../src/session/seeds.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { collect, plugRequest } from "../support/fixtures.js"
 import { spyContext } from "../support/plugin-context.js"
@@ -40,9 +40,45 @@ describe("session permissions", () => {
     expect(requestPermissions([])).toEqual(UNTRUSTED)
   })
 
-  test("#82 a trusted app gets deny-all, the seeds, then one exact allow per listed id, in that order", () => {
+  test("#82 a trusted app gets deny-all, the seeds, then per listed id the operator's rules for it, in that order", () => {
+    const allowAll: OperatorRule[] = [{ action: "*", resource: "*", effect: "allow" }]
     const allow = (action: string): Rule => ({ action, resource: "*", effect: "allow" })
-    expect(requestPermissions(["websearch", "read"])).toEqual([...UNTRUSTED, allow("websearch"), allow("read")])
+    const deny = (action: string, resource = "*"): Rule => ({ action, resource, effect: "deny" })
+    expect(requestPermissions(["websearch", "read"], allowAll)).toEqual([...UNTRUSTED, deny("websearch"), allow("websearch"), deny("read"), allow("read")])
+  })
+
+  test("#194 the operator's deny for a resource comes after the listed tool's allow, so it still denies that resource", () => {
+    const rules: OperatorRule[] = [
+      { action: "*", resource: "*", effect: "allow" },
+      { action: "read", resource: "*.env", effect: "deny" },
+    ]
+    expect(requestPermissions(["read"], rules)).toEqual([
+      ...UNTRUSTED,
+      { action: "read", resource: "*", effect: "deny" },
+      { action: "read", resource: "*", effect: "allow" },
+      { action: "read", resource: "*.env", effect: "deny" },
+    ])
+  })
+
+  test("#194 an ask of the operator is a deny in the session, and a tool with no rule is denied everywhere", () => {
+    const rules: OperatorRule[] = [{ action: "bash", resource: "*", effect: "ask" }]
+    expect(requestPermissions(["bash"], rules)).toEqual([...UNTRUSTED, { action: "bash", resource: "*", effect: "deny" }, { action: "bash", resource: "*", effect: "deny" }])
+    expect(requestPermissions(["websearch"], [])).toEqual([...UNTRUSTED, { action: "websearch", resource: "*", effect: "deny" }])
+  })
+
+  test("#194 a listed tool is ungranted unless some operator rule for it is an allow", () => {
+    expect(ungrantedServerTool(["websearch"], [])).toBe("websearch")
+    expect(ungrantedServerTool(["websearch"], [{ action: "websearch", resource: "*", effect: "deny" }])).toBe("websearch")
+    expect(ungrantedServerTool(["websearch"], [{ action: "websearch", resource: "*", effect: "ask" }])).toBe("websearch")
+    expect(ungrantedServerTool(["websearch", "read"], [{ action: "read", resource: "*", effect: "allow" }])).toBe("websearch")
+    expect(ungrantedServerTool(["read"], [{ action: "*", resource: "*", effect: "allow" }])).toBeUndefined()
+  })
+
+  test("#194 the host's wildcard: `*` any run, `?` one character, and `git *` also matches `git`", () => {
+    expect(wildcardMatch("read", "*")).toBe(true)
+    expect(wildcardMatch("read", "rea?")).toBe(true)
+    expect(wildcardMatch("git", "git *")).toBe(true)
+    expect(wildcardMatch("read", "write")).toBe(false)
   })
 })
 
@@ -76,7 +112,7 @@ describe("request-time checks (#82)", () => {
     run.port.toolIDs.push("websearch")
     run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop"), bus(id).executionSucceeded()])
     await drain(run.caller.stream(plugRequest(), run.context))
-    expect(run.port.created[0]?.permissions).toEqual(requestPermissions(["websearch"]))
+    expect(run.port.created[0]?.permissions).toEqual(requestPermissions(["websearch"], [{ action: "*", resource: "*", effect: "allow" }]))
   })
 
   test("an untrusted app's session gets deny-all, and no tool list is read", async () => {
@@ -84,6 +120,30 @@ describe("request-time checks (#82)", () => {
     run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop"), bus(id).executionSucceeded()])
     await drain(run.caller.stream(plugRequest(), run.context))
     expect(run.port.created[0]?.permissions).toEqual(UNTRUSTED)
+  })
+
+  test("#194 a listed tool that the operator's agent does not allow is a 400 server_tool_denied_by_operator, and nothing is created", async () => {
+    const run = setup({ serverTools: ["websearch"] })
+    run.port.toolIDs.push("websearch")
+    run.port.operatorRules = [{ action: "read", resource: "*", effect: "allow" }]
+    const events = await drain(run.caller.stream(plugRequest(), run.context))
+    expect(events).toEqual([{ type: "error", error: expect.objectContaining({ status: 400, kind: "invalid_request", code: "server_tool_denied_by_operator" }) }])
+    expect(run.port.created).toEqual([])
+  })
+
+  test("#194 the operator's deny on a pattern reaches the session, after the listed tool's allow", async () => {
+    const run = setup({ serverTools: ["websearch"] })
+    run.port.toolIDs.push("websearch")
+    const rules: OperatorRule[] = [
+      { action: "*", resource: "*", effect: "allow" },
+      { action: "websearch", resource: "private/*", effect: "deny" },
+    ]
+    run.port.operatorRules = rules
+    run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop"), bus(id).executionSucceeded()])
+    await drain(run.caller.stream(plugRequest(), run.context))
+    const permissions = run.port.created[0]?.permissions ?? []
+    expect(permissions).toEqual(requestPermissions(["websearch"], rules))
+    expect(permissions.findIndex((rule) => rule.resource === "private/*")).toBeGreaterThan(permissions.findIndex((rule) => rule.action === "websearch" && rule.effect === "allow"))
   })
 
   test("a listed tool the location does not offer is a 400 server_tool_unavailable, before any session exists", async () => {
@@ -149,7 +209,7 @@ describe("the context hook keeps the server tools (#82)", () => {
 })
 
 /** A collector in a real store, for an app whose `serverTools` are `websearch`. */
-function collectorRun(maxServerToolSteps = 8) {
+function collectorRun(maxServerToolSteps = 8, maxServerToolCalls = 16) {
   let stops = 0
   const collector = new RequestCollector({
     stopTurn: () => void stops++,
@@ -157,6 +217,7 @@ function collectorRun(maxServerToolSteps = 8) {
     app: "app",
     serverTools: new Set(["websearch"]),
     maxServerToolSteps,
+    maxServerToolCalls,
   })
   const store = createSessionStore()
   store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
@@ -204,6 +265,40 @@ describe("step classification (#82)", () => {
       },
     ])
     expect(run.stops()).toBe(1)
+  })
+
+  test("#198 the call cap counts calls across steps: the call past it fails 502 server_tool_calls_exceeded and stops the turn", async () => {
+    const run = collectorRun(8, 3)
+    run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.toolCalled("s3", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.toolCalled("s4", "websearch", {}), run.host.stepEnded("tool-calls"))
+    expect(await run.drain()).toEqual([
+      {
+        type: "error",
+        error: { status: 502, kind: "server", code: "server_tool_calls_exceeded", message: "The model used more OpenCode tool calls than this app allows" },
+      },
+    ])
+    expect(run.stops()).toBe(1)
+  })
+
+  test("#198 a mixed step whose server calls pass the cap fails the request; the caller's call is not returned", async () => {
+    const run = collectorRun(8, 1)
+    run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolCalled("s2", "websearch", {}), run.host.toolCalled("c1", "lookup", {}), run.host.stepEnded("tool-calls"))
+    const events = await run.drain()
+    expect(events.map((event) => event.type)).toEqual(["error"])
+    expect(events.some((event) => event.type === "tool-call")).toBe(false)
+    expect(run.stops()).toBe(1)
+  })
+
+  test("#198 the calls up to the cap are allowed, whatever the steps", async () => {
+    const run = collectorRun(8, 2)
+    run.send(run.host.toolCalled("s1", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.textDelta("Done"), run.host.stepEnded("stop"), run.host.executionSucceeded())
+    expect(await run.drain()).toEqual([
+      { type: "text-delta", text: "Done" },
+      { type: "finish", reason: "stop", usage: undefined },
+    ])
   })
 
   test("the steps up to the cap are allowed", async () => {
@@ -255,6 +350,48 @@ describe("x-plugboard-server-tools (#82)", () => {
     const late = fakeResponse(true)
     reportServerTools(late.response, false)!(4)
     expect(late.headers.size).toBe(0)
+  })
+})
+
+describe("server calls after the request ended (#196)", () => {
+  test("a server call after the client left is logged as server_tool.after_request, and its step stops the turn", async () => {
+    const run = collectorRun()
+    run.collector.cancel()
+    run.send(run.host.toolCalled("s1", "websearch", { query: "secret query" }), run.host.stepEnded("tool-calls"))
+    expect(run.stops()).toBe(1)
+    const lines = logs.of("server_tool.after_request")
+    expect(lines).toHaveLength(1)
+    expect(lines[0]!.fields).toMatchObject({ requestID: "req_1", app: "app", tool: "websearch", lateCalls: "1" })
+    expect(lines[0]!.raw).not.toContain("secret query")
+  })
+
+  test("each late step that ran a server call stops the turn again, and a repeated call id is logged once", async () => {
+    const run = collectorRun()
+    run.collector.cancel()
+    run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolCalled("s1", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
+    expect(run.stops()).toBe(2)
+    expect(logs.of("server_tool.after_request")).toHaveLength(2)
+  })
+
+  test("a caller call after the request ended is ignored: no log, no stop", async () => {
+    const run = collectorRun()
+    run.collector.cancel()
+    run.send(run.host.toolCalled("c1", "lookup", {}), run.host.stepEnded("tool-calls"))
+    expect(run.stops()).toBe(0)
+    expect(logs.of("server_tool.after_request")).toHaveLength(0)
+  })
+
+  test("the answer returned and the host still runs a server tool: the session is interrupted again (fake session)", async () => {
+    const run = setup({ serverTools: ["websearch"] })
+    run.port.toolIDs.push("websearch")
+    run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop")])
+    await drain(run.caller.stream(plugRequest(), run.context))
+    expect(run.port.interrupted).toEqual([])
+    run.sessions.dispatch(bus("ses_1").toolCalled("late1", "websearch", {}))
+    run.sessions.dispatch(bus("ses_1").stepEnded("tool-calls"))
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(logs.of("server_tool.after_request")[0]!.fields).toMatchObject({ tool: "websearch", lateCalls: "1" })
   })
 })
 
@@ -312,6 +449,27 @@ describe("the response cache skips a trusted app (#82)", () => {
     const run = cached(() => false)
     await run.twice()
     expect(run.calls()).toBe(1)
+  })
+})
+
+describe("the host port reads the agent's rules (#194)", () => {
+  test("without an agent id, the first selectable agent of the list is the one read (the selected default)", async () => {
+    const spy = spyContext({
+      directory: "/data/app",
+      respond: {
+        "agent.list": () =>
+          Effect.succeed({
+            data: [
+              { id: "general", mode: "subagent", permissions: [] },
+              { id: "build", mode: "primary", permissions: [{ action: "*", resource: "*", effect: "allow" }] },
+            ],
+          }),
+      },
+    })
+    const port = createSessionPort(spy.ctx)
+    await expect(port.agentRules("/data/app", undefined)).resolves.toEqual([{ action: "*", resource: "*", effect: "allow" }])
+    await expect(port.agentRules("/data/app", "general")).resolves.toEqual([])
+    await expect(port.agentRules("/data/app", "missing")).resolves.toBeUndefined()
   })
 })
 

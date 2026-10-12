@@ -1,0 +1,20 @@
+# AnythingLLM pointed at plugboard on the host, using the Generic OpenAI provider.
+# Set PLUGBOARD_KEY_ANYTHINGLLM in the shell or a .env file next to this file.
+# Docs: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/anythingllm.md
+# plugboard must listen where the container can reach it (the host gateway), not only on 127.0.0.1.
+services:
+  anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    ports:
+      - "3001:3001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - STORAGE_DIR=/app/server/storage
+      - LLM_PROVIDER=generic-openai
+      - GENERIC_OPEN_AI_BASE_PATH=http://host.docker.internal:4010/v1
+      - GENERIC_OPEN_AI_API_KEY=${PLUGBOARD_KEY_ANYTHINGLLM}
+      - GENERIC_OPEN_AI_MODEL_PREF=fast
+      - GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT=200000
+    volumes:
+      - ./storage:/app/server/storage

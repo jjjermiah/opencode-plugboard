@@ -7,6 +7,7 @@
  * shapes change, change them here once.
  */
 import type { HistoryPort, Json, SessionPort } from "../../src/session/host.js"
+import type { OperatorRule } from "../../src/session/seeds.js"
 
 type CreateInput = Parameters<SessionPort["create"]>[0]
 type PromptInput = Parameters<SessionPort["prompt"]>[0]
@@ -61,6 +62,13 @@ export class FakeSessionPort implements SessionPort {
 
   directTools(): Promise<ReadonlyArray<string>> {
     return Promise.resolve([...this.toolIDs])
+  }
+
+  /** The operator's rules for the agent the request sessions run as (`agentRules`). Default: every tool allowed. */
+  operatorRules: OperatorRule[] | undefined = [{ action: "*", resource: "*", effect: "allow" }]
+
+  async agentRules(_directory: string, _agent: string | undefined): Promise<ReadonlyArray<OperatorRule> | undefined> {
+    return this.operatorRules
   }
 }
 
@@ -126,6 +134,8 @@ export function bus(sessionID: string) {
     textDelta: (delta: string, ordinal = 0) => envelope("session.text.delta", { delta, ordinal }),
     textEnded: (text: string, ordinal = 0) => envelope("session.text.ended", { text, ordinal }),
     reasoningDelta: (delta: string) => envelope("session.reasoning.delta", { delta }),
+    /** The end of a reasoning block; `state` is the provider metadata the host attaches (`{ anthropic: { signature } }`). */
+    reasoningEnded: (state: Json = {}) => envelope("session.reasoning.ended", { text: "", ordinal: 0, state }),
     toolInputStarted: (id: string, name: string) => envelope("session.tool.input.started", { id, name }),
     toolCalled: (id: string, name: string, input: Json = {}) => envelope("session.tool.called", { id, name, input }),
     usage: (tokens: HostTokens) => envelope("session.usage.updated", { tokens }),

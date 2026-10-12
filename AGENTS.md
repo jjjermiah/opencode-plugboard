@@ -38,7 +38,7 @@ A plugin effect that blocked once froze every prompt in the project that loaded 
 - Semantic versioning; update `CHANGELOG.md` (keep `[Unreleased]` at the top, with context and reasoning, not a commit dump) with every user-visible change.
 - Parallel agent lanes use git worktrees under `.agents/worktrees/` (gitignored) with disjoint file sets; merge into `main`.
 - Prose (README, docs, issues, changelog): plain and short, no em or en dashes as punctuation. Nothing machine- or homelab-specific in the repo (no private IPs, `/Users/...` paths, keys).
-- Tested host: OpenCode 2.0.26 (dev dependency pinned; peer range `>=2.0.26 <2.1`). Host source for reading: a shallow clone of anomalyco/opencode at the `v2.0.26` tag.
+- Tested hosts: OpenCode 2.0.26 and 2.0.27 (dev dependencies pinned to 2.0.27 with `effect` 4.0.1; CI also runs 2.0.26 with `effect` 4.0.0-rc.112; peer range `>=2.0.26 <2.1`). Host source for reading: a shallow clone of anomalyco/opencode at the `v2.0.27` tag (or `v2.0.26`).
 
 ## Client checks (`compat/`)
 

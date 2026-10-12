@@ -100,10 +100,13 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      - name: Install @opencode/plugin ${{ matrix.host }}
+      # The host ships its own effect pin (2.0.26: rc.112, 2.0.27: 4.0.1); the typecheck must use that copy.
+      - name: Install @opencode/plugin ${{ matrix.host }} and its effect
         env:
           HOST: ${{ matrix.host }}
-        run: bun add --dev --exact "@opencode/plugin@$HOST"
+        run: |
+          EFFECT=$(npm view "@opencode/plugin@$HOST" dependencies.effect)
+          bun add --dev --exact "@opencode/plugin@$HOST" "effect@$EFFECT"
       - name: Typecheck
         run: bun run typecheck
       - name: Tests (when the package has a test script)

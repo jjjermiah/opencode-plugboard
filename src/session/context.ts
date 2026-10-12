@@ -17,8 +17,11 @@ import { FAILURE_EVENT, type SessionStore } from "./state.js"
 
 const text = (value: string): HostPart => ({ type: "text", text: value })
 
+/** The host's cache breakpoint: the default 5-minute one, the only kind plugboard carries (#275). */
+const EPHEMERAL = { type: "ephemeral" } as const
+
 /** Placeholder for a caller image; swapped for the host-built media part in `applyContext`. */
-const mediaPlaceholder = (index: number): HostPart => ({ type: "media", __attachment: index })
+const mediaPlaceholder = (index: number, cache: boolean | undefined): HostPart => ({ type: "media", __attachment: index, ...(cache ? { cache: EPHEMERAL } : {}) })
 
 /** Caller messages as host `Message` objects. Media placeholders are swapped in `applyContext`. */
 function toHostMessages(messages: ReadonlyArray<PlugMessage>): Array<{ role: string; content: HostPart[] }> {
@@ -26,13 +29,13 @@ function toHostMessages(messages: ReadonlyArray<PlugMessage>): Array<{ role: str
   const part = (item: PlugMessage["content"][number]): HostPart => {
     switch (item.type) {
       case "text":
-        return text(item.text)
+        return item.cache ? { ...text(item.text), cache: EPHEMERAL } : text(item.text)
       case "media":
-        return mediaPlaceholder(image++)
+        return mediaPlaceholder(image++, item.cache)
       case "tool-call":
         return { type: "tool-call", id: item.id, name: item.name, input: item.input }
       case "tool-result":
-        return { type: "tool-result", id: item.id, name: item.name, result: { type: "text", value: item.result } }
+        return { type: "tool-result", id: item.id, name: item.name, result: { type: "text", value: item.result }, ...(item.cache ? { cache: EPHEMERAL } : {}) }
     }
   }
   return messages.map((message) => ({ role: message.role, content: message.content.map(part) }))
@@ -109,6 +112,20 @@ function systemFor(caller: ReadonlyArray<string>, policy: AppPolicy | undefined)
   }
 }
 
+/**
+ * The system prompts the model reads for a request, in order: the skill prelude, the caller's system prompts with the app's
+ * `system` policy applied, then the tool-choice steering (the OpenCode session API has no tool-choice control, so a forced or
+ * required tool is steered by instruction). The context hook sends these, and `count_tokens` counts them (#201), so the two
+ * cannot drift.
+ */
+export function requestSystem(request: Pick<PlugRequest, "system" | "toolChoice">, prelude: ReadonlyArray<string>, policy: AppPolicy | undefined): string[] {
+  const system = [...prelude, ...systemFor(request.system, policy)]
+  const choice = request.toolChoice
+  if (choice === "required") system.push("You must respond by calling one of the provided tools.")
+  if (typeof choice === "object") system.push(`You must respond by calling the \`${choice.name}\` tool.`)
+  return system
+}
+
 /** The one 500 message for a request plugboard could not prepare. What was missing is logged, never sent: it names host internals (#288). */
 const preparationFailed = (): PlugError => ({ status: 500, kind: "server", code: "backend_preparation_failed", message: "Could not prepare the model request" })
 
@@ -132,19 +149,12 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   const swap = (part: HostPart) => {
     if (typeof part.__attachment !== "number") return part
     const media = hostMedia[part.__attachment]
-    if (media) return media
+    if (media) return part.cache ? { ...media, cache: EPHEMERAL } : media
     missingMedia++
     return text("[image unavailable]")
   }
 
-  // Order: the skill's content (prelude), then the app's system policy over the caller's (or an agent's) prompt,
-  // then the tool-choice steering below.
-  const system = [...(state.prelude ?? []), ...systemFor(request.system, policy)].map(text)
-  // The OpenCode session API has no tool-choice control, so a forced or required tool is steered by instruction.
-  const choice = request.toolChoice
-  if (choice === "required") system.push(text("You must respond by calling one of the provided tools."))
-  if (typeof choice === "object") system.push(text(`You must respond by calling the \`${choice.name}\` tool.`))
-  session.system = system
+  session.system = requestSystem(request, state.prelude ?? [], policy).map(text)
   session.messages = toHostMessages(request.messages).map((message) => ({ ...message, content: message.content.map(swap) }))
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 

@@ -10,6 +10,14 @@ const message = (role: string, content: unknown) => ({ type: "message", role, co
 const fnCall = (call_id: string, name: string, args: unknown = "{}") => ({ type: "function_call", call_id, name, arguments: args })
 const fnOutput = (call_id: string, output: unknown) => ({ type: "function_call_output", call_id, output })
 
+describe("#202 parallel_tool_calls", () => {
+  test("false asks for one tool call per answer; true and absent do not", () => {
+    expect(parse(body({ parallel_tool_calls: false })).request.parallelToolCalls).toBe(false)
+    expect(parse(body({ parallel_tool_calls: true })).request).not.toHaveProperty("parallelToolCalls")
+    expect(parse(body()).request).not.toHaveProperty("parallelToolCalls")
+  })
+})
+
 function parse(raw: unknown): ParsedResponses {
   const parsed = parseResponsesRequest(raw, options)
   if (isPlugError(parsed)) throw new Error(`unexpected rejection: ${parsed.message} (${parsed.param})`)
@@ -210,6 +218,8 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
     const alone = parse(body({ text: { format: { type: "json_schema", name: "out", schema } } }))
     expect(alone.request.toolChoice).toEqual({ type: "tool", name: "respond" })
     expect(alone.exchange.structuredTool).toBe("respond")
+    // The request carries the structured tool's name, so `tools: false` keeps respond (#252).
+    expect(alone.request.structuredTool).toBe("respond")
     const withTools = parse(body({ tools: [fn("a")], text: { format: { type: "json_schema", schema } } }))
     expect(withTools.request.tools.map((tool) => tool.name)).toEqual(["a", "respond"])
     expect(withTools.request.toolChoice).toBe("required")
