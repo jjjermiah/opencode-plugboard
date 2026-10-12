@@ -1,0 +1,11 @@
+# LobeChat pointed at plugboard on the host. Copy .env.example to .env and fill in the key.
+# Docs: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/lobechat.md
+services:
+  lobechat:
+    image: lobehub/lobe-chat:latest
+    ports:
+      - "3210:3210"
+    env_file: .env
+    # Reach plugboard on the host from inside the container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

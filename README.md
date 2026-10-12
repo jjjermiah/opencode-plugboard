@@ -470,6 +470,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Kilo Code | [kilo-code][client-kilo-code] | docs only, not run yet |
 | LibreChat | [librechat][client-librechat] | docs only, not run yet |
 | Zed | [zed][client-zed] | docs only, not run yet |
+| LobeChat | [lobechat][client-lobechat] | docs only, not run yet (web app) |
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
@@ -559,6 +560,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-kilo-code]: https://jjjermiah.github.io/opencode-plugboard/clients/kilo-code
 [client-librechat]: https://jjjermiah.github.io/opencode-plugboard/clients/librechat
 [client-zed]: https://jjjermiah.github.io/opencode-plugboard/clients/zed
+[client-lobechat]: https://jjjermiah.github.io/opencode-plugboard/clients/lobechat
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
