@@ -17,7 +17,7 @@ import { reportCache } from "../cache.js"
 import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
-import { encodeError } from "../openai/response.js"
+import { STRUCTURED_FALLBACK_HEADER, encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
 import { runResponse, sseFrame } from "./response.js"
@@ -82,5 +82,6 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const run = await runResponse(events, exchange, () => {})
   if (run.failure || !run.response) return fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
   rememberAnswer(app, run.response)
+  if (run.structuredFallback) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
   sendJson(response, 200, run.response)
 }

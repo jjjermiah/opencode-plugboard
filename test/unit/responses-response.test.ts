@@ -156,3 +156,51 @@ describe("sseFrame", () => {
     expect(sseFrame({ type: "response.created", sequence_number: 0, x: 1 })).toBe('event: response.created\ndata: {"type":"response.created","sequence_number":0,"x":1}\n\n')
   })
 })
+
+describe("#173 runResponse: a text answer and the 502 for every finish", () => {
+  const schema = { type: "object", required: ["a"], properties: { a: { type: "number" } } }
+  const withSchema: ResponsesExchange = { ...structured, structuredSchema: schema }
+
+  test("the final text is the answer when it is the schema's JSON, flagged as a fallback", async () => {
+    const { response, failure, emitted, ...rest } = await run(withSchema, ev.text('{"a":3}'), ev.finish("stop"))
+    expect(failure).toBeUndefined()
+    expect(response).toMatchObject({ status: "completed", output: [{ content: [{ text: '{"a":3}' }] }] })
+    expect(rest.structuredFallback).toBe(true)
+    expect(emitted.map((event) => event.type)).toContain("response.output_text.delta")
+  })
+
+  test("one code fence around the JSON is stripped", async () => {
+    const { response } = await run(withSchema, ev.text('```json\n{"a":3}\n```'), ev.finish("stop"))
+    expect(response.output[0].content[0].text).toBe('{"a":3}')
+  })
+
+  test("a respond call wins over the text and is not flagged", async () => {
+    const { response, structuredFallback } = await run(withSchema, ev.text('{"a":9}'), ev.call("c1", "respond", { a: 1 }), ev.finish("tool-calls"))
+    expect(response.output[0].content[0].text).toBe('{"a":1}')
+    expect(structuredFallback).toBeUndefined()
+  })
+
+  test("text that does not match the schema is a 502 before any output", async () => {
+    const { failure, started, emitted } = await run(withSchema, ev.text('{"b":1}'), ev.finish("stop"))
+    expect(failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+    expect(started).toBe(false)
+    expect(emitted).toEqual([])
+  })
+
+  test.each(["length", "content-filter"] as const)("#173 a %s finish with no answer is a 502, not an incomplete response", async (reason) => {
+    expect((await run(withSchema, ev.finish(reason))).failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+  })
+
+  test("with caller tools, a caller call is the response and no fallback is taken", async () => {
+    const { response, structuredFallback } = await run({ ...withSchema, callerTools: true }, ev.text('{"a":1}'), ev.call("c2", "search"), ev.finish("tool-calls"))
+    expect(response.output.map((item: any) => item.type)).toEqual(["function_call"])
+    expect(structuredFallback).toBeUndefined()
+  })
+
+  test("streamed: a missing answer after committed prose ends as response.failed, not a completed answer", async () => {
+    const emitted: ResponsesStreamEvent[] = []
+    const result = await runResponse(events(ev.text("prose"), ev.finish("stop")), withSchema, (event) => void emitted.push(event), () => true)
+    expect(result.failure).toMatchObject({ code: "structured_output_missing" })
+    expect(emitted.at(-1)!.type).toBe("response.failed")
+  })
+})

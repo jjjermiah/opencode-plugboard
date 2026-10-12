@@ -68,7 +68,7 @@ response.output_item.done
 response.completed                   (or response.incomplete / response.failed), with the full response and usage
 ```
 
-Tool calls arrive whole from the model, so each call is a single `function_call_arguments.delta` holding the full arguments, as in Chat Completions. A structured answer (`json_schema`) is one `output_text.delta`.
+Tool calls arrive whole from the model, so each call is a single `function_call_arguments.delta` holding the full arguments, as in Chat Completions. A structured answer (`json_schema`) is one `output_text.delta`. Its text is held back until the turn ends (#173), so the stream commits with the first output event (the keepalive comments start then) and a missing answer is a `response.failed` event after that. Without a respond call the answer is taken from the final text when it is the JSON the schema asks for, the same small check as Chat Completions (`x-plugboard-structured-fallback: text`, non-streamed responses only). Any other turn without the call is a 502 `structured_output_missing` for every finish reason, or a `response.failed` once a stream has started.
 
 ## Notes
 

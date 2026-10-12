@@ -7,6 +7,7 @@
  * call passes a no-op `emit`. Reasoning deltas are dropped (no reasoning items are produced).
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
+import { structuredMissing, textFallback } from "../openai/response.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -25,6 +26,8 @@ export interface ResponsesExchange {
    * answer is the message text only when the step called no caller tool.
    */
   readonly callerTools?: boolean
+  /** The caller's `text.format` schema: a text answer is taken when the model skipped the respond call (`textFallback`, #173). */
+  readonly structuredSchema?: Readonly<Record<string, unknown>>
 }
 
 /** A stream event as emitted: `type` is also the SSE event name. */
@@ -37,6 +40,8 @@ export interface ResponseRun {
   readonly started: boolean
   /** The final response object (completed, incomplete or failed once started). */
   readonly response?: object
+  /** The structured answer came from the final text, not the respond call (`textFallback`). */
+  readonly structuredFallback?: boolean
 }
 
 type Item = Record<string, unknown>
@@ -63,21 +68,6 @@ const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Mod
 /** SSE frame of one stream event: `event: <type>` then `data: <json>`. */
 export const sseFrame = (event: ResponsesStreamEvent): string => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
 
-/**
- * Structured-output projection, same rules as the Chat Completions front-end: in structured mode
- * the message text is exactly the arguments of the first call to the `respond` tool; prose and
- * other calls are suppressed. Without an answer the exchange fails, except when the model
- * stopped for `length` or `content-filter`, which keep their status with empty output.
- */
-const structuredFailure = (exchange: ResponsesExchange, finish: Exclude<PlugFinish, "error">, answered: boolean): PlugError | undefined =>
-  exchange.structuredTool === undefined || answered || finish === "length" || finish === "content-filter"
-    ? undefined
-    : {
-        status: 502,
-        kind: "server",
-        code: "structured_output_missing",
-        message: `The model finished without calling the \`${exchange.structuredTool}\` tool, so there is no structured output`,
-      }
 
 /**
  * `committed`: whether the transport already committed a 200 stream before any event was emitted
@@ -114,6 +104,8 @@ export async function runResponse(
   let started = false
   let calls = 0
   let answered = false
+  /** The text of a structured turn (not emitted): it is the answer only if the respond call never comes (#173). */
+  let collected = ""
   /** With caller tools offered the structured answer waits for the finish: a caller tool call in the same step replaces it. */
   let held: ToolCall | undefined
   let finish: Exclude<PlugFinish, "error"> | undefined
@@ -199,6 +191,7 @@ export async function runResponse(
         }
         continue
       }
+      if (event.type === "text-delta") collected += event.text
       if (!(exchange.callerTools && event.type === "tool-call")) continue
     }
     if (event.type === "text-delta") text(event.text)
@@ -207,7 +200,9 @@ export async function runResponse(
 
   const passthrough = exchange.callerTools === true && calls > 0
   const structuredAnswer = exchange.structuredTool !== undefined && !passthrough
-  failure ??= finish ? (passthrough ? undefined : structuredFailure(exchange, finish, answered)) : noFinish()
+  const fallback = structuredAnswer && !answered && exchange.structuredSchema !== undefined ? textFallback(collected, exchange.structuredSchema) : undefined
+  const missing = passthrough || answered || fallback !== undefined || exchange.structuredTool === undefined ? undefined : structuredMissing(exchange.structuredTool)
+  failure ??= finish ? missing : noFinish()
   if (failure) {
     if (!started && !committed()) return { failure, started }
     start()
@@ -221,6 +216,7 @@ export async function runResponse(
   }
   start()
   if (held && structuredAnswer) text(args(held.input))
+  if (fallback !== undefined) text(fallback)
   closeMessage()
   const incomplete = finish === "length" ? "max_output_tokens" : finish === "content-filter" ? "content_filter" : undefined
   const response = envelope(incomplete ? "incomplete" : "completed", items, {
@@ -228,5 +224,5 @@ export async function runResponse(
     ...(usage ? { usage: encodeUsage(usage) } : {}),
   })
   send(incomplete ? "response.incomplete" : "response.completed", { response })
-  return { started, response }
+  return { started, response, ...(fallback !== undefined ? { structuredFallback: true } : {}) }
 }

@@ -386,7 +386,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
         truncation: "disabled",
         user: typeof body.user === "string" ? body.user : null,
       },
-      ...(respond ? { structuredTool: RESPOND_TOOL, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+      ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
     },
     ...(reasoningEffort ? { reasoningEffort } : {}),
   }
