@@ -323,6 +323,10 @@ describe("#82 apps.<name>.serverTools and maxServerToolSteps", () => {
     expect(bot({ tools: false })).toEqual({ systemMode: "prepend", tools: false })
   })
 
+  test("#198 keeps the call limit when set; the default (16) is applied when the request runs", () => {
+    expect(bot({ serverTools: ["websearch"], maxServerToolCalls: 5 })).toEqual({ systemMode: "prepend", tools: true, serverTools: ["websearch"], maxServerToolCalls: 5 })
+  })
+
   test("accepts exact OpenCode tool ids and keeps the step limit when set", () => {
     expect(bot({ serverTools: ["websearch", "mcp.lookup:v2", "my_tool-1"], maxServerToolSteps: 3 })).toEqual({
       systemMode: "prepend",
@@ -342,6 +346,10 @@ describe("#82 apps.<name>.serverTools and maxServerToolSteps", () => {
     ["a duplicate id", { serverTools: ["websearch", "websearch"] }, "lists `websearch` twice"],
     ["CodeMode's execute tool", { serverTools: ["execute"] }, "cannot name `execute`"],
     ["a seed tool", { serverTools: ["plugboard_seed_0"] }, "plugboard's own seed tools are reserved"],
+    ["a call limit without server tools (#198)", { maxServerToolCalls: 3 }, "maxServerToolCalls needs `serverTools`"],
+    ["a call limit of zero (#198)", { serverTools: ["websearch"], maxServerToolCalls: 0 }, "`apps.bot.maxServerToolCalls` must be an integer between 1 and 1000"],
+    ["the subagent tool (#195)", { serverTools: ["subagent"] }, "cannot name `subagent`: it starts a child session"],
+    ["the task tool, subagent's old name (#195)", { serverTools: ["task"] }, "cannot name `task`: it starts a child session"],
     ["a step limit without server tools", { maxServerToolSteps: 3 }, "maxServerToolSteps needs `serverTools`"],
     ["a step limit of zero", { serverTools: ["websearch"], maxServerToolSteps: 0 }, "`apps.bot.maxServerToolSteps` must be an integer between 1 and 100"],
     ["a step limit above 100", { serverTools: ["websearch"], maxServerToolSteps: 101 }, "`apps.bot.maxServerToolSteps` must be an integer between 1 and 100"],

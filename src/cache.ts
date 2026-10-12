@@ -112,9 +112,11 @@ export function reportCache(response: ServerResponse): (result: "hit" | "miss") 
 const CACHEABLE_FINISH: ReadonlySet<PlugFinish> = new Set<PlugFinish>(["stop", "length"])
 
 /** Appends a delta to the list, merging it into the previous event when that is the same kind. */
-function append(events: PlugEvent[], event: { readonly type: "text-delta" | "reasoning-delta"; readonly text: string }): void {
+function append(events: PlugEvent[], event: { readonly type: "text-delta" | "reasoning-delta"; readonly text: string; readonly signature?: string }): void {
+  // A signature is its own event, so a replay puts it back after the block it closes (#146).
+  if (event.signature !== undefined) return void events.push({ type: event.type, text: event.text, signature: event.signature })
   const last = events.at(-1)
-  if (last && last.type === event.type) events[events.length - 1] = { type: event.type, text: (last as { text: string }).text + event.text }
+  if (last && last.type === event.type && (last as { signature?: string }).signature === undefined) events[events.length - 1] = { type: event.type, text: (last as { text: string }).text + event.text }
   else events.push({ type: event.type, text: event.text })
 }
 

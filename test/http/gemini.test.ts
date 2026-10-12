@@ -88,6 +88,15 @@ describe("routes", () => {
     expect(reply.json().error.message).toContain("embedContent is not supported")
   })
 
+  test("#201 countTokens includes the app's system policy", async () => {
+    await route([ev.finish()])
+    const plain = (await server!.send(generate("/v1beta/models/fast:countTokens"))).json().totalTokens
+    await server!.close()
+    await route([ev.finish()], { apps: { default: { system: "P".repeat(400), systemMode: "prepend" } } })
+    const withPolicy = (await server!.send(generate("/v1beta/models/fast:countTokens"))).json().totalTokens
+    expect(withPolicy - plain).toBe(100)
+  })
+
   test("the /v1/models/{model}:generateContent spelling works too, and is logged by route label", async () => {
     await route([ev.text("hi"), ev.finish()])
     expect((await server!.send(generate("/v1/models/fast:generateContent"))).status).toBe(200)

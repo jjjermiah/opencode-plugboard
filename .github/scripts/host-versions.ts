@@ -3,7 +3,7 @@
 // array: the stable versions inside the peer range in package.json, cut to the oldest, the
 // middle one and the newest when there are more than three. Not shipped in the package.
 //
-//   bun .github/scripts/host-versions.ts            # ["2.0.26"]
+//   bun .github/scripts/host-versions.ts            # ["2.0.26","2.0.27"]
 //   bun .github/scripts/host-versions.ts --latest   # newest in range, as plain text
 import { readFileSync } from "node:fs"
 

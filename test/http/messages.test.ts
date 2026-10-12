@@ -70,6 +70,22 @@ describe("#4 the route", () => {
     expect(count.json()).toEqual({ input_tokens: expect.any(Number) })
   })
 
+  test("#201 count_tokens includes the app's system policy, which every request sends", async () => {
+    await route([ev.finish()])
+    const plain = (await server!.send({ ...messages(), path: "/v1/messages/count_tokens" })).json().input_tokens
+    await server!.close()
+    await route([ev.finish()], { apps: { default: { system: "P".repeat(400), systemMode: "prepend" } } })
+    const withPolicy = (await server!.send({ ...messages(), path: "/v1/messages/count_tokens" })).json().input_tokens
+    expect(withPolicy - plain).toBe(100)
+  })
+
+  test("#275 a caller's cache_control breakpoint reaches the model call; the request is still answered", async () => {
+    const caller = await route([ev.finish()])
+    const reply = await server!.send(messages({ messages: [{ role: "user", content: [{ type: "text", text: "context", cache_control: { type: "ephemeral", ttl: "1h" } }] }] }))
+    expect(reply.status).toBe(200)
+    expect(caller.call.request.messages[0]!.content).toEqual([{ type: "text", text: "context", cache: true }])
+  })
+
   test("#137 an unauthenticated GET is a 401, not a 405, so the path is not revealed", async () => {
     await route([ev.finish()], { keys: { app: "secret" } })
     const reply = await server!.send({ path: "/v1/messages" })
@@ -133,6 +149,22 @@ describe("#4 answers", () => {
     const reply = await server!.send(messages())
     expect(reply.status).toBe(429)
     expect(reply.json()).toEqual({ type: "error", error: { type: "rate_limit_error", message: "slow" } })
+  })
+
+  test("#204 a provider overload is HTTP 529 with overloaded_error, the status Anthropic clients retry on", async () => {
+    await route([ev.error({ status: 503, kind: "server", code: "provider_overloaded", message: "The model provider is overloaded; retry later" })])
+    const reply = await server!.send(messages())
+    expect(reply.status).toBe(529)
+    expect(reply.json()).toEqual({ type: "error", error: { type: "overloaded_error", message: "The model provider is overloaded; retry later" } })
+  })
+
+  test("#202 disable_parallel_tool_use is passed to the caller and answered with x-plugboard-parallel-tools: limited", async () => {
+    const caller = await route([ev.finish()])
+    const tools = [{ name: "read", input_schema: { type: "object" } }]
+    const reply = await server!.send(messages({ tools, tool_choice: { type: "auto", disable_parallel_tool_use: true } }))
+    expect(reply.headers["x-plugboard-parallel-tools"]).toBe("limited")
+    expect(caller.call.request.parallelToolCalls).toBe(false)
+    expect((await server!.send(messages({ tools }))).headers).not.toHaveProperty("x-plugboard-parallel-tools")
   })
 
   test("a stream is Anthropic's named event sequence, with no [DONE]", async () => {
