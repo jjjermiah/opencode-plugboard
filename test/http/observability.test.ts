@@ -141,6 +141,28 @@ describe("#56 GET /metrics", () => {
     expect(reply.text).not.toContain("secret")
   })
 
+  test("#285 with adminKey, /metrics needs the admin key: none is 401, an app key is 403, the admin key reads every app", async () => {
+    const ADMIN = "admin-secret-value"
+    await route({ keys: KEYS, metrics: true, adminKey: ADMIN })
+    await server!.send({ ...chat, headers: bearer(KEYS.alpha) })
+    expect((await server!.send({ path: "/metrics" })).status).toBe(401)
+    const denied = await server!.send({ path: "/metrics", headers: bearer(KEYS.beta) })
+    expect(denied.status).toBe(403)
+    expect(denied.json()).toMatchObject({ error: { code: "admin_key_required", type: "permission_error" } })
+    expect(denied.text).not.toContain("plugboard_")
+    const reply = await server!.send({ path: "/metrics", headers: bearer(ADMIN) })
+    expect(reply.status).toBe(200)
+    expect(reply.text).toContain('plugboard_requests_total{app="alpha",route="POST /v1/chat/completions"')
+  })
+
+  test("#285 without adminKey, any app key reads every app's series (the documented choice)", async () => {
+    await route({ keys: KEYS, metrics: true })
+    await server!.send({ ...chat, headers: bearer(KEYS.alpha) })
+    const reply = await server!.send({ path: "/metrics", headers: bearer(KEYS.beta) })
+    expect(reply.status).toBe(200)
+    expect(reply.text).toContain('app="alpha"')
+  })
+
   test("a successful scrape writes no log line", async () => {
     await route({ metrics: true })
     await server!.send({ path: "/metrics" })

@@ -209,6 +209,15 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // Usage has its own credentials: the admin key reads every app, any other key only its own app (`authenticateUsage`).
     if (route === "GET /v1/usage" && host.usage) return serveUsage(request, response, url, host.usage, info)
 
+    // `/metrics` with `adminKey` set: the admin key alone (#285). Its series name every app, so an app key may not read them.
+    // Without `adminKey` it keeps the `/v1` authentication, and any app key sees every app's series (documented).
+    if (route === "GET /metrics" && metrics && host.options.adminKey !== undefined) {
+      const who = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
+      if (isPlugError(who)) return fail(response, who)
+      if (!who.admin) return fail(response, { status: 403, kind: "permission", code: "admin_key_required", message: "Metrics need the admin key (option `adminKey`)" })
+      return sendText(response, 200, metrics.contentType, await metrics.render(runtimeStatus()))
+    }
+
     // Runtime app keys (#55): the admin routes answer the admin key only, and are a 404 without `adminKey`.
     if (path === "/v1/admin/keys" || path.startsWith("/v1/admin/keys/"))
       return serveAdmin({ options: liveOptions(host.options), keys: host.keys }, { path, request, response, scope, info })
