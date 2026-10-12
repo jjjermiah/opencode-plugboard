@@ -9,10 +9,11 @@
  * Where it lives: the live aggregate is in memory on the process runtime (`src/runtime.ts`), so it
  * survives a plugin generation, and each day is persisted to the plugin's host storage as JSON under
  * `usage/<app>/<YYYY-MM-DD>`. Every write comes from request handling (`withUsage` and the route's
- * request log point), never from plugin setup or a finalizer (docs/architecture.md, I23). A day is
- * written at most every `FLUSH_MS`: a change is persisted by the first request that finds the last
- * write that old, so the stored copy can lag a quiet period behind memory. Queries read memory first,
- * so a report is never stale.
+ * request log point), never from plugin setup or a finalizer (docs/architecture.md, I23). A change is
+ * written as it lands; while a write of that day is in flight, later changes wait for it and go out
+ * in the next write, so the stored copy keeps up with every change (#241: a debounce kept the request
+ * count of a burst in memory, and a restart dropped it). Queries read memory first, so a
+ * report is never stale.
  *
  * Retention: days older than `usage.retentionDays` are deleted from request handling, one bounded
  * page of keys at a time and at most once per `PRUNE_EVERY_MS`.
@@ -48,8 +49,6 @@ export const GENERATION_ROUTES: ReadonlySet<string> = new Set([
 
 const DAY_MS = 86_400_000
 const KEY_PREFIX = "usage/"
-/** A changed day is written at most this often. */
-const FLUSH_MS = 10_000
 /** Retention runs at most this often, and each run reads one page of keys. */
 const PRUNE_EVERY_MS = 10 * 60_000
 const PRUNE_PAGE = 200
@@ -417,7 +416,6 @@ interface Entry {
   /** Bumped by every change; `flushedVersion` is the version last persisted. */
   version: number
   flushedVersion: number
-  flushedAt: number
   flushing?: Promise<void>
 }
 
@@ -517,28 +515,31 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
     // Another request may have loaded the day while this one read storage: keep the first entry.
     const current = state.entries.get(key)
     if (current) return current
-    const entry: Entry = { key, app, date, day: stored ?? emptyDay(), version: 0, flushedVersion: 0, flushedAt: 0 }
+    const entry: Entry = { key, app, date, day: stored ?? emptyDay(), version: 0, flushedVersion: 0 }
     state.entries.set(key, entry)
     return entry
   }
 
-  /** Persists a changed day when the last write is older than `FLUSH_MS`. The JSON is taken now; a later change waits for the next write. */
-  function flushIfDue(entry: Entry, at: number): void {
-    if (entry.version === entry.flushedVersion || entry.flushing !== undefined || at - entry.flushedAt < FLUSH_MS) return
+  /**
+   * Persists a changed day. The JSON is taken now. A write already in flight is not raced: when it lands,
+   * a change made meanwhile is written next. A failed write is logged and the day stays changed, so the
+   * next change tries again.
+   */
+  function flushIfDue(entry: Entry): void {
+    if (entry.version === entry.flushedVersion || entry.flushing !== undefined) return
     const version = entry.version
     const json = JSON.stringify(entry.day)
-    entry.flushedAt = at
-    entry.flushing = storage
-      .put(entry.key, json)
-      .then(
-        () => {
-          entry.flushedVersion = version
-        },
-        (error) => logError("usage.flush_failed", { app: entry.app, date: entry.date, error: errorMessage(error) }),
-      )
-      .finally(() => {
+    entry.flushing = storage.put(entry.key, json).then(
+      () => {
+        entry.flushedVersion = version
         entry.flushing = undefined
-      })
+        flushIfDue(entry)
+      },
+      (error) => {
+        entry.flushing = undefined
+        logError("usage.flush_failed", { app: entry.app, date: entry.date, error: errorMessage(error) })
+      },
+    )
   }
 
   /** Deletes the days older than the retention window: one page of keys per run, at most once per `PRUNE_EVERY_MS`. */
@@ -576,7 +577,7 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
         if (!entry) return
         update(entry.day)
         entry.version++
-        flushIfDue(entry, at)
+        flushIfDue(entry)
         maybePrune(at)
       })
       .catch((error) => logError("usage.record_failed", { app, error: errorMessage(error) }))

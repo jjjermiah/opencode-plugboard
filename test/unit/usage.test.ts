@@ -164,18 +164,59 @@ describe("aggregation", () => {
     first.recorder.request(request("a", 40))
     await tick()
     expect(storage.puts).toEqual(["usage/a/2026-10-11"])
-    // The call lands inside the 10 s window, so it is in memory only until the next write.
     first.recorder.call({ app: "a", ref: { providerID: "test", id: "echo" }, answered: true, usage: { inputTokens: 100, outputTokens: 20 } })
     await tick()
-    first.time.at += 10_000
     first.recorder.request(request("a", 40))
     await tick()
-    expect(storage.puts).toHaveLength(2)
+    expect(storage.puts).toHaveLength(3)
     const second = harness({ storage, state: createUsageState() })
     const report = await reportFor(second.recorder, { from: "2026-10-11", to: "2026-10-11" })
     expect(report.apps.a!.totals.requests).toBe(2)
     expect(report.apps.a!.totals.tokens.input).toBe(100)
     expect(report.apps.a!.models["test/echo"]!.costUsd).toBeCloseTo(0.0006, 12)
+  })
+
+  test("#241 a request that ends in the same instant as its model call is stored with it, so a fresh recorder counts it", async () => {
+    // The route records the model call (withUsage) and then the request (its log point) when the response ends.
+    const storage = new FakeStorage()
+    const first = harness({ storage })
+    first.recorder.call({ app: "a", ref: { providerID: "test", id: "echo" }, answered: true, usage: { inputTokens: 100, outputTokens: 20 } })
+    first.recorder.request(request("a", 40))
+    await tick()
+    const second = harness({ storage, state: createUsageState() })
+    const totals = (await reportFor(second.recorder, { from: "2026-10-11", to: "2026-10-11" })).apps.a!.totals
+    expect(totals.requests).toBe(1)
+    expect(totals.lastRequestAt).toBe(NOON)
+    expect(totals.tokens.input).toBe(100)
+  })
+
+  test("#241 a day stored before `users` and `lastRequestAt` existed keeps its counts when a request adds to it", async () => {
+    const storage = new FakeStorage()
+    const zero = { client: 0, server: 0, timeout: 0, disconnected: 0 }
+    storage.values.set(
+      "usage/a/2026-10-11",
+      JSON.stringify({
+        requests: 3,
+        errors: zero,
+        latency: { count: 3, sumMs: 300, buckets: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+        tokens: { input: 10, cacheRead: 0, cacheWrite: 0, output: 5, reasoning: 0 },
+        costUsd: 0.5,
+        cacheHits: 0,
+        cacheMisses: 0,
+        fallbacks: 0,
+        limited: 0,
+        unpricedRequests: 0,
+        perModel: { "test/echo": { requests: 3, tokens: 15, costUsd: 0.5 } },
+      }),
+    )
+    const h = harness({ storage })
+    expect((await reportFor(h.recorder, { from: "2026-10-11", to: "2026-10-11" })).apps.a!.totals.requests).toBe(3)
+    h.recorder.request(request("a", 40))
+    await tick()
+    const stored = JSON.parse(storage.values.get("usage/a/2026-10-11")!)
+    expect(stored.requests).toBe(4)
+    expect(stored.perModel["test/echo"]).toEqual({ requests: 3, tokens: 15, costUsd: 0.5 })
+    expect(stored.users).toEqual({})
   })
 
   test("a stored day with missing fields reads as zeros for them, and the rest is kept", () => {
@@ -187,7 +228,7 @@ describe("aggregation", () => {
 })
 
 describe("flushing to storage", () => {
-  test("the first change is written at once; further changes wait for 10 s, and the first request after that writes them", async () => {
+  test("#241 every finished change is written as it lands, so the stored copy never misses a request", async () => {
     const h = harness()
     h.recorder.request(request("a", 10))
     await tick()
@@ -195,12 +236,37 @@ describe("flushing to storage", () => {
     h.time.at += 1_000
     h.recorder.request(request("a", 10))
     await tick()
-    expect(h.storage.puts).toHaveLength(1)
-    h.time.at += 10_000
+    expect(h.storage.puts).toHaveLength(2)
+    expect(JSON.parse(h.storage.values.get("usage/a/2026-10-11")!).requests).toBe(2)
+  })
+
+  test("#241 a change made while a write is in flight is written as soon as that write lands, and writes do not overlap", async () => {
+    const storage = new FakeStorage()
+    const put = storage.put.bind(storage)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    let puts = 0
+    let inFlight = 0
+    let maxInFlight = 0
+    storage.put = async (key, value) => {
+      puts++
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      if (puts === 1) await gate
+      await put(key, value)
+      inFlight--
+    }
+    const h = harness({ storage })
     h.recorder.request(request("a", 10))
     await tick()
-    expect(h.storage.puts).toHaveLength(2)
-    expect(JSON.parse(h.storage.values.get("usage/a/2026-10-11")!).requests).toBe(3)
+    h.recorder.request(request("a", 10))
+    await tick()
+    expect(puts).toBe(1)
+    release()
+    await tick()
+    expect(puts).toBe(2)
+    expect(maxInFlight).toBe(1)
+    expect(JSON.parse(storage.values.get("usage/a/2026-10-11")!).requests).toBe(2)
   })
 
   test("a failed write is logged, the day stays in memory, and queries still see it", async () => {
