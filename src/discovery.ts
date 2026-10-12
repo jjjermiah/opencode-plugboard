@@ -68,6 +68,7 @@ function endpoints(options: PlugboardOptions): Endpoint[] {
     { method: "POST", path: "/v1/chat/completions", auth: true, description: "OpenAI Chat Completions." },
     { method: "POST", path: "/v1/responses", auth: true, description: "OpenAI Responses (stateless)." },
     { method: "GET", path: "/v1/status", auth: true, description: "Runtime status: generations, address, model count, uptime." },
+    ...(options.usage.enabled ? [{ method: "GET", path: "/v1/usage", auth: true, description: "Per-app usage by day: requests, tokens, cost, latency. The admin key reads every app." }] : []),
     ...(options.metrics ? [{ method: "GET", path: "/metrics", auth: true, description: "Prometheus metrics." }] : []),
   ]
 }

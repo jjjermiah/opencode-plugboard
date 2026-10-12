@@ -14,6 +14,7 @@ import type { PlugboardOptions } from "../../src/config.js"
 import type { CatalogModel, ModelCaller } from "../../src/contract.js"
 import { createMetrics, type Metrics } from "../../src/metrics.js"
 import { createOpenAiRoute } from "../../src/openai/route.js"
+import type { UsageRecorder } from "../../src/usage.js"
 import type { RuntimeStatus } from "../../src/runtime.js"
 import { CATALOG, testOptions } from "./fixtures.js"
 
@@ -184,6 +185,8 @@ export interface RouteSetup {
   readonly catalog?: ReadonlyArray<CatalogModel> | (() => Promise<ReadonlyArray<CatalogModel>>)
   /** Runtime facts for `/v1/status` and `/metrics`; `TEST_STATUS` by default, so no process runtime is created. */
   readonly status?: () => RuntimeStatus
+  /** The usage recorder behind `GET /v1/usage` (and the request log point). Absent: no usage route. */
+  readonly usage?: UsageRecorder
 }
 
 /** The real OpenAI route behind a loopback listener, with a fake model caller and a fixed catalog. */
@@ -199,6 +202,7 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
     loadCatalog: typeof catalog === "function" ? catalog : async () => catalog,
     metrics,
     status: setup.status ?? (() => TEST_STATUS),
+    ...(setup.usage ? { usage: setup.usage } : {}),
   })
   return { ...server, options, metrics }
 }

@@ -20,7 +20,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { DEFAULT_APP, authenticate, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -48,6 +48,7 @@ import { isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
+import type { UsageRecorder } from "../usage.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
@@ -63,6 +64,8 @@ export interface RouteHost {
   readonly metrics?: Metrics
   /** Runtime facts for `/v1/status` and `/metrics`; the process runtime's by default. */
   readonly status?: () => RuntimeStatus
+  /** Per-app usage (`src/usage.ts`): fed from the request log point, and served by `GET /v1/usage` when present. */
+  readonly usage?: UsageRecorder
 }
 
 const SESSION_HEADER = "x-plugboard-session"
@@ -115,7 +118,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   const runtimeStatus = routeHost.status ?? processStatus
   const host: RouteHost = metrics ? { ...routeHost, caller: metered(routeHost.caller, metrics) } : routeHost
   /** Routes with a handler of their own. `GET /metrics` exists only when enabled; otherwise it is an unknown path. */
-  const known = (route: string) => KNOWN_ROUTES.includes(route) || DISCOVERY_ROUTES.includes(route) || (metrics !== undefined && route === "GET /metrics")
+  const known = (route: string) =>
+    KNOWN_ROUTES.includes(route) || DISCOVERY_ROUTES.includes(route) || (metrics !== undefined && route === "GET /metrics") || (host.usage !== undefined && route === "GET /v1/usage")
   /** Responses to Gemini routes: errors there use Google's body. */
   const googleErrors = new WeakSet<ServerResponse>()
   const fail = (response: ServerResponse, error: PlugError, close = false) =>
@@ -170,6 +174,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       if (route === "GET /v1") return sendJson(response, 200, doc)
       return sendText(response, 200, "text/html; charset=utf-8", renderDiscoveryHtml(doc), PAGE_HEADERS)
     }
+
+    // Usage has its own credentials: the admin key reads every app, any other key only its own app (`authenticateUsage`).
+    if (route === "GET /v1/usage" && host.usage) return serveUsage(request, response, url, host.usage, info)
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but /healthz and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
@@ -280,6 +287,25 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     sendJson(response, result.status, result.body)
   }
 
+  /** `GET /v1/usage?from=&to=&app=`. An app key may name only its own app (another one is a 403); the admin key may name any app or none. */
+  async function serveUsage(request: IncomingMessage, response: ServerResponse, url: URL, usage: UsageRecorder, info: RequestInfo): Promise<void> {
+    const who = authenticateUsage(host.options, request.headers.authorization)
+    if (isPlugError(who)) return fail(response, who)
+    const app = url.searchParams.get("app") ?? undefined
+    if (!who.admin) {
+      if (app !== undefined && app !== who.app)
+        return fail(response, { status: 403, kind: "permission", code: "app_forbidden", message: "This key cannot read the usage of another app" })
+      info.app = who.app
+    }
+    const report = await usage.query({
+      from: url.searchParams.get("from") ?? undefined,
+      to: url.searchParams.get("to") ?? undefined,
+      app: who.admin ? app : who.app,
+    })
+    if (isPlugError(report)) return fail(response, report)
+    return sendJson(response, 200, report)
+  }
+
   /** Never rejects: every failure ends in a response (or a closed socket) and one log line. */
   return async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     // Generated here, never taken from the client: the id is echoed and logged, so it must not be attacker-controlled text.
@@ -333,6 +359,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       } catch {}
       const ms = Date.now() - started
       metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
+      if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
       // Probes and scrapes that succeed are not worth a line each.
       if ((info.route !== "GET /healthz" && info.route !== "GET /metrics") || outcome !== "ok") {
         const fields = { id, route: info.route, app: info.app, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
