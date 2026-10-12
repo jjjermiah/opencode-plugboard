@@ -92,7 +92,7 @@ A request for `fast` goes to the first target. If that call fails before any out
 - `/v1/models` lists the alias once, as its first target. The setup page and `GET /v1` show the whole chain.
 - A call that ends in an error has no served model, so those responses carry neither header.
 
-A response from a request that used a list alias carries `x-plugboard-model: <provider/model>` (the target that answered) and, when retries happened, `x-plugboard-fallbacks: <n>`. The `model` field of the response is that target too (with `n` above 1 the body keeps the alias, and the headers report the first choice that was served). The request log line has `served=` and `fallbacks=`, and each retry logs `model.fallback` with the failure code. With `metrics: true`, `plugboard_fallbacks_total{app}` counts retries.
+Every answer carries `x-plugboard-model: <provider/model>`, the target that answered, whether the request named an alias or a model id (a canonical id gets its own id back). A request that used a list alias also carries `x-plugboard-fallbacks: <n>` when retries happened, and the `model` field of its response is that target (with `n` above 1 the body keeps the alias, and the headers report the first choice that was served). A request for a single-target alias keeps the alias in the body. The request log line has `served=` and `fallbacks=`, and each retry logs `model.fallback` with the failure code. With `metrics: true`, `plugboard_fallbacks_total{app}` counts retries.
 
 ## Skills and agents
 
