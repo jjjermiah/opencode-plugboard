@@ -75,6 +75,7 @@ export default defineConfig({
           { text: "Chatbox", link: "/clients/chatbox" },
           { text: "Jan", link: "/clients/jan" },
           { text: "AnythingLLM", link: "/clients/anythingllm" },
+          { text: "SillyTavern", link: "/clients/sillytavern" },
         ],
       },
       {

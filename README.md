@@ -474,6 +474,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Chatbox | [chatbox][client-chatbox] | docs only, not run yet (desktop app); OpenAI and Gemini provider types |
 | Jan | [jan][client-jan] | docs only, not run yet (desktop app and CLI); OpenAI and Anthropic API formats |
 | AnythingLLM | [anythingllm][client-anythingllm] | docs only, not run yet (desktop/Docker app); Generic OpenAI provider |
+| SillyTavern | [sillytavern][client-sillytavern] | docs only, not run yet (web app); Custom (OpenAI-compatible) source |
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
@@ -567,6 +568,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-chatbox]: https://jjjermiah.github.io/opencode-plugboard/clients/chatbox
 [client-jan]: https://jjjermiah.github.io/opencode-plugboard/clients/jan
 [client-anythingllm]: https://jjjermiah.github.io/opencode-plugboard/clients/anythingllm
+[client-sillytavern]: https://jjjermiah.github.io/opencode-plugboard/clients/sillytavern
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
