@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { PlugErrorKind, PlugEvent } from "../../src/contract.js"
 import { listAvailableModels } from "../../src/models.js"
-import { collectCompletion, encodeError, encodeModelList, streamCompletion, unfence, type OpenAiExchange } from "../../src/openai/response.js"
+import { collectCompletion, encodeError, encodeModelList, matchesSchema, streamCompletion, textFallback, unfence, type OpenAiExchange } from "../../src/openai/response.js"
 import { CATALOG, ev, events, testOptions } from "../support/fixtures.js"
 import { sseData } from "../support/loopback.js"
 
@@ -10,7 +10,7 @@ const structured: OpenAiExchange = { ...plain, structuredTool: "respond" }
 const structuredWithTools: OpenAiExchange = { ...structured, callerTools: true }
 const jsonObject: OpenAiExchange = { ...plain, jsonObject: true }
 
-const collect = async (exchange: OpenAiExchange, ...list: PlugEvent[]) => (await collectCompletion(events(...list), exchange)) as { status: number; body: any }
+const collect = async (exchange: OpenAiExchange, ...list: PlugEvent[]) => (await collectCompletion(events(...list), exchange)) as { status: number; body: any; structuredFallback?: boolean }
 
 /** Runs the stream encoder and returns its frames as raw text plus the result. */
 async function stream(exchange: OpenAiExchange, ...list: PlugEvent[]) {
@@ -146,10 +146,15 @@ describe("collectCompletion: structured output (json_schema)", () => {
     expect(await collect(structured, ev.text("I refuse"), ev.finish("stop"))).toMatchObject({ status: 502, body: { error: { code: "structured_output_missing" } } })
   })
 
-  test.each(["length", "content-filter"] as const)("no respond call after a %s finish keeps the reason with null content", async (reason) => {
+  test.each(["length", "content-filter"] as const)("#172 no respond call after a %s finish is a 502, never a 200 with null content", async (reason) => {
     const { status, body } = await collect(structured, ev.finish(reason))
-    expect(status).toBe(200)
-    expect(body.choices[0].message.content).toBeNull()
+    expect(status).toBe(502)
+    expect(body.error.code).toBe("structured_output_missing")
+  })
+
+  test("#172 an empty structured turn (stop, no text, no tool call) is a 502, not a 200", async () => {
+    expect(await collect(structured, ev.finish("stop"))).toMatchObject({ status: 502, body: { error: { code: "structured_output_missing" } } })
+    expect(await collect(structured, ev.reasoning("hm"), ev.finish("stop"))).toMatchObject({ status: 502, body: { error: { code: "structured_output_missing" } } })
   })
 
   test("with caller tools, a caller tool call wins over the structured answer", async () => {
@@ -230,6 +235,12 @@ describe("streamCompletion: SSE frames", () => {
     expect((await stream(structured, ev.text("prose"), ev.finish("stop"))).result).toMatchObject({ started: false, failure: { code: "structured_output_missing" } })
   })
 
+  test.each(["length", "content-filter"] as const)("#172 streamed: no respond call after a %s finish fails before any output", async (reason) => {
+    const { text, result } = await stream(structured, ev.finish(reason))
+    expect(text).toBe("")
+    expect(result).toMatchObject({ started: false, failure: { status: 502, code: "structured_output_missing" } })
+  })
+
   test("#50 json_object: a fenced answer is held and arrives unfenced as one chunk", async () => {
     const { deltas } = await stream(jsonObject, ev.text("```json\n{"), ev.text('"a":1}\n```'), ev.finish())
     expect(deltas).toEqual([{ role: "assistant", content: "" }, { content: '{"a":1}' }, {}])
@@ -238,5 +249,74 @@ describe("streamCompletion: SSE frames", () => {
   test("#50 json_object: text that does not open with a backtick streams as it comes", async () => {
     const { deltas } = await stream(jsonObject, ev.text("  "), ev.text('{"a"'), ev.text(":1}"), ev.finish())
     expect(deltas).toEqual([{ role: "assistant", content: "" }, { content: '  {"a"' }, { content: ":1}" }, {}])
+  })
+})
+
+describe("#170 a structured turn that answered in text", () => {
+  const schema = { type: "object", required: ["city", "population"], properties: { city: { type: "string" }, population: { type: "integer" } } }
+  const withSchema: OpenAiExchange = { ...structured, structuredSchema: schema }
+
+  test("the final text is the answer when it is the JSON the schema asks for, flagged as a fallback", async () => {
+    const result = await collect(withSchema, ev.text('{"city":"Oslo","population":700000}'), ev.finish("stop"))
+    expect(result).toMatchObject({ status: 200, structuredFallback: true, body: { choices: [{ message: { content: '{"city":"Oslo","population":700000}' }, finish_reason: "stop" }] } })
+  })
+
+  test("one code fence around the JSON is stripped first", async () => {
+    const result = await collect(withSchema, ev.text('```json\n{"city":"Oslo","population":1}\n```'), ev.finish("stop"))
+    expect(result).toMatchObject({ status: 200, structuredFallback: true, body: { choices: [{ message: { content: '{"city":"Oslo","population":1}' } }] } })
+  })
+
+  test("text that does not match the schema stays a 502 structured_output_missing", async () => {
+    expect(await collect(withSchema, ev.text('{"city":"Oslo"}'), ev.finish("stop"))).toMatchObject({ status: 502, body: { error: { code: "structured_output_missing" } } })
+    expect(await collect(withSchema, ev.text('{"city":"Oslo","population":"many"}'), ev.finish("stop"))).toMatchObject({ status: 502 })
+    expect(await collect(withSchema, ev.text("Oslo has 700000 people"), ev.finish("stop"))).toMatchObject({ status: 502 })
+  })
+
+  test("a respond call wins over the text, and is not flagged", async () => {
+    const result = await collect(withSchema, ev.text('{"city":"Bergen","population":2}'), ev.call("c1", "respond", { city: "Oslo", population: 1 }), ev.finish("tool-calls"))
+    expect(result).toMatchObject({ status: 200, body: { choices: [{ message: { content: '{"city":"Oslo","population":1}' } }] } })
+    expect(result.structuredFallback).toBeUndefined()
+  })
+
+  test("with caller tools, a caller tool call still wins and no fallback is taken", async () => {
+    const result = await collect({ ...withSchema, callerTools: true }, ev.text('{"city":"Oslo","population":1}'), ev.call("c2", "search", {}), ev.finish("tool-calls"))
+    expect(result).toMatchObject({ status: 200, body: { choices: [{ finish_reason: "tool_calls" }] } })
+    expect(result.structuredFallback).toBeUndefined()
+  })
+
+  test("streamed: the JSON text is one content chunk with no error (a stream has no fallback header)", async () => {
+    const { deltas, result } = await stream(withSchema, ev.text('{"city":"Oslo",'), ev.text('"population":1}'), ev.finish("stop"))
+    expect(deltas).toEqual([{ role: "assistant", content: "" }, { content: '{"city":"Oslo","population":1}' }, {}])
+    expect(result.failure).toBeUndefined()
+  })
+
+  test("streamed: text that does not match is still the structured_output_missing error", async () => {
+    const { result } = await stream(withSchema, ev.text("prose"), ev.finish("stop"))
+    expect(result.failure).toMatchObject({ code: "structured_output_missing" })
+  })
+})
+
+describe("#170 matchesSchema and textFallback: the schema subset", () => {
+  test.each([
+    ["an object with its required keys and typed properties", { type: "object", required: ["a"], properties: { a: { type: "string" } } }, { a: "x" }, true],
+    ["a missing required key", { type: "object", required: ["a"] }, {}, false],
+    ["a property of the wrong type", { type: "object", properties: { a: { type: "number" } } }, { a: "1" }, false],
+    ["an absent optional property is not checked", { type: "object", properties: { a: { type: "number" } } }, {}, true],
+    ["an integer is not a fraction", { type: "integer" }, 1.5, false],
+    ["a list of types", { type: ["string", "null"] }, null, true],
+    ["a top-level array", { type: "array" }, [1], true],
+    ["an array where an object is wanted", { type: "object" }, [1], false],
+    ["no type constrains nothing", {}, "anything", true],
+  ])("%s", (_name, schema, value, expected) => {
+    expect(matchesSchema(value, schema)).toBe(expected)
+  })
+
+  test("textFallback: the trimmed, unfenced JSON, or undefined", () => {
+    const schema = { type: "object", required: ["a"] }
+    expect(textFallback('  {"a":1}\n', schema)).toBe('{"a":1}')
+    expect(textFallback('```json\n{"a":1}\n```', schema)).toBe('{"a":1}')
+    expect(textFallback("not json", schema)).toBeUndefined()
+    expect(textFallback("", schema)).toBeUndefined()
+    expect(textFallback('{"b":1}', schema)).toBeUndefined()
   })
 })

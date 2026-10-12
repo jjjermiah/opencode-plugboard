@@ -32,7 +32,7 @@ export interface ParsedChat {
 }
 
 /** Name of the forced tool that carries structured output. */
-const RESPOND_TOOL = "respond"
+export const RESPOND_TOOL = "respond"
 
 /** The most stop sequences OpenAI accepts. */
 const MAX_STOP = 4
@@ -196,14 +196,14 @@ const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError =
 }
 
 /** System instruction for `json_object`: no schema, so the caller's prompt describes the keys (OpenAI semantics). */
-const JSON_OBJECT_INSTRUCTION = "Respond with a single valid JSON object only."
+export const JSON_OBJECT_INSTRUCTION = "Respond with a single valid JSON object only."
 
 /**
  * `json_schema` -> the `respond` tool (`structured`; forced unless the caller also sends tools).
  * `json_object` -> a system instruction and plain text content (`instruction`): there is no schema
  * to force a tool with.
  */
-const parseResponseFormat = (raw: unknown): { structured?: PlugTool; instruction?: string } | PlugError => {
+export const parseResponseFormat = (raw: unknown): { structured?: PlugTool; instruction?: string } | PlugError => {
   if (raw == null) return {}
   if (!isRecord(raw)) return bad("response_format must be an object", "response_format")
   if (raw.type === "text") return {}
@@ -339,7 +339,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
       model: body.model,
       stream: body.stream === true,
       includeUsage: streamOptions.include_usage === true,
-      ...(respond ? { structuredTool: RESPOND_TOOL, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+      ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
       ...(format.instruction ? { jsonObject: true } : {}),
       ...(generation.stop ? { stop: generation.stop } : {}),
     },

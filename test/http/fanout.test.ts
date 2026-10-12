@@ -157,3 +157,74 @@ describe("#75 POST /v1/completions", () => {
     expect(caller.calls).toEqual([])
   })
 })
+
+describe("#169 POST /v1/completions with response_format", () => {
+  const schema = { type: "object", properties: { a: { type: "number" } }, required: ["a"] }
+  const jsonSchema = { type: "json_schema", json_schema: { name: "answer", schema } }
+
+  test("json_schema offers the respond tool, forced, and answers with its arguments as text", async () => {
+    const caller = await route([ev.call("c1", "respond", { a: 42 }), ev.finish("tool-calls")])
+    const reply = await server!.send(completions({ response_format: jsonSchema }))
+    expect(caller.call.request).toMatchObject({ tools: [{ name: "respond", parameters: schema }], toolChoice: { type: "tool", name: "respond" } })
+    expect(reply.status).toBe(200)
+    expect(reply.json()).toMatchObject({ object: "text_completion", choices: [{ text: '{"a":42}', finish_reason: "stop" }] })
+  })
+
+  test("a prose answer to json_schema is a 502 structured_output_missing, not a 200 with prose", async () => {
+    await route([ev.text("6 × 7 = 42"), ev.finish("stop")])
+    const reply = await server!.send(completions({ response_format: jsonSchema }))
+    expect(reply.status).toBe(502)
+    expect(reply.json().error.code).toBe("structured_output_missing")
+  })
+
+  test("json_object: the system instruction is sent and one code fence is stripped", async () => {
+    const caller = await route([ev.text('```json\n{"ok":true}\n```'), ev.finish("stop")])
+    const reply = await server!.send(completions({ response_format: { type: "json_object" } }))
+    expect(caller.call.request.system).toHaveLength(1)
+    expect(reply.json().choices[0].text).toBe('{"ok":true}')
+  })
+
+  test("streamed json_schema: one text chunk with the answer, then the finish chunk and [DONE]", async () => {
+    await route([ev.call("c1", "respond", { a: 1 }), ev.finish("tool-calls")])
+    const stream = await server!.open(completions({ response_format: jsonSchema, stream: true }))
+    const text = await stream.ended
+    const chunks = sseData(text)
+    expect(chunks.map((chunk) => chunk.choices[0].text)).toEqual(['{"a":1}', ""])
+    expect(chunks.at(-1).choices[0].finish_reason).toBe("stop")
+    expect(text.endsWith("data: [DONE]\n\n")).toBe(true)
+  })
+})
+
+describe("#170 a structured answer in the text, over HTTP", () => {
+  const schema = { type: "object", properties: { city: { type: "string" } }, required: ["city"] }
+  const jsonSchema = { type: "json_schema", json_schema: { name: "city", schema } }
+
+  test("chat: a text answer that matches the schema is returned with x-plugboard-structured-fallback: text", async () => {
+    await route([ev.text('{"city":"Oslo"}'), ev.finish("stop")])
+    const reply = await server!.send(chat({ response_format: jsonSchema }))
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+    expect(reply.json().choices[0].message.content).toBe('{"city":"Oslo"}')
+  })
+
+  test("chat: a respond call is answered without the header", async () => {
+    await route([ev.call("c1", "respond", { city: "Oslo" }), ev.finish("tool-calls")])
+    const reply = await server!.send(chat({ response_format: jsonSchema }))
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBeUndefined()
+    expect(reply.json().choices[0].message.content).toBe('{"city":"Oslo"}')
+  })
+
+  test("completions: the same fallback and header", async () => {
+    await route([ev.text('{"city":"Oslo"}'), ev.finish("stop")])
+    const reply = await server!.send(completions({ response_format: jsonSchema }))
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+    expect(reply.json().choices[0].text).toBe('{"city":"Oslo"}')
+  })
+
+  test("text that does not match the schema is still a 502 structured_output_missing", async () => {
+    await route([ev.text("Oslo"), ev.finish("stop")])
+    const reply = await server!.send(chat({ response_format: jsonSchema }))
+    expect(reply.status).toBe(502)
+    expect(reply.json().error.code).toBe("structured_output_missing")
+  })
+})

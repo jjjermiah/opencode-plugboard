@@ -5,9 +5,9 @@
  * Reasoning deltas and tool calls are dropped: the legacy format has neither, and the request
  * offers no tools. `logprobs` is always null.
  */
-import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
+import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
 import type { ChoiceCodec } from "../openai/fanout.js"
-import { encodeError, type StreamChoice, type StreamResult } from "../openai/response.js"
+import { args, encodeError, structuredMissing, textFallback, unfence, type CollectedChoice, type StreamChoice, type StreamResult } from "../openai/response.js"
 import { StopHoldback, stripStopTail } from "../stop.js"
 
 /** What the encoders need besides the model events; the request decoder produces it, the model call never sees it. */
@@ -23,6 +23,12 @@ export interface CompletionsExchange {
   readonly echo?: ReadonlyArray<string>
   /** The request's `stop`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). */
   readonly stop?: ReadonlyArray<string>
+  /** `response_format: json_schema`: the name of the forced tool whose input is the answer (`respond`). The answer is its arguments as text. */
+  readonly structuredTool?: string
+  /** The caller's `json_schema`: a text answer is taken when the model skipped the call and its text is that JSON (`textFallback`). */
+  readonly structuredSchema?: Readonly<Record<string, unknown>>
+  /** `response_format: json_object`: a single markdown fence around the answer is stripped (`unfence`). */
+  readonly jsonObject?: boolean
 }
 
 const FINISH_REASONS: Record<Exclude<PlugFinish, "error">, string> = {
@@ -46,15 +52,31 @@ const encodeUsage = (usage: PlugUsage) => {
 
 const prefixOf = (exchange: CompletionsExchange, index: number) => exchange.echo?.[Math.floor(index / exchange.perPrompt)] ?? ""
 
-/** One choice as a complete body: `choices[0]` carries the text, `usage` the totals. */
-async function collectText(events: AsyncIterable<PlugEvent>, exchange: CompletionsExchange, index: number): Promise<{ status: number; body: object; retryAfterSeconds?: number }> {
+/** A choice's settled answer: its text, the finish reason and the usage. */
+interface Settled {
+  readonly text: string
+  readonly reason: Exclude<PlugFinish, "error">
+  readonly usage?: PlugUsage
+  /** The structured answer came from the text (see `textFallback`), not the respond call. */
+  readonly fallback?: boolean
+}
+
+/**
+ * Reads one whole choice. A structured answer is the arguments of the `respond` call (the text is
+ * ignored); a json_object answer loses one code fence. Without the call a structured choice fails,
+ * as in Chat Completions (`structuredMissing`).
+ */
+async function settle(events: AsyncIterable<PlugEvent>, exchange: CompletionsExchange): Promise<Settled | PlugError> {
   let text = ""
+  let answer: string | undefined
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
   for await (const event of events) {
     if (event.type === "text-delta") text += event.text
-    else if (event.type === "finish") {
+    else if (event.type === "tool-call") {
+      if (exchange.structuredTool !== undefined && event.name === exchange.structuredTool) answer ??= args(event.input)
+    } else if (event.type === "finish") {
       usage = event.usage ?? usage
       if (event.reason === "error") failure ??= failedRun()
       else finish = event.reason
@@ -64,20 +86,31 @@ async function collectText(events: AsyncIterable<PlugEvent>, exchange: Completio
     }
   }
   if (!failure && !finish) failure = noFinish()
-  if (failure || !finish) {
-    const error = failure ?? noFinish()
-    return { status: error.status, body: encodeError(error), retryAfterSeconds: error.retryAfterSeconds }
+  if (failure || !finish) return failure ?? noFinish()
+  if (exchange.structuredTool !== undefined) {
+    if (answer !== undefined) return { text: answer, reason: finish, usage }
+    const fallback = exchange.structuredSchema === undefined ? undefined : textFallback(text, exchange.structuredSchema)
+    if (fallback === undefined) return structuredMissing(exchange.structuredTool)
+    return { text: fallback, reason: finish, usage, fallback: true }
   }
   if (finish === "stop") text = stripStopTail(text, exchange.stop ?? []).text
+  return { text: exchange.jsonObject ? unfence(text) : text, reason: finish, usage }
+}
+
+/** One choice as a complete body: `choices[0]` carries the text, `usage` the totals. */
+async function collectText(events: AsyncIterable<PlugEvent>, exchange: CompletionsExchange, index: number): Promise<CollectedChoice> {
+  const settled = await settle(events, exchange)
+  if (isPlugError(settled)) return { status: settled.status, body: encodeError(settled), retryAfterSeconds: settled.retryAfterSeconds }
   return {
+    ...(settled.fallback ? { structuredFallback: true } : {}),
     status: 200,
     body: {
       id: `cmpl-${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`,
       object: "text_completion",
       created: now(),
       model: exchange.model,
-      choices: [{ text: prefixOf(exchange, index) + text, index: 0, logprobs: null, finish_reason: FINISH_REASONS[finish] }],
-      ...(usage ? { usage: encodeUsage(usage) } : {}),
+      choices: [{ text: prefixOf(exchange, index) + settled.text, index: 0, logprobs: null, finish_reason: FINISH_REASONS[settled.reason] }],
+      ...(settled.usage ? { usage: encodeUsage(settled.usage) } : {}),
     },
   }
 }
@@ -109,6 +142,15 @@ async function streamText(
     started = true
     const prefix = prefixOf(exchange, choice.index)
     if (prefix.length > 0) chunk(prefix)
+  }
+  if (exchange.structuredTool !== undefined || exchange.jsonObject) {
+    // A structured or json_object answer is only known at the end (the call, the fence), so it is written as one chunk.
+    const settled = await settle(events, exchange)
+    if (isPlugError(settled)) return { failure: settled, started: false }
+    start()
+    if (settled.text.length > 0) chunk(settled.text)
+    chunk("", FINISH_REASONS[settled.reason])
+    return { started, ...(settled.usage ? { usage: settled.usage } : {}) }
   }
   // A stop sequence is held back until the finish decides it (src/stop.ts).
   const holdback = new StopHoldback(exchange.stop ?? [])

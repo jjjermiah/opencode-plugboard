@@ -177,6 +177,12 @@ describe("#88 host errors reach the caller only as a stable code and a fixed mes
     ["a provider 5xx", { type: "provider.other", status: 503, message: SECRET }, { status: 503, kind: "server", code: "provider_unavailable" }],
     ["a provider error without a status", { type: "provider.other", message: SECRET }, { status: 502, kind: "server", code: "provider_unavailable" }],
     ["anything else", { type: "unknown", message: SECRET }, { status: 502, kind: "server", code: "model_run_failed" }],
+    ["#171 a ChatGPT subscription at its usage limit", { type: "provider.invalid-request", message: `subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached ${SECRET}` }, { status: 429, kind: "rate_limit", code: "quota_exceeded" }],
+    ["#171 a usage limit in the raw body", { type: "provider.other", message: "bad", response: { body: `{"error":"usage_limit_reached","org":"${SECRET}"}` } }, { status: 429, kind: "rate_limit", code: "quota_exceeded" }],
+    ["#171 provider rate-limit wording without a 429", { type: "provider.invalid-request", message: `Rate limit reached for requests ${SECRET}` }, { status: 429, kind: "rate_limit", code: "rate_limited" }],
+    ["#171 a rejected API key in the message", { type: "provider.invalid-request", message: `Incorrect API key provided: ${SECRET}` }, { status: 502, kind: "server", code: "provider_auth_failed" }],
+    ["#171 a model the provider does not know", { type: "provider.invalid-request", status: 404, message: `The model gpt-x does not exist ${SECRET}` }, { status: 404, kind: "not_found", code: "model_not_found" }],
+    ["#171 an unknown model without a status", { type: "provider.other", message: "Unknown model: gpt-x" }, { status: 404, kind: "not_found", code: "model_not_found" }],
   ]
   test.each(cases)("%s", async (_name, error, expected) => {
     const [event] = await play(host.stepFailed(error))

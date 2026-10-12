@@ -131,3 +131,97 @@ describe("#75 the text_completion codec", () => {
     })
   })
 })
+
+describe("#169 response_format on legacy completions, as on Chat Completions", () => {
+  const jsonSchema = { type: "json_schema", json_schema: { name: "answer", schema: { type: "object", properties: { a: { type: "number" } }, required: ["a"] } } }
+
+  test("json_schema is the forced respond tool, and the answer is its arguments", () => {
+    const parsed = parse(body({ response_format: jsonSchema }))
+    expect(parsed.requests[0]).toMatchObject({
+      tools: [{ name: "respond", parameters: { type: "object", required: ["a"] } }],
+      toolChoice: { type: "tool", name: "respond" },
+    })
+    expect(parsed.exchange).toMatchObject({ structuredTool: "respond" })
+    expect(parsed.exchange.jsonObject).toBeUndefined()
+  })
+
+  test("json_object is a system instruction and the answer loses one code fence", () => {
+    const parsed = parse(body({ suffix: "!", response_format: { type: "json_object" } }))
+    expect(parsed.requests[0]!.system).toHaveLength(2)
+    expect(parsed.requests[0]!.tools).toEqual([])
+    expect(parsed.requests[0]!.toolChoice).toBeUndefined()
+    expect(parsed.exchange).toMatchObject({ jsonObject: true })
+    expect(parsed.exchange.structuredTool).toBeUndefined()
+  })
+
+  test("response_format text changes nothing", () => {
+    expect(parse(body({ response_format: { type: "text" } }))).toEqual(parse(body()))
+  })
+
+  test("an invalid response_format is a 400 naming the field", () => {
+    expect(parseCompletionsRequest(body({ response_format: { type: "yaml" } }), options)).toMatchObject({ status: 400, param: "response_format.type" })
+    expect(parseCompletionsRequest(body({ response_format: { type: "json_schema", json_schema: { name: "x" } } }), options)).toMatchObject({
+      status: 400,
+      param: "response_format.json_schema.schema",
+    })
+  })
+})
+
+describe("#169 the text_completion codec with structured output", () => {
+  const structured: CompletionsExchange = { model: "fast", stream: false, includeUsage: false, perPrompt: 1, structuredTool: "respond" }
+  const fenced: CompletionsExchange = { model: "fast", stream: false, includeUsage: false, perPrompt: 1, jsonObject: true }
+
+  test("collect: the text is the respond call's arguments; prose and other calls are dropped", async () => {
+    const result = (await completionsCodec(structured).collect(events(ev.text("thinking"), ev.call("c0", "other"), ev.call("c1", "respond", { a: 42 }), ev.finish("tool-calls")), 0)) as { status: number; body: any }
+    expect(result.status).toBe(200)
+    expect(result.body.choices[0]).toMatchObject({ text: '{"a":42}', finish_reason: "stop" })
+  })
+
+  test("collect: no respond call is a 502 structured_output_missing", async () => {
+    expect(await completionsCodec(structured).collect(events(ev.text("6 × 7 = 42"), ev.finish("stop")), 0)).toEqual({
+      status: 502,
+      body: { error: { message: "The model finished without calling the `respond` tool, so there is no structured output", type: "server_error", param: null, code: "structured_output_missing" } },
+    })
+  })
+
+  test("collect: json_object strips one fence", async () => {
+    const result = (await completionsCodec(fenced).collect(events(ev.text('```json\n{"ok":true}\n```'), ev.finish("stop")), 0)) as { body: any }
+    expect(result.body.choices[0].text).toBe('{"ok":true}')
+  })
+
+  test("streamChoice: a structured answer is one text chunk, then the finish chunk", async () => {
+    let text = ""
+    const result = await completionsCodec(structured).streamChoice(events(ev.text("prose"), ev.call("c1", "respond", { a: 1 }), ev.finish("tool-calls")), (chunk) => void (text += chunk), { id: "cmpl-s", created: 1, index: 0 })
+    expect(sseData(text).map((chunk) => [chunk.choices[0].text, chunk.choices[0].finish_reason])).toEqual([
+      ['{"a":1}', null],
+      ["", "stop"],
+    ])
+    expect(result).toEqual({ started: true })
+  })
+
+  test("streamChoice: a structured turn with no answer fails before any output", async () => {
+    let text = ""
+    const result = await completionsCodec(structured).streamChoice(events(ev.text("prose"), ev.finish("stop")), (chunk) => void (text += chunk), { id: "cmpl-s", created: 1, index: 0 })
+    expect(text).toBe("")
+    expect(result).toMatchObject({ started: false, failure: { status: 502, code: "structured_output_missing" } })
+  })
+})
+
+describe("#170 the text_completion codec takes a text answer that matches the schema", () => {
+  const schema = { type: "object", required: ["a"] }
+  const exchange: CompletionsExchange = { model: "fast", stream: false, includeUsage: false, perPrompt: 1, structuredTool: "respond", structuredSchema: schema }
+
+  test("collect: the JSON text is the answer, flagged as a fallback", async () => {
+    const result = (await completionsCodec(exchange).collect(events(ev.text('{"a":7}'), ev.finish("stop")), 0)) as { status: number; body: any; structuredFallback?: boolean }
+    expect(result).toMatchObject({ status: 200, structuredFallback: true, body: { choices: [{ text: '{"a":7}', finish_reason: "stop" }] } })
+  })
+
+  test("collect: a respond call is not flagged", async () => {
+    const result = (await completionsCodec(exchange).collect(events(ev.call("c1", "respond", { a: 7 }), ev.finish("tool-calls")), 0)) as { structuredFallback?: boolean }
+    expect(result.structuredFallback).toBeUndefined()
+  })
+
+  test("collect: text that does not match is still a 502", async () => {
+    expect(await completionsCodec(exchange).collect(events(ev.text('{"b":7}'), ev.finish("stop")), 0)).toMatchObject({ status: 502 })
+  })
+})
