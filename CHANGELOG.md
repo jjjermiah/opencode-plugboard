@@ -14,7 +14,13 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Structured output when the model answers in prose.** Told "don't call any tool", Claude also skips the `respond` tool and writes "Here is the JSON: ```json {...}```". The text fallback now takes a single fenced JSON block from inside prose when it matches the schema, so this is an answer instead of a 502. Two blocks, or a block that doesn't match, still fail. Found by the live suite; all three Claude tools-plus-schema cells now pass.
+
+### Changed
+
+- **Wider docs pages.** The docs site now uses most of the window: the text column grows to 1280px beside the outline, and wide tables scroll inside themselves, so diagrams and endpoint tables have room.
 
 ## [0.21.0] - 2026-10-11: Answers to the Reviewers
 
