@@ -21,6 +21,7 @@ const PROBES: ReadonlyArray<readonly [string, string, string]> = [
   ["GET", "/", "/"],
   ["GET", "/v1", "/v1"],
   ["GET", "/healthz", "/healthz"],
+  ["GET", "/readyz", "/readyz"],
   ["GET", "/v1/models", "/v1/models"],
   ["GET", "/v1/models/test%2Fecho", "/v1/models/{id}"],
   ["POST", "/v1/chat/completions", "/v1/chat/completions"],

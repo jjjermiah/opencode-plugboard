@@ -67,6 +67,7 @@ export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "GET", path: "/", auth: false, description: "This page." },
   { method: "GET", path: "/v1", auth: false, description: "This page as JSON." },
   { method: "GET", path: "/healthz", auth: false, description: "Liveness: {\"ok\":true}." },
+  { method: "GET", path: "/readyz", auth: false, description: "Readiness: {\"ready\":true}, or 503 {\"ready\":false,\"reason\"} until the backend can serve." },
   { method: "GET", path: "/v1/models", auth: true, description: "Models this app may call (OpenAI shape)." },
   { method: "GET", path: "/v1/models/{id}", auth: true, description: "One model." },
   { method: "POST", path: "/v1/chat/completions", auth: true, description: "OpenAI Chat Completions." },
@@ -284,6 +285,29 @@ ${sections.join("\n")}
 `
 }
 
+/** The facts `/readyz` decides from (`RuntimeStatus` in src/runtime.ts). */
+export interface ReadinessFacts {
+  readonly generations: number
+  readonly servingConfirmed: boolean
+  readonly pumpRunning: boolean
+  readonly catalogLoaded: boolean
+  readonly configError?: { readonly message: string }
+}
+
+/**
+ * `GET /readyz` (#160): whether the backend can serve a request. The reason names the first piece
+ * that is missing, in the order a person fixes them. A recorded options error comes first and is
+ * its own message (#159); nothing else from the config is shown.
+ */
+export function readiness(facts: ReadinessFacts): { ready: true } | { ready: false; reason: string } {
+  if (facts.configError) return { ready: false, reason: facts.configError.message }
+  if (facts.generations === 0) return { ready: false, reason: "no plugboard generation is live; the server is reloading or the plugin is not loaded" }
+  if (!facts.servingConfirmed) return { ready: false, reason: "no app directory has been used since start; one model request to an app confirms it" }
+  if (!facts.pumpRunning) return { ready: false, reason: "the event pump is not running; the next request to an app starts it" }
+  if (!facts.catalogLoaded) return { ready: false, reason: "the model catalog has not loaded yet" }
+  return { ready: true }
+}
+
 /** `GET /v1/status`: authenticated runtime facts. `models` is absent when the catalog could not be loaded. */
 export function buildStatus(input: {
   readonly options: PlugboardOptions
@@ -292,6 +316,7 @@ export function buildStatus(input: {
     readonly runtimeVersion: number
     readonly listener?: { readonly host: string; readonly port: number; readonly bound: boolean }
     readonly servingConfirmed: boolean
+    readonly configError?: { readonly message: string; readonly at: number }
   }
   readonly catalog?: ReadonlyArray<CatalogModel>
   readonly now?: number
@@ -311,5 +336,7 @@ export function buildStatus(input: {
     sessionGuards: runtime.guards,
     models: catalog ? { catalog: catalog.length, available: listAvailableModels(options, catalog, app).length } : { error: "catalog_unavailable" },
     metrics: options.metrics,
+    // The plugin options error the last Location to load the plugin hit (#159); absent when options parse.
+    ...(runtime.configError ? { configError: { message: runtime.configError.message, at: new Date(runtime.configError.at).toISOString() } } : {}),
   }
 }

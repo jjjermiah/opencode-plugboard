@@ -118,8 +118,8 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 14
+/** 15: the last options error (`configError`, #159) and `catalogLoaded` for `/readyz` (#160). 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 15
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -156,6 +156,12 @@ interface Pump {
   stop(): void
 }
 
+/** A plugin options error and when it was recorded (epoch ms). */
+export interface ConfigError {
+  readonly message: string
+  readonly at: number
+}
+
 interface Runtime {
   readonly version: number
   readonly sessions: SessionStore
@@ -187,6 +193,10 @@ interface Runtime {
   readonly budgets: BudgetState
   /** The runtime app keys (src/keys.ts), loaded from storage on the first authentication. */
   readonly runtimeKeys: KeyState
+  /** The last plugin options error (`index.ts`), cleared by the next Location whose options parse (#159). */
+  configError?: ConfigError
+  /** Set once the serving catalog has loaded successfully (`loadServingCatalog`); `/readyz` reads it (#160). */
+  catalogLoaded?: boolean
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
@@ -357,12 +367,16 @@ export interface RuntimeStatus extends RuntimeSnapshot {
   readonly listener?: { readonly host: string; readonly port: number; readonly bound: boolean }
   /** The serving generation's Location is a confirmed app directory (else the newest generation serves). */
   readonly servingConfirmed: boolean
+  /** The last plugin options error, when its Location was the latest to load the plugin (#159). */
+  readonly configError?: ConfigError
+  /** The serving catalog has loaded at least once in this process (`/readyz`, #160). */
+  readonly catalogLoaded: boolean
 }
 
 /** A synchronous snapshot of the runtime: no host call, no filesystem. */
 export function processStatus(): RuntimeStatus {
   const rt = runtime()
-  if (!rt) return { runtimeVersion: VERSION, generations: 0, pumpRunning: false, guards: detachedSessions.size(), startedAt: detachedStartedAt, servingConfirmed: false }
+  if (!rt) return { runtimeVersion: VERSION, generations: 0, pumpRunning: false, guards: detachedSessions.size(), startedAt: detachedStartedAt, servingConfirmed: false, catalogLoaded: false }
   const serving = preferred(rt)
   return {
     runtimeVersion: rt.version,
@@ -371,8 +385,21 @@ export function processStatus(): RuntimeStatus {
     guards: rt.sessions.size(),
     startedAt: rt.startedAt,
     servingConfirmed: serving !== undefined && rt.confirmed.has(serving.directory),
+    catalogLoaded: rt.catalogLoaded === true,
     ...(rt.listener ? { listener: { host: rt.listener.listen.host, port: rt.listener.listen.port, bound: rt.listener.bound } } : {}),
+    ...(rt.configError ? { configError: rt.configError } : {}),
   }
+}
+
+/**
+ * Records the plugin options error of the Location that just failed to parse its options, or clears
+ * it (`undefined`) once options parse. Synchronous, so plugin setup may call it. The status and
+ * `/readyz` show it while a listener from an earlier good generation still serves (#159).
+ */
+export function setConfigError(message: string | undefined): void {
+  const rt = runtime()
+  if (!rt) return
+  rt.configError = message === undefined ? undefined : { message, at: Date.now() }
 }
 
 /** The generation that serves requests and supplies the catalog: the newest confirmed app-directory one, else the newest. */
@@ -385,9 +412,11 @@ function preferred(rt: Runtime): Generation | undefined {
  * The catalog of the preferred accepted generation. `fallback` (the caller's own loader) is only
  * used when no generation is registered, which a live request does not normally see.
  */
-export function loadServingCatalog(fallback: () => Promise<ReadonlyArray<CatalogModel>>): Promise<ReadonlyArray<CatalogModel>> {
+export async function loadServingCatalog(fallback: () => Promise<ReadonlyArray<CatalogModel>>): Promise<ReadonlyArray<CatalogModel>> {
   const rt = runtime()
-  return (rt ? (preferred(rt)?.loadCatalog ?? fallback) : fallback)()
+  const models = await (rt ? (preferred(rt)?.loadCatalog ?? fallback) : fallback)()
+  if (rt) rt.catalogLoaded = true
+  return models
 }
 
 /** JSON with object keys sorted at every level, so equal options compare equal whatever their key order (undefined values are left out, as in `JSON.stringify`). */

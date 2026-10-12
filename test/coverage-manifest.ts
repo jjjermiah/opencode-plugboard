@@ -146,6 +146,11 @@ export const ROWS: readonly Row[] = [
   read("GET /", at(HTTP + "observability.test.ts", "the HTML page has a strict CSP, no framing, no sniffing, no caching"), at(HTTP + "observability.test.ts", "/healthz and the first-run pages stay open")),
   read("GET /v1", at(UNIT + "discovery.test.ts", "/metrics is listed only when enabled"), at(HTTP + "observability.test.ts", "/healthz and the first-run pages stay open")),
   read("GET /healthz", at(HTTP + "ingress.test.ts", "GET /healthz answers ok without auth and writes no log line"), na("healthz answers 200 on every request; it has no error path")),
+  read(
+    "GET /readyz",
+    at(HTTP + "readyz.test.ts", "#160 /readyz answers ready with no key, and only once every piece is up"),
+    at(HTTP + "readyz.test.ts", "#160 not ready is a 503 with the first missing piece as the reason"),
+  ),
   read("GET /metrics", at(UNIT + "metrics.test.ts", "the content type is the registry's (text format 0.0.4)"), at(HTTP + "observability.test.ts", "/metrics while disabled")),
   read(
     "GET /v1beta/models",
