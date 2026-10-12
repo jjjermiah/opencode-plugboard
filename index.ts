@@ -23,9 +23,10 @@ import { Effect } from "effect"
 import { parseOptions } from "./src/config.js"
 import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
+import { withBudgets } from "./src/budgets.js"
 import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, processLimits, processMetrics, processUsage, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
+import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processLimits, processMetrics, processUsage, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
@@ -80,23 +81,35 @@ export default Plugin.define({
         // Aliases written as a list retry the next target before the first output (src/fallback.ts).
         // The response cache sits outside the fallbacks, so a hit never reaches a provider (src/cache.ts).
         caller: withUsage(
-          withLimits(
-            withResponseCache(
-              withFallbacks(createSessionCaller(callerDeps), {
+          // Budgets sit outside the limiter, so a budget refusal never takes a slot (src/budgets.ts).
+          withBudgets(
+            withLimits(
+              withResponseCache(
+                withFallbacks(createSessionCaller(callerDeps), {
+                  options,
+                  loadCatalog: servingCatalog,
+                  onFallback: (app) => {
+                    if (options.metrics) processMetrics().fallback(app)
+                    usage?.fallback(app)
+                  },
+                }),
                 options,
-                loadCatalog: servingCatalog,
-                onFallback: (app) => {
-                  if (options.metrics) processMetrics().fallback(app)
-                  usage?.fallback(app)
+              ),
+              () => limits,
+              processLimits(),
+              {
+                onLimited: (app, reason) => {
+                  if (options.metrics) processMetrics().limited(app, reason)
+                  usage?.limited(app)
                 },
-              }),
-              options,
+              },
             ),
-            () => limits,
-            processLimits(),
+            options.budgets,
+            usage,
+            processBudgets(),
             {
-              onLimited: (app, reason) => {
-                if (options.metrics) processMetrics().limited(app, reason)
+              onRefused: (app) => {
+                if (options.metrics) processMetrics().limited(app, "budget")
                 usage?.limited(app)
               },
             },

@@ -62,8 +62,8 @@ export interface Metrics {
   dropped(params: ReadonlyArray<string>): void
   /** A model call failed before any output and was retried on the next target of its alias. */
   fallback(app: string): void
-  /** A call was refused with 429 by a concurrency cap (`concurrency`) or a requests-per-minute limit (`rate`). */
-  limited(app: string, reason: "concurrency" | "rate"): void
+  /** A call was refused with 429 by a concurrency cap (`concurrency`), a requests-per-minute limit (`rate`) or a budget (`budget`). */
+  limited(app: string, reason: "concurrency" | "rate" | "budget"): void
   /** A call the response cache applied to: a stored answer replayed (`hit`) or the model run (`miss`). */
   cache(app: string, result: "hit" | "miss"): void
   /** One history sweep ended. */
@@ -110,7 +110,7 @@ export function createMetrics(): Metrics {
   })
   const limited = new Counter({
     name: "plugboard_limited_total",
-    help: "Model calls refused with 429 by a concurrency cap or a requests-per-minute limit, by app and reason.",
+    help: "Model calls refused with 429 by a concurrency cap, a requests-per-minute limit or a budget, by app and reason.",
     labelNames: ["app", "reason"],
     registers: [registry],
   })

@@ -23,7 +23,7 @@
  * at 0 and its call counted in `unpricedRequests`.
  */
 
-import { APP_NAME_PATTERN } from "./config.js"
+import { APP_NAME_PATTERN, type BudgetMetric, type BudgetWindow } from "./config.js"
 import { isPlugError, type CallContext, type CatalogCost, type CatalogModel, type ModelCaller, type ModelRef, type PlugError, type PlugEvent, type PlugRequest, type PlugUsage, type ServedModel } from "./contract.js"
 import { errorMessage, log, logError } from "./log.js"
 import type { Outcome } from "./metrics.js"
@@ -115,7 +115,7 @@ export interface UsageCounts<Latency = LatencyHistogram> {
   cacheMisses: number
   /** Retries on the next target of an alias after a failure before any output. */
   fallbacks: number
-  /** Calls refused with 429 by a concurrency cap or a requests-per-minute limit (also counted in `requests` and `errors.client`). */
+  /** Calls refused with 429 by a concurrency cap, a requests-per-minute limit or a budget (also counted in `requests` and `errors.client`). */
   limited: number
   /** Answered calls that spent tokens but had no price in the catalog (their cost counts as 0). */
   unpricedRequests: number
@@ -137,6 +137,17 @@ export interface UsageDay extends UsageTotals {
   perModel: Record<string, ModelUsage>
 }
 
+/** One ceiling of an app's budget, with what its current window has used (`GET /v1/usage`, see `src/budgets.ts`). */
+export interface BudgetStatus {
+  readonly metric: BudgetMetric
+  readonly window: BudgetWindow
+  readonly limit: number
+  /** Counted so far in the current window; a cost is in USD. */
+  readonly used: number
+  /** ISO 8601 time the current window ends and its count starts again. */
+  readonly resetsAt: string
+}
+
 export interface UsageAppReport {
   /** Sums over the days of the range. */
   totals: UsageTotals
@@ -144,6 +155,8 @@ export interface UsageAppReport {
   models: Record<string, ModelUsage>
   /** Days with any record in the range, oldest first. */
   days: UsageDay[]
+  /** The app's budget state, when option `budgets` sets one for it. Read from the current window, not from the range. */
+  budgets?: BudgetStatus[]
 }
 
 /** The result of `GET /v1/usage` and of the `opencode-plugboard.usage` RPC (`src/rpc.ts`). */
@@ -235,7 +248,7 @@ export function tokenBreakdown(usage: PlugUsage): UsageTokens {
   }
 }
 
-const totalTokens = (tokens: UsageTokens): number => tokens.input + tokens.cacheRead + tokens.cacheWrite + tokens.output + tokens.reasoning
+export const totalTokens = (tokens: UsageTokens): number => tokens.input + tokens.cacheRead + tokens.cacheWrite + tokens.output + tokens.reasoning
 
 /**
  * The USD cost of one call, or undefined when the model has no applicable price. Mirrors OpenCode's
@@ -401,6 +414,8 @@ export interface UsageRecorder {
   call(input: CallUsage): void
   /** A report for the range and app (defaults as `resolveRange`). A bad input is a 400 `PlugError`. */
   query(input: UsageQuery): Promise<UsageReport | PlugError>
+  /** The sum of one app's days from `from` to `to` (UTC, inclusive, `YYYY-MM-DD`), memory first. Read by the budget check; a storage failure rejects. */
+  spent(app: string, from: string, to: string): Promise<DayRecord>
 }
 
 export interface UsageRecorderDeps {
@@ -580,6 +595,16 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
           if (unpriced) day.unpricedRequests++
         })
       })().catch((error) => logError("usage.record_failed", { app: input.app, error: errorMessage(error) }))
+    },
+
+    async spent(app, from, to) {
+      const parts: DayRecord[] = []
+      const last = Date.parse(`${to}T00:00:00Z`)
+      for (let at = Date.parse(`${from}T00:00:00Z`); at <= last; at += DAY_MS) {
+        const entry = await load(app, utcDate(at), false)
+        if (entry) parts.push(entry.day)
+      }
+      return sumDays(parts)
     },
 
     async query(input) {
