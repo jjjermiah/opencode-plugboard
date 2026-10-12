@@ -10,6 +10,7 @@
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { imageProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
   isPlugError,
@@ -88,6 +89,8 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
       const url = typeof item.image_url === "string" ? item.image_url : isRecord(item.image_url) ? item.image_url.url : undefined
       if (typeof url !== "string")
         return unsupported(item.file_id != null ? "input_image.file_id is not supported (stateless); send image_url" : "input_image needs an image_url", `${at}.image_url`)
+      const problem = imageProblem(url)
+      if (problem) return bad(problem, `${at}.image_url`, "invalid_image")
       parts.push({ type: "media", url, ...(dataUrlType(url) ? { mediaType: dataUrlType(url) } : {}) })
     } else if (item.type === "input_file") {
       if (typeof item.file_data === "string") {

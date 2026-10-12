@@ -103,16 +103,16 @@ describe("parseGeminiRequest: contents", () => {
   })
 
   test("snake_case fields are read too", () => {
-    const parsed = parse({ contents: [user({ inline_data: { mimeType: "image/png", data: "AA" } })], system_instruction: "s", generation_config: { max_output_tokens: 5 } })
+    const parsed = parse({ contents: [user({ inline_data: { mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } })], system_instruction: "s", generation_config: { max_output_tokens: 5 } })
     expect(parsed.request.system).toEqual(["s"])
     expect(parsed.request.generation).toEqual({ maxTokens: 5 })
-    expect(parsed.request.messages[0]!.content).toEqual([{ type: "media", url: "data:image/png;base64,AA", mediaType: "image/png" }])
+    expect(parsed.request.messages[0]!.content).toEqual([{ type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" }])
   })
 
   test("inlineData becomes a data URL; fileData with an http(s) URI passes through", () => {
-    expect(parse(body({ contents: [user({ text: "see" }, { inlineData: { mimeType: "image/jpeg", data: "BB" } }, { fileData: { fileUri: "https://x.test/a.png", mimeType: "image/png" } })] })).request.messages[0]!.content).toEqual([
+    expect(parse(body({ contents: [user({ text: "see" }, { inlineData: { mimeType: "image/jpeg", data: "/9j/4AAQSkZJRgABAQ==" } }, { fileData: { fileUri: "https://x.test/a.png", mimeType: "image/png" } })] })).request.messages[0]!.content).toEqual([
       { type: "text", text: "see" },
-      { type: "media", url: "data:image/jpeg;base64,BB", mediaType: "image/jpeg" },
+      { type: "media", url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==", mediaType: "image/jpeg" },
       { type: "media", url: "https://x.test/a.png", mediaType: "image/png" },
     ])
   })

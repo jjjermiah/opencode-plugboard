@@ -87,7 +87,7 @@ describe("parseChatRequest: messages", () => {
         messages: [
           user([
             { type: "text", text: "look" },
-            { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+            { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } },
             { type: "image_url", image_url: { url: "https://example.com/a.jpg" } },
             { type: "file", file: { file_data: "QUJD" } },
           ]),
@@ -99,7 +99,7 @@ describe("parseChatRequest: messages", () => {
         role: "user",
         content: [
           { type: "text", text: "look" },
-          { type: "media", url: "data:image/png;base64,AAAA", mediaType: "image/png" },
+          { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" },
           { type: "media", url: "https://example.com/a.jpg" },
           { type: "media", url: "data:application/octet-stream;base64,QUJD", mediaType: "application/octet-stream" },
         ],

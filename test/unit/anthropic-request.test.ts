@@ -91,7 +91,7 @@ describe("#4 parseMessagesRequest: content mapping", () => {
       body({
         messages: [
           user([
-            image({ type: "base64", media_type: "image/png", data: "AAAA" }),
+            image({ type: "base64", media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }),
             image({ type: "url", url: "https://example.com/a.png" }),
             { type: "document", source: { type: "base64", media_type: "application/pdf", data: "JVBE" } },
             { type: "document", source: { type: "text", media_type: "text/plain", data: "plain doc" } },
@@ -101,7 +101,7 @@ describe("#4 parseMessagesRequest: content mapping", () => {
       }),
     )
     expect(request.messages[0]!.content).toEqual([
-      { type: "media", url: "data:image/png;base64,AAAA", mediaType: "image/png" },
+      { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" },
       { type: "media", url: "https://example.com/a.png" },
       { type: "media", url: "data:application/pdf;base64,JVBE", mediaType: "application/pdf" },
       { type: "text", text: "plain doc" },
@@ -115,7 +115,7 @@ describe("#4 parseMessagesRequest: content mapping", () => {
           user("look"),
           assistant([{ type: "thinking", thinking: "hidden", signature: "s" }, { type: "text", text: "checking" }, toolUse("t1", "shot", { x: 1 }), toolUse("t2", "read")]),
           user([
-            { type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "took it" }, image({ type: "base64", media_type: "image/png", data: "AA" })] },
+            { type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "took it" }, image({ type: "base64", media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" })] },
             { type: "tool_result", tool_use_id: "t2", content: "boom", is_error: true },
             { type: "text", text: "now explain" },
           ]),
@@ -129,7 +129,7 @@ describe("#4 parseMessagesRequest: content mapping", () => {
       { role: "tool", content: [{ type: "tool-result", id: "t2", name: "read", result: "boom", isError: true }] },
       {
         role: "user",
-        content: [{ type: "text", text: "Images returned by the tool calls above:" }, { type: "media", url: "data:image/png;base64,AA", mediaType: "image/png" }, { type: "text", text: "now explain" }],
+        content: [{ type: "text", text: "Images returned by the tool calls above:" }, { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" }, { type: "text", text: "now explain" }],
       },
     ])
   })

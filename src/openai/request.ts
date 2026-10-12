@@ -6,6 +6,7 @@
  * the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { imageProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
   isPlugError,
@@ -80,6 +81,8 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
     if (item.type === "text" && typeof item.text === "string") parts.push({ type: "text", text: item.text })
     else if (item.type === "image_url" && isRecord(item.image_url) && typeof item.image_url.url === "string") {
       const url = item.image_url.url
+      const problem = imageProblem(url)
+      if (problem) return bad(problem, `${at}.image_url.url`, "invalid_image")
       parts.push({ type: "media", url, ...(dataUrlType(url) ? { mediaType: dataUrlType(url) } : {}) })
     } else if (item.type === "file" && isRecord(item.file) && typeof item.file.file_data === "string") {
       const data = item.file.file_data
