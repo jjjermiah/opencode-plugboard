@@ -64,6 +64,7 @@ export default defineConfig({
           { text: "Codex CLI", link: "/clients/codex-cli" },
           { text: "Continue", link: "/clients/continue" },
           { text: "Kilo Code", link: "/clients/kilo-code" },
+          { text: "LibreChat", link: "/clients/librechat" },
         ],
       },
       {
