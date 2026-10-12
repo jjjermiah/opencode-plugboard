@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.25.0] - 2026-10-12: Its Own Front Door
+
+**Full diff:** [v0.24.0...v0.25.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.24.0...v0.25.0)
+
 ### Breaking
 
 No users yet, so these changes ship without a deprecation period. Old paths are not aliased (except the two probes): each returns its namespace's 404.
@@ -37,6 +43,159 @@ No users yet, so these changes ship without a deprecation period. Old paths are 
 ### Changed
 
 - The usage dashboard reads `/plugboard/usage` and shows the `detail` of a refusal.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (9 commits)</summary>
+
+#### Tests
+
+**test(examples): add scenarios, scripted model and server, and the summary schema** ([`dcd0046`](https://github.com/jjjermiah/opencode-plugboard/commit/dcd0046f9063f794d0789f21864980df7b2b1829))
+
+The examples harness starts here (#175 of the runnable-examples epic #174). Every client example will be run against the same nine scenarios (S1 to S7, E1, E2), so the prompts, models, checks and routes live in one file, examples/_shared/scenarios.json, and the fixtures the scenarios need are copied from compat/fixtures so that compat/ can be deleted later without breaking the examples.
+
+examples/_harness/scripted-model.ts answers only the exact prompts in scenarios.json: pong, a get_weather call then "18 C and cloudy", red when a PNG data URL arrived, and the meal JSON both as text and as a forced tool's arguments. Anything else returns an error event, so an unknown prompt fails a scenario. It is built on FakeModelCaller and ev from test/support, the fakes the HTTP tests already use.
+
+examples/_harness/scripted-server.ts serves the real OpenAI-compatible route on a port it binds (--port, default ephemeral). startRoute from test/support always listens on an ephemeral port, so this file builds the same route itself. The app is compat with a fixed local key, the models are the two live ids, and fast is an alias for Claude Haiku. Checked by hand with curl: /v1/models lists fast, anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low; a text prompt gets pong; the weather prompt gets a get_weather tool call; a wrong key gets 401; model nope gets 404 model_not_found.
+
+run.schema.json is the source of truth for summary.json. The golden fixture validates against it, and test/unit/examples-harness.test.ts proves a missing verdict and an unknown status are rejected. The date field is a regex, not ajv's date format, because ajv-formats is not a dependency. The harness has its own tsconfig, added to the root typecheck script, and examples is in the commitlint scope list. The root .gitignore ignores .venv, __pycache__ and the raw capture directory.
+
+Checked: tsc on examples/_harness, bun test test/unit/examples-harness.test.ts (3 pass), the curl probes above.
+
+Closes #175
+
+**test(examples): add the capture proxy, the orchestrator and the deterministic writer** ([`492cfec`](https://github.com/jjjermiah/opencode-plugboard/commit/492cfecbb47b6aa8e0db4b96950be2dcb3aececc))
+
+Part of the runnable-examples epic (#174). After #175 there was a scenario list and a scripted server, but nothing that ran a client through them or wrote the result. This adds the pipeline: bun examples/_harness/run.ts <example>|all --target scripted|live.
+
+capture.ts is the capture proxy, ported from compat/tools/logproxy.py. It streams responses through untouched, records each exchange tagged with the scenario mark that was current when the request started, and waits for in-flight requests before it accepts the next mark. A request outside the scenario's routes goes to _background.json. logproxy.py stays until the cleanup issue deletes it.
+
+run.ts starts the scripted server in process (or attaches to a live one), starts the capture proxy, starts the example's runner (uv run --frozen for a pyproject.toml, bun for run.ts, bash for run.sh) with PLUGBOARD_BASE_URL, PLUGBOARD_KEY and PLUGBOARD_CAPTURE_URL, reads its JSON lines, slices the exchanges by mark, and writes. It exits 1 when a required scenario fails. Live directories are dated and commit-named, take a -2 suffix on a collision, and are never rewritten. Scripted directories are replaced.
+
+normalise.ts applies the Contract's rules: an allow-listed header set, id placeholders numbered by first appearance in each file (so a turn-1 call id is the turn-2 tool_call_id), the plugboard URL replaced everywhere, the Gemini key parameter removed, and SSE parsed into frames with keepalive comments dropped. Model ids on a GET of a models route are kept as names. render.ts is the one writer: it validates summary.json against run.schema.json, refuses any file that contains the app key, renders summary.md, and only then writes.
+
+py/harness.py and ts/harness.ts are the runner helpers, about the same size, and apply the same checks from scenarios.json to the same observations. They mark each scenario, print one JSON line per result, and write nothing.
+
+The smoke examples (examples/_harness/smoke-py and smoke-ts) are ports of compat/py/smoke.py and compat/js/smoke.ts. They run S1 on all three models through the whole pipeline, and their scripted runs are committed. examples/_tools/sessions.py is a copy of compat/tools/sessions.py.
+
+Checked: two scripted runs of smoke-py and of smoke-ts, git diff --exit-code clean after the second run. A summary whose transcript carries the key is refused, with nothing written (unit test). bun run typecheck and bun test pass (2172 pass, 0 fail). The normaliser unit tests cover turn-consistent placeholders, URL and header rules, key removal, SSE frames and canonical JSON.
+
+Closes #176
+
+**test(examples): add a variant per API, number timestamps by occurrence, finish the runner protocol** ([`8858dd0`](https://github.com/jjjermiah/opencode-plugboard/commit/8858dd0549eaadda5a0990afd710e1c8fde5208c))
+
+Part of the runnable-examples epic (#174). Writing the curl example (#185) showed three gaps in the harness, fixed here before any client depends on them.
+
+A scenario runs once per API for curl: S1 on chat, responses, messages, gemini and completions, and S2 and S3 on chat, messages and gemini. Each run needs its own transcript, so the mark, the result line, the summary row and the transcript name carry an optional variant: transcripts/<scenario>.<variant>.<model-slug>.json. The contract change is in #174 (Scenarios, How a run works, summary.json); the observations keep the same names, so the checks do not change.
+
+Timestamps were numbered by value, so two responses in one second shared a placeholder and a run that crossed a second did not. created and created_at are now <time-N> by occurrence. Gemini's unprefixed responseId is a key-based id. Both were caught by running the same example twice and diffing: the scripted runs must be byte-identical, and they now are for smoke-py, smoke-ts and curl.
+
+The protocol got two safeguards. The helpers end the stream with a done line, and run.ts refuses to write a run whose runner did not reach it, so a crashed runner cannot record a partial run as a result. A result with no scenario is a fail row, not a silent gap. The model "-" (list models) is left out of the summary's model list and named none in its transcript.
+
+Both smoke runs are regenerated under the corrected rules. Tests: the timestamp rule and the Gemini responseId rule are unit-tested in test/unit/examples-normalise.test.ts. bun run typecheck and bun test pass (2300 tests, 0 fail).
+
+Refs #174, #176
+
+**test(examples): add the curl example, one shell file per API, with scripted and live runs** ([`279c747`](https://github.com/jjjermiah/opencode-plugboard/commit/279c747f260a3ffae12219b7c1b6fba4d9f00407))
+
+Part of the runnable-examples epic (#174). examples/curl/ is the first client example to run through the whole harness, and the only one for the Anthropic Messages and Gemini routes. It replaces the curl section of examples/README.md, which the docs issue will drop. That section is not changed here.
+
+One file per API, each runnable on its own with curl and jq: chat.sh (S1 to S6, E1, E2), responses.sh (S1), messages.sh (S1 to S3), gemini.sh (S1 to S3, streamGenerateContent), completions.sh (S1) and models.sh (S7). Each prints one JSON object of observations, the names the checks in scenarios.json use. The copyable part of each scenario sits between region markers, so the docs can import it.
+
+run.ts is the runner. It maps each scenario and API to its shell file and calls the shared TypeScript helpers, which mark, check and print. It writes nothing. The contract change for the API dimension (variant) is in #174 and in the harness commit before this one.
+
+Scripted: runs/scripted/ is committed. Verdict pass: 37 rows, every required scenario passes on the scripted model. Two runs in a row, git diff --exit-code clean (see the harness commit for the timestamp and Gemini responseId fixes this surfaced).
+
+Live (the isolated server; model ids fast, anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low): two runs are recorded and neither is rewritten. The first failed on messages.sh's 64-token budget: fast routes to a reasoning model, which spent the budget on reasoning (REPORT.md there). The budget is now 1024. The second failed one chat S1 on fast with an unexpected tool call whose name holds the reply text; five calls made afterwards passed (REPORT.md there). That is recorded as an intermittent suspected bug, not as a gap.
+
+Gotchas (README) are checked against these runs: tool arguments as a JSON string, the assistant turn sent back as received, percent-encoded Gemini model ids, accumulated stream arguments, the fake key of E1 never written, and /v1/usage left out because it takes the admin key.
+
+Checked: bash -n on every shell file (the CI glob), the scripted run twice with git diff --exit-code, and the live run above.
+
+Closes #185
+
+**test(examples): add the OpenAI Python SDK example, with scripted and live runs** ([`e25102e`](https://github.com/jjjermiah/opencode-plugboard/commit/e25102eb227743e2eb06a8462901c9c19904ac85))
+
+Part of the runnable-examples epic (#174). examples/openai-python/ replaces the OpenAI Python parts of compat/py. It is a standalone uv project with the exact pins from the 2026-10-11 record (openai 3.29.0, pydantic 2.14.1, httpx 0.28.1), locked in uv.lock.
+
+One file per scenario, each with run(client, model) and a __main__ block: chat.py (S1), tools.py (S2), stream.py (S3, raw stream and the SDK helper, which must agree), stream_tools.py (S4), image.py (S5), structured.py (S6: beta parse with a Pydantic model, top-level parse, raw json_schema), models.py (S7: list and retrieve, which the old record had as a 404 and which is implemented now) and errors.py (E1 wrong key, E2 unknown model). run.py is the runner; it sets max_retries=0 so a retry never appears as a second request, and it writes nothing.
+
+Scripted: runs/scripted/ is committed. Verdict pass, 17 rows, every required scenario and both optional error paths pass. Two runs in a row, git diff --exit-code clean. No key literal appears in any run file (checked).
+
+Live (the isolated server): runs/live/2026-10-12-a38860b/ passes all 17 rows. The 2026-10-11 record is migrated unchanged to runs/live/2026-10-11-3fcedc7/REPORT.md. Its gaps are closed by the current code (models.retrieve), and the README says so.
+
+Gotchas (README) come from docs/clients/openai-python.md and the record, and the ones this run can show (tool call ids are placeholders in the runs, so the id prefixes are marked as coming from the record) are labelled as such. The reasoning-in-content sample from the record did not reproduce.
+
+Checked: uv lock, the scripted run twice with git diff --exit-code, the live run, the key literal scan of examples/, and the harness typecheck and tests (see the harness commit).
+
+Closes #177
+
+**test(examples): regenerate the curl scripted run for the 1024-token budget** ([`8a8210e`](https://github.com/jjjermiah/opencode-plugboard/commit/8a8210e8c254629094587690cd24972d013031c1))
+
+The curl commit (279c747) changed messages.sh from 64 and 256 tokens to 1024 after its scripted run had been generated, so the committed transcripts still showed the old budget. The check that catches this is the one CI runs: rerun the scripted example and git diff --exit-code.
+
+Seven transcripts change, all in max_tokens of the Messages requests (S1, S2 and S3). Nothing else in the run changes, and a second run gives no diff.
+
+Refs #185
+
+**test(http): keep the problem-docs anchor check in test/http** ([`87aebe7`](https://github.com/jjjermiah/opencode-plugboard/commit/87aebe70b11de08d63baf03ebe5eceab5e52a830))
+
+The anchor check was in test/unit, which moved the per-layer test counts off their ratcheted floors in CI (test/http 461 of 462, test/unit 1109 of 1108). Moving the file back under test/http restores the counts exactly, so no floor is lowered.
+
+The check reads docs/errors.md, so it stays out of the route tests: the mutation harness copies src and test but not docs, and runs only the files a mutation names.
+
+Refs #254
+
+#### CI and tooling
+
+**ci(examples): check that the scripted runs of the curl and openai-python examples are current** ([`f5f1a1f`](https://github.com/jjjermiah/opencode-plugboard/commit/f5f1a1fd5496eec2471df77169c4e22b2faa07b1))
+
+The examples epic (#174) makes every client example's scripted run a committed file. A run goes stale when its scenarios, the checks, a pinned client or the normaliser changes, and a run that is not deterministic goes stale on every commit. This job catches both on every pull request: it runs both scripted examples and fails when a file under their runs/scripted/ directories changed or appeared.
+
+It takes about 5 seconds for the two runs. Bun is set up at the SHA the other jobs pin, and uv comes from pipx at the version the lockfile was made with, so no new action has to be pinned. The live runs are not in CI: they need the isolated server.
+
+Alternatives rejected: a separate workflow (more setup for the same check), and running the examples without the diff (a passing run that changed a committed file would go unnoticed). The job runs in parallel with the others, as the host and compat jobs do.
+
+Checked: js-yaml parses ci.yml (the new job has six steps); the same status check run locally on the current tree is clean; bun run build:tui, check-pack and docs:build pass.
+
+Refs #174, #177, #185
+
+#### Other
+
+**feat(http)!: move plugboard routes to /plugboard/, problem+json errors, new defaults** ([`5caf0e2`](https://github.com/jjjermiah/opencode-plugboard/commit/5caf0e2a36f9a95787e4b6268079c412ef30697c))
+
+Breaking wave for 0.25.0. No users yet, so no aliases except the probes.
+
+#253: plugboard's own routes move under /plugboard/. The model routes do not move.
+- /v1/usage -> /plugboard/usage (the usage RPC is unchanged)
+- /v1/admin/keys[/{id}] -> /plugboard/admin/keys[/{id}]
+- /v1/status -> /plugboard/status
+- /metrics -> /plugboard/metrics
+- /dashboard[/*] -> /plugboard/dashboard[/*] (the page fetches /plugboard/usage)
+- new /plugboard/health and /plugboard/ready. /healthz and /readyz stay at the root.
+
+Old paths are the namespace's 404, after authentication as I15 requires. The discovery pages list the new paths.
+
+#254: every error on a /plugboard/ route is application/problem+json (RFC 9457): type (an anchor in docs/errors.md, else about:blank), title, status, detail, instance, code, param when there is one, and requestId. One encoder, sendProblem in src/http.ts. The router marks a response when its target is under /plugboard/ (invariant I25, mutation I25-plugboard-errors-problem-json). The dashboard shows detail. Model-route errors are unchanged, pinned per dialect in test/http/plugboard-routes.test.ts. /plugboard/ready answers a 503 as a problem (code not_ready); /readyz keeps its document.
+
+#158: history.maxAgeDays defaults to 30. maxAgeDays: 0 is the explicit opt-out (keep forever); before, 0 was rejected. The history index is now on by default, so pruning runs for every app. Sessions created before this release are not indexed and never pruned.
+
+#242: maxTools defaults to 64 (was 32). Claude Code sends 36 tools and was refused. Measured with the spy plugin context: installing the seed pool takes 5.7 us at 32 seeds and 7.0 us at 64, and retained memory per Location grows from about 11 KiB to 20 KiB.
+
+Runtime VERSION is unchanged: the process runtime's shape did not change.
+
+BREAKING CHANGE: plugboard's own routes moved. /v1/usage is /plugboard/usage, /v1/admin/keys is /plugboard/admin/keys, /v1/status is /plugboard/status, /metrics is /plugboard/metrics, /dashboard is /plugboard/dashboard. /healthz and /readyz stay at the root. Old paths return their namespace's 404.
+BREAKING CHANGE: errors on /plugboard/ routes are application/problem+json. Clients that read error.code or error.message there now read code and detail.
+BREAKING CHANGE: history.maxAgeDays defaults to 30 (was unlimited). Use maxAgeDays: 0 to keep sessions forever.
+BREAKING CHANGE: maxTools defaults to 64 (was 32).
+
+Closes #253
+Closes #254
+Closes #158
+Closes #242
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.24.0] - 2026-10-12: Smaller, Faster, Stricter
 
@@ -3828,7 +3987,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.2...v0.22.0
