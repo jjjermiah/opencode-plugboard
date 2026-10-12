@@ -8,7 +8,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start. |
+| `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start, and serves plain HTTP. See [Remote access](remote-access.md). |
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
 | `adminKey` | none | A key that reads every app's usage at `GET /v1/usage`. It must differ from every app key. It is not an app key: it cannot call the model routes. See [Usage statistics](#usage-statistics). |

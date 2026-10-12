@@ -485,7 +485,7 @@ Open work is tracked in the [v0.1 milestone](https://github.com/jjjermiah/openco
 ## Security
 
 - **Bind address.** The listener binds `127.0.0.1` by default. A non-loopback `listen.host` refuses to start without `keys`. On a loopback bind, a `Host` header that is not `localhost`, `127.0.0.1` or `[::1]` gets a 403.
-- **Keys cross the network in clear text.** The endpoint speaks plain HTTP. For remote access, allow only known addresses in the firewall, tunnel over SSH, or put a TLS-terminating proxy in front. See [reaching plugboard from another host or container][reach].
+- **Keys cross the network in clear text.** The endpoint speaks plain HTTP. For remote access, allow only known addresses in the firewall, tunnel over SSH, or put a TLS-terminating proxy in front. See [reaching plugboard from another host or container][reach] and [remote access][remote-access].
 - **Keep keys out of the config file.** Use `{env:VAR}` and keep the values in the environment or a secret store. Every app needs its own key.
 - **`adminKey` reads usage only.** It cannot call the model routes, and it must differ from every app key.
 - **Keyless mode is loopback only.** Without `keys`, the one app is `default`, and only local callers can reach it.
@@ -529,6 +529,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [compatibility]: https://jjjermiah.github.io/opencode-plugboard/compatibility
 [release-candidate]: https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/results/release-candidate.md
 [reach]: https://jjjermiah.github.io/opencode-plugboard/clients/any-app#reaching-plugboard-from-another-host-or-container
+[remote-access]: https://jjjermiah.github.io/opencode-plugboard/remote-access
 [client-openai-python]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-python
 [client-openai-js]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-js
 [client-vercel-ai-sdk]: https://jjjermiah.github.io/opencode-plugboard/clients/vercel-ai-sdk
