@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.17.0] - 2026-10-11: Counting Every Call
+
+**Full diff:** [v0.16.0...v0.17.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.16.0...v0.17.0)
+
 ### Added
 
 - **Per-app usage statistics** ([#139](https://github.com/jjjermiah/opencode-plugboard/issues/139), [#140](https://github.com/jjjermiah/opencode-plugboard/issues/140)). Plugboard now keeps, per app and per UTC day: requests, errors by class, latency (p50/p95), tokens by kind, estimated cost at catalog list prices, cache hits, fallbacks, 429 refusals and each model's share. Read it with `GET /v1/usage?from=2026-10-01&to=2026-10-12`. An app key sees only its own app; the new `adminKey` option sees every app:
@@ -36,6 +42,169 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - The ratcheting test floors moved from `.ci/` to `.github/floors/`.
 - Internal runtime version 12. Restart OpenCode after upgrading.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (9 commits)</summary>
+
+#### Features
+
+**feat(metrics): add the per-app usage store and its options** ([`67f39ae`](https://github.com/jjjermiah/opencode-plugboard/commit/67f39aeef79fca824a4d579b1c9fc76542e96796))
+
+Operators cannot answer "which app costs me the most": the token counts in /metrics are not split by app and day, and nothing keeps cost. This adds the store that both planned front-ends (the web dashboard and the OpenCode TUI) will read. It is the backend only: no route or RPC yet.
+
+What:
+- src/usage.ts keeps one record per app per UTC day: requests, error classes (client, server, timeout, disconnected), a latency histogram, tokens by kind (input, cacheRead, cacheWrite, output, reasoning; the same split as plugboard_tokens_total), cost in USD, cache hits and misses, fallbacks, 429 refusals, requests and cost per model, and the time of the last request.
+- The live days are held on the process runtime, so a plugin generation can be replaced without losing them. VERSION goes 10 to 11 for that.
+- Each day is persisted as one JSON value under usage/<app>/<YYYY-MM-DD> in the plugin's host storage, through a StoragePort view of ctx.storage (src/session/host.ts). Writes come from request handling only.
+- Options: usage { enabled, retentionDays } (default on, 90 days, 1 to 3650) and adminKey (non-empty, different from every app key). authenticateUsage in src/config.ts checks the admin key first, then the app keys.
+
+Decisions:
+- Cost mirrors OpenCode's calculateCost (packages/core/src/session/usage.ts). The price entry is the largest context tier that the prompt (uncached input plus cache reads and writes) exceeds, else the base entry. Output and reasoning are both priced at the output rate. A model with no applicable price costs 0 and is counted in unpricedRequests.
+- Rejected: summing every tier, and pricing from the first entry.
+- Latency is a fixed histogram of 12 bounds (100 ms to 10 min) plus an overflow bucket. p50 and p95 are the upper bound of the bucket holding the percentile. Rejected: keeping every sample (unbounded) and a quantile sketch dependency for two numbers.
+- Writes are debounced per day: a day is written at most every 10 s, by the request that finds the last write that old. So the newest changes can wait in memory until the next request, and a restart before that loses them. Accepted for now and documented in docs/configuration.md.
+- Retention deletes one page of keys per run, at most every 10 minutes, from request handling. Rejected: a timer. Nothing may call the host from a timer outside a request.
+- The per-model key is provider/model. The variant is not part of it, because the price does not depend on it.
+
+Validation: test/unit/usage.test.ts covers the token split, cost with base and tiered prices (at and above a tier size, the largest tier, the cache counts toward the prompt), unpriced models, histogram buckets and percentiles, aggregation per app and day, the debounce, the persistence round trip through a fresh recorder, UTC midnight rollover, retention (page and interval), query validation, and the model caller wrapper (the fallback model, cache hits, failed calls). test/unit/config.test.ts covers the defaults and the admin key rules.
+
+**feat(http): serve GET /v1/usage with admin and app scoping** ([`1de7ab7`](https://github.com/jjjermiah/opencode-plugboard/commit/1de7ab70f635e7ae44f3c4543bd53de93430f26b))
+
+Usage is recorded (previous commit) but nothing reads it yet. This adds the authenticated GET /v1/usage?from=&to=&app= that returns the usage report as JSON, and feeds the store from the request log point.
+
+What:
+- The route checks its own credentials (authenticateUsage): the admin key reads every app, or one with `app`; an app key reads its own app, and naming another app is a 403 app_forbidden; keyless loopback is the app `default`. A missing or wrong key is a 401, as on every authenticated path.
+- from and to are UTC days (YYYY-MM-DD, both inclusive). The default is the 30 days ending today, and a range may span at most 366 days. A bad date, a reversed range, a long range or a bad app name is a 400 that names the parameter.
+- With usage off the route is unknown (404 once the caller is authenticated), and the discovery document does not list it.
+- run() in src/openai/route.ts counts each finished request into the store, with its status and outcome, when the app is known. Only the model routes count (chat, responses, completions, messages and Gemini generateContent). Model listing, status, metrics, discovery and this route do not.
+- RouteHost takes an optional `usage` recorder. The route itself gained the usage handler, one call in the log point and that field.
+
+Decisions:
+- Usage gets its own credential check instead of a new return value from authenticate, which every route uses. The admin key only matters here.
+- An app key that names another app gets a 403, not an empty report. A probe is visible, and the answer does not reveal whether that app exists.
+- Admin reads have no app in the request log or in the metrics labels, because the admin key is not an app.
+- Rejected: a second listener on another port (one per process is the rule), and a synchronous read of the store in the log point (storage is async, and a request must not wait for it).
+
+Validation: test/http/usage.test.ts covers keyless loopback, an app key seeing only its own app, the 403 for another app, the admin key reading all apps or one, 401 for a missing, wrong or admin-on-chat key, bad dates and app names, a rejected chat counted as a client error, a usage read not counting itself, the discovery listing with the option on and off, and the absent route with usage off.
+
+Fixes #139
+Closes #52, except the x-plugboard-usage response header that #52 also asked for: it is not in this change.
+
+**feat(runtime): wire usage into the plugin and expose the usage RPC** ([`f9209f8`](https://github.com/jjjermiah/opencode-plugboard/commit/f9209f85ce521ef190bd1d18b69392820a7634f5))
+
+The store and the route exist but nothing feeds the store yet, and OpenCode's own clients (the TUI front-end) need the same report without a plugboard port or key. This wires the recorder into each generation and adds the RPC.
+
+What:
+- index.ts builds the recorder from closures during setup, with no storage call. The model caller is wrapped outermost with withUsage, so it sees the answer the client gets. The limiter's 429 refusals and the fallback retries feed the recorder through their existing callbacks, and the route gets the recorder.
+- src/rpc.ts defines opencode-plugboard.usage with method get: input is the query (from, to, app, all optional), output is the usage report, and the declared error invalid_query carries { param } naming the bad field. It is exported from the package as ./rpc.
+- Each accepted generation registers the handler with ctx.rpc.register. The registration is synchronous and touches no storage or filesystem. The handler reads the same store the route reads, from request time only.
+- With usage off nothing is wired: the route is absent and no RPC is registered.
+
+Decisions:
+- The host types the register error channel as unknown, but the plugin effect must fail with never. The error is caught and logged as rpc.register_failed, and the plugin keeps loading (the same rule as invalid options).
+- The output is a permissive JSON Schema object. The report's shape is defined in src/usage.ts, and the host checks only that it is an object. Checked with the installed effect: the host's JSON Schema codec returns a nested report unchanged and encodes the declared error's data.
+- The RPC returns every app. OpenCode's own API is already authenticated by the server password, so this matches what a TUI client may see.
+- Rejected: an `updated` event. Nothing subscribes to it yet, and a dashboard can poll. It can be added later without changing the method.
+- Rejected: a local copy of Rpc. It comes from @opencode/plugin/rpc, which the host provides as a peer.
+
+Validation: test/unit/rpc.test.ts covers the contract, the query pass-through, malformed input read as no filter, and invalid_query. test/runtime/plugin.test.ts covers that setup registers the RPC with its id, that none is registered with usage off, and the list of setup calls. The test-count floors are raised in .ci. Not run against a live OpenCode server in this change.
+
+Fixes #140
+
+**feat(anthropic): estimate token counts, report stop sequences (#143 #144 #145)** ([`8c0876b`](https://github.com/jjjermiah/opencode-plugboard/commit/8c0876bd4dc89f9c3a2625bcc432cbe410056201))
+
+Anthropic count_tokens (POST /v1/messages/count_tokens) and Gemini countTokens (POST /v1beta/models/{m}:countTokens) answered 404 (#143, #144). Both now answer with the spec's shape ({ input_tokens } and { totalTokens }) from an estimate: characters / 4 over the system prompt, the message text, tool-call and tool-result payloads, tool names, descriptions and schemas, plus a fixed 1600 tokens per image or file. The estimator lives in src/anthropic/tokens.ts and both routes share it. The count is documented as an estimate: plugboard has no tokenizer and the host does not expose the provider's counter, so no exact number exists here. The routes authenticate and resolve the model like messages, so an unknown model is the same 404. The Anthropic count takes the message body without max_tokens; a placeholder stands in for the parser, and a max_tokens the client did send is still validated.
+
+A stop sequence that ends the answer is now reported as stop_reason "stop_sequence" with stop_sequence set to the match, and it is removed from the text (#145). The host's finish event carries no stop reason or matched sequence, so the end of the text is checked: the longest stop sequence the answer ends with. To remove it before it reaches the client, the encoder holds back the longest sequence's length of text while streaming. A length or tool-call finish is never a stop sequence, and a sequence in the middle of the answer is not one. Rejected: a host change to carry the stop reason, which needs a contract change (src/contract.ts) and host behaviour this lane cannot verify.
+
+Thinking blocks still carry an empty signature (#146). The host does not expose the provider's thinking signature (PlugEvent reasoning-delta has only text). The field is documented in src/anthropic/response.ts, and the matrix accepts any string. Not fixed.
+
+Other endpoints (chat, completions, Gemini) still return a matched stop sequence. Only /v1/messages removes it, so those rows are matrix gaps.
+
+Matrix (#101, #148): the legend splits n/a (the client has no such feature, with the reason) from todo (no case yet). Every scenario is now a case, an n/a with a reason, or a gap, and the CI summary counts todo (0 now). New scenarios: multi-turn, thinking, stop-sequence, n, stream-usage, developer, echo-suffix, count-tokens, document, model-id, prompt-array, logprobs and cancel. New clients: LangChain (chat, responses, Anthropic, Google, legacy completions) and ai + @ai-sdk/openai-compatible. The cancel scenario checks the server saw the client's abort on the model call (test/compat/abort.ts); the fake model can hold a stream open ("hang"). Not done: odd tool-argument splits. The fake emits a tool call whole, and splitting it needs a contract event (src/contract.ts), which is out of scope here.
+
+Conformance (#107): test/compat/conformance.test.ts validates plugboard's OpenAI chat (response and stream chunks), completions, responses and models, and Gemini generateContent and countTokens, against the schemas vendored in test/fixtures/specs (source URLs and dates in each file). Unknown fields and missing required fields fail. Known deviations are test.failing, with only the named field waived: Responses omit access_programs and usage.input_tokens_details.cache_write_tokens (the gaps test/types already lists), and /v1/models adds a plugboard field to each model. Anthropic has no public spec to vendor, so it stays with the SDK types (#132).
+
+Gaps found and pinned as test.failing (src unchanged): stop sequences on /v1/chat/completions, /v1/completions and Gemini; candidateCount above 1; the @google/genai SDK cuts a model id at # (plugboard expects %23); the AI SDK and LangChain Google clients send a slash id without models/ (401); the LangChain Google SDK reports an abort as an unhandled error; message_start reports input_tokens 0 (the count arrives in message_delta).
+
+Not done: the Responses item_reference (#147 stays a gap; it needs a src/responses change, outside this round). Live mode, Python clients, Claude Code, Gemini CLI and the OpenAI Agents SDK stay live-only (#99, #108).
+
+Checked: bun run typecheck passes. bun test: 1455 pass, 0 fail, 3.6 s. Matrix (PLUGBOARD_COMPAT_RESULTS, compat-matrix.ts --docs): 203 pass, 16 gap, 0 fail, 117 n/a, 0 todo. test-gates.ts --ratchet raised the compat floor to 234 and unit to 768. check-pack.ts passes (44 files).
+
+Fixes #143
+Fixes #144
+Fixes #145
+Fixes #148
+Refs #7
+Refs #101
+Refs #102
+Refs #103
+Refs #104
+Refs #105
+Refs #106
+Refs #107
+Refs #146
+
+#### Fixes
+
+**fix(runtime): apply key revocation and rotation on the live listener** ([`017b1ca`](https://github.com/jjjermiah/opencode-plugboard/commit/017b1cac62b653a0f64b4ce10583f7b6b5054502))
+
+A config reload that removes a key only reaches the listener if every Location reloads its plugin. An app directory whose older generation stays live kept serving with its captured options. The newer generation differed in `keys`, so it was rejected, and the removed key still got 200 (#90).
+
+What: authentication now reads the live key set (`Runtime.keys`, read through `liveOptions` in src/runtime.ts) instead of the serving generation's options. The listener fingerprint covers the options without `keys`. While generations are live, a newer generation replaces the live keys when they only revoke or rotate: it names no app the live set lacks, names at least one app, and nothing else in its options differs. Any other difference is rejected until restart, as I5 says.
+
+Why: removal and rotation make access stricter, so applying them at once cannot widen it. Adding a key still waits for a restart, because a project config entry must not add access on a live listener.
+
+Decisions: a changed value for an existing app counts as revocation, since the old value must stop working. A key set with no apps is rejected, so the rule cannot turn a keyed listener keyless. Runtime VERSION 10 to 11 (new `keys` field). The Anthropic front-end reads the same live keys.
+
+Validation: bun run typecheck passes; bun test passes (1388 tests). The four new cases in test/runtime/key-revocation.test.ts cover removal, rotation, an added key with other differences (still rejected), and a rejected generation that leaves the keys alone. Test gates ratcheted: test/runtime floor 58 to 62, coverage unchanged. check-pack and smoke-pack pass. The live check on the isolated dev server was not run: its plugboard config points at the main checkout on 0.0.0.0:4010.
+
+Fixes #90
+
+#### Docs
+
+**docs(docs): describe usage statistics, the admin key and the usage RPC** ([`6920d24`](https://github.com/jjjermiah/opencode-plugboard/commit/6920d24728fce30c0ce391e33f48af2a22b5a6ae))
+
+Operators and the two front-ends need the contract written down: what the usage response holds, who may read which app, and what is not promised.
+
+What:
+- docs/configuration.md: rows for adminKey and usage, and a Usage statistics section with the access rules, an example response, what each field means, retention, and persistence.
+- docs/architecture.md: a Usage statistics section (recording, live aggregate, storage, queries, access, cost, RPC), invariants I23 (usage is written from request handling only) and I24 (usage reads are scoped by key), module map lines, and the runtime VERSION, which the text said was 9 and is 11.
+- STRUCTURE.md lists src/usage.ts and src/rpc.ts; AGENTS.md names I1 to I24.
+
+Decisions:
+- The persistence lag is documented, not hidden: a day is written at most every 10 s by a request, so a restart can lose the last few seconds of traffic, or the tail of an idle period. Reports read memory, so they are never behind.
+- Cost is described as an estimate at list prices, not as spend. A subscription login is not billed per token, so the figure compares apps and is not a bill.
+- Rejected: a timer that flushes idle days. Nothing may call the host from a timer outside a request (I23). The gap is listed as a follow-up.
+
+Validation: docs only. The field names, error codes and access rules in the examples are the ones asserted by test/http/usage.test.ts and test/unit/usage.test.ts.
+
+Refs #139
+Refs #140
+
+**docs(changelog): notes for usage statistics, token counts and key revocation** ([`ba36f03`](https://github.com/jjjermiah/opencode-plugboard/commit/ba36f03a08c9d93b9e7c4edefdaedbe004cba7db))
+
+Curated [Unreleased] entries for #139/#140 (usage store, GET /v1/usage, adminKey, the usage RPC), #143/#144 (token counting endpoints), #145 (Anthropic stop sequences), #107/#148 (spec conformance and the matrix legend), #90 (immediate key revocation and rotation), the .github/floors move and runtime version 12. Usage and the RPC were checked live on the isolated dev server: GET /v1/usage returned the recorded call with cost, and POST /api/rpc/opencode-plugboard.usage/get returned the same report. Pinned install examples bumped to 0.17.0.
+
+#### CI and tooling
+
+**ci(ci): move the ratcheting floors from .ci/ to .github/floors/** ([`5c65afc`](https://github.com/jjjermiah/opencode-plugboard/commit/5c65afc6de796683fa318c060576f24901ed9483))
+
+The test-count and coverage floor files lived in a top-level .ci/ directory, which added one more dot-folder to the repository root for two JSON files that only CI reads. They now live next to the scripts and workflows that use them, under .github/floors/. test-gates.ts, the CI workflow comment, STRUCTURE.md, CONTRIBUTING.md and test/README.md point at the new path. No floor values changed. Older CHANGELOG entries keep the old path because they describe what was true at the time.
+
+#### Dependencies
+
+**build(deps): add ajv for the #107 response-schema conformance tests** ([`4710c98`](https://github.com/jjjermiah/opencode-plugboard/commit/4710c98f4796af1815b3414277f532ddbf17eb24))
+
+test/compat/conformance.test.ts validates plugboard's responses and stream events against the OpenAI and Gemini response schemas vendored in test/fixtures/specs. ajv is the validator: the most used JSON Schema library, and it validates JSON Schema 2020-12 natively, which OpenAPI 3.1 uses.
+
+Pinned exact at 8.20.0, devDependency only (never shipped; check-pack still lists only the package files). npm view shows no install, postinstall or prepare hook (its "prepare-tests" script is the browser test runner). Its dependencies are pure JS: fast-deep-equal, fast-uri, json-schema-traverse and require-from-string.
+
+Refs #107
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.16.0] - 2026-10-11: Knock Before Entering
 
@@ -1536,7 +1705,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.13.0...v0.14.0
