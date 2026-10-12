@@ -24,7 +24,7 @@ The suite runs on `bun test`. It is fast and never talks to a real OpenCode serv
 - Use the shared fakes instead of new ones, and tables when cases differ only in data.
 - No real waits beyond a few milliseconds: inject the interval, hold a fake with a `gate()`, or use fake timers.
 - A known bug gets a `test.failing` with a comment. Never weaken a test to make it pass.
-- CI keeps floors on the number of tests per layer and on coverage (`.ci/`). They only go up: when you add tests, raise them with `.github/scripts/test-gates.ts --ratchet` (see test/README.md) and commit them with the tests.
+- CI keeps floors on the number of tests per layer and on coverage (`.github/floors/`). They only go up: when you add tests, raise them with `.github/scripts/test-gates.ts --ratchet` (see test/README.md) and commit them with the tests.
 - A change to a wire format regenerates `test/types/wire.ts` (`bun test/types/generate.ts`) and `docs/compatibility.md`; the type check and CI fail when they are stale.
 
 The tests do not replace a live run for host behaviour: run the change on an isolated server too.

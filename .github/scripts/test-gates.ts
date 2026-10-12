@@ -6,9 +6,9 @@
  *   bun .github/scripts/test-gates.ts <dir> [--summary] [--ratchet]
  *
  * - Test counts: each layer (a directory under test/) must keep at least the tests recorded in
- *   .ci/test-count-floors.json, so deleting or skipping tests fails CI instead of passing quietly.
+ *   .github/floors/test-count-floors.json, so deleting or skipping tests fails CI instead of passing quietly.
  * - Coverage: line and function coverage of index.ts and src/ must stay at or above
- *   .ci/coverage-floor.json.
+ *   .github/floors/coverage-floor.json.
  *
  * Floors only go up. `--ratchet` raises them to the current values (never lowers them); commit the
  * result with the tests that earned it. `--summary` appends the tables to $GITHUB_STEP_SUMMARY
@@ -22,8 +22,8 @@ import { dirname, join } from "node:path"
 const [dir, ...flags] = process.argv.slice(2)
 if (!dir) throw new Error("usage: test-gates.ts <dir with junit.xml and lcov.info> [--summary] [--ratchet]")
 const root = join(import.meta.dir, "../..")
-const COUNT_FLOORS = join(root, ".ci/test-count-floors.json")
-const COVERAGE_FLOOR = join(root, ".ci/coverage-floor.json")
+const COUNT_FLOORS = join(root, ".github/floors/test-count-floors.json")
+const COVERAGE_FLOOR = join(root, ".github/floors/coverage-floor.json")
 
 interface Coverage {
   readonly lines: number
@@ -116,6 +116,6 @@ if (flags.includes("--ratchet")) {
   const raised = Object.fromEntries(layers.map((layer) => [layer, Math.max(countFloors[layer] ?? 0, counts[layer] ?? 0)]))
   writeFileSync(COUNT_FLOORS, `${JSON.stringify(raised, null, 2)}\n`)
   writeFileSync(COVERAGE_FLOOR, `${JSON.stringify({ lines: Math.max(coverageFloor.lines, total.lines), functions: Math.max(coverageFloor.functions, total.functions) }, null, 2)}\n`)
-  console.log("Floors raised to the current values (never lowered): commit .ci/.")
+  console.log("Floors raised to the current values (never lowered): commit .github/floors/.")
 }
 if (failures.length > 0) process.exit(1)

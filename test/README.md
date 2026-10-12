@@ -34,16 +34,16 @@ The top-level `compat/` directory is a different thing: the manual kit run again
 - **SDK wire types** (`types/`, #132): `types/wire.ts` holds one golden per wire shape, generated from the encoders by `bun test/types/generate.ts`. Each golden `satisfies Wire<SdkType>` (every field we send exists in `openai`, `@anthropic-ai/sdk` or `@google/genai` with a compatible type) and goes through `exact<SdkType>()` (required fields we leave out). Known gaps have a `@ts-expect-error` naming them, listed in `GAPS` in `generate.ts`; when one closes, the unused directive fails the type check. `unit/wire.test.ts` checks the encoders still produce the goldens. After an intended wire change: regenerate, then `bun run typecheck`.
 - **Compatibility matrix** (`compat/`, #101): `compat/clients.ts` lists each client (package, endpoint) and its cases per scenario in `compat/scenarios.ts`; `compat/langchain.ts` holds the LangChain JS clients (#102-#106). A case the endpoint cannot have is left out (n/a); a known incompatibility is `{ gap, run }` and runs as `test.failing`. To add a client, add a `Client`; to add a scenario, add it to `SCENARIOS`, script the fake model's answer in `script()`, and give every client a case or leave it out. `docs/compatibility.md` is generated from the results (`.github/scripts/compat-matrix.ts`); CI fails when it is stale.
 
-## Gates (`.ci/`)
+## Gates (`.github/floors/`)
 
-CI runs the suite once more with JUnit and lcov output and `.github/scripts/test-gates.ts` checks two ratcheting floors (#110, #100): the tests that ran per layer (`.ci/test-count-floors.json`) and line and function coverage of `index.ts` and `src/` (`.ci/coverage-floor.json`). The job summary shows both tables. Floors only go up: after adding tests, run
+CI runs the suite once more with JUnit and lcov output and `.github/scripts/test-gates.ts` checks two ratcheting floors (#110, #100): the tests that ran per layer (`.github/floors/test-count-floors.json`) and line and function coverage of `index.ts` and `src/` (`.github/floors/coverage-floor.json`). The job summary shows both tables. Floors only go up: after adding tests, run
 
 ```sh
 bun test --coverage --coverage-reporter=lcov --coverage-dir=.coverage --reporter=junit --reporter-outfile=.coverage/junit.xml
 bun .github/scripts/test-gates.ts .coverage --ratchet
 ```
 
-and commit `.ci/` with the tests. Lowering a floor is a deliberate edit that the PR must explain.
+and commit `.github/floors/` with the tests. Lowering a floor is a deliberate edit that the PR must explain.
 
 ## Shared fakes (`support/`)
 
