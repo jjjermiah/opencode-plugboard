@@ -94,6 +94,23 @@ describe("the context hook", () => {
     expect(run(event({ options: undefined })).options).toEqual({ maxTokens: 9, temperature: 0.2, topP: 0.5, stop: ["END"], presencePenalty: 1, frequencyPenalty: -1 })
   })
 
+  test("#275 a caller cache breakpoint on a text, image or tool result becomes the host's ephemeral cache hint; a block without one has none", () => {
+    const hostMedia = [{ type: "media", asset: "A" }]
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          { role: "user", content: [{ type: "text", text: "cached", cache: true }, { type: "text", text: "plain" }, { type: "media", url: "data:x", cache: true }] },
+          { role: "tool", content: [{ type: "tool-result", id: "c1", name: "lookup", result: "42", cache: true }] },
+        ],
+      }),
+    )
+    const after = run(event({ messages: [{ content: [{ type: "text", text: "transcript" }, ...hostMedia] }, { content: [{ type: "tool-result", id: "c1", name: "lookup" }] }] }))
+    expect(after.messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "cached", cache: { type: "ephemeral" } }, { type: "text", text: "plain" }, { ...hostMedia[0], cache: { type: "ephemeral" } }] },
+      { role: "tool", content: [{ type: "tool-result", id: "c1", name: "lookup", result: { type: "text", value: "42" }, cache: { type: "ephemeral" } }] },
+    ])
+  })
+
   test("caller images are the host-built media parts of the prompt files, in order", () => {
     const hostMedia = [{ type: "media", asset: "A" }, { type: "media", asset: "B" }]
     const { run } = hook(plugRequest({ messages: [{ role: "user", content: [{ type: "media", url: "data:x" }, { type: "text", text: "and" }, { type: "media", url: "data:y" }] }] }))

@@ -4,8 +4,35 @@
 import { Glob } from "bun"
 import { existsSync, readFileSync } from "node:fs"
 
-const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { files?: string[] }
+type Deps = Record<string, string> | undefined
+const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
+  files?: string[]
+  dependencies?: Deps
+  peerDependencies?: Deps
+  peerDependenciesMeta?: Record<string, unknown>
+}
 if (!pkg.files?.length) throw new Error("package.json has no `files` list")
+// npm-shrinkwrap.json pins the runtime tree (#165). It must ship, and it must describe the current
+// runtime dependencies, so a dependency bump without `npm shrinkwrap` fails here.
+const shrinkProblems: string[] = []
+if (!pkg.files.includes("npm-shrinkwrap.json")) shrinkProblems.push('npm-shrinkwrap.json is not listed in package.json "files"')
+if (!existsSync("npm-shrinkwrap.json")) shrinkProblems.push("npm-shrinkwrap.json is missing: regenerate it (see docs/packaging.md)")
+else {
+  const sorted = (d: unknown) => JSON.stringify(d ?? {}, Object.keys((d ?? {}) as object).sort())
+  const lock = JSON.parse(readFileSync("npm-shrinkwrap.json", "utf8")) as {
+    packages: Record<string, { dependencies?: Deps; peerDependencies?: Deps; peerDependenciesMeta?: unknown }>
+  }
+  const root = lock.packages[""] ?? {}
+  if (sorted(root.dependencies) !== sorted(pkg.dependencies)) shrinkProblems.push("npm-shrinkwrap.json dependencies differ from package.json: regenerate it")
+  if (sorted(root.peerDependencies) !== sorted(pkg.peerDependencies)) shrinkProblems.push("npm-shrinkwrap.json peerDependencies differ from package.json: regenerate it")
+  for (const key of Object.keys(lock.packages)) {
+    if (/(^|\/)(effect|@opencode\/plugin)$/.test(key)) shrinkProblems.push(`npm-shrinkwrap.json pins ${key}, an optional peer that must not ship`)
+  }
+}
+if (shrinkProblems.length) {
+  for (const p of shrinkProblems) console.error(p)
+  process.exit(1)
+}
 // `npm pack --ignore-scripts` below skips prepack, so the compiled TUI entry must already exist.
 if (!existsSync("dist/tui.js")) throw new Error("dist/tui.js is missing: run `bun run build:tui` before packing")
 

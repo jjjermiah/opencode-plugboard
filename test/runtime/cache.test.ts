@@ -38,6 +38,20 @@ describe("the store", () => {
     expect(fake.calls).toHaveLength(2)
   })
 
+  test("#278 a persona model (a skill alias or an agent) is never answered from the cache; a plain alias is", async () => {
+    const options = testOptions({ cache, aliases: { "invoice-parser": "skill:invoice-parser@test/echo", fast: "test/echo" }, agents: [{ name: "reviewer", model: "test/echo" }] })
+    for (const model of ["invoice-parser", "agent/reviewer"]) {
+      const fake = new FakeModelCaller(answer)
+      await collect(withResponseCache(fake, options).stream(plugRequest({ model }), ctx()))
+      await collect(withResponseCache(fake, options).stream(plugRequest({ model }), ctx()))
+      expect(fake.calls).toHaveLength(2)
+    }
+    const plain = new FakeModelCaller(answer)
+    await collect(withResponseCache(plain, options).stream(plugRequest({ model: "fast" }), ctx()))
+    await collect(withResponseCache(plain, options).stream(plugRequest({ model: "fast" }), ctx()))
+    expect(plain.calls).toHaveLength(1)
+  })
+
   test("a changed `apps` policy starts a fresh store, because the key does not cover policy", async () => {
     const fake = new FakeModelCaller(answer)
     await collect(withResponseCache(fake, testOptions({ cache })).stream(plugRequest(), ctx()))

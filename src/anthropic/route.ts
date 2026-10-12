@@ -12,7 +12,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { authenticate, bodyLimits, historyTemplate } from "../config.js"
+import { appPolicy, authenticate, bodyLimits, historyTemplate } from "../config.js"
 import { liveOptions } from "../runtime.js"
 import { bodyUserId, noteEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
@@ -32,14 +32,15 @@ import {
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy, reportServerTools } from "../policy.js"
+import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
+import { requestSystem } from "../session/context.js"
 import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
 import { estimateTokens } from "./tokens.js"
-import { encodeError, runMessage, sseFrame } from "./response.js"
+import { encodeError, messagesStatus, runMessage, sseFrame } from "./response.js"
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -76,7 +77,7 @@ const authenticateRequest = async (host: RouteHost, request: IncomingMessage) =>
 
 export async function serveMessages(host: RouteHost, call: MessagesCall): Promise<void> {
   const { path, request, response, scope, info } = call
-  const fail = (error: PlugError, close = false) => sendError(response, error, encodeError(error), { close })
+  const fail = (error: PlugError, close = false) => sendError(response, { ...error, status: messagesStatus(error) }, encodeError(error), { close })
   if (request.method === "POST") info.route = `POST ${path}`
   response.setHeader("request-id", `req_${crypto.randomUUID().replaceAll("-", "")}`)
 
@@ -117,7 +118,8 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-    if (path === COUNT_TOKENS) return sendJson(response, 200, { input_tokens: estimateTokens(parsed.request) })
+    // The system prompt the session will send: the app's policy and the tool-choice steering are added before the model reads it (#201).
+    if (path === COUNT_TOKENS) return sendJson(response, 200, { input_tokens: estimateTokens({ ...parsed.request, system: requestSystem(parsed.request, [], appPolicy({ apps: host.options.apps }, auth.app)) }) })
     // Sampling parameters the model is known to reject are dropped; `top_k` has no neutral
     // equivalent and is always dropped. Both are reported before any response bytes.
     const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined
@@ -127,6 +129,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
       response.setHeader(DROPPED_HEADER, info.dropped)
     }
     const model: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
+    reportParallelTools(response, model)
     const { exchange } = parsed
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.

@@ -98,6 +98,7 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
       messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
       tools,
       ...(toolChoice ? { toolChoice } : {}),
+      ...(format.structured ? { structuredTool: RESPOND_TOOL } : {}),
       generation,
     })),
     n,

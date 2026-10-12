@@ -9,7 +9,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { APP_NAME_PATTERN, DEFAULT_APP, authenticateUsage, type PlugboardOptions } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, authenticateUsage, type PlugboardOptions } from "../config.js"
 import { isPlugError, type PlugError } from "../contract.js"
 import { checkJsonContentType, readJsonBody, sendError, sendJson, type RequestScope } from "../http.js"
 import type { KeyStore } from "../keys.js"
@@ -58,6 +58,9 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
     const app = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as { app?: unknown }).app : undefined
     if (typeof app !== "string" || app === DEFAULT_APP || !APP_NAME_PATTERN.test(app))
       return fail({ status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: `\`app\` must match ${APP_NAME_PATTERN} and must not be \`${DEFAULT_APP}\`` })
+    // A runtime key would carry the app's server tools (#197): those apps get their key from the config only.
+    if (appPolicy(host.options, app)?.serverTools)
+      return fail({ status: 409, kind: "invalid_request", code: "app_has_server_tools", param: "app", message: `App ${app} runs OpenCode tools (option \`apps.${app}.serverTools\`); a runtime key would give the same power, so none is minted. Set the key in the plugboard config` })
     if (Object.hasOwn(host.options.keys, app))
       return fail({ status: 409, kind: "invalid_request", code: "app_has_config_key", param: "app", message: `App ${app} already has a key in the plugboard config; edit \`keys\` to change it` })
     const created = await keys.create(app, host.options.keys)

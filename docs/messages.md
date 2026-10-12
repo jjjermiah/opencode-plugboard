@@ -36,11 +36,11 @@ Define the aliases in the plugboard `aliases` option (for example `"claude-sonne
 | --- | --- |
 | `model` | Same as Chat Completions: an alias or `provider/model[#variant]`. The response echoes the string you sent. |
 | `max_tokens` | Required, a positive integer, passed to the model. |
-| `system` | A string, or text blocks (`cache_control` is accepted and ignored). |
-| `messages` | `user` and `assistant` turns with a string or content blocks: `text`, `image` (`base64` or `url` source), `document` (`base64`, `url` or `text` source), `tool_use` (assistant), `tool_result` (user). `thinking` and `redacted_thinking` blocks are accepted and dropped. `cache_control` is ignored. |
+| `system` | A string, or text blocks (`cache_control` is accepted and ignored: the app's policy and OpenCode's own placement decide the system cache). |
+| `messages` | `user` and `assistant` turns with a string or content blocks: `text`, `image` (`base64` or `url` source), `document` (`base64`, `url` or `text` source), `tool_use` (assistant), `tool_result` (user). `thinking` and `redacted_thinking` blocks are accepted and dropped. `cache_control` (`ephemeral`) on a `text`, `image`, `document` or `tool_result` block is a cache breakpoint the caller chose: OpenCode keeps it and fills the rest of its own budget, so the caller controls what is cached but cannot turn caching off. A `ttl` of `1h` is sent as the default 5-minute breakpoint: a 1h breakpoint placed after OpenCode's 5-minute ones (its tool and system breakpoints) is rejected by Anthropic, so it is not carried (#275). `cache_control` on `tools` is ignored, because the OpenCode context hook does not carry a tool's cache hint. |
 | `tool_result` | `content` as a string or text and image blocks, `is_error` passed on. Each result must answer a `tool_use` block from an earlier assistant turn. Images inside a result are passed as user media after the results. |
 | `tools` | Custom tools with `name`, `description` and `input_schema`. |
-| `tool_choice` | `auto`, `any`, `none`, `{"type":"tool","name":"..."}`. `disable_parallel_tool_use` is ignored. |
+| `tool_choice` | `auto`, `any`, `none`, `{"type":"tool","name":"..."}`. `disable_parallel_tool_use: true` keeps only the first tool call of the answer, as `parallel_tool_calls: false` does on Chat Completions; the response carries `x-plugboard-parallel-tools: limited`. |
 | `temperature`, `top_p` | Passed to the model, minus the ones the model is known to reject (see below). |
 | `top_k` | Ignored. Plugboard has no `top_k` option. The response header `x-plugboard-dropped-params` lists it. |
 | `stop_sequences` | Passed to the model. |
@@ -62,7 +62,7 @@ A 400 `invalid_request_error` whose message names the field, for example `tools.
 - A `tool_result` whose `tool_use_id` no earlier `tool_use` block has, and `tool_choice` naming a tool that is not in `tools`.
 - A missing `max_tokens`, `messages` or `model`, values out of range, and more tools than the `maxTools` option.
 
-`POST /v1/messages/count_tokens` answers `{ "input_tokens": N }` with an estimate: characters / 4 over the system prompt, messages and tool schemas, plus a fixed cost per image or file. Plugboard has no tokenizer for the model behind an id, so treat it as a budget hint, not the provider's exact count.
+`POST /v1/messages/count_tokens` answers `{ "input_tokens": N }` with an estimate: characters / 4 over the system prompt, messages and tool schemas, plus a fixed cost per image or file. The system prompt includes what plugboard adds before the model reads it: the app's `system` policy (`prepend`, `append` or `replace`) and the tool-choice steering sentence (#201). The count does not include an agent's prompt or a skill's content (an agent replaces the caller's system prompt and a skill is prepended, both read from the OpenCode session, so the count can differ from a real request), nor the schemas of the app's `serverTools`. An app with those can be counted low. Plugboard has no tokenizer for the model behind an id, so treat it as a budget hint, not the provider's exact count.
 
 ## Output
 
@@ -79,14 +79,14 @@ A message object: `id` (`msg_...`), `type: "message"`, `role: "assistant"`, `mod
 
 `usage` has `input_tokens`, `output_tokens` (including reasoning), `cache_read_input_tokens` and `cache_creation_input_tokens`. As in Anthropic's API, `input_tokens` excludes the cached tokens that the other two fields report. The `x-plugboard-session` header works as on Chat Completions, and every response carries a `request-id` header.
 
-Errors use Anthropic's body, `{"type":"error","error":{"type":"...","message":"..."}}`, from the first check on (auth, origin, body, model, provider errors), with these types: `invalid_request_error` (400, 405, 415), `authentication_error` (401), `permission_error` (403), `not_found_error` (404), `request_too_large` (413), `rate_limit_error` (429), `timeout_error` (504), `overloaded_error` (529) and `api_error` for the rest. The error object has no `code` or `param` field, as in Anthropic's API, so a full concurrency cap (429) is `rate_limit_error` with its message only, and `too_many_requests` is not sent here.
+Errors use Anthropic's body, `{"type":"error","error":{"type":"...","message":"..."}}`, from the first check on (auth, origin, body, model, provider errors), with these types: `invalid_request_error` (400, 405, 415), `authentication_error` (401), `permission_error` (403), `not_found_error` (404), `request_too_large` (413), `rate_limit_error` (429), `timeout_error` (504), `overloaded_error` (529) and `api_error` for the rest. The error object has no `code` or `param` field, as in Anthropic's API, so a full concurrency cap (429) is `rate_limit_error` with its message only, and `too_many_requests` is not sent here. A provider overload (the provider's own 529, or an `overloaded_error` in its message or body) is `overloaded_error` on HTTP 529, the status Anthropic clients retry with backoff. Other provider 503s stay `api_error` on 503. The OpenAI routes answer an overload as 503 `server_error` with code `provider_overloaded`.
 
 ## Streaming
 
 `stream: true` sends SSE frames `event: <type>` then `data: <json>`:
 
 ```text
-message_start                (usage is zero here: token counts are known at the end)
+message_start                (usage is zero here: the host reports token counts only when the answer ends)
 content_block_start          (thinking or text, one per block)
 ping                         (once, after the first block starts)
 content_block_delta          (thinking_delta or text_delta, one per model chunk)
@@ -94,11 +94,11 @@ content_block_stop
 content_block_start          (tool_use with input {}, one per call)
 content_block_delta          (one input_json_delta holding the whole input)
 content_block_stop
-message_delta                (stop_reason, and the final usage)
+message_delta                (stop_reason, and the final usage: input_tokens, cache_creation_input_tokens, cache_read_input_tokens and output_tokens)
 message_stop
 ```
 
-Tool calls arrive whole from the model, so each call is a single `input_json_delta`. Thinking blocks carry an empty `signature`. Nothing is sent until there is output, so a failure before the first token is a real HTTP error. A failure after that ends the stream with an `event: error` frame (`{"type":"error","error":{"type","message"}}`) and no `message_stop`.
+Tool calls arrive whole from the model, so each call is a single `input_json_delta`. A thinking block carries the provider's `signature` when the host reports one (Anthropic's does), streamed as a `signature_delta` before the block stops (#146). Otherwise the signature is empty. Plugboard drops `thinking` and `redacted_thinking` blocks from the messages a client sends, so a replayed block never reaches a provider, and a next turn cannot fail on its signature. Nothing is sent until there is output, so a failure before the first token is a real HTTP error. A failure after that ends the stream with an `event: error` frame (`{"type":"error","error":{"type","message"}}`) and no `message_stop`.
 
 ## Structured extraction with a forced tool
 
