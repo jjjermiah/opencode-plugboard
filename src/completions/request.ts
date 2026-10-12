@@ -9,9 +9,9 @@
  * `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
-import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
+import { isPlugError, type PlugError, type PlugRequest, type PlugToolChoice } from "../contract.js"
 import { bodyUser, userField } from "../user.js"
-import { parseChoiceCount, parseGeneration } from "../openai/request.js"
+import { RESPOND_TOOL, parseChoiceCount, parseGeneration, parseResponseFormat } from "../openai/request.js"
 import type { CompletionsExchange } from "./response.js"
 
 export interface ParsedCompletions {
@@ -80,16 +80,23 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
     )
   const generation = parseGeneration(body)
   if (isPlugError(generation)) return generation
+  // The same response_format as Chat Completions: json_schema is the forced `respond` tool, json_object an instruction.
+  const format = parseResponseFormat(body.response_format)
+  if (isPlugError(format)) return format
 
   const suffix = typeof body.suffix === "string" && body.suffix.length > 0 ? body.suffix : undefined
+  const system = [...(suffix ? [SUFFIX_INSTRUCTION(suffix)] : []), ...(format.instruction ? [format.instruction] : [])]
+  const tools = format.structured ? [format.structured] : []
+  const toolChoice: PlugToolChoice | undefined = format.structured ? { type: "tool", name: RESPOND_TOOL } : undefined
   const streamOptions = isRecord(body.stream_options) ? body.stream_options : {}
   return {
     requests: prompts.map((prompt) => ({
       model: body.model as string,
       ...userField(bodyUser(body)),
-      system: suffix ? [SUFFIX_INSTRUCTION(suffix)] : [],
+      system,
       messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
-      tools: [],
+      tools,
+      ...(toolChoice ? { toolChoice } : {}),
       generation,
     })),
     n,
@@ -100,6 +107,8 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
       perPrompt: n,
       ...(body.echo === true ? { echo: prompts } : {}),
       ...(generation.stop ? { stop: generation.stop } : {}),
+      ...(format.structured ? { structuredTool: RESPOND_TOOL } : {}),
+      ...(format.instruction ? { jsonObject: true } : {}),
     },
     ...(typeof body.reasoning_effort === "string" ? { reasoningEffort: body.reasoning_effort } : {}),
   }

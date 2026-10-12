@@ -132,7 +132,7 @@ const encodeUsage = (usage: PlugUsage) => {
   }
 }
 
-const args = (input: unknown) => (typeof input === "string" ? input : JSON.stringify(input ?? {}))
+export const args = (input: unknown) => (typeof input === "string" ? input : JSON.stringify(input ?? {}))
 
 /**
  * Final finish_reason. Tool calls force `tool_calls` even when the upstream says `stop`;
@@ -152,6 +152,14 @@ const noFinish = (): PlugError => ({
 
 const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
 
+/** The 502 for a structured turn that ended without its answer (the forced tool, or a valid JSON text). Shared with the legacy completions encoder. */
+export const structuredMissing = (tool: string): PlugError => ({
+  status: 502,
+  kind: "server",
+  code: "structured_output_missing",
+  message: `The model finished without calling the \`${tool}\` tool, so there is no structured output`,
+})
+
 /**
  * Structured-output projection, shared by the JSON and SSE encoders so both give the same body.
  * In structured mode (`exchange.structuredTool` set) the content is exactly the arguments of
@@ -166,12 +174,7 @@ const structured = {
   failure: (exchange: OpenAiExchange, finish: Exclude<PlugFinish, "error">, answered: boolean): PlugError | undefined =>
     exchange.structuredTool === undefined || answered || finish === "length" || finish === "content-filter"
       ? undefined
-      : {
-          status: 502,
-          kind: "server",
-          code: "structured_output_missing",
-          message: `The model finished without calling the \`${exchange.structuredTool}\` tool, so there is no structured output`,
-        },
+      : structuredMissing(exchange.structuredTool),
 }
 
 /** One markdown code fence (```json or a bare ```) around the whole text. */
