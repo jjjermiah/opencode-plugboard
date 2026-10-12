@@ -4,7 +4,11 @@
 [![license](https://img.shields.io/npm/l/opencode-plugboard)](https://github.com/jjjermiah/opencode-plugboard/blob/main/LICENSE)
 [![CI](https://github.com/jjjermiah/opencode-plugboard/actions/workflows/ci.yml/badge.svg)](https://github.com/jjjermiah/opencode-plugboard/actions/workflows/ci.yml)
 
-An OpenCode V2 plugin that turns your OpenCode server into an OpenAI-, Anthropic- and Gemini-compatible API, so every other app reuses the provider logins you already made in OpenCode. Point Claude Code at a GPT model, or n8n at your Claude subscription.
+Plugboard is an OpenCode V2 plugin. It turns your OpenCode server into one HTTP API that OpenAI, Anthropic and Gemini compatible apps can call with their own key.
+
+It is for people who run several tools, such as a Discord bot, n8n and Open WebUI, and want them to share the provider logins already in OpenCode (Claude, ChatGPT, Copilot, OpenCode Go) without giving each one a provider key.
+
+OpenCode never runs your tools.
 
 ```
 client ──▶ plugboard listener ──▶ OpenCode session ──▶ provider
@@ -12,7 +16,16 @@ client ──▶ plugboard listener ──▶ OpenCode session ──▶ provide
   └──── reply; tool calls go back to the caller ◀──────────┘
 ```
 
-Tools like n8n, Open WebUI or a Discord bot only speak the OpenAI API, so each wants its own key or its own gateway. Plugboard serves OpenAI Chat Completions (`/v1/chat/completions`), the Responses API (`/v1/responses`), the Anthropic Messages API (`/v1/messages`), the Gemini API (`/v1beta/models/{model}:generateContent`), legacy completions (`/v1/completions`) and `/v1/models` from inside OpenCode. OpenCode never runs your tools.
+## Endpoints
+
+| API | Endpoint | Typical clients |
+| --- | --- | --- |
+| OpenAI Chat Completions | `POST /v1/chat/completions` | OpenAI SDKs, n8n, Open WebUI, LangChain, most apps |
+| OpenAI Responses | `POST /v1/responses` | `openai` SDK `responses.create`, Vercel AI SDK `openai(id)` |
+| Anthropic Messages | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Anthropic SDKs, Claude Code |
+| Gemini | `POST /v1beta/models/{model}:generateContent`, `:streamGenerateContent`, `:countTokens` | `@google/genai`, Gemini SDKs |
+| Legacy completions | `POST /v1/completions` | Older scripts |
+| Models | `GET /v1/models`, `GET /v1/models/{id}` | Any client that lists models |
 
 ## Quick start
 
@@ -24,7 +37,7 @@ Tested on OpenCode 2.0.26. The peer range `>=2.0.26 <2.1` allows 2.0.x patch rel
 export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 ```
 
-**2. Install it** in your global config (`~/.config/opencode/opencode.jsonc`). It has to be global, see [History](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/history.md). OpenCode installs it from npm the first time it loads.
+**2. Install it** in your global config, `~/.config/opencode/opencode.jsonc`. Keep it global: every project loads it, and a per-project copy is not needed. OpenCode installs it from npm the first time it loads.
 
 ```jsonc
 {
@@ -41,7 +54,9 @@ export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 }
 ```
 
-Every alias target must also be allowed in `models`. Pin the version as shown. A bare `"opencode-plugboard"` means `latest`, so a cache refresh or `opencode plugin update` can pull code you have not read. A global plugin runs inside OpenCode in every project, next to your provider logins, so update the number on purpose after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md).
+Every alias target must also be allowed in `models`.
+
+Keep the version pinned. A bare `"opencode-plugboard"` means `latest`, so a cache refresh can load code you have not read. Change the number on purpose, after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md).
 
 **3. Restart OpenCode, then touch the server once.** OpenCode loads no plugin until a client connects, so the port stays closed until then:
 
@@ -49,9 +64,9 @@ Every alias target must also be allowed in `models`. Pin the version as shown. A
 opencode api get /api/agent
 ```
 
-For an always-on server, run that from the service unit, see [warm-up](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/warm-up.md).
+For an always-on server, run that from the service unit. See [warm-up](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/warm-up.md).
 
-**4. Call it.** The endpoint listens on `127.0.0.1:4010`. This prints `pong`:
+**4. Call it.** The listener is on `127.0.0.1:4010`. This prints `pong`:
 
 ```sh
 curl -s http://127.0.0.1:4010/v1/chat/completions \
@@ -61,58 +76,462 @@ curl -s http://127.0.0.1:4010/v1/chat/completions \
   | jq -r '.choices[0].message.content'
 ```
 
-Any OpenAI SDK works by changing the base URL (`http://127.0.0.1:4010/v1`) and the key. Next:
+The same call with the OpenAI Python SDK. Only the base URL and the key change:
 
-- [Clients](#clients): config for Python, JS, Vercel AI SDK, LangChain, pydantic-ai, Open WebUI, n8n.
-- [Configuration](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md): options, models, keys, errors.
-- [Reaching plugboard from another host or container](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md#reaching-plugboard-from-another-host-or-container).
-- [History](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/history.md): every request is kept as an OpenCode session.
-- [Architecture](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md) and [development](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/development.md).
+```python
+import os
+from openai import OpenAI
 
-`GET /healthz` returns OK when the listener is up and needs no key.
+client = OpenAI(base_url="http://127.0.0.1:4010/v1", api_key=os.environ["PLUGBOARD_KEY_MY_APP"])
+r = client.chat.completions.create(model="fast", messages=[{"role": "user", "content": "reply with exactly: pong"}])
+print(r.choices[0].message.content)
+```
 
-## What this is not
+Next: [client setup](#clients), the [features](#features) below, or the [configuration reference][configuration].
 
-Plugboard is early (0.x) and narrow on purpose.
+## Features
 
-- **V2 only.** OpenCode V2 has no OpenAI endpoint, and the V1 plugins that had one stopped working when the plugin API changed. V1 is not planned.
-- **Two formats:** Chat Completions and Responses. `/v1/responses` is a stateless subset, see [docs/responses.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/responses.md). Anthropic Messages and Gemini front-ends are on the [roadmap](#roadmap).
-- **Not planned:** embeddings, audio, image generation, `logprobs`.
-- **Not a distributed gateway.** Limits, the response cache and metrics live in one OpenCode server process; two servers don't share them.
-- **Not a gateway with its own provider keys.** It only reuses what OpenCode is logged in to.
+Each feature lists a minimal config. Every option goes under `options` in the plugin entry. The full list is in the [configuration reference][configuration].
 
-How it differs from a standalone gateway:
+### Access and policy
 
-- [LiteLLM](https://github.com/BerriAI/litellm) is a separate gateway you run and give its own provider keys. It covers many more providers and API shapes. Pick it when you want a standalone service. Pick plugboard when OpenCode already holds the logins you want to reuse, such as a ChatGPT or Copilot subscription. Plugboard also gives each app its own key and history, an explicit model allowlist, and rules that keep it from ever freezing the host.
+#### Apps and keys
 
-The most common first failure is an SDK defaulting to `/v1/responses` for newer models. Plugboard serves it, but some clients need `store: false` or a "use chat completions" switch. Check the client's page below.
+Give every tool its own key. Traffic, history and usage are then separated by app, and revoking one tool means removing one line.
+
+```jsonc
+"keys": {
+  "discord-bot": "{env:PLUGBOARD_KEY_DISCORD}",
+  "n8n": "{env:PLUGBOARD_KEY_N8N}",
+  "open-webui": "{env:PLUGBOARD_KEY_WEBUI}"
+}
+```
+
+Callers send the key as `Authorization: Bearer <key>` (or `x-api-key` on the Anthropic routes). They never need the OpenCode server password. Removing a key takes effect on the running server at once.
+
+#### Model allowlist
+
+Nothing is exposed by accident. A model is callable only if `models` lists it, and `/v1/models` shows only those.
+
+```jsonc
+"models": [
+  "anthropic/*",                 // every Claude model
+  "openai/gpt-5.6-luna#low",     // one ChatGPT variant
+  "github-copilot/*",           // every Copilot model
+  "opencode-go/glm-5.3-flash"    // one exact model
+]
+```
+
+A model outside the list gets a 404:
+
+```json
+{"error": {"message": "Model openai/gpt-5 is not available", "code": "model_not_found", "type": "not_found_error", "param": null}}
+```
+
+#### Per-app policy
+
+`apps` fixes an app's behaviour on the server, so the app does not have to be trusted with it. Each policy can narrow the model list, add or replace the system prompt, drop tools, or lower the tool cap.
+
+```jsonc
+"apps": {
+  "discord-bot": { "models": ["fast"], "system": "Answer in two sentences.", "tools": false },
+  "coding": { "models": ["anthropic/*"], "maxTools": 16 }
+}
+```
+
+The `discord-bot` app can only use `fast`, gets the system prompt added, and has its tools removed. The request still succeeds, and the response says what changed:
+
+```
+x-plugboard-policy: tools-stripped
+```
+
+`systemMode` is `prepend` (the default), `append` or `replace`. An app with a policy still needs its key in `keys` (or `apps.<name>.key`).
+
+### Routing
+
+#### Aliases
+
+An alias is a short name a caller can use as `model`. Change the target in one line, and every app that uses the alias moves with it.
+
+```jsonc
+"aliases": {
+  "smart": "anthropic/claude-sonnet-4-6",
+  "fast": "opencode-go/glm-5.3-flash"
+}
+```
+
+```sh
+curl -s -D - http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" -d '{"model": "fast", "messages": [{"role": "user", "content": "hi"}]}'
+# ...
+# x-plugboard-model: opencode-go/glm-5.3-flash
+```
+
+The `x-plugboard-model` header names the model that actually answered.
+
+#### Fallback chains
+
+Point an alias at a list. If the first target fails before it sends any output, plugboard tries the next one.
+
+```jsonc
+"aliases": {
+  "fast": ["opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"]
+}
+```
+
+A rate limit, quota error, provider outage or timeout moves the request on. Once any text or tool call has reached the client, a failure is not retried, so a partly streamed answer is never restarted. A retried answer shows the change in headers:
+
+```
+x-plugboard-model: anthropic/claude-haiku-4-5
+x-plugboard-fallbacks: 1
+```
+
+Every target must pass `models`, or the plugin refuses to load.
+
+#### UI-safe model ids
+
+Some chat UIs break on the `/` and `#` in model ids. `slugs` lists a UI-safe spelling, and requests accept either spelling.
+
+```jsonc
+"modelIds": "both"   // canonical and slug, for each model
+```
+
+With `slugs`, `anthropic/claude-haiku-4-5#high` is listed as `anthropic--claude-haiku-4-5__high`. Models whose ids contain `--` have no unambiguous slug, so they stay listed under their canonical id.
+
+To list only the models that can do something, filter the catalog:
+
+```sh
+curl -s "http://127.0.0.1:4010/v1/models?capability=vision" -H "Authorization: Bearer $KEY"
+```
+
+`capability` is `vision` or `tools`. Any other value is rejected.
+
+### Limits and caching
+
+#### Concurrency and rate limits
+
+`limits` caps how many model calls run at once, and how many an app may start per minute. Nothing queues. A call over a cap gets a 429 at once, so the provider never sees it.
+
+```jsonc
+"limits": {
+  "maxConcurrent": 8,
+  "perApp": { "maxConcurrent": 2, "requestsPerMinute": 30 },
+  "apps": { "coding": { "maxConcurrent": 4 } }
+}
+```
+
+`coding` gets four calls at once and still 30 per minute, because `apps.<name>` overrides `perApp` field by field. A refused call carries `Retry-After`:
+
+```
+HTTP/1.1 429 Too Many Requests
+retry-after: 12
+
+{"error": {"message": "Too many requests per minute", "code": "rate_limit_exceeded", "type": "rate_limit_error", "param": null}}
+```
+
+A full concurrency cap returns `too_many_requests` with `retry-after: 1`. The limits live in the server process, so a restart clears them.
+
+#### Response cache
+
+Pollers and bots often send the same prompt again and again. With `cache`, an identical request from the same app gets the stored answer. No session is created and no provider call is made.
+
+```jsonc
+"cache": { "ttlSeconds": 300, "apps": ["discord-bot"] }
+```
+
+Every answer says whether it came from the cache:
+
+```
+x-plugboard-cache: hit
+```
+
+Only normal text answers are kept. Answers with tool calls, errors, structured output and `n` above 1 are not. With `temperature` above 0, a hit repeats the first answer, so limit the cache to apps that want that. The cache is in memory and a restart empties it.
+
+### Requests and responses
+
+#### Streaming
+
+Set `stream: true` and read the server-sent events. Ask for usage in the last chunk with `stream_options`.
+
+```sh
+curl -N http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "fast", "stream": true, "stream_options": {"include_usage": true},
+       "messages": [{"role": "user", "content": "count to three"}]}'
+```
+
+If the stream fails after it has started, the client gets an `error` event and then `data: [DONE]`.
+
+#### Tools
+
+Plugboard returns the model's tool calls to the caller and never runs them. The caller runs the tool and sends the result back, which is the normal Chat Completions loop.
+
+```json
+{"choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant", "tool_calls": [
+  {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\": \"Paris\"}"}}]}}]}
+```
+
+Send the answer back as a `{"role": "tool", "tool_call_id": "call_1", "content": "..."}` message. Tool call ids differ by model, so do not parse them. `maxTools` (default 32) caps the tools one request may carry.
+
+#### Structured output
+
+`response_format` with `json_schema` returns the arguments as the message content. The model is asked to answer through a `respond` tool. The provider does not enforce the schema, so validate the result.
+
+```sh
+curl -s http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" -d '{
+    "model": "fast",
+    "messages": [{"role": "user", "content": "Extract: Ada, 36, London"}],
+    "response_format": {"type": "json_schema", "json_schema": {"name": "person", "schema": {
+      "type": "object",
+      "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+      "required": ["name", "age"]}}}
+  }' | jq -r '.choices[0].message.content'
+```
+
+`json_object` also works, but it carries no schema. Name the keys in the prompt.
+
+#### Images
+
+Send images as `data:` URLs, which always work. Plain `http(s)` URLs are fetched by the server only when you allow it.
+
+```jsonc
+"remoteImages": { "allow": ["images.internal"] }   // or true for public addresses only
+```
+
+With `true` or an `allow` list, the server fetches only public addresses by default, and refuses loopback, private, link-local and CGNAT ranges. Turn it on only if you need it, because it makes the server fetch URLs that callers send.
+
+#### Multiple choices (`n`)
+
+`n` above 1 returns several answers from one request. Each choice is a full model call, so `n: 3` costs three times as much.
+
+```jsonc
+"maxN": 4   // the most calls one request may fan out to; default 1
+```
+
+Above the cap the request gets a 400 `too_many_choices`. `n` works on Chat Completions and on `/v1/completions`.
+
+#### Token counting
+
+Clients that budget context before they send, such as Claude Code and the Anthropic and Gemini SDKs, can count tokens first. The count is an estimate, because plugboard has no tokenizer.
+
+```sh
+curl -s http://127.0.0.1:4010/v1/messages/count_tokens -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" -d '{"model": "fast", "messages": [{"role": "user", "content": "hello"}]}'
+# {"input_tokens": 12}
+```
+
+#### Dropped sampling parameters
+
+Some models reject `temperature`, `top_p` or the penalties. Plugboard drops the ones it knows a model refuses, and lists them in a header, so the request still succeeds.
+
+```
+x-plugboard-dropped-params: temperature,top_p
+```
+
+Models plugboard does not know keep every parameter, and the provider's own 400 comes back. Set `"dropUnsupportedParams": false` to forward everything as sent.
+
+### Operations
+
+#### Usage statistics
+
+Usage is recorded per app and per UTC day: requests, errors, latency, tokens, estimated cost, cache hits, fallbacks and 429 refusals. It is on by default. An admin key reads every app, and an app key reads only its own.
+
+```jsonc
+"adminKey": "{env:PLUGBOARD_ADMIN_KEY}",   // reads every app; not a model key
+"usage": { "retentionDays": 90 }           // the default; { "enabled": false } turns it off
+```
+
+```sh
+curl -s "http://127.0.0.1:4010/v1/usage?from=2026-10-01&to=2026-10-11" \
+  -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
+```
+
+A trimmed response:
+
+```json
+{"from": "2026-10-01", "to": "2026-10-11",
+ "totals": {"requests": 40, "tokens": {"input": 8120, "output": 2600}, "costUsd": 0.12, "cacheHits": 9},
+ "apps": {"discord-bot": {"totals": {"requests": 31}, "models": {"opencode-go/glm-5.3-flash": {"requests": 31}}}}}
+```
+
+Cost is an estimate at list prices, so use it to compare apps, not as a bill. The same report is available to OpenCode clients through the `opencode-plugboard/rpc` entry. Counts reach storage every ten seconds, so a restart can lose the last few seconds.
+
+#### History
+
+Every request is kept as an OpenCode session in a directory for its app, so it never mixes with your projects. You can read what each app asked and what the model answered. Chat responses carry the session id as `x-plugboard-session`.
+
+```jsonc
+"history": { "maxSessions": 500, "maxAgeDays": 30 }   // per app; the stricter limit wins
+```
+
+Without `history`, sessions are kept forever.
+
+#### Metrics and logs
+
+Prometheus metrics are off by default. Turn them on, and get structured logs when a pipeline reads them.
+
+```jsonc
+"metrics": true,
+"logFormat": "json"   // one object per line; ids and outcomes only, never keys or bodies
+```
+
+```sh
+curl -s http://127.0.0.1:4010/metrics -H "Authorization: Bearer $KEY" | grep plugboard_requests_total
+```
+
+Every response has an `x-plugboard-request-id`, the same id that appears on that request's log lines. Useful log events include `request.finished`, `request.limited` and `model.fallback`. The metrics have no model label, so their cardinality stays bounded.
+
+## Full example
+
+A server shared by a Discord bot, n8n, Open WebUI and a coding agent, with most of the features above:
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "opencode-plugboard@0.17.0",
+      "options": {
+        // Reachable from the LAN. Non-loopback hosts refuse to start without keys.
+        "listen": { "host": "10.0.1.50", "port": 4010 },
+
+        // One key per app. Each app's history, usage and limits are separate.
+        "keys": {
+          "discord-bot": "{env:PLUGBOARD_KEY_DISCORD}",
+          "n8n": "{env:PLUGBOARD_KEY_N8N}",
+          "open-webui": "{env:PLUGBOARD_KEY_WEBUI}",
+          "coding": "{env:PLUGBOARD_KEY_CODING}"
+        },
+        "adminKey": "{env:PLUGBOARD_ADMIN_KEY}",
+
+        // What may be called at all. Everything else is a 404.
+        "models": ["anthropic/*", "github-copilot/*", "openai/gpt-5.6-luna#low", "opencode-go/glm-5.3-flash"],
+
+        // Short names. A list is a fallback chain; every target must pass `models`.
+        "aliases": {
+          "smart": "anthropic/claude-sonnet-4-6",
+          "fast": ["opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"]
+        },
+
+        // Per-app rules, enforced whatever the app sends.
+        "apps": {
+          "discord-bot": { "models": ["fast"], "system": "Answer in two sentences.", "tools": false },
+          "coding": { "maxTools": 16 }
+        },
+
+        // Shared caps, and a per-app budget for the bot.
+        "limits": {
+          "maxConcurrent": 8,
+          "perApp": { "maxConcurrent": 2, "requestsPerMinute": 30 },
+          "apps": { "coding": { "maxConcurrent": 4 } }
+        },
+
+        // Repeated bot prompts are answered from memory for five minutes.
+        "cache": { "ttlSeconds": 300, "apps": ["discord-bot"] },
+
+        // Chat UIs get ids they can handle; requests accept either spelling.
+        "modelIds": "both",
+
+        "maxN": 2,
+        "remoteImages": { "allow": ["images.internal"] },
+
+        "history": { "maxSessions": 500, "maxAgeDays": 30 },
+        "usage": { "retentionDays": 90 },
+
+        "metrics": true,
+        "logFormat": "json"
+      }
+    }
+  ]
+}
+```
 
 ## Clients
 
-One short page per client, with a config snippet, a chat, a tool call, a structured-output note and the gotchas found in testing. Versions and dates are on each page; the raw evidence is in [`compat/results`](https://github.com/jjjermiah/opencode-plugboard/tree/main/compat/results).
+One page per client, with the config, a chat, a tool call, structured output and the gotchas found in testing. Each page says which version was tested and when.
 
 | Client | Page | Last run (2026-10-11) |
 | --- | --- | --- |
-| OpenAI Python SDK | [openai-python](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-python.md) | pass |
-| OpenAI JS SDK | [openai-js](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-js.md) | pass |
-| Vercel AI SDK | [vercel-ai-sdk](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/vercel-ai-sdk.md) | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `openai(id)` call works through `/v1/responses` (set `store: false` for multi-turn) |
-| LangChain Python | [langchain-python](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-python.md) | pass; `json_mode` on `fast` was unreliable |
-| LangChain JS | [langchain-js](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-js.md) | pass except `gpt-5.6*` ids, which force the Responses API, and `json_mode` on `fast` |
-| pydantic-ai | [pydantic-ai](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/pydantic-ai.md) | pass with `OpenAIChatModel` |
-| Open WebUI | [open-webui](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/open-webui.md) | pass over its HTTP API; no browser, no structured output in its UI |
-| n8n | [n8n](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/n8n.md) | pass with "Use Responses API" off |
-| Anything else | [any-app](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md) | base URL, key, model id |
+| OpenAI Python SDK | [openai-python][client-openai-python] | pass |
+| OpenAI JS SDK | [openai-js][client-openai-js] | pass |
+| Vercel AI SDK | [vercel-ai-sdk][client-vercel-ai-sdk] | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `openai(id)` call works through `/v1/responses` (set `store: false` for multi-turn) |
+| LangChain Python | [langchain-python][client-langchain-python] | pass; `json_mode` on `fast` was unreliable |
+| LangChain JS | [langchain-js][client-langchain-js] | pass except `gpt-5.6*` ids, which force the Responses API, and `json_mode` on `fast` |
+| pydantic-ai | [pydantic-ai][client-pydantic-ai] | pass with `OpenAIChatModel` |
+| Open WebUI | [open-webui][client-open-webui] | pass over its HTTP API; no browser, no structured output in its UI |
+| n8n | [n8n][client-n8n] | pass with "Use Responses API" off |
+| Anything else | [any-app][client-any-app] | base URL, key, model id |
 
-Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass is not a clean sweep, and the notes say where it was not. The latest full run is in [compat/results/release-candidate.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/results/release-candidate.md).
+Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass is not a clean sweep, and the notes say where it was not. The latest full run is in [compat/results/release-candidate.md][release-candidate].
+
+The protocol-level results are in the [compatibility matrix][compatibility]. It runs in CI against a scripted model, so it checks wire formats, not a provider's behaviour.
+
+## Known gaps
+
+- **Responses is stateless.** Every request carries the whole conversation, and nothing is stored. Clients that default to `store: true` fail on a second turn ([#147](https://github.com/jjjermiah/opencode-plugboard/issues/147)). Set `store: false`. For n8n, turn "Use Responses API" off.
+- **Stop sequences** are removed from the answer only on `/v1/messages` ([#145](https://github.com/jjjermiah/opencode-plugboard/issues/145)). Other endpoints return the matched text.
+- **Anthropic structured outputs** (`output_config.format`) are refused with a 400. Use `json_schema` on the OpenAI or Gemini endpoints.
+- **Gemini `candidateCount` above 1** is refused. The OpenAI endpoints serve `n`.
+- **Gemini model ids with a `/`** sent by the AI SDK's Google provider or LangChain's `google-genai` lack the `models/` prefix and get a 401. The `@google/genai` SDK works.
+- **Tools with `json_schema`** in one request return the caller's tool calls, not the schema answer ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)).
+- **State is per server.** Limits, the cache and usage live in one OpenCode server process. Two servers do not share them, and a restart clears limits and the cache.
+- **Token counts and costs are estimates.**
+- **Not planned:** embeddings, audio, image generation and `logprobs`.
+- **V2 only.** OpenCode V1 is not supported and not planned.
+- **Early (0.x).** A minor bump can change an option or a default. Read the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md) before you upgrade.
+
+Open work is tracked in the [v0.1 milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/1) and the [later milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/2).
+
+## Security
+
+- **Bind address.** The listener binds `127.0.0.1` by default. A non-loopback `listen.host` refuses to start without `keys`. On a loopback bind, a `Host` header that is not `localhost`, `127.0.0.1` or `[::1]` gets a 403.
+- **Keys cross the network in clear text.** The endpoint speaks plain HTTP. For remote access, allow only known addresses in the firewall, tunnel over SSH, or put a TLS-terminating proxy in front. See [reaching plugboard from another host or container][reach].
+- **Keep keys out of the config file.** Use `{env:VAR}` and keep the values in the environment or a secret store. Every app needs its own key.
+- **`adminKey` reads usage only.** It cannot call the model routes, and it must differ from every app key.
+- **Keyless mode is loopback only.** Without `keys`, the one app is `default`, and only local callers can reach it.
+- **Remote images are off by default.** Turning them on makes the server fetch URLs chosen by callers.
+- **The plugin runs inside OpenCode.** It sees your provider logins, so pin the version and update it on purpose.
 
 ## How it works
 
-Each request becomes an OpenCode session in the app's own directory, using OpenCode's request path, so provider fixes and auth plugins still apply. The plugin swaps the caller's prompt, messages and tools in for OpenCode's own. Caller tools map to placeholder tools that settle at once with a no-op result. When the model has emitted its tool calls, the plugin interrupts the turn and returns them to the caller. Text streams out as it arrives. [docs/architecture.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md) has the lifetimes and the freeze-safety rules.
+Each request becomes an OpenCode session in the app's own directory, using OpenCode's request path, so provider fixes and auth plugins still apply.
 
-## Roadmap
+The plugin swaps the caller's prompt, messages and tools in for OpenCode's own. Caller tools map to placeholder tools that settle at once with a no-op result. When the model has emitted its tool calls, the plugin interrupts the turn and returns them to the caller. Text streams out as it arrives. The [architecture][architecture] doc covers the lifetimes and the freeze-safety rules.
 
-Work is tracked in GitHub issues: the [v0.1 milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/1) and the [later milestone](https://github.com/jjjermiah/opencode-plugboard/milestone/2), which holds the `/v1/messages` and Gemini front-ends, agent mode, a native backend, usage accounting, rate limits and an upstream request to boot plugins at server start.
+## Documentation
+
+- [Configuration reference][configuration]: every option, with its syntax and defaults.
+- [Apps and keys][configuration-apps], [aliases and fallbacks][configuration-aliases], [limits][configuration-limits], [usage statistics][configuration-usage].
+- Endpoints: [Responses][responses], [Anthropic Messages][messages], [Gemini][gemini], [legacy completions and `n`][completions].
+- [History][history] and [warm-up][warm-up] for always-on servers.
+- [Architecture][architecture] and [development][development].
 
 ## License
 
 MIT
+
+[configuration]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md
+[configuration-apps]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md#apps-and-keys
+[configuration-aliases]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md#aliases-and-fallbacks
+[configuration-limits]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md#concurrency-and-rate-limits
+[configuration-usage]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md#usage-statistics
+[responses]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/responses.md
+[messages]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/messages.md
+[gemini]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/gemini.md
+[completions]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/completions.md
+[history]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/history.md
+[warm-up]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/warm-up.md
+[architecture]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md
+[development]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/development.md
+[compatibility]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/compatibility.md
+[release-candidate]: https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/results/release-candidate.md
+[reach]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md#reaching-plugboard-from-another-host-or-container
+[client-openai-python]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-python.md
+[client-openai-js]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/openai-js.md
+[client-vercel-ai-sdk]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/vercel-ai-sdk.md
+[client-langchain-python]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-python.md
+[client-langchain-js]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/langchain-js.md
+[client-pydantic-ai]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/pydantic-ai.md
+[client-open-webui]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/open-webui.md
+[client-n8n]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/n8n.md
+[client-any-app]: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/any-app.md
