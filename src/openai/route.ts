@@ -48,7 +48,7 @@ import { reportPolicy } from "../policy.js"
 import { isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
-import { processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
+import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import type { UsageRecorder } from "../usage.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
@@ -166,7 +166,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const keyed = Object.keys(host.options.keys).length > 0
       let app: string | undefined = keyed ? undefined : DEFAULT_APP
       if (keyed && request.headers.authorization !== undefined) {
-        const auth = authenticate(host.options, request.headers.authorization)
+        const auth = authenticate(liveOptions(host.options), request.headers.authorization)
         if (isPlugError(auth)) return fail(response, auth)
         app = auth.app
       }
@@ -181,7 +181,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but /healthz and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
-    const auth = authenticate(host.options, gemini ? geminiAuthorization(request, url) : request.headers.authorization)
+    const auth = authenticate(liveOptions(host.options), gemini ? geminiAuthorization(request, url) : request.headers.authorization)
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
 
@@ -295,7 +295,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
   /** `GET /v1/usage?from=&to=&app=`. An app key may name only its own app (another one is a 403); the admin key may name any app or none. */
   async function serveUsage(request: IncomingMessage, response: ServerResponse, url: URL, usage: UsageRecorder, info: RequestInfo): Promise<void> {
-    const who = authenticateUsage(host.options, request.headers.authorization)
+    const who = authenticateUsage(liveOptions(host.options), request.headers.authorization)
     if (isPlugError(who)) return fail(response, who)
     const app = url.searchParams.get("app") ?? undefined
     if (!who.admin) {
