@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.24.0] - 2026-10-12: Smaller, Faster, Stricter
+
+**Full diff:** [v0.23.0...v0.24.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.23.0...v0.24.0)
+
 OpenCode 2.0.27 support, a 95% smaller install, prompt-cache affinity, and a round of security and protocol fixes. One change can break a working setup: server tools now follow your OpenCode permissions (see Changed).
 
 ### Added
@@ -45,6 +51,547 @@ OpenCode 2.0.27 support, a 95% smaller install, prompt-cache affinity, and a rou
   - The admin key can no longer mint a key for an app with `serverTools`.
 - **`tools: false` keeps structured output** ([#252](https://github.com/jjjermiah/opencode-plugboard/issues/252)). It dropped the internal tool that answers `json_schema`, so structured requests failed. Now only the caller's tools are dropped.
 - **`count_tokens` and Gemini `countTokens`** include the app's system prompt policy and tool-choice steering ([#201](https://github.com/jjjermiah/opencode-plugboard/issues/201)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (51 commits)</summary>
+
+#### Features
+
+**feat(http): report cache_write in x-plugboard-usage** ([`c8ea623`](https://github.com/jjjermiah/opencode-plugboard/commit/c8ea62305d746b02ad23398077ad0f944828cf57))
+
+The per-response usage header carried cache_read but not cache_write, so a first-turn caller that paid for a cache write read cache_read=0 with no write figure and could not tell a write from a call with no cache. The cost part already priced the write (verified live: 3658 written tokens priced at the catalog write rate), so only the token count was missing.
+
+CallTotals gains an optional cacheWriteTokens (optional so existing literals still compile; absent reads as 0). withUsage sets it from the provider's cache write count, reportUsage sums it over the choices of a fan-out, and formatUsage prints cache_write=<n> between cache_read and cost_usd. docs/configuration.md documents the new field.
+
+Tests: the pinned header strings in test/unit and test/http gain cache_write=, a new formatUsage case shows a write, and withUsage prices a 300-token write at the write rate instead of as uncached input.
+
+Fixes #276
+
+**feat(config): cap server tool calls, not only steps** ([`b4ed699`](https://github.com/jjjermiah/opencode-plugboard/commit/b4ed699817b3658454837c99bb8d0f0b2dcfe2f7))
+
+maxServerToolSteps counted steps, so one step could fan out to any number of parallel webfetch or bash calls. The host runs a server tool as soon as the model calls it, so by the time plugboard stopped a mixed step, its server calls had usually already run. The cap was never a bound on calls.
+
+apps.<name>.maxServerToolCalls caps the calls across all steps of a request (default 16, 1 to 1000, needs serverTools). The call past it fails the request with 502 server_tool_calls_exceeded and interrupts the turn. maxServerToolSteps keeps its name and meaning; the docs now say it counts steps. The docs also say that a mixed step's server calls may already have run.
+
+Tests: the collector tests cover the cap across steps, a mixed step past the cap (the caller's call is not returned), and the calls up to the cap. Mutation I9-server-tool-calls-cap-off breaks the check.
+
+Fixes #198
+
+**feat(openai): keep one tool call when the caller asks for it** ([`ba63ee9`](https://github.com/jjjermiah/opencode-plugboard/commit/ba63ee95f7e8253a1dcc3a28a5dee91a7be2f9eb))
+
+Requests that set parallel_tool_calls to false (Chat Completions and Responses), or Anthropic's disable_parallel_tool_use inside tool_choice, were ignored, so an agent loop that runs one tool at a time could still get several calls with no signal. The docs said so.
+
+Host check: the host can switch parallel calls off only through toolChoice.disableParallelToolUse (packages/ai/src/protocols/ anthropic-messages.ts) or a per-protocol provider option (open-responses, mistral, groq, alibaba, venice). plugboard's context hook cannot set toolChoice (the caller's choice is steered by instruction, not passed to the host), and the provider options differ by route, so no single route is guaranteed. The option was therefore enforced by plugboard, not the host.
+
+The caller's flag now travels as PlugRequest.parallelToolCalls (false only). The decoders set it from parallel_tool_calls, or from tool_choice.disable_parallel_tool_use. The session caller passes it to the collector, which keeps the first caller tool call of the step and drops the rest (singleToolCall). The step still ends as tool-calls. Every route sets x-plugboard-parallel-tools: limited before any body, through reportParallelTools in src/policy.ts, so a stream gets it too. Responses still echoes the value it was sent, which is now true to what happens.
+
+Rejected: reject false with unsupported_parameter (the caller asked for a behaviour it can get, and an agent loop would break), and steer by instruction only (best effort, which is the silent gap this fixes). A non-boolean parallel_tool_calls is a 400 naming the field.
+
+Tests: decoder cases for Chat Completions, Responses and Anthropic; collector cases with and without the flag; Chat Completions and Messages HTTP cases for the header and the request flag. docs/configuration.md, docs/messages.md and docs/responses.md say what is enforced and where the header appears.
+
+Fixes #202
+
+**feat(anthropic): carry the caller's cache_control breakpoints to the model** ([`fedabc9`](https://github.com/jjjermiah/opencode-plugboard/commit/fedabc91824382a7f57ca7fdad45c38c0e5090df))
+
+A caller's cache_control on a message block was accepted and dropped, so the caller could not choose what was cached. OpenCode still caches by its own default policy, and the host's cache policy keeps any breakpoint already set on a part, so the caller's breakpoint can ride along on the part.
+
+PlugPart text, media and tool-result parts gain an optional cache flag. The Anthropic decoder sets it from cache_control: ephemeral on a text, image, document or tool_result block (src/anthropic/request.ts, cached()). The context hook writes the host's ephemeral cache hint on the matching host part (src/session/context.ts, EPHEMERAL), and for a media part it keeps the hint through the attachment swap. applyCachePolicy (packages/ai/src/cache-policy.ts) counts those manual breakpoints against its four and fills only the rest, so the caller decides what is cached, and the total never exceeds four.
+
+Not carried, and documented in docs/messages.md:
+
+- ttl "1h". The host sends a 1h breakpoint only when the cache policy asks for one, and plugboard has no way to set the policy from the hook. Also, the host's own automatic tool and system breakpoints are 5-minute ones. Anthropic requires a longer TTL to come before a shorter one, so a 1h breakpoint after them is rejected. A 1h caller breakpoint therefore becomes the default 5 minutes. The ordering rule comes from the Anthropic docs; it was not checked against a live request.
+- cache_control on system and tools. The hook sets system parts as plain text, and copies only description and input schema of a tool, so the hint would be lost. Documented as ignored.
+- Opting out. Caching cannot be turned off per request (no cache policy reaches the hook), so the caller can only add breakpoints.
+
+Tests: the decoder for text, image, assistant text and tool_result (with ttl ignored, and no field when absent); the hook maps each to the host's hint; an HTTP check that the model call receives the breakpoint.
+
+Refs #275
+
+**feat(session): anchor request sessions for a stable prompt-cache key** ([`6d782d2`](https://github.com/jjjermiah/opencode-plugboard/commit/6d782d2eca7c0f9d03a2347c1c562da47315422f))
+
+Every plugboard request was a new top-level session, so OpenCode's affinity (the session id, packages/core/src/session/affinity.ts) changed on every request, and the provider cache key with it.
+
+Option `promptCache`, global or per app as `apps.<name>.promptCache`: `affinity: "anchor"` makes each request session a child of one anchor session per scope key (`scope: "app"`, or `"user"` for the end user). The anchor is made once, stored in host storage, never prompted and never pruned. Default `off` is unchanged. Responses of an anchored app carry `x-plugboard-affinity: anchor`.
+
+Measured live on the dev server (OpenCode v2.0.26). Cache reads on runs 2-4 of a repeated ~4000 token prompt, one unique prompt per set:
+
+  model                          off      anchor   session (dropped) openai/gpt-5.6-luna#low        2/9      8/9      4/9  (3 sets) github-copilot/gpt-5.5         3/3      3/3      2/3  (1 set) opencode-go/qwen3.8-flash      3/3      3/3      3/3  (1 set) anthropic/claude-haiku-4-5     3/3      3/3      3/3  (1 set) opencode-go/glm-5.3-flash      0/3      0/3      0/3  (1 set) github-copilot/gemini-3.8-flash 0/3     0/3      0/3  (1 set)
+
+Only ChatGPT subscription models gain. The others already cached with `off`, or showed no cache reads in any mode.
+
+Shared-session mode (one session per key, reused) was prototyped and measured at 4/9 against 2/9, not a clear gain, so it was dropped with the conversation scope (`x-plugboard-conversation`), which was never measured.
+
+Fixes #80
+Refs #81
+
+**feat(session): cap anchors per app with promptCache.maxAnchors** ([`6acc2c8`](https://github.com/jjjermiah/opencode-plugboard/commit/6acc2c8cc1165fc8dcaaca35a6cde48481c7ec8f))
+
+Under scope "user", every new end user made one anchor session that was never removed, so the count grew without a bound.
+
+promptCache.maxAnchors (default 1000, positive integer, global or per app through the promptCache option) caps the anchors one app may hold. The count is the anchors stored for the app, read with one bounded scan when an anchor is about to be made. A key beyond the cap gets no affinity: the request runs as a top-level session, as it did before. Concurrent first requests from new users can briefly pass the cap.
+
+The response header x-plugboard-affinity now says what happened under anchor mode: "anchor" when the request is under its key's anchor, "none" when it got none (no user under scope "user", or the cap is reached). It stays absent when the policy is off.
+
+Pruning already never touches anchors: history indexes only sessions registered by a request, and anchors are never registered, so the history sweep never sees them (tested). Removing an anchor is documented: delete its session in OpenCode, and the next request recreates it (previous commit). The cap counts stored records, so deleting does not free a slot.
+
+Refs #80
+
+#### Fixes
+
+**fix(config): refuse subagent and task as server tools** ([`95b614f`](https://github.com/jjjermiah/opencode-plugboard/commit/95b614f515df7c2680883173a9403df768b13ac6))
+
+subagent and task start a child session. The child runs with its own agent's rules, not the request session's deny-all, so listing one would let a caller reach every tool that agent allows. Both are now rejected at config load, next to execute and the seed names. The config tests pin the rejection and mutation I8-server-tools-reject-subagent breaks it.
+
+Fixes #195
+
+**fix(http): refuse runtime keys for apps with server tools** ([`1d17dd0`](https://github.com/jjjermiah/opencode-plugboard/commit/1d17dd075bb0cd692995beec620b9c6474ca5395))
+
+POST /v1/admin/keys minted a runtime key for any app that had no key in the config. A key for an app with apps.<name>.serverTools lets its holder run OpenCode tools on the server, so the admin key holder could hand that power to anyone. The route now answers 409 app_has_server_tools before the config-key check, and the docs say so. The config already rejects a serverTools app without a config key, so this guard is defense in depth: the test gives the app a config key and checks the route's own refusal. The mutation I25-admin-mints-key-for-server-tools-app breaks it.
+
+Fixes #197
+
+**fix(session): keep the structured respond tool when tools is off** ([`9e89eec`](https://github.com/jjjermiah/opencode-plugboard/commit/9e89eecbb0bf69c5a0f4f47f3f63ef760ef96ac9))
+
+An app with tools: false dropped every tool in the request, including the respond tool that carries a json_schema answer. A tools-off app therefore lost its structured output without any error, and the karakeep docs warn against it. The front-ends now mark the structured tool on the request (structuredTool in src/contract.ts). With tools: false the caller drops only its own tools, keeps respond and forces it, and reports tools-stripped only when a caller tool was actually dropped. A caller tool named respond on a request without structured output is still dropped.
+
+Tests: the session policy tests cover the kept respond tool, the forced choice and the note; the chat, Responses, Gemini and completions decoder tests pin the structuredTool marker. Mutation I9-tools-off-drops-structured-tool breaks the kept tool. Messages has no structured output (output_config.format is refused), so it has no path to keep.
+
+Fixes #252
+
+**fix(anthropic): answer a provider overload as 529 overloaded_error** ([`5bf0f53`](https://github.com/jjjermiah/opencode-plugboard/commit/5bf0f533a12ccc810902b2b4cd192a656609e6a0))
+
+The docs listed overloaded_error (529) among the Messages errors, but nothing produced a 529. The host reports a provider failure as a provider.* error with the provider's HTTP status when it has one, and an overload that arrives inside a stream (an overloaded_error event) has no status, so it reached Anthropic clients as a 502 api_error. The SDKs and Claude Code retry 529 with backoff and do not retry a 502 the same way.
+
+events.ts now classifies a provider overload (its own 529, or an "overloaded" signal in the message or body) as a neutral error with code provider_overloaded, sent as 503 so the OpenAI routes keep an honest status. Other 503s stay provider_unavailable. The Messages route maps provider_overloaded to HTTP 529 with overloaded_error (messagesStatus in src/anthropic/response.ts, used by the route's fail). Stream failures after output keep their error event as before.
+
+Alternatives: map every 503 to overloaded (rejected: a generic 503 is not a retry signal Anthropic clients use), or drop 529 from the docs (rejected: the host does report overloads, so the signal is available).
+
+Tests: collector mapping cases for a 529, an overloaded_error body and an overloaded message without a status; encodeError and messagesStatus; and a Messages HTTP test for the 529 status and body. docs/messages.md now states the mapping, and the OpenAI-route answer is 503 server_error.
+
+Fixes #204
+
+**fix(session): stop server tools that run after the request ended** ([`7d14d27`](https://github.com/jjjermiah/opencode-plugboard/commit/7d14d2757105a523057516c3c19a5050d618acb8))
+
+Once the response was over (client gone, timeout, answer returned), the collector dropped session.tool.called events. A server tool call that still ran was then neither counted nor logged, and the turn was only interrupted once. If that interrupt lost the race with the runner (#14), the listed server tools kept running with no step cap until the cleanup timeout. Apps without server tools were safe, because the deny-all backstop blocks every tool; apps with server tools were not.
+
+The collector now logs a late server call once as server_tool.after_request (tool, lateCalls, serverCalls, serverSteps), never with arguments. A step that ran a late server call stops the turn again. The step and call caps keep their counts for the whole session lifetime, since the guard is held until the host reports the end of the execution.
+
+Tests: fake-session tests cover a late call after cancel, a repeated call id logged once, a caller call ignored, and an end-to-end answer returned followed by a late server call that interrupts the session. Mutation I12-late-server-call-not-stopped breaks the stop.
+
+Fixes #196
+
+**fix(session): honour the operator's permissions for server tools** ([`264d039`](https://github.com/jjjermiah/opencode-plugboard/commit/264d039d096e31b4e037e2f211b5684956c95d82))
+
+A listed server tool got a bare allow in the request session. The host takes the last matching rule and the session's rules come after the agent's, so that allow beat any narrower rule the operator wrote for the tool. With read: { "*.env": "deny" } in the agent, serverTools: ["read"] still read .env files.
+
+Host mechanism (anomalyco/opencode v2.0.26): Permission.configured merges merge(agent.permissions, session.permissions) (packages/core/src/permission.ts around line 162), and evaluate takes findLast (line 91). The agent's rules come first, so the session's rules decide.
+
+The session now gets, per listed id: a deny for every resource, then the agent's own rules for that id in their order, rewritten to the id. A resource the agent names keeps the agent's decision. Any other resource is denied, and an ask is a deny, because a request session cannot answer a prompt. A listed id needs an allow rule in the agent: without one the request is refused with 400 server_tool_denied_by_operator before anything is created. The agent is read per request (SessionPort.agentRules), the persona's agent or the selected default.
+
+This is a behaviour change for apps with serverTools: an operator whose agent has no allow for the tool must add one. Apps without serverTools are unchanged. The mutations I8-server-tool-no-rule-allowed and I8-server-tool-ask-as-allow break the two rules.
+
+Fixes #194
+
+**fix(anthropic): pass the provider's thinking signature through** ([`62aad52`](https://github.com/jjjermiah/opencode-plugboard/commit/62aad52112782ae9024e64fcb7092c519eb41f28))
+
+Thinking blocks went out with signature "" even though the host reports the provider's signature. The host publishes it on session.reasoning.ended as the block's provider metadata (packages/core/src/session/runner/ publish-llm-event.ts: reasoning-end -> providerState(event.providerMetadata), and the Anthropic protocol puts the signature there, anthropic-messages.ts). So the host does expose it, and the empty signature was a gap, not a limit.
+
+The collector now maps session.reasoning.ended to an empty-text reasoning-delta that carries the signature, and only when the metadata has one (signatureOf, src/session/events.ts). PlugEvent's reasoning-delta gains an optional signature rather than a new event type: the OpenAI, Responses and Gemini encoders already skip reasoning-delta, so they need no change. The Messages encoder sends a signature_delta before the thinking block stops (the SDK accumulator takes the signature from it) and keeps the signature in the non-streamed body. The response cache keeps the signature as its own event, so a cache hit replays it after the block it closes. Without a signature the block stays empty, as before.
+
+Replayed thinking is still dropped on the way in (src/anthropic/request.ts), so a client that sends the block back to plugboard never forwards the signature to a provider. The pass-through matters to a client that keeps a transcript and sends it to Anthropic directly.
+
+Alternatives: keep the empty signature and document it (rejected: the host does carry the value, and the issue asked for it), or omit thinking blocks unless asked (already the case; it cannot help a caller that asked for them).
+
+Tests: collector cases with and without a signature, encoder cases (a signature_delta and the aggregated block; a signature ignored without thinking), a cache replay case, and a request case for a replayed block with an empty signature.
+
+Fixes #146
+
+**fix(anthropic): count the system prompt plugboard adds in count_tokens** ([`5aa6c25`](https://github.com/jjjermiah/opencode-plugboard/commit/5aa6c2557f39c06bee007898fe5d65de58f0a601))
+
+count_tokens (Anthropic) and countTokens (Gemini) estimated only the caller's parsed request, so the count left out what plugboard sends: the app's system policy and the tool-choice steering sentence. Claude Code sizes and compacts its context against that count, so an app with a long policy looked smaller than it was.
+
+The system prompt is now built by one function, requestSystem in src/session/context.ts: the skill prelude, the caller's prompts with the app's policy applied (prepend, append or replace), then the steering sentence. The context hook sends that list, and both count routes count the same list, so the two cannot drift. The Messages and Gemini routes pass the app's policy in.
+
+Still not counted, and now listed in docs/messages.md and docs/gemini.md: an agent's prompt (it replaces the caller's system prompt) and a skill's content (prepended), because both come from the OpenCode session's lookups, which the count path has no port for; and the schemas of the app's serverTools, which the host supplies per session. An app that uses those can still be counted low. Closing that needs the session port in RouteHost (index.ts wiring), which is a separate change.
+
+Tests: requestSystem order and policy modes, the steering sentence, and the skill prelude (unit); a count over HTTP with an app policy for Messages and Gemini, which must differ by exactly the policy's 100 tokens.
+
+Refs #201
+
+**fix(session): recreate a deleted prompt-cache anchor once** ([`b65b83d`](https://github.com/jjjermiah/opencode-plugboard/commit/b65b83db7a9ea298d48d7b5f91f80a2e9985e2f7))
+
+When the anchor of a key is deleted in OpenCode, creating its next child session fails with the host's Session.NotFoundError. Plugboard kept reusing the stored anchor id, so every request on that key failed.
+
+The host port now reports that failure as MissingParentError (the failure is captured as a value first, so the promise rejects with the typed error). The caller then forgets the stored anchor, makes one new anchor, logs affinity.anchor_recreated and retries the child create once. A second missing-parent failure fails the request (502 backend_failed); it never loops.
+
+Tests: the host mapping (missing parent vs other failures), a stale anchor replaced and remembered by the next request, the single retry, and anchors never registered in the session store, so history pruning never sees them.
+
+Refs #80
+
+**fix(session): read the thinking signature from the unwrapped host state** ([`c85d701`](https://github.com/jjjermiah/opencode-plugboard/commit/c85d7014a406b84d494ba566cde0b447482ed325))
+
+The live dev server still returned empty Anthropic thinking signatures after the earlier fix. OpenCode publishes a reasoning block's provider state already unwrapped from its provider key, so the state is just the signature object (providerState in publish-llm-event.ts returns the value under providerMetadataKey). The dev server database stores exactly that shape for claude-haiku-4-5 with the high variant. signatureOf only looked one level down, under a provider key, so it never found it, and the unit fixtures encoded the same wrong shape.
+
+signatureOf now reads the signature at the top level first and keeps the wrapped form as a fallback. The collector test uses the unwrapped shape and fails on the old code; a second test pins the wrapped form.
+
+Fixes #146
+
+#### Tests
+
+**test(tests): cover the response cache gaps from the caching audit** ([`607cafa`](https://github.com/jjjermiah/opencode-plugboard/commit/607cafae399b9e15104ad79dd7526c4d908ac6a9))
+
+The caching audit checklist passed on code and on the existing tests, but several cases had no test. This adds them. Every new case passes on the current code, so no production change was needed; each one pins behaviour that a later change could break silently.
+
+Keys (test/unit/cache.test.ts): stop, top_p, presence_penalty and frequency_penalty each make a different entry, an image with another URL is a different entry, and two end users with identical content share one entry (the end user is deliberately not part of the key). The response_format case (json_object vs json_schema) is an HTTP test.
+
+Routes (test/http/cache.test.ts): the same app and resolved request on Chat Completions then Messages share one entry; response_format json_object and json_schema are different entries; a streamed hit on Responses, Messages and Gemini replays the stored text with no new model call; a non-streaming hit under withUsage carries x-plugboard-usage with zero tokens and cost_usd=0.000000.
+
+Runtime (test/runtime/cache.test.ts): a persona model (a skill alias or agent/<name>) bypasses the cache, not only serverTools apps; a plain alias is still cached.
+
+Usage (test/unit/usage.test.ts): the real cache wrapper under withUsage counts a hit in cacheHits and adds no tokens, which is what GET /v1/usage reports.
+
+Store (test/unit/cache.test.ts): maxBytes counts the 128-byte entry overhead, so a payload just under the cap is rejected; this pins the accounting rather than the raw JSON size.
+
+Fixes #278
+
+**test(tests): raise coverage and test-count floors** ([`8f20c27`](https://github.com/jjjermiah/opencode-plugboard/commit/8f20c27b026bd292c3aa63a95f6b1c30067604c2))
+
+The server-tool hardening adds tests for the session, config, admin and front-end request paths. The ratchet raises each floor to the value the suite now reaches; no floor is lowered. No issue is closed here: the fixes are in the commits before this one.
+
+**test(ci): ratchet floors and fix stale mutation anchors after the merge** ([`4490ad9`](https://github.com/jjjermiah/opencode-plugboard/commit/4490ad95960200149c1da4f4a66acf848d3a9638))
+
+Floors raised to the merged tree's measured values (never lowered).
+
+Three mutation anchors went stale when the lanes merged: two caller and events anchors, and one rate-limit anchor that matched twice. Each is now unique in the merged source.
+
+docs/configuration.md escapes a bare <name> in an error table cell, so the docs build passes.
+
+**test(tests): describe LangChain's streamed input usage as its source does** ([`e372e56`](https://github.com/jjjermiah/opencode-plugboard/commit/e372e56328af02b814424c58dae548a63f2d8597))
+
+The comment said LangChain sums message_start and message_delta usage to get the input count. @langchain/anthropic's message_outputs.js hard-codes input_tokens 0 in the usage_metadata of message_delta, so the streamed usage has no input count whatever the event reports. The comment now says that.
+
+#### Docs
+
+**docs(docs): replace homelab hosts and addresses with reserved examples** ([`4865c46`](https://github.com/jjjermiah/opencode-plugboard/commit/4865c4602d6ed82e85f83baabe72923d1b5fc078))
+
+The docs and a released CHANGELOG entry used a real home network: private addresses (10.0.1.x), a LAN host name, and a real app name as the example key. AGENTS.md rules that out for the repo.
+
+Swap in reserved values: 192.0.2.0/24 (TEST-NET-1) for addresses, a .example host for hosts, and my-app for the example app. The SparkyFitness self-hosted page stays. Its address was already a placeholder.
+
+The CHANGELOG change touches only the host in the 0.20.0 entry. The src and test fixtures that use private ranges (SSRF checks need them) are not changed.
+
+Fixes #192
+
+**docs(docs): add LobeChat client page** ([`c228aa3`](https://github.com/jjjermiah/opencode-plugboard/commit/c228aa3d99328d9d48fe83984c52efd49f7bc833))
+
+Adds docs/clients/lobechat.md with the two OpenAI-provider variables (OPENAI_PROXY_URL with /v1, OPENAI_API_KEY) and the model list.
+
+The issue named CUSTOM_MODELS; LobeHub's env reference lists OPENAI_MODEL_LIST, so the page uses that. Verified against the LobeHub model provider env docs. Not run: LobeChat is a web app and the dev server on 127.0.0.1:4010 was not listening.
+
+Adds examples/lobechat (compose + .env.example), the Clients sidebar entry, the README client row, and the examples index row.
+
+Refs #208
+
+**docs(docs): match packaging, the Vercel store note and the error table to the code** ([`cb31414`](https://github.com/jjjermiah/opencode-plugboard/commit/cb31414b182e87a67929cded5a7d658755bf230e))
+
+Three places drifted from the code:
+
+- packaging.md said ./rpc maps to ./src/rpc.ts and ./tui is not exported. package.json exports ./rpc as ./rpc.ts and ./tui as types ./tui.ts with default ./dist/tui.js, since the files moved to the package root.
+- The README client table said the Vercel AI SDK default openai(id) call needs store: false for multi-turn. The Vercel page and the code agree the default store: true works: src/responses/store.ts keeps recent output items for an hour, so the item_reference the SDK sends back resolves.
+- The error table in configuration.md did not list four codes the server returns: 413 (a body over 32 MiB, no code field), 415 unsupported_media_type, 400 invalid_user (the user query parameter of /v1/usage) and 502 structured_output_missing.
+
+A test that compares src/ error codes against the table would stop the last one from drifting again. It is not part of this change, because it needs a test file.
+
+Fixes #191
+
+**docs(docs): add Chatbox client page** ([`c5cd6e6`](https://github.com/jjjermiah/opencode-plugboard/commit/c5cd6e6396d25adacb9cf71d999ff43fdddb9425))
+
+Adds docs/clients/chatbox.md covering both provider types: OpenAI API compatible (API Host ending in /v1, default path /v1/chat/completions) and Google Gemini compatible (plugboard root host, generateContent).
+
+Verified against Chatbox's provider guide. The Gemini host value is not in that guide, so the Gemini section is marked unverified in Chatbox. Not run: desktop/mobile app, and the dev server on 127.0.0.1:4010 was not listening.
+
+No examples/chatbox directory: the app stores settings itself, so a setup note adds nothing a copyable file would.
+
+Adds the Clients sidebar entry and the README client row.
+
+Refs #209
+
+**docs(docs): document the Anthropic system lift and buffered json_object streams** ([`de87b75`](https://github.com/jjjermiah/opencode-plugboard/commit/de87b75fc362db2910b5d825aef5efa960abe19d))
+
+Two protocol exceptions were in the code and not in the docs.
+
+- /v1/messages accepts role: "system" entries inside messages. Claude Code sends them for models it does not know, and the real API refuses them. The server lifts them out and appends them after the top-level system, in order (src/anthropic/request.ts). messages.md now says so.
+- Legacy /v1/completions with stream: true and json_object buffers the whole answer and writes one chunk (src/completions/response.ts). json_schema has to wait for the respond call anyway. json_object could stream, and does not yet. completions.md now says so and links the Chat Completions behavior (#106). Streaming json_object is a code change and is left out of this docs fix.
+
+Fixes #205
+
+**docs(docs): add Jan client page and examples** ([`50f2d57`](https://github.com/jjjermiah/opencode-plugboard/commit/50f2d57d79b46e7294e9085c59f44940d94743fc))
+
+Adds docs/clients/jan.md for the desktop custom-provider dialog (OpenAI and Anthropic API formats) and the jan config set route. Base URL is /v1 for OpenAI-compatible and the root for Anthropic-compatible.
+
+Verified against Jan's custom endpoint and Jan Agent provider docs. Not run: GUI app, and the dev server on 127.0.0.1:4010 was not listening.
+
+Corrects the issue's per-project agent.toml idea: Jan keeps that file under ~/.jan/projects/, outside the repo, so the example says so. The env var for a key on provider "plugboard" is PLUGBOARD_API_KEY, per Jan's <PROVIDER>_API_KEY rule.
+
+Adds examples/jan (setup.sh, agent.toml.example), the Clients sidebar entry, the README row and the examples index row.
+
+Refs #210
+
+**docs(docs): add an Anthropic structured-extraction recipe with a forced tool** ([`c525fe1`](https://github.com/jjjermiah/opencode-plugboard/commit/c525fe1e03e0873c6349bef29b6d7224d57f7617))
+
+The README says Anthropic structured outputs (output_config.format) are refused with a 400 and points to json_schema on the OpenAI or Gemini routes. An Anthropic-only client had no documented path to JSON.
+
+A forced tool call gives one. Define a tool whose input_schema is the schema, set tool_choice to that tool, and read the input of the tool_use block. The issue (#284) reports 3 of 3 synthetic invoices validated with pydantic.
+
+messages.md gets a section with a Python and a TypeScript snippet. It says the schema is not enforced, and that a named tool_choice is applied as an instruction, so the caller handles a text reply and validates the input. The README structured-output section and its known-gaps line link to it.
+
+The snippets are not run in CI. Only the Python one was run, by the issue author, against a live server.
+
+Fixes #284
+
+**docs(docs): add AnythingLLM client page and example** ([`4bd4b2b`](https://github.com/jjjermiah/opencode-plugboard/commit/4bd4b2b526452ae29e086f63ff1cd3551f942049))
+
+Adds docs/clients/anythingllm.md for the Generic OpenAI provider and examples/anythingllm/docker-compose.yml with the matching env vars.
+
+Env names checked against server/.env.example on master: GENERIC_OPEN_AI_BASE_PATH, GENERIC_OPEN_AI_API_KEY, GENERIC_OPEN_AI_MODEL_PREF, GENERIC_OPEN_AI_MODEL_TOKEN_LIMIT. The issue named GENERIC_OPENAI_STREAMING_DISABLED, which is not in that reference; the page does not use it and says streaming is unverified. The docs page did not render the UI field list, so UI field names are marked unverified.
+
+Not run: desktop/Docker app, and the dev server on 127.0.0.1:4010 was not listening.
+
+Refs #211
+
+**docs(docs): add SillyTavern client page and example** ([`83c7935`](https://github.com/jjjermiah/opencode-plugboard/commit/83c79353937c3bd78b71cfa36ac0e4f89794df2c))
+
+Adds docs/clients/sillytavern.md for the Custom (OpenAI-compatible) Chat Completion source: endpoint with /v1 (no /chat/completions), key, model dropdown from /v1/models or a typed id, and Test Message.
+
+Checked against SillyTavern's OpenAI API connection docs. The issue's field labels and its bug citation (#5275) are not in that page, so the page omits them. Not run: web app, and the dev server on 127.0.0.1:4010 was not listening.
+
+examples/sillytavern/docker-compose.yml runs only the app. Its image tag is not pinned or checked against a release; the page says so.
+
+Refs #212
+
+**docs(docs): list packaging, TUI and the live matrix in the sidebar, and explain the failures** ([`517b768`](https://github.com/jjjermiah/opencode-plugboard/commit/517b7684c632cebe24fb9e616133559be2468f6f))
+
+Three pages were built but linked from nowhere: packaging.md, tui.md and live-matrix.md. They are now in the Project group of the sidebar.
+
+The live matrix reports 36 failing cells, with no note saying why. The run (2026-10-12, plugboard 0.20.0) breaks down like this: 30 cells are one ChatGPT account at its usage limit, 3 are the anthropic tools-json cells fixed in 0.21.1 (the run predates the fix), and 3 are completions json checks where the model answers in prose around 42. That last group is not explained yet, and the note says so. The note also says how to regenerate the page.
+
+The raw docs/live-matrix.json stays published for now. Moving it out of docs/ would change where tools read it, so that is a follow-up.
+
+Fixes #193
+
+**docs(docs): add Cline client page** ([`8dc940a`](https://github.com/jjjermiah/opencode-plugboard/commit/8dc940a50eb699ab885f5502a0daec52bbe66e68))
+
+Adds docs/clients/cline.md for the OpenAI Compatible provider: Base URL with /v1, API key, model, and Model Configuration (context window, max output tokens, image support, computer use).
+
+Checked against Cline's OpenAI Compatible provider docs. The issue's claims that agent mode requires native tool calling and that the plain OpenAI provider's Base URL field is missing are not on that page, so the page marks them unverified and does not repeat them as fact.
+
+Not run: VS Code extension, and the dev server on 127.0.0.1:4010 was not listening. No examples/cline directory: settings live in the extension.
+
+Refs #217
+
+**docs(docs): add Roo Code client page** ([`15b2f9f`](https://github.com/jjjermiah/opencode-plugboard/commit/15b2f9f01395c59570497f16d2552650148989a8))
+
+Adds docs/clients/roo-code.md for the OpenAI Compatible provider in Roo Code (a Cline fork): Base URL with /v1, API key, model, and Model Configuration. Roo Code uses native tool calling only, so the page says the model must support it and that the tool round trip is the first test.
+
+Checked against Roo Code's OpenAI Compatible provider docs (native tool calling requirement and partial tools-API note are there). Not run: VS Code extension, and the dev server on 127.0.0.1:4010 was not listening.
+
+No examples/roo-code directory: settings live in the extension.
+
+Refs #218
+
+**docs(docs): say the docs follow main and mark options newer than the release** ([`df2af60`](https://github.com/jjjermiah/opencode-plugboard/commit/df2af60685336d6571a40678aa1dd5c40dc838dc))
+
+The docs site deploys from main, but the README pins the last release. A user who installs the pin and pastes a documented option gets "Unknown plugboard option". The gap was 34 commits at the time of the report.
+
+- Every page shows a banner: "These docs follow main; the latest release is vX (see changelog)". The version comes from package.json at build time (vite.define in config.ts, read in theme/index.ts). package.json on main is the last release, because the release pull request bumps it and the tag is its merge commit, so the build does not need git tags.
+- Options added in 0.20.0 to 0.23.0 are marked "(since 0.x.y)" in configuration.md, taken from the CHANGELOG sections: historyUrl and agents (0.20.0), the skill alias target (0.20.0), serverTools and maxServerToolSteps and limits.maxBodyBytesInFlight and bodyReadTimeoutMs (0.21.0), apps.<name>.historyUrl (0.23.0). adminKey predates that range.
+- CONTRIBUTING.md states the rule: mark a new option with the version that will ship it, in the commit that adds it.
+
+A build-time generated per-option table was considered and left out. It would need the same data kept in two places.
+
+Fixes #188
+
+**docs(docs): add LlamaIndex client page and example** ([`7a0a712`](https://github.com/jjjermiah/opencode-plugboard/commit/7a0a71210c64bf6ed020ccd6d677d208d2798865))
+
+Adds docs/clients/llamaindex.md and examples/llamaindex/example.py (PEP 723, run with uv). The script checks text, streamed text, a tool call and its round trip against plugboard, using OpenAILike.
+
+Run 2026-10-12 against the scripted fake plugboard (test/support/fake- server.ts): all four checks pass with llama-index-llms-openai 0.8.2 and llama-index-core 0.14.25. The live dev server on 127.0.0.1:4010 was not listening, so no live run.
+
+Corrects the issue: LlamaIndex's OpenAI class raises "Unknown model 'fast'" on every call, because its metadata looks the name up in OpenAI's table. The page uses OpenAILike for plugboard ids. This is a client limit, not a plugboard bug, so no bug was filed.
+
+Fixes #222
+
+**docs(anthropic): document zero message_start usage and pin message_delta totals** ([`8d9ad07`](https://github.com/jjjermiah/opencode-plugboard/commit/8d9ad07b89d12eb7efccaed14cfe106bb0451c92))
+
+The host reports token counts only when a model answer ends (the usage event comes with the finish), so a streamed message_start cannot carry the real input count: it is known only after the answer. The options were to delay message_start until the answer ends (rejected: it defeats streaming and the keepalive) or to send an estimate (rejected: the field is documented as real usage). So message_start keeps zero usage, as the docs already said, and message_delta carries the complete final usage (input_tokens without the cached parts, cache_creation_input_tokens, cache_read_input_tokens, output_tokens).
+
+Evidence: the Anthropic SDK accumulator (node_modules/@anthropic-ai/sdk, MessageStream) takes input and cache counts from message_delta whenever they are non-null, so finalMessage() is correct. The compat matrix already checks that through the real SDK (@anthropic-ai/sdk | messages | stream-usage). The LangChain Anthropic adapter reads input only from message_start and hard-codes input_tokens 0 on message_delta, so its streamed usage has no input count. That remains a known gap in test/compat/langchain.ts.
+
+docs/messages.md says why message_start is zero and lists the message_delta fields. The new unit test pins both halves: zero at message_start, real counts at message_delta.
+
+Fixes #203
+
+**docs(docs): add Haystack client page and example** ([`99b3364`](https://github.com/jjjermiah/opencode-plugboard/commit/99b336402bb1fc9d6dbc4e283256b739453826b5))
+
+Adds docs/clients/haystack.md and examples/haystack/example.py: a two-component Pipeline (ChatPromptBuilder into OpenAIChatGenerator) with api_base_url and Secret.from_token, plus a streamed run and a tool round trip.
+
+Run 2026-10-12 against the scripted fake plugboard: text (pipeline), stream, tool call and tool round trip all pass with haystack-ai 3.3.0. The live dev server on 127.0.0.1:4010 was not listening, so no live run.
+
+The issue's OPENAI_* env fallbacks and the OpenAIGenerator claim were not run here; the page does not state them as checked.
+
+Fixes #223
+
+**docs(docs): add Mastra client page and example** ([`9b4068e`](https://github.com/jjjermiah/opencode-plugboard/commit/9b4068ee02edd0ef218466c931e82a17f8339fa6))
+
+Adds docs/clients/mastra.md and examples/mastra/agent.ts: one agent, one Zod tool, using the model object with a provider prefix.
+
+Corrects the issue: id "fast" fails in @mastra/core 1.76.0 with "Failed to resolve model configuration". The working form is id "plugboard/fast" (Mastra splits the id into provider and model; url is the /v1 base).
+
+Run 2026-10-12 against the scripted fake plugboard: text, stream, tool call and tool round trip all pass with "plugboard/fast". The live dev server on 127.0.0.1:4010 was not listening, so no live run.
+
+Fixes #226
+
+**docs(docs): add smolagents client page and example** ([`7db2971`](https://github.com/jjjermiah/opencode-plugboard/commit/7db2971aaf29a4f2d32ec54a4278cf39e55d876c))
+
+Adds docs/clients/smolagents.md and examples/smolagents/example.py (OpenAIModel: text, streaming, and a ToolCallingAgent with one tool).
+
+Run 2026-10-12 against the scripted fake plugboard with smolagents 1.26.0: text, stream and tool call pass. The tool round trip fails on the fake: smolagents sends the tool result as a user observation, and the fake's scripted reply answers only after a tool-role result, so the agent calls the tool until max_steps. Forcing a tool role gets a 400 from plugboard (tool_call_id missing), the same rule OpenAI applies, so that is a client message-shape issue, not a plugboard bug. No bug filed; live run needed.
+
+Corrects the issue: OpenAIModel needs the openai extra (smolagents[openai]); a plain install raises ModuleNotFoundError.
+
+Not run: the live dev server on 127.0.0.1:4010 was not listening.
+
+Refs #228
+
+**docs(docs): add promptfoo client page and example** ([`b7626bb`](https://github.com/jjjermiah/opencode-plugboard/commit/b7626bb37134283fff4d7b8b67b3a74ad487a7b9))
+
+Adds docs/clients/promptfoo.md and examples/promptfoo/promptfooconfig.yaml: openai:chat:fast with apiBaseUrl and apiKey from env templates, a text check and a tool-call check (is-valid-openai-tools-call plus a JavaScript assertion), using deterministic assertions only.
+
+Run 2026-10-12 against the scripted fake plugboard with promptfoo 0.124.1: promptfoo eval --no-cache is green, 2 of 2. The live dev server on 127.0.0.1:4010 was not listening, so no live run.
+
+Notes: a per-test prompt key was ignored in 0.124.1, so the example uses an {{input}} variable. Model-graded assertions default to OpenAI as the grader and need defaultTest.options.provider pointed at plugboard; the page says so and was not run. The issue's OPENAI_BASE_URL env claim is not in the provider docs and was not tested.
+
+Fixes #239
+
+**docs(docs): mark Haystack env fallbacks unverified** ([`02b89b6`](https://github.com/jjjermiah/opencode-plugboard/commit/02b89b6528267aed295eba0ed63ce8b2f57c566a))
+
+The Haystack page stated that OPENAI_API_KEY, OPENAI_TIMEOUT and OPENAI_MAX_RETRIES are read as fallbacks. That came from the issue and was not tested in the run, so the page now labels it unverified.
+
+Refs #223
+
+**docs(docs): document optional peers, install size and the shrinkwrap** ([`dc476eb`](https://github.com/jjjermiah/opencode-plugboard/commit/dc476ebc9ad26813c556bd640b3a6767761ed0d8))
+
+packaging.md now records why effect and @opencode/plugin are optional peers (the host serves both through build.module, and foreign copies are refused), the before and after install measurements (313 packages and 457,848 KiB down to 26 packages and 12,964 KiB on the file install, 12,976 KiB on the registry install with the shrinkwrap), and when OpenCode honours npm-shrinkwrap.json (only with the registry _hasShrinkwrap flag, so file-tarball smoke and check runs do not exercise the pins). Adds the regeneration command and the residual risks: the pins cover registry installs only, and no per-release SBOM is generated.
+
+**docs(docs): list OpenCode 2.0.27 as tested, explain the effect contract** ([`10cd438`](https://github.com/jjjermiah/opencode-plugboard/commit/10cd438cda31f95999af4cb8e2d8b900f22c8d02))
+
+The docs still named 2.0.26 as the only tested host and said the devDependency was pinned to 2.0.26. They also did not say which effect a plugin runs with, so the effect peer change looked like a bug.
+
+- README quick start: tested on 2.0.26 and 2.0.27.
+- docs/architecture.md: supported version 2.0.26 and 2.0.27, with the effect of each. The dev dependency is pinned to 2.0.27, and CI checks each host with its own effect.
+- docs/development.md: the type check gate, the pins, and which hosts CI tests.
+- AGENTS.md: the tested hosts and the reading tag (v2.0.27 or v2.0.26).
+- docs/packaging.md: a new section on where plugins get effect and @opencode/plugin. Evidence: ensurePluginRuntime in packages/plugin/src/runtime.ts, identical at v2.0.26 and v2.0.27.
+
+The minimum OpenCode version stays 2.0.26. The peer range @opencode/plugin >=2.0.26 <2.1 is unchanged.
+
+**docs(changelog): notes for 0.24.0** ([`28cb7b0`](https://github.com/jjjermiah/opencode-plugboard/commit/28cb7b0271bc8e2162971728b5a8e00deab270b5))
+
+Curated [Unreleased] notes for OpenCode 2.0.27 support and the release watch, prompt-cache affinity (#80, with the measurements), the server tools permission change and hardening (#194 to #198, #252), optional peers and the shrinkwrap (#190, #165), the Anthropic and caching fixes (#146 #201 #202 #204 #275 #276) and the docs work. Bumps the pinned install examples to 0.24.0.
+
+#### CI and tooling
+
+**ci(ci): name the repository in the release job and bump install pins** ([`e05f5c7`](https://github.com/jjjermiah/opencode-plugboard/commit/e05f5c778d0945f9a34501f1242f44dfd1bd67fc))
+
+The 0.23.0 publish run published to npm and attested the tarball, but the release job failed with "not a git repository": it has no checkout, so gh could not tell which repository to use. GH_REPO now names it. The 0.23.0 release was created by hand from that run's artifacts (tarball, SBOM, attestation bundle); gh attestation verify passes on the npm tarball, which is byte-identical to the attested one.
+
+Also bumps the pinned install examples to 0.23.0. The PR-based release flow does not bump them; a follow-up should fold that into release.ts.
+
+**ci(tests): ratchet test and coverage floors after the protocol fixes** ([`c61d1ee`](https://github.com/jjjermiah/opencode-plugboard/commit/c61d1eec425623fa3ffb07839cb2e7727c320e0e))
+
+The new tests for the Anthropic and caching fixes raised the test count in the http, runtime, session and unit layers and the line coverage (98.3 to 98.4). Raised with test-gates.ts --ratchet, which only raises floors; the function coverage floor is unchanged at 93.8. No code changed in this commit.
+
+Refs #146 #201 #202 #203 #204 #275 #276 #278
+
+**ci(ci): install each host's own effect in the host matrix** ([`c00eee7`](https://github.com/jjjermiah/opencode-plugboard/commit/c00eee7d71dbe11d4f5a424bc7682ced9a97a215))
+
+The host matrix ran `bun add --dev @opencode/plugin@<host>` and left effect at the devDependency pin. A 2.0.27 plugin depends on effect 4.0.1, so its types came from a second copy next to plugboard's effect, and the typecheck failed (TS2741, Effect type mismatches). Every PR failed the matrix once 2.0.27 was published.
+
+The job now reads the host's own effect pin with `npm view @opencode/plugin@<host> dependencies.effect` (2.0.26 gives rc.112, 2.0.27 gives 4.0.1) and installs that version next to @opencode/plugin. The host-versions example now shows both hosts.
+
+Checked locally: the 2.0.26 leg (@opencode/plugin 2.0.26 with effect 4.0.0-rc.112) and the 2.0.27 leg (2.0.27 with 4.0.1) both pass the typecheck and bun test. `bun .github/scripts/host-versions.ts` prints ["2.0.26","2.0.27"]. actionlint is clean. The GitHub matrix itself runs on push.
+
+**ci(ci): watch OpenCode releases daily and open host-bump PRs** ([`b670f19`](https://github.com/jjjermiah/opencode-plugboard/commit/b670f19662b8d6b41a18d082cebf4820a8f78858))
+
+host-bump.yml ran weekly, so a new OpenCode host waited up to a week for a pull request. 2.0.27 moved effect from 4.0.0-rc.112 to 4.0.1, which broke the host lane for every PR until someone noticed.
+
+host-bump.yml now runs daily and opens or updates one PR per version, build(deps): support opencode <v>, on branch deps/opencode-<v>. The read-only check job bumps @opencode/plugin and the effect it pins, widens the peers only where the new version needs it (effect gets the version appended to its || list; the @opencode/plugin upper bound moves only for 2.1+, and the PR says so), then runs typecheck, tests, the TUI build, check-pack and smoke-pack. The bump is text edits of the pins plus bun install, not bun add, so package.json does not get reformatted. When every gate passes, the PR is labelled dependencies and set to auto-merge. When one fails, it is a draft with the log tails, and the issue "OpenCode <v> breaks plugboard" links the run. A new major of @opencode/plugin stops the script and fails the run, because that peer range needs a decision.
+
+A PR opened with GITHUB_TOKEN starts no workflow, so the required checks would never report and auto-merge would wait forever. ci.yml and commits.yml get a workflow_dispatch trigger (one line each), and host-bump.yml starts both on its branch. The check names are the same, so they satisfy the required checks for that commit.
+
+opencode-release.yml is new and runs daily. It installs the newest @opencode/cli-linux-x64 into CI, starts opencode serve with its own HOME and plugboard loaded from the checkout as a local plugin, and checks that /api/plugin lists opencode-plugboard as active and /healthz answers 200. It uses no provider credentials and makes no model call, so it proves the plugin loads in that host, not that a prompt works; the pong gate stays manual. A failure opens or updates the same issue. The check is .github/scripts/opencode-load-check.ts; breakage-issue.sh files the issue.
+
+Checked locally: actionlint with shellcheck is clean on every workflow. The load check passes against the macOS 2.0.27 binary (plugin active, /healthz 200 on 4596). The host-bump dry run against 2.0.27 changes four values and the lockfile, and typecheck, the TUI build, check-pack and smoke-pack pass on the bumped tree. The worktree passes typecheck, bun test (2050 pass, 0 fail), check-pack and the docs build.
+
+Not verified here: the gh calls in breakage-issue.sh and the auto-merge and dispatch steps. They run only in GitHub Actions. The daily host-bump run will open deps/opencode-2.0.27 after this merges to main, unless merge/wave-1 has already moved the pins.
+
+Also changed: docs/releasing.md (section "OpenCode releases") and one CONTRIBUTING line.
+
+**chore(ci): ratchet test and coverage floors for the affinity tests** ([`1f6a651`](https://github.com/jjjermiah/opencode-plugboard/commit/1f6a65188f22583c90492a44bd87f9c34c3008fe))
+
+2156 tests (was 2121 in the layer floors); coverage 98.4% lines, 94.1% functions. Floors only rise.
+
+**chore(ci): ratchet test count floor after the main merge** ([`d39e393`](https://github.com/jjjermiah/opencode-plugboard/commit/d39e393694d6a34fd987f75ed449aae15227e44d))
+
+2157 tests in the layer floors.
+
+#### Dependencies
+
+**fix(deps): make effect and @opencode/plugin optional peers, ship npm-shrinkwrap** ([`3c92174`](https://github.com/jjjermiah/opencode-plugboard/commit/3c921745870abeed0ebe784017dca2dbe4258290))
+
+OpenCode's installer (Arborist reify, no omit or legacyPeerDeps) installs required peers, so every plugboard version pulled effect and @opencode/plugin with their graph. The host provides both at runtime (packages/plugin/src/runtime.ts build.module overrides every importer), so the plugin never needs its own copy. Mark both optional, as the TUI peers already are.
+
+Measured with Arborist 9.4.0 under Bun 1.4.2, ignoreScripts, npm defaults, on the 0.23.0 tarball (du -sk of node_modules):
+
+  before: 313 packages, 457,848 KiB, 7 effect/@opencode/plugin dirs after (file install): 26 packages, 12,964 KiB, 0 copies
+
+The shrinkwrap is generated from runtime fields only (npm install --omit=dev --omit=peer, then npm shrinkwrap) and ships in files. Arborist honours a dependency's npm-shrinkwrap.json only when the registry manifest sets _hasShrinkwrap, which OpenCode's registry install gets and a file tarball does not. Registry install with the flag: 26 packages, 12,976 KiB. The flag was set by hand in a scratch registry (verdaccio), so the npmjs side is inferred from its packuments, not verified by publishing.
+
+check-pack fails when the shrinkwrap is missing or its root dependencies or peerDependencies differ from package.json. smoke-pack fails if a plain install puts effect or @opencode/plugin in node_modules, and smoke-probe loads the plugin through a host copy in ./host, so the host-provided path is what gets tested.
+
+Live proof, OpenCode 2.0.26 in a scratch HOME, plugin from the registry install: plugboard active in /api/plugin, /healthz ok, /v1/models lists opencode-go models, and a chat completion on opencode-go/glm-5.3-flash returned "pong" with x-plugboard-model set.
+
+Fixes #190
+Fixes #165
+
+**build(deps): support OpenCode 2.0.27 with effect 4.0.1** ([`948a729`](https://github.com/jjjermiah/opencode-plugboard/commit/948a729a7288ad880a80f7656541e45b07e7cec4))
+
+OpenCode 2.0.27 pins effect 4.0.1 (@opencode/plugin 2.0.27 depends on it). Plugboard had effect 4.0.0-rc.112 as its devDependency and as an exact peer, so a fresh install of the tarball with 2.0.27 resolved two effect copies, and the host typecheck failed (TS2741 NodeInspectSymbol, Effect type mismatches in index.ts, src/rpc.ts, src/session/context.ts, src/session/host.ts).
+
+Changes:
+- devDependencies: @opencode/plugin 2.0.27, effect 4.0.1 (the newest host and the effect it pins).
+- peerDependencies: effect "4.0.0-rc.112 || 4.0.1". The @opencode/plugin peer stays ">=2.0.26 <2.1", so 2.0.26 users keep working.
+- CHANGELOG Unreleased: the 2.0.27 support, the effect peer, and the two CI and smoke fixes.
+
+Why both effect versions are allowed: a plugin never loads its own effect. packages/plugin/src/runtime.ts (ensurePluginRuntime) serves the host's effect and @opencode/plugin for every such specifier, and throws for a copy under a plugin node_modules. runtime.ts, runtime-modules.ts and source.bun.ts are byte-identical at v2.0.26 and v2.0.27 (md5). So at runtime plugboard runs on the host's effect, 4.0.0-rc.112 on 2.0.26 and 4.0.1 on 2.0.27. The peer range only has to match the types and the one-copy install check.
+
+Rejected: option (a), dropping 2.0.26 from the peer range. Nothing in the code needs it, and it would strand 2.0.26 users for no runtime gain.
+
+API changes: none needed. Plugboard imports only Effect, Cause, Exit, Scope and Stream from effect, and the code compiles and passes the suite under both versions without an edit.
+
+Checked:
+- typecheck and bun test on the 2.0.27/4.0.1 pair: 2050 pass, 126 live tests skipped, 0 fail.
+- typecheck and bun test on the 2.0.26/4.0.0-rc.112 pair: same counts.
+- test gates, coverage-manifest, compat matrix (docs unchanged), check-pack.
+- smoke-pack: one effect (4.0.1, deduped under the host) and one @opencode/plugin; "smoke ok".
+- Live, from the packed tarball, on OpenCode v2.0.27 and v2.0.26 (scratch HOMEs): plugin active, /healthz ok, 114 models, chat "pong", a get_weather tool call, and opencode run "pong".
+
+bun.lock: bun resolved the 4.0.1 closure of @effect/* and the 2.0.27 @opencode/* packages. Some @msgpackr-extract entries left the lock with the old closure. The lock installs with --frozen-lockfile.
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.23.0] - 2026-10-12: What the Red Team Found
 
 **Full diff:** [v0.22.0...v0.23.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...v0.23.0)
@@ -3259,7 +3806,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.2...v0.22.0
 [0.21.2]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.1...v0.21.2
