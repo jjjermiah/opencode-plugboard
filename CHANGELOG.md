@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.19.0] - 2026-10-11: Spend Within Your Means
+
+**Full diff:** [v0.18.0...v0.19.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.18.0...v0.19.0)
+
 ### Added
 
 - **Per-app budgets** ([#60](https://github.com/jjjermiah/opencode-plugboard/issues/60)). Cap what each app may use per UTC day, ISO week or calendar month, by requests, tokens or estimated cost:
@@ -38,6 +44,133 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - Internal runtime version 13. Restart OpenCode after upgrading.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (11 commits)</summary>
+
+#### Features
+
+**feat(responses): resolve item_reference to recent answer output** ([`a316172`](https://github.com/jjjermiah/opencode-plugboard/commit/a316172936773165e319c686568edaa99fcf73fa))
+
+The Vercel AI SDK keeps `store: true` by default. On a multi-turn chat it replays the earlier assistant turn as an `item_reference` to the output item plugboard returned, and plugboard refused it with a 400. The default AI SDK chat therefore failed on its second turn.
+
+plugboard now keeps the output items of recent answers in a bounded, per-app, in-memory store (src/responses/store.ts): up to 1000 answers for an hour, held on globalThis under a versioned key so a plugin generation can be replaced without losing it. Items are filled from completed and incomplete answers, streamed or not; failed answers have nothing to replay. The decoder takes a resolver, so the codec stays pure, and a resolved item decodes as the item it was: a message as the assistant turn, a function_call as a tool call that its output pairs with.
+
+A reference the store does not hold (restart, expiry, eviction, or another app's item) is a 400 `item_not_found` whose message suggests `store: false`. `previous_response_id` and `conversation` stay refused: the store keeps outputs, not the inputs a previous response needs, so resolving them would be a guess. Nothing is written to disk.
+
+The matrix flips the AI SDK multi-turn gap. Tests cover the codec resolution and rejection, the JSON and streamed store fill, the unknown-id 400, and per-app isolation. The docs for Responses, the Vercel AI SDK page and the architecture note describe the store.
+
+Fixes #147
+
+**feat(config): parse the budgets option** ([`8d47a0b`](https://github.com/jjjermiah/opencode-plugboard/commit/8d47a0b47d11aa81233f84f79f97694192f4e849))
+
+Option budgets holds { perApp?, apps? }. Each budget sets ceilings on requests, tokens and costUsd, and each metric maps the windows day, week and month to a limit. Counts must be positive integers; costUsd takes any positive number of USD. An apps entry replaces perApp metric by metric, so an app's requests ceiling replaces perApp's requests while its tokens ceiling still comes from perApp. Unknown keys and apps entries with no configured app are refused, with the same error style as limits.
+
+Budgets are counted from the usage records, so a config with usage off is refused at load. Retention must also cover the windows in use: a month needs 31 days and a week 7. Otherwise pruned days would drop out of the count and a budget would undercount. The check sits in parseOptions next to the usage check, so the message names both options.
+
+Rejected: one option per window (more keys, no gain), and budgets keyed by API key (the issue asks for per app, and each key already names one). Nothing enforces the budgets in this commit. The wrapper follows in the runtime commit.
+
+Checked with the table and shape tests in test/unit/config.test.ts, run with bun test on that file.
+
+Refs #60
+
+**feat(http): report each answer's tokens and cost in x-plugboard-usage** ([`129af27`](https://github.com/jjjermiah/opencode-plugboard/commit/129af27f668fbde2f225701457ef7dede47c49ec))
+
+Usage is recorded per app (#52), but a caller had no way to see what one request cost without asking GET /v1/usage. With usage recording on, each non-streaming model answer now carries x-plugboard-usage: input=<n>; output=<n>; cache_read=<n>; cost_usd=<x.xxxxxx>.
+
+input and output are the totals the response body already reports (cache reads inside input, reasoning inside output), and cost_usd is priced from the same tokens with the catalog price, as the usage report does. The header is left without cost_usd when the model has no price. A request with n > 1 sums its choices into one value.
+
+withUsage is the only place that sees the finish usage with the model that answered, so it calls a new CallContext.onUsage once per answered call, before the finish event. Each front-end sets the header through reportUsage (src/usage-header.ts) while its headers are open. Streams get no callback: their headers go out with the first event, before the usage is known, so a streamed answer has no header. The recorder gains a price method that wraps the existing catalog lookup, and priceCall is unchanged.
+
+Tests cover the format, the sum over choices, the unpriced and the streamed cases, the Responses, Messages, Gemini and legacy completions JSON answers, and withUsage's totals before the finish. The configuration and architecture docs describe the header.
+
+Fixes #52
+
+**feat(runtime): refuse an app's calls once its budget is used up** ([`de61120`](https://github.com/jjjermiah/opencode-plugboard/commit/de611204a4b7c07c3bf880a5906b9bd17770ab0a))
+
+A call over a ceiling gets one error event: 429, kind rate_limit, code budget_exceeded, with Retry-After set to the latest reset among the exceeded ceilings. src/budgets.ts holds the wrapper. For each ceiling it reads the app's days for the window through UsageRecorder.spent, which reads memory first and then storage for days not yet held, and never writes. Requests count as the day's requests less its refusals, so a refused call does not use up the budget that refused it. Tokens are the answered calls' tokens and cost is their price at list prices.
+
+index.ts puts the wrapper inside withUsage and outside withLimits. A budget refusal therefore takes no concurrency slot and spends no requests-per-minute count, while the request log still counts it and usage records it as limited. Rejected: checking inside withLimits, where the slot is taken before the budget is read. Rejected: counting calls in flight, which would hold each request until its records settle. A burst can pass a ceiling by the calls it already admitted, and the docs say so.
+
+A failed read refuses the call with 503 budget_unavailable rather than letting it through. Crossing 80% of a ceiling logs budget.warning once per app, budget and window, and again in the next window. That state is a map on the runtime, so the runtime VERSION goes to 13 (I6). Each refusal is counted under plugboard_limited_total with reason budget.
+
+Checked with test/unit/budgets.test.ts on an injected clock: window boundaries, override precedence, Retry-After, the reset, tokens, cost, warnings once, a refusal that takes no slot, the 503 path and the metric label. The mutation entry budget-refuses-at-the-ceiling is killed by nine failing test lines. bun run typecheck passes.
+
+Refs #60
+
+**feat(http): show each app's budget state in GET /v1/usage** ([`25ff308`](https://github.com/jjjermiah/opencode-plugboard/commit/25ff30875e7fd7dbf4b6bccd78a2dc0fbc424f5c))
+
+Each app in the usage report gets a budgets list when option budgets sets a budget for it: one entry per ceiling with metric, window, limit, used (the current window's count) and resetsAt (when that window ends). The state is read from the current window, not from the report's range, so a report for last week still shows this month's spend.
+
+serveUsage calls budgetStatus on the same recorder that counts the requests, and only when budgets are configured, so a report without budgets keeps its old shape. Rejected: adding the state to the usage RPC as well. The issue asks for GET /v1/usage, and the RPC's output is open ended, so it can take the field later without a change here. Limitation: an unfiltered admin report lists budgets only for apps that have records in its range. Asking with app=<name> always shows them.
+
+Checked with test/http/budgets.test.ts over loopback HTTP: a chat call over its ceiling gets 429 budget_exceeded with a Retry-After between 1 and 86400 seconds, the other app is still served, the usage report counts the refused call as limited and not as used, and a report with no budgets has no budgets field.
+
+Refs #60
+
+#### Fixes
+
+**fix(openai): remove caller stop sequences from plain answers** ([`47ec695`](https://github.com/jjjermiah/opencode-plugboard/commit/47ec69597b051eae459bf31f7d7e9349335d053a))
+
+Chat Completions, legacy completions and Gemini return a stop sequence in the answer text when the provider leaves it there, so a client that set `stop` got the sequence back. Anthropic Messages already removed the matched sequence and reported it (#145). The check moves to a shared helper (src/stop.ts) and each front-end uses it.
+
+A plain stop (finish `stop`, no tool call, no structured output) whose text ends with a caller sequence drops the sequence. Streamed text keeps its last characters back, the length of the longest sequence, until the finish decides them, so a sequence split across deltas never reaches the client. Tool calls release the held text unchanged, and a length finish keeps its text. The Anthropic encoder now uses the same holdback with its behaviour unchanged.
+
+The compat matrix flips the nine stop-sequence gaps (SDK and LangChain rows on chat, completions and Gemini). The request decoders pass the sequences to each exchange. New unit tests cover the helper and each encoder, JSON and streamed.
+
+Fixes #149
+
+**fix(openai): answer unknown /v1beta paths with a Google 404** ([`98e594c`](https://github.com/jjjermiah/opencode-plugboard/commit/98e594c63a232e2a88b3c35d19fcee245b730dbc))
+
+The AI SDK and LangChain send a Gemini model id that contains a slash without the models/ prefix, so the request path is /v1beta/<id>: generateContent. That path matches no Gemini route. It fell through to the generic check, and an authenticated caller got 401 "Missing or invalid API key" even with a valid key, which looked like a bad key.
+
+Every /v1beta path now uses Google's error body. The credential is read the Gemini way (Bearer, x-goog-api-key or ?key=). An authenticated request to a path that matches no route gets a 404 NOT_FOUND that names the expected shape, POST /v1beta/models/{model}:generateContent. An unauthenticated request still gets 401 first, so the route table stays hidden from callers without a key (#91, #137).
+
+The matrix rows for the AI SDK and LangChain Google clients stay gaps, because the request still misses the route. Their notes now say 404. Tests cover the authenticated and unauthenticated cases for the key sources, and a keyless loopback endpoint.
+
+Fixes #150
+
+#### Tests
+
+**test(gemini): cover generateContent JSON tool calls and structured output** ([`2d28bbb`](https://github.com/jjjermiah/opencode-plugboard/commit/2d28bbb5eaeb0f29a9363c73ccd54ab53cf56bab))
+
+The coverage manifest (#116) had two gap cells for Gemini generateContent (non-streaming): a tool call and a structured answer. Only the streamed encoder had tests, so the JSON path was unproven for both.
+
+Three http tests now cover the JSON path over loopback. A tool call is a candidate with a functionCall part and no id, finishReason STOP, and the tool is offered to the model. A structured answer (responseSchema with responseMimeType application/json) is the respond call's input as JSON text. A structured answer with no respond call is a 502 in Google's body, not an empty 200.
+
+The two manifest cells now name these tests, and the unused gap helper is removed. The test-count floor for the http layer is raised with them.
+
+The event-queue memory benchmark and the bench baseline regeneration from #118 are not part of this change.
+
+Fixes #151
+
+**test(tests): ratchet the test floors for per-app budgets** ([`03b4035`](https://github.com/jjjermiah/opencode-plugboard/commit/03b4035c1ed54b3b46979b2b9d90a110238b9876))
+
+The budget tests cover the window table, budget precedence, refusals, the reset, tokens, cost, the 80% warning, the limits ordering, the storage failure, the budget state, the metric label and config validation (unit), and the 429 and usage report over loopback (http). The floors in .github/floors only go up, so the layer counts move to the new totals: unit 798 to 835, http 257 to 261. Coverage floors move to 97.6% lines and 92% functions of index.ts and src/, the level the code now meets.
+
+Checked with bun test --coverage and bun .github/scripts/test-gates.ts .coverage --ratchet: 1588 tests pass, every floor is met, and the floor files are the only change in this commit.
+
+Fixes #60
+
+#### Docs
+
+**docs(docs): describe per-app budgets in configuration and architecture** ([`54d078d`](https://github.com/jjjermiah/opencode-plugboard/commit/54d078db8d7d1a98432fa410961719a32e7abff2))
+
+configuration.md gets the budgets option row and a Budgets section: the ceilings and the windows, what each metric counts, the apps override, the 429 and its Retry-After, the 503 when records cannot be read, the 80% warning, the budgets list in the usage report, and the retention rule (a month needs 31 days, a week 7). It also gets the budget_exceeded and budget_unavailable error rows, and the limited counter and the metric label now name budgets. architecture.md gets a Budgets section covering placement, reading, counts, refusal, warnings, status and config, plus a module-map line. STRUCTURE.md lists budgets.ts beside limits.ts.
+
+Rejected: a numbered invariant for budgets. Its guards are in the mutation catalogue under the budgets label, the same way limits is kept.
+
+Checked by reading each new sentence against the code it describes, and by a search of the changed prose for em and en dashes, which none has.
+
+Refs #60
+
+**docs(changelog): notes for budgets, the usage header and the compat fixes** ([`7e94af4`](https://github.com/jjjermiah/opencode-plugboard/commit/7e94af4885df6b8d80994ee20763bd2d310612db))
+
+Curated [Unreleased] entries for #60 (per-app budgets), #52 (x-plugboard-usage), #147 (item_reference for store: true clients), #149 (stop sequences on every API), #150 (Gemini 404 for unknown paths), #151 (Gemini JSON tests) and runtime version 13. Pinned install examples bumped to 0.19.0.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.18.0] - 2026-10-11: A Window Into Usage
 
@@ -2025,7 +2158,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.15.0...v0.16.0
