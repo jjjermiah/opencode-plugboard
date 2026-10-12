@@ -14,8 +14,8 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `adminKey` | none | A key that reads every app's usage at `GET /v1/usage` and manages app keys at runtime under `/v1/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
 | `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools?, serverTools?, maxServerToolSteps? }`: per-app model scope, system prompt, tool policy and OpenCode tools the app may run. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
-| `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
-| `agents` | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
+| `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model, since 0.20.0). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
+| `agents` (since 0.20.0) | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
 | `maxTools` | `32` | Most tools one request may carry. Fixed when the plugin loads. |
 | `maxN` | `1` | Most model calls one request may fan out to: `n` on Chat Completions and `/v1/completions`, or prompts times `n` for a prompt array. Each is a full call and a kept session, so `n: 4` costs four times. Above the cap, 400 `too_many_choices`. See [completions](completions.md). |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
@@ -24,11 +24,11 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
 | `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
-| `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` bound request bodies, see [Request bodies](#request-bodies). |
+| `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` (since 0.21.0) bound request bodies, see [Request bodies](#request-bodies). |
 | `budgets` | none (unlimited) | Per-app ceilings on requests, tokens and cost for a UTC day, week or month: `{ perApp?, apps? }`. Needs `usage` on. A call over a ceiling gets 429 `budget_exceeded`. See [Budgets](#budgets). |
 | `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
 | `promptCache` | `{ affinity: "off", scope: "app", maxAnchors? }` | Provider prompt-cache affinity: `affinity` `off` or `anchor`, `scope` `app` or `user`, `maxAnchors` (default 1000) the most anchors one app may hold. Also per app as `apps.<name>.promptCache`. See [Prompt-cache affinity](#prompt-cache-affinity). |
-| `historyUrl` | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
+| `historyUrl` (since 0.20.0) | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
@@ -130,7 +130,7 @@ Both kinds appear in `/v1/models` with `plugboard.skill` or `plugboard.agent` se
 
 ## Apps and keys
 
-Each key name is an app. A request made with the `sparkyfitness` key is the app `sparkyfitness`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line. Removing a key, or changing its value, takes effect on the running server at once. Adding a key needs a restart. See [Reloads and restarts](#reloads-and-restarts).
+Each key name is an app. A request made with the `my-app` key is the app `my-app`, and its sessions are grouped under that app. Give every tool its own key. You can tell their traffic apart, and revoking one means removing one line. Removing a key, or changing its value, takes effect on the running server at once. Adding a key needs a restart. See [Reloads and restarts](#reloads-and-restarts).
 
 ### Per-app policy (`apps`)
 
@@ -153,10 +153,10 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 | `systemMode` | `prepend` (default), `append` or `replace`. `replace` drops the caller's system prompt, including the instruction a `json_object` response format adds. |
 | `tools` | `false` drops every tool the caller sends before the model sees it. The request still succeeds, and the response carries `x-plugboard-policy: tools-stripped`. A `json_schema` response format is still answered: the `respond` tool it uses is kept and forced, and only the caller's tools go (#252). History that already holds tool calls may be rejected by the provider. |
 | `maxTools` | Lowers the global `maxTools` for this app. A request with more tools gets 400 `too_many_tools`. It cannot be higher than the global cap. |
-| `serverTools` | Off by default. A list of exact OpenCode tool ids (for example `websearch`) that this app's sessions may run themselves, 1 to 32 entries. See the warning below. |
-| `maxServerToolSteps` | How many model steps of one request may run a server tool, `8` by default, 1 to 100. It counts steps, not calls. Needs `serverTools`. |
-| `maxServerToolCalls` | How many server tool calls one request may run in all its steps together, `16` by default, 1 to 1000. The call past it fails the request. Needs `serverTools`. |
-| `historyUrl` | The session link template for this app: a string with `{id}` (see [Session links](#session-links)), or `false` for no link, no `x-plugboard-session-url` and no `session_url=` log field. Absent: the global `historyUrl`. Set `false` for an app you do not trust with the OpenCode server address. |
+| `serverTools` (since 0.21.0) | Off by default. A list of exact OpenCode tool ids (for example `websearch`) that this app's sessions may run themselves, 1 to 32 entries. See the warning below. |
+| `maxServerToolSteps` (since 0.21.0) | How many model steps of one request may run a server tool, `8` by default, 1 to 100. It counts steps, not calls. Needs `serverTools`. |
+| `maxServerToolCalls` (since 0.24.0) | How many server tool calls one request may run in all its steps together, `16` by default, 1 to 1000. The call past it fails the request. Needs `serverTools`. |
+| `historyUrl` (since 0.23.0) | The session link template for this app: a string with `{id}` (see [Session links](#session-links)), or `false` for no link, no `x-plugboard-session-url` and no `session_url=` log field. Absent: the global `historyUrl`. Set `false` for an app you do not trust with the OpenCode server address. |
 
 > **Security: `serverTools` lets an app's key run OpenCode tools on the server.** Anyone holding that app's key can make the model call each listed tool, and the tool runs with the server's own OpenCode credentials and permissions. The prompt steers which arguments the model passes. A tool that reads files or runs commands can reach what the server's OpenCode process can reach, within whatever limits that tool enforces itself. Give such a key only to a caller you would trust with those tools, list the fewest tools the app needs, and never list tools on the keyless `default` app or on a key shared with others. Plugboard checks that each listed tool is a direct tool of the server's OpenCode right now and denies every other tool, but it cannot limit what a listed tool does.
 
@@ -394,7 +394,7 @@ A bot that serves many people is one app, so its history and usage would be one 
 A response names its history record in `x-plugboard-session`, but the OpenCode web UI has no URL a plugin can read. Option `historyUrl` is the template you fill in, and it depends on how you reach OpenCode:
 
 ```json
-{ "historyUrl": "http://opencode.lan:4096/session/{id}" }
+{ "historyUrl": "http://opencode.example:4096/session/{id}" }
 ```
 
 With it set, every response that carries `x-plugboard-session` also carries `x-plugboard-session-url`, and the request log line gets `session_url=`. A call with `n` above 1 lists the links in choice order, like the session ids. A cache hit has neither, because it writes no session.
@@ -428,6 +428,10 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 503 | `budget_unavailable` | The usage records for the budget check cannot be read | Could not read the usage records for the budget check |
 | 503 | `server_busy` | The request body would take the bytes being read over `limits.maxBodyBytesInFlight` (see [Request bodies](#request-bodies)) | Too many request bodies are being read; retry shortly |
 | 408 | `body_read_timeout` | The request body did not arrive within `limits.bodyReadTimeoutMs` | Request body was not received within &lt;n&gt; ms (option limits.bodyReadTimeoutMs) |
+| 413 | (none, no `code` field) | A request body over 32 MiB | Request body too large |
+| 415 | `unsupported_media_type` | A `POST` body whose `Content-Type` is not `application/json` | Content-Type must be application/json |
+| 400 | `invalid_user` | The `user` query parameter of `GET /v1/usage` is not 1 to 64 characters of the allowed set | `user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-` |
+| 502 | `structured_output_missing` | A `json_schema` answer with neither a `respond` call nor text that matches the schema | The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt. |
 
 Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. Calls over a cap in `limits` get 429 instead (see [Concurrency and rate limits](#concurrency-and-rate-limits)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 

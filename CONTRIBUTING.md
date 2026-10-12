@@ -51,6 +51,7 @@ After every plugin change, run the pong gate from that document: a normal prompt
 ## Code rules
 
 - Prefer a popular, industry-accepted npm package over hand-rolled code. Runtime packages go in `dependencies`, pinned to an exact version (the host installs them unattended); types go in `devDependencies`. OpenCode installs a registry plugin's `dependencies` with install scripts disabled, so a dependency must be pure JS with no install script and no native build; check `npm view <pkg> scripts` and `dependencies` first, and prefer packages with no dependencies of their own.
+- A new OpenCode release gets its own `build(deps): support opencode <v>` pull request within a day, and a daily load check runs against the newest CLI; see [docs/releasing.md](docs/releasing.md#opencode-releases).
 - `effect` and `@opencode/plugin` (and `/effect`) stay host-provided peers. The host serves them to a Bun plugin and throws on a plugin-local copy, so never list them in `dependencies`. `Schema` comes from `effect`.
 - A plugin loaded from a local path gets no install, so run `bun install` in that checkout first.
 - Never import `@opencode/ai` or OpenCode core at runtime.
@@ -122,6 +123,10 @@ There is no `prepare` script on purpose. npm runs `prepare` on `npm publish`, an
 ## Changelog
 
 Every user-visible change adds an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). Explain why the change was made and what it cost, not just what changed. Don't paste a commit list. Maintainers cut releases from that section, and every release needs a short creative title (2 to 5 words, `bun run release X.Y.Z --title "..."`), see [docs/releasing.md](docs/releasing.md).
+
+## Docs and unreleased options
+
+The docs site deploys from `main`, so it can describe options the latest release does not have. Its banner names the latest release (the version in `package.json`). Mark each option that is newer than that release in `docs/configuration.md`, on its option or field name: `` `historyUrl` (since 0.20.0) ``. Use the version that will ship it, which is the release the `[Unreleased]` section becomes, and fix the number if that release changes. Commit the mark with the option. Options that predate the marks stay unmarked.
 
 ## Writing style
 

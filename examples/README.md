@@ -10,6 +10,15 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [continue/](continue/README.md) | Continue `config.yaml` with one plugboard model on Chat Completions and one on Responses |
 | [kilo-code/](kilo-code/README.md) | Kilo Code CLI provider block for plugboard's Chat Completions route |
 | [librechat/](librechat/README.md) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` |
+| [lobechat/](lobechat/docker-compose.yml) | LobeChat in Docker: `OPENAI_PROXY_URL` and the model list, in a compose file and `.env.example` |
+| [jan/](jan/setup.sh) | Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example` |
+| [anythingllm/](anythingllm/docker-compose.yml) | AnythingLLM in Docker with the Generic OpenAI provider's env vars |
+| [sillytavern/](sillytavern/docker-compose.yml) | SillyTavern in Docker; the plugboard endpoint and key are set in its UI |
+| [llamaindex/](llamaindex/example.py) | LlamaIndex `OpenAILike` against plugboard: text, stream and a tool round trip. A PEP 723 script |
+| [haystack/](haystack/example.py) | Haystack `OpenAIChatGenerator` in a two-component pipeline, with streaming and a tool round trip. A PEP 723 script |
+| [mastra/](mastra/agent.ts) | Mastra agent with one tool, using the `plugboard/fast` model object. Run with bun after `npm i @mastra/core zod` |
+| [smolagents/](smolagents/example.py) | smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`) |
+| [promptfoo/](promptfoo/promptfooconfig.yaml) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check |
 | [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider |
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
 | [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |
@@ -29,6 +38,15 @@ The examples in [self-hosted/](self-hosted/) are for apps that already run in Do
 - [Karakeep](self-hosted/karakeep/README.md): `.env.example` and a compose override for the upstream `docker-compose.yml`
 - [Frigate](self-hosted/frigate/README.md): a `genai` provider in `config.yml`
 - [paperless-gpt](self-hosted/paperless-gpt/README.md): a compose service and `.env.example`
+
+## LlamaIndex
+
+```sh
+cd examples/llamaindex
+PLUGBOARD_KEY=<your key> uv run example.py
+```
+
+`PLUGBOARD_URL` (default `http://127.0.0.1:4010/v1`) overrides the endpoint. The script uses `OpenAILike`, because the `OpenAI` class rejects model ids it does not know.
 
 ## Tool bot
 

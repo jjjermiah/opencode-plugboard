@@ -281,7 +281,7 @@ Send the answer back as a `{"role": "tool", "tool_call_id": "call_1", "content":
 
 #### Structured output
 
-`response_format` with `json_schema` returns the arguments as the message content. The model is asked to answer through a `respond` tool. The provider does not enforce the schema, so validate the result.
+`response_format` with `json_schema` returns the arguments as the message content. The model is asked to answer through a `respond` tool. The provider does not enforce the schema, so validate the result. Anthropic-only clients can get the same JSON with a forced tool call: see [structured extraction with a forced tool](https://jjjermiah.github.io/opencode-plugboard/messages#structured-extraction-with-a-forced-tool).
 
 ```sh
 curl -s http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" \
@@ -399,7 +399,7 @@ A server shared by a Discord bot, n8n, Open WebUI and a coding agent, with most 
       "package": "opencode-plugboard@0.23.0",
       "options": {
         // Reachable from the LAN. Non-loopback hosts refuse to start without keys.
-        "listen": { "host": "10.0.1.50", "port": 4010 },
+        "listen": { "host": "192.0.2.10", "port": 4010 },
 
         // One key per app. Each app's history, usage and limits are separate.
         "keys": {
@@ -460,7 +460,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | --- | --- | --- |
 | OpenAI Python SDK | [openai-python][client-openai-python] | pass |
 | OpenAI JS SDK | [openai-js][client-openai-js] | pass |
-| Vercel AI SDK | [vercel-ai-sdk][client-vercel-ai-sdk] | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `openai(id)` call works through `/v1/responses` (set `store: false` for multi-turn) |
+| Vercel AI SDK | [vercel-ai-sdk][client-vercel-ai-sdk] | pass with `createOpenAICompatible` or `.chat()`; structured output needs `supportsStructuredOutputs: true` there; the default `openai(id)` call works through `/v1/responses` (multi-turn chats work with the default `store: true`, and `store: false` also works) |
 | LangChain Python | [langchain-python][client-langchain-python] | pass; `json_mode` on `fast` was unreliable |
 | LangChain JS | [langchain-js][client-langchain-js] | pass except `gpt-5.6*` ids, which force the Responses API, and `json_mode` on `fast` |
 | pydantic-ai | [pydantic-ai][client-pydantic-ai] | pass with `OpenAIChatModel` |
@@ -472,6 +472,18 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Kilo Code | [kilo-code][client-kilo-code] | docs only, not run yet |
 | LibreChat | [librechat][client-librechat] | docs only, not run yet |
 | Zed | [zed][client-zed] | docs only, not run yet |
+| LobeChat | [lobechat][client-lobechat] | docs only, not run yet (web app) |
+| Chatbox | [chatbox][client-chatbox] | docs only, not run yet (desktop app); OpenAI and Gemini provider types |
+| Jan | [jan][client-jan] | docs only, not run yet (desktop app and CLI); OpenAI and Anthropic API formats |
+| AnythingLLM | [anythingllm][client-anythingllm] | docs only, not run yet (desktop/Docker app); Generic OpenAI provider |
+| SillyTavern | [sillytavern][client-sillytavern] | docs only, not run yet (web app); Custom (OpenAI-compatible) source |
+| Cline | [cline][client-cline] | docs only, not run yet (VS Code extension); OpenAI Compatible provider |
+| Roo Code | [roo-code][client-roo-code] | docs only, not run yet (VS Code extension); needs native tool calling |
+| promptfoo | [promptfoo][client-promptfoo] | pass against the scripted fake: `promptfoo eval` 2/2 (text, tool call); model-graded assertions need a plugboard grader |
+| smolagents | [smolagents][client-smolagents] | partial against the scripted fake: text, stream, tool call pass; tool round trip fails on the fake (scripted reply); needs `smolagents[openai]` |
+| Mastra | [mastra][client-mastra] | pass against the scripted fake: text, stream, tool call, tool round trip; needs `plugboard/fast`, not bare `fast` |
+| Haystack | [haystack][client-haystack] | pass against the scripted fake: pipeline text, stream, tool call, tool round trip |
+| LlamaIndex | [llamaindex][client-llamaindex] | pass against the scripted fake: text, stream, tool call, tool round trip; `OpenAILike` (the `OpenAI` class rejects `fast`) |
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
@@ -487,7 +499,7 @@ The protocol-level results are in the [compatibility matrix][compatibility]. It 
 
 - **Responses keeps no conversation.** Every request carries the whole conversation, and `previous_response_id` and `conversation` are rejected. The output items of recent answers are held in memory for an hour, so the `item_reference`s that the Vercel AI SDK sends back resolve; a restart clears them ([#147](https://github.com/jjjermiah/opencode-plugboard/issues/147)). For n8n, turn "Use Responses API" off.
 - **Stop sequences** are removed from the answer when they end it, on the Anthropic, OpenAI and Gemini routes. The host reports only that the turn stopped, so a sequence the provider ended on without returning it is not removed.
-- **Anthropic structured outputs** (`output_config.format`) are refused with a 400. Use `json_schema` on the OpenAI or Gemini endpoints.
+- **Anthropic structured outputs** (`output_config.format`) are refused with a 400. Use `json_schema` on the OpenAI or Gemini endpoints, or a forced tool call on `/v1/messages` ([recipe](https://jjjermiah.github.io/opencode-plugboard/messages#structured-extraction-with-a-forced-tool)).
 - **Gemini `candidateCount` above 1** is refused. The OpenAI endpoints serve `n`.
 - **Gemini model ids with a `/`** sent by the AI SDK's Google provider or LangChain's `google-genai` lack the `models/` prefix and get a 401. The `@google/genai` SDK works.
 - **Tools with `json_schema`** in one request return the caller's tool calls, not the schema answer ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)).
@@ -562,6 +574,18 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-kilo-code]: https://jjjermiah.github.io/opencode-plugboard/clients/kilo-code
 [client-librechat]: https://jjjermiah.github.io/opencode-plugboard/clients/librechat
 [client-zed]: https://jjjermiah.github.io/opencode-plugboard/clients/zed
+[client-lobechat]: https://jjjermiah.github.io/opencode-plugboard/clients/lobechat
+[client-chatbox]: https://jjjermiah.github.io/opencode-plugboard/clients/chatbox
+[client-jan]: https://jjjermiah.github.io/opencode-plugboard/clients/jan
+[client-anythingllm]: https://jjjermiah.github.io/opencode-plugboard/clients/anythingllm
+[client-sillytavern]: https://jjjermiah.github.io/opencode-plugboard/clients/sillytavern
+[client-cline]: https://jjjermiah.github.io/opencode-plugboard/clients/cline
+[client-roo-code]: https://jjjermiah.github.io/opencode-plugboard/clients/roo-code
+[client-llamaindex]: https://jjjermiah.github.io/opencode-plugboard/clients/llamaindex
+[client-haystack]: https://jjjermiah.github.io/opencode-plugboard/clients/haystack
+[client-mastra]: https://jjjermiah.github.io/opencode-plugboard/clients/mastra
+[client-smolagents]: https://jjjermiah.github.io/opencode-plugboard/clients/smolagents
+[client-promptfoo]: https://jjjermiah.github.io/opencode-plugboard/clients/promptfoo
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
