@@ -1,6 +1,6 @@
 # Packaging
 
-What the npm tarball contains, and why it ships TypeScript source with no build step. Checked against OpenCode 2.0.26 (`~/.cache/opencode-explorer/opencode`). Re-check when the peer range moves.
+What the npm tarball contains, and why it ships TypeScript source with no build step. Checked against OpenCode 2.0.26 and 2.0.27 (`~/.cache/opencode-explorer/opencode`). Re-check when the peer range moves.
 
 ## Decision: ship the `.ts` source
 
@@ -38,6 +38,12 @@ Evidence from OpenCode 2.0.26 (`~/.cache/opencode-explorer/opencode`):
 So the peers stay **optional**. The host provides `@opentui/*` and `solid-js` at runtime, and the compiled file never loads an installed copy.
 
 `dist/` is gitignored and built in `prepack`, so `npm publish` builds it. `npm pack --ignore-scripts` (the pack check and the smoke test) skips prepack, so CI runs `bun run build:tui` before them. The local-path entry `tui.ts` re-exports `dist/tui.js` too, so a local checkout loads the same file; typecheck does not need the build.
+
+## Effect and `@opencode/plugin` come from the host
+
+A plugin never loads its own copy of `effect` or `@opencode/plugin`. `ensurePluginRuntime` (`packages/plugin/src/runtime.ts`) registers a Bun module plugin that serves the host's modules for every `effect` and `@opencode/plugin` specifier, and any file under a plugin `node_modules` that imports them throws (`Cannot load "effect/..." from plugin node_modules`). So at runtime plugboard runs on the host's `effect`: 4.0.0-rc.112 on OpenCode 2.0.26 and 4.0.1 on 2.0.27. The peer `effect` range matters for types and for the install check (one copy in `npm ls`), not for which copy runs. The runtime files are identical at both tags (`runtime.ts`, `runtime-modules.ts`, `source.bun.ts`).
+
+CI therefore installs each host's own `effect` pin next to its `@opencode/plugin` (`.github/workflows/ci.yml`, host job). Read the pin with `npm view @opencode/plugin@<host> dependencies.effect`.
 
 ## Engines
 
