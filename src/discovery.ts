@@ -73,10 +73,12 @@ export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "POST", path: "/v1/completions", auth: true, description: "Legacy OpenAI completions." },
   { method: "POST", path: "/v1/responses", auth: true, description: "OpenAI Responses (stateless)." },
   { method: "POST", path: "/v1/messages", auth: true, description: "Anthropic Messages (x-api-key or Bearer)." },
+  { method: "POST", path: "/v1/messages/count_tokens", auth: true, description: "Anthropic token count (an estimate, not the provider's exact count)." },
   { method: "GET", path: "/v1beta/models", auth: true, description: "Gemini model list." },
   { method: "GET", path: "/v1beta/models/{model}", auth: true, description: "One Gemini model." },
   { method: "POST", path: "/v1beta/models/{model}:generateContent", auth: true, description: "Gemini generateContent." },
   { method: "POST", path: "/v1beta/models/{model}:streamGenerateContent", auth: true, description: "Gemini streamGenerateContent, with ?alt=sse." },
+  { method: "POST", path: "/v1beta/models/{model}:countTokens", auth: true, description: "Gemini token count (an estimate)." },
   { method: "GET", path: "/v1/status", auth: true, description: "Runtime status: generations, address, model count, uptime." },
 ]
 

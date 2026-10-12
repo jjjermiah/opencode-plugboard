@@ -1,0 +1,1192 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$source": "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
+ "$retrieved": "2026-10-11",
+ "roots": [
+  "GenerateContentResponse",
+  "CountTokensResponse"
+ ],
+ "$defs": {
+  "GenerateContentResponse": {
+   "type": "object",
+   "properties": {
+    "usageMetadata": {
+     "$ref": "#/$defs/UsageMetadata"
+    },
+    "promptFeedback": {
+     "$ref": "#/$defs/PromptFeedback"
+    },
+    "candidates": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Candidate"
+     }
+    },
+    "modelStatus": {
+     "$ref": "#/$defs/ModelStatus"
+    },
+    "modelVersion": {
+     "type": "string"
+    },
+    "responseId": {
+     "type": "string"
+    }
+   }
+  },
+  "UsageMetadata": {
+   "properties": {
+    "candidatesTokensDetails": {
+     "items": {
+      "$ref": "#/$defs/ModalityTokenCount"
+     },
+     "type": "array"
+    },
+    "promptTokenCount": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "thoughtsTokenCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "toolUsePromptTokenCount": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "totalTokenCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "cachedContentTokenCount": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "candidatesTokenCount": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "promptTokensDetails": {
+     "items": {
+      "$ref": "#/$defs/ModalityTokenCount"
+     },
+     "type": "array"
+    },
+    "cacheTokensDetails": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ModalityTokenCount"
+     }
+    },
+    "toolUsePromptTokensDetails": {
+     "items": {
+      "$ref": "#/$defs/ModalityTokenCount"
+     },
+     "type": "array"
+    },
+    "serviceTier": {
+     "enumDescriptions": [
+      "Default service tier, which is standard.",
+      "Standard service tier.",
+      "Flex service tier.",
+      "Priority service tier."
+     ],
+     "enum": [
+      "unspecified",
+      "standard",
+      "flex",
+      "priority"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ModalityTokenCount": {
+   "properties": {
+    "tokenCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "modality": {
+     "enum": [
+      "MODALITY_UNSPECIFIED",
+      "TEXT",
+      "IMAGE",
+      "VIDEO",
+      "AUDIO",
+      "DOCUMENT"
+     ],
+     "enumDescriptions": [
+      "Unspecified modality.",
+      "Plain text.",
+      "Image.",
+      "Video.",
+      "Audio.",
+      "Document, e.g. PDF."
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PromptFeedback": {
+   "properties": {
+    "blockReason": {
+     "type": "string",
+     "enum": [
+      "BLOCK_REASON_UNSPECIFIED",
+      "SAFETY",
+      "OTHER",
+      "BLOCKLIST",
+      "PROHIBITED_CONTENT",
+      "IMAGE_SAFETY"
+     ],
+     "enumDescriptions": [
+      "Default value. This value is unused.",
+      "Prompt was blocked due to safety reasons. Inspect `safety_ratings` to understand which safety category blocked it.",
+      "Prompt was blocked due to unknown reasons.",
+      "Prompt was blocked due to the terms which are included from the terminology blocklist.",
+      "Prompt was blocked due to prohibited content.",
+      "Candidates blocked due to unsafe image generation content."
+     ]
+    },
+    "safetyRatings": {
+     "items": {
+      "$ref": "#/$defs/SafetyRating"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "SafetyRating": {
+   "type": "object",
+   "properties": {
+    "category": {
+     "enumDeprecated": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+     ],
+     "type": "string",
+     "enumDescriptions": [
+      "Category is unspecified.",
+      "**PaLM** - Negative or harmful comments targeting identity and/or protected attribute.",
+      "**PaLM** - Content that is rude, disrespectful, or profane.",
+      "**PaLM** - Describes scenarios depicting violence against an individual or group, or general descriptions of gore.",
+      "**PaLM** - Contains references to sexual acts or other lewd content.",
+      "**PaLM** - Promotes unchecked medical advice.",
+      "**PaLM** - Dangerous content that promotes, facilitates, or encourages harmful acts.",
+      "**Gemini** - Harassment content.",
+      "**Gemini** - Hate speech and content.",
+      "**Gemini** - Sexually explicit content.",
+      "**Gemini** - Dangerous content.",
+      "**Gemini** - Content that may be used to harm civic integrity. DEPRECATED: use enable_enhanced_civic_answers instead.",
+      "**Gemini** - Prompts attempting to bypass or subvert the model's safety guidelines (jailbreak attempts)."
+     ],
+     "enum": [
+      "HARM_CATEGORY_UNSPECIFIED",
+      "HARM_CATEGORY_DEROGATORY",
+      "HARM_CATEGORY_TOXICITY",
+      "HARM_CATEGORY_VIOLENCE",
+      "HARM_CATEGORY_SEXUAL",
+      "HARM_CATEGORY_MEDICAL",
+      "HARM_CATEGORY_DANGEROUS",
+      "HARM_CATEGORY_HARASSMENT",
+      "HARM_CATEGORY_HATE_SPEECH",
+      "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+      "HARM_CATEGORY_DANGEROUS_CONTENT",
+      "HARM_CATEGORY_CIVIC_INTEGRITY",
+      "HARM_CATEGORY_JAILBREAK"
+     ]
+    },
+    "blocked": {
+     "type": "boolean"
+    },
+    "probability": {
+     "enumDescriptions": [
+      "Probability is unspecified.",
+      "Content has a negligible chance of being unsafe.",
+      "Content has a low chance of being unsafe.",
+      "Content has a medium chance of being unsafe.",
+      "Content has a high chance of being unsafe."
+     ],
+     "type": "string",
+     "enum": [
+      "HARM_PROBABILITY_UNSPECIFIED",
+      "NEGLIGIBLE",
+      "LOW",
+      "MEDIUM",
+      "HIGH"
+     ]
+    }
+   }
+  },
+  "Candidate": {
+   "type": "object",
+   "properties": {
+    "logprobsResult": {
+     "$ref": "#/$defs/LogprobsResult"
+    },
+    "safetyRatings": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SafetyRating"
+     }
+    },
+    "finishReason": {
+     "enum": [
+      "FINISH_REASON_UNSPECIFIED",
+      "STOP",
+      "MAX_TOKENS",
+      "SAFETY",
+      "RECITATION",
+      "LANGUAGE",
+      "OTHER",
+      "BLOCKLIST",
+      "PROHIBITED_CONTENT",
+      "SPII",
+      "MALFORMED_FUNCTION_CALL",
+      "IMAGE_SAFETY",
+      "IMAGE_PROHIBITED_CONTENT",
+      "IMAGE_OTHER",
+      "NO_IMAGE",
+      "IMAGE_RECITATION",
+      "UNEXPECTED_TOOL_CALL",
+      "TOO_MANY_TOOL_CALLS",
+      "MISSING_THOUGHT_SIGNATURE",
+      "MALFORMED_RESPONSE",
+      "ESCALATION",
+      "PUP_LIMITED_DISABLED",
+      "CONTINUATION"
+     ],
+     "type": "string",
+     "enumDescriptions": [
+      "Default value. This value is unused.",
+      "Natural stop point of the model or provided stop sequence.",
+      "The maximum number of tokens as specified in the request was reached.",
+      "The response candidate content was flagged for safety reasons.",
+      "The response candidate content was flagged for recitation reasons.",
+      "The response candidate content was flagged for using an unsupported language.",
+      "Unknown reason.",
+      "Token generation stopped because the content contains forbidden terms.",
+      "Token generation stopped for potentially containing prohibited content.",
+      "Token generation stopped because the content potentially contains Sensitive Personally Identifiable Information (SPII).",
+      "The function call generated by the model is invalid.",
+      "Token generation stopped because generated images contain safety violations.",
+      "Image generation stopped because generated images has other prohibited content.",
+      "Image generation stopped because of other miscellaneous issue.",
+      "The model was expected to generate an image, but none was generated.",
+      "Image generation stopped due to recitation.",
+      "Model generated a tool call but no tools were enabled in the request.",
+      "Model called too many tools consecutively, thus the system exited execution.",
+      "Request has at least one thought signature missing.",
+      "Finished due to malformed response.",
+      "Request was filtered by an escalation rule.",
+      "Indicates that token generation stopped because the user account is limited or disabled due to Prohibited Use Policy (PUP) violations.",
+      "Token generation was stopped because the response reached the per-request token limit, but generation is not yet complete. The model response can be continued via a subsequent request using the returned `continuation_token`."
+     ]
+    },
+    "avgLogprobs": {
+     "type": "number",
+     "format": "double"
+    },
+    "finishMessage": {
+     "type": "string"
+    },
+    "groundingMetadata": {
+     "$ref": "#/$defs/GroundingMetadata"
+    },
+    "continuationToken": {
+     "format": "byte",
+     "type": "string"
+    },
+    "urlContextMetadata": {
+     "$ref": "#/$defs/UrlContextMetadata"
+    },
+    "citationMetadata": {
+     "$ref": "#/$defs/CitationMetadata"
+    },
+    "content": {
+     "$ref": "#/$defs/Content"
+    },
+    "index": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "tokenCount": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "groundingAttributions": {
+     "items": {
+      "$ref": "#/$defs/GroundingAttribution"
+     },
+     "type": "array"
+    }
+   }
+  },
+  "LogprobsResult": {
+   "type": "object",
+   "properties": {
+    "topCandidates": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/TopCandidates"
+     }
+    },
+    "chosenCandidates": {
+     "items": {
+      "$ref": "#/$defs/LogprobsResultCandidate"
+     },
+     "type": "array"
+    },
+    "logProbabilitySum": {
+     "format": "float",
+     "type": "number"
+    }
+   }
+  },
+  "TopCandidates": {
+   "type": "object",
+   "properties": {
+    "candidates": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/LogprobsResultCandidate"
+     }
+    }
+   }
+  },
+  "LogprobsResultCandidate": {
+   "properties": {
+    "logProbability": {
+     "format": "float",
+     "type": "number"
+    },
+    "tokenId": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "token": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GroundingMetadata": {
+   "type": "object",
+   "properties": {
+    "groundingChunks": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/GroundingChunk"
+     }
+    },
+    "retrievalMetadata": {
+     "$ref": "#/$defs/RetrievalMetadata"
+    },
+    "imageSearchQueries": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "searchEntryPoint": {
+     "$ref": "#/$defs/SearchEntryPoint"
+    },
+    "webSearchQueries": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "groundingSupports": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/GoogleAiGenerativelanguageV1betaGroundingSupport"
+     }
+    },
+    "googleMapsWidgetContextToken": {
+     "type": "string"
+    }
+   }
+  },
+  "GroundingChunk": {
+   "properties": {
+    "retrievedContext": {
+     "$ref": "#/$defs/RetrievedContext"
+    },
+    "web": {
+     "$ref": "#/$defs/Web"
+    },
+    "image": {
+     "$ref": "#/$defs/Image"
+    },
+    "maps": {
+     "$ref": "#/$defs/Maps"
+    }
+   },
+   "type": "object"
+  },
+  "RetrievedContext": {
+   "type": "object",
+   "properties": {
+    "uri": {
+     "type": "string"
+    },
+    "fileSearchStore": {
+     "type": "string"
+    },
+    "text": {
+     "type": "string"
+    },
+    "mediaId": {
+     "type": "string"
+    },
+    "customMetadata": {
+     "items": {
+      "$ref": "#/$defs/GroundingChunkCustomMetadata"
+     },
+     "type": "array"
+    },
+    "pageNumber": {
+     "format": "int32",
+     "type": "integer"
+    }
+   }
+  },
+  "GroundingChunkCustomMetadata": {
+   "properties": {
+    "stringValue": {
+     "type": "string"
+    },
+    "numericValue": {
+     "type": "number",
+     "format": "float"
+    },
+    "stringListValue": {
+     "$ref": "#/$defs/GroundingChunkStringList"
+    },
+    "key": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GroundingChunkStringList": {
+   "type": "object",
+   "properties": {
+    "values": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "Web": {
+   "type": "object",
+   "properties": {
+    "uri": {
+     "type": "string"
+    }
+   }
+  },
+  "Image": {
+   "type": "object",
+   "properties": {
+    "domain": {
+     "type": "string"
+    },
+    "sourceUri": {
+     "type": "string"
+    },
+    "imageUri": {
+     "type": "string"
+    }
+   }
+  },
+  "Maps": {
+   "type": "object",
+   "properties": {
+    "uri": {
+     "type": "string"
+    },
+    "placeAnswerSources": {
+     "$ref": "#/$defs/PlaceAnswerSources"
+    },
+    "text": {
+     "type": "string"
+    },
+    "placeId": {
+     "type": "string"
+    }
+   }
+  },
+  "PlaceAnswerSources": {
+   "type": "object",
+   "properties": {
+    "reviewSnippets": {
+     "items": {
+      "$ref": "#/$defs/ReviewSnippet"
+     },
+     "type": "array"
+    }
+   }
+  },
+  "ReviewSnippet": {
+   "type": "object",
+   "properties": {
+    "googleMapsUri": {
+     "type": "string"
+    },
+    "reviewId": {
+     "type": "string"
+    }
+   }
+  },
+  "RetrievalMetadata": {
+   "type": "object",
+   "properties": {
+    "googleSearchDynamicRetrievalScore": {
+     "type": "number",
+     "format": "float"
+    }
+   }
+  },
+  "SearchEntryPoint": {
+   "properties": {
+    "sdkBlob": {
+     "format": "byte",
+     "type": "string"
+    },
+    "renderedContent": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GoogleAiGenerativelanguageV1betaGroundingSupport": {
+   "properties": {
+    "confidenceScores": {
+     "items": {
+      "format": "float",
+      "type": "number"
+     },
+     "type": "array"
+    },
+    "segment": {
+     "$ref": "#/$defs/GoogleAiGenerativelanguageV1betaSegment"
+    },
+    "groundingChunkIndices": {
+     "items": {
+      "type": "integer",
+      "format": "int32"
+     },
+     "type": "array"
+    },
+    "renderedParts": {
+     "type": "array",
+     "items": {
+      "type": "integer",
+      "format": "int32"
+     }
+    }
+   },
+   "type": "object"
+  },
+  "GoogleAiGenerativelanguageV1betaSegment": {
+   "type": "object",
+   "properties": {
+    "endIndex": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "text": {
+     "type": "string"
+    },
+    "partIndex": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "startIndex": {
+     "format": "int32",
+     "type": "integer"
+    }
+   }
+  },
+  "UrlContextMetadata": {
+   "type": "object",
+   "properties": {
+    "urlMetadata": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/UrlMetadata"
+     }
+    }
+   }
+  },
+  "UrlMetadata": {
+   "type": "object",
+   "properties": {
+    "retrievedUrl": {
+     "type": "string"
+    },
+    "urlRetrievalStatus": {
+     "enum": [
+      "URL_RETRIEVAL_STATUS_UNSPECIFIED",
+      "URL_RETRIEVAL_STATUS_SUCCESS",
+      "URL_RETRIEVAL_STATUS_ERROR",
+      "URL_RETRIEVAL_STATUS_PAYWALL",
+      "URL_RETRIEVAL_STATUS_UNSAFE"
+     ],
+     "enumDescriptions": [
+      "Default value. This value is unused.",
+      "Url retrieval is successful.",
+      "Url retrieval is failed due to error.",
+      "Url retrieval is failed because the content is behind paywall.",
+      "Url retrieval is failed because the content is unsafe."
+     ],
+     "type": "string"
+    }
+   }
+  },
+  "CitationMetadata": {
+   "type": "object",
+   "properties": {
+    "citationSources": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/CitationSource"
+     }
+    }
+   }
+  },
+  "CitationSource": {
+   "properties": {
+    "startIndex": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "license": {
+     "type": "string"
+    },
+    "uri": {
+     "type": "string"
+    },
+    "endIndex": {
+     "type": "integer",
+     "format": "int32"
+    }
+   },
+   "type": "object"
+  },
+  "Content": {
+   "type": "object",
+   "properties": {
+    "parts": {
+     "items": {
+      "$ref": "#/$defs/Part"
+     },
+     "type": "array"
+    },
+    "role": {
+     "type": "string"
+    }
+   }
+  },
+  "Part": {
+   "properties": {
+    "videoMetadata": {
+     "$ref": "#/$defs/VideoMetadata"
+    },
+    "thought": {
+     "type": "boolean"
+    },
+    "codeExecutionResult": {
+     "$ref": "#/$defs/CodeExecutionResult"
+    },
+    "partMetadata": {
+     "type": "object",
+     "additionalProperties": {}
+    },
+    "mediaProcessing": {
+     "enum": [
+      "MEDIA_PROCESSING_UNSPECIFIED",
+      "STATIC",
+      "AGENTIC"
+     ],
+     "enumDescriptions": [
+      "Defaults to model-specific processing.",
+      "Fixed-rate frame extraction. All frames placed in context.",
+      "Model-driven dynamic navigation. Recommended for most use cases."
+     ],
+     "type": "string"
+    },
+    "functionResponse": {
+     "$ref": "#/$defs/FunctionResponse"
+    },
+    "toolCall": {
+     "$ref": "#/$defs/ToolCall"
+    },
+    "toolResponse": {
+     "$ref": "#/$defs/ToolResponse"
+    },
+    "text": {
+     "type": "string"
+    },
+    "inlineData": {
+     "$ref": "#/$defs/Blob"
+    },
+    "fileData": {
+     "$ref": "#/$defs/FileData"
+    },
+    "thoughtSignature": {
+     "type": "string",
+     "format": "byte"
+    },
+    "audioTranscription": {
+     "$ref": "#/$defs/AudioTranscription"
+    },
+    "executableCode": {
+     "$ref": "#/$defs/ExecutableCode"
+    },
+    "functionCall": {
+     "$ref": "#/$defs/FunctionCall"
+    },
+    "speechMetadata": {
+     "$ref": "#/$defs/SpeechMetadata"
+    },
+    "mediaResolution": {
+     "$ref": "#/$defs/V1mainMediaResolution"
+    }
+   },
+   "type": "object"
+  },
+  "VideoMetadata": {
+   "properties": {
+    "fps": {
+     "format": "double",
+     "type": "number"
+    },
+    "startOffset": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "endOffset": {
+     "type": "string",
+     "format": "google-duration"
+    }
+   },
+   "type": "object"
+  },
+  "CodeExecutionResult": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "output": {
+     "type": "string"
+    },
+    "outcome": {
+     "enumDescriptions": [
+      "Unspecified status. This value should not be used.",
+      "Code execution completed successfully. `output` contains the stdout, if any.",
+      "Code execution failed. `output` contains the stderr and stdout, if any.",
+      "Code execution ran for too long, and was cancelled. There may or may not be a partial `output` present."
+     ],
+     "enum": [
+      "OUTCOME_UNSPECIFIED",
+      "OUTCOME_OK",
+      "OUTCOME_FAILED",
+      "OUTCOME_DEADLINE_EXCEEDED"
+     ],
+     "type": "string"
+    }
+   }
+  },
+  "FunctionResponse": {
+   "properties": {
+    "willContinue": {
+     "type": "boolean"
+    },
+    "response": {
+     "type": "object",
+     "additionalProperties": {}
+    },
+    "parts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/FunctionResponsePart"
+     }
+    },
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "scheduling": {
+     "type": "string",
+     "enumDescriptions": [
+      "This value is unused.",
+      "Only add the result to the conversation context, do not interrupt or trigger generation.",
+      "Add the result to the conversation context, and prompt to generate output without interrupting ongoing generation.",
+      "Add the result to the conversation context, interrupt ongoing generation and prompt to generate output."
+     ],
+     "enum": [
+      "SCHEDULING_UNSPECIFIED",
+      "SILENT",
+      "WHEN_IDLE",
+      "INTERRUPT"
+     ]
+    }
+   },
+   "type": "object"
+  },
+  "FunctionResponsePart": {
+   "properties": {
+    "inlineData": {
+     "$ref": "#/$defs/FunctionResponseBlob"
+    }
+   },
+   "type": "object"
+  },
+  "FunctionResponseBlob": {
+   "type": "object",
+   "properties": {
+    "data": {
+     "type": "string",
+     "format": "byte"
+    },
+    "mimeType": {
+     "type": "string"
+    }
+   }
+  },
+  "ToolCall": {
+   "properties": {
+    "args": {
+     "type": "object",
+     "additionalProperties": {}
+    },
+    "id": {
+     "type": "string"
+    },
+    "toolName": {
+     "type": "string"
+    },
+    "toolType": {
+     "type": "string",
+     "enumDescriptions": [
+      "Unspecified tool type.",
+      "Google search tool, maps to Tool.google_search.search_types.web_search.",
+      "Image search tool, maps to Tool.google_search.search_types.image_search.",
+      "URL context tool, maps to Tool.url_context.",
+      "Google maps tool, maps to Tool.google_maps.",
+      "File search tool, maps to Tool.file_search."
+     ],
+     "enum": [
+      "TOOL_TYPE_UNSPECIFIED",
+      "GOOGLE_SEARCH_WEB",
+      "GOOGLE_SEARCH_IMAGE",
+      "URL_CONTEXT",
+      "GOOGLE_MAPS",
+      "FILE_SEARCH"
+     ]
+    }
+   },
+   "type": "object"
+  },
+  "ToolResponse": {
+   "properties": {
+    "response": {
+     "type": "object",
+     "additionalProperties": {}
+    },
+    "id": {
+     "type": "string"
+    },
+    "toolType": {
+     "enum": [
+      "TOOL_TYPE_UNSPECIFIED",
+      "GOOGLE_SEARCH_WEB",
+      "GOOGLE_SEARCH_IMAGE",
+      "URL_CONTEXT",
+      "GOOGLE_MAPS",
+      "FILE_SEARCH"
+     ],
+     "type": "string",
+     "enumDescriptions": [
+      "Unspecified tool type.",
+      "Google search tool, maps to Tool.google_search.search_types.web_search.",
+      "Image search tool, maps to Tool.google_search.search_types.image_search.",
+      "URL context tool, maps to Tool.url_context.",
+      "Google maps tool, maps to Tool.google_maps.",
+      "File search tool, maps to Tool.file_search."
+     ]
+    }
+   },
+   "type": "object"
+  },
+  "Blob": {
+   "properties": {
+    "mimeType": {
+     "type": "string"
+    },
+    "displayName": {
+     "type": "string"
+    },
+    "data": {
+     "format": "byte",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "FileData": {
+   "type": "object",
+   "properties": {
+    "fileUri": {
+     "type": "string"
+    },
+    "displayName": {
+     "type": "string"
+    },
+    "mimeType": {
+     "type": "string"
+    }
+   }
+  },
+  "AudioTranscription": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string"
+    },
+    "speakerLabel": {
+     "type": "string"
+    },
+    "words": {
+     "items": {
+      "$ref": "#/$defs/WordInfo"
+     },
+     "type": "array"
+    }
+   }
+  },
+  "WordInfo": {
+   "properties": {
+    "endOffset": {
+     "type": "string",
+     "format": "google-duration"
+    },
+    "word": {
+     "type": "string"
+    },
+    "startOffset": {
+     "type": "string",
+     "format": "google-duration"
+    }
+   },
+   "type": "object"
+  },
+  "ExecutableCode": {
+   "properties": {
+    "language": {
+     "enum": [
+      "LANGUAGE_UNSPECIFIED",
+      "PYTHON"
+     ],
+     "type": "string",
+     "enumDescriptions": [
+      "Unspecified language. This value should not be used.",
+      "Python >= 3.10, with numpy and simpy available. Python is the default language."
+     ]
+    },
+    "code": {
+     "type": "string"
+    },
+    "id": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "FunctionCall": {
+   "type": "object",
+   "properties": {
+    "args": {
+     "additionalProperties": {},
+     "type": "object"
+    },
+    "name": {
+     "type": "string"
+    },
+    "id": {
+     "type": "string"
+    }
+   }
+  },
+  "SpeechMetadata": {
+   "properties": {
+    "style": {
+     "type": "string"
+    },
+    "speaker": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "V1mainMediaResolution": {
+   "type": "object",
+   "properties": {
+    "level": {
+     "enum": [
+      "MEDIA_RESOLUTION_UNSPECIFIED",
+      "MEDIA_RESOLUTION_LOW",
+      "MEDIA_RESOLUTION_MEDIUM",
+      "MEDIA_RESOLUTION_HIGH",
+      "MEDIA_RESOLUTION_ULTRA_HIGH"
+     ],
+     "enumDescriptions": [
+      "Media resolution has not been set.",
+      "Media resolution set to low.",
+      "Media resolution set to medium.",
+      "Media resolution set to high.",
+      "Media resolution set to ultra high."
+     ],
+     "type": "string"
+    }
+   }
+  },
+  "GroundingAttribution": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "$ref": "#/$defs/Content"
+    },
+    "sourceId": {
+     "$ref": "#/$defs/AttributionSourceId"
+    }
+   }
+  },
+  "AttributionSourceId": {
+   "type": "object",
+   "properties": {
+    "groundingPassage": {
+     "$ref": "#/$defs/GroundingPassageId"
+    },
+    "semanticRetrieverChunk": {
+     "$ref": "#/$defs/SemanticRetrieverChunk"
+    }
+   }
+  },
+  "GroundingPassageId": {
+   "type": "object",
+   "properties": {
+    "partIndex": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "passageId": {
+     "type": "string"
+    }
+   }
+  },
+  "SemanticRetrieverChunk": {
+   "type": "object",
+   "properties": {
+    "source": {
+     "type": "string"
+    },
+    "chunk": {
+     "type": "string"
+    }
+   }
+  },
+  "ModelStatus": {
+   "properties": {
+    "retirementTime": {
+     "type": "string",
+     "format": "google-datetime"
+    },
+    "message": {
+     "type": "string"
+    },
+    "modelStage": {
+     "enumDeprecated": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+     ],
+     "enumDescriptions": [
+      "Unspecified model stage.",
+      "The underlying model is subject to lots of tunings.",
+      "Models in this stage are for experimental purposes only.",
+      "Models in this stage are more mature than experimental models.",
+      "Models in this stage are considered stable and ready for production use.",
+      "If the model is on this stage, it means that this model is on the path to deprecation in near future. Only existing customers can use this model.",
+      "Models in this stage are deprecated. These models cannot be used.",
+      "Models in this stage are retired. These models cannot be used."
+     ],
+     "type": "string",
+     "enum": [
+      "MODEL_STAGE_UNSPECIFIED",
+      "UNSTABLE_EXPERIMENTAL",
+      "EXPERIMENTAL",
+      "PREVIEW",
+      "STABLE",
+      "LEGACY",
+      "DEPRECATED",
+      "RETIRED"
+     ]
+    }
+   },
+   "type": "object"
+  },
+  "CountTokensResponse": {
+   "properties": {
+    "promptTokensDetails": {
+     "items": {
+      "$ref": "#/$defs/ModalityTokenCount"
+     },
+     "type": "array"
+    },
+    "totalTokens": {
+     "type": "integer",
+     "format": "int32"
+    },
+    "cachedContentTokenCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "cacheTokensDetails": {
+     "items": {
+      "$ref": "#/$defs/ModalityTokenCount"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  }
+ }
+}

@@ -7,8 +7,9 @@
  * Every client sends the scenario's tag in its first user message (`[scenario:text]`); the fake
  * model reads it back to pick its answer.
  */
-import type { PlugEvent, PlugRequest } from "../../src/contract.js"
+import type { PlugRequest } from "../../src/contract.js"
 import { ev } from "../support/fixtures.js"
+import type { ScriptStep } from "../support/model-caller.js"
 
 export const SCENARIOS = [
   "text",
@@ -29,6 +30,9 @@ export const SCENARIOS = [
   "count-tokens",
   "document",
   "model-id",
+  "prompt-array",
+  "logprobs",
+  "cancel",
 ] as const
 export type Scenario = (typeof SCENARIOS)[number]
 
@@ -52,6 +56,9 @@ export const SCENARIO_DESCRIPTIONS: Record<Scenario, string> = {
   "count-tokens": "Token counting before a request (count_tokens, countTokens) returns a count (#102, #103).",
   document: "A PDF sent as a document block reaches the model as a document (#102).",
   "model-id": "A model id with a `/` (provider/model) is passed through to the route unchanged (#103).",
+  "prompt-array": "Legacy completions with an array prompt: one choice per prompt, each with its index (#106).",
+  logprobs: "Logprobs absent: a client that does not ask gets null logprobs; one that asks is refused with a 400 (#105).",
+  cancel: "The client aborts mid-stream and the server sees the abort on the model call (#101).",
 }
 
 export const TEXT = "Hello from plugboard"
@@ -59,6 +66,8 @@ export const STREAM_DELTAS = ["Hello ", "from ", "plugboard"]
 export const TOOL_ANSWER = "It is sunny in Oslo"
 export const PARALLEL_ANSWER = "Sunny in Oslo, rainy in Rome"
 export const STRUCTURED = { answer: "42" }
+/** A catalog id with a slash, sent as is (#103 model-id). */
+export const CATALOG_ID = "test/echo"
 export const MULTI_TURN_ANSWER = "Yes, again"
 export const THINKING = "Weighing the question."
 export const USAGE = { inputTokens: 11, outputTokens: 7 }
@@ -84,7 +93,7 @@ const scenarioOf = (request: PlugRequest): Scenario | undefined => {
 const answered = (request: PlugRequest) => request.messages.some((message) => message.role === "tool")
 
 /** The fake model: answers each scenario the way a real model would. */
-export function script(request: PlugRequest): PlugEvent[] {
+export function script(request: PlugRequest): ScriptStep[] {
   const finish = ev.finish("stop", USAGE)
   switch (scenarioOf(request)) {
     case "text":
@@ -93,14 +102,21 @@ export function script(request: PlugRequest): PlugEvent[] {
     case "stream-usage":
     case "developer":
     case "echo-suffix":
-    case "stop-sequence":
     case "count-tokens":
     case "model-id":
+    case "prompt-array":
+    case "logprobs":
       return [ev.text(TEXT), finish]
+    case "cancel":
+      // Some text, then no answer: the client has to abort the call.
+      return [ev.text("Hel"), "hang"]
     case "document": {
       const pdf = request.messages.flatMap((message) => message.content).some((part) => part.type === "media" && part.mediaType === "application/pdf")
       return [ev.text(pdf ? "document: application/pdf" : "no document"), finish]
     }
+    case "stop-sequence":
+      // The sequence is part of what the model produced: plugboard must remove it and report it (#145).
+      return [ev.text(`${TEXT}END`), finish]
     case "multi-turn":
       // The second user turn is the only one with more than one user message.
       return [ev.text(request.messages.filter((message) => message.role === "user").length > 1 ? MULTI_TURN_ANSWER : TEXT), finish]

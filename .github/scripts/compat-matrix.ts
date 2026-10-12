@@ -17,7 +17,7 @@ const [file, ...flags] = process.argv.slice(2)
 if (!file) throw new Error("usage: compat-matrix.ts <results.json> [--summary] [--docs <path>]")
 const results = JSON.parse(readFileSync(file, "utf8")) as MatrixResult[]
 
-const CELL = { pass: "pass", fail: "**FAIL**", gap: "gap", "n/a": "n/a" } as const
+const CELL = { pass: "pass", fail: "**FAIL**", gap: "gap", "n/a": "n/a", todo: "todo" } as const
 // Rows in the order clients.ts lists them.
 const rows = CLIENTS.map((client) => results.filter((result) => result.client === client.name && result.endpoint === client.endpoint)).filter((cases) => cases.length > 0)
 
@@ -30,7 +30,7 @@ const table = [
     const cells = SCENARIOS.map((scenario) => {
       const result = cases.find((entry) => entry.scenario === scenario)
       if (!result) return "n/a"
-      if (result.note && result.outcome !== "pass") {
+      if (result.note && (result.outcome === "gap" || result.outcome === "fail")) {
         notes.push(`${client}, ${scenario}: ${result.note}`)
         return `${CELL[result.outcome]} [${notes.length}]`
       }
@@ -41,7 +41,7 @@ const table = [
 ].join("\n")
 
 const failed = results.filter((result) => result.outcome === "fail").length
-const counts = (["pass", "gap", "fail", "n/a"] as const).map((outcome) => `${results.filter((result) => result.outcome === outcome).length} ${outcome}`).join(", ")
+const counts = (["pass", "gap", "fail", "n/a", "todo"] as const).map((outcome) => `${results.filter((result) => result.outcome === outcome).length} ${outcome}`).join(", ")
 const legend = SCENARIOS.map((scenario) => `- **${scenario}**: ${SCENARIO_DESCRIPTIONS[scenario]}`).join("\n")
 const footnotes = notes.map((note, index) => `${index + 1}. ${note}`).join("\n")
 
@@ -67,7 +67,7 @@ if (flags.includes("--docs") && docs) {
       "bun .github/scripts/compat-matrix.ts compat.json --docs docs/compatibility.md",
       "```",
       "",
-      "Each official SDK runs the same scenarios against plugboard, in CI on every push. The model behind plugboard is scripted, so this checks the clients against plugboard's wire formats, not a provider's behaviour; the live provider matrix is tracked in #99. **pass**: the client worked as its docs describe. **gap**: a known incompatibility, explained in the notes. **n/a**: the endpoint has no such feature.",
+      "Each official SDK runs the same scenarios against plugboard, in CI on every push. The model behind plugboard is scripted, so this checks the clients against plugboard's wire formats, not a provider's behaviour; the live provider matrix is tracked in #99. **pass**: the client worked as its docs describe. **gap**: a known incompatibility, explained in the notes. **n/a**: the endpoint has no such feature. **todo**: no case written yet (#148); a todo is work left, not a verdict.",
       "",
       body,
     ].join("\n"),

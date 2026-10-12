@@ -14,7 +14,8 @@ import { FakeModelCaller } from "../support/model-caller.js"
 import { CLIENTS, ENDPOINTS, type Target } from "./clients.js"
 import { SCENARIOS, script, type Scenario } from "./scenarios.js"
 
-export type Outcome = "pass" | "fail" | "gap" | "n/a"
+/** `todo`: no case written yet (#148). `n/a`: the client's endpoint has no such feature, with the reason in `note`. */
+export type Outcome = "pass" | "fail" | "gap" | "n/a" | "todo"
 export interface MatrixResult {
   readonly client: string
   readonly endpoint: keyof typeof ENDPOINTS
@@ -30,8 +31,9 @@ const results: MatrixResult[] = []
 
 beforeAll(async () => {
   // maxN 2: the default of 1 refuses n > 1 (each choice is a model call); the matrix allows two so the n scenario runs.
-  server = await startRoute({ caller: new FakeModelCaller((request) => script(request)), options: { keys: { compat: KEY }, aliases: { fast: "test/echo" }, maxN: 2 } })
-  target = { origin: server.url, apiKey: KEY }
+  const caller = new FakeModelCaller((request) => script(request))
+  server = await startRoute({ caller, options: { keys: { compat: KEY }, aliases: { fast: "test/echo" }, maxN: 2 } })
+  target = { origin: server.url, apiKey: KEY, caller }
 })
 
 afterAll(async () => {
@@ -46,7 +48,8 @@ for (const client of CLIENTS) {
       const entry = client.cases[scenario]
       const base = { client: client.name, endpoint: client.endpoint, scenario }
       if (!entry) {
-        results.push({ ...base, outcome: "n/a" })
+        const reason = client.na?.[scenario]
+        results.push(reason ? { ...base, outcome: "n/a", note: reason } : { ...base, outcome: "todo" })
         continue
       }
       const name = `${client.name} | ${client.endpoint} | ${scenario}`
@@ -73,5 +76,9 @@ for (const client of CLIENTS) {
 
 test("every client covers every scenario its endpoint supports, or says why not", () => {
   expect(results.length + CLIENTS.reduce((sum, client) => sum + Object.keys(client.cases).length, 0)).toBeGreaterThan(0)
-  for (const client of CLIENTS) for (const scenario of Object.keys(client.cases)) expect(SCENARIOS).toContain(scenario as Scenario)
+  for (const client of CLIENTS) {
+    for (const scenario of [...Object.keys(client.cases), ...Object.keys(client.na ?? {})]) expect(SCENARIOS).toContain(scenario as Scenario)
+    // A scenario is a case, an n/a with its reason, or a todo: never both a case and an n/a.
+    for (const scenario of Object.keys(client.na ?? {})) expect(client.cases).not.toHaveProperty(scenario)
+  }
 })
