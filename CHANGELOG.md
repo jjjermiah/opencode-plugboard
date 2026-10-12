@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.23.0] - 2026-10-12: What the Red Team Found
+
+**Full diff:** [v0.22.0...v0.23.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...v0.23.0)
+
 The first red-team round ([#269](https://github.com/jjjermiah/opencode-plugboard/issues/269), run by [docs/red-team.md](https://jjjermiah.github.io/opencode-plugboard/red-team)) attacked a dev server and, within strict limits, a real deployment. Auth, app isolation, server tools, SSRF and body limits held. These are its findings, all fixed. This release also adds the security workflows and moves releases to pull requests.
 
 ### Fixed
@@ -37,6 +43,300 @@ The first red-team round ([#269](https://github.com/jjjermiah/opencode-plugboard
 ### Changed
 
 - **Releases go through a pull request**: `main` is protected, the release script opens a `release/vX.Y.Z` PR, merges it once CI passes and tags the merge commit.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (27 commits)</summary>
+
+#### Features
+
+**feat(config): add apps.<name>.historyUrl, false hides the session link** ([`d3c3915`](https://github.com/jjjermiah/opencode-plugboard/commit/d3c391506615e7ac938b9dfa2f15c091ef580a45))
+
+Option historyUrl (#77) is global, and every response with x-plugboard-session carries x-plugboard-session-url filled from it. That link points at the OpenCode server's own address and port, so any app key holder could read the internal address of the server from a plain answer. The README never mentioned the header, and an operator had no way to keep the link from one app without dropping it for all of them.
+
+apps.<name>.historyUrl is now a per-app field. A string is that app's own template, checked the same way as the global one, and its errors name the app option. false turns the link off for the app: no x-plugboard-session-url and no session_url= log field. Unset inherits the global template.
+
+Routes read the template through one lookup, historyTemplate(options, app), instead of options.historyUrl, in all five front-ends and in the fan-out. The policy only holds the field when it is set, so an app with only a key is unchanged.
+
+Rejected: removing the header for everyone. It is useful to trusted apps and to the operator, and the docs now say what it reveals instead.
+
+Rejected: a flag on the app key. A per-app template covers the same case and reuses the validation the global option already has.
+
+Tests: test/unit/session-link.test.ts (load validation and the lookup, global and per app) and test/http/session-link.test.ts (three apps: false, own template, inherited; and n above 1 for the false app). The false cases were refused as an unknown option before the change, so they failed. The docs (configuration.md) state the disclosure and the new field.
+
+Fixes #280
+
+#### Fixes
+
+**fix(fallback): name the answering model on every answer, not only lists** ([`cef62d3`](https://github.com/jjjermiah/opencode-plugboard/commit/cef62d31db7c85a588f32d39ffdfa15a2eff716a))
+
+x-plugboard-model was set only when an alias was written as a list. The fallback wrapper (withFallbacks) reported the served model from its chain path alone, so a single-target alias ("fast": "a/x") and a canonical id ("a/x") got no header on any front-end, streamed or not. The docs and the README example said every answer names the model that answered.
+
+The plain path now reports it too, before the first non-error event, so a failed call still reports nothing. ServedModel gained `chain`: only a list alias echoes the target in the response body (reportServed runs its body callback for chain only), so a single-target alias keeps the alias in the body as before. Usage and the cache already read onServed and need no change: the target equals the resolved request ref for these calls.
+
+Setting the header in each route was rejected. Six routes would each need the same call, and the cache hit path replays onServed already, so the shared wrapper is the one place that keeps them in step.
+
+Tests: test/http/served-model.test.ts (new, 30 cases: five front-ends, json and stream, alias and canonical) fails 21 of them before the change and passes after; test/unit/fallback.test.ts pins the plain-call report. Full bun test passes (1962).
+
+Fixes #279
+
+**fix(gemini): say the model did not match the schema in structured 502** ([`3822ab5`](https://github.com/jjjermiah/opencode-plugboard/commit/3822ab552df958bd87ef56dc06da1077925a6682))
+
+A structured turn that ended with prose (or any text that is not the schema's JSON) failed with 502 structured_output_missing and the message "The model finished without calling the `respond` tool, so there is no structured output". The caller never sends a respond tool and cannot see one, so the message named something it could not act on, and it did not say the model had answered in prose.
+
+structuredMissing now takes no argument and says the model did not return JSON matching the response schema, and that the expected JSON (keys and types) should be stated in the prompt. The code stays structured_output_missing, so clients that branch on it are unaffected. It is one shared function, so Chat Completions, Responses, Gemini and legacy completions all change at once, and the text names no internal tool anywhere.
+
+Rejected: quoting the start of the model's text in the message, as the issue suggested. Provider text stays out of caller-visible errors (I13), and the caller already has the text in the response it did get.
+
+Tests: the Gemini HTTP tests and the completions unit test pinned the old text and now pin the new one. New unit tests in openai-response and gemini-response assert the message and that it does not contain "respond". Full bun test passes (1964).
+
+Fixes #282
+
+**fix(openai): refuse a non-boolean stream instead of treating it as false** ([`66727b7`](https://github.com/jjjermiah/opencode-plugboard/commit/66727b782dfa4d9b8ceb866289b7ee814df2f2e6))
+
+Chat Completions, Responses and legacy completions read `stream` with `=== true`, so any other value was a non-stream request. A client that sent "yes" or "true" as a string got a whole JSON answer with no error, and a client waiting for SSE read the wrong framing. Anthropic Messages already refused a non-boolean stream; the other three now match it.
+
+Each decoder answers a value that is neither absent, null nor a boolean with 400 invalid_request, param "stream", message "stream must be a boolean", the same way `n` is refused. The check runs before any model call, so no session or budget is spent. Gemini takes stream from the URL (alt=sse and the stream method), so it has no body field to check.
+
+Rejected: coercing "true" to true. A string that means true is still a client bug, and guessing hides it.
+
+Tests: test/http/stream-type.test.ts (new) sends six bad values to each of the four routes and asserts the 400 and that the model caller was never called, and sends null, absent, true and false, which must still answer. Twenty of the bad-value cases fail without the checks. test/unit/openai- request.test.ts gets the two chat rejections, and its test that pinned "yes" as false now pins null as false. Full bun test passes (2006).
+
+Fixes #287
+
+**fix(openai): answer an unusable data: image with 400, not a 500** ([`2c622fc`](https://github.com/jjjermiah/opencode-plugboard/commit/2c622fc4d27bab507307ce2b8735d9abf0e2d03f))
+
+A data: image that could not be sent to a provider (a text/html media type, empty or malformed base64, or bytes with no PNG, JPEG, GIF or WebP signature) reached backend preparation. The host dropped the attachment and the caller got 500 backend_preparation_failed, which counted a caller's bad input as a server error in usage and metrics, and told a retrying client to send it again.
+
+The check now runs in each decoder, before a session, a budget or a cache step is touched: src/image.ts (imageProblem) refuses a data: image URL that is not an image/* type, not well-formed base64, or not a supported image. The image paths are Chat Completions image_url, Responses input_image, Anthropic base64 image blocks and Gemini inlineData with an image/* type. Each answers 400 invalid_request in its own error shape, naming the image. Remote and non-data URLs are not checked here (the fetch path does that), and files and PDFs (file parts, document blocks, non-image inlineData) are not checked at all, so they keep their current behaviour.
+
+Rejected: checking in prepareImages. It runs after the route has already resolved the model and taken a limits slot, and it cannot tell an image part from a file part, so it would need the same information the decoder has.
+
+Rejected: sniffing every format the host might take (BMP, TIFF, HEIC). The providers take PNG, JPEG, GIF and WebP, so the others are refused early.
+
+Fixture change: unit tests that decoded placeholder bytes ("AA", "AAAA", "BB") as images now use a real PNG or a JPEG header, because those inputs are not images any more. tokens.test.ts is untouched: it never runs the decoder.
+
+Tests: test/unit/image.test.ts (new, the accepted formats and each refusal) and test/http/invalid-image.test.ts (new, 9 cases on chat, responses, Anthropic and Gemini; the model caller is never called). With the check disabled all 9 HTTP cases fail with the 500. Full bun test passes (2031).
+
+Fixes #286
+
+**fix(metrics): answer /metrics to the admin key alone when adminKey is set** ([`a66bec2`](https://github.com/jjjermiah/opencode-plugboard/commit/a66bec23ffcdf374489a58e5dcbe438849de9260))
+
+With metrics on, GET /metrics used the same authentication as /v1, so any app key read the series of every app: plugboard_requests_total, tokens, latency, limits and cache counts, all labelled with the app name. One app key holder could learn the other apps on the server and each one's traffic profile. The usage report and /v1/usage already scope by key (I24), and /metrics did not.
+
+With adminKey set, /metrics now takes the admin key only, checked the way the usage route checks it: no key or a wrong one is 401, an app key is 403 admin_key_required and its body carries no series. The admin key reads every app, as before for the admin path.
+
+Without adminKey the behaviour does not change: any app key still reads every app's series. Scoping an app key to its own app would mean changing what keyless and single-key operators see, and the issue offered the admin-only choice, so the chosen default is documented in configuration.md, SECURITY.md and architecture.md instead.
+
+Rejected: scoping each app key to its own app label. It works for an operator without adminKey too, but it changes a response that existing scrapers depend on, and it would still leave the names of other apps out of reach only per series, not in the metric list. Left for a later decision.
+
+Tests: test/http/observability.test.ts gets three cases: with adminKey (no key 401, app key 403 with no series in the body, admin key 200 with every app), and without adminKey (an app key reads every app, pinned as the choice). The 403 case failed before the change (the app key got 200). Mutation entry I24-metrics-app-key-reads-all-apps removes the check; `bun run mutations -- --only` kills it (2 failing lines).
+
+Fixes #285
+
+**fix(openai): refuse unusable file parts with 400, keep the 500 message generic** ([`b4c23c2`](https://github.com/jjjermiah/opencode-plugboard/commit/b4c23c24527f8153e15014fcdf05b2d665547281))
+
+A chat `file` part with bare base64 (no media type) reached backend preparation as application/octet-stream. The host did not deliver it, so the caller got 500 backend_preparation_failed. The same thing happened to Responses input_file data that was not a PDF. The 500 message named host internals ("1 attachment(s) not delivered by the host", "2 tool(s) without a seed tool", "Prepared 1 attachment(s) for a request with 2"), which told a caller how many attachments the host dropped.
+
+File data is now checked in the decoder (pdfProblem in src/image.ts), as image data is (#286). A PDF given as a data:application/pdf;base64 URL is accepted, with a %PDF signature check. The compatibility matrix already sends that form on OpenAI Chat (test/compat/clients.ts, `document`), so it works and stays working. Bare base64, any other type and broken base64 are a 400 invalid_file with the field named in param. Checked before any session, budget or cache step.
+
+Rejected: refusing every file part on Chat Completions. The docs scope Chat to images, but the compat matrix proves PDF file parts work, so refusing them would break a working client.
+
+The 500s for backend preparation now say "Could not prepare the model request", with no counts, and the counts go to the log as request.preparation_failed. Clients get the same message from the host and from the caller's own attachment count check.
+
+Not changed: the 400 for too many tools names the option `maxTools`. It is a caller error with the plugboard option named, not a host detail.
+
+Tests: test/unit/image.test.ts (pdfProblem), test/unit/openai-request.test.ts (PDF kept, bare base64 refused), test/unit/responses-request.test.ts (PDF kept, non-PDF refused), test/http/invalid-image.test.ts (chat bare base64 is a 400 and the caller is not called), test/session/context.test.ts (the generic message, and the counts in the log). Fixtures that sent a non-PDF input_file were changed to a real PDF prefix, and the coverage-manifest title for the chat images cell follows the renamed test. Before the change the bare-base64 chat case returned 500 and the context test failed on the message text.
+
+Fixes #288
+
+**fix(responses): echo strict on function tools, false when the caller omitted it** ([`2358100`](https://github.com/jjjermiah/opencode-plugboard/commit/2358100a01bad6e121c10357602e3af79494ba2a))
+
+The Responses response object echoes the caller's tools. It echoed the request objects as sent, so a function tool without `strict` came back without it. The OpenAI FunctionTool schema (test/fixtures/specs/openai.json, vendored) requires `strict` as a boolean, so a client that validates the response against the spec saw a non-conforming object. The SDK types agree: the typed goldens in test/types/wire.ts fail the type check without the field.
+
+echoTool (src/responses/request.ts) gives each function tool `strict`: the caller's value when it is true, else false. That covers absent and null, which the spec does not allow, and the default is false as the OpenAI spec gives it. Other tool types are echoed as sent. The request is unchanged: plugboard still offers the tools to the model without `strict`, as before.
+
+Rejected: echoing only the caller's exact value. Absent would then stay absent and fail the schema, which is the bug.
+
+Tests: test/compat/conformance.test.ts gets two cases, a tool without `strict` (echoed as false) and one with `strict: true` (echoed as true), each checking the whole Response against the vendored schema. The first failed before the change: the tool was echoed without `strict`. test/unit/responses-request.test.ts (the envelope test) now expects the default. The wire goldens were regenerated (`bun test/types/generate.ts`); the diff is only the four added `strict` fields. There was no existing test.failing for this; I added the tests as passing ones since the fix is in.
+
+Fixes #289
+
+#### Tests
+
+**test(gemini): pin five stop sequences as pass-through and six as a 400** ([`a96f940`](https://github.com/jjjermiah/opencode-plugboard/commit/a96f9408fb8ff756f8a7baec5b41e614a8045076))
+
+The red-team fuzzer sent the same Gemini request with five stopSequences and got a 400 once and a 502 once. Gemini's documented limit is five (docs/gemini.md), and the decoder already accepts exactly five and refuses six with a 400 on generationConfig.stopSequences. The decoder reads the field with a plain lookup (field() in src/gemini/request.ts), so the same input cannot give two answers there.
+
+So the variance is downstream. The likely cause is a provider that accepts fewer stop sequences than Gemini does (OpenAI-family chat takes four), which would surface as a provider 400, while the 502 came from a different answer path. I could not reproduce either status here: there is no live provider in the test run, and I did not run the fuzzer's exact request against a live server. This commit does not claim a root cause for the 502.
+
+Decision: plugboard keeps five as the limit and passes them through unchanged. Clamping to four for providers that take fewer would silently drop a caller's stop sequence, which changes an answer, so it is left as a follow-up for a per-model limit.
+
+Tests: test/unit/gemini-stop.test.ts (new) parses five sequences three times, expecting the same five back each time, and six three times, expecting the same 400 on generationConfig.stopSequences. Both pass before and after, since the decoder is unchanged; they pin the behaviour the report depends on. The commit is test-only, so the type is test and the reference is Refs #269, not Fixes.
+
+**test(tests): raise test-count and coverage floors for the red-team fixes** ([`031c0f2`](https://github.com/jjjermiah/opencode-plugboard/commit/031c0f24989eb3d48e5a1a75bd826313c717b451))
+
+Ran test-gates.ts with --ratchet after the round-1 fixes added tests in the http, session and unit layers. Floors only move up: the test count rose from 1940 to 2050, line coverage of src rose to 98.3 percent (floor 98.2), and functions to 93.8 percent (floor 93.6). No floor was lowered. The coverage run and the gate passed before the ratchet, so the new values are the current measurements, not targets.
+
+Refs #269
+
+#### Docs
+
+**docs(docs): add self-hosted app pages for ten apps** ([`c21db8e`](https://github.com/jjjermiah/opencode-plugboard/commit/c21db8e45d57489dbc849967847e5254da0032b7))
+
+Adds one page per app under docs/self-hosted/: Karakeep, Frigate, paperless-gpt, Mealie, Khoj, Nextcloud Assistant, Mattermost AI plugin, Open Notebook, Langflow and SparkyFitness.
+
+Each page gives the plugboard options block (an app key, aliases and an apps policy), the app's own config pointing at plugboard, what works through plugboard and what does not, gotchas, and the upstream sources with the date checked. Embeddings, audio and image generation are not served by plugboard, so each page names the feature that needs another provider.
+
+The pages are docs-verified against upstream docs and source as of 2026-10-11. None was run live. Config names come from the upstream files cited on each page.
+
+Refs #251
+
+**docs(docs): add self-hosted apps overview and sidebar group** ([`20e0c4e`](https://github.com/jjjermiah/opencode-plugboard/commit/20e0c4eb2f664132a3f9e1e3e2460b43f6a62cbf))
+
+Adds docs/self-hosted.md with a status table of twenty apps. Each row says whether the app works, works for chat only, is not possible, or is not checked. It links to the app's page or to its issue (#237, #243 to #250).
+
+Also adds a networking section that points at remote-access and the any-app client page, since most of these apps run in containers.
+
+Adds a Self-hosted apps group to the VitePress sidebar in docs/.vitepress/config.ts. The docs build passes with no dead links.
+
+Refs #251
+
+**docs(docs): add runnable examples for karakeep, frigate and paperless-gpt** ([`62a391f`](https://github.com/jjjermiah/opencode-plugboard/commit/62a391f003c3824b68c7644bcb49e96d0d47fa13))
+
+Adds examples/self-hosted/karakeep (an env file and a compose override for the upstream docker-compose.yml), examples/self-hosted/frigate (a genai provider in config.yml with the vision alias and local semantic search), and examples/self-hosted/paperless-gpt (a compose service and an env file, published on loopback only because paperless-gpt has no authentication).
+
+Lists them in examples/README.md. The examples are docs-verified and not run. They are not in the npm package: bun .github/scripts/check-pack.ts passes.
+
+Refs #251
+
+**docs(docs): give SECURITY.md response targets and link the security reviews** ([`b3b34a8`](https://github.com/jjjermiah/opencode-plugboard/commit/b3b34a8a8b551763c5406b968124348943e7ae10))
+
+The old text promised a reply "within a week" and said "no formal SLA", which is vague in both directions. It now states the targets with numbers: a report is acknowledged within 7 days, and a confirmed issue is fixed within 30 days. It says these are targets for a one-person project, not a contract, and that there is no bounty. The word "disclosure" now appears with its process: the disclosure date is agreed with the reporter once a fix is ready, and an advisory names the fixed version.
+
+Supported versions and private vulnerability reporting were already stated and are unchanged. A "Security reviews" section links the new record in docs/security-reviews.md and says plainly that those reviews were AI-assisted, not a human or third-party audit.
+
+Checked with docs:build (VitePress fails on dead links, so the new link is resolved there).
+
+**docs(docs): record the AI-assisted staff reviews and prepare the Best Practices badge** ([`92bfdf3`](https://github.com/jjjermiah/opencode-plugboard/commit/92bfdf3ae88f94301ad3c329fb24fbbc02e499bd))
+
+docs/security-reviews.md is an honest record of the three staff reviews run on 2026-10-12 (security and legal, architecture and bugs, product and developer experience). It says at the top that they were AI-assisted reviews (GitHub Copilot GPT-6 Luna acting as reviewers), not a human or third-party audit, and that the maintainer is accountable for the changes. Each finding is a row with its issue, its state and the commit that fixed it. Issues #152 to #168 come from the reviews, #169 to #173 from the first live run against real providers, and the earlier 0.2.0 review is linked to its changelog section. Open findings (#158, #165) are listed as open. The commit mapping is by commit subject, which is stated in the file.
+
+No badge is based on these reviews.
+
+docs/best-practices.md is the answer sheet for the passing level of the OpenSSF Best Practices badge, criterion by criterion, with the evidence URL for each. It marks what is met, what the owner must confirm, what is not yet true (for example report_responses, which needs a 2-to-12-month window that the 1-day-old repository does not have yet) and what waits for the first CodeQL run. The owner registers at bestpractices.dev and pastes the answers; nothing is registered by this change.
+
+Both pages are in the Project sidebar of docs/.vitepress/config.ts.
+
+Checked with docs:build; both pages are in the build output.
+
+**docs(docs): add the OpenSSF Scorecard badge and a Best Practices placeholder** ([`9ee9a02`](https://github.com/jjjermiah/opencode-plugboard/commit/9ee9a0274f70de5ac3f9bbcc5201f144e72027d8))
+
+The README badge row now has the Scorecard badge after CI. It reads the published score from api.scorecard.dev, so it shows "unknown" until the first Scorecard run on main publishes a result.
+
+The Best Practices badge needs a project id that exists only after registration, so it is a commented-out line with the instructions beside it. Once the owner has the id, the line is uncommented and <id> replaced.
+
+Not added: a CodeQL badge (the workflow has not run yet, so a badge would show nothing useful) and a static "SLSA Build L2" badge (a shields.io label that says nothing the npm Provenance panel does not already show for the package, and would keep saying L2 even if a later release lost its provenance). A Socket badge is left out until its badge endpoint works again.
+
+**docs(docs): describe the pull request release flow and its required checks** ([`98a6d78`](https://github.com/jjjermiah/opencode-plugboard/commit/98a6d787baa4853f140b49fc74a3a9314873bc61))
+
+main will be protected by a ruleset that requires a pull request and the passing CI checks, so a release can no longer be a commit and a push to main. docs/releasing.md now describes the flow the release script runs: a release/vX.Y.Z branch, a pull request with the release notes, auto-merge with a merge commit, a wait for the merge (up to 60 minutes), the tag on the merge commit, then the Publish run.
+
+It lists the required checks by the job names GitHub shows on a pull request: Typecheck, test and pack; Compat kit checks; Host versions; and Lint commit messages. It says what is not required and why: the OpenCode host matrix (its job names change with each host version), the advisory benchmarks, the nightly jobs, CodeQL until it has run, and "Build the site", which is a push-only job (the docs build is a step of the package job). It names the two repository settings the flow needs: auto-merge enabled, and no required approving review, because a solo maintainer cannot approve their own pull request.
+
+The "Release files" section documents the tarball, the CycloneDX SBOM and the attestation bundle, and the gh attestation verify command for them. The dry-run description now says that the attestation and the release only print.
+
+CONTRIBUTING.md says main takes changes only through pull requests with the required checks passing, and that releases use the same rule.
+
+**docs(docs): add the red-team playbook** ([`db0af47`](https://github.com/jjjermiah/opencode-plugboard/commit/db0af4718bcff79e7c01301743f80056234bc9de))
+
+docs/red-team.md describes a repeatable red-team round: the two targets (the isolated dev server, where anything goes, and a real hub, where only realistic use through a dedicated, limited and budgeted redteam app is allowed), the rules of engagement and stop conditions, three roles with their full briefs (attacker, app builder, protocol fuzzer), the issue format with the new red-team label, and the steps to run and close a round. Linked from the Project sidebar.
+
+**docs: match the 404 param and the Anthropic 429 body to the code** ([`a5ed1c2`](https://github.com/jjjermiah/opencode-plugboard/commit/a5ed1c201e816533ef445c21f36865fdffacbb28))
+
+Two README and messages.md statements disagreed with what the server sends.
+
+1. The model_not_found example showed "param": null. A model outside the allowlist is refused with param "model" on every route that names one (src/models.ts, pinned by test/http/ingress.test.ts), so the example now shows "model".
+2. The concurrency cap sentence said the 429 returns code too_many_requests, without saying where. On /v1/messages the error object has a type and a message only, as in Anthropic's API (test/http/messages.test.ts pins the shape), so the 429 there has no code. The README now says which routes carry the code, and docs/messages.md says the Anthropic error has no code or param field.
+
+The fix is in the docs and not in the response shape: Anthropic clients read type and message, and adding a code field would be a wire change for no client that asked for one. Checked against the code and the route tests; no test changes.
+
+Fixes #283
+
+**docs(changelog): notes for the red-team round 1 fixes and the security workflows** ([`9920a88`](https://github.com/jjjermiah/opencode-plugboard/commit/9920a88200bbb4b09e964529ed889b1f66469e85))
+
+Curated [Unreleased] entries for #279 #280 #282 #283 #285 #286 #287 #288 #289, the CodeQL, Scorecard, SBOM and attestation work, the red-team playbook, the self-hosted app pages and the PR-based release flow.
+
+**docs(docs): point the readme anthropic error link at the docs site** ([`96f573b`](https://github.com/jjjermiah/opencode-plugboard/commit/96f573bf59f1272593aa00b294932ed5bea962f7))
+
+The fix for issue 283 linked docs/messages.md relatively. The README is also the docs site index page, where that path does not exist, so VitePress failed the build on a dead link. README links to docs pages use the site URL, like the others.
+
+#### CI and tooling
+
+**ci(ci): add a CodeQL workflow for the TypeScript source** ([`1ea8e6e`](https://github.com/jjjermiah/opencode-plugboard/commit/1ea8e6e77d25a11b1e1b984a537d13d01de5c496))
+
+Adds .github/workflows/codeql.yml, which runs GitHub's CodeQL analysis for javascript-typescript on pushes to main, on pull requests and weekly. The JavaScript and TypeScript sources need no build, so build-mode is none and CodeQL reads the files directly.
+
+The workflow file is the source of truth rather than the repository's default setup, so the schedule and the analysis set are versioned with the code. The default setup stays off, because enabling both would analyse the same code twice.
+
+Actions are pinned by commit SHA, the same way as the other workflows. The job asks for contents: read and security-events: write only; the top level grants nothing.
+
+Checked with actionlint (no findings). The first real run is on the pull request that lands this file.
+
+**ci(ci): publish OpenSSF Scorecard results and upload them to code scanning** ([`9ea87aa`](https://github.com/jjjermiah/opencode-plugboard/commit/9ea87aab98935f7a9a73a3baece4a34c2d5c2457))
+
+Adds .github/workflows/scorecard.yml, which runs ossf/scorecard-action on pushes to main, weekly and on branch protection changes. The score is published, so the README can show it, and the SARIF is uploaded to code scanning and kept as a workflow artifact for five days.
+
+The action's v2 rules reject results from a workflow that breaks them, so the file follows them exactly: no top-level env or defaults, no write permission at the top, id-token: write on the one analysis job only, and only the actions the scorecard-action README lists for that job (checkout, upload artifact, codeql upload-sarif and the action itself). The header comment says so, so a later edit does not add a step that gets the results rejected.
+
+Classic branch protection is not needed for the check: the repository's rulesets are readable with the default token, which is what the action expects.
+
+Checked with actionlint (no findings). The first score appears after the first run on main; the badge in README.md is added in a separate commit.
+
+**ci(ci): attest the release tarball and attach an SBOM and the attestation** ([`0c05aa1`](https://github.com/jjjermiah/opencode-plugboard/commit/0c05aa1a000565534d6161d853fe12dae7f0adf2))
+
+The release now carries three files: the npm tarball, a CycloneDX SBOM of its production dependencies (npm sbom --sbom-format cyclonedx --omit dev), and a GitHub build-provenance attestation bundle for the tarball. Scorecard's Signed-Releases check looks for a signed asset on the release, and the SBOM check looks for an SBOM asset, so both are satisfied by the same change.
+
+The publish job used to create the release itself, with write access to contents as well as the OIDC token for npm. It is now three jobs, so each holds only what it needs: publish (npm, with the OIDC token), attest (the attestation store and the OIDC token, to store and sign it) and release (contents write, to create the release). The jobs run in that order, and the release waits for both.
+
+The tarball is packed after npm publish, from the same tree, and attest checks its sha512 against the integrity npm serves for that version before it signs anything. If they differ, the job fails and nothing is attested. The first real release is the first time this comparison runs for real; a dry run cannot exercise it because the version is not on npm.
+
+Dry runs still run every step that does not write. The attestation and the release are writes (a public transparency log entry and a GitHub release), so on a dry run the attest step and the release step only print what they would do. A re-run of a release that is already on npm packs and attaches the files to the existing release with --clobber, instead of leaving it without assets.
+
+Checked with actionlint (with shellcheck, no findings). The pack, SBOM and digest commands were run locally on this tree (npm 11.19.1) and produced a tarball and a 23-component SBOM.
+
+**ci(ci): cut releases through a pull request instead of pushing main** ([`8da83df`](https://github.com/jjjermiah/opencode-plugboard/commit/8da83dfebaf632c68e68f1ccfe5613e6c20296b8))
+
+main is going to be protected by a ruleset that requires a pull request and the passing CI checks. The old release path committed chore(release) to main and pushed main with the tag, which the ruleset would refuse.
+
+With --push the script now runs from a clean main that equals origin/main: it commits the release on release/vX.Y.Z and pushes that branch, opens a pull request into main with the release notes as the body, enables auto-merge with a merge commit (the branch is deleted once merged), waits up to 60 minutes for the merge, fetches main and tags the merge commit with annotated vX.Y.Z, pushes the tag, and then follows the Publish run as before. The merge commit is on main and its package.json has the new version, so the publish workflow's tag checks pass unchanged.
+
+Without --push the script refuses, because the release no longer ends in a local commit on main. --dry-run still prints the diff and the plan and changes nothing. --watch-only is unchanged.
+
+A branch ruleset does not cover tags unless it targets them, so the tag push should not be blocked. That is unverified until the ruleset exists. Auto-merge needs "Allow auto-merge" enabled in the repository settings; the script says so when it is off.
+
+Checked against a throwaway bare origin and clone, with a stub gh that performs the merge: the release branch was pushed, the tag v0.22.1 was created on the merge commit, package.json at that commit read 0.22.1, and the script exited 0. A --dry-run with --push printed the plan and created no branch. A run without --push exited 1 with the reason. typecheck passed.
+
+**ci(ci): publish the packed tarball, so the attested bytes are the published bytes** ([`060a674`](https://github.com/jjjermiah/opencode-plugboard/commit/060a6740d40ee18eb051b0ac7fb365aff3643f7c))
+
+The publish job used to run npm publish from the source tree, then pack a second tarball for the SBOM and the attestation. Each npm pack reads the tree again, so the file that was attested was not proven to be the file npm published. The attest job's integrity check against the registry narrowed that gap, but a mismatch would only show after the publish had gone out.
+
+Now the publish job packs once, after build:tui and with --ignore-scripts, writes the SBOM from the same tree, records the file's sha256, and publishes that exact file with npm publish <tarball>. The --access, --tag next and --provenance logic and the dry-run and already-published branches are kept. The release-files artifact carries that file to the attest job, which checks its sha256 against the publish job's output before it checks the registry's integrity and attests it. The release job attaches the same file.
+
+The global npm install is pinned to npm@11.21.0 instead of the ^11.5.1 range, so a new npm release cannot change how the publish runs without a commit. It is the current 11.x release on the registry and above the 11.5.1 that trusted publishing needs.
+
+Checked with actionlint -shellcheck (no findings). npm publish of the packed tarball path was run against this tree with --dry-run: npm read the file, computed its integrity, and stopped at the expected "already published" refusal for 0.22.0. Not checked here: that --provenance works when publishing a tarball path. That needs a real run on the tag, and it is the first thing to look at in the first release's Publish log.
+
+**ci(ci): run commitlint from the locked devDependency, not a download** ([`db4c26d`](https://github.com/jjjermiah/opencode-plugboard/commit/db4c26d776dd9b1b834602f551f7ca001cae885b))
+
+commits.yml and lefthook.yml ran `bunx commitlint`. bunx uses a local install when there is one, but in a clone or a CI job without it, it fetches the latest matching package at run time. That is an unpinned install, which Scorecard's Pinned-Dependencies check can flag. @commitlint/cli is already a devDependency pinned to 21.2.3 in package.json and bun.lock, so both files now run ./node_modules/.bin/commitlint.
+
+The commits workflow runs bun install --frozen-lockfile before the lint step, so the binary is there. The local commit-msg hook needs node_modules, which CONTRIBUTING already asks for (bun install in each clone or worktree). Without it the hook now fails with "no such file" instead of downloading commitlint. Installing lefthook with bunx is unchanged.
+
+Checked: ./node_modules/.bin/commitlint --version prints 21.2.3, and actionlint -shellcheck passes on commits.yml. The commit-msg hook ran on this commit.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.22.0] - 2026-10-11: Eleven New Friends
 
@@ -2930,7 +3230,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.2...v0.22.0
 [0.21.2]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.0...v0.21.1
