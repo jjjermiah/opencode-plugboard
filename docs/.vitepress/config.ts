@@ -59,6 +59,7 @@ export default defineConfig({
           { text: "LangChain JS", link: "/clients/langchain-js" },
           { text: "pydantic-ai", link: "/clients/pydantic-ai" },
           { text: "OpenAI Agents SDK", link: "/clients/openai-agents" },
+          { text: "LiteLLM (as a client)", link: "/clients/litellm-client" },
           { text: "Open WebUI", link: "/clients/open-webui" },
           { text: "n8n", link: "/clients/n8n" },
         ],

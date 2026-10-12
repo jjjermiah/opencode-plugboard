@@ -16,7 +16,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-HARNESSES = ["openai_agents.py"]  # one harness file per client, added with the client
+# (uv project under compat/, harness file). litellm needs openai<3, the Agents SDK needs openai>=3,
+# so they run in separate environments; see compat/py-litellm/pyproject.toml.
+HARNESSES = [("py", "openai_agents.py"), ("py-litellm", "litellm_client.py")]
 
 
 def start_fake() -> tuple[subprocess.Popen[str], str, str]:
@@ -46,6 +48,7 @@ def stop_fake(proc: subprocess.Popen[str]) -> None:
 def main() -> int:
     proc = None
     env = dict(os.environ)
+    env.pop("VIRTUAL_ENV", None)  # the parent's env would make each child uv run warn
     if not env.get("PLUGBOARD_URL"):
         proc, url, key = start_fake()
         env.update(PLUGBOARD_URL=url, PLUGBOARD_KEY=key)
@@ -54,8 +57,9 @@ def main() -> int:
         print(f"live plugboard at {env['PLUGBOARD_URL']}", file=sys.stderr)
     tally = {"pass": 0, "fail": 0}
     try:
-        for name in HARNESSES:
-            run = subprocess.run([sys.executable, str(HERE / name)], env=env, capture_output=True, text=True, cwd=HERE)
+        for project, name in HARNESSES:
+            command = ["uv", "run", "--project", str(REPO / "compat" / project), "python", str(HERE / name)]
+            run = subprocess.run(command, env=env, capture_output=True, text=True, cwd=HERE)
             sys.stdout.write(run.stdout)
             sys.stderr.write(run.stderr)
             rows = [json.loads(line) for line in run.stdout.splitlines() if line.startswith("{")]
