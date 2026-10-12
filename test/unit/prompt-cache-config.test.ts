@@ -16,6 +16,13 @@ describe("option promptCache (src/session/affinity.ts)", () => {
     expect(() => parsePromptCache({ affinity: "anchor", scope: "app", ttl: 1 }, "promptCache")).toThrow(/Unknown plugboard option `promptCache\.ttl`/)
   })
 
+  test("maxAnchors is a positive integer; absent keeps the default (no field)", () => {
+    expect(parsePromptCache({ affinity: "anchor", scope: "user", maxAnchors: 250 }, "promptCache")).toEqual({ affinity: "anchor", scope: "user", maxAnchors: 250 })
+    expect(parsePromptCache({ affinity: "anchor", scope: "app" }, "promptCache")).not.toHaveProperty("maxAnchors")
+    expect(() => parsePromptCache({ affinity: "anchor", scope: "app", maxAnchors: 0 }, "promptCache")).toThrow(/maxAnchors/)
+    expect(() => parsePromptCache({ affinity: "anchor", scope: "app", maxAnchors: "many" }, "promptCache")).toThrow(/maxAnchors/)
+  })
+
   test("the global option and an app's own option both reach the parsed options", () => {
     const options = parseOptions({
       keys: { bot: "sk-plug-bot-test-key-0123456789" },

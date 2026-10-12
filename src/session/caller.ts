@@ -27,7 +27,7 @@ import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, MissingParentError, type SessionPort } from "./host.js"
 import { ImageError, prepareImages, type RemoteImages } from "./media.js"
 import { requestPermissions, seedToolsFor } from "./seeds.js"
-import { PROMPT_CACHE_OFF, scopeKey, type Affinity } from "./affinity.js"
+import { maxAnchorsOf, PROMPT_CACHE_OFF, scopeKey, type Affinity } from "./affinity.js"
 import type { SessionStore } from "./state.js"
 
 export interface SessionCallerDeps {
@@ -251,7 +251,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const makeAnchor = (): Promise<string> =>
           port.create({ directory, model: modelRef, title: anchorTitle(app, scope ?? ""), metadata: { plugboard: { app, anchor: true } }, permissions: requestPermissions([]) }).then((made) => String(made.id))
         let parentID: string | undefined
-        if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, makeAnchor), context.signal)
+        const maxAnchors = maxAnchorsOf(cache)
+        if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, maxAnchors, makeAnchor), context.signal)
         if (context.signal.aborted) return
 
         const makeChild = (parent: string | undefined) => {
@@ -282,7 +283,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           if (!(error instanceof MissingParentError) || affinity === undefined || scope === undefined || parentID === undefined) throw error
           logWarn("affinity.anchor_recreated", { requestID, app, previous: parentID })
           await affinity.forget(app, cache.scope, scope)
-          parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, makeAnchor), context.signal)
+          parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, maxAnchors, makeAnchor), context.signal)
           created = await makeChild(parentID)
         }
         sessionID = String(created.id)
@@ -297,9 +298,9 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         } catch (error) {
           logError("request.on_record_failed", { requestID, app, error: describeError(error) })
         }
-        if (parentID !== undefined) {
+        if (cache.affinity === "anchor") {
           try {
-            context.onAffinity?.()
+            context.onAffinity?.(parentID === undefined ? "none" : "anchor")
           } catch (error) {
             logError("request.on_affinity_failed", { requestID, app, error: describeError(error) })
           }

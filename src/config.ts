@@ -99,7 +99,12 @@ export type AffinityScope = "app" | "user"
 export interface PromptCache {
   readonly affinity: AffinityMode
   readonly scope: AffinityScope
+  /** Most anchors one app may hold (option `promptCache.maxAnchors`). A key beyond it gets no affinity (header `none`). */
+  readonly maxAnchors?: number
 }
+
+/** `promptCache.maxAnchors` when absent. */
+export const DEFAULT_MAX_ANCHORS = 1000
 
 /**
  * What the operator fixes for one app, whatever the caller sends (option `apps`). `models` only narrows the
@@ -366,17 +371,22 @@ function parseApps(
 
 const AFFINITY_MODES = new Set(["off", "anchor"])
 const AFFINITY_SCOPES = new Set(["app", "user"])
-const PROMPT_CACHE_KNOWN = new Set(["affinity", "scope"])
+const PROMPT_CACHE_KNOWN = new Set(["affinity", "scope", "maxAnchors"])
 
 /** Option `promptCache` (global or per app): `undefined` when absent. Both fields are required once the object is given. */
 export function parsePromptCache(raw: unknown, at: string): PromptCache | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object: { affinity, scope }`)
   for (const key of Object.keys(raw))
-    if (!PROMPT_CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: affinity, scope)`)
+    if (!PROMPT_CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: affinity, scope, maxAnchors)`)
   if (typeof raw.affinity !== "string" || !AFFINITY_MODES.has(raw.affinity)) throw new Error(`plugboard option \`${at}.affinity\` must be \`off\` or \`anchor\``)
   if (typeof raw.scope !== "string" || !AFFINITY_SCOPES.has(raw.scope)) throw new Error(`plugboard option \`${at}.scope\` must be \`app\` or \`user\``)
-  return { affinity: raw.affinity as AffinityMode, scope: raw.scope as AffinityScope }
+  const maxAnchors = raw.maxAnchors === undefined ? undefined : positiveInt(raw.maxAnchors, `${at}.maxAnchors`, DEFAULT_MAX_ANCHORS, 1_000_000)
+  return {
+    affinity: raw.affinity as AffinityMode,
+    scope: raw.scope as AffinityScope,
+    ...(maxAnchors === undefined ? {} : { maxAnchors }),
+  }
 }
 
 /** Validates one set of caps (`limits.perApp`, or one `limits.apps` entry): each cap is a positive integer. */

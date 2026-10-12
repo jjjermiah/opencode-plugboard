@@ -27,7 +27,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` bound request bodies, see [Request bodies](#request-bodies). |
 | `budgets` | none (unlimited) | Per-app ceilings on requests, tokens and cost for a UTC day, week or month: `{ perApp?, apps? }`. Needs `usage` on. A call over a ceiling gets 429 `budget_exceeded`. See [Budgets](#budgets). |
 | `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
-| `promptCache` | `{ affinity: "off", scope: "app" }` | Provider prompt-cache affinity: `affinity` `off` or `anchor`, `scope` `app` or `user`. Also per app as `apps.<name>.promptCache`. See [Prompt-cache affinity](#prompt-cache-affinity). |
+| `promptCache` | `{ affinity: "off", scope: "app", maxAnchors? }` | Provider prompt-cache affinity: `affinity` `off` or `anchor`, `scope` `app` or `user`, `maxAnchors` (default 1000) the most anchors one app may hold. Also per app as `apps.<name>.promptCache`. See [Prompt-cache affinity](#prompt-cache-affinity). |
 | `historyUrl` | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
@@ -268,11 +268,17 @@ With `anchor`, plugboard creates one long-lived anchor session per scope key and
 | `app` (default) | app | not applicable: every request has it |
 | `user` | end user (the `user` field of the request) | no affinity: a fresh session, as with `off` |
 
-Set it for every app as `promptCache`, or for one app as `apps.<name>.promptCache`; the app's own value wins. Every response from an app with affinity carries `x-plugboard-affinity: anchor`.
+Set it for every app as `promptCache`, or for one app as `apps.<name>.promptCache`; the app's own value wins.
+
+Every response from an app with `anchor` carries `x-plugboard-affinity`: `anchor` when the request is under its key's anchor, `none` when it got no affinity. A request gets `none` when it has no key (`scope: "user"` without a `user` field), or when its key is new and the app already holds `maxAnchors` anchors. Such a request still runs, as a top-level session, as it did before. Absent: the policy is `off`.
 
 Measured on the dev server (2026-10-12, runs 2 to 4 of a repeated prompt, about 4,000 tokens): ChatGPT subscription models (`openai/*`) hit the cache on 8 of 9 repeat runs with `anchor` and 2 of 9 with `off`. Anthropic, Copilot GPT and Qwen already cached without it and were unchanged. GLM and Copilot Gemini showed no cache reads in any mode. Expect a gain on ChatGPT only.
 
-Anchors are kept. There is one per app, or one per user under `scope: "user"`, and each is a session in OpenCode's list. A restart keeps them, because they are stored in the host.
+Anchors are kept, and they are sessions in OpenCode's list. There is one per app, or one per end user under `scope: "user"`, so a busy multi-user app grows one anchor per user. `maxAnchors` caps that: the count is the anchors stored for the app, and concurrent first requests from new users can briefly exceed it. Setting `maxAnchors` above the number of users you expect keeps every user cached; a lower value sends the overflow users to `none` (no harm, just no cache affinity).
+
+**Pruning never touches anchors.** `history` prunes only the request sessions plugboard indexed when it created them. Anchors are never indexed, so they stay until you remove them.
+
+**Removing an anchor.** Delete its session in OpenCode, the way you delete any session. Nothing else is needed: the next request for that key sees the missing parent, forgets the stored anchor, makes a new one and retries the request's session once (logged as `affinity.anchor_recreated`). Deleting an anchor does not free a slot under `maxAnchors`, because the stored record of its key stays until that key is requested again. To lower the count, raise `maxAnchors`, or drop the `affinity/<app>/anchor/` records from the plugin storage (there is no command for that yet).
 
 ## Usage statistics
 

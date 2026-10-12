@@ -17,24 +17,31 @@
  * The anchor id is stored in the plugin's host storage (`affinity/...`), so it survives a restart.
  */
 
-import type { AffinityScope, PromptCache } from "../config.js"
+import { DEFAULT_MAX_ANCHORS, type AffinityScope, type PromptCache } from "../config.js"
 import type { StoragePort } from "./host.js"
 
-/** Response header naming the affinity that applied (`anchor`). Absent when none applied. */
+/**
+ * Response header naming the affinity of a request under `promptCache` affinity `anchor`: `anchor` when the request
+ * session is a child of its key's anchor, `none` when it got no affinity (no key, or the app is at `maxAnchors`).
+ * Absent when the policy is `off`.
+ */
 export const AFFINITY_HEADER = "x-plugboard-affinity"
 
 export const PROMPT_CACHE_OFF: PromptCache = { affinity: "off", scope: "app" }
+
+/** The most anchors one app may hold under this policy. */
+export const maxAnchorsOf = (cache: PromptCache): number => cache.maxAnchors ?? DEFAULT_MAX_ANCHORS
 
 /** The scope key of one request, or undefined when it has none (then no affinity applies to that request). */
 export function scopeKey(cache: PromptCache, call: { readonly user?: string }): string | undefined {
   return cache.scope === "app" ? "" : call.user
 }
 
-/** Turns the affinity on for a request: sets `x-plugboard-affinity` before the first event (the headers are still open). */
+/** Sets `x-plugboard-affinity` before the first event (the headers are still open). */
 export function reportAffinity(response: { setHeader(name: string, value: string): unknown; headersSent: boolean; destroyed: boolean }) {
-  return () => {
+  return (mode: "anchor" | "none") => {
     if (response.headersSent || response.destroyed) return
-    response.setHeader(AFFINITY_HEADER, "anchor")
+    response.setHeader(AFFINITY_HEADER, mode)
   }
 }
 
@@ -43,8 +50,11 @@ export interface AffinityDeps {
 }
 
 export interface Affinity {
-  /** The anchor session of one scope key: remembered once created, and concurrent first requests share one creation. */
-  anchor(app: string, scope: AffinityScope, key: string, make: () => Promise<string>): Promise<string>
+  /**
+   * The anchor session of one scope key: remembered once created, and concurrent first requests share one creation.
+   * Resolves undefined when the app already holds `maxAnchors` anchors and this key has none: the request gets no affinity.
+   */
+  anchor(app: string, scope: AffinityScope, key: string, maxAnchors: number, make: () => Promise<string>): Promise<string | undefined>
   /** Drops the stored anchor of a key (its session was deleted in OpenCode). The next `anchor` call makes a new one. */
   forget(app: string, scope: AffinityScope, key: string): Promise<void>
 }
@@ -67,20 +77,23 @@ async function readAnchor(storage: StoragePort, key: string): Promise<string | u
 export function createAffinity(deps: AffinityDeps): Affinity {
   const { storage } = deps
   // Anchor creations in flight, by record key: concurrent first requests on one key share one anchor.
-  const pending = new Map<string, Promise<string>>()
+  const pending = new Map<string, Promise<string | undefined>>()
 
   return {
     async forget(app, scope, key) {
       await storage.drop(recordKey(app, scope, key))
     },
 
-    async anchor(app, scope, key, make) {
+    async anchor(app, scope, key, maxAnchors, make) {
       const id = recordKey(app, scope, key)
       const known = await readAnchor(storage, id)
       if (known !== undefined) return known
       let creating = pending.get(id)
       if (!creating) {
         creating = (async () => {
+          // The cap counts the stored anchors of the app, every scope. Concurrent first requests may pass it together.
+          const stored = await storage.scan({ prefix: `affinity/${app}/anchor/`, limit: maxAnchors })
+          if (stored.keys.length >= maxAnchors) return undefined
           const sessionID = await make()
           await storage.put(id, JSON.stringify({ sessionID }))
           return sessionID
