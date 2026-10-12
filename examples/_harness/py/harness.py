@@ -1,0 +1,105 @@
+"""Runner helpers for Python examples. Same contract as examples/_harness/ts/harness.ts.
+
+A runner calls `run_all` with one function per scenario id. The helpers mark each scenario on the capture
+proxy, apply the checks in examples/_shared/scenarios.json to the observations, and print one JSON line per
+result on stdout. They never write files: run.ts does that.
+"""
+
+import json
+import os
+import sys
+import traceback
+import urllib.request
+from importlib import metadata
+from pathlib import Path
+from typing import Any, Callable, Mapping, Optional
+
+SCENARIOS_FILE = Path(__file__).resolve().parents[2] / "_shared" / "scenarios.json"
+SCENARIOS: list[dict[str, Any]] = json.loads(SCENARIOS_FILE.read_text())["scenarios"]
+
+
+def _pick(observations: Any, path: str) -> Any:
+    node = observations
+    for key in path.split("."):
+        node = node.get(key) if isinstance(node, dict) else None
+    return node
+
+
+def _passes(check: dict[str, Any], value: Any) -> bool:
+    if "equals" in check:
+        return json.dumps(value, sort_keys=True) == json.dumps(check["equals"], sort_keys=True)
+    if "containsAny" in check:
+        return isinstance(value, str) and any(text.lower() in value.lower() for text in check["containsAny"])
+    if check.get("present"):
+        return value not in (None, "")
+    if check.get("number"):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return False
+
+
+def evaluate(checks: list[dict[str, Any]], observations: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each check of a scenario against its observations: name and whether it held."""
+    return [{"name": check["name"], "ok": _passes(check, _pick(observations, check["path"]))} for check in checks]
+
+
+def mark(scenario: str, model: str) -> None:
+    """Tells the capture proxy a scenario starts. The proxy waits there until earlier requests have finished."""
+    url = os.environ.get("PLUGBOARD_CAPTURE_URL")
+    if not url:
+        raise RuntimeError("PLUGBOARD_CAPTURE_URL is not set: run this through examples/_harness/run.ts")
+    body = json.dumps({"scenario": scenario, "model": model}).encode()
+    request = urllib.request.Request(f"{url}/__mark", data=body, method="POST", headers={"content-type": "application/json"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        response.read()
+
+
+def emit(line: dict[str, Any]) -> None:
+    print(json.dumps(line), flush=True)
+
+
+def emit_client(package: str) -> None:
+    """Reports the client (its installed version, which `uv run --frozen` pins to the lockfile) and the Python runtime, major.minor."""
+    major, minor = sys.version_info[:2]
+    emit({"kind": "client", "name": package, "version": metadata.version(package), "runtime": {"name": "python", "version": f"{major}.{minor}"}})
+
+
+def _error_text(error: BaseException) -> str:
+    return f"{type(error).__name__}: {error}"
+
+
+def run_all(
+    functions: Mapping[str, Callable[[str], dict[str, Any]]],
+    *,
+    na: Optional[Mapping[str, str]] = None,
+    gaps: Optional[Mapping[str, Mapping[str, str]]] = None,
+) -> None:
+    """Runs every scenario the runner covers, on each of its models, in file order.
+
+    `gaps` maps `id` or `id|model` to {"note", "issue"}: a failure there is reported as `gap`.
+    `na` maps an id to the reason the client does not have it: reported as `n/a`, nothing is sent.
+    """
+    na = dict(na or {})
+    planned = [scenario for scenario in SCENARIOS if scenario["id"] in functions or scenario["id"] in na]
+    emit({"kind": "plan", "scenarios": [scenario["id"] for scenario in planned]})
+    for scenario in planned:
+        for model in scenario["models"]:
+            if scenario["id"] in na:
+                emit({"kind": "result", "scenario": scenario["id"], "model": model, "status": "n/a", "checks": [], "error": None, "note": na[scenario["id"]]})
+                continue
+            mark(scenario["id"], model)
+            checks: list[dict[str, Any]] = []
+            error: Optional[str] = None
+            observations: dict[str, Any] = {}
+            try:
+                observations = functions[scenario["id"]](model)
+                checks = evaluate(scenario["checks"], observations)
+            except Exception as caught:  # noqa: BLE001 - the error text is the result
+                traceback.print_exc(file=sys.stderr)
+                error = _error_text(caught)
+            status = "pass" if error is None and all(check["ok"] for check in checks) else "fail"
+            note: Optional[str] = None
+            gap = (gaps or {}).get(f"{scenario['id']}|{model}") or (gaps or {}).get(scenario["id"])
+            if status == "fail" and gap:
+                status = "gap"
+                note = f"{gap['note']} ({gap['issue']})"
+            emit({"kind": "result", "scenario": scenario["id"], "model": model, "status": status, "checks": checks, "error": error, "note": note, "observations": observations})

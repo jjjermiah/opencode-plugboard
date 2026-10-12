@@ -46,6 +46,46 @@ curl -s http://127.0.0.1:4790/v1/chat/completions -H "Authorization: Bearer sk-p
 
 `run.schema.json` is the source of truth for `summary.json`. `golden/summary.json` is a hand-written example that the unit test in `test/unit/examples-harness.test.ts` validates.
 
-## Still to come
+## Commands
 
-The orchestrator (`run.ts`), capture proxy, normaliser, writer and runner helpers are the next part of #174 (#176). This README gains the commands, redaction rules and how to add an example then.
+```sh
+bun examples/_harness/run.ts <example>|all --target scripted|live [--docker]
+```
+
+- `scripted` starts `scripted-server.ts` in the same process. Output is byte-identical between runs; CI fails on a diff.
+- `live` attaches to `PLUGBOARD_BASE_URL` (default `http://127.0.0.1:4010/v1`) with `PLUGBOARD_KEY`. Only on the isolated server from [docs/development.md](../../docs/development.md), never your everyday OpenCode. It writes `runs/live/<date>-<shortsha>/`, a new directory every time, and never rewrites one. `PLUGBOARD_COMMIT` overrides the commit name; otherwise the commit is the HEAD of `PLUGBOARD_CHECKOUT`.
+- `all` runs every example with a runner, skipping `smoke-*` (the harness's own self-tests, run by name) and Docker examples (a compose file in the directory) unless `--docker` is given.
+
+The run exits 1 when a required scenario fails. A verdict is `fail` on a required failure, `partial` on a gap or an optional failure, `pass` otherwise.
+
+## How a run works
+
+1. `run.ts` starts the target and a capture proxy (`capture.ts`) on an ephemeral port.
+2. It starts the example's runner (`uv run --frozen run.py` with a `pyproject.toml`, `bun run.ts`, or `bash run.sh`) with `PLUGBOARD_BASE_URL` (the proxy, ending in `/v1`), `PLUGBOARD_KEY` and `PLUGBOARD_CAPTURE_URL`.
+3. The runner's helpers (`py/harness.py`, `ts/harness.ts`) mark each scenario with `POST $PLUGBOARD_CAPTURE_URL/__mark`, call the scenario function, apply the checks in `_shared/scenarios.json`, and print one JSON line per result. They print nothing else on stdout and write no files.
+4. `run.ts` slices the exchanges by mark, normalises them (`normalise.ts`), validates `summary.json` against `run.schema.json`, refuses to write any file that contains the app key, renders `summary.md` and writes (`render.ts`).
+
+Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `transcripts/_background.json`. That file is written but not compared in CI.
+
+## Redaction
+
+- Request headers: only `accept`, `anthropic-version`, `content-type` and `openai-beta`. Response headers: `content-type` and `x-plugboard-*` except `x-plugboard-request-id`. `authorization`, `x-api-key`, `x-goog-api-key`, `date`, `host`, `user-agent`, `x-stainless-*` and `content-length` are never written.
+- A `key` query parameter (Gemini) is removed from the path.
+- Ids are replaced by placeholders numbered by first appearance in each file, so one id keeps one placeholder across turns. A GET of a models route keeps its model ids.
+- `http://127.0.0.1:<port>` becomes `<plugboard>`, error text included.
+- The writer refuses any file that contains the app key. Live runs use only the prompts in `scenarios.json`.
+
+## Adding an example
+
+1. Create `examples/<client>/` with its own dependencies pinned (`pyproject.toml` + `uv.lock`, or `package.json` + `bun.lock`).
+2. Write one scenario file per scenario the client supports, `run(client, model)` returning the observations the checks name (see `scenarios.json` for the names). Put the copyable part between `# region snippet` / `# endregion snippet` (Python, shell) or `// #region snippet` / `// #endregion snippet` (TypeScript). Give the file a `__main__` / `import.meta.main` block so it runs alone.
+3. Write the runner: `run.py` (import `harness` from `examples/_harness/py`), `run.ts` (import from `examples/_harness/ts/harness.ts`), or `run.sh`. Call `emit_client` / `emitClient` once, then `run_all` / `runAll` with one function per scenario id, and `na` (or `gaps`) for what the client cannot do.
+4. Run `bun examples/_harness/run.ts <client> --target scripted` and run it again: `git diff --exit-code` must pass.
+
+## When a run is stale
+
+A scripted run is stale when its scenarios, the checks, or the client's pinned version change. Rerun it and commit the new output; CI fails on a diff. A live run is never stale, only old: its directory name carries the date and commit, and a newer run is a new directory. Add `REPORT.md` for human notes. A live directory with only a `REPORT.md` is a historical record (`render.ts` `runKind`).
+
+## Tests
+
+`test/unit/examples-normalise.test.ts` covers the placeholder, URL, header, key and SSE rules and the writer's refusal. `test/unit/examples-harness.test.ts` covers the summary schema.
