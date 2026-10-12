@@ -510,6 +510,8 @@ The plugin swaps the caller's prompt, messages and tools in for OpenCode's own. 
 
 MIT
 
+Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsoft. Product names are trademarks of their owners.
+
 [configuration]: https://jjjermiah.github.io/opencode-plugboard/configuration
 [configuration-apps]: https://jjjermiah.github.io/opencode-plugboard/configuration#apps-and-keys
 [configuration-aliases]: https://jjjermiah.github.io/opencode-plugboard/configuration#aliases-and-fallbacks
