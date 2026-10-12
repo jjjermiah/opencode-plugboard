@@ -343,7 +343,7 @@ curl -H "Authorization: Bearer $ADMIN_KEY" -H "content-type: application/json" -
 Rules:
 
 - Without `adminKey` these paths are 404. Any credential other than the admin key is 401.
-- The app name follows the config rule (`[a-z0-9-]+`, and not `default`). An app that already has a key in `keys` is 409: change that key in the config.
+- The app name follows the config rule (`[a-z0-9-]+`, and not `default`). An app that already has a key in `keys` is 409: change that key in the config. An app with `apps.<name>.serverTools` is 409 `app_has_server_tools` (#197): a runtime key would run OpenCode tools, so its key lives in the config only.
 - A config key cannot be revoked through the API (409). Remove it from `keys` and reload.
 - A runtime key is stored under the plugin's host storage as the SHA-256 of the key, not as the key. Its `id` is the first 8 hex characters of that digest. Runtime keys survive a config reload and a server restart.
 - A runtime key names its app on every request that presents it. It does not make a keyless server require a key: with no config keys, a request without a key stays the app `default`. Deleting the last runtime key therefore never opens or closes access by itself.
@@ -383,6 +383,7 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 403 | `no_models_configured` | The `models` option is empty | No models are allowed: set the plugboard `models` option |
 | 400 | `too_many_tools` | More tools than `maxTools` | Request has &lt;n&gt; tools; plugboard allows &lt;max&gt; (option `maxTools`) |
 | 400 | `too_many_tools` | More tools than the app's `apps.<name>.maxTools` | Request has &lt;n&gt; tools; app &lt;app&gt; allows &lt;max&gt; (option `apps.<app>.maxTools`) |
+| 409 | `app_has_server_tools` | `POST /v1/admin/keys` for an app with `apps.<name>.serverTools` | App <name> runs OpenCode tools; a runtime key would give the same power, so none is minted. Set the key in the plugboard config |
 | 400 | `server_tool_unavailable` | A tool in the app's `apps.<name>.serverTools` is not a direct tool of the server right now | OpenCode tool(s) not available in this location: &lt;tools&gt; (option `apps.<name>.serverTools`). CodeMode tools, including MCP tools by default, cannot be listed; set codemode: false on the tool |
 | 400 | `server_tool_collision` | A caller tool has the name of one of the app's `serverTools` | Tool &lt;name&gt; is one of this app's OpenCode server tools (option `apps.<name>.serverTools`); rename the caller's tool |
 | 502 | `server_tool_steps_exceeded` | The model ran more server-tool steps than `maxServerToolSteps` | The model used more OpenCode tool steps than this app allows |

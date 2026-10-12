@@ -36,6 +36,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/unit/config.test.ts"],
   },
   {
+    id: "I25-admin-mints-key-for-server-tools-app",
+    invariant: "I25",
+    file: "src/admin/route.ts",
+    find: "if (appPolicy(host.options, app)?.serverTools)",
+    replace: "if (false)",
+    tests: ["test/http/admin.test.ts"],
+  },
+  {
     id: "I24-metrics-app-key-reads-all-apps",
     invariant: "I24",
     file: "src/openai/route.ts",
