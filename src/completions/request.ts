@@ -97,6 +97,7 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
       includeUsage: streamOptions.include_usage === true,
       perPrompt: n,
       ...(body.echo === true ? { echo: prompts } : {}),
+      ...(generation.stop ? { stop: generation.stop } : {}),
     },
     ...(typeof body.reasoning_effort === "string" ? { reasoningEffort: body.reasoning_effort } : {}),
   }

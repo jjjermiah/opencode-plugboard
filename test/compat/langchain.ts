@@ -160,11 +160,8 @@ const legacyCompletions: Client = {
     "model-id": async (target) => {
       expect(await new OpenAICompletions({ ...openai(target), model: CATALOG_ID }).invoke(tag("model-id"))).toBe(TEXT)
     },
-    "stop-sequence": {
-      gap: "stop sequences are not removed from the answer on /v1/completions (only /v1/messages strips the matched sequence, #145)",
-      run: async (target) => {
-        expect(await new OpenAICompletions(openai(target)).invoke(tag("stop-sequence"), { stop: ["END"] })).toBe(TEXT)
-      },
+    "stop-sequence": async (target) => {
+      expect(await new OpenAICompletions(openai(target)).invoke(tag("stop-sequence"), { stop: ["END"] })).toBe(TEXT)
     },
     cancel: async (target) => {
       const controller = new AbortController()
@@ -195,7 +192,6 @@ const legacyCompletions: Client = {
 
 export const LANGCHAIN_CLIENTS: ReadonlyArray<Client> = [
   langchain("@langchain/openai (chat)", "chat", (target, id) => new ChatOpenAI({ ...openai(target), model: id ?? MODEL }), {
-    gaps: { "stop-sequence": "the chat endpoint does not remove stop sequences from the answer (#145 covers /v1/messages)" },
     extra: {
       // The class's `logprobs` option: plugboard refuses it with a 400 (logprobs are not served); without it the answer parses.
       logprobs: async (target) => {
@@ -241,10 +237,16 @@ export const LANGCHAIN_CLIENTS: ReadonlyArray<Client> = [
   }),
   langchain("@langchain/google-genai", "gemini", ({ origin, apiKey }, id) => new ChatGoogleGenerativeAI({ model: id ?? MODEL, apiKey, baseUrl: origin, apiVersion: "v1beta", maxRetries: 0 }), {
     gaps: {
-      "stop-sequence": "stopSequences are not removed from the answer on the Gemini endpoint (only /v1/messages strips the matched sequence, #145)",
-      "model-id": "LangChain's Google class sends the model id without the models/ prefix, so the request misses the Gemini route (401); the @google/genai rows pass",
+      "model-id": "LangChain's Google class sends the model id without the models/ prefix, so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass",
       // The SDK LangChain uses (@google/generative-ai) reports the client's abort as an unhandled "Error reading from the stream".
       cancel: "the @google/generative-ai SDK that LangChain uses reports the client's abort as an unhandled 'Error reading from the stream'",
+    },
+    extra: {
+      // The class sends stop sequences from its constructor (`stopSequences`), not from the call's `stop` option.
+      "stop-sequence": async (target) => {
+        const reply = await new ChatGoogleGenerativeAI({ model: MODEL, apiKey: target.apiKey, baseUrl: target.origin, apiVersion: "v1beta", maxRetries: 0, stopSequences: ["END"] }).invoke([new HumanMessage(tag("stop-sequence"))])
+        expect(reply.text).toBe(TEXT)
+      },
     },
     // The class has no n option, and the image case is refused client-side below.
     na: {

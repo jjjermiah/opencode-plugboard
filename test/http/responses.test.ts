@@ -119,3 +119,45 @@ describe("POST /v1/responses", () => {
     expect(caller.call.request.generation).toEqual({ temperature: 0.5 })
   })
 })
+
+describe("#147 item_reference resolves to an output item of a recent answer", () => {
+  /** The next turn: the earlier answer by reference (store: true, the AI SDK default), then the user's message. */
+  const nextTurn = (id: string, headers: Record<string, string> = {}): SendInit => ({
+    method: "POST",
+    path: "/v1/responses",
+    headers,
+    body: { model: "test/echo", input: [{ type: "item_reference", id }, { role: "user", content: "Again?" }] },
+  })
+  const messageIdOf = (output: Array<{ id: string; type: string }>) => output.find((item) => item.type === "message")!.id
+
+  test("a referenced message of a JSON answer is replayed as the assistant turn it was", async () => {
+    const caller = await route([ev.text("Hello"), ev.finish()])
+    const first = await server!.send(responses())
+    const id = messageIdOf(first.json().output)
+    const second = await server!.send(nextTurn(id))
+    expect(second.status).toBe(200)
+    expect(caller.calls[1]!.request.messages[0]).toEqual({ role: "assistant", content: [{ type: "text", text: "Hello" }] })
+  })
+
+  test("a referenced message of a streamed answer is kept too", async () => {
+    await route([ev.text("Hello"), ev.finish()])
+    const streamed = await server!.send(responses({ stream: true }))
+    const completed = eventsOf(streamed.text).find((event) => event.event === "response.completed")!
+    const id = messageIdOf((completed.data as { response: { output: Array<{ id: string; type: string }> } }).response.output)
+    expect((await server!.send(nextTurn(id))).status).toBe(200)
+  })
+
+  test("an id the store does not hold is a 400 that suggests store: false", async () => {
+    await route([ev.text("Hello"), ev.finish()])
+    const reply = await server!.send(nextTurn("msg_never_returned"))
+    expect(reply.status).toBe(400)
+    expect(reply.json()).toMatchObject({ error: { code: "item_not_found", param: "input[0].id", message: expect.stringContaining("store: false") } })
+  })
+
+  test("an app reads only the items its own answers returned: another app's id is a 400", async () => {
+    await route([ev.text("Hello"), ev.finish()], { keys: { alpha: "key-alpha", beta: "key-beta" } })
+    const id = messageIdOf((await server!.send({ ...responses(), headers: { authorization: "Bearer key-alpha" } })).json().output)
+    expect((await server!.send(nextTurn(id, { authorization: "Bearer key-alpha" }))).status).toBe(200)
+    expect((await server!.send(nextTurn(id, { authorization: "Bearer key-beta" }))).status).toBe(400)
+  })
+})

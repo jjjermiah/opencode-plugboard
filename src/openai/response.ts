@@ -6,6 +6,7 @@
  */
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
+import { StopHoldback, stripStopTail } from "../stop.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -33,6 +34,8 @@ export interface OpenAiExchange {
    * stripped from the content (`unfence`).
    */
   readonly jsonObject?: boolean
+  /** The request's `stop`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). Not applied to structured output. */
+  readonly stop?: ReadonlyArray<string>
 }
 
 /** How a streamed exchange ended. Nothing was written when `failure` is set and `started` is false: the caller answers with a real HTTP error. */
@@ -219,6 +222,7 @@ export async function collectCompletion(
     const error = failure ?? noFinish()
     return { status: error.status, body: encodeError(error), retryAfterSeconds: error.retryAfterSeconds }
   }
+  if (finish === "stop" && calls.length === 0 && exchange.structuredTool === undefined) text = stripStopTail(text, exchange.stop ?? []).text
 
   const answer = calls.find((call) => structured.isAnswer(exchange, call))
   const others = calls.filter((call) => !structured.isAnswer(exchange, call))
@@ -309,6 +313,12 @@ export async function streamCompletion(
     started = true
     chunk({ role: "assistant", content: "" })
   }
+  // A stop sequence is held back until the finish decides it (src/stop.ts). Structured output has none.
+  const holdback = exchange.structuredTool === undefined ? new StopHoldback(exchange.stop ?? []) : undefined
+  const send = (text: string) => {
+    const out = holdback ? holdback.push(text) : text
+    if (out.length > 0) chunk({ content: out })
+  }
   // json_object: text that opens with a backtick may be a fenced answer, so it waits (as `pending`)
   // until a tool call or the finish shows the whole text; anything else streams as it comes. A
   // fenced answer therefore arrives as one chunk.
@@ -319,7 +329,7 @@ export async function streamCompletion(
     const text = unfence(pending)
     pending = ""
     start()
-    chunk({ content: text })
+    send(text)
   }
 
   for await (const event of events) {
@@ -359,10 +369,14 @@ export async function streamCompletion(
       }
       continue
     }
-    if (event.type !== "text-delta") flush()
+    if (event.type !== "text-delta") {
+      flush()
+      const rest = holdback?.release() ?? ""
+      if (rest.length > 0) chunk({ content: rest })
+    }
     start()
     if (event.type === "text-delta") {
-      if (event.text.length > 0) chunk({ content: event.text })
+      send(event.text)
     } else {
       // Tool calls arrive whole, so each goes out as one chunk with the next index.
       chunk({ tool_calls: [{ index: calls++, id: event.id, type: "function", function: { name: event.name, arguments: args(event.input) } }] })
@@ -382,6 +396,10 @@ export async function streamCompletion(
   }
   flush()
   start()
+  if (holdback) {
+    const rest = holdback.finish(finish === "stop" && calls === 0).text
+    if (rest.length > 0) chunk({ content: rest })
+  }
   if (held && isStructured) chunk({ content: structured.content(held) })
   chunk({}, finishReason(finish!, calls, isStructured))
   if (choice) return { started, ...(usage ? { usage } : {}) }

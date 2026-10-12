@@ -186,6 +186,20 @@ export interface CallContext {
   readonly onCache?: (result: "hit" | "miss") => void
   /** Bypass the response cache for this call. Fan-out sets it: each choice of `n` above 1 repeats one request and must be a fresh sample. */
   readonly noCache?: boolean
+  /**
+   * Called once per answered call, before its finish event, when usage recording is on (`withUsage`,
+   * src/usage.ts): the call's tokens and USD cost. Front-ends set `x-plugboard-usage` from it while the
+   * headers are open, so a stream (headers sent first) never gets it.
+   */
+  readonly onUsage?: (totals: CallTotals) => void
+}
+
+/** One answered call's totals for the caller: `inputTokens` and `outputTokens` as the response body reports them (cache reads inside input, reasoning inside output), and `costUsd` when the model has a price. */
+export interface CallTotals {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly cacheReadTokens: number
+  readonly costUsd?: number
 }
 
 /** The target of an alias that answered: `provider/model[#variant]`, and the targets tried before it. */

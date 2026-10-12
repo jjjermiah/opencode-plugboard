@@ -195,3 +195,65 @@ describe("answers", () => {
     expect(reply.json()).toEqual(googleError(504, "DEADLINE_EXCEEDED"))
   })
 })
+
+describe("#150 a /v1beta path that matches no Gemini route", () => {
+  // The AI SDK and LangChain send `/v1beta/<provider>/<model>:generateContent` (no `models/` prefix).
+  const unknown = (path = "/v1beta/test/echo:generateContent", headers: Record<string, string> = {}): SendInit => ({ method: "POST", path, headers, body: {} })
+
+  test("an authenticated unknown path is a 404 in Google's body, naming the expected shape", async () => {
+    await route([ev.finish()], { keys: { app: "secret" } })
+    const reply = await server!.send(unknown(undefined, { "x-goog-api-key": "secret" }))
+    expect(reply.status).toBe(404)
+    expect(reply.json()).toEqual(googleError(404, "NOT_FOUND"))
+    expect(reply.json()).toEqual({ error: expect.objectContaining({ message: expect.stringContaining("/v1beta/models/{model}:generateContent") }) })
+  })
+
+  test("the same path with the key as Bearer is also a 404, not a 401", async () => {
+    await route([ev.finish()], { keys: { app: "secret" } })
+    expect((await server!.send(unknown(undefined, { authorization: "Bearer secret" }))).status).toBe(404)
+  })
+
+  test("an unauthenticated unknown path keeps the 401, so the route table is not revealed (#91, #137)", async () => {
+    await route([ev.finish()], { keys: { app: "secret" } })
+    const reply = await server!.send(unknown())
+    expect(reply.status).toBe(401)
+    expect(reply.json()).toEqual(googleError(401, "UNAUTHENTICATED"))
+  })
+
+  test("an authenticated unknown path on a keyless loopback endpoint is a 404", async () => {
+    await route([ev.finish()])
+    expect((await server!.send(unknown())).status).toBe(404)
+  })
+})
+
+describe("#151 generateContent JSON answers: tool calls and structured output", () => {
+  const weather = [{ functionDeclarations: [{ name: "weather", description: "Weather in a city", parametersJsonSchema: { type: "object", properties: { city: { type: "string" } } } }] }]
+  const city = { type: "object", properties: { city: { type: "string" } }, required: ["city"] }
+
+  test("a JSON tool call is a candidate with a functionCall part (no id), finishReason STOP, and the tool is offered to the model", async () => {
+    const caller = await route([ev.call("call_1", "weather", { city: "Oslo" }), ev.finish("tool-calls", { inputTokens: 4, outputTokens: 2 })])
+    const reply = await server!.send(generate(undefined, { tools: weather }))
+    expect(reply.status).toBe(200)
+    expect(reply.json()).toMatchObject({
+      candidates: [{ content: { role: "model", parts: [{ functionCall: { name: "weather", args: { city: "Oslo" } } }] }, finishReason: "STOP" }],
+      usageMetadata: { promptTokenCount: 4, totalTokenCount: 6 },
+    })
+    expect(reply.json().candidates[0].content.parts[0].functionCall).not.toHaveProperty("id")
+    expect(caller.call!.request.tools.map((tool) => tool.name)).toEqual(["weather"])
+  })
+
+  test("a JSON structured answer is the text of the respond call's input, as JSON", async () => {
+    const caller = await route([ev.call("call_1", "respond", { city: "Oslo" }), ev.finish("tool-calls")])
+    const reply = await server!.send(generate(undefined, { generationConfig: { responseMimeType: "application/json", responseSchema: city } }))
+    expect(reply.status).toBe(200)
+    expect(reply.json()).toMatchObject({ candidates: [{ content: { role: "model", parts: [{ text: '{"city":"Oslo"}' }] }, finishReason: "STOP" }] })
+    expect(caller.call!.request.tools.map((tool) => tool.name)).toEqual(["respond"])
+  })
+
+  test("a JSON structured answer with no respond call is a 502 in Google's shape, not an empty 200", async () => {
+    await route([ev.text("Sure, Oslo."), ev.finish("stop")])
+    const reply = await server!.send(generate(undefined, { generationConfig: { responseMimeType: "application/json", responseSchema: city } }))
+    expect(reply.status).toBe(502)
+    expect(reply.json()).toMatchObject({ error: { code: 502, status: "INTERNAL", message: expect.stringContaining("respond") } })
+  })
+})

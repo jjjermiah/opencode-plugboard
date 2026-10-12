@@ -162,6 +162,8 @@ The cache lives in memory. A server restart, or a change to `cache`, `apps`, `mo
 
 Plugboard counts what each app does, per UTC day: model requests and their errors, latency, tokens by kind, cost in USD, cache hits and misses, fallbacks, 429 refusals, and the requests and cost of each model. It is on by default. Set `usage: { "enabled": false }` to record nothing.
 
+With recording on, each non-streaming model answer also carries `x-plugboard-usage` for that one request: `input=<n>; output=<n>; cache_read=<n>; cost_usd=<x.xxxxxx>`. `input` and `output` are the totals the response body reports (cache reads are inside `input`, reasoning inside `output`), and `cost_usd` is priced from the same tokens. A request that fans out with `n` sums its choices. The cost part is left out when the model has no price in the catalog. A streamed answer has no such header: its headers are sent before the usage is known.
+
 Read it with `GET /v1/usage`. `from` and `to` are UTC days (`YYYY-MM-DD`, both inclusive); the default is the 30 days ending today, and a range may span at most 366 days. `app` names one app.
 
 ```sh

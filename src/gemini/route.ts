@@ -21,6 +21,7 @@ import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, s
 import { listAvailableModels, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
+import { reportUsage } from "../usage-header.js"
 import type { RouteHost } from "../openai/route.js"
 import { dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
@@ -162,6 +163,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
+      onUsage: reportUsage(response, match.stream),
       onCache: reportCache(response),
     }),
     scope,

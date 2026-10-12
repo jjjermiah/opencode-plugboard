@@ -2,10 +2,11 @@
  * OpenAI Responses request -> neutral `PlugRequest` plus the `ResponsesExchange` the response
  * encoder needs.
  *
- * Pure function: no I/O. Stateless subset: the caller sends the whole conversation in `input`
- * each time, which is how history already works. Anything that needs server-side state
- * (`previous_response_id`, `conversation`, `item_reference`, `background`) or a hosted tool is
- * rejected with 400 `unsupported_parameter` naming the field. The route resolves `model` to a
+ * Pure function: no I/O. The caller sends the whole conversation in `input` each time, which is
+ * how history already works. An `item_reference` is resolved through the `resolve` argument (the
+ * route passes the per-app store of recent answers, src/responses/store.ts; #147). Anything else that
+ * needs server-side state (`previous_response_id`, `conversation`, `background`) or a hosted tool
+ * is rejected with 400 `unsupported_parameter` naming the field. The route resolves `model` to a
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
@@ -121,7 +122,23 @@ const assistantText = (content: unknown, param: string): string | PlugError => {
  * assistant message, the shape the Chat Completions front-end produces, so a parallel-call turn
  * is one message followed by its results.
  */
-const parseInput = (input: unknown): { system: string[]; messages: PlugMessage[] } | PlugError => {
+/** The output item an `item_reference` names, or undefined when the app's store does not hold it. */
+export type ItemResolver = (itemId: string) => JsonObject | undefined
+
+/** An `item_reference` is the output item of an earlier answer, decoded as that item (#147). */
+const resolveReference = (item: JsonObject, param: string, resolve: ItemResolver | undefined): JsonObject | PlugError => {
+  if (typeof item.id !== "string" || item.id.length === 0) return bad("item_reference needs the id of an output item", `${param}.id`)
+  const found = resolve?.(item.id)
+  if (found === undefined)
+    return bad(
+      `item_reference "${item.id}" is not known to plugboard: it keeps the output of recent answers for an hour, per app. Send the earlier items in full, or send store: false (Vercel AI SDK: providerOptions.openai.store = false)`,
+      `${param}.id`,
+      "item_not_found",
+    )
+  return found
+}
+
+const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system: string[]; messages: PlugMessage[] } | PlugError => {
   if (typeof input === "string") return { system: [], messages: [{ role: "user", content: [{ type: "text", text: input }] }] }
   if (!Array.isArray(input) || input.length === 0) return bad("input must be a string or a non-empty array of items", "input")
 
@@ -134,9 +151,11 @@ const parseInput = (input: unknown): { system: string[]; messages: PlugMessage[]
     pending = undefined
   }
 
-  for (const [index, item] of input.entries()) {
+  for (const [index, given] of input.entries()) {
     const param = `input[${index}]`
-    if (!isRecord(item)) return bad("Each input item must be an object", param)
+    if (!isRecord(given)) return bad("Each input item must be an object", param)
+    const item = given.type === "item_reference" ? resolveReference(given, param, resolve) : given
+    if (isPlugError(item)) return item
     const type = item.type ?? (item.role !== undefined ? "message" : undefined)
     switch (type) {
       case "message": {
@@ -192,11 +211,6 @@ const parseInput = (input: unknown): { system: string[]; messages: PlugMessage[]
       // Reasoning items carry no content plugboard can replay; they are dropped.
       case "reasoning":
         break
-      case "item_reference":
-        return unsupported(
-          "item_reference needs server-side state, which plugboard does not keep; send the full items instead (Vercel AI SDK: providerOptions.openai.store = false)",
-          `${param}.type`,
-        )
       default:
         return unsupported(`Unsupported input item type "${String(type)}"`, `${param}.type`)
     }
@@ -296,7 +310,7 @@ const checkUnsupported = (body: JsonObject): PlugError | undefined => {
   if (body.truncation != null && body.truncation !== "disabled") return unsupported('Only truncation "disabled" is supported', "truncation")
 }
 
-export function parseResponsesRequest(body: unknown, options: PlugboardOptions): ParsedResponses | PlugError {
+export function parseResponsesRequest(body: unknown, options: PlugboardOptions, resolve?: ItemResolver): ParsedResponses | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (body.input == null) return bad("input is required", "input")
@@ -305,7 +319,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions):
   if (body.instructions != null && typeof body.instructions !== "string") return bad("instructions must be a string", "instructions")
   if (body.reasoning != null && !isRecord(body.reasoning)) return bad("reasoning must be an object", "reasoning")
 
-  const parsed = parseInput(body.input)
+  const parsed = parseInput(body.input, resolve)
   if (isPlugError(parsed)) return parsed
   const callerTools = parseTools(body.tools)
   if (!Array.isArray(callerTools)) return callerTools

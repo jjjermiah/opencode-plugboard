@@ -399,6 +399,8 @@ export interface UsageRecorder {
   limited(app: string): void
   fallback(app: string): void
   call(input: CallUsage): void
+  /** The USD cost of a call's tokens under the serving catalog's price for `ref`, or undefined when unpriced (`x-plugboard-usage`, #52). */
+  price(ref: ModelRef, tokens: UsageTokens): Promise<number | undefined>
   /** A report for the range and app (defaults as `resolveRange`). A bad input is a 400 `PlugError`. */
   query(input: UsageQuery): Promise<UsageReport | PlugError>
 }
@@ -582,6 +584,8 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
       })().catch((error) => logError("usage.record_failed", { app: input.app, error: errorMessage(error) }))
     },
 
+    price: priceOf,
+
     async query(input) {
       const at = now()
       if (input.app !== undefined && !APP_NAME_PATTERN.test(input.app))
@@ -659,6 +663,18 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
             if (event.type === "finish") {
               answered = event.reason !== "error"
               usage = event.usage
+              if (answered && context.onUsage) {
+                // The header is set before the finish reaches the front-end, so a non-streaming answer carries it.
+                const ref = served ? parseModelRef(served.model) : request.ref
+                const tokens = tokenBreakdown(usage ?? {})
+                const costUsd = ref ? await recorder.price(ref, tokens) : undefined
+                context.onUsage({
+                  inputTokens: usage?.inputTokens ?? 0,
+                  outputTokens: usage?.outputTokens ?? 0,
+                  cacheReadTokens: usage?.cacheReadTokens ?? 0,
+                  ...(costUsd === undefined ? {} : { costUsd }),
+                })
+              }
             }
             yield event
           }

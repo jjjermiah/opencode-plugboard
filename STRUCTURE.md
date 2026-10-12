@@ -23,6 +23,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `config.ts` | The options type, defaults, `parseOptions`, `authenticate`, `authenticateUsage` (the admin key) and the loopback host check. |
 | `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. |
 | `limits.ts` | Concurrency caps and requests per minute per app (option `limits`): a `ModelCaller` wrapper outside the fallbacks, with its queues on the runtime. |
+| `stop.ts` | Caller stop sequences on the answer text: the tail check of a plain stop and the streamed holdback, shared by every front-end that has `stop` (#145, #149). |
 | `http.ts` | Ingress and transport: body limits, Host and Origin checks, disconnect abort, the one deadline, JSON and SSE writers. |
 | `runtime.ts` | The process-wide runtime on `globalThis`: generations, confirmed app directories, `ensureBackend`, the listener, the event pump, the session store, history sweep state, the metrics registry. |
 | `discovery.ts` | Pure builders for `GET /`, `GET /v1` and `GET /v1/status`, and `sendText`. |
@@ -30,6 +31,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `metrics.ts` | The @prometheus-io/client registry and text rendering. No I/O. |
 | `log.ts` | The pino logger (text or JSON lines), the ambient request id and redaction. Ids and outcomes only. |
 | `usage.ts` | Per-app usage by UTC day: day records, the latency histogram, cost (mirrors OpenCode's `calculateCost`), the recorder with its debounced storage writes and retention, the query, and the `withUsage` model-caller wrapper. |
+| `usage-header.ts` | The `x-plugboard-usage` response header (#52): the format and the per-response accumulator behind `CallContext.onUsage`. |
 | `rpc.ts` | The usage RPC (`opencode-plugboard.usage`, package entry `./rpc`): the definition and its handler builder. Registered by `index.ts`. |
 | `tui.tsx` | The `/plugboard` usage page for OpenCode's TUI (package entry `./tui`, Solid and OpenTUI JSX). Reads the RPC through `context.client`. Not imported by `index.ts`, so the server never loads Solid. Checked by `tsconfig.tui.json`. |
 | `tui-format.ts` | Pure helpers for that page: range presets, app and model rows, number formats. No OpenTUI imports. |
@@ -41,7 +43,7 @@ Each API front-end has the same three files: `request.ts` decodes the wire body 
 | Directory | Job |
 |---|---|
 | `openai/` | Chat Completions and `/v1/models`. `route.ts` is also the front door: it checks Host and Origin, authenticates, and hands every other API to its own route. Also holds `fanout.ts` (`n` above 1: one call per choice, merged) and `sampling.ts` (sampling parameters a model rejects). |
-| `responses/` | `POST /v1/responses`, stateless. |
+| `responses/` | `POST /v1/responses`. Stateless except `store.ts`: the output items of recent answers per app (1000 for an hour, in memory), so an `item_reference` resolves (#147). |
 | `anthropic/` | `POST /v1/messages`. Takes the request over early: Anthropic error bodies and `x-api-key` auth. |
 | `gemini/` | `generateContent`, `streamGenerateContent` and the Gemini model list. The model is in the URL, errors use Google's body. |
 | `completions/` | Legacy `POST /v1/completions`. Always goes through the fan-out. |
