@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions, type PromptCache } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { log, logError, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
@@ -26,7 +26,7 @@ import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, MissingParentError, type SessionPort } from "./host.js"
 import { ImageError, prepareImages, type RemoteImages } from "./media.js"
-import { requestPermissions, seedToolsFor } from "./seeds.js"
+import { requestPermissions, seedToolsFor, ungrantedServerTool, type OperatorRule } from "./seeds.js"
 import { maxAnchorsOf, PROMPT_CACHE_OFF, scopeKey, type Affinity } from "./affinity.js"
 import type { SessionStore } from "./state.js"
 
@@ -94,14 +94,20 @@ function checkPreparation(request: PlugRequest, images: number, maxTools: number
 }
 
 /**
- * The app's tool policy applied to the request: `tools: false` drops every tool (and a tool choice that
- * would refer to them). Returns the request the session is built from, and whether anything was dropped.
- * Note that a `response_format` of `json_schema` is answered through a tool, so it is dropped too.
+ * The app's tool policy applied to the request: `tools: false` drops the caller's tools (and a tool choice that
+ * would refer to them). A structured answer (`json_schema`) is carried by the `respond` tool (`structuredTool`), which
+ * stays and is forced, so the app keeps its structured output (#252). Returns the request the session is built from,
+ * and whether a caller tool was dropped.
  */
 function applyToolPolicy(request: PlugRequest, policy: AppPolicy | undefined): { request: PlugRequest; stripped: boolean } {
   if (policy?.tools !== false) return { request, stripped: false }
-  const { toolChoice: _dropped, ...rest } = request
-  return { request: { ...rest, tools: [] }, stripped: request.tools.length > 0 }
+  const structured = request.structuredTool
+  const kept = structured === undefined ? [] : request.tools.filter((tool) => tool.name === structured)
+  if (structured === undefined || kept.length === 0) {
+    const { toolChoice: _dropped, ...rest } = request
+    return { request: { ...rest, tools: [] }, stripped: request.tools.length > 0 }
+  }
+  return { request: { ...request, tools: kept, toolChoice: { type: "tool", name: structured } }, stripped: request.tools.length > kept.length }
 }
 
 /** An app's own `maxTools`, checked on top of the global one (which `checkPreparation` and the request decoders enforce). */
@@ -126,6 +132,17 @@ function checkServerToolNames(request: PlugRequest, policy: AppPolicy | undefine
     code: "server_tool_collision",
     param: "tools",
     message: `Tool \`${clash.name}\` is one of this app's OpenCode server tools (option \`apps.<name>.serverTools\`); rename the caller's tool`,
+  }
+}
+
+/** A listed server tool the operator's permissions for the agent do not allow (#194): nothing is created. */
+function deniedByOperator(tool: string): PlugError {
+  return {
+    status: 400,
+    kind: "invalid_request",
+    code: "server_tool_denied_by_operator",
+    param: "tools",
+    message: `The OpenCode permissions of this app's agent do not allow \`${tool}\` (option \`apps.<name>.serverTools\`). Add an allow rule for it to the agent, or remove it from serverTools`,
   }
 }
 
@@ -234,12 +251,26 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
         if (context.signal.aborted) return
 
+        // 3c. An app with server tools runs them under the agent's own rules (#194): read them now, for the agent this session runs as.
+        let operatorRules: ReadonlyArray<OperatorRule> = []
+        if (policy?.serverTools) {
+          operatorRules = (await raceAbort(port.agentRules(directory, persona?.kind === "agent" ? persona.agent : undefined), context.signal)) ?? []
+          const ungranted = ungrantedServerTool(policy.serverTools, operatorRules)
+          if (ungranted) return yield note({ type: "error", error: deniedByOperator(ungranted) })
+        }
+        if (context.signal.aborted) return
+
         collector = new RequestCollector({
           stopTurn: interrupt,
           requestID,
           app,
+          ...(request.parallelToolCalls === false ? { singleToolCall: true } : {}),
           ...(policy?.serverTools
-            ? { serverTools: new Set(policy.serverTools), maxServerToolSteps: policy.maxServerToolSteps ?? DEFAULT_SERVER_TOOL_STEPS }
+            ? {
+                serverTools: new Set(policy.serverTools),
+                maxServerToolSteps: policy.maxServerToolSteps ?? DEFAULT_SERVER_TOOL_STEPS,
+                maxServerToolCalls: policy.maxServerToolCalls ?? DEFAULT_SERVER_TOOL_CALLS,
+              }
             : {}),
         })
 
@@ -262,7 +293,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
             ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
             title: makeTitle(request),
             metadata: { plugboard: { app, model: request.model, requestID } },
-            permissions: requestPermissions(policy?.serverTools ?? []),
+            permissions: requestPermissions(policy?.serverTools ?? [], operatorRules),
             ...(parent === undefined ? {} : { parentID: parent }),
           })
           return raceAbort(creating, context.signal).catch((error) => {

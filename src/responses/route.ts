@@ -15,7 +15,7 @@ import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy, reportServerTools } from "../policy.js"
+import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
@@ -46,6 +46,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
   const call: PlugRequest = { ...parsed.request, ref }
+  reportParallelTools(response, call)
   const { exchange } = parsed
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.

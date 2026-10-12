@@ -17,13 +17,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { bodyLimits, historyTemplate } from "../config.js"
+import { appPolicy, bodyLimits, historyTemplate } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { listAvailableModels, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
+import { requestSystem } from "../session/context.js"
 import { reportAffinity } from "../session/affinity.js"
 import type { RouteHost } from "../openai/route.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
@@ -121,8 +122,8 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     const ref = resolveModel(host.options, match.model, catalog, parsed.reasoningEffort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-    // An estimate, not the provider's count (see src/anthropic/tokens.ts).
-    return sendJson(response, 200, { totalTokens: estimateTokens(parsed.request) })
+    // An estimate, not the provider's count (see src/anthropic/tokens.ts). The app's system policy and steering count too (#201).
+    return sendJson(response, 200, { totalTokens: estimateTokens({ ...parsed.request, system: requestSystem(parsed.request, [], appPolicy(host.options, app)) }) })
   }
 
   if (match.op === "list" || match.op === "get") {

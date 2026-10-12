@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { encodeError, runMessage, sseFrame, type MessagesExchange, type MessagesStreamEvent } from "../../src/anthropic/response.js"
+import { encodeError, messagesStatus, runMessage, sseFrame, type MessagesExchange, type MessagesStreamEvent } from "../../src/anthropic/response.js"
 import type { PlugErrorKind, PlugEvent } from "../../src/contract.js"
 import { ev, events } from "../support/fixtures.js"
 
@@ -24,6 +24,28 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     // input_tokens excludes the cached parts, which are reported on their own.
     expect(message.usage).toEqual({ input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3 })
     expect(emitted.at(-2)).toMatchObject({ delta: { stop_reason: "end_turn" }, usage: message.usage })
+  })
+
+  test("#203 message_start carries zero usage, because the host reports counts at the end; message_delta carries the real ones", async () => {
+    const { emitted } = await run(plain, ev.text("hi"), ev.finish("stop", { inputTokens: 10, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 1 }))
+    expect(emitted[0]).toMatchObject({ type: "message_start", message: { usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } })
+    // The Anthropic SDK accumulator (MessageStream) takes input and cache counts from message_delta when they are non-null.
+    expect(emitted.find((event) => event.type === "message_delta")).toMatchObject({ usage: { input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3 } })
+  })
+
+  test("#146 a thinking block carries the provider signature the host reported, as a signature_delta before it stops", async () => {
+    const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig_abc" }
+    const { emitted, message } = await run(thinking, ev.reasoning("hmm"), signed, ev.text("answer"), ev.finish())
+    const signature = emitted.find((event) => event.type === "content_block_delta" && (event as { delta?: { type?: string } }).delta?.type === "signature_delta")
+    expect(signature).toEqual({ type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig_abc" } })
+    expect(message.content[0]).toEqual({ type: "thinking", thinking: "hmm", signature: "sig_abc" })
+  })
+
+  test("#146 a signature is ignored when the caller did not ask for thinking", async () => {
+    const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig_abc" }
+    const { types, message } = await run(plain, ev.reasoning("hmm"), signed, ev.text("answer"), ev.finish())
+    expect(types).not.toContain("signature_delta")
+    expect(message.content).toEqual([{ type: "text", text: "answer" }])
   })
 
   test("a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use", async () => {
@@ -109,6 +131,15 @@ describe("#4 encodeError: Anthropic's error body", () => {
   ]
   test.each(kinds)("%s with status %d -> %s", (kind, status, type) => {
     expect(encodeError({ status, kind, message: "m", code: "c" })).toEqual({ type: "error", error: { type, message: "m" } })
+  })
+
+  test("#204 a provider overload is overloaded_error on HTTP 529; other 503s stay api_error on 503", () => {
+    const overloaded = { status: 503, kind: "server" as const, code: "provider_overloaded", message: "m" }
+    expect(encodeError(overloaded)).toEqual({ type: "error", error: { type: "overloaded_error", message: "m" } })
+    expect(messagesStatus(overloaded)).toBe(529)
+    const unavailable = { status: 503, kind: "server" as const, code: "provider_unavailable", message: "m" }
+    expect(encodeError(unavailable)).toEqual({ type: "error", error: { type: "api_error", message: "m" } })
+    expect(messagesStatus(unavailable)).toBe(503)
   })
 
   test("sseFrame names the event", () => {

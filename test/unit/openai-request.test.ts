@@ -142,6 +142,18 @@ describe("parseChatRequest: messages", () => {
   })
 })
 
+describe("#202 parallel_tool_calls", () => {
+  test("false asks for one tool call per answer; true and absent do not", () => {
+    expect(parse(body({ parallel_tool_calls: false })).request.parallelToolCalls).toBe(false)
+    expect(parse(body({ parallel_tool_calls: true })).request).not.toHaveProperty("parallelToolCalls")
+    expect(parse(body()).request).not.toHaveProperty("parallelToolCalls")
+  })
+
+  test("a non-boolean is a 400 naming the field", () => {
+    expect(parseChatRequest(body({ parallel_tool_calls: "no" }), options)).toMatchObject({ status: 400, param: "parallel_tool_calls" })
+  })
+})
+
 describe("parseChatRequest: tools and tool_choice", () => {
   test("a tool without parameters gets an empty object schema and description", () => {
     expect(parse(body({ tools: [fn("ping")] })).request.tools).toEqual([{ name: "ping", description: "", parameters: { type: "object", properties: {} } }])
@@ -172,6 +184,8 @@ describe("parseChatRequest: structured output", () => {
     const parsed = parse(body({ response_format: jsonSchema }))
     expect(parsed.request.tools).toEqual([{ name: "respond", description: "Give your final answer by calling this tool with JSON matching its schema. The answer.", parameters: schema }])
     expect(parsed.request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    // The request carries the structured tool's name, so `tools: false` keeps respond (#252).
+    expect(parsed.request.structuredTool).toBe("respond")
     expect(parsed.exchange).toMatchObject({ structuredTool: "respond" })
     expect(parsed.exchange).not.toHaveProperty("callerTools")
   })

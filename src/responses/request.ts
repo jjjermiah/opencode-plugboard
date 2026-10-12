@@ -373,7 +373,9 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
     messages: parsed.messages,
     tools,
     ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),
+    ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
     generation,
+    ...(body.parallel_tool_calls === false ? { parallelToolCalls: false } : {}),
   }
   const reasoningEffort = isRecord(body.reasoning) && typeof body.reasoning.effort === "string" ? body.reasoning.effort : undefined
   const text = isRecord(body.text) ? body.text : undefined
