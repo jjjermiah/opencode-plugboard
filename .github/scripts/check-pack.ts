@@ -2,10 +2,12 @@
 // Fails unless `npm pack` would ship exactly what package.json `files` names
 // (plus package.json itself, which npm always adds). Not shipped in the package.
 import { Glob } from "bun"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { files?: string[] }
 if (!pkg.files?.length) throw new Error("package.json has no `files` list")
+// `npm pack --ignore-scripts` below skips prepack, so the compiled TUI entry must already exist.
+if (!existsSync("dist/tui.js")) throw new Error("dist/tui.js is missing: run `bun run build:tui` before packing")
 
 const expected = new Set<string>(["package.json"])
 for (const entry of pkg.files) {

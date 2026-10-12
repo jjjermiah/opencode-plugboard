@@ -36,7 +36,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `usage.ts` | Per-app usage by UTC day: day records, the latency histogram, cost (mirrors OpenCode's `calculateCost`), the recorder with its debounced storage writes and retention, the query, and the `withUsage` model-caller wrapper. |
 | `usage-header.ts` | The `x-plugboard-usage` response header (#52): the format and the per-response accumulator behind `CallContext.onUsage`. |
 | `rpc.ts` | The usage RPC (`opencode-plugboard.usage`, package entry `./rpc`): the definition and its handler builder. Registered by `index.ts`. |
-| `tui.tsx` | The `/plugboard` usage page for OpenCode's TUI (package entry `./tui`, Solid and OpenTUI JSX). Reads the RPC through `context.client`. Not imported by `index.ts`, so the server never loads Solid. Checked by `tsconfig.tui.json`. |
+| `tui.tsx` | The `/plugboard` usage page for OpenCode's TUI (package entry `./tui`, Solid and OpenTUI JSX). Reads the RPC through `context.client`. Not imported by `index.ts`, so the server never loads Solid. Checked by `tsconfig.tui.json`. Compiled to `dist/tui.js` by `build:tui` (`.github/scripts/build-tui.ts`), which the `./tui` export points at. |
 | `tui-format.ts` | Pure helpers for that page: range presets, app and model rows, number formats. No OpenTUI imports. |
 
 ## `src/` directories
