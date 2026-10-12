@@ -12,6 +12,11 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [librechat/](librechat/README.md) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` |
 | [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider |
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
+| [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |
+| [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script |
+| [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
+| [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script |
+| [aider/](aider/.aider.conf.yml) | Aider (a terminal coding tool) pointed at plugboard: `.aider.conf.yml` and `.env.example` |
 | [curl](#curl) | One request per API: chat, responses, messages, Gemini, models and usage |
 
 Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option.
@@ -25,6 +30,53 @@ PLUGBOARD_KEY=<your key> bun index.ts "What is the weather in Paris?"
 ```
 
 `PLUGBOARD_URL` (default `http://127.0.0.1:4010/v1`) and `PLUGBOARD_MODEL` (default `fast`) override the endpoint and model.
+
+## OpenAI Agents SDK
+
+```sh
+cd examples/openai-agents
+PLUGBOARD_KEY=<your key> uv run agent.py
+```
+
+`PLUGBOARD_URL` (default `http://127.0.0.1:4010`) and `PLUGBOARD_API=chat_completions` change the endpoint and the API. `uv` reads the dependency pin from the script header, so there is no install step.
+
+## LiteLLM as a client
+
+```sh
+cd examples/litellm-client
+PLUGBOARD_KEY=<your key> uv run example.py
+```
+
+`PLUGBOARD_URL` defaults to `http://127.0.0.1:4010`. The `openai/` prefix is what routes the call to Chat Completions.
+
+## Instructor
+
+```sh
+cd examples/instructor
+PLUGBOARD_KEY=<your key> uv run example.py
+```
+
+`PLUGBOARD_URL` defaults to `http://127.0.0.1:4010`.
+
+## DSPy
+
+```sh
+cd examples/dspy
+PLUGBOARD_KEY=<your key> uv run example.py
+```
+
+`PLUGBOARD_URL` defaults to `http://127.0.0.1:4010`.
+
+## Aider
+
+Copy `.env.example` to `.env` and fill in the key, then run from the repo you want to edit:
+
+```sh
+cd examples/aider && cp .env.example .env
+aider --model openai/fast
+```
+
+See [the Aider client page](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/aider.md) for what was tested.
 
 ## curl
 
