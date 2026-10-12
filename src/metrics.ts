@@ -3,7 +3,7 @@
  * I/O. `createMetrics` makes one `Registry` of its own (the default global registry is never
  * touched, and the default process metrics are never collected); the one the server uses lives
  * in the process runtime (`src/runtime.ts`), so counts survive a plugin generation being
- * replaced. `GET /metrics` renders it (opt-in, `metrics: true`).
+ * replaced. `GET /plugboard/metrics` renders it (opt-in, `metrics: true`).
  *
  * Labels are bounded by construction and carry ids only: `app` is a configured key name (or
  * `_none` before authentication succeeded), `route` is one of the known routes or `unknown`,

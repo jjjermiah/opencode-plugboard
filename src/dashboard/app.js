@@ -1,7 +1,7 @@
 /*
- * plugboard usage dashboard (#141). Plain browser script, no build step, served as /dashboard/app.js.
+ * plugboard usage dashboard (#141). Plain browser script, no build step, served as /plugboard/dashboard/app.js.
  *
- * Data comes only from GET /v1/usage, with the key the person typed (kept in sessionStorage). Every
+ * Data comes only from GET /plugboard/usage, with the key the person typed (kept in sessionStorage). Every
  * value that came from the server (app names, model ids) reaches the page through textContent or
  * attributes; nothing here writes markup from a string. The page sends no inline script or style (see page.ts).
  */
@@ -82,6 +82,18 @@
     $("status").textContent = text;
   }
 
+  /** The `detail` of a problem+json answer (RFC 9457), or "" when there is none. */
+  function problemDetail(response) {
+    return response.json().then(
+      function (body) {
+        return body && typeof body.detail === "string" ? body.detail : "";
+      },
+      function () {
+        return "";
+      },
+    );
+  }
+
   function showSignIn(message) {
     destroyCharts();
     state.report = null;
@@ -111,7 +123,7 @@
     setStatus("Loading " + from + " to " + to + " (UTC)...");
     var response;
     try {
-      response = await fetch("/v1/usage?from=" + from + "&to=" + to, {
+      response = await fetch("/plugboard/usage?from=" + from + "&to=" + to, {
         headers: stored === "" ? {} : { authorization: "Bearer " + stored },
         cache: "no-store",
         credentials: "omit",
@@ -123,11 +135,13 @@
     }
     if (response.status === 401 || response.status === 403) {
       sessionStorage.removeItem(KEY_STORAGE);
-      showSignIn(response.status === 401 ? "That key was not accepted." : "This key may not read usage.");
+      var refusal = await problemDetail(response);
+      showSignIn(refusal || (response.status === 401 ? "That key was not accepted." : "This key may not read usage."));
       return;
     }
     if (!response.ok) {
-      setStatus("plugboard answered " + response.status + ". Refresh to try again.");
+      var detail = await problemDetail(response);
+      setStatus("plugboard answered " + response.status + (detail ? ": " + detail : "") + ". Refresh to try again.");
       return;
     }
     state.report = await response.json();

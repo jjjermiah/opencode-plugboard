@@ -176,7 +176,7 @@ export interface RouteServer extends Loopback {
   readonly metrics: Metrics
 }
 
-/** The runtime facts `/v1/status` and `/metrics` report, fixed for tests (the real ones come from src/runtime.ts). */
+/** The runtime facts `/plugboard/status` and `/plugboard/metrics` report, fixed for tests (the real ones come from src/runtime.ts). */
 export const TEST_STATUS: RuntimeStatus = { runtimeVersion: 8, generations: 1, pumpRunning: false, guards: 0, startedAt: Date.UTC(2026, 9, 11), servingConfirmed: false, catalogLoaded: false }
 
 export interface RouteSetup {
@@ -184,9 +184,9 @@ export interface RouteSetup {
   /** Raw plugin options (`listen` is filled in); defaults to `testOptions()`'s. */
   readonly options?: Record<string, unknown>
   readonly catalog?: ReadonlyArray<CatalogModel> | (() => Promise<ReadonlyArray<CatalogModel>>)
-  /** Runtime facts for `/v1/status` and `/metrics`; `TEST_STATUS` by default, so no process runtime is created. */
+  /** Runtime facts for `/plugboard/status` and `/plugboard/metrics`; `TEST_STATUS` by default, so no process runtime is created. */
   readonly status?: () => RuntimeStatus
-  /** The usage recorder behind `GET /v1/usage` (and the request log point). Absent: no usage route. */
+  /** The usage recorder behind `GET /plugboard/usage` (and the request log point). Absent: no usage route. */
   readonly usage?: UsageRecorder
   /** The runtime app key store (src/keys.ts, #55) behind the admin routes and runtime keys. Absent: no runtime keys. */
   readonly keys?: KeyStore

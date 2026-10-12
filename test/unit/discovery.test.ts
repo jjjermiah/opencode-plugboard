@@ -1,5 +1,5 @@
 /**
- * #73 discovery pages and `/v1/status` (src/discovery.ts): pure builders. The disclosure rule is
+ * #73 discovery pages and `/plugboard/status` (src/discovery.ts): pure builders. The disclosure rule is
  * the point: keyless shows everything, keyed without credentials shows only the address and the
  * endpoints, a valid key adds its own app and the configuration, and no key ever appears.
  */
@@ -54,10 +54,10 @@ describe("#73 buildDiscovery: what each caller may see", () => {
     expect(buildDiscovery({ options: keyless, catalog: CATALOG }).example.curl).toContain(`'{"model":"test/echo"`)
   })
 
-  test("/metrics is listed only when enabled", () => {
+  test("/plugboard/metrics is listed only when enabled", () => {
     const paths = (options = keyless) => buildDiscovery({ options }).endpoints.map((endpoint) => endpoint.path)
-    expect(paths()).not.toContain("/metrics")
-    expect(paths(testOptions({ metrics: true }))).toContain("/metrics")
+    expect(paths()).not.toContain("/plugboard/metrics")
+    expect(paths(testOptions({ metrics: true }))).toContain("/plugboard/metrics")
   })
 
   test("an IPv6 listen address is bracketed in the base URL", () => {

@@ -277,7 +277,7 @@ Plugboard returns the model's tool calls to the caller and never runs them. The 
   {"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\": \"Paris\"}"}}]}}]}
 ```
 
-Send the answer back as a `{"role": "tool", "tool_call_id": "call_1", "content": "..."}` message. Tool call ids differ by model, so do not parse them. `maxTools` (default 32) caps the tools one request may carry.
+Send the answer back as a `{"role": "tool", "tool_call_id": "call_1", "content": "..."}` message. Tool call ids differ by model, so do not parse them. `maxTools` (default 64) caps the tools one request may carry.
 
 #### Structured output
 
@@ -349,7 +349,7 @@ Usage is recorded per app and per UTC day: requests, errors, latency, tokens, es
 ```
 
 ```sh
-curl -s "http://127.0.0.1:4010/v1/usage?from=2026-10-01&to=2026-10-11" \
+curl -s "http://127.0.0.1:4010/plugboard/usage?from=2026-10-01&to=2026-10-11" \
   -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
 ```
 
@@ -371,7 +371,7 @@ Every request is kept as an OpenCode session in a directory for its app, so it n
 "history": { "maxSessions": 500, "maxAgeDays": 30 }   // per app; the stricter limit wins
 ```
 
-Without `history`, sessions are kept forever.
+Without `history`, sessions older than 30 days are pruned (`maxAgeDays` defaults to 30). Set `"maxAgeDays": 0` to keep them forever. Sessions created before the upgrade are not indexed, so they are never pruned.
 
 #### Metrics and logs
 
@@ -383,7 +383,7 @@ Prometheus metrics are off by default. Turn them on, and get structured logs whe
 ```
 
 ```sh
-curl -s http://127.0.0.1:4010/metrics -H "Authorization: Bearer $KEY" | grep plugboard_requests_total
+curl -s http://127.0.0.1:4010/plugboard/metrics -H "Authorization: Bearer $KEY" | grep plugboard_requests_total
 ```
 
 Every response has an `x-plugboard-request-id`, the same id that appears on that request's log lines. Useful log events include `request.finished`, `request.limited` and `model.fallback`. The metrics have no model label, so their cardinality stays bounded.

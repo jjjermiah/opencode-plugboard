@@ -1,5 +1,5 @@
 /**
- * Observability routes over loopback HTTP: #73 discovery (`GET /`, `GET /v1`), #56 `/v1/status`
+ * Observability routes over loopback HTTP: #73 discovery (`GET /`, `GET /v1`), #56 `/plugboard/status`
  * and `/metrics`, #76 the request id header, and #91 authentication before route lookup.
  */
 import { afterEach, describe, expect, test } from "bun:test"
@@ -51,8 +51,8 @@ describe("#91 authentication comes before route lookup", () => {
   test.each([
     ["an unknown path", { path: "/v2/secret" }],
     ["a known path with the wrong method", { path: "/v1/chat/completions" }],
-    ["/v1/status", { path: "/v1/status" }],
-    ["/metrics while disabled", { path: "/metrics" }],
+    ["/plugboard/status", { path: "/plugboard/status" }],
+    ["/plugboard/metrics while disabled", { path: "/plugboard/metrics" }],
   ])("without a key, %s is a 401, so the surface cannot be mapped", async (_name, init) => {
     await route({ keys: KEYS })
     expect((await server!.send(init)).status).toBe(401)
@@ -112,31 +112,31 @@ describe("#73 GET / and GET /v1", () => {
   })
 })
 
-describe("#56 GET /v1/status", () => {
+describe("#56 GET /plugboard/status", () => {
   test("authenticated runtime facts for the caller's app", async () => {
     await route({ keys: KEYS })
-    const reply = await server!.send({ path: "/v1/status", headers: bearer(KEYS.alpha) })
+    const reply = await server!.send({ path: "/plugboard/status", headers: bearer(KEYS.alpha) })
     expect(reply.status).toBe(200)
     expect(reply.json()).toMatchObject({ ok: true, app: "alpha", runtimeVersion: TEST_STATUS.runtimeVersion, generations: 1, models: { catalog: 3, available: 4 } })
     expect(reply.text).not.toMatch(/beta|secret/)
   })
 })
 
-describe("#56 GET /metrics", () => {
+describe("#56 GET /plugboard/metrics", () => {
   test("off by default: an unknown path", async () => {
     await route()
-    expect((await server!.send({ path: "/metrics" })).status).toBe(404)
+    expect((await server!.send({ path: "/plugboard/metrics" })).status).toBe(404)
   })
 
   test("on: needs a key like /v1, and serves Prometheus text", async () => {
     await route({ keys: KEYS, metrics: true })
-    expect((await server!.send({ path: "/metrics" })).status).toBe(401)
+    expect((await server!.send({ path: "/plugboard/metrics" })).status).toBe(401)
     await server!.send({ ...chat, headers: bearer(KEYS.alpha) })
-    const reply = await server!.send({ path: "/metrics", headers: bearer(KEYS.beta) })
+    const reply = await server!.send({ path: "/plugboard/metrics", headers: bearer(KEYS.beta) })
     expect(reply.status).toBe(200)
     expect(reply.headers["content-type"]).toBe("text/plain; version=0.0.4; charset=utf-8")
     expect(reply.text).toContain('plugboard_requests_total{app="alpha",route="POST /v1/chat/completions",status="200",outcome="ok"} 1')
-    expect(reply.text).toContain('plugboard_requests_total{app="_none",route="GET /metrics",status="401",outcome="rejected"} 1')
+    expect(reply.text).toContain('plugboard_requests_total{app="_none",route="GET /plugboard/metrics",status="401",outcome="rejected"} 1')
     expect(reply.text).toContain('plugboard_tokens_total{app="alpha",kind="input"} 4')
     expect(reply.text).not.toContain("secret")
   })
@@ -145,12 +145,13 @@ describe("#56 GET /metrics", () => {
     const ADMIN = "admin-secret-value"
     await route({ keys: KEYS, metrics: true, adminKey: ADMIN })
     await server!.send({ ...chat, headers: bearer(KEYS.alpha) })
-    expect((await server!.send({ path: "/metrics" })).status).toBe(401)
-    const denied = await server!.send({ path: "/metrics", headers: bearer(KEYS.beta) })
+    expect((await server!.send({ path: "/plugboard/metrics" })).status).toBe(401)
+    const denied = await server!.send({ path: "/plugboard/metrics", headers: bearer(KEYS.beta) })
     expect(denied.status).toBe(403)
-    expect(denied.json()).toMatchObject({ error: { code: "admin_key_required", type: "permission_error" } })
+    expect(denied.headers["content-type"]).toBe("application/problem+json")
+    expect(denied.json()).toMatchObject({ code: "admin_key_required", status: 403 })
     expect(denied.text).not.toContain("plugboard_")
-    const reply = await server!.send({ path: "/metrics", headers: bearer(ADMIN) })
+    const reply = await server!.send({ path: "/plugboard/metrics", headers: bearer(ADMIN) })
     expect(reply.status).toBe(200)
     expect(reply.text).toContain('plugboard_requests_total{app="alpha",route="POST /v1/chat/completions"')
   })
@@ -158,14 +159,14 @@ describe("#56 GET /metrics", () => {
   test("#285 without adminKey, any app key reads every app's series (the documented choice)", async () => {
     await route({ keys: KEYS, metrics: true })
     await server!.send({ ...chat, headers: bearer(KEYS.alpha) })
-    const reply = await server!.send({ path: "/metrics", headers: bearer(KEYS.beta) })
+    const reply = await server!.send({ path: "/plugboard/metrics", headers: bearer(KEYS.beta) })
     expect(reply.status).toBe(200)
     expect(reply.text).toContain('app="alpha"')
   })
 
   test("a successful scrape writes no log line", async () => {
     await route({ metrics: true })
-    await server!.send({ path: "/metrics" })
+    await server!.send({ path: "/plugboard/metrics" })
     expect(logs.lines).toEqual([])
   })
 

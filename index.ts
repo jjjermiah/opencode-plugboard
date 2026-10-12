@@ -47,7 +47,7 @@ export default Plugin.define({
         // Invalid options fail this setup, so the host lists the plugin as `failed` with the message
         // (opencode packages/core/src/plugin.ts: a failed setup becomes slot.error, then the state).
         // Nothing is registered, so the Location stays inert. The same message goes to the error log,
-        // and to `/v1/status` and `/readyz` while a listener from an earlier good generation serves (#159).
+        // and to `/plugboard/status` and `/readyz` while a listener from an earlier good generation serves (#159).
         const message = errorMessage(error)
         setConfigError(message)
         logError("options.invalid", { error: message })

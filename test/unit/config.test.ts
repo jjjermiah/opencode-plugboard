@@ -12,11 +12,11 @@ describe("parseOptions: defaults", () => {
       aliases: {},
       agents: {},
       fallbacks: {},
-      maxTools: 32,
+      maxTools: 64,
       maxN: 1,
       requestTimeoutMs: 600_000,
       remoteImages: false,
-      history: {},
+      history: { maxAgeDays: 30 },
       dropUnsupportedParams: true,
       logFormat: "text",
       metrics: false,
@@ -66,9 +66,11 @@ describe("parseOptions: defaults", () => {
     expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000 })
   })
 
-  test("history limits that are not set stay absent (keep forever)", () => {
-    expect(parseOptions({ history: { maxSessions: 3 } }).history).toEqual({ maxSessions: 3 })
-    expect(parseOptions({ history: {} }).history).toEqual({})
+  test("#158 history keeps 30 days by default; maxAgeDays 0 is the explicit opt-out to no age limit", () => {
+    expect(parseOptions({ history: { maxSessions: 3 } }).history).toEqual({ maxSessions: 3, maxAgeDays: 30 })
+    expect(parseOptions({}).history).toEqual({ maxAgeDays: 30 })
+    expect(parseOptions({ history: { maxAgeDays: 0 } }).history).toEqual({})
+    expect(parseOptions({ history: { maxAgeDays: 0, maxSessions: 3 } }).history).toEqual({ maxSessions: 3 })
   })
 })
 
@@ -108,7 +110,7 @@ describe("parseOptions: every rejection names the option", () => {
     ["a history.maxSessions of 0", { history: { maxSessions: 0 } }, /`history.maxSessions`/],
     ["an unknown modelIds mode", { modelIds: "all" }, /`modelIds` must be `canonical`, `slugs` or `both`/],
     ["a modelIds that is not a string", { modelIds: ["slugs"] }, /`modelIds` must be/],
-    ["a history.maxAgeDays past 100 years", { history: { maxAgeDays: 36_501 } }, /`history.maxAgeDays` must be an integer between 1 and 36500/],
+    ["a history.maxAgeDays past 100 years", { history: { maxAgeDays: 36_501 } }, /`history.maxAgeDays` must be an integer between 0 and 36500/],
     ["a limits that is not an object", { limits: 5 }, /`limits` must be an object/],
     ["an unknown limits key", { limits: { rate: 1 } }, /Unknown plugboard option `limits.rate`/],
     ["a limits.maxConcurrent of 0", { limits: { maxConcurrent: 0 } }, /`limits.maxConcurrent` must be an integer between 1 and 1000000/],

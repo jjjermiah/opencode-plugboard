@@ -43,39 +43,39 @@ async function start({ adminKey = true }: { adminKey?: boolean } = {}): Promise<
 describe("#55 admin routes: who may call them", () => {
   test("#55 without adminKey every admin path is a 404, whatever the credential", async () => {
     const srv = await start({ adminKey: false })
-    for (const init of [{ path: "/v1/admin/keys" }, { path: "/v1/admin/keys", method: "POST", body: { app: "bot" } }, { path: "/v1/admin/keys/deadbeef", method: "DELETE" }]) {
+    for (const init of [{ path: "/plugboard/admin/keys" }, { path: "/plugboard/admin/keys", method: "POST", body: { app: "bot" } }, { path: "/plugboard/admin/keys/deadbeef", method: "DELETE" }]) {
       const reply = await srv.send({ ...init, headers: bearer(ADMIN) })
       expect(reply.status).toBe(404)
-      expect(reply.json().error.code).toBe("not_found")
+      expect(reply.json().code).toBe("not_found")
     }
   })
 
   test("#55 an app key, a wrong key and no key are all 401 on the admin routes", async () => {
     const srv = await start()
-    expect((await srv.send({ path: "/v1/admin/keys", headers: bearer(ALPHA) })).status).toBe(401)
-    expect((await srv.send({ path: "/v1/admin/keys", headers: bearer("nope") })).status).toBe(401)
-    const none = await srv.send({ path: "/v1/admin/keys" })
+    expect((await srv.send({ path: "/plugboard/admin/keys", headers: bearer(ALPHA) })).status).toBe(401)
+    expect((await srv.send({ path: "/plugboard/admin/keys", headers: bearer("nope") })).status).toBe(401)
+    const none = await srv.send({ path: "/plugboard/admin/keys" })
     expect(none.status).toBe(401)
-    expect(none.json().error.code).toBe("invalid_api_key")
+    expect(none.json().code).toBe("invalid_api_key")
   })
 
   test("#55 a wrong method on the collection is a 405", async () => {
     const srv = await start()
-    expect((await srv.send({ method: "PUT", path: "/v1/admin/keys", headers: bearer(ADMIN), body: {} })).status).toBe(405)
+    expect((await srv.send({ method: "PUT", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: {} })).status).toBe(405)
   })
 })
 
 describe("#55 admin routes: create, list, revoke", () => {
   test("#55 GET lists the config key and no runtime keys on a fresh server", async () => {
     const srv = await start()
-    const reply = await srv.send({ path: "/v1/admin/keys", headers: bearer(ADMIN) })
+    const reply = await srv.send({ path: "/plugboard/admin/keys", headers: bearer(ADMIN) })
     expect(reply.status).toBe(200)
     expect(reply.json()).toEqual({ keys: [{ id: keyIdOf(keyDigest(ALPHA)), app: "alpha", source: "config" }] })
   })
 
   test("#55 POST returns the new key once, and that key authenticates on /v1/chat/completions", async () => {
     const srv = await start()
-    const created = await srv.send({ method: "POST", path: "/v1/admin/keys", headers: bearer(ADMIN), body: { app: "bot" } })
+    const created = await srv.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "bot" } })
     expect(created.status).toBe(201)
     expect(created.headers["cache-control"]).toBe("no-store")
     const { id, app, key, createdAt } = created.json()
@@ -86,7 +86,7 @@ describe("#55 admin routes: create, list, revoke", () => {
 
     expect((await srv.send(chat(key))).status).toBe(200)
     // Listed by id and source, never by value.
-    const listed = (await srv.send({ path: "/v1/admin/keys", headers: bearer(ADMIN) })).json().keys
+    const listed = (await srv.send({ path: "/plugboard/admin/keys", headers: bearer(ADMIN) })).json().keys
     expect(listed).toContainEqual({ id, app: "bot", source: "runtime", createdAt })
     expect(JSON.stringify(listed)).not.toContain(key)
     // The log line names the id and the app, never the key.
@@ -97,33 +97,33 @@ describe("#55 admin routes: create, list, revoke", () => {
 
   test("#55 DELETE revokes a runtime key: the next request with it is a 401", async () => {
     const srv = await start()
-    const { id, key } = (await srv.send({ method: "POST", path: "/v1/admin/keys", headers: bearer(ADMIN), body: { app: "bot" } })).json()
+    const { id, key } = (await srv.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "bot" } })).json()
     expect((await srv.send(chat(key))).status).toBe(200)
-    const gone = await srv.send({ method: "DELETE", path: `/v1/admin/keys/${id}`, headers: bearer(ADMIN) })
+    const gone = await srv.send({ method: "DELETE", path: `/plugboard/admin/keys/${id}`, headers: bearer(ADMIN) })
     expect(gone.status).toBe(200)
     expect(gone.json()).toEqual({ id, revoked: true })
     expect((await srv.send(chat(key))).status).toBe(401)
-    expect((await srv.send({ method: "DELETE", path: `/v1/admin/keys/${id}`, headers: bearer(ADMIN) })).status).toBe(404)
+    expect((await srv.send({ method: "DELETE", path: `/plugboard/admin/keys/${id}`, headers: bearer(ADMIN) })).status).toBe(404)
   })
 
   test("#55 a config key cannot be revoked through the API: 409, pointing at the config", async () => {
     const srv = await start()
-    const reply = await srv.send({ method: "DELETE", path: `/v1/admin/keys/${keyIdOf(keyDigest(ALPHA))}`, headers: bearer(ADMIN) })
+    const reply = await srv.send({ method: "DELETE", path: `/plugboard/admin/keys/${keyIdOf(keyDigest(ALPHA))}`, headers: bearer(ADMIN) })
     expect(reply.status).toBe(409)
-    expect(reply.json().error.message).toContain("plugboard config")
+    expect(reply.json().detail).toContain("plugboard config")
     // The config key still works.
     expect((await srv.send(chat(ALPHA))).status).toBe(200)
   })
 
   test("#55 POST refuses a name that is not an app, the reserved default, and an app with a config key", async () => {
     const srv = await start()
-    const post = (body: unknown) => srv.send({ method: "POST", path: "/v1/admin/keys", headers: bearer(ADMIN), body })
+    const post = (body: unknown) => srv.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body })
     expect((await post({ app: "Bad_Name" })).status).toBe(400)
     expect((await post({ app: "default" })).status).toBe(400)
     expect((await post({})).status).toBe(400)
     const taken = await post({ app: "alpha" })
     expect(taken.status).toBe(409)
-    expect(taken.json().error.code).toBe("app_has_config_key")
+    expect(taken.json().code).toBe("app_has_config_key")
   })
 
   test("#197 POST refuses an app with serverTools: 409 app_has_server_tools, and mints no key", async () => {
@@ -135,15 +135,15 @@ describe("#55 admin routes: create, list, revoke", () => {
       options: { keys: { alpha: ALPHA, bot: "bot-config-secret" }, adminKey: ADMIN, apps: { bot: { serverTools: ["websearch"] } } },
       keys,
     })
-    const reply = await server.send({ method: "POST", path: "/v1/admin/keys", headers: bearer(ADMIN), body: { app: "bot" } })
+    const reply = await server.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "bot" } })
     expect(reply.status).toBe(409)
-    expect(reply.json().error.code).toBe("app_has_server_tools")
-    expect((await server.send({ path: "/v1/admin/keys", headers: bearer(ADMIN) })).json().keys.every((key: { source: string }) => key.source === "config")).toBe(true)
+    expect(reply.json().code).toBe("app_has_server_tools")
+    expect((await server.send({ path: "/plugboard/admin/keys", headers: bearer(ADMIN) })).json().keys.every((key: { source: string }) => key.source === "config")).toBe(true)
   })
 
   test("#55 an unknown or malformed key id is a 404", async () => {
     const srv = await start()
-    expect((await srv.send({ method: "DELETE", path: "/v1/admin/keys/notanid", headers: bearer(ADMIN) })).status).toBe(404)
-    expect((await srv.send({ method: "DELETE", path: "/v1/admin/keys/00000000", headers: bearer(ADMIN) })).status).toBe(404)
+    expect((await srv.send({ method: "DELETE", path: "/plugboard/admin/keys/notanid", headers: bearer(ADMIN) })).status).toBe(404)
+    expect((await srv.send({ method: "DELETE", path: "/plugboard/admin/keys/00000000", headers: bearer(ADMIN) })).status).toBe(404)
   })
 })

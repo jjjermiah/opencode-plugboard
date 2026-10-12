@@ -102,14 +102,14 @@ describe("plugin setup only registers and returns", () => {
     expect(logs.of("options.invalid")[0]).toMatchObject({ level: "error", fields: { error: "plugboard option `models` must be an array of strings" } })
   })
 
-  test("#159 invalid options beside a live good generation show on /v1/status and in the runtime status", async () => {
+  test("#159 invalid options beside a live good generation show on /plugboard/status and in the runtime status", async () => {
     const live = await options()
     load(live)
     await until(async () => (await fetch(`http://127.0.0.1:${live.listen.port}/healthz`).catch(() => undefined))?.status === 200, 1_000, "the listener")
     setupExit({ models: "not-an-array" }, "/projects/broken")
     // A copy: `toMatchObject` with an asymmetric matcher writes into the object it is given.
     expect({ ...processStatus().configError }).toMatchObject({ message: "plugboard option `models` must be an array of strings", at: expect.any(Number) })
-    const reply = await fetch(`http://127.0.0.1:${live.listen.port}/v1/status`)
+    const reply = await fetch(`http://127.0.0.1:${live.listen.port}/plugboard/status`)
     expect(await reply.json()).toMatchObject({ configError: { message: "plugboard option `models` must be an array of strings", at: expect.any(String) } })
   })
 

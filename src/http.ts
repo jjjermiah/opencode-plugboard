@@ -4,7 +4,7 @@
  * in already-encoded payloads, and checks return a `PlugError` for the caller to encode.
  */
 
-import type { IncomingMessage, ServerResponse } from "node:http"
+import { STATUS_CODES, type IncomingMessage, type ServerResponse } from "node:http"
 import { raceAbort } from "./abort.js"
 import { BODY_LIMIT_DEFAULTS, type BodyLimits, isLoopbackHost, type PlugboardOptions } from "./config.js"
 import type { PlugError, PlugEvent } from "./contract.js"
@@ -223,15 +223,17 @@ export function finishRequest(request: IncomingMessage, response: ServerResponse
   response.once("close", () => clearTimeout(timer))
 }
 
+/** The request id header (`x-plugboard-request-id`), set on every response before anything else can fail. */
+export const REQUEST_ID_HEADER = "x-plugboard-request-id"
+
 /**
  * `close`: also tell the client to drop the connection (after an unread or abandoned body).
  * `retryAfterSeconds`: sent as `Retry-After` (a rate-limit refusal, see `PlugError.retryAfterSeconds`).
  */
-export const sendJson = (response: ServerResponse, status: number, payload: unknown, options?: { close?: boolean; retryAfterSeconds?: number }) => {
+const sendBody = (response: ServerResponse, status: number, body: string, contentType: string, options?: { close?: boolean; retryAfterSeconds?: number }) => {
   if (response.headersSent || response.destroyed) return
-  const body = JSON.stringify(payload)
   response.writeHead(status, {
-    "content-type": "application/json",
+    "content-type": contentType,
     "content-length": Buffer.byteLength(body),
     ...(options?.close ? { connection: "close" } : {}),
     ...(options?.retryAfterSeconds !== undefined ? { "retry-after": String(options.retryAfterSeconds) } : {}),
@@ -239,12 +241,68 @@ export const sendJson = (response: ServerResponse, status: number, payload: unkn
   response.end(body)
 }
 
+export const sendJson = (response: ServerResponse, status: number, payload: unknown, options?: { close?: boolean; retryAfterSeconds?: number }) =>
+  sendBody(response, status, JSON.stringify(payload), "application/json", options)
+
 /**
  * A `PlugError` answered in a front-end's own wire body, before any output. Every route's `fail` goes
  * through here, so a refused call (`PlugError.retryAfterSeconds`) always carries `Retry-After`.
  */
 export const sendError = (response: ServerResponse, error: PlugError, body: unknown, options?: { close?: boolean }) =>
   sendJson(response, error.status, body, { ...options, retryAfterSeconds: error.retryAfterSeconds })
+
+/** Where `docs/errors.md` lives: each code on the `/plugboard/` routes has an anchor there. */
+export const PROBLEM_DOCS = "https://jjjermiah.github.io/opencode-plugboard/errors"
+
+/**
+ * Codes that answer on `/plugboard/` and have an anchor in `docs/errors.md` (`test/http/problem.test.ts` keeps
+ * the two in step). Any other code is typed `about:blank`.
+ */
+export const PROBLEM_CODES: ReadonlySet<string> = new Set([
+  "invalid_request_target",
+  "invalid_host",
+  "cross_origin_forbidden",
+  "unsupported_media_type",
+  "invalid_api_key",
+  "admin_key_required",
+  "not_found",
+  "method_not_allowed",
+  "invalid_date",
+  "invalid_range",
+  "range_too_long",
+  "invalid_app",
+  "invalid_user",
+  "app_forbidden",
+  "key_not_found",
+  "config_key",
+  "app_has_server_tools",
+  "app_has_config_key",
+  "not_ready",
+  "body_read_timeout",
+  "server_busy",
+  "timeout",
+])
+
+/**
+ * An error on the `/plugboard/` routes, as RFC 9457 `application/problem+json`. `code` (or the kind, when
+ * the error has none) and `param` are extension members; `requestId` is the response's request id. The
+ * `detail` is the error's message, which is plugboard's own text (never a secret or provider text).
+ * `instance` is the request target as the client sent it. The one encoder for the namespace.
+ */
+export const sendProblem = (response: ServerResponse, error: PlugError, instance: string, options?: { close?: boolean }) => {
+  const code = error.code ?? error.kind
+  const body = {
+    type: PROBLEM_CODES.has(code) ? `${PROBLEM_DOCS}#${code.replaceAll("_", "-")}` : "about:blank",
+    title: STATUS_CODES[error.status] ?? "Error",
+    status: error.status,
+    detail: error.message,
+    instance,
+    code,
+    ...(error.param === undefined ? {} : { param: error.param }),
+    requestId: String(response.getHeader(REQUEST_ID_HEADER) ?? ""),
+  }
+  sendBody(response, error.status, JSON.stringify(body), "application/problem+json", { ...options, retryAfterSeconds: error.retryAfterSeconds })
+}
 
 /**
  * SSE response writer. Headers go out with the first chunk, so nothing is committed until there

@@ -44,13 +44,16 @@ export interface PlugboardOptions {
    * fetched even when they are not public.
    */
   readonly remoteImages: RemoteImages
-  /** Prune old request sessions (see `src/session/prune.ts`). A limit that is unset is not applied; with neither, history is kept forever. Applies per app. */
+  /**
+   * Prune old request sessions (see `src/session/prune.ts`). `maxAgeDays` defaults to 30 (#158); `maxAgeDays: 0`
+   * turns the age limit off. `maxSessions` is unset (no count limit) by default. Applies per app. Parsed `{}` means keep forever.
+   */
   readonly history: HistoryLimits
   /** Drop sampling parameters the target model is known to reject (reported in `x-plugboard-dropped-params`). On by default; off forwards them as sent. */
   readonly dropUnsupportedParams: boolean
   /** Log line format: `text` (`key=value`, the default) or `json` (one object per line). Process-wide: the live generation's value applies. */
   readonly logFormat: "text" | "json"
-  /** Serve `GET /metrics` (Prometheus text). Off by default; same authentication as `/v1`. */
+  /** Serve `GET /plugboard/metrics` (Prometheus text). Off by default; same authentication as the model routes. */
   readonly metrics: boolean
   /** Ids listed by `/v1/models`: canonical, slugs (`provider--model__variant`) or both. See `toSlug` in `src/models.ts`. */
   readonly modelIds: ModelIds
@@ -62,9 +65,9 @@ export interface PlugboardOptions {
   readonly cache?: CacheConfig
   /** Provider prompt-cache affinity (see `src/session/affinity.ts`, #80, #81). Absent: off. Per app: `apps.<name>.promptCache`. */
   readonly promptCache?: PromptCache
-  /** Per-app usage statistics (see `src/usage.ts`): recorded and served by `GET /v1/usage` and the RPC. */
+  /** Per-app usage statistics (see `src/usage.ts`): recorded and served by `GET /plugboard/usage` and the RPC. */
   readonly usage: UsageConfig
-  /** A key that may read every app's usage on `GET /v1/usage`. Compared like app keys; must differ from every one of them. */
+  /** A key that may read every app's usage on `GET /plugboard/usage`. Compared like app keys; must differ from every one of them. */
   readonly adminKey?: string
   /** A template for the OpenCode session page of each request: `{id}`, and optional `{directory}` (see src/session/link.ts, #77). */
   readonly historyUrl?: string
@@ -208,7 +211,7 @@ export const DEFAULT_SERVER_TOOL_CALLS = 16
 const DEFAULTS = {
   host: "127.0.0.1",
   port: 4010,
-  maxTools: 32,
+  maxTools: 64,
   maxN: 1,
   requestTimeoutMs: 600_000,
 } as const
@@ -229,6 +232,8 @@ const CACHE_DEFAULTS = { maxEntries: 1000, maxBytes: 64 * 1024 * 1024 } as const
 const MAX_CACHE_TTL_SECONDS = 31_536_000
 /** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
 const MAX_AGE_DAYS = 36_500
+/** Sessions older than this are pruned when `history.maxAgeDays` is not set (#158). */
+const DEFAULT_HISTORY_DAYS = 30
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
 const ALIAS_TARGET = /^[^/#*\s]+\/[^#*\s]+(#[^#*\s]+)?$/
 /** `provider/model...` shaped: an alias like this would collide with real model ids in listing and resolution. */
@@ -689,7 +694,12 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   for (const key of Object.keys(historyInput ?? {}))
     if (!HISTORY_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`history.${key}\` (known: ${[...HISTORY_KNOWN].join(", ")})`)
   const maxSessions = historyInput?.maxSessions === undefined ? undefined : positiveInt(historyInput.maxSessions, "history.maxSessions", 0)
-  const maxAgeDays = historyInput?.maxAgeDays === undefined ? undefined : positiveInt(historyInput.maxAgeDays, "history.maxAgeDays", 0, MAX_AGE_DAYS)
+  // Unset: 30 days (#158). `0` is the explicit opt-out: no age limit, so the parsed value is absent.
+  const rawAge = historyInput?.maxAgeDays
+  if (rawAge !== undefined && (typeof rawAge !== "number" || !Number.isInteger(rawAge) || rawAge < 0 || rawAge > MAX_AGE_DAYS))
+    throw new Error(`plugboard option \`history.maxAgeDays\` must be an integer between 0 and ${MAX_AGE_DAYS} (0 keeps sessions of any age)`)
+  const ageDays = rawAge ?? DEFAULT_HISTORY_DAYS
+  const maxAgeDays = ageDays === 0 ? undefined : ageDays
 
   const limits = parseLimits(input.limits, keys)
   const cache = parseCache(input.cache, keys)
@@ -750,7 +760,7 @@ function digestsOf(keys: Readonly<Record<string, string>>): ReadonlyArray<readon
   return digests
 }
 
-/** Who may read `GET /v1/usage`: the admin key (every app), or one app (`default` when keyless). */
+/** Who may read `GET /plugboard/usage`: the admin key (every app), or one app (`default` when keyless). */
 export type UsageScope = { readonly admin: true } | { readonly admin: false; readonly app: string }
 
 /** The digest of a runtime key (src/keys.ts), with its app: checked like a config key (#55). */

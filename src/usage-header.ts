@@ -1,6 +1,6 @@
 /**
  * `x-plugboard-usage` (#52): the tokens and USD cost of the model calls a response answered, so a
- * caller sees what one request cost without asking `GET /v1/usage`. It is set only while usage
+ * caller sees what one request cost without asking `GET /plugboard/usage`. It is set only while usage
  * recording is on (`withUsage`, src/usage.ts), and only on a non-streaming response: a stream
  * sends its headers with its first event, before the usage is known, so it has no such header.
  */

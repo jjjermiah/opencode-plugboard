@@ -24,7 +24,7 @@
  *     limits (src/session/prune.ts). Both start from request handling (the store's `register`);
  *  - the metrics registry (src/metrics.ts) and the runtime start time, so counters and uptime
  *     outlive any one generation. `processMetrics` / `processStatus` read them for `/metrics`,
- *     `/v1/status` and the discovery pages;
+ *     `/plugboard/status` and the discovery pages;
   *   - the request limiter's queues and rate windows (src/limits.ts), so a cap holds across
  *     generations. `processLimits` reads them;
   *   - the usage store's live days (src/usage.ts), so the in-memory aggregates survive a generation.
@@ -362,7 +362,7 @@ export function withResponseCache(caller: ModelCaller, options: PlugboardOptions
   return { stream: (request, context) => (wrapped ??= build()).stream(request, context) }
 }
 
-/** What `/v1/status` and the discovery pages report about the process, besides the model catalog. */
+/** What `/plugboard/status` and the discovery pages report about the process, besides the model catalog. */
 export interface RuntimeStatus extends RuntimeSnapshot {
   readonly runtimeVersion: number
   /** The shared listener's address, and whether it is bound; absent before the first generation registered. */

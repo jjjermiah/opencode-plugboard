@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I25-plugboard-errors-problem-json",
+    invariant: "I25",
+    file: "src/openai/route.ts",
+    find: "    if (instance !== undefined) return sendProblem(response, error, instance, { close })",
+    replace: "    if (instance !== undefined) return sendError(response, error, encodeError(error), { close })",
+    tests: ["test/http/plugboard-routes.test.ts"],
+  },
+  {
     id: "I29-anchor-shared-across-apps",
     invariant: "I29",
     file: "src/session/affinity.ts",

@@ -147,7 +147,7 @@ export interface UsageDay extends UsageTotals {
   perModel: Record<string, ModelUsage>
 }
 
-/** One ceiling of an app's budget, with what its current window has used (`GET /v1/usage`, see `src/budgets.ts`). */
+/** One ceiling of an app's budget, with what its current window has used (`GET /plugboard/usage`, see `src/budgets.ts`). */
 export interface BudgetStatus {
   readonly metric: BudgetMetric
   readonly window: BudgetWindow
@@ -171,7 +171,7 @@ export interface UsageAppReport {
   budgets?: BudgetStatus[]
 }
 
-/** The result of `GET /v1/usage` and of the `opencode-plugboard.usage` RPC (`src/rpc.ts`). */
+/** The result of `GET /plugboard/usage` and of the `opencode-plugboard.usage` RPC (`src/rpc.ts`). */
 export interface UsageReport {
   /** First and last UTC day of the range, inclusive. */
   from: string

@@ -45,10 +45,10 @@ export async function send(path: string, headers: Record<string, string>, body: 
   return { status: response.status, headers: response.headers, text }
 }
 
-/** `GET /v1/status`, authenticated. */
+/** `GET /plugboard/status`, authenticated. */
 export async function status(): Promise<{ sessionGuards: number; models?: { available: number } }> {
-  const response = await fetch(new URL("/v1/status", LIVE_URL), { headers: { authorization: `Bearer ${LIVE_KEY}` } })
-  if (!response.ok) throw new Error(`GET /v1/status: HTTP ${response.status}`)
+  const response = await fetch(new URL("/plugboard/status", LIVE_URL), { headers: { authorization: `Bearer ${LIVE_KEY}` } })
+  if (!response.ok) throw new Error(`GET /plugboard/status: HTTP ${response.status}`)
   return (await response.json()) as never
 }
 

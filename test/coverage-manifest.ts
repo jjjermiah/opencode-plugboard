@@ -139,19 +139,29 @@ export const ROWS: readonly Row[] = [
     at(HTTP + "policy.test.ts", "/v1/models/{id}: a model outside the scope is the 404 model_not_found, inside it is served"),
   ),
   read(
-    "GET /v1/status",
-    at(HTTP + "policy.test.ts", "the setup page and /v1/status count only the caller's models"),
+    "GET /plugboard/status",
+    at(HTTP + "policy.test.ts", "the setup page and /plugboard/status count only the caller's models"),
     at(HTTP + "observability.test.ts", "without a key, %s is a 401, so the surface cannot be mapped"),
   ),
   read("GET /", at(HTTP + "observability.test.ts", "the HTML page has a strict CSP, no framing, no sniffing, no caching"), at(HTTP + "observability.test.ts", "/healthz and the first-run pages stay open")),
-  read("GET /v1", at(UNIT + "discovery.test.ts", "/metrics is listed only when enabled"), at(HTTP + "observability.test.ts", "/healthz and the first-run pages stay open")),
+  read("GET /v1", at(UNIT + "discovery.test.ts", "/plugboard/metrics is listed only when enabled"), at(HTTP + "observability.test.ts", "/healthz and the first-run pages stay open")),
   read("GET /healthz", at(HTTP + "ingress.test.ts", "GET /healthz answers ok without auth and writes no log line"), na("healthz answers 200 on every request; it has no error path")),
+  read(
+    "GET /plugboard/health",
+    at(HTTP + "plugboard-routes.test.ts", "#253 GET /plugboard/health and /plugboard/ready answer like the root probes, with no key"),
+    na("health answers 200 on every request; it has no error path"),
+  ),
   read(
     "GET /readyz",
     at(HTTP + "readyz.test.ts", "#160 /readyz answers ready with no key, and only once every piece is up"),
     at(HTTP + "readyz.test.ts", "#160 not ready is a 503 with the first missing piece as the reason"),
   ),
-  read("GET /metrics", at(UNIT + "metrics.test.ts", "the content type is the registry's (text format 0.0.4)"), at(HTTP + "observability.test.ts", "/metrics while disabled")),
+  read(
+    "GET /plugboard/ready",
+    at(HTTP + "plugboard-routes.test.ts", "#253 GET /plugboard/health and /plugboard/ready answer like the root probes, with no key"),
+    at(HTTP + "plugboard-routes.test.ts", "#254 not ready on /plugboard/ready is a problem 503 with the reason as detail"),
+  ),
+  read("GET /plugboard/metrics", at(UNIT + "metrics.test.ts", "the content type is the registry's (text format 0.0.4)"), at(HTTP + "observability.test.ts", "/plugboard/metrics while disabled")),
   read(
     "GET /v1beta/models",
     at(HTTP + "gemini.test.ts", "GET /v1beta/models lists models/<id> entries; GET one by id; an unknown one is a Google 404"),
@@ -176,13 +186,13 @@ export const ROWS: readonly Row[] = [
     },
   },
   read(
-    "GET /v1/usage",
+    "GET /plugboard/usage",
     at(HTTP + "usage.test.ts", "the admin key reads every app, and may narrow to one or name an empty one"),
     at(HTTP + "usage.test.ts", "an app key sees only its own app; naming another app is a 403"),
   ),
   // Runtime app keys (#55): served only with `adminKey`; without it each path is a 404 (test/http/admin.test.ts).
   {
-    route: "GET /v1/admin/keys",
+    route: "GET /plugboard/admin/keys",
     format: "admin",
     cells: {
       json: at(HTTP + "admin.test.ts", "GET lists the config key and no runtime keys on a fresh server"),
@@ -195,7 +205,7 @@ export const ROWS: readonly Row[] = [
     },
   },
   {
-    route: "POST /v1/admin/keys",
+    route: "POST /plugboard/admin/keys",
     format: "admin",
     cells: {
       json: at(HTTP + "admin.test.ts", "POST returns the new key once, and that key authenticates on /v1/chat/completions"),
@@ -208,7 +218,7 @@ export const ROWS: readonly Row[] = [
     },
   },
   {
-    route: "DELETE /v1/admin/keys/{keyId}",
+    route: "DELETE /plugboard/admin/keys/{keyId}",
     format: "admin",
     cells: {
       json: at(HTTP + "admin.test.ts", "DELETE revokes a runtime key: the next request with it is a 401"),

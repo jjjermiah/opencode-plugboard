@@ -1,6 +1,6 @@
 /**
  * First-run discovery and status documents: `GET /v1` (JSON), `GET /` (small HTML page) and the
- * authenticated `GET /v1/status`. Pure builders over the options, the catalog and a runtime
+ * authenticated `GET /plugboard/status`. Pure builders over the options, the catalog and a runtime
  * snapshot; no I/O, no host calls. `src/openai/route.ts` loads the catalog and sends the result.
  *
  * Disclosure rule: the discovery pages are reachable without a key, so they only describe the
@@ -61,13 +61,13 @@ export interface Endpoint {
 /**
  * Every endpoint plugboard serves, in the order the document lists them. Dispatch lives in
  * `src/openai/route.ts` and the front-end routes; `test/http/discovery.test.ts` probes each served
- * route and fails when this list omits one (#136). `/v1/usage`, `/dashboard` and `/metrics` are added only when their options are on.
+  * route and fails when this list omits one (#136). `/plugboard/usage`, `/plugboard/dashboard` and `/plugboard/metrics` are added only when their options are on.
  */
 export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "GET", path: "/", auth: false, description: "This page." },
   { method: "GET", path: "/v1", auth: false, description: "This page as JSON." },
-  { method: "GET", path: "/healthz", auth: false, description: "Liveness: {\"ok\":true}." },
-  { method: "GET", path: "/readyz", auth: false, description: "Readiness: {\"ready\":true}, or 503 {\"ready\":false,\"reason\"} until the backend can serve." },
+  { method: "GET", path: "/plugboard/health", auth: false, description: "Liveness: {\"ok\":true}. Also at the root as /healthz." },
+  { method: "GET", path: "/plugboard/ready", auth: false, description: "Readiness: {\"ready\":true}, or a 503 problem with the reason until the backend can serve. Also at the root as /readyz." },
   { method: "GET", path: "/v1/models", auth: true, description: "Models this app may call (OpenAI shape)." },
   { method: "GET", path: "/v1/models/{id}", auth: true, description: "One model." },
   { method: "POST", path: "/v1/chat/completions", auth: true, description: "OpenAI Chat Completions." },
@@ -80,7 +80,7 @@ export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "POST", path: "/v1beta/models/{model}:generateContent", auth: true, description: "Gemini generateContent." },
   { method: "POST", path: "/v1beta/models/{model}:streamGenerateContent", auth: true, description: "Gemini streamGenerateContent, with ?alt=sse." },
   { method: "POST", path: "/v1beta/models/{model}:countTokens", auth: true, description: "Gemini token count (an estimate)." },
-  { method: "GET", path: "/v1/status", auth: true, description: "Runtime status: generations, address, model count, uptime." },
+  { method: "GET", path: "/plugboard/status", auth: true, description: "Runtime status: generations, address, model count, uptime." },
 ]
 
 function endpoints(options: PlugboardOptions): ReadonlyArray<Endpoint> {
@@ -88,18 +88,18 @@ function endpoints(options: PlugboardOptions): ReadonlyArray<Endpoint> {
     ...ENDPOINTS,
     ...(options.usage.enabled
       ? [
-          { method: "GET", path: "/v1/usage", auth: true, description: "Per-app usage by day: requests, tokens, cost, latency. The admin key reads every app." },
-          { method: "GET", path: "/dashboard", auth: false, description: "Usage dashboard page. Its data needs a key (`/v1/usage`)." },
+          { method: "GET", path: "/plugboard/usage", auth: true, description: "Per-app usage by day: requests, tokens, cost, latency. The admin key reads every app." },
+          { method: "GET", path: "/plugboard/dashboard", auth: false, description: "Usage dashboard page. Its data needs a key (`/plugboard/usage`)." },
         ]
       : []),
-    ...(options.metrics ? [{ method: "GET", path: "/metrics", auth: true, description: "Prometheus metrics." }] : []),
+    ...(options.metrics ? [{ method: "GET", path: "/plugboard/metrics", auth: true, description: "Prometheus metrics." }] : []),
     // The admin key only (option `adminKey`); without it these paths are a 404 (src/admin/route.ts).
     ...(options.adminKey === undefined
       ? []
       : [
-          { method: "GET", path: "/v1/admin/keys", auth: true, description: "Admin: the config and runtime app keys, without key values." },
-          { method: "POST", path: "/v1/admin/keys", auth: true, description: "Admin: a new app key for `{ app }`, returned once." },
-          { method: "DELETE", path: "/v1/admin/keys/{keyId}", auth: true, description: "Admin: revoke a runtime app key." },
+          { method: "GET", path: "/plugboard/admin/keys", auth: true, description: "Admin: the config and runtime app keys, without key values." },
+          { method: "POST", path: "/plugboard/admin/keys", auth: true, description: "Admin: a new app key for `{ app }`, returned once." },
+          { method: "DELETE", path: "/plugboard/admin/keys/{keyId}", auth: true, description: "Admin: revoke a runtime app key." },
         ]),
   ]
 }
@@ -252,7 +252,7 @@ export function renderDiscoveryHtml(doc: Discovery): string {
     const more = doc.catalog.moreProviders ? `<p>${escapeHtml(doc.catalog.moreProviders)} more providers not listed.</p>` : ""
     sections.push(`<h2>Catalog</h2><table><tr><th>Provider</th><th>Models</th><th>Examples</th></tr>${rows}</table>${more}`)
   }
-  if (doc.endpoints.some((endpoint) => endpoint.path === "/dashboard")) sections.push(`<p><a href="/dashboard">Usage dashboard</a></p>`)
+  if (doc.endpoints.some((endpoint) => endpoint.path === "/plugboard/dashboard")) sections.push(`<p><a href="/plugboard/dashboard">Usage dashboard</a></p>`)
   sections.push(`<h2>Try it</h2>${pre(doc.example.curl)}`)
   sections.push(
     `<h2>Endpoints</h2><table><tr><th>Method</th><th>Path</th><th>Key</th><th></th></tr>${doc.endpoints
@@ -285,7 +285,7 @@ ${sections.join("\n")}
 `
 }
 
-/** The facts `/readyz` decides from (`RuntimeStatus` in src/runtime.ts). */
+/** The facts `/readyz` and `/plugboard/ready` decide from (`RuntimeStatus` in src/runtime.ts). */
 export interface ReadinessFacts {
   readonly generations: number
   readonly servingConfirmed: boolean
@@ -308,7 +308,7 @@ export function readiness(facts: ReadinessFacts): { ready: true } | { ready: fal
   return { ready: true }
 }
 
-/** `GET /v1/status`: authenticated runtime facts. `models` is absent when the catalog could not be loaded. */
+/** `GET /plugboard/status`: authenticated runtime facts. `models` is absent when the catalog could not be loaded. */
 export function buildStatus(input: {
   readonly options: PlugboardOptions
   readonly app: string
