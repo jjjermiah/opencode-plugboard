@@ -21,8 +21,8 @@ import { freePort, isolateRuntime } from "../support/runtime.js"
 const logs = captureLogs()
 isolateRuntime()
 
-/** The calls an accepted generation makes during setup, and nothing else. */
-const SETUP_CALLS = ["session.hook", "agent.transform", "tool.transform"]
+/** The calls an accepted generation makes during setup, and nothing else: the usage RPC (`src/rpc.ts`), then the three app-directory registrations. */
+const SETUP_CALLS = ["rpc.register", "session.hook", "agent.transform", "tool.transform"]
 
 interface Loaded {
   readonly spy: SpyContext
@@ -58,9 +58,20 @@ function load(options: unknown, directory = "/projects/real"): Loaded {
 const options = async (extra: Record<string, unknown> = {}) => ({ listen: { port: await freePort() }, models: ["test/*"], maxTools: 2, ...extra })
 
 describe("plugin setup only registers and returns", () => {
-  test("setup is synchronous and calls only the three registrations on ctx", async () => {
+  test("setup is synchronous and calls only its registrations on ctx", async () => {
     const { spy } = load(await options())
     expect(spy.during("setup")).toEqual(SETUP_CALLS)
+  })
+
+  test("setup registers the usage RPC with its id", async () => {
+    const { spy } = load(await options())
+    const registration = spy.calls.find((call) => call.path === "rpc.register")!
+    expect(registration.args[0]).toMatchObject({ id: "opencode-plugboard.usage" })
+  })
+
+  test("with usage off, setup registers no RPC", async () => {
+    const { spy } = load(await options({ usage: { enabled: false } }))
+    expect(spy.during("setup")).not.toContain("rpc.register")
   })
 
   test("setup makes no readiness, session, storage, model or event call", async () => {
