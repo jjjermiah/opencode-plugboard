@@ -63,6 +63,15 @@ describe("#202 a request that asked for one tool call keeps the first and drops 
 
 describe("event mapping", () => {
   test("#146 the provider signature of a reasoning block is carried on an empty reasoning-delta at its end", async () => {
+    // The host publishes the state unwrapped (`{ signature }`): that is what a live Anthropic run stores.
+    expect(await play(host.reasoningDelta("think"), host.reasoningEnded({ signature: "sig_abc" }), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "think" },
+      { type: "reasoning-delta", text: "", signature: "sig_abc" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
+  test("#146 a signature wrapped under a provider key is read too", async () => {
     expect(await play(host.reasoningDelta("think"), host.reasoningEnded({ anthropic: { signature: "sig_abc" } }), host.stepEnded("stop"))).toEqual([
       { type: "reasoning-delta", text: "think" },
       { type: "reasoning-delta", text: "", signature: "sig_abc" },
