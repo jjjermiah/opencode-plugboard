@@ -5,6 +5,11 @@ name: Host bump
 # required check. The repository setting "Allow GitHub Actions to create and approve pull
 # requests" must be on. A PR opened with the default token does not start CI by itself: push an
 # empty commit or close and reopen it. See docs/releasing.md.
+#
+# Two jobs, so the code that installs the newest host never holds write access (#157). `check`
+# installs the host and runs the tests with read-only permissions, then uploads the two files the
+# bump changes. `open-pr` holds the write permissions, takes only those files on a clean checkout of
+# the default branch, refuses any other change, and opens the PR.
 on:
   schedule:
     - cron: "23 6 * * 1"
@@ -17,13 +22,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  bump:
-    name: Bump the pinned host
+  check:
+    name: Install the newest host and test it
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write # push the bump branch
-      pull-requests: write # open or update the PR
+      contents: read
+    outputs:
+      bump: ${{ steps.version.outputs.bump }}
+      latest: ${{ steps.version.outputs.latest }}
+      pinned: ${{ steps.version.outputs.pinned }}
+      typecheck: ${{ steps.results.outputs.typecheck }}
+      tests: ${{ steps.results.outputs.tests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,20 +84,76 @@ jobs:
             echo "No test script, skipping."
           fi
 
-      - name: Open the pull request
+      - name: Record the results for the PR job
+        id: results
+        if: always()
+        run: |
+          echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "tests=${{ steps.tests.outcome }}" >> "$GITHUB_OUTPUT"
+
+      - name: Hand the bump to the PR job
         if: steps.version.outputs.bump == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-bump
+          path: |
+            package.json
+            bun.lock
+          if-no-files-found: error
+          retention-days: 1
+
+  open-pr:
+    name: Open the bump pull request
+    needs: check
+    if: needs.check.outputs.bump == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the bump branch
+      pull-requests: write # open or update the PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Fetch the files the check job validated
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: host-bump
+          path: ${{ runner.temp }}/host-bump
+
+      - name: Take only package.json and bun.lock, and refuse any other change
+        run: |
+          cp "$RUNNER_TEMP/host-bump/package.json" "$RUNNER_TEMP/host-bump/bun.lock" .
+          other=$(git status --porcelain=v1 --untracked-files=all | grep -v -E '^ M (package\.json|bun\.lock)$' || true)
+          if [ -n "$other" ]; then
+            echo "The bump changes files other than package.json and bun.lock; not opening a PR:"
+            echo "$other"
+            exit 1
+          fi
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "The bump changes nothing against the default branch; not opening a PR."
+            exit 1
+          fi
+          git status --short
+
+      - name: Open the pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           branch: deps/opencode-host
           delete-branch: true
-          commit-message: "Bump @opencode/plugin to ${{ steps.version.outputs.latest }}"
-          title: "Bump @opencode/plugin to ${{ steps.version.outputs.latest }}"
-          draft: ${{ steps.typecheck.outcome == 'failure' || steps.tests.outcome == 'failure' }}
+          add-paths: |
+            package.json
+            bun.lock
+          commit-message: "Bump @opencode/plugin to ${{ needs.check.outputs.latest }}"
+          title: "Bump @opencode/plugin to ${{ needs.check.outputs.latest }}"
+          draft: ${{ needs.check.outputs.typecheck == 'failure' || needs.check.outputs.tests == 'failure' }}
           body: |
-            OpenCode published `@opencode/plugin` ${{ steps.version.outputs.latest }}, inside the peer range. This bumps the pinned dev dependency from ${{ steps.version.outputs.pinned }} (and `effect` to the version the host pins).
+            OpenCode published `@opencode/plugin` ${{ needs.check.outputs.latest }}, inside the peer range. This bumps the pinned dev dependency from ${{ needs.check.outputs.pinned }} (and `effect` to the version the host pins).
 
-            - Typecheck: ${{ steps.typecheck.outcome }}
-            - Tests: ${{ steps.tests.outcome }}
+            - Typecheck: ${{ needs.check.outputs.typecheck }}
+            - Tests: ${{ needs.check.outputs.tests }}
 
             A failing typecheck means the host API changed shape (`HostContextMatches` in `src/session/host.ts`); the PR is a draft then. If the host's `effect` changed, the `effect` peer range in `package.json` needs a look too. Run the pong gate on an isolated server before merging, and update the tested-host lines in `AGENTS.md` and the peer range if needed.
 

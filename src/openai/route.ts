@@ -22,11 +22,12 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
   BodyError,
+  bodyPlugError,
   RequestAborted,
   beginRequest,
   boundEvents,
@@ -272,7 +273,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(response, unsupported)
 
-    const body = await readJsonBody(request, scope.signal)
+    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
     noteEndUser(response, info, bodyUser(body))
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
@@ -393,8 +394,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           }
         } else if (caught instanceof BodyError) {
           outcome = `body_${caught.status}`
-          // 413: the client may still be sending; answer, then close (see `finishRequest`).
-          fail(response, { status: caught.status, kind: "invalid_request", message: caught.message }, caught.status === 413)
+          // Every refusal but an invalid body (400) may leave the client still sending: answer, then close (see `finishRequest`).
+          fail(response, bodyPlugError(caught), caught.status !== 400)
         } else {
           // Unexpected: the message goes to the log only; the client gets a generic one.
           outcome = "error"

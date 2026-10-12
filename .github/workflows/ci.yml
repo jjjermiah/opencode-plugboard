@@ -52,6 +52,9 @@ jobs:
         run: bun .github/scripts/check-pack.ts
       - name: Smoke-test the packed tarball
         run: bun .github/scripts/smoke-pack.ts
+      # #167: docs.yml builds the site only on push to main, so a broken link or VitePress error shows here on the pull request.
+      - name: Build the docs site
+        run: bun run docs:build
 
   # The published @opencode/plugin versions inside the peer range, so a new host release is
   # picked up without editing this file.

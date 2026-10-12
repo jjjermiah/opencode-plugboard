@@ -5,22 +5,39 @@
 
 Point the client's base URL at http://127.0.0.1:4011/v1 (same key). Every exchange is appended to the
 JSONL file as one object: {t, method, path, req_headers, req_body, status, resp_headers, resp_body, elapsed_s}.
-Authorization is redacted. SSE and chunked responses are streamed through unbuffered and logged whole.
+Credentials are redacted (see SECRET_HEADERS and SECRET_QUERY). SSE and chunked responses are streamed through unbuffered and logged whole.
 `req_body` / `resp_body` are strings (parsed into JSON under `req_json` / `resp_json` when possible).
 Read it with: jq -c '{path,status,req_json,resp_body}' compat/traffic/<client>.jsonl
 
-Captures are sensitive. Only the Authorization header is redacted; prompts, responses, tool arguments and other
-headers (cookies, API keys in custom headers) are logged as sent. The file is created with mode 600 and compat/traffic/
-is gitignored. Do not commit or paste captures; quote synthetic excerpts in results instead.
+Captures are sensitive. Redacted: the Authorization, x-api-key and x-goog-api-key headers and the `key` query
+parameter (Gemini). Prompts, responses, tool arguments and every other header (cookies, other custom headers) are
+logged as sent. The file is set to mode 600 on every run, even when it already exists, and compat/traffic/ is gitignored. Do not commit or paste captures; quote synthetic excerpts in results instead.
 
 The upstream must be plain HTTP (http://host:port). HTTPS upstreams are rejected rather than silently sent in clear text.
 """
-import argparse, http.client, json, sys, threading, time, urllib.parse
+import argparse, http.client, json, os, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HOP = {"connection", "keep-alive", "transfer-encoding", "content-length", "proxy-connection", "upgrade", "te", "trailer"}
+# Credentials as clients send them: Authorization (OpenAI, Anthropic), x-api-key (Anthropic SDKs), x-goog-api-key and
+# the key query parameter (Gemini). Matched case-insensitively.
+SECRET_HEADERS = {"authorization", "x-api-key", "x-goog-api-key"}
+SECRET_QUERY = {"key"}
 lock = threading.Lock()
+
+
+def redact_path(path):
+    """The request target with the values of secret query parameters replaced; the rest is kept as sent."""
+    base, sep, query = path.partition("?")
+    if not sep:
+        return path
+    parts = []
+    for part in query.split("&"):
+        name = part.split("=", 1)[0]
+        secret = urllib.parse.unquote_plus(name).lower() in SECRET_QUERY
+        parts.append(f"{name}=<redacted>" if secret else part)
+    return base + "?" + "&".join(parts)
 
 
 def make_handler(up, out):
@@ -76,8 +93,8 @@ def make_handler(up, out):
             finally:
                 conn.close()
             rec = {
-                "t": t0, "elapsed_s": round(time.time() - t0, 3), "method": self.command, "path": self.path,
-                "req_headers": {k: ("<redacted>" if k.lower() == "authorization" else v) for k, v in self.headers.items()},
+                "t": t0, "elapsed_s": round(time.time() - t0, 3), "method": self.command, "path": redact_path(self.path),
+                "req_headers": {k: ("<redacted>" if k.lower() in SECRET_HEADERS else v) for k, v in self.headers.items()},
                 "req_body": body.decode("utf-8", "replace"), "status": r.status, "resp_headers": rh,
                 "resp_body": b"".join(chunks).decode("utf-8", "replace"),
             }
@@ -107,6 +124,8 @@ def main():
     out = Path(a.out or Path(__file__).resolve().parents[1] / "traffic" / f"{int(time.time())}.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.touch(mode=0o600)
+    # touch() applies the mode only when it creates the file; an existing capture keeps its old mode otherwise.
+    os.chmod(out, 0o600)
     print(f"logproxy {a.host}:{a.port} -> {a.upstream}, logging to {out}", file=sys.stderr, flush=True)
     ThreadingHTTPServer((a.host, a.port), make_handler(up, out)).serve_forever()
 

@@ -35,6 +35,7 @@ These are the rules a change must not break. Tests, reviews and the mutation cat
 - **I25. Runtime app keys are stored as digests, read only from request handling, and the admin routes answer the admin key alone.** A key is shown once, by its create call; its record holds the SHA-256 of the key, never the key. The cache is filled by the first request that authenticates, never by setup, and a create or revoke writes storage before the cache, so a revoked key stops authenticating on the next request. Without `adminKey` the admin paths are 404; with it, every other credential is 401 (`src/keys.ts`, `src/admin/route.ts`, `src/config.ts` `authenticate`).
 - **I26. The end user is a label, never a path, and its counts are capped.** The caller's `user` or `metadata.user_id` is kept only when it matches the allowed charset and length (`src/user.ts`), and it is used as a key in a record and in the title and log line, never in a path. A day keeps at most 200 distinct users per app, and later ones count under `_other` (`src/usage.ts` `userSlot`).
 - **I27. A session link is filled only from the id and the directory, URL-encoded.** Option `historyUrl` is validated at load, and `sessionUrl` in `src/session/link.ts` encodes both values, so a session id or a path cannot add a segment or a query to the link the operator configured.
+- **I28. Request bodies are admitted before they are buffered.** The bytes held by every body being read in the process stay within `limits.maxBodyBytesInFlight`, checked before the read: a declared Content-Length up front, a body without one as it arrives. A body that would go over is 503 `server_busy` with Retry-After 1, and a body not complete within `limits.bodyReadTimeoutMs` is 408. The budget lives on `globalThis` under its own versioned key, so it holds across generations (`src/http.ts` `readJsonBody`, #156).
 
 ## Three lifetimes
 
@@ -60,6 +61,7 @@ OpenCode may load this module once per Location, or re-evaluate it on reload. An
 - **the history sweep state**: when the last sweep ran and whether one is running (see [History pruning](#history-pruning)).
 - **the metrics registry and start time**: counters and histograms must survive a generation being replaced, so they live here too (see [Observability](#observability)).
 - **the limiter's queues and rate windows**: a concurrency cap or a requests-per-minute window must hold across generations (see [Concurrency and rate limits](#concurrency-and-rate-limits)).
+- **the request body budget**: the bytes of request bodies being read (`src/http.ts`, #156), on `globalThis` under its own versioned key, so the cap holds across generations (I28). It does not change the runtime's shape, so it does not bump `VERSION`.
 
 If a runtime written by a different version (runtime `VERSION`, currently 15) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
 
