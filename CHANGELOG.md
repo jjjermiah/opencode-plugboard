@@ -14,9 +14,44 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.21.2] - 2026-10-11: Nothing Left Unsaved
+
+**Full diff:** [v0.21.1...v0.21.2](https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.1...v0.21.2)
+
 ### Fixed
 
 - **Usage counts survive a restart** ([#241](https://github.com/jjjermiah/opencode-plugboard/issues/241)). Usage was written to storage at most every 10 seconds, so the newest changes sat in memory and a restart dropped them: a day could keep its tokens and model counts but show `requests: 0`. Each change is now written as it lands, one write at a time per day. Counts already lost before upgrading can't be recovered.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Fixes
+
+**fix(metrics): write each usage change as it lands so requests are not lost** ([`6a16973`](https://github.com/jjjermiah/opencode-plugboard/commit/6a16973c031c250ba27bd962a5edeb78c35dfd6c))
+
+The usage store debounced its day writes: a day was written at most every 10 s, by the request that found the last write that old. A change that arrived inside that window stayed in memory until a later request, and a restart dropped it (src/usage.ts flushIfDue, before this change).
+
+Each model request records two changes, in this order: the model call (withUsage in src/usage.ts, tokens and cost per model) and then the request itself (the route log point, src/openai/route.ts:425, which bumps requests and lastRequestAt). The call was usually written first, so the stored day had the per-model counts but requests 0 and no lastRequestAt. A single request shows exactly that, and any change still in memory was lost on restart.
+
+Changes are now written as they land. Writes of one day never overlap: a change made during a write goes out in the next write, when that one lands. A failed write is logged and the next change tries again.
+
+Stored days keep every field they had. fromJson still reads older records, and a day stored without `users` or `lastRequestAt` keeps its counts when a request adds to it.
+
+Docs that described the 10 s window (docs/architecture.md I23 and the usage section, docs/configuration.md, STRUCTURE.md) now describe this.
+
+Fixes #241
+
+#### Docs
+
+**docs(changelog): notes for 0.21.2** ([`06f564b`](https://github.com/jjjermiah/opencode-plugboard/commit/06f564bfeb98a638d9532bc8f9c30ecd802949fc))
+
+Curated [Unreleased] entry for #241: usage changes are written as they land instead of every 10 seconds, so a restart no longer drops request counts. Pinned install examples bumped to 0.21.2.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.21.1] - 2026-10-11: Read Between the Fences
 
@@ -2729,7 +2764,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.1...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.2...HEAD
+[0.21.2]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.19.0...v0.20.0
