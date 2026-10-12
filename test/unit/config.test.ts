@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { authenticate, authenticateUsage, isLoopbackHost, parseOptions } from "../../src/config.js"
+import { authenticate, authenticateUsage, bodyLimits, isLoopbackHost, parseOptions } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -59,6 +59,13 @@ describe("parseOptions: defaults", () => {
     expect(parseOptions({}).limits).toBeUndefined()
   })
 
+  test("#156 the body limits are kept when set, and default to 128 MiB in flight and 30 s when not", () => {
+    expect(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }).limits).toEqual({ maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 })
+    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({ maxBytesInFlight: 1024, readTimeoutMs: 500 })
+    expect(bodyLimits(parseOptions({ limits: { maxConcurrent: 2 } }))).toEqual({ maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000 })
+    expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000 })
+  })
+
   test("history limits that are not set stay absent (keep forever)", () => {
     expect(parseOptions({ history: { maxSessions: 3 } }).history).toEqual({ maxSessions: 3 })
     expect(parseOptions({ history: {} }).history).toEqual({})
@@ -116,6 +123,10 @@ describe("parseOptions: every rejection names the option", () => {
     ["an apps entry for default when keys exist", { keys: { a: "k" }, limits: { apps: { default: { maxConcurrent: 1 } } } }, /`limits.apps.default` must name a configured app/],
     ["an apps entry that is not an object", { keys: { a: "k" }, limits: { apps: { a: 2 } } }, /`limits.apps.a` must be an object/],
     ["an unknown key in an apps entry", { keys: { a: "k" }, limits: { apps: { a: { perApp: 1 } } } }, /Unknown plugboard option `limits.apps.a.perApp`/],
+    ["a limits.maxBodyBytesInFlight of 0", { limits: { maxBodyBytesInFlight: 0 } }, /`limits.maxBodyBytesInFlight` must be an integer between 1 and/],
+    ["a fractional limits.maxBodyBytesInFlight", { limits: { maxBodyBytesInFlight: 1.5 } }, /`limits.maxBodyBytesInFlight`/],
+    ["a string limits.bodyReadTimeoutMs", { limits: { bodyReadTimeoutMs: "30000" } }, /`limits.bodyReadTimeoutMs` must be an integer/],
+    ["a limits.bodyReadTimeoutMs past the timer limit", { limits: { bodyReadTimeoutMs: 2 ** 31 } }, /`limits.bodyReadTimeoutMs` must be an integer between 1 and 2147483647/],
   ]
   test.each(cases)("rejects %s", (_name, raw, message) => {
     expect(() => parseOptions(raw)).toThrow(message)

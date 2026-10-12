@@ -4,6 +4,7 @@
  * the one request log line. Real loopback HTTP, fake model caller.
  */
 import { afterEach, describe, expect, test } from "bun:test"
+import { request as httpRequest, type IncomingMessage } from "node:http"
 import { ev } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
@@ -167,6 +168,32 @@ describe("request bodies", () => {
     expect(reply.status).toBe(413)
     expect(reply.headers.connection).toBe("close")
     expect(logs.of("request")[0]!.fields.outcome).toBe("body_413")
+  })
+
+  test("#156 a body the process budget cannot hold is a 503 server_busy with Retry-After, and closes the connection", async () => {
+    await route({ limits: { maxBodyBytesInFlight: 1_000 } })
+    const reply = await server!.send(chat({ headers: { "content-length": 2_000 }, body: "{}" }))
+    expect(reply.status).toBe(503)
+    expect(reply.headers["retry-after"]).toBe("1")
+    expect(reply.headers.connection).toBe("close")
+    expect(reply.json().error).toMatchObject({ code: "server_busy", message: "Too many request bodies are being read; retry shortly" })
+    // A 5xx is logged as request.failed (see the test below), so the outcome is read from that line.
+    expect(logs.of("request.failed")[0]!.fields.outcome).toBe("body_503")
+  })
+
+  test("#156 a body that does not arrive within limits.bodyReadTimeoutMs is a 408 that closes the connection", async () => {
+    await route({ limits: { bodyReadTimeoutMs: 5 } })
+    const client = httpRequest({ host: "127.0.0.1", port: server!.port, method: "POST", path: "/v1/chat/completions", headers: { "content-type": "application/json" }, agent: false })
+    client.on("error", () => {})
+    client.write('{"model":')
+    const reply = await new Promise<IncomingMessage>((resolve) => client.once("response", resolve))
+    let text = ""
+    for await (const chunk of reply) text += chunk
+    client.destroy()
+    expect(reply.statusCode).toBe(408)
+    expect(reply.headers.connection).toBe("close")
+    expect(JSON.parse(text).error.message).toBe("Request body was not received within 5 ms (option limits.bodyReadTimeoutMs)")
+    expect(logs.of("request")[0]!.fields.outcome).toBe("body_408")
   })
 
   test("a request rejected before its body is read still gets its answer", async () => {

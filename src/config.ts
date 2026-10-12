@@ -104,7 +104,23 @@ export interface Limits {
   readonly maxConcurrent?: number
   readonly perApp?: LimitCaps
   readonly apps?: Readonly<Record<string, LimitCaps>>
+  /**
+   * Bytes of request bodies buffered at once, across every request in the process (`readJsonBody` in
+   * `src/http.ts`). A body that would go over it is refused with 503 `server_busy` before it is read. Not per app.
+   */
+  readonly maxBodyBytesInFlight?: number
+  /** Milliseconds a request body may take to arrive in full; a slower one is refused with 408. */
+  readonly bodyReadTimeoutMs?: number
 }
+
+/** The bounds `readJsonBody` applies before it buffers a request body (see `bodyLimits`). */
+export interface BodyLimits {
+  readonly maxBytesInFlight: number
+  readonly readTimeoutMs: number
+}
+
+/** Defaults of `limits.maxBodyBytesInFlight` (128 MiB) and `limits.bodyReadTimeoutMs` (30 s). */
+export const BODY_LIMIT_DEFAULTS: BodyLimits = { maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000 }
 
 /** What a budget counts: HTTP requests on the model routes (refusals by `limits` or budgets left out), tokens, or cost in USD. */
 export type BudgetMetric = "requests" | "tokens" | "costUsd"
@@ -149,7 +165,7 @@ const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
 const MAX_RETENTION_DAYS = 3650
-const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps"])
+const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs"])
 const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
 /** Largest cap accepted: far above any provider's limit, and keeps the error messages short. */
 const MAX_LIMIT = 1_000_000
@@ -301,6 +317,18 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, "limits.maxConcurrent", 0, MAX_LIMIT) }),
     ...(raw.perApp === undefined ? {} : { perApp: parseCaps(raw.perApp, "limits.perApp") }),
     ...(appsRaw === undefined ? {} : { apps }),
+    ...(raw.maxBodyBytesInFlight === undefined
+      ? {}
+      : { maxBodyBytesInFlight: positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER) }),
+    ...(raw.bodyReadTimeoutMs === undefined ? {} : { bodyReadTimeoutMs: positiveInt(raw.bodyReadTimeoutMs, "limits.bodyReadTimeoutMs", 0, MAX_TIMER_MS) }),
+  }
+}
+
+/** The body limits in force for these options (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`), or the defaults. */
+export function bodyLimits(options: Pick<PlugboardOptions, "limits">): BodyLimits {
+  return {
+    maxBytesInFlight: options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight,
+    readTimeoutMs: options.limits?.bodyReadTimeoutMs ?? BODY_LIMIT_DEFAULTS.readTimeoutMs,
   }
 }
 

@@ -24,7 +24,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
 | `metrics` | `false` | Serve Prometheus metrics at `GET /metrics`, with the same authentication as `/v1`. |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
-| `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). |
+| `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` bound request bodies, see [Request bodies](#request-bodies). |
 | `budgets` | none (unlimited) | Per-app ceilings on requests, tokens and cost for a UTC day, week or month: `{ perApp?, apps? }`. Needs `usage` on. A call over a ceiling gets 429 `budget_exceeded`. See [Budgets](#budgets). |
 | `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
@@ -171,6 +171,18 @@ Without `keys` the only app is `default`, and `apps.default` configures it. Once
 - The counts live in the server process: a restart clears them, and two servers do not share them.
 - With `metrics: true`, `plugboard_limited_total{app,reason}` counts refusals, where `reason` is `concurrency`, `rate` or `budget` (see [Budgets](#budgets)).
 
+## Request bodies
+
+Every route reads its JSON body through one check, before any of it is buffered. Two options under `limits` bound it:
+
+```json
+"limits": { "maxBodyBytesInFlight": 134217728, "bodyReadTimeoutMs": 30000 }
+```
+
+- `maxBodyBytesInFlight` caps the bytes of request bodies being read at once, across every app and route in the server process. The default is 128 MiB. A body whose declared `Content-Length` would take the total over the cap is refused with 503 `server_busy` and `Retry-After: 1` before it is read. A body without a length is counted as its bytes arrive, and refused once they would go over. It is not per app.
+- `bodyReadTimeoutMs` is how long a body may take to arrive in full. The default is 30 seconds. A slower body gets 408 `body_read_timeout`, and its bytes are released.
+- Both are positive integers. The cap is shared by every plugin reload, so it holds for the whole server process. Keep it above the largest body you expect: a body that alone exceeds it is always refused. A body is never larger than 32 MiB, whatever the cap.
+
 ## Budgets
 
 `budgets` caps what each app may use in a window: requests, tokens and cost. It reads the same records as [usage statistics](#usage-statistics), so it needs `usage` on (the default). With `usage: { "enabled": false }` the server refuses to load the option. Retention must cover the windows in use: a `month` ceiling needs `usage.retentionDays` of at least 31 and a `week` ceiling at least 7, or the server refuses to load it, since older days would stop counting.
@@ -308,6 +320,8 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 429 | `rate_limit_exceeded` | The app's requests per minute in `limits` are used up | Too many requests per minute |
 | 429 | `budget_exceeded` | The app has used a ceiling of its `budgets` in the current window | Budget for &lt;app&gt; exceeded: &lt;metric&gt; &lt;window&gt; |
 | 503 | `budget_unavailable` | The usage records for the budget check cannot be read | Could not read the usage records for the budget check |
+| 503 | `server_busy` | The request body would take the bytes being read over `limits.maxBodyBytesInFlight` (see [Request bodies](#request-bodies)) | Too many request bodies are being read; retry shortly |
+| 408 | `body_read_timeout` | The request body did not arrive within `limits.bodyReadTimeoutMs` | Request body was not received within &lt;n&gt; ms (option limits.bodyReadTimeoutMs) |
 
 Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. Calls over a cap in `limits` get 429 instead (see [Concurrency and rate limits](#concurrency-and-rate-limits)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 

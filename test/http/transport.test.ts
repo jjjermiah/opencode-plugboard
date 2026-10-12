@@ -5,9 +5,10 @@
  * so every wait here is a few milliseconds.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import type { IncomingMessage, ServerResponse } from "node:http"
+import { request as httpRequest, type ClientRequest, type IncomingMessage, type ServerResponse } from "node:http"
+import type { BodyLimits } from "../../src/config.js"
 import type { PlugEvent } from "../../src/contract.js"
-import { BodyError, RequestAborted, beginRequest, boundEvents, readJsonBody, sendJson, sseWriter, type RequestScope } from "../../src/http.js"
+import { BodyError, RequestAborted, beginRequest, boundEvents, bodyPlugError, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../../src/http.js"
 import { collect, ev, gate, until } from "../support/fixtures.js"
 import { listen, parseSse, type Loopback } from "../support/loopback.js"
 
@@ -167,6 +168,112 @@ describe("readJsonBody", () => {
   test("a chunked body that grows past 32 MiB is a 413", async () => {
     const big = Buffer.alloc(32 * 1024 * 1024 + 1, 0x20)
     expect(await read(big, { "transfer-encoding": "chunked" })).toEqual(new BodyError(413, "Request body too large"))
+  })
+})
+
+describe("#156 readJsonBody: a process-wide budget and a read timeout, both before buffering", () => {
+  const small: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 5_000 }
+
+  /** Reads with `limits` and answers the way a route does: 200 when read, the refusal's status and Retry-After otherwise. */
+  function answerWith(limits: BodyLimits, probe?: (request: IncomingMessage) => void): Handler {
+    return (request, response) => {
+      const read = readJsonBody(request, new AbortController().signal, limits)
+      probe?.(request)
+      void read.then(
+        () => sendJson(response, 200, { ok: true }),
+        (error: unknown) => {
+          if (!(error instanceof BodyError)) throw error
+          sendError(response, bodyPlugError(error), { error: error.message }, { close: true })
+        },
+      )
+    }
+  }
+
+  /** A raw POST whose body the test writes in pieces. Late client errors (after a hang-up) are ignored. */
+  function openPost(port: number, headers: Record<string, string | number>): ClientRequest {
+    const client = httpRequest({ host: "127.0.0.1", port, method: "POST", path: "/", headers, agent: false })
+    client.on("error", () => {})
+    return client
+  }
+
+  const replyOf = (client: ClientRequest) => new Promise<IncomingMessage>((resolve) => client.once("response", resolve))
+
+  async function textOf(reply: IncomingMessage): Promise<string> {
+    let text = ""
+    for await (const chunk of reply) text += chunk
+    return text
+  }
+
+  test("#156 a body whose declared length would take the bodies in flight over the budget is a 503 before it is read", async () => {
+    const entered = gate()
+    const { port, send } = await serve(answerWith(small, () => entered.open()))
+    const payload = JSON.stringify({ text: "a".repeat(680) })
+    const length = Buffer.byteLength(payload)
+    const first = openPost(port, { "content-type": "application/json", "content-length": length })
+    const firstReply = replyOf(first)
+    first.write(payload.slice(0, 100))
+    await entered.promise
+
+    const refused = await send({ method: "POST", body: payload, headers: { "content-length": length } })
+    expect(refused.status).toBe(503)
+    expect(refused.headers["retry-after"]).toBe("1")
+    expect(refused.json()).toEqual({ error: "Too many request bodies are being read; retry shortly" })
+
+    first.end(payload.slice(100))
+    const reply = await firstReply
+    expect(reply.statusCode).toBe(200)
+    reply.resume()
+    // The first body's bytes went back to the budget when it was read, so the same request fits now.
+    expect((await send({ method: "POST", body: payload, headers: { "content-length": length } })).status).toBe(200)
+  })
+
+  test("#156 a body without a Content-Length is charged as it arrives, and a later body is refused while it holds the budget", async () => {
+    let got = 0
+    const seen = gate()
+    const { port, send } = await serve(
+      answerWith(small, (request) =>
+        request.on("data", (chunk: Buffer) => {
+          got += chunk.length
+          if (got >= 800) seen.open()
+        }),
+      ),
+    )
+    const payload = JSON.stringify({ text: "a".repeat(800) })
+    const first = openPost(port, { "content-type": "application/json" })
+    const firstReply = replyOf(first)
+    first.write(payload)
+    await seen.promise
+
+    const later = JSON.stringify({ text: "b".repeat(280) })
+    const refused = await send({ method: "POST", body: later, headers: { "content-length": Buffer.byteLength(later) } })
+    expect(refused.status).toBe(503)
+
+    first.end()
+    const reply = await firstReply
+    expect(reply.statusCode).toBe(200)
+    reply.resume()
+  })
+
+  test("#156 a body that does not arrive within the read timeout is a 408, and its bytes go back to the budget", async () => {
+    const tight: BodyLimits = { maxBytesInFlight: 100, readTimeoutMs: 5 }
+    const { port, send } = await serve(answerWith(tight))
+    const stalled = openPost(port, { "content-type": "application/json", "content-length": 100 })
+    const stalledReply = replyOf(stalled)
+    stalled.write("{")
+    const reply = await stalledReply
+    expect(reply.statusCode).toBe(408)
+    expect(JSON.parse(await textOf(reply))).toEqual({ error: "Request body was not received within 5 ms (option limits.bodyReadTimeoutMs)" })
+    stalled.destroy()
+
+    // The stalled body held all 100 bytes; once it timed out they are free, so a body of 92 bytes fits.
+    const payload = JSON.stringify({ text: "a".repeat(80) })
+    expect((await send({ method: "POST", body: payload, headers: { "content-length": Buffer.byteLength(payload) } })).status).toBe(200)
+  })
+
+  test("#156 a refusal maps to its wire status, kind, code and Retry-After", () => {
+    expect(bodyPlugError(new BodyError(503, "busy", "server_busy", 1))).toEqual({ status: 503, kind: "server", message: "busy", code: "server_busy", retryAfterSeconds: 1 })
+    expect(bodyPlugError(new BodyError(408, "slow", "body_read_timeout"))).toEqual({ status: 408, kind: "timeout", message: "slow", code: "body_read_timeout" })
+    expect(bodyPlugError(new BodyError(413, "big"))).toEqual({ status: 413, kind: "invalid_request", message: "big" })
   })
 })
 

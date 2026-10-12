@@ -6,7 +6,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { raceAbort } from "./abort.js"
-import { isLoopbackHost, type PlugboardOptions } from "./config.js"
+import { BODY_LIMIT_DEFAULTS, type BodyLimits, isLoopbackHost, type PlugboardOptions } from "./config.js"
 import type { PlugError, PlugEvent } from "./contract.js"
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024
@@ -19,14 +19,42 @@ const DEADLINE_GRACE_MS = 2_000
 /** An SSE stream idle for this long gets a comment line, so a client with a header or idle timeout keeps waiting for a model that is still reasoning. */
 const KEEPALIVE_MS = 15_000
 
-/** A request body that cannot be accepted: too large, or not JSON. `status` is the HTTP status to answer with. */
+/**
+ * A request body that cannot be accepted: too large, not JSON, not complete in time (408), or refused
+ * because the process has no room for it (503). `status` is the HTTP status to answer with; `code` and
+ * `retryAfterSeconds` go to the wire (`bodyPlugError`).
+ */
 export class BodyError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: string,
+    readonly retryAfterSeconds?: number,
   ) {
     super(message)
   }
+}
+
+/** The `PlugError` a refused body answers with: `server_busy` (503) is a server kind, a slow body (408) a timeout. */
+export function bodyPlugError(error: BodyError): PlugError {
+  const kind: PlugError["kind"] = error.status === 503 ? "server" : error.status === 408 ? "timeout" : "invalid_request"
+  return {
+    status: error.status,
+    kind,
+    message: error.message,
+    ...(error.code === undefined ? {} : { code: error.code }),
+    ...(error.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: error.retryAfterSeconds }),
+  }
+}
+
+/** Process-wide bytes of request bodies being read. On `globalThis` under a versioned key (I6), so every plugin generation shares one budget. */
+interface BodyBudget {
+  inFlight: number
+}
+const BODY_BUDGET = Symbol.for("opencode-plugboard.body-budget/1")
+const bodyBudget = (): BodyBudget => {
+  const slot = globalThis as Record<symbol, BodyBudget | undefined>
+  return (slot[BODY_BUDGET] ??= { inFlight: 0 })
 }
 
 /** Why a request's work was abandoned: the client went away, or the deadline passed. It is the abort reason of `RequestScope.signal`. */
@@ -105,21 +133,40 @@ export function beginRequest(request: IncomingMessage, response: ServerResponse,
 }
 
 /**
- * Reads the body as JSON (an empty body is `{}`). Rejects with `BodyError` (413, 400), the abort
- * reason of `signal` or the stream's error. On rejection the rest of the body is discarded, not
+ * Reads the body as JSON (an empty body is `{}`). Rejects with `BodyError` (413, 400, 408 or 503), the
+ * abort reason of `signal` or the stream's error. On rejection the rest of the body is discarded, not
  * buffered, so the response can still be delivered (see `finishRequest`).
+ *
+ * Bounded before it is buffered (#156, invariant I25). The bytes held by every body being read in the
+ * process stay within `limits.maxBytesInFlight`: a declared Content-Length is charged before the first
+ * byte is read, a body without one as it arrives, and a body that would go over is refused with 503
+ * `server_busy` (Retry-After 1). A body not complete within `limits.readTimeoutMs` is refused with 408.
  */
-export function readJsonBody(request: IncomingMessage, signal: AbortSignal): Promise<unknown> {
+export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const declared = Number(request.headers["content-length"])
-    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    const declared = Math.max(0, Number(request.headers["content-length"]) || 0)
+    if (declared > MAX_BODY_BYTES) {
       request.resume()
       return reject(new BodyError(413, "Request body too large"))
     }
     if (signal.aborted) return reject(signal.reason)
+    const budget = bodyBudget()
     const chunks: Buffer[] = []
     let size = 0
+    // Bytes this read holds in the budget. Released on every exit: complete, refused or abandoned.
+    let held = 0
+    const charge = (bytes: number): boolean => {
+      if (budget.inFlight + bytes > limits.maxBytesInFlight) return false
+      budget.inFlight += bytes
+      held += bytes
+      return true
+    }
+    const busy = () => new BodyError(503, "Too many request bodies are being read; retry shortly", "server_busy", 1)
+    let timer: ReturnType<typeof setTimeout> | undefined
     const cleanup = () => {
+      clearTimeout(timer)
+      budget.inFlight -= held
+      held = 0
       request.off("data", onData)
       request.off("error", onError)
       request.off("end", onEnd)
@@ -134,6 +181,7 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal): Pro
     const onData = (chunk: Buffer) => {
       size += chunk.length
       if (size > MAX_BODY_BYTES) return stop(new BodyError(413, "Request body too large"))
+      if (size > held && !charge(size - held)) return stop(busy())
       chunks.push(chunk)
     }
     const onError = (error: Error) => stop(error)
@@ -146,6 +194,16 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal): Pro
         reject(new BodyError(400, "Request body is not valid JSON"))
       }
     }
+    // The declared length is charged before the first byte is read, so a refusal costs no buffering.
+    if (declared > 0 && !charge(declared)) {
+      request.resume()
+      return reject(busy())
+    }
+    timer = setTimeout(
+      () => stop(new BodyError(408, `Request body was not received within ${limits.readTimeoutMs} ms (option limits.bodyReadTimeoutMs)`, "body_read_timeout")),
+      limits.readTimeoutMs,
+    )
+    timer.unref?.()
     request.on("data", onData)
     request.on("error", onError)
     request.on("end", onEnd)

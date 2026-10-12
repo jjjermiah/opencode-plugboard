@@ -32,6 +32,7 @@ These are the rules a change must not break. Tests, reviews and the mutation cat
 - **I22. The request id is made by the server.** It is never taken from the client, because it is echoed in a header and written to logs (`src/openai/route.ts` `handle`).
 - **I23. Usage is written from request handling only.** Setup builds the recorder from closures and makes no storage call. A change lands in a day held in memory, and the persist is debounced per day; a failed write is logged and the day stays in memory (`src/usage.ts` `createUsageRecorder`, `withUsage`).
 - **I24. Usage reads are scoped by key.** The admin key reads every app. An app key reads only its own app, and asking for another is a 403. The RPC returns every app, because OpenCode's own API is already authenticated by the server password (`src/config.ts` `authenticateUsage`, `src/openai/route.ts` `serveUsage`, `src/rpc.ts`).
+- **I25. Request bodies are admitted before they are buffered.** The bytes held by every body being read in the process stay within `limits.maxBodyBytesInFlight`, checked before the read: a declared Content-Length up front, a body without one as it arrives. A body that would go over is 503 `server_busy` with Retry-After 1, and a body not complete within `limits.bodyReadTimeoutMs` is 408. The budget lives on `globalThis` under its own versioned key, so it holds across generations (`src/http.ts` `readJsonBody`, #156).
 
 ## Three lifetimes
 
@@ -57,6 +58,7 @@ OpenCode may load this module once per Location, or re-evaluate it on reload. An
 - **the history sweep state**: when the last sweep ran and whether one is running (see [History pruning](#history-pruning)).
 - **the metrics registry and start time**: counters and histograms must survive a generation being replaced, so they live here too (see [Observability](#observability)).
 - **the limiter's queues and rate windows**: a concurrency cap or a requests-per-minute window must hold across generations (see [Concurrency and rate limits](#concurrency-and-rate-limits)).
+- **the request body budget**: the bytes of request bodies being read (`src/http.ts`, #156), on `globalThis` under its own versioned key, so the cap holds across generations (I25). It does not change the runtime's shape, so it does not bump `VERSION`.
 
 If a runtime written by a different version (runtime `VERSION`, currently 11) already owns the process, this module stays inert (no listener, no pump) and logs once that the server needs a restart.
 

@@ -12,11 +12,12 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { authenticate } from "../config.js"
+import { authenticate, bodyLimits } from "../config.js"
 import { liveOptions } from "../runtime.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import {
   BodyError,
+  bodyPlugError,
   RequestAborted,
   boundEvents,
   checkJsonContentType,
@@ -82,7 +83,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     // Answer in this route's error shape, then rethrow: the shared handler logs the outcome and
     // finds the response already sent.
     if (!response.headersSent) {
-      if (caught instanceof BodyError) fail({ status: caught.status, kind: "invalid_request", message: caught.message }, caught.status === 413)
+      if (caught instanceof BodyError) fail(bodyPlugError(caught), caught.status !== 400)
       else if (caught instanceof RequestAborted) {
         if (caught.kind === "timeout") fail(scope.timeoutError, true)
       } else fail({ status: 500, kind: "server", message: "Internal server error" })
@@ -102,7 +103,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
 
-    const body = await readJsonBody(request, scope.signal)
+    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.
     const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : body
