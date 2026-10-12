@@ -38,12 +38,12 @@ describe("#52 x-plugboard-usage", () => {
     await route(0.5)
     const reply = await server!.send(chat())
     expect(reply.status).toBe(200)
-    expect(reply.headers["x-plugboard-usage"]).toBe("input=100; output=20; cache_read=40; cost_usd=0.500000")
+    expect(reply.headers["x-plugboard-usage"]).toBe("input=100; output=20; cache_read=40; cache_write=0; cost_usd=0.500000")
   })
 
   test("an unpriced model reports the tokens and leaves the cost out", async () => {
     await route(undefined)
-    expect((await server!.send(chat())).headers["x-plugboard-usage"]).toBe("input=100; output=20; cache_read=40")
+    expect((await server!.send(chat())).headers["x-plugboard-usage"]).toBe("input=100; output=20; cache_read=40; cache_write=0")
   })
 
   test("a streamed answer has no x-plugboard-usage: its headers are sent before the usage is known", async () => {
@@ -57,7 +57,7 @@ describe("#52 x-plugboard-usage", () => {
     await route(0.5, ANSWER, { maxN: 2 })
     const reply = await server!.send(chat({ n: 2 }))
     expect(reply.json().choices).toHaveLength(2)
-    expect(reply.headers["x-plugboard-usage"]).toBe("input=200; output=40; cache_read=80; cost_usd=1.000000")
+    expect(reply.headers["x-plugboard-usage"]).toBe("input=200; output=40; cache_read=80; cache_write=0; cost_usd=1.000000")
   })
 
   test("no header when usage recording is off (the caller is not wrapped)", async () => {
@@ -72,6 +72,6 @@ describe("#52 x-plugboard-usage", () => {
     ["legacy completions", { method: "POST", path: "/v1/completions", body: { model: "fast", prompt: "hi" } }],
   ] as Array<[string, SendInit]>)("the %s JSON answer carries the header", async (_name, init) => {
     await route(0.5)
-    expect((await server!.send(init)).headers["x-plugboard-usage"]).toBe("input=100; output=20; cache_read=40; cost_usd=0.500000")
+    expect((await server!.send(init)).headers["x-plugboard-usage"]).toBe("input=100; output=20; cache_read=40; cache_write=0; cost_usd=0.500000")
   })
 })

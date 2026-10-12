@@ -39,7 +39,41 @@ async function play(...events: BusEnvelope[]): Promise<PlugEvent[]> {
   return run.drain()
 }
 
+describe("#202 a request that asked for one tool call keeps the first and drops the rest", () => {
+  const twoCalls = async (singleToolCall: boolean) => {
+    const collector = new RequestCollector({ stopTurn: () => {}, requestID: "req_1", singleToolCall })
+    const store = createSessionStore()
+    store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
+    store.dispatch(host.toolCalled("c1", "first", { a: 1 }))
+    store.dispatch(host.toolCalled("c2", "second", { b: 2 }))
+    store.dispatch(host.stepEnded("stop"))
+    return collect(collector.events())
+  }
+
+  test("with the flag the second call is not returned and the answer is still tool-calls", async () => {
+    const events = await twoCalls(true)
+    expect(events.filter((event) => event.type === "tool-call")).toEqual([{ type: "tool-call", id: "c1", name: "first", input: { a: 1 } }])
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "tool-calls" })
+  })
+
+  test("without the flag both calls are returned", async () => {
+    expect((await twoCalls(false)).filter((event) => event.type === "tool-call")).toHaveLength(2)
+  })
+})
+
 describe("event mapping", () => {
+  test("#146 the provider signature of a reasoning block is carried on an empty reasoning-delta at its end", async () => {
+    expect(await play(host.reasoningDelta("think"), host.reasoningEnded({ anthropic: { signature: "sig_abc" } }), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "think" },
+      { type: "reasoning-delta", text: "", signature: "sig_abc" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
+  test("#146 a reasoning block without a signature in its metadata emits nothing at its end", async () => {
+    expect(await play(host.reasoningDelta("think"), host.reasoningEnded({}), host.stepEnded("stop"))).toEqual([{ type: "reasoning-delta", text: "think" }, expect.objectContaining({ type: "finish" })])
+  })
+
   test("text and reasoning deltas, then a plain stop", async () => {
     expect(await play(host.reasoningDelta("think"), host.textDelta("Hel"), host.textDelta(""), host.textDelta("lo"), host.stepEnded("stop"))).toEqual([
       { type: "reasoning-delta", text: "think" },
@@ -175,6 +209,9 @@ describe("#88 host errors reach the caller only as a stable code and a fixed mes
     ["a provider 404", { type: "provider.other", status: 404, message: SECRET }, { status: 404, kind: "not_found", code: "provider_rejected_request" }],
     ["another provider 4xx", { type: "provider.invalid-request", status: 422, message: SECRET }, { status: 422, kind: "invalid_request", code: "provider_rejected_request" }],
     ["a provider 5xx", { type: "provider.other", status: 503, message: SECRET }, { status: 503, kind: "server", code: "provider_unavailable" }],
+    ["#204 a provider 529", { type: "provider.other", status: 529, message: SECRET }, { status: 503, kind: "server", code: "provider_overloaded" }],
+    ["#204 an overloaded_error in the provider body", { type: "provider.internal", message: "bad", response: { body: '{"type":"error","error":{"type":"overloaded_error"}}' } }, { status: 503, kind: "server", code: "provider_overloaded" }],
+    ["#204 an overloaded message without a status", { type: "provider.internal", message: `Overloaded ${SECRET}` }, { status: 503, kind: "server", code: "provider_overloaded" }],
     ["a provider error without a status", { type: "provider.other", message: SECRET }, { status: 502, kind: "server", code: "provider_unavailable" }],
     ["anything else", { type: "unknown", message: SECRET }, { status: 502, kind: "server", code: "model_run_failed" }],
     ["#171 a ChatGPT subscription at its usage limit", { type: "provider.invalid-request", message: `subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached ${SECRET}` }, { status: 429, kind: "rate_limit", code: "quota_exceeded" }],

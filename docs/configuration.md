@@ -256,7 +256,7 @@ The cache lives in memory. A server restart, or a change to `cache`, `apps`, `mo
 
 Plugboard counts what each app does, per UTC day: model requests and their errors, latency, tokens by kind, cost in USD, cache hits and misses, fallbacks, 429 refusals, and the requests and cost of each model. It is on by default. Set `usage: { "enabled": false }` to record nothing.
 
-With recording on, each non-streaming model answer also carries `x-plugboard-usage` for that one request: `input=<n>; output=<n>; cache_read=<n>; cost_usd=<x.xxxxxx>`. `input` and `output` are the totals the response body reports (cache reads are inside `input`, reasoning inside `output`), and `cost_usd` is priced from the same tokens. A request that fans out with `n` sums its choices. The cost part is left out when the model has no price in the catalog. A streamed answer has no such header: its headers are sent before the usage is known.
+With recording on, each non-streaming model answer also carries `x-plugboard-usage` for that one request: `input=<n>; output=<n>; cache_read=<n>; cache_write=<n>; cost_usd=<x.xxxxxx>`. `input` and `output` are the totals the response body reports (cache reads and writes are inside `input`, reasoning inside `output`); `cache_write` is the input the provider wrote to its cache (0 when none), and `cost_usd` is priced from the same tokens. A request that fans out with `n` sums its choices. The cost part is left out when the model has no price in the catalog. A streamed answer has no such header: its headers are sent before the usage is known.
 
 Read it with `GET /v1/usage`. `from` and `to` are UTC days (`YYYY-MM-DD`, both inclusive); the default is the 30 days ending today, and a range may span at most 366 days. `app` names one app.
 
@@ -401,7 +401,7 @@ Supported request fields: messages with system, developer, user text and images 
 
 Behaviours worth knowing:
 
-- `parallel_tool_calls` and `seed` are accepted and ignored.
+- `parallel_tool_calls: false` keeps the first tool call of an answer and drops the rest. The OpenCode session API cannot turn parallel calls off on every route, so plugboard enforces it, and the response carries `x-plugboard-parallel-tools: limited`. `true` (the default) returns every call the model makes. `seed` is accepted and ignored. Anthropic's `tool_choice.disable_parallel_tool_use: true` works the same way on `/v1/messages`.
 - `tool_choice` `auto` and `none` work as expected. `required` and a named function are applied as an instruction to the model, because the OpenCode session API has no tool-choice control. A model can still answer in text.
 - `response_format` `json_schema` works through a `respond` tool the model is instructed to call, and the arguments come back as the message content. The provider does not enforce the schema, so validate the result. `json_object` adds a system instruction instead and carries no schema, so name the keys in your prompt; weak models may still ignore them.
 - A model that answers in text instead of calling `respond` still counts when its final text is the JSON the schema asks for (#170; the same on Responses and Gemini, #173). The check is deliberately small: the top-level `type`, the top-level `required` keys, and the `type` of each top-level property. Anything else in the schema is not checked. Such an answer carries `x-plugboard-structured-fallback: text` on a non-streamed response. A streamed one cannot carry it, because the headers are sent before the answer is known. Text that does not match is a 502 `structured_output_missing`.

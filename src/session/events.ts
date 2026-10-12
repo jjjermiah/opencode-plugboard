@@ -33,6 +33,16 @@ const RESPONSE_OVERFLOW: PlugError = {
   message: "The response was not read fast enough; too much output was waiting",
 }
 
+/** A reasoning block's signature from the host's provider metadata (`{ <provider>: { signature } }`), or undefined when there is none. */
+function signatureOf(state: unknown): string | undefined {
+  if (typeof state !== "object" || state === null) return undefined
+  for (const value of Object.values(state)) {
+    const signature = typeof value === "object" && value !== null ? (value as { signature?: unknown }).signature : undefined
+    if (typeof signature === "string" && signature.length > 0) return signature
+  }
+  return undefined
+}
+
 /** Rough size of an event's payload, for the queue's byte bound. */
 function sizeOf(event: PlugEvent): number {
   switch (event.type) {
@@ -159,6 +169,8 @@ const USAGE_LIMIT = /usage[_ ]limit|quota/i
 const RATE_LIMIT = /rate[_ ]limit|too many requests/i
 const AUTH_FAILURE = /unauthori[sz]ed|invalid[_ ]api[_ ]key|incorrect api key|not logged in|log in again|sign in|permission denied/i
 const MODEL_NOT_FOUND = /model[^\n]{0,60}(?:not found|does not exist|not supported|unknown)|unknown model|model_not_found/i
+/** A provider overload: Anthropic's `overloaded_error` (its 529), in the message or the body of the failure (#204). */
+const OVERLOADED = /overloaded/i
 
 const AUTH_MESSAGE = "The model provider rejected its credentials; the plugboard host needs to sign in again"
 
@@ -198,6 +210,8 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
     const detail = `${error?.message ?? ""}\n${error?.response?.body ?? ""}`
     if (USAGE_LIMIT.test(detail)) return { status: 429, kind: "rate_limit", code: "quota_exceeded", message: "The model provider's usage quota is exhausted" }
     if (RATE_LIMIT.test(detail)) return { status: 429, kind: "rate_limit", code: "rate_limited", message: "The model provider is rate limiting requests; retry later" }
+    // Its own 529 or an overloaded_error. Sent as 503 here; the Messages route answers it as 529 (src/anthropic/response.ts).
+    if (status === 529 || OVERLOADED.test(detail)) return { status: 503, kind: "server", code: "provider_overloaded", message: "The model provider is overloaded; retry later" }
     if (MODEL_NOT_FOUND.test(detail)) return { status: 404, kind: "not_found", code: "model_not_found", param: "model", message: "The model provider does not know the requested model" }
     if (AUTH_FAILURE.test(detail)) return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
     if (status === 404) return { status, kind: "not_found", code: "provider_rejected_request", message: "The model provider rejected the request" }
@@ -208,6 +222,8 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
 }
 
 export interface CollectorHooks {
+  /** The request asked for one tool call per answer (#202): the first caller tool call is kept, the rest are dropped. */
+  readonly singleToolCall?: boolean
   /** The step ended with tool calls: stop the turn before the runner starts another model step. */
   readonly stopTurn: () => void
   /** The request's id, for the log line that carries a failure's raw host text. */
@@ -309,6 +325,13 @@ export class RequestCollector {
         if (delta.length > 0) this.emit({ type: "reasoning-delta", text: delta })
         return
       }
+      case "session.reasoning.ended": {
+        // The block's provider metadata carries the provider's signature (#146). It goes out as an empty-text reasoning-delta.
+        if (this.finished) return
+        const signature = signatureOf(item.state)
+        if (signature !== undefined) this.emit({ type: "reasoning-delta", text: "", signature })
+        return
+      }
       case "session.tool.input.started":
         this.toolNames.set(String(item.id), String(item.name ?? ""))
         return
@@ -322,6 +345,7 @@ export class RequestCollector {
           this.stepServerCalls++
           return
         }
+        if (this.hooks.singleToolCall && this.calls.size > 0) return
         this.calls.add(id)
         this.emit({ type: "tool-call", id, name, input: item.input })
         return

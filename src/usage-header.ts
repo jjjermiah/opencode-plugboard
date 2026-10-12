@@ -14,12 +14,13 @@ interface Totals {
   readonly inputTokens: number
   readonly outputTokens: number
   readonly cacheReadTokens: number
+  readonly cacheWriteTokens?: number
   readonly costUsd?: number
 }
 
-/** `input=<n>; output=<n>; cache_read=<n>; cost_usd=<x.xxxxxx>`; the cost part is left out for an unpriced model. */
+/** `input=<n>; output=<n>; cache_read=<n>; cache_write=<n>; cost_usd=<x.xxxxxx>`; the cost part is left out for an unpriced model. */
 export function formatUsage(totals: Totals): string {
-  const parts = [`input=${totals.inputTokens}`, `output=${totals.outputTokens}`, `cache_read=${totals.cacheReadTokens}`]
+  const parts = [`input=${totals.inputTokens}`, `output=${totals.outputTokens}`, `cache_read=${totals.cacheReadTokens}`, `cache_write=${totals.cacheWriteTokens ?? 0}`]
   if (totals.costUsd !== undefined) parts.push(`cost_usd=${totals.costUsd.toFixed(6)}`)
   return parts.join("; ")
 }
@@ -31,7 +32,7 @@ export function formatUsage(totals: Totals): string {
  */
 export function reportUsage(response: ServerResponse, stream: boolean): ((call: CallTotals) => void) | undefined {
   if (stream) return undefined
-  let totals: Totals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, costUsd: 0 }
+  let totals: Totals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 }
   return (call) => {
     if (response.headersSent || response.destroyed) return
     const costUsd = totals.costUsd === undefined || call.costUsd === undefined ? undefined : totals.costUsd + call.costUsd
@@ -39,6 +40,7 @@ export function reportUsage(response: ServerResponse, stream: boolean): ((call: 
       inputTokens: totals.inputTokens + call.inputTokens,
       outputTokens: totals.outputTokens + call.outputTokens,
       cacheReadTokens: totals.cacheReadTokens + call.cacheReadTokens,
+      cacheWriteTokens: (totals.cacheWriteTokens ?? 0) + (call.cacheWriteTokens ?? 0),
       ...(costUsd === undefined ? {} : { costUsd }),
     }
     response.setHeader(USAGE_HEADER, formatUsage(totals))

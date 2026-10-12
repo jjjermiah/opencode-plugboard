@@ -53,15 +53,21 @@ export interface CatalogModel {
 
 // ---------------------------------------------------------------- request
 
+/**
+ * `cache`: the caller placed a cache breakpoint on this part (Anthropic `cache_control`). It is always the default 5-minute
+ * breakpoint (#275); a `ttl` of 1h is not carried, because Anthropic rejects a 1h breakpoint after a 5-minute one.
+ */
 export interface TextPart {
   readonly type: "text"
   readonly text: string
+  readonly cache?: boolean
 }
 /** Image or file. `url` is a data: URL or http(s) URL; the backend turns it into a host media asset. */
 export interface MediaPart {
   readonly type: "media"
   readonly url: string
   readonly mediaType?: string
+  readonly cache?: boolean
 }
 export interface ToolCallPart {
   readonly type: "tool-call"
@@ -76,6 +82,8 @@ export interface ToolResultPart {
   /** Text content as the caller sent it (JSON strings stay strings). */
   readonly result: string
   readonly isError?: boolean
+  /** A caller cache breakpoint on the result (see `TextPart.cache`). */
+  readonly cache?: boolean
 }
 
 export type PlugPart = TextPart | MediaPart | ToolCallPart | ToolResultPart
@@ -113,6 +121,8 @@ export interface PlugRequest {
   readonly messages: ReadonlyArray<PlugMessage>
   readonly tools: ReadonlyArray<PlugTool>
   readonly toolChoice?: PlugToolChoice
+  /** `false` when the caller asked for at most one tool call per answer (`parallel_tool_calls: false`, `disable_parallel_tool_use`). The host has no switch for it on every route, so the session collector keeps the first call and drops the rest (#202). */
+  readonly parallelToolCalls?: boolean
   readonly generation: PlugGeneration
   /** The end user the caller named, when kept (src/user.ts, #57). Labels the session title and the usage counts. */
   readonly user?: string
@@ -137,7 +147,8 @@ export type PlugFinish = "stop" | "length" | "tool-calls" | "content-filter" | "
 
 export type PlugEvent =
   | { readonly type: "text-delta"; readonly text: string }
-  | { readonly type: "reasoning-delta"; readonly text: string }
+  // `signature` marks the end of a reasoning block: an empty-text event carrying the provider's signature for it (#146).
+  | { readonly type: "reasoning-delta"; readonly text: string; readonly signature?: string }
   | { readonly type: "tool-call"; readonly id: string; readonly name: string; readonly input: unknown }
   | { readonly type: "finish"; readonly reason: PlugFinish; readonly usage?: PlugUsage }
   | { readonly type: "error"; readonly error: PlugError }
@@ -201,11 +212,13 @@ export interface CallContext {
   readonly onServerTools?: (count: number) => void
 }
 
-/** One answered call's totals for the caller: `inputTokens` and `outputTokens` as the response body reports them (cache reads inside input, reasoning inside output), and `costUsd` when the model has a price. */
+/** One answered call's totals for the caller: `inputTokens` and `outputTokens` as the response body reports them (cache reads and writes inside input, reasoning inside output), and `costUsd` when the model has a price. */
 export interface CallTotals {
   readonly inputTokens: number
   readonly outputTokens: number
   readonly cacheReadTokens: number
+  /** Input tokens written to the provider's cache by this call (0 or absent when the provider reports none). */
+  readonly cacheWriteTokens?: number
   readonly costUsd?: number
 }
 

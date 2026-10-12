@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { CallContext, CatalogCost, CatalogModel, ModelCaller, PlugEvent } from "../../src/contract.js"
 import { isPlugError } from "../../src/contract.js"
+import { cachedCaller, createCacheStore } from "../../src/cache.js"
 import { captureLogs } from "../support/logs.js"
 import { collect, ev, events, model, plugRequest, tick } from "../support/fixtures.js"
 import { FakeModelCaller } from "../support/model-caller.js"
@@ -404,6 +405,21 @@ describe("the model caller seam", () => {
     expect(app.totals.cacheHits).toBe(1)
     expect(app.models["test/echo"]).toEqual({ requests: 1, tokens: 0, costUsd: 0 })
     expect(app.totals.unpricedRequests).toBe(0)
+  })
+
+  test("#278 the real response cache under withUsage: the hit counts in cacheHits and adds no tokens or cost", async () => {
+    const h = harness()
+    const config = { ttlSeconds: 60, maxEntries: 10, maxBytes: 1_000_000 }
+    const cached = withUsage(cachedCaller(new FakeModelCaller([ev.text("hi"), ev.finish("stop", { inputTokens: 100, outputTokens: 10 })]), config, createCacheStore({ ttlMs: 60_000, maxEntries: 10, maxBytes: 1_000_000 })), h.recorder)
+    await collect(cached.stream(plugRequest(), { app: "a", signal: signal() }))
+    await collect(cached.stream(plugRequest(), { app: "a", signal: signal() }))
+    await tick()
+    const app = (await reportFor(h.recorder, { from: "2026-10-11", to: "2026-10-11" })).apps.a!
+    expect(app.totals.cacheHits).toBe(1)
+    expect(app.totals.cacheMisses).toBe(1)
+    expect(app.totals.tokens.input).toBe(100)
+    expect(app.totals.tokens.output).toBe(10)
+    expect(app.models["test/echo"]!.requests).toBe(2)
   })
 
   test("with no recorder the caller is returned as it was", () => {

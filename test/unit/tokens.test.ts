@@ -3,8 +3,36 @@
  * cost per image or file. The number is an estimate by design (see src/anthropic/tokens.ts).
  */
 import { describe, expect, test } from "bun:test"
+import { appPolicy } from "../../src/config.js"
 import { MEDIA_TOKENS, estimateTokens } from "../../src/anthropic/tokens.js"
-import { plugRequest } from "../support/fixtures.js"
+import { requestSystem } from "../../src/session/context.js"
+import { plugRequest, testOptions } from "../support/fixtures.js"
+
+describe("#201 count_tokens counts the system prompt plugboard adds", () => {
+  const base = plugRequest({ system: ["Caller prompt."] })
+  const policy = (system: string, systemMode: "prepend" | "append" | "replace") => appPolicy(testOptions({ apps: { default: { system, systemMode } } }), "default")
+
+  test("the app's system policy is part of the count: 400 characters add exactly 100 tokens", () => {
+    const plain = estimateTokens({ ...base, system: requestSystem(base, [], undefined) })
+    const prepended = estimateTokens({ ...base, system: requestSystem(base, [], policy("P".repeat(400), "prepend")) })
+    expect(prepended - plain).toBe(100)
+  })
+
+  test("replace drops the caller's prompt from the count, so only the policy counts", () => {
+    const replaced = requestSystem(base, [], policy("Only this.", "replace"))
+    expect(replaced).toEqual(["Only this."])
+  })
+
+  test("a required tool choice adds its steering sentence to the count", () => {
+    const steered = requestSystem({ ...base, toolChoice: "required" }, [], undefined)
+    expect(steered).toEqual(["Caller prompt.", "You must respond by calling one of the provided tools."])
+    expect(estimateTokens({ ...base, system: steered })).toBeGreaterThan(estimateTokens({ ...base, system: requestSystem(base, [], undefined) }))
+  })
+
+  test("the skill prelude comes before the caller's prompt", () => {
+    expect(requestSystem(base, ["Skill body."], undefined)).toEqual(["Skill body.", "Caller prompt."])
+  })
+})
 
 describe("#143 #144 the token estimate", () => {
   test.each([

@@ -86,6 +86,17 @@ describe("what the model caller receives", () => {
   })
 })
 
+describe("#202 parallel_tool_calls on Chat Completions", () => {
+  test("false reaches the caller and is answered with x-plugboard-parallel-tools: limited; absent carries no header", async () => {
+    const caller = await route([ev.finish()])
+    const reply = await server!.send(chat({ parallel_tool_calls: false }))
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-parallel-tools"]).toBe("limited")
+    expect(caller.call.request.parallelToolCalls).toBe(false)
+    expect((await server!.send(chat())).headers).not.toHaveProperty("x-plugboard-parallel-tools")
+  })
+})
+
 describe("#30 dropped sampling parameters", () => {
   const catalog = [...CATALOG, { providerID: "openai", id: "gpt-5.5", variants: [] }]
   const gpt = (body: Record<string, unknown>) => chat({ model: "openai/gpt-5.5", ...body })

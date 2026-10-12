@@ -284,6 +284,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   const n = parseChoiceCount(body, options)
   if (typeof n === "object") return n
   if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
+  if (body.parallel_tool_calls != null && typeof body.parallel_tool_calls !== "boolean") return bad("parallel_tool_calls must be a boolean", "parallel_tool_calls")
   if (body.logprobs === true) return bad("logprobs is not supported", "logprobs", "unsupported_parameter")
   if (body.top_logprobs != null) return bad("top_logprobs is not supported", "top_logprobs", "unsupported_parameter")
 
@@ -335,6 +336,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
     tools,
     ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),
     generation,
+    ...(body.parallel_tool_calls === false ? { parallelToolCalls: false } : {}),
   }
   const streamOptions = isRecord(body.stream_options) ? body.stream_options : {}
   return {

@@ -27,7 +27,8 @@ console.log(r.output_text)
 | `max_output_tokens`, `temperature`, `top_p` | Passed to the model. |
 | `reasoning.effort` | Picks the model variant of that name when the model has one and the id carries none (`openai/gpt-5.6-luna` with `low` becomes `openai/gpt-5.6-luna#low`). Otherwise ignored. `reasoning.summary` is ignored. |
 | `stream` | The standard event sequence, below. |
-| `store`, `include`, `metadata`, `user`, `parallel_tool_calls`, `service_tier`, `prompt_cache_key`, `safety_identifier`, `max_tool_calls`, `stream_options` | Accepted and ignored. The response always reports `store: false`, because nothing is kept for retrieval. |
+| `parallel_tool_calls: false` | Keeps only the first tool call of the answer, and the response carries `x-plugboard-parallel-tools: limited`. The response echoes the value it received (`true` unless the request sent `false`). |
+| `store`, `include`, `metadata`, `user`, `service_tier`, `prompt_cache_key`, `safety_identifier`, `max_tool_calls`, `stream_options` | Accepted and ignored. The response always reports `store: false`, because nothing is kept for retrieval. |
 
 ## What is rejected
 
