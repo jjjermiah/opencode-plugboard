@@ -8,9 +8,9 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
-import { Effect, Exit, Scope, Stream } from "effect"
+import { Cause, Effect, Exit, Scope, Stream } from "effect"
 import plugin from "../../index.js"
-import { ensureBackend, sessionStore } from "../../src/runtime.js"
+import { ensureBackend, processStatus, sessionStore } from "../../src/runtime.js"
 import { ensureAppDir } from "../../src/session/history.js"
 import type { ContextHookEvent, HostToolDescriptor } from "../../src/session/host.js"
 import { plugRequest, until } from "../support/fixtures.js"
@@ -29,6 +29,14 @@ interface Loaded {
   readonly scope: Scope.Closeable
   /** Runs the finalizer, synchronously. */
   unload(): void
+}
+
+/** Runs the plugin's setup for one Location and returns its exit, so a failing setup can be asserted on. */
+function setupExit(options: unknown, directory = "/projects/real") {
+  const spy = spyContext({ options, directory, respond: { "event.subscribe": () => Stream.never, "model.list": () => Effect.succeed({ data: [] }) } })
+  const scope = Effect.runSync(Scope.make())
+  const exit = Effect.runSyncExit(Scope.provide(scope)(plugin.effect(spy.ctx)))
+  return { spy, exit }
 }
 
 /** Loads the plugin for one Location the way the host does, and fails if setup suspends. */
@@ -85,10 +93,31 @@ describe("plugin setup only registers and returns", () => {
     expect(existsSync(join(process.env.XDG_DATA_HOME!, "opencode-plugboard"))).toBe(false)
   })
 
-  test("invalid options leave the Location inert and say why", async () => {
-    const { spy } = load({ models: "not-an-array" })
+  test("#159 invalid options fail the setup with the field path, and log it at error level", () => {
+    const { spy, exit } = setupExit({ models: "not-an-array" })
+    spy.mark("after-setup")
+    if (Exit.isSuccess(exit)) throw new Error("the setup did not fail")
+    expect(Cause.pretty(exit.cause)).toContain("plugboard option `models` must be an array of strings")
     expect(spy.during("setup")).toEqual([])
-    expect(logs.of("options.invalid")[0]!.fields.error).toContain("`models` must be an array")
+    expect(logs.of("options.invalid")[0]).toMatchObject({ level: "error", fields: { error: "plugboard option `models` must be an array of strings" } })
+  })
+
+  test("#159 invalid options beside a live good generation show on /v1/status and in the runtime status", async () => {
+    const live = await options()
+    load(live)
+    await until(async () => (await fetch(`http://127.0.0.1:${live.listen.port}/healthz`).catch(() => undefined))?.status === 200, 1_000, "the listener")
+    setupExit({ models: "not-an-array" }, "/projects/broken")
+    // A copy: `toMatchObject` with an asymmetric matcher writes into the object it is given.
+    expect({ ...processStatus().configError }).toMatchObject({ message: "plugboard option `models` must be an array of strings", at: expect.any(Number) })
+    const reply = await fetch(`http://127.0.0.1:${live.listen.port}/v1/status`)
+    expect(await reply.json()).toMatchObject({ configError: { message: "plugboard option `models` must be an array of strings", at: expect.any(String) } })
+  })
+
+  test("#159 valid options after an invalid load clear the recorded error", async () => {
+    setupExit({ models: "not-an-array" }, "/projects/broken")
+    expect(processStatus().configError).toBeDefined()
+    setupExit(await options(), "/projects/fixed")
+    expect(processStatus().configError).toBeUndefined()
   })
 
   test("a rejected generation (options differ from the live ones) registers nothing", async () => {

@@ -325,6 +325,7 @@ Behaviours worth knowing:
 
 - Every response has an `x-plugboard-request-id` header. The same id is the `id` field on that request's log lines, so a client error can be matched to a server line.
 - `GET /healthz` is a cheap liveness check. `GET /v1/status` (needs a key when keys are set) reports uptime, listen address, generation count, event pump state and model count.
+- An invalid plugboard option fails the plugin's setup. OpenCode lists the plugin as `failed` with the field and the reason, the server log has an `options.invalid` line at error level, and the port stays closed for that project. When another project's earlier good config still serves the port, `GET /v1/status` shows `configError: { message, at }` and `GET /readyz` returns 503 with the same message as its reason. The next Location that loads valid options clears it.
 - Open `http://127.0.0.1:4010/` in a browser for a setup page: the listen address, a `models` suggestion built from what your server offers, and a curl example. With `keys` set, a visitor without a key sees only the address and endpoints; a valid key also shows its own app, the allowlist and the suggestion.
 - `/v1/models` entries carry `plugboard.limit`, `modalities`, `cost` (USD per million tokens), `status`, `family` and `released` when the catalog has them.
 - With `metrics: true`, `GET /metrics` exposes request counts and durations by app and route, in-flight requests, tokens by kind, dropped sampling params, history sweeps and event pump health. There is no model label, so cardinality stays bounded.

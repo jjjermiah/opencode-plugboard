@@ -284,6 +284,7 @@ export function buildStatus(input: {
     readonly runtimeVersion: number
     readonly listener?: { readonly host: string; readonly port: number; readonly bound: boolean }
     readonly servingConfirmed: boolean
+    readonly configError?: { readonly message: string; readonly at: number }
   }
   readonly catalog?: ReadonlyArray<CatalogModel>
   readonly now?: number
@@ -303,5 +304,7 @@ export function buildStatus(input: {
     sessionGuards: runtime.guards,
     models: catalog ? { catalog: catalog.length, available: listAvailableModels(options, catalog, app).length } : { error: "catalog_unavailable" },
     metrics: options.metrics,
+    // The plugin options error the last Location to load the plugin hit (#159); absent when options parse.
+    ...(runtime.configError ? { configError: { message: runtime.configError.message, at: new Date(runtime.configError.at).toISOString() } } : {}),
   }
 }

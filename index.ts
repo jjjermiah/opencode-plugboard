@@ -27,7 +27,7 @@ import { withFallbacks } from "./src/fallback.js"
 import { withBudgets } from "./src/budgets.js"
 import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processLimits, processMetrics, processUsage, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
+import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processLimits, processMetrics, processUsage, registerGeneration, setConfigError, sessionStore, withResponseCache } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
@@ -42,10 +42,16 @@ export default Plugin.define({
       try {
         options = parseOptions(ctx.options)
       } catch (error) {
-        // Invalid options: stay inert and say why, instead of failing the Location's plugin load.
-        logError("options.invalid", { error: errorMessage(error) })
-        return
+        // Invalid options fail this setup, so the host lists the plugin as `failed` with the message
+        // (opencode packages/core/src/plugin.ts: a failed setup becomes slot.error, then the state).
+        // Nothing is registered, so the Location stays inert. The same message goes to the error log,
+        // and to `/v1/status` and `/readyz` while a listener from an earlier good generation serves (#159).
+        const message = errorMessage(error)
+        setConfigError(message)
+        logError("options.invalid", { error: message })
+        return yield* Effect.die(new Error(`plugboard options are invalid: ${message}`))
       }
+      setConfigError(undefined)
 
       // ---- every Location: join the shared listener (sync registration only).
       const sessions = sessionStore()

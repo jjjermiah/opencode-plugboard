@@ -155,6 +155,12 @@ interface Pump {
   stop(): void
 }
 
+/** A plugin options error and when it was recorded (epoch ms). */
+export interface ConfigError {
+  readonly message: string
+  readonly at: number
+}
+
 interface Runtime {
   readonly version: number
   readonly sessions: SessionStore
@@ -184,6 +190,8 @@ interface Runtime {
   readonly usage: UsageState
   /** The budget warnings already logged (src/budgets.ts). */
   readonly budgets: BudgetState
+  /** The last plugin options error (`index.ts`), cleared by the next Location whose options parse (#159). */
+  configError?: ConfigError
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
@@ -349,6 +357,8 @@ export interface RuntimeStatus extends RuntimeSnapshot {
   readonly listener?: { readonly host: string; readonly port: number; readonly bound: boolean }
   /** The serving generation's Location is a confirmed app directory (else the newest generation serves). */
   readonly servingConfirmed: boolean
+  /** The last plugin options error, when its Location was the latest to load the plugin (#159). */
+  readonly configError?: ConfigError
 }
 
 /** A synchronous snapshot of the runtime: no host call, no filesystem. */
@@ -364,7 +374,19 @@ export function processStatus(): RuntimeStatus {
     startedAt: rt.startedAt,
     servingConfirmed: serving !== undefined && rt.confirmed.has(serving.directory),
     ...(rt.listener ? { listener: { host: rt.listener.listen.host, port: rt.listener.listen.port, bound: rt.listener.bound } } : {}),
+    ...(rt.configError ? { configError: rt.configError } : {}),
   }
+}
+
+/**
+ * Records the plugin options error of the Location that just failed to parse its options, or clears
+ * it (`undefined`) once options parse. Synchronous, so plugin setup may call it. The status and
+ * `/readyz` show it while a listener from an earlier good generation still serves (#159).
+ */
+export function setConfigError(message: string | undefined): void {
+  const rt = runtime()
+  if (!rt) return
+  rt.configError = message === undefined ? undefined : { message, at: Date.now() }
 }
 
 /** The generation that serves requests and supplies the catalog: the newest confirmed app-directory one, else the newest. */
