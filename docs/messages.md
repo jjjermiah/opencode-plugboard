@@ -73,7 +73,7 @@ A message object: `id` (`msg_...`), `type: "message"`, `role: "assistant"`, `mod
 | `max_tokens` | The model hit the token limit. |
 | `refusal` | The provider filtered the content. |
 
-`stop_reason: "stop_sequence"` is never returned: the backend does not report which stop sequence ended a turn, so a stop sequence shows as `end_turn` and `stop_sequence` is `null`.
+`stop_reason: "stop_sequence"` is returned when the answer text ends with one of the request's `stop_sequences`. That sequence is removed from the text and given as `stop_sequence`. The host reports only that the turn stopped, so a sequence the provider ended on without returning it shows as `end_turn`, with `stop_sequence` `null`.
 
 `usage` has `input_tokens`, `output_tokens` (including reasoning), `cache_read_input_tokens` and `cache_creation_input_tokens`. As in Anthropic's API, `input_tokens` excludes the cached tokens that the other two fields report. The `x-plugboard-session` header works as on Chat Completions, and every response carries a `request-id` header.
 
