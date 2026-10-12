@@ -24,12 +24,18 @@ export interface SessionPort {
   create(input: {
     readonly directory: string
     readonly model: { readonly providerID: string; readonly id: string; readonly variant?: string }
+    /** The OpenCode agent the session runs as (option `agents`); absent: the host's default agent. */
+    readonly agent?: string
     readonly title: string
     readonly metadata: { readonly [key: string]: Json }
     readonly permissions: ReadonlyArray<{ action: string; resource: string; effect: "allow" | "deny" }>
   }): Promise<{ id: string }>
   prompt(input: { readonly sessionID: string; readonly text: string; readonly files: ReadonlyArray<{ uri: string; name: string }> }): Promise<unknown>
   interrupt(sessionID: string): Promise<void>
+  /** The content of skill `id` in the Location at `directory`, or undefined when there is none. Briefly cached per directory. */
+  skill(directory: string, id: string): Promise<string | undefined>
+  /** The agent `id` in the Location at `directory` (its `system` prompt may be absent), or undefined when there is none. */
+  agent(directory: string, id: string): Promise<{ readonly system?: string } | undefined>
 }
 
 type HostSession = HostContext["session"]
@@ -45,6 +51,10 @@ const hostSessionID = (id: string): HostSessionID => id as HostSessionID
 type HostCreate = NonNullable<Parameters<HostSession["create"]>[0]>
 type HostModelRef = NonNullable<HostCreate["model"]>
 type HostDirectory = NonNullable<HostCreate["location"]>["directory"]
+type HostAgent = NonNullable<HostCreate["agent"]>
+
+/** How long a directory's skill list is reused: a skill edit is seen within this window (per plugin generation). */
+const SKILL_CACHE_MS = 30_000
 
 /**
  * Branded model ref and directory. Same kind of cast as the session ID: the values are the
@@ -65,17 +75,33 @@ const hostDirectory = (directory: string): HostDirectory => directory as HostDir
  */
 export function createSessionPort(ctx: HostContext): SessionPort {
   const run = <A>(effect: Effect.Effect<A, unknown>): Promise<A> => Effect.runPromise(effect)
+  const skillsByDirectory = new Map<string, { readonly at: number; readonly skills: ReadonlyMap<string, string> }>()
   return {
     create: (input) =>
       run(
         ctx.session.create({
           model: hostModel(input.model),
+          ...(input.agent === undefined ? {} : { agent: input.agent as HostAgent }),
           title: input.title,
           metadata: input.metadata,
           permissions: input.permissions,
           location: { directory: hostDirectory(input.directory) },
         } satisfies HostCreate),
       ).then((created) => ({ id: String(created.id) })),
+    skill: async (directory, id) => {
+      const now = Date.now()
+      let held = skillsByDirectory.get(directory)
+      if (held === undefined || now - held.at >= SKILL_CACHE_MS) {
+        const listed = await run(ctx.skill.list({ location: { directory } }))
+        held = { at: now, skills: new Map(listed.data.map((skill): [string, string] => [skill.id, skill.content])) }
+        skillsByDirectory.set(directory, held)
+      }
+      return held.skills.get(id)
+    },
+    agent: async (directory, id) => {
+      const listed = await run(ctx.agent.list({ location: { directory } }))
+      return listed.data.find((agent) => agent.id === id)
+    },
     prompt: (input) =>
       run(
         ctx.session.prompt({

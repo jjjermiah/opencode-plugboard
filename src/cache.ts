@@ -25,6 +25,10 @@
  *
  * Fan-out (`n` above 1, prompt arrays) calls the caller once per choice with the same request, so
  * the fan-out sets `noCache`: every choice must be a fresh sample.
+ *
+ * A persona (a skill alias or an `agent/<name>` id, `bypass`) is never cached: its answer depends on
+ * the skill's content or the agent's prompt, which the key does not see, and a skill edit must not be
+ * masked by an old entry.
  */
 
 import { createHash } from "node:crypto"
@@ -115,11 +119,17 @@ function append(events: PlugEvent[], event: { readonly type: "text-delta" | "rea
 }
 
 /** Wraps `inner`: hits are replayed, misses stream through and are stored when they qualify. */
-export function cachedCaller(inner: ModelCaller, config: CacheConfig, store: CacheStore, count?: CacheCounter): ModelCaller {
+export function cachedCaller(
+  inner: ModelCaller,
+  config: CacheConfig,
+  store: CacheStore,
+  count?: CacheCounter,
+  bypass?: (model: string) => boolean,
+): ModelCaller {
   const apps = config.apps ? new Set(config.apps) : undefined
   return {
     async *stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
-      if (context.noCache || (apps && !apps.has(context.app))) return yield* inner.stream(request, context)
+      if (context.noCache || bypass?.(request.model) || (apps && !apps.has(context.app))) return yield* inner.stream(request, context)
       const key = cacheKey(context.app, request)
       const hit = store.get(key)
       if (hit) {

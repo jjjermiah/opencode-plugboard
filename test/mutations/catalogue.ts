@@ -132,6 +132,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/collector.test.ts"],
   },
   {
+    id: "I8-agent-session-keeps-deny-all",
+    invariant: "I8",
+    file: "src/session/caller.ts",
+    find: "          permissions: REQUEST_PERMISSIONS,",
+    replace: "          permissions: [],",
+    tests: ["test/session/persona.test.ts"],
+  },
+  {
     id: "cache-stores-tool-call-turns",
     invariant: "cache",
     file: "src/cache.ts",

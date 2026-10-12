@@ -53,6 +53,7 @@ import { Cause, Effect, Stream } from "effect"
 import stableStringify from "safe-stable-stringify"
 import { raceAbort } from "./abort.js"
 import { cachedCaller, createCacheStore, type CacheStore } from "./cache.js"
+import { personaOf } from "./models.js"
 import type { PlugboardOptions } from "./config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError } from "./contract.js"
 import { errorMessage, log, logError, outsideRequest, setLogFormat } from "./log.js"
@@ -336,7 +337,7 @@ export function withResponseCache(caller: ModelCaller, options: PlugboardOptions
       if (rt) rt.cache = held
     }
     const count = options.metrics ? (app: string, result: "hit" | "miss") => processMetrics().cache(app, result) : undefined
-    return cachedCaller(caller, config, held.store, count)
+    return cachedCaller(caller, config, held.store, count, (model) => personaOf(options, model) !== undefined)
   }
   return { stream: (request, context) => (wrapped ??= build()).stream(request, context) }
 }

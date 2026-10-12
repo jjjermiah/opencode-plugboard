@@ -111,12 +111,12 @@ const encodePlugboard = (model: ListedModel["model"]) => ({
 /** `GET /v1/models` body. */
 export const encodeModelList = (models: ReadonlyArray<ListedModel>): object => ({
   object: "list",
-  data: models.map(({ id, ref, model }) => ({
+  data: models.map(({ id, ref, model, skill, agent }) => ({
     id,
     object: "model",
     created: 0,
     owned_by: ref.providerID,
-    plugboard: encodePlugboard(model),
+    plugboard: { ...encodePlugboard(model), ...(skill === undefined ? {} : { skill }), ...(agent === undefined ? {} : { agent }) },
   })),
 })
 

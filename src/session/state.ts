@@ -32,6 +32,8 @@ export interface RequestState {
   readonly requestID: string
   readonly request: PlugRequest
   readonly collector: EventSink
+  /** System parts placed before the app's and the caller's (a skill's content, option `skill:` alias). Empty or absent for a plain model. */
+  readonly prelude?: ReadonlyArray<string>
 }
 
 export interface Retirement {

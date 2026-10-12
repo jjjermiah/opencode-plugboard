@@ -123,7 +123,9 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
     return text("[image unavailable]")
   }
 
-  const system = systemFor(request.system, appPolicy({ apps }, state.app)).map(text)
+  // Order: the skill's content (prelude), then the app's system policy over the caller's (or an agent's) prompt,
+  // then the tool-choice steering below.
+  const system = [...(state.prelude ?? []), ...systemFor(request.system, appPolicy({ apps }, state.app))].map(text)
   // The OpenCode session API has no tool-choice control, so a forced or required tool is steered by instruction.
   const choice = request.toolChoice
   if (choice === "required") system.push(text("You must respond by calling one of the provided tools."))

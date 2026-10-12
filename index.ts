@@ -21,6 +21,7 @@
 import { Plugin } from "@opencode/plugin/effect"
 import { Effect } from "effect"
 import { parseOptions } from "./src/config.js"
+import { personaOf } from "./src/models.js"
 import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
 import { withBudgets } from "./src/budgets.js"
@@ -59,6 +60,7 @@ export default Plugin.define({
         sessions,
         maxTools: options.maxTools,
         apps: options.apps,
+        persona: (model: string) => personaOf(options, model),
         remoteImages: options.remoteImages,
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
