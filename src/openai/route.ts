@@ -62,7 +62,7 @@ import { bodyUser, noteEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
-import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
+import { STRUCTURED_FALLBACK_HEADER, collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
 import { dropRejected } from "./sampling.js"
 
 /** What the serving generation supplies per request. */
@@ -336,6 +336,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     const result = await collectCompletion(events, exchange)
+    if (result.structuredFallback) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
     sendJson(response, result.status, result.body, { retryAfterSeconds: result.retryAfterSeconds })
   }
 

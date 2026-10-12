@@ -339,7 +339,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
       model: body.model,
       stream: body.stream === true,
       includeUsage: streamOptions.include_usage === true,
-      ...(respond ? { structuredTool: RESPOND_TOOL, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+      ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
       ...(format.instruction ? { jsonObject: true } : {}),
       ...(generation.stop ? { stop: generation.stop } : {}),
     },

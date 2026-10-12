@@ -7,7 +7,7 @@
  */
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
 import type { ChoiceCodec } from "../openai/fanout.js"
-import { args, encodeError, structuredMissing, unfence, type StreamChoice, type StreamResult } from "../openai/response.js"
+import { args, encodeError, structuredMissing, textFallback, unfence, type CollectedChoice, type StreamChoice, type StreamResult } from "../openai/response.js"
 import { StopHoldback, stripStopTail } from "../stop.js"
 
 /** What the encoders need besides the model events; the request decoder produces it, the model call never sees it. */
@@ -25,6 +25,8 @@ export interface CompletionsExchange {
   readonly stop?: ReadonlyArray<string>
   /** `response_format: json_schema`: the name of the forced tool whose input is the answer (`respond`). The answer is its arguments as text. */
   readonly structuredTool?: string
+  /** The caller's `json_schema`: a text answer is taken when the model skipped the call and its text is that JSON (`textFallback`). */
+  readonly structuredSchema?: Readonly<Record<string, unknown>>
   /** `response_format: json_object`: a single markdown fence around the answer is stripped (`unfence`). */
   readonly jsonObject?: boolean
 }
@@ -55,6 +57,8 @@ interface Settled {
   readonly text: string
   readonly reason: Exclude<PlugFinish, "error">
   readonly usage?: PlugUsage
+  /** The structured answer came from the text (see `textFallback`), not the respond call. */
+  readonly fallback?: boolean
 }
 
 /**
@@ -84,18 +88,21 @@ async function settle(events: AsyncIterable<PlugEvent>, exchange: CompletionsExc
   if (!failure && !finish) failure = noFinish()
   if (failure || !finish) return failure ?? noFinish()
   if (exchange.structuredTool !== undefined) {
-    if (answer === undefined) return structuredMissing(exchange.structuredTool)
-    return { text: answer, reason: finish, usage }
+    if (answer !== undefined) return { text: answer, reason: finish, usage }
+    const fallback = exchange.structuredSchema === undefined ? undefined : textFallback(text, exchange.structuredSchema)
+    if (fallback === undefined) return structuredMissing(exchange.structuredTool)
+    return { text: fallback, reason: finish, usage, fallback: true }
   }
   if (finish === "stop") text = stripStopTail(text, exchange.stop ?? []).text
   return { text: exchange.jsonObject ? unfence(text) : text, reason: finish, usage }
 }
 
 /** One choice as a complete body: `choices[0]` carries the text, `usage` the totals. */
-async function collectText(events: AsyncIterable<PlugEvent>, exchange: CompletionsExchange, index: number): Promise<{ status: number; body: object; retryAfterSeconds?: number }> {
+async function collectText(events: AsyncIterable<PlugEvent>, exchange: CompletionsExchange, index: number): Promise<CollectedChoice> {
   const settled = await settle(events, exchange)
   if (isPlugError(settled)) return { status: settled.status, body: encodeError(settled), retryAfterSeconds: settled.retryAfterSeconds }
   return {
+    ...(settled.fallback ? { structuredFallback: true } : {}),
     status: 200,
     body: {
       id: `cmpl-${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`,

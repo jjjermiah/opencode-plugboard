@@ -206,3 +206,22 @@ describe("#169 the text_completion codec with structured output", () => {
     expect(result).toMatchObject({ started: false, failure: { status: 502, code: "structured_output_missing" } })
   })
 })
+
+describe("#170 the text_completion codec takes a text answer that matches the schema", () => {
+  const schema = { type: "object", required: ["a"] }
+  const exchange: CompletionsExchange = { model: "fast", stream: false, includeUsage: false, perPrompt: 1, structuredTool: "respond", structuredSchema: schema }
+
+  test("collect: the JSON text is the answer, flagged as a fallback", async () => {
+    const result = (await completionsCodec(exchange).collect(events(ev.text('{"a":7}'), ev.finish("stop")), 0)) as { status: number; body: any; structuredFallback?: boolean }
+    expect(result).toMatchObject({ status: 200, structuredFallback: true, body: { choices: [{ text: '{"a":7}', finish_reason: "stop" }] } })
+  })
+
+  test("collect: a respond call is not flagged", async () => {
+    const result = (await completionsCodec(exchange).collect(events(ev.call("c1", "respond", { a: 7 }), ev.finish("tool-calls")), 0)) as { structuredFallback?: boolean }
+    expect(result.structuredFallback).toBeUndefined()
+  })
+
+  test("collect: text that does not match is still a 502", async () => {
+    expect(await completionsCodec(exchange).collect(events(ev.text('{"b":7}'), ev.finish("stop")), 0)).toMatchObject({ status: 502 })
+  })
+})

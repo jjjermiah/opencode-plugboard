@@ -36,6 +36,20 @@ export interface OpenAiExchange {
   readonly jsonObject?: boolean
   /** The request's `stop`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). Not applied to structured output. */
   readonly stop?: ReadonlyArray<string>
+  /** The caller's `json_schema`, checked against a text answer when the model skipped the respond call (`textFallback`). */
+  readonly structuredSchema?: Readonly<Record<string, unknown>>
+}
+
+/** Set on a complete answer that came from the final text, not the respond call (`textFallback`). */
+export const STRUCTURED_FALLBACK_HEADER = "x-plugboard-structured-fallback"
+
+/** One choice as a complete JSON body, with the status to send it with. */
+export interface CollectedChoice {
+  readonly status: number
+  readonly body: object
+  readonly retryAfterSeconds?: number
+  /** The structured answer was taken from the text (the response carries `STRUCTURED_FALLBACK_HEADER`). */
+  readonly structuredFallback?: boolean
 }
 
 /** How a streamed exchange ended. Nothing was written when `failure` is set and `started` is false: the caller answers with a real HTTP error. */
@@ -177,6 +191,67 @@ const structured = {
       : structuredMissing(exchange.structuredTool),
 }
 
+const isObjectValue = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+
+const hasOwn = (value: Record<string, unknown>, key: string) => Object.prototype.hasOwnProperty.call(value, key)
+
+/** Whether a parsed JSON value has one JSON Schema type (`integer` is a whole number; an unknown type matches anything). */
+const hasType = (value: unknown, type: unknown): boolean => {
+  switch (type) {
+    case "object":
+      return isObjectValue(value)
+    case "array":
+      return Array.isArray(value)
+    case "string":
+      return typeof value === "string"
+    case "number":
+      return typeof value === "number"
+    case "integer":
+      return Number.isInteger(value)
+    case "boolean":
+      return typeof value === "boolean"
+    case "null":
+      return value === null
+    default:
+      return true
+  }
+}
+
+/**
+ * The part of JSON Schema checked on a text answer. The runtime carries no schema library (ajv is a
+ * dev dependency), so this is deliberately small: the top-level `type` (one type or a list), the
+ * top-level `required` keys, and the `type` of each top-level property that is present. Anything
+ * else in the schema (enum, nested objects, formats, additionalProperties) is not checked.
+ */
+export function matchesSchema(value: unknown, schema: Readonly<Record<string, unknown>>): boolean {
+  const types = Array.isArray(schema.type) ? schema.type : schema.type === undefined ? undefined : [schema.type]
+  if (types !== undefined && !types.some((type) => hasType(value, type))) return false
+  if (!isObjectValue(value)) return true
+  const required = Array.isArray(schema.required) ? schema.required : []
+  if (!required.every((key) => typeof key === "string" && hasOwn(value, key))) return false
+  if (!isObjectValue(schema.properties)) return true
+  return Object.entries(schema.properties).every(([key, property]) => {
+    if (!hasOwn(value, key) || !isObjectValue(property) || property.type === undefined) return true
+    const propertyTypes = Array.isArray(property.type) ? property.type : [property.type]
+    return propertyTypes.some((type) => hasType(value[key], type))
+  })
+}
+
+/**
+ * The answer of a structured turn that never called the respond tool, when its final text is the JSON
+ * the schema asks for (one code fence is stripped first). Undefined for any other text.
+ */
+export function textFallback(text: string, schema: Readonly<Record<string, unknown>>): string | undefined {
+  const candidate = unfence(text.trim())
+  let value: unknown
+  try {
+    value = JSON.parse(candidate)
+  } catch {
+    return undefined
+  }
+  return matchesSchema(value, schema) ? candidate : undefined
+}
+
 /** One markdown code fence (```json or a bare ```) around the whole text. */
 const FENCED = /^```[ \t]*(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n?[ \t]*```$/i
 
@@ -198,10 +273,7 @@ export function unfence(text: string): string {
 const newId = () => `chatcmpl-${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`
 const now = () => Math.floor(Date.now() / 1000)
 
-export async function collectCompletion(
-  events: AsyncIterable<PlugEvent>,
-  exchange: OpenAiExchange,
-): Promise<{ status: number; body: object; retryAfterSeconds?: number }> {
+export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchange: OpenAiExchange): Promise<CollectedChoice> {
   let text = ""
   const calls: ToolCall[] = []
   let finish: Exclude<PlugFinish, "error"> | undefined
@@ -232,7 +304,8 @@ export async function collectCompletion(
   // With the caller's tools offered, a call to one of them wins over the structured answer.
   const passthrough = exchange.callerTools === true && others.length > 0
   const isStructured = exchange.structuredTool !== undefined && !passthrough
-  const missing = passthrough ? undefined : structured.failure(exchange, finish, answer !== undefined)
+  const fallback = isStructured && answer === undefined && exchange.structuredSchema !== undefined ? textFallback(text, exchange.structuredSchema) : undefined
+  const missing = passthrough ? undefined : structured.failure(exchange, finish, answer !== undefined || fallback !== undefined)
   if (missing) return { status: missing.status, body: encodeError(missing) }
   const toolCalls = isStructured ? [] : others
   const message: Record<string, unknown> = {
@@ -240,7 +313,7 @@ export async function collectCompletion(
     content: isStructured
       ? answer
         ? structured.content(answer)
-        : null
+        : (fallback ?? null)
       : exchange.structuredTool === undefined && text.length > 0
         ? exchange.jsonObject
           ? unfence(text)
@@ -264,6 +337,7 @@ export async function collectCompletion(
       choices: [{ index: 0, message, logprobs: null, finish_reason: finishReason(finish, toolCalls.length, isStructured) }],
       ...(usage ? { usage: encodeUsage(usage) } : {}),
     },
+    ...(fallback !== undefined ? { structuredFallback: true } : {}),
   }
 }
 
@@ -306,6 +380,8 @@ export async function streamCompletion(
   let started = false
   let calls = 0
   let answered = false
+  /** The text of a structured turn (not streamed): it is the answer only if the respond call never comes. */
+  let collected = ""
   /** With caller tools offered the structured answer waits for the finish: a caller tool call in the same step replaces it. */
   let held: ToolCall | undefined
   let finish: Exclude<PlugFinish, "error"> | undefined
@@ -361,6 +437,7 @@ export async function streamCompletion(
         }
         continue
       }
+      if (event.type === "text-delta") collected += event.text
       if (!(exchange.callerTools && event.type === "tool-call")) continue
     }
     if (exchange.jsonObject && event.type === "text-delta" && !passing) {
@@ -388,7 +465,8 @@ export async function streamCompletion(
 
   const passthrough = exchange.callerTools === true && calls > 0
   const isStructured = exchange.structuredTool !== undefined && !passthrough
-  failure ??= finish ? (passthrough ? undefined : structured.failure(exchange, finish, answered)) : noFinish()
+  const fallback = isStructured && !answered && exchange.structuredSchema !== undefined ? textFallback(collected, exchange.structuredSchema) : undefined
+  failure ??= finish ? (passthrough ? undefined : structured.failure(exchange, finish, answered || fallback !== undefined)) : noFinish()
   if (failure) {
     if (!started) return { failure, started }
     if (!choice) {
@@ -404,6 +482,7 @@ export async function streamCompletion(
     if (rest.length > 0) chunk({ content: rest })
   }
   if (held && isStructured) chunk({ content: structured.content(held) })
+  if (fallback !== undefined) chunk({ content: fallback })
   chunk({}, finishReason(finish!, calls, isStructured))
   if (choice) return { started, ...(usage ? { usage } : {}) }
   if (exchange.includeUsage && usage) frame(chatUsageChunk(exchange.model, id, created, usage))

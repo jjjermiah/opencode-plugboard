@@ -107,7 +107,7 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
       perPrompt: n,
       ...(body.echo === true ? { echo: prompts } : {}),
       ...(generation.stop ? { stop: generation.stop } : {}),
-      ...(format.structured ? { structuredTool: RESPOND_TOOL } : {}),
+      ...(format.structured ? { structuredTool: RESPOND_TOOL, structuredSchema: format.structured.parameters } : {}),
       ...(format.instruction ? { jsonObject: true } : {}),
     },
     ...(typeof body.reasoning_effort === "string" ? { reasoningEffort: body.reasoning_effort } : {}),

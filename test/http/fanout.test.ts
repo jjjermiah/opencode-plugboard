@@ -194,3 +194,37 @@ describe("#169 POST /v1/completions with response_format", () => {
     expect(text.endsWith("data: [DONE]\n\n")).toBe(true)
   })
 })
+
+describe("#170 a structured answer in the text, over HTTP", () => {
+  const schema = { type: "object", properties: { city: { type: "string" } }, required: ["city"] }
+  const jsonSchema = { type: "json_schema", json_schema: { name: "city", schema } }
+
+  test("chat: a text answer that matches the schema is returned with x-plugboard-structured-fallback: text", async () => {
+    await route([ev.text('{"city":"Oslo"}'), ev.finish("stop")])
+    const reply = await server!.send(chat({ response_format: jsonSchema }))
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+    expect(reply.json().choices[0].message.content).toBe('{"city":"Oslo"}')
+  })
+
+  test("chat: a respond call is answered without the header", async () => {
+    await route([ev.call("c1", "respond", { city: "Oslo" }), ev.finish("tool-calls")])
+    const reply = await server!.send(chat({ response_format: jsonSchema }))
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBeUndefined()
+    expect(reply.json().choices[0].message.content).toBe('{"city":"Oslo"}')
+  })
+
+  test("completions: the same fallback and header", async () => {
+    await route([ev.text('{"city":"Oslo"}'), ev.finish("stop")])
+    const reply = await server!.send(completions({ response_format: jsonSchema }))
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+    expect(reply.json().choices[0].text).toBe('{"city":"Oslo"}')
+  })
+
+  test("text that does not match the schema is still a 502 structured_output_missing", async () => {
+    await route([ev.text("Oslo"), ev.finish("stop")])
+    const reply = await server!.send(chat({ response_format: jsonSchema }))
+    expect(reply.status).toBe(502)
+    expect(reply.json().error.code).toBe("structured_output_missing")
+  })
+})

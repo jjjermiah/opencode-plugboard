@@ -26,7 +26,7 @@ The response is the legacy `text_completion` object: `choices[].text`, `index`, 
 | `n` | Independent completions per prompt, see below. |
 | `stream`, `stream_options` | As above. |
 | `reasoning_effort` | Picks the model variant, as in Chat Completions. |
-| `response_format` | Same as Chat Completions (#169). `json_schema` forces the `respond` tool and the answer is its arguments as the text; `json_object` asks for a JSON object in a system instruction, and one code fence around it is stripped. `text` changes nothing. A structured answer that never arrives is a 502 `structured_output_missing`, as on chat. |
+| `response_format` | Same as Chat Completions (#169). `json_schema` forces the `respond` tool and the answer is its arguments as the text; `json_object` asks for a JSON object in a system instruction, and one code fence around it is stripped. `text` changes nothing. A structured answer with no respond call is taken from the final text when it is the JSON the schema asks for (#170, the same small check as chat), and is a 502 `structured_output_missing` otherwise. |
 | `user`, `seed`, `logit_bias` | Accepted and ignored. |
 
 Rejected with a 400 `unsupported_parameter` naming the field: `logprobs` (the host exposes none, a `null` is fine), `best_of` above 1, and token-array prompts.

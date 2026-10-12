@@ -28,7 +28,17 @@ import { reportPolicy } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { SESSION_URL_HEADER, sessionUrl } from "../session/link.js"
 import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
-import { chatUsageChunk, collectCompletion, encodeError, streamCompletion, type OpenAiExchange, type StreamChoice, type StreamResult } from "./response.js"
+import {
+  STRUCTURED_FALLBACK_HEADER,
+  chatUsageChunk,
+  collectCompletion,
+  encodeError,
+  streamCompletion,
+  type CollectedChoice,
+  type OpenAiExchange,
+  type StreamChoice,
+  type StreamResult,
+} from "./response.js"
 import type { RouteHost } from "./route.js"
 
 const SESSION_HEADER = "x-plugboard-session"
@@ -40,7 +50,7 @@ export interface ChoiceCodec {
   /** Prefix of the shared stream id (`chatcmpl-`, `cmpl-`). */
   readonly idPrefix: string
   /** One choice as a complete JSON body with `choices[0]` and `usage`. */
-  collect(events: AsyncIterable<PlugEvent>, index: number): Promise<{ status: number; body: object; retryAfterSeconds?: number }>
+  collect(events: AsyncIterable<PlugEvent>, index: number): Promise<CollectedChoice>
   /** One choice of the shared stream: this choice's chunks only (see `StreamChoice`). */
   streamChoice(events: AsyncIterable<PlugEvent>, write: (chunk: string) => void, choice: StreamChoice): Promise<StreamResult>
   /** The final chunk with the summed usage (`include_usage`). */
@@ -202,8 +212,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
     )
 
   if (!codec.stream) {
-    const results = await new Promise<Array<{ status: number; body: object; retryAfterSeconds?: number }>>((resolve, reject) => {
-      const done: Array<{ status: number; body: object; retryAfterSeconds?: number }> = []
+    const results = await new Promise<CollectedChoice[]>((resolve, reject) => {
+      const done: CollectedChoice[] = []
       let left = calls.length
       calls.forEach((_, index) => {
         codec.collect(open(index), index).then(
@@ -223,6 +233,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
       })
     })
     const first = results[0]!
+    if (results.some((result) => result.structuredFallback)) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
     return sendJson(response, first.status, results.length === 1 ? first.body : mergeBodies(results.map((result) => result.body)), { retryAfterSeconds: first.retryAfterSeconds })
   }
 
