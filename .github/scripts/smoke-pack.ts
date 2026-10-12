@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
-// Installs the packed tarball into a throwaway project the way a user's OpenCode would
-// (npm resolves the peer dependencies) and runs smoke-probe.ts there: the entry must
-// import, plugin setup must register and return synchronously against a spy context,
-// and `effect` and `@opencode/plugin` must resolve to a single copy.
+// Installs the packed tarball into a throwaway project the way a user's OpenCode would.
+// effect and @opencode/plugin are optional peers, so the install must not contain them, and
+// the host (stood in for by ./host) provides them. Runs smoke-probe.ts there: the entry must
+// import, plugin setup must register and return synchronously against a spy context, and
+// the plugin must use the host's effect with no copy of its own.
 // Complements check-pack.ts, which only checks the file list. Not shipped in the package.
 //
 //   bun .github/scripts/smoke-pack.ts
@@ -66,8 +67,31 @@ try {
   mkdirSync(project)
   writeFileSync(join(project, "package.json"), JSON.stringify({ name: "plugboard-smoke", private: true, type: "module" }))
   run(["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", resolve(packDir, tarball)], project)
-  console.log(run(["npm", "ls", "effect", "@opencode/plugin", "--all"], project))
+  // effect and @opencode/plugin are optional peers: a plain install must not pull them in (#190).
+  for (const name of ["effect", "@opencode/plugin"]) {
+    if (existsSync(join(project, "node_modules", ...name.split("/")))) {
+      console.error(`smoke: npm installed ${name}; it is an optional peer and must not be installed with the plugin`)
+      process.exit(1)
+    }
+  }
+  if (!existsSync(join(project, "node_modules", "opencode-plugboard", "npm-shrinkwrap.json"))) {
+    console.error("smoke: the installed package has no npm-shrinkwrap.json")
+    process.exit(1)
+  }
   checkTuiEntry(join(project, "node_modules", "opencode-plugboard", "dist", "tui.js"))
+
+  // Stands in for OpenCode, which provides effect and @opencode/plugin to plugins. Same pins as the dev dependencies.
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+    peerDependencies: Record<string, string>
+    devDependencies: Record<string, string>
+  }
+  const host = join(project, "host")
+  mkdirSync(host)
+  writeFileSync(join(host, "package.json"), JSON.stringify({ name: "plugboard-smoke-host", private: true, type: "module" }))
+  run(
+    ["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", `effect@${pkg.peerDependencies.effect}`, `@opencode/plugin@${pkg.devDependencies["@opencode/plugin"]}`],
+    host,
+  )
 
   copyFileSync(join(import.meta.dir, "smoke-probe.ts"), join(project, "probe.ts"))
   const probe = Bun.spawnSync(["bun", "probe.ts"], { cwd: project, stdout: "inherit", stderr: "inherit" })

@@ -20,7 +20,7 @@
     "./rpc": { "types": "./rpc.ts", "default": "./rpc.ts" },
     "./tui": { "types": "./tui.ts", "default": "./dist/tui.js" }
   },
-  "files": ["index.ts", "rpc.ts", "tui.ts", "src/", "dist/", "README.md", "LICENSE"],
+  "files": ["index.ts", "rpc.ts", "tui.ts", "src/", "dist/", "npm-shrinkwrap.json", "README.md", "LICENSE"],
   "engines": {
     "bun": ">=1.4.2"
   },
@@ -97,6 +97,8 @@
     "solid-js": ">=1.9.0"
   },
   "peerDependenciesMeta": {
+    "@opencode/plugin": { "optional": true },
+    "effect": { "optional": true },
     "@opentui/core": { "optional": true },
     "@opentui/solid": { "optional": true },
     "solid-js": { "optional": true }
