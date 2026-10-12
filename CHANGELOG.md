@@ -14,19 +14,37 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+OpenCode 2.0.27 support, a 95% smaller install, prompt-cache affinity, and a round of security and protocol fixes. One change can break a working setup: server tools now follow your OpenCode permissions (see Changed).
+
 ### Added
 
-- **OpenCode 2.0.27 is supported and tested.** `@opencode/plugin` 2.0.27 pins `effect` 4.0.1, so the dev dependencies move to `@opencode/plugin` 2.0.27 and `effect` 4.0.1. The code needed no change: the typecheck passes and the suite passes on both pairs (2050 pass, 126 live tests skipped), and a live run on each host (chat, tool call, `opencode run` pong) passes from the packed tarball. Minimum OpenCode version is still 2.0.26.
+- **OpenCode 2.0.27 is supported and tested**, and 2.0.26 still works. Plugboard runs on the host's own `effect`, so one release serves both. CI now watches for new OpenCode releases every day: a passing one gets a pull request that merges itself, and a failing one opens an issue the same day.
+- **Prompt-cache affinity** ([#80](https://github.com/jjjermiah/opencode-plugboard/issues/80)). Each request is a fresh OpenCode session, so providers that key their prompt cache on the session never saw a repeat. `promptCache` makes every request session a child of one long-lived anchor session per app (or per user), so the cache key stays the same:
+
+  ```jsonc
+  "promptCache": { "affinity": "anchor", "scope": "app" }
+  ```
+  Measured live on ChatGPT subscription models: 8 of 9 repeat requests read the cache, against 2 of 9 without it. Claude, Copilot GPT and Qwen already cache without it; GLM and Copilot Gemini cache in neither mode. Answers carry `x-plugboard-affinity`. A deleted anchor is recreated on the next request, and `maxAnchors` (default 1000) caps how many one app may hold. Reusing one session for a whole conversation was measured too and helped less, so it was not shipped ([#81](https://github.com/jjjermiah/opencode-plugboard/issues/81)).
+- **`apps.<name>.maxServerToolCalls`** (default 16) caps server tool calls across all steps of a request ([#198](https://github.com/jjjermiah/opencode-plugboard/issues/198)). `maxServerToolSteps` still counts steps.
+- **Single tool call on request.** `parallel_tool_calls: false` (Chat Completions, Responses) and `disable_parallel_tool_use` (Messages) keep only the first tool call and send `x-plugboard-parallel-tools: limited` ([#202](https://github.com/jjjermiah/opencode-plugboard/issues/202)).
+- **Caller `cache_control`** on Anthropic message blocks reaches the model as a 5-minute cache breakpoint ([#275](https://github.com/jjjermiah/opencode-plugboard/issues/275); the 1-hour TTL is not carried yet). `x-plugboard-usage` adds `cache_write` ([#276](https://github.com/jjjermiah/opencode-plugboard/issues/276)).
+- **Docs:** twelve more client pages (LobeChat, Chatbox, Jan, AnythingLLM, SillyTavern, Cline, Roo Code, LlamaIndex, Haystack, Mastra, smolagents, promptfoo), a structured-extraction recipe for Anthropic-only clients, and a banner on every page saying the docs follow `main`.
 
 ### Changed
 
-- The `effect` peer is `4.0.0-rc.112 || 4.0.1`. A plugin runs on the host's `effect` (`packages/plugin/src/runtime.ts` serves it), so the peer only has to match the types of the host you install, and both copies of the code compile and run. The peer range `@opencode/plugin >=2.0.26 <2.1` is unchanged.
+- **Server tools follow your OpenCode permissions** ([#194](https://github.com/jjjermiah/opencode-plugboard/issues/194)). Before, `serverTools` could allow a tool your own agent rules deny. Now a listed tool needs an allow rule for it in the agent, or the request gets 400 `server_tool_denied_by_operator`, and the agent's deny rules still apply to the resources they name. **If you use `serverTools`, add an allow rule for each listed tool before upgrading.**
+- **Smaller install** ([#190](https://github.com/jjjermiah/opencode-plugboard/issues/190), [#165](https://github.com/jjjermiah/opencode-plugboard/issues/165)). `effect` and `@opencode/plugin` are optional peers, since OpenCode provides them, so installing plugboard pulls 26 packages instead of 313 (about 13 MiB instead of 450). The package ships an `npm-shrinkwrap.json`, so OpenCode installs the exact dependency versions that were tested.
+- **Provider overload** answers 529 `overloaded_error` on `/v1/messages`, and 503 `provider_overloaded` on the OpenAI routes, instead of a generic 502 ([#204](https://github.com/jjjermiah/opencode-plugboard/issues/204)).
 
 ### Fixed
 
-- The host matrix in CI installed `@opencode/plugin` for each host but left `effect` at rc.112, so the 2.0.27 typecheck failed with TS2741 and Effect type mismatches. It now installs each host's own `effect` pin.
-- A fresh install of the packed tarball with `@opencode/plugin` 2.0.27 resolved two copies of `effect` (4.0.1 under the host, rc.112 in plugboard), which failed the smoke check. The peer range now lets npm dedupe to one copy.
-
+- **Thinking blocks carry their signature** ([#146](https://github.com/jjjermiah/opencode-plugboard/issues/146)). Plugboard looked for the signature one level too deep in what OpenCode reports, so it was always empty.
+- **Server-tool hardening** ([#195](https://github.com/jjjermiah/opencode-plugboard/issues/195), [#196](https://github.com/jjjermiah/opencode-plugboard/issues/196), [#197](https://github.com/jjjermiah/opencode-plugboard/issues/197)):
+  - `subagent` and `task` are refused in `serverTools`, because each starts a session outside the request's rules.
+  - A server tool call that runs after the request ended is logged and its session stopped.
+  - The admin key can no longer mint a key for an app with `serverTools`.
+- **`tools: false` keeps structured output** ([#252](https://github.com/jjjermiah/opencode-plugboard/issues/252)). It dropped the internal tool that answers `json_schema`, so structured requests failed. Now only the caller's tools are dropped.
+- **`count_tokens` and Gemini `countTokens`** include the app's system prompt policy and tool-choice steering ([#201](https://github.com/jjjermiah/opencode-plugboard/issues/201)).
 ## [0.23.0] - 2026-10-12: What the Red Team Found
 
 **Full diff:** [v0.22.0...v0.23.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...v0.23.0)
