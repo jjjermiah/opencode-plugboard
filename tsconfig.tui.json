@@ -1,0 +1,11 @@
+{
+  // The TUI entry is the only JSX in the repo (OpenTUI's Solid JSX). It is checked on its own so the
+  // root config (src/ and index.ts, Node types, no JSX) keeps its settings. The file also carries
+  // the same `@jsxImportSource` pragma, which the OpenCode TUI loader relies on at runtime.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid"
+  },
+  "include": ["src/tui.tsx"]
+}
