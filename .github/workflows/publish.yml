@@ -31,7 +31,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/ci.yml
 
-  # Publishes to npm, then packs the tarball the registry now holds and writes its SBOM. The
+  # Packs the tarball once, publishes that exact file to npm, and writes its SBOM. The
   # permissions are what npm needs (id-token) and nothing else; the release is a separate job.
   publish:
     name: ${{ inputs.dry_run == true && 'Publish (dry run)' || 'Publish' }}
@@ -48,6 +48,7 @@ jobs:
       version: ${{ steps.ref.outputs.version }}
       tag: ${{ steps.ref.outputs.tag }}
       title: ${{ steps.notes.outputs.title }}
+      tarball_sha256: ${{ steps.pack.outputs.sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -114,15 +115,39 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false # never cache in a release build
-      - name: Use npm 11.5.1 or newer (trusted publishing needs it)
+      - name: Use npm 11.21.0 (trusted publishing needs 11.5.1 or newer; pinned, not a range)
         run: |
-          npm install -g 'npm@^11.5.1'
+          npm install -g npm@11.21.0
           npm --version
+
+      # The tarball is packed once, here, and that exact file is what is published, attested and
+      # attached to the release. --ignore-scripts because build:tui already ran above.
+      - name: Pack the tarball once and write the SBOM
+        id: pack
+        env:
+          NAME: ${{ steps.ref.outputs.name }}
+          VERSION: ${{ steps.ref.outputs.version }}
+        run: |
+          dir="$RUNNER_TEMP/release"
+          mkdir -p "$dir"
+          tgz=$(npm pack --ignore-scripts --pack-destination "$dir" --json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
+          test -s "$dir/$tgz"
+          npm sbom --sbom-format cyclonedx --omit dev > "$dir/$NAME-$VERSION.cdx.json"
+          test -s "$dir/$NAME-$VERSION.cdx.json"
+          sha=$(sha256sum "$dir/$tgz" | cut -d' ' -f1)
+          {
+            echo "tarball=$dir/$tgz"
+            echo "sha256=$sha"
+          } >> "$GITHUB_OUTPUT"
+          echo "$sha  $tgz"
+          ls -l "$dir"
 
       # Trusted publishing works from a private repository, but npm cannot make a
       # provenance attestation for one, so --provenance is only added when public.
+      # The packed file is published as it is, so the registry holds the attested bytes.
       - name: Publish to npm
         env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
           VERSION: ${{ steps.ref.outputs.version }}
           REPO_PRIVATE: ${{ github.event.repository.private }}
         run: |
@@ -131,30 +156,12 @@ jobs:
           case "$VERSION" in *-*) args+=(--tag next) ;; esac
           if [ "$REPO_PRIVATE" != true ]; then args+=(--provenance); fi
           if [ -n "$(npm view "$name@$VERSION" version 2>/dev/null)" ]; then
-            # npm publish --dry-run also refuses an existing version, so only pack.
             echo "$name@$VERSION is already on npm, not publishing it again."
-            if [ "$DRY_RUN" = true ]; then npm pack --dry-run --ignore-scripts; fi
           elif [ "$DRY_RUN" = true ]; then
-            npm publish "${args[@]}" --dry-run
+            npm publish "$TARBALL" "${args[@]}" --dry-run
           else
-            npm publish "${args[@]}"
+            npm publish "$TARBALL" "${args[@]}"
           fi
-
-      # The tarball and its SBOM are the release assets. Packed after the publish, with
-      # --ignore-scripts because build:tui already ran above. The attest job checks that the
-      # file matches the registry's integrity before it attests it.
-      - name: Pack the tarball and write the SBOM
-        env:
-          NAME: ${{ steps.ref.outputs.name }}
-          VERSION: ${{ steps.ref.outputs.version }}
-        run: |
-          dir="$RUNNER_TEMP/release"
-          mkdir -p "$dir"
-          tgz=$(npm pack --ignore-scripts --pack-destination "$dir" --json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
-          npm sbom --sbom-format cyclonedx --omit dev > "$dir/$NAME-$VERSION.cdx.json"
-          test -s "$dir/$tgz"
-          test -s "$dir/$NAME-$VERSION.cdx.json"
-          ls -l "$dir"
 
       - name: Keep the release files for the next jobs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -183,6 +190,19 @@ jobs:
         with:
           name: release-files
           path: ${{ runner.temp }}/release
+
+      # The file the attest job holds must be the file the publish job packed and published.
+      - name: Check the file is the one the publish job published
+        env:
+          EXPECTED: ${{ needs.publish.outputs.tarball_sha256 }}
+        run: |
+          tgz=$(ls "$RUNNER_TEMP"/release/*.tgz)
+          actual=$(sha256sum "$tgz" | cut -d' ' -f1)
+          if [ "$actual" != "$EXPECTED" ]; then
+            echo "::error::the tarball sha256 is $actual, the publish job packed $EXPECTED. Not attesting it."
+            exit 1
+          fi
+          echo "sha256 $actual matches the publish job."
 
       # Refuse to attest a file that npm does not serve: the attestation would then vouch for a
       # tarball nobody installs. npm can take a moment to serve a version it has just published.
