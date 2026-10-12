@@ -3,7 +3,7 @@
 - Date / tester: 2026-10-12 / automated run (`bash compat/py/clients/aider_check.sh`)
 - Client + exact version(s): `aider-chat` 0.86.2, Python 3.12, run with `uv tool run` (not pinned in a lock: it is a terminal tool, and its dependency tree is about 300 packages)
 - Plugboard commit: a67e176 (the code under test; this change touches no `src/`)
-- Verdict: **PASS on the fake** for one request. **Live: not run**, the isolated server was not listening on :4010 (see below).
+- Verdict: **PASS on the fake** for one request. **PASS live** for one request on the isolated dev server at :4010 (see Live run).
 
 ## Scenario
 
@@ -19,7 +19,9 @@ Aider's summary for the run: `Model: openai/fast with whole edit format`, `Repo-
 
 ## Live run
 
-Not run. `curl http://127.0.0.1:4010/healthz` failed with `curl: (7) Failed to connect to 127.0.0.1 port 4010`. Not restarted, per the dev-server rule.
+Run 2026-10-12 with `PLUGBOARD_URL=http://127.0.0.1:4010 bash compat/py/clients/aider_check.sh`, app `compat`, model `fast` (= `opencode-go/glm-5.3-flash`). Aider exited 0 and its answer contained `pong`. The file was not edited (the request asked for an edit, but the check does not verify one).
+
+An earlier attempt that day, before the listener was up: not run. `curl http://127.0.0.1:4010/healthz` failed with `curl: (7) Failed to connect to 127.0.0.1 port 4010`. Not restarted, per the dev-server rule.
 
 ## Suspected plugboard bugs
 

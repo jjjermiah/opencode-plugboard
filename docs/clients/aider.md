@@ -1,6 +1,6 @@
 # Aider
 
-Tested: `aider-chat` 0.86.2 (Python 3.12), 2026-10-12, against the scripted fake plugboard, with a scripted check rather than a harness. One `--message` request went through plugboard and streamed an answer. The live dev server was not reachable on that date, so no live result yet; see [compatibility](../compatibility.md#python-clients).
+Tested: `aider-chat` 0.86.2 (Python 3.12), 2026-10-12, against the scripted fake plugboard, with a scripted check rather than a harness. One `--message` request went through plugboard and streamed an answer. The same day, the check also passed on the isolated live dev server; see [compatibility](../compatibility.md#python-clients).
 
 Aider is a terminal pair-programming tool. It connects to any OpenAI-compatible endpoint through two environment variables.
 

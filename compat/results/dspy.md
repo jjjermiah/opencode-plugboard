@@ -3,7 +3,7 @@
 - Date / tester: 2026-10-12 / automated run (`bun run compat:python`)
 - Client + exact version(s): `dspy` 3.4.0, `litellm` 1.105.0, `openai` 2.54.0 (`compat/py-litellm/uv.lock`)
 - Plugboard commit: a67e176 (the code under test; this change touches no `src/`)
-- Verdict: **PASS on the fake**, 3 of 3. **Live: not run**, the isolated server was not listening on :4010 (see below).
+- Verdict: **PASS on the fake**, 3 of 3. **PASS live**, 3 of 3, on the isolated dev server at :4010 (see Live run).
 
 Harness: `compat/py/clients/dspy_client.py`, `dspy.LM("openai/fast", api_base=..., api_key=..., cache=False)`.
 
@@ -28,7 +28,9 @@ The cause was the fake, not plugboard: it answered `pong` for every field, and t
 
 ## Live run
 
-Not run. `curl http://127.0.0.1:4010/healthz` failed with `curl: (7) Failed to connect to 127.0.0.1 port 4010`. Not restarted, per the dev-server rule.
+Run 2026-10-12 with `PLUGBOARD_URL=http://127.0.0.1:4010 bun run compat:python`, app `compat`, model `fast` (= `opencode-go/glm-5.3-flash`). All 3 scenarios passed: `predict` and `chain-of-thought` answered `pong`, and the typed output gave `{'answer': '42'}`, so the live model answered the JSON form correctly.
+
+An earlier attempt that day, before the listener was up: not run. `curl http://127.0.0.1:4010/healthz` failed with `curl: (7) Failed to connect to 127.0.0.1 port 4010`. Not restarted, per the dev-server rule.
 
 ## Suspected plugboard bugs
 

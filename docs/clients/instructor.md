@@ -1,6 +1,6 @@
 # Instructor
 
-Tested: `instructor` 1.17.0 (with `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12, against the scripted fake plugboard. Validated extraction in TOOLS and JSON_SCHEMA mode, and partial streaming, passed. The live dev server was not reachable on that date, so no live result yet; see [compatibility](../compatibility.md#python-clients).
+Tested: `instructor` 1.17.0 (with `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12, against the scripted fake plugboard. Validated extraction in TOOLS and JSON_SCHEMA mode, and partial streaming, passed. The same day, all 3 scenarios also passed on the isolated live dev server (`fast` = `opencode-go/glm-5.3-flash`, extracting "Ada, 36" correctly); see [compatibility](../compatibility.md#python-clients).
 
 Instructor wraps the OpenAI client and returns a validated Pydantic object instead of a completion.
 

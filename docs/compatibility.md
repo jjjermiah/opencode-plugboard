@@ -65,12 +65,12 @@ Scenarios:
 
 Run by hand with `bun run compat:python` (`compat/py/clients/`, a uv project pinned by `compat/py/uv.lock`). They are not in CI: the packages were not timed against the CI budget, and the run needs a Python environment CI does not set up. With no `PLUGBOARD_URL` the run starts the scripted fake (`test/support/fake-server.ts`); with `PLUGBOARD_URL` and `PLUGBOARD_KEY` set it runs against that server. Each client's record is in [`compat/results/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/compat/results); the scenarios are the harnesses themselves.
 
-| Client | Package | Fake (2026-10-12) | Live (isolated dev server) |
+| Client | Package | Fake (2026-10-12) | Live (isolated dev server, 2026-10-12) |
 |---|---|---|---|
-| [OpenAI Agents SDK](clients/openai-agents.md), Responses and Chat Completions | `openai-agents` 0.23.1 | 8 pass, 0 fail | not run: no listener on :4010 |
-| [LiteLLM as a client](clients/litellm-client.md) | `litellm` 1.105.0 | 4 pass, 0 fail | not run: no listener on :4010 |
-| [Instructor](clients/instructor.md), TOOLS, JSON_SCHEMA and partial stream | `instructor` 1.17.0 | 3 pass, 0 fail | not run: no listener on :4010 |
-| [DSPy](clients/dspy.md), predict, chain-of-thought and typed output | `dspy` 3.4.0 | 3 pass, 0 fail | not run: no listener on :4010 |
-| [Aider](clients/aider.md), one `--message` request (scripted check, not a harness) | `aider-chat` 0.86.2 | 1 pass, 0 fail | not run: no listener on :4010 |
+| [OpenAI Agents SDK](clients/openai-agents.md), Responses and Chat Completions | `openai-agents` 0.23.1 | 8 pass, 0 fail | 8 pass, 0 fail (`fast`) |
+| [LiteLLM as a client](clients/litellm-client.md) | `litellm` 1.105.0 | 4 pass, 0 fail | 4 pass, 0 fail (`fast`) |
+| [Instructor](clients/instructor.md), TOOLS, JSON_SCHEMA and partial stream | `instructor` 1.17.0 | 3 pass, 0 fail | 3 pass, 0 fail (`fast`) |
+| [DSPy](clients/dspy.md), predict, chain-of-thought and typed output | `dspy` 3.4.0 | 3 pass, 0 fail | 3 pass, 0 fail (`fast`) |
+| [Aider](clients/aider.md), one `--message` request (scripted check, not a harness) | `aider-chat` 0.86.2 | 1 pass, 0 fail | 1 pass, 0 fail (`fast`) |
 
-The fake is a scripted model, so a fake pass shows the client and plugboard agree on the wire format. Only a live run shows the model's own answers. A row marked "not run" has no live evidence yet.
+The fake is a scripted model, so a fake pass shows the client and plugboard agree on the wire format. Only a live run shows the model's own answers, and the live column is the model behind plugboard's `fast` alias (`opencode-go/glm-5.3-flash`). Every live run listed here passed; no plugboard bug was found in either run.

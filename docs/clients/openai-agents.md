@@ -1,6 +1,6 @@
 # OpenAI Agents SDK
 
-Tested: `openai-agents` 0.23.1 (with `openai` 3.29.0), 2026-10-12, against the scripted fake plugboard. Text, streaming, a tool round trip and structured output passed on both the Responses API and Chat Completions. The live dev server was not reachable on that date, so no live result yet; see [compatibility](../compatibility.md#python-clients).
+Tested: `openai-agents` 0.23.1 (with `openai` 3.29.0), 2026-10-12, against the scripted fake plugboard. Text, streaming, a tool round trip and structured output passed on both the Responses API and Chat Completions. The same day, all 8 scenarios also passed on the isolated live dev server (`fast` = `opencode-go/glm-5.3-flash`); see [compatibility](../compatibility.md#python-clients).
 
 The SDK is OpenAI's agent framework. It defaults to the Responses API, so it exercises `/v1/responses`; one call switches it to `/v1/chat/completions`.
 

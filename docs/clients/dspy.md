@@ -1,6 +1,6 @@
 # DSPy
 
-Tested: `dspy` 3.4.0 (with `litellm` 1.105.0 and `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12, against the scripted fake plugboard. `Predict`, `ChainOfThought` and a typed pydantic output passed. The live dev server was not reachable on that date, so no live result yet; see [compatibility](../compatibility.md#python-clients).
+Tested: `dspy` 3.4.0 (with `litellm` 1.105.0 and `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12, against the scripted fake plugboard. `Predict`, `ChainOfThought` and a typed pydantic output passed. The same day, all 3 scenarios also passed on the isolated live dev server (`fast` = `opencode-go/glm-5.3-flash`); see [compatibility](../compatibility.md#python-clients).
 
 DSPy routes its models through LiteLLM. The `openai/` prefix sends them to Chat Completions.
 
