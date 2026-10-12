@@ -123,6 +123,10 @@ There is no `prepare` script on purpose. npm runs `prepare` on `npm publish`, an
 
 Every user-visible change adds an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). Explain why the change was made and what it cost, not just what changed. Don't paste a commit list. Maintainers cut releases from that section, and every release needs a short creative title (2 to 5 words, `bun run release X.Y.Z --title "..."`), see [docs/releasing.md](docs/releasing.md).
 
+## Docs and unreleased options
+
+The docs site deploys from `main`, so it can describe options the latest release does not have. Its banner names the latest release (the version in `package.json`). Mark each option that is newer than that release in `docs/configuration.md`, on its option or field name: `` `historyUrl` (since 0.20.0) ``. Use the version that will ship it, which is the release the `[Unreleased]` section becomes, and fix the number if that release changes. Commit the mark with the option. Options that predate the marks stay unmarked.
+
 ## Writing style
 
 Prose in the README, docs, issues and changelog is plain and short. No em or en dashes as punctuation. Keep machine-specific details out of the repo: no private IPs, home-directory paths or keys.
