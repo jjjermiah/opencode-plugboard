@@ -10,6 +10,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const sandbox = mkdtempSync(join(tmpdir(), "plugboard-test-"))
+// The live suite (#99) drives an isolated server through its wrapper, which needs the real home to find
+// its own directories. Recorded here only; nothing is read from it.
+process.env.PLUGBOARD_REAL_HOME ??= process.env.HOME
 process.env.HOME = join(sandbox, "home")
 process.env.XDG_CONFIG_HOME = join(sandbox, "config")
 process.env.XDG_DATA_HOME = join(sandbox, "data")
