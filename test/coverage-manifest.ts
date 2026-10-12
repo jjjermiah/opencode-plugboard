@@ -41,7 +41,6 @@ const HTTP = "test/http/"
 const UNIT = "test/unit/"
 const at = (file: string, ...texts: string[]): Cell => ({ tests: texts.map((text) => ({ file, text })) })
 const na = (reason: string): Cell => ({ na: reason })
-const gap = (reason: string): Cell => ({ gap: reason })
 /** A row for a route that takes no request body: only its answer and its errors can differ. */
 const read = (route: string, json: Cell, errors: Cell): Row => ({
   route,
@@ -109,9 +108,9 @@ export const ROWS: readonly Row[] = [
     cells: {
       json: at(HTTP + "gemini.test.ts", "a JSON answer is a GenerateContentResponse with x-plugboard-session"),
       stream: na("generateContent is the whole answer; streaming is streamGenerateContent"),
-      tools: gap("the JSON tool-call answer has no test: test/unit/gemini-response.test.ts covers the streamed encoder only (#116)"),
+      tools: at(HTTP + "gemini.test.ts", "a JSON tool call is a candidate with a functionCall part"),
       images: at(UNIT + "gemini-request.test.ts", "inlineData becomes a data URL; fileData with an http(s) URI passes through"),
-      structured: gap("the JSON structured answer has no test: test/unit/gemini-response.test.ts covers the streamed encoder only (#116)"),
+      structured: at(HTTP + "gemini.test.ts", "a JSON structured answer is the text of the respond call"),
       n: at(UNIT + "gemini-request.test.ts", "candidateCount 2"),
       errors: at(HTTP + "gemini.test.ts", "a model error keeps its status in Google's shape", "a missing key is a 401 in Google's error shape"),
     },
