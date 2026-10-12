@@ -8,6 +8,7 @@
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ChoiceCodec } from "../openai/fanout.js"
 import { encodeError, type StreamChoice, type StreamResult } from "../openai/response.js"
+import { StopHoldback, stripStopTail } from "../stop.js"
 
 /** What the encoders need besides the model events; the request decoder produces it, the model call never sees it. */
 export interface CompletionsExchange {
@@ -20,6 +21,8 @@ export interface CompletionsExchange {
   readonly perPrompt: number
   /** `echo`: each prompt, written ahead of the text of its choices. */
   readonly echo?: ReadonlyArray<string>
+  /** The request's `stop`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). */
+  readonly stop?: ReadonlyArray<string>
 }
 
 const FINISH_REASONS: Record<Exclude<PlugFinish, "error">, string> = {
@@ -65,6 +68,7 @@ async function collectText(events: AsyncIterable<PlugEvent>, exchange: Completio
     const error = failure ?? noFinish()
     return { status: error.status, body: encodeError(error), retryAfterSeconds: error.retryAfterSeconds }
   }
+  if (finish === "stop") text = stripStopTail(text, exchange.stop ?? []).text
   return {
     status: 200,
     body: {
@@ -106,6 +110,8 @@ async function streamText(
     const prefix = prefixOf(exchange, choice.index)
     if (prefix.length > 0) chunk(prefix)
   }
+  // A stop sequence is held back until the finish decides it (src/stop.ts).
+  const holdback = new StopHoldback(exchange.stop ?? [])
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
@@ -120,12 +126,15 @@ async function streamText(
       else finish = event.reason
     } else if (event.type === "text-delta" && event.text.length > 0) {
       start()
-      chunk(event.text)
+      const out = holdback.push(event.text)
+      if (out.length > 0) chunk(out)
     }
   }
   failure ??= finish ? undefined : noFinish()
   if (failure) return { failure, started }
   start()
+  const rest = holdback.finish(finish === "stop").text
+  if (rest.length > 0) chunk(rest)
   chunk("", FINISH_REASONS[finish!])
   return { started, ...(usage ? { usage } : {}) }
 }

@@ -9,6 +9,7 @@
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
 import { unfence } from "../openai/response.js"
+import { StopHoldback } from "../stop.js"
 import { WRAP_KEY } from "./request.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
@@ -30,6 +31,8 @@ export interface GeminiExchange {
   readonly callerTools?: boolean
   /** `responseMimeType: application/json` without a schema: a single code fence around JSON text is stripped. */
   readonly jsonObject?: boolean
+  /** The request's `generationConfig.stopSequences`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). Not applied to structured output. */
+  readonly stop?: ReadonlyArray<string>
 }
 
 /** How an exchange ended. Nothing was emitted when `failure` is set and `started` is false: the caller answers with a real HTTP error. */
@@ -160,10 +163,18 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
     else parts.push(part)
     emit(envelope([part]))
   }
+  // A stop sequence is held back until the finish decides it (src/stop.ts). Structured output has none.
+  const holdback = exchange.structuredTool === undefined ? new StopHoldback(exchange.stop ?? []) : undefined
   const text = (delta: string) => {
-    if (delta.length > 0) push({ text: delta })
+    const out = holdback ? holdback.push(delta) : delta
+    if (out.length > 0) push({ text: out })
+  }
+  const releaseHeld = () => {
+    const rest = holdback?.release() ?? ""
+    if (rest.length > 0) push({ text: rest })
   }
   const toolCall = (call: ToolCall) => {
+    releaseHeld()
     push({ functionCall: { name: call.name, args: argsOf(call.input) } })
     calls++
   }
@@ -221,6 +232,10 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
   failure ??= finish ? (passthrough ? undefined : structuredFailure(exchange, finish, answered)) : noFinish()
   if (failure) return { failure, started }
   flush()
+  if (holdback) {
+    const rest = holdback.finish(finish === "stop" && calls === 0).text
+    if (rest.length > 0) push({ text: rest })
+  }
   if (held && !passthrough) text(structuredText(exchange, held))
   const candidate = { finishReason: FINISH_REASONS[finish!] }
   const extra = usage ? { usageMetadata: encodeUsage(usage) } : {}

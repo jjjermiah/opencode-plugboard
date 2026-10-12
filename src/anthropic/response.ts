@@ -7,6 +7,7 @@
  * no-op `emit`. Thinking blocks are produced only when the request asked for thinking.
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
+import { StopHoldback } from "../stop.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -76,10 +77,6 @@ const STOP_REASON: Record<Exclude<PlugFinish, "error">, string> = {
   "content-filter": "refusal",
 }
 
-/** The longest stop sequence the text ends with, if any. */
-const stopTail = (tail: string, stops: ReadonlyArray<string>): string | undefined =>
-  stops.filter((stop) => tail.endsWith(stop)).sort((a, b) => b.length - a.length)[0]
-
 const noFinish = (): PlugError => ({ status: 500, kind: "server", message: "Model stream ended without a finish event" })
 const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
 
@@ -127,10 +124,9 @@ export async function runMessage(
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
-  // Text is held back by the longest stop sequence (`holdback` characters), so a sequence at the end of
-  // the answer can be found and removed before it is sent. Without stop sequences nothing is held.
-  const holdback = Math.max(0, ...(exchange.stop ?? []).map((stop) => stop.length))
-  let held = ""
+  // Text is held back by the longest stop sequence, so a sequence at the end of the answer can be
+  // found and removed before it is sent (src/stop.ts). Without stop sequences nothing is held.
+  const holdback = new StopHoldback(exchange.stop ?? [])
 
   const message = (extra: Record<string, unknown>) => ({
     id,
@@ -162,20 +158,8 @@ export async function runMessage(
     content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: "" })
     open = undefined
   }
-  const releaseHeld = () => {
-    const out = held
-    held = ""
-    delta("text", out)
-  }
-  const text = (chunk: string) => {
-    if (holdback === 0) return delta("text", chunk)
-    held += chunk
-    if (held.length > holdback) {
-      const out = held.slice(0, held.length - holdback)
-      held = held.slice(out.length)
-      delta("text", out)
-    }
-  }
+  const releaseHeld = () => delta("text", holdback.release())
+  const text = (chunk: string) => delta("text", holdback.push(chunk))
   const delta = (kind: "text" | "thinking", text: string) => {
     if (text.length === 0) return
     start()
@@ -240,9 +224,8 @@ export async function runMessage(
     return { failure, started }
   }
   // A plain stop with no tool calls that ends on a stop sequence: the sequence is not part of the answer.
-  const matched = holdback > 0 && finish === "stop" && calls === 0 ? stopTail(held, exchange.stop ?? []) : undefined
-  if (matched !== undefined) held = held.slice(0, held.length - matched.length)
-  releaseHeld()
+  const { text: rest, matched } = holdback.finish(finish === "stop" && calls === 0)
+  delta("text", rest)
   start()
   close()
   ping()

@@ -166,13 +166,10 @@ const openaiChat: Client = {
     "model-id": async (target) => {
       expect((await openai(target).chat.completions.create({ model: CATALOG_ID, messages: [{ role: "user", content: tag("model-id") }] })).choices[0]!.message.content).toBe(TEXT)
     },
-    // The sequence is part of the model's output; OpenAI's stop excludes it, plugboard does not remove it on this endpoint (#145 covers /v1/messages).
-    "stop-sequence": {
-      gap: "stop sequences are not removed from the answer on /v1/chat/completions (only /v1/messages strips the matched sequence, #145); OpenAI excludes it",
-      run: async (target) => {
-        const completion = await openai(target).chat.completions.create({ model: MODEL, stop: ["END"], messages: [{ role: "user", content: tag("stop-sequence") }] })
-        expect(completion.choices[0]!.message.content).toBe(TEXT)
-      },
+    // The sequence is part of the model's output; OpenAI's stop excludes it, and plugboard removes it too (#149).
+    "stop-sequence": async (target) => {
+      const completion = await openai(target).chat.completions.create({ model: MODEL, stop: ["END"], messages: [{ role: "user", content: tag("stop-sequence") }] })
+      expect(completion.choices[0]!.message.content).toBe(TEXT)
     },
     logprobs: async (target) => {
       const completion = await openai(target).chat.completions.create({ model: MODEL, messages: [{ role: "user", content: tag("logprobs") }] })
@@ -349,11 +346,8 @@ const openaiCompletions: Client = {
     "model-id": async (target) => {
       expect((await openai(target).completions.create({ model: CATALOG_ID, prompt: tag("model-id") })).choices[0]!.text).toBe(TEXT)
     },
-    "stop-sequence": {
-      gap: "stop sequences are not removed from the answer on /v1/completions (only /v1/messages strips the matched sequence, #145); OpenAI excludes it",
-      run: async (target) => {
-        expect((await openai(target).completions.create({ model: MODEL, prompt: tag("stop-sequence"), stop: ["END"] })).choices[0]!.text).toBe(TEXT)
-      },
+    "stop-sequence": async (target) => {
+      expect((await openai(target).completions.create({ model: MODEL, prompt: tag("stop-sequence"), stop: ["END"] })).choices[0]!.text).toBe(TEXT)
     },
     logprobs: async (target) => {
       expect((await openai(target).completions.create({ model: MODEL, prompt: tag("logprobs") })).choices[0]!.logprobs ?? null).toBeNull()
@@ -591,12 +585,9 @@ const genaiGemini: Client = {
         expect(response.candidates).toHaveLength(2)
       },
     },
-    "stop-sequence": {
-      gap: "stopSequences are not removed from the answer on the Gemini endpoint (only /v1/messages strips the matched sequence, #145)",
-      run: async (target) => {
-        const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("stop-sequence"), config: { stopSequences: ["END"] } })
-        expect(response.text).toBe(TEXT)
-      },
+    "stop-sequence": async (target) => {
+      const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("stop-sequence"), config: { stopSequences: ["END"] } })
+      expect(response.text).toBe(TEXT)
     },
     "stream-usage": async (target) => {
       let usage: { totalTokenCount?: number } | undefined
@@ -759,7 +750,6 @@ const aiGoogle = ({ origin, apiKey }: Target, id = MODEL) => createGoogle({ base
 const aiCompatible = ({ origin, apiKey }: Target, id = MODEL) => createOpenAICompatible({ name: "plugboard", baseURL: `${origin}/v1`, apiKey, includeUsage: true }).chatModel(id)
 
 const aiChat = aiSdk("ai + @ai-sdk/openai (chat)", "chat", (target, id) => aiOpenAI(target).chat(id ?? MODEL), {
-  gaps: { "stop-sequence": "the chat endpoint does not remove stop sequences from the answer (#145 covers /v1/messages)" },
   extra: { document: pdfRun((target) => aiOpenAI(target).chat(MODEL)) },
 })
 
@@ -777,7 +767,6 @@ const aiResponsesStoreFalse = aiSdk("ai + @ai-sdk/openai (responses, store: fals
 })
 
 const aiCompatibleClient = aiSdk("ai + @ai-sdk/openai-compatible", "chat", (target, id) => aiCompatible(target, id), {
-  gaps: { "stop-sequence": "the chat endpoint does not remove stop sequences from the answer (#145 covers /v1/messages)" },
   na: { document: "openai-compatible sends PDFs only through providers that take file parts; not written for plugboard" },
 })
 
@@ -801,9 +790,8 @@ const aiAnthropicClient = aiSdk("ai + @ai-sdk/anthropic", "messages", (target, i
 
 const aiGoogleClient = aiSdk("ai + @ai-sdk/google", "gemini", (target, id) => aiGoogle(target, id), {
   gaps: {
-    "stop-sequence": "stopSequences are not removed from the answer on the Gemini endpoint (only /v1/messages strips the matched sequence, #145)",
-    // The AI SDK's getModelPath treats an id with a slash as a full resource name and drops the models/ prefix, so the request misses the route (401).
-    "model-id": "the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (401); the @google/genai rows pass",
+    // The AI SDK's getModelPath treats an id with a slash as a full resource name and drops the models/ prefix, so the request misses the route: a 404 that names the expected path (#150).
+    "model-id": "the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass",
   },
   extra: { document: pdfRun((target) => aiGoogle(target)) },
   na: { "count-tokens": "the AI SDK does not call countTokens" },
