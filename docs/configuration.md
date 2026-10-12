@@ -11,6 +11,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start. |
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
+| `adminKey` | none | A key that reads every app's usage at `GET /v1/usage`. It must differ from every app key. It is not an app key: it cannot call the model routes. See [Usage statistics](#usage-statistics). |
 | `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools? }`: per-app model scope, system prompt and tool policy. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks). |
@@ -24,6 +25,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). |
 | `cache` | none (off) | Exact-match response cache in memory: `{ ttlSeconds, maxEntries?, maxBytes?, apps? }`. See [Response cache](#response-cache). |
+| `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /v1/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
 Changes to `listen` need a server restart; other option changes apply on config reload.
@@ -155,6 +157,71 @@ What is kept: answers that ended normally (`stop` or `length`) with text or reas
 A hit replays the stored answer as JSON or as a stream (the text arrives in one chunk), with the same `x-plugboard-model` and `x-plugboard-policy` headers as the original, and reports zero token usage. Every answer carries `x-plugboard-cache: hit` or `miss`. Sampling still matters: with `temperature` above 0, a hit repeats the first answer instead of drawing a new one, so use `apps` to limit the cache to callers that want that.
 
 The cache lives in memory. A server restart, or a change to `cache`, `apps`, `models` or `aliases`, empties it, so a hit can never serve a model the current policy no longer allows. With `metrics` on, `plugboard_cache_requests_total{app,result}` counts hits and misses.
+
+## Usage statistics
+
+Plugboard counts what each app does, per UTC day: model requests and their errors, latency, tokens by kind, cost in USD, cache hits and misses, fallbacks, 429 refusals, and the requests and cost of each model. It is on by default. Set `usage: { "enabled": false }` to record nothing.
+
+Read it with `GET /v1/usage`. `from` and `to` are UTC days (`YYYY-MM-DD`, both inclusive); the default is the 30 days ending today, and a range may span at most 366 days. `app` names one app.
+
+```sh
+curl -s "http://127.0.0.1:4010/v1/usage?from=2026-10-01&to=2026-10-11" -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
+```
+
+Who may read what:
+
+- **The admin key** (`adminKey`) reads every app, or one with `app`.
+- **An app key** reads its own app. Naming another app is a 403 `app_forbidden`.
+- **Keyless loopback** (no `keys`) is the app `default`.
+- A missing or wrong key is a 401. The admin key is not an app key, so it gets a 401 on `/v1/chat/completions` and the other model routes.
+
+OpenCode's own clients read the same report through the usage RPC, `opencode-plugboard.usage`, method `get`, with the same `from`, `to` and `app` fields. It is reached through OpenCode's password-authenticated API, so it returns every app. The contract is in `src/rpc.ts`, and the package exposes it as `opencode-plugboard/rpc`.
+
+What a response holds (one app, trimmed):
+
+```json
+{
+  "from": "2026-10-11",
+  "to": "2026-10-11",
+  "generatedAt": "2026-10-11T18:04:12.000Z",
+  "totals": {
+    "requests": 4,
+    "errors": { "client": 1, "server": 0, "timeout": 0, "disconnected": 0 },
+    "latency": { "count": 4, "sumMs": 3120, "buckets": [0, 1, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0], "p50Ms": 1000, "p95Ms": 5000 },
+    "tokens": { "input": 812, "cacheRead": 1500, "cacheWrite": 0, "output": 260, "reasoning": 40 },
+    "costUsd": 0.0123,
+    "cacheHits": 1,
+    "cacheMisses": 2,
+    "fallbacks": 1,
+    "limited": 1,
+    "unpricedRequests": 0,
+    "lastRequestAt": "2026-10-11T17:58:03.512Z"
+  },
+  "apps": {
+    "alpha": {
+      "totals": { "...": "the same fields as the top-level totals" },
+      "models": { "openai/gpt-5": { "requests": 3, "tokens": 4120, "costUsd": 0.0123 } },
+      "days": [
+        { "date": "2026-10-11", "...": "the totals fields, and", "perModel": { "openai/gpt-5": { "requests": 3, "tokens": 4120, "costUsd": 0.0123 } } }
+      ]
+    }
+  }
+}
+```
+
+The fields, in short:
+
+- `requests` counts HTTP requests on the model routes (`/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/messages`, and Gemini `generateContent`) that reached an app. Model listing, status, metrics and discovery are not counted.
+- `errors.client` counts 4xx answers, including 429 refusals. `errors.server` counts 5xx answers and errors after the response had started. `timeout` and `disconnected` count requests the deadline or the client ended.
+- `latency` is a histogram over fixed buckets (up to 100 ms, 250 ms, 500 ms, 1 s, 2.5 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, and one above). `p50Ms` and `p95Ms` are estimates: the upper bound of the bucket holding that percentile. Slower requests land in the last bucket, reported as 600000.
+- `tokens` splits the usage without overlap, as `plugboard_tokens_total` does: `input` is uncached prompt tokens, `cacheRead` and `cacheWrite` are cached ones, `output` excludes `reasoning`. Only answered model calls count; a cache hit spends none.
+- `costUsd` is an estimate at list prices from the catalog (per million tokens, with OpenCode's context tiers). A subscription login does not bill per token, so read it as a comparison between apps, not as a bill. A model with no price adds its calls to `unpricedRequests` and costs 0.
+- `cacheHits` and `cacheMisses` count the calls the [response cache](#response-cache) applied to. `fallbacks` counts retries on the next target of an alias. `limited` counts 429 refusals from [limits](#concurrency-and-rate-limits).
+- `models` and `perModel` are keyed by `provider/model`; the variant is not part of the key.
+
+Retention: days older than `retentionDays` are deleted while requests are served, a page of keys at a time. An idle server keeps them until the next request.
+
+Persistence: each day is written to OpenCode's plugin storage at most every 10 seconds, by the request that finds the last write that old. The newest changes can therefore be in memory only: a restart before the next request loses the last few seconds of traffic, or the whole tail of an idle period. Reports read memory first, so they are never behind.
 
 ## Limits and errors
 

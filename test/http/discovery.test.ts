@@ -7,6 +7,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { ev } from "../support/fixtures.js"
 import { startRoute, type RouteServer } from "../support/loopback.js"
+import { FakeStorage } from "../support/usage.js"
+import { createUsageRecorder, createUsageState } from "../../src/usage.js"
 import { FakeModelCaller } from "../support/model-caller.js"
 
 const KEYS = { alpha: "key-alpha-secret" }
@@ -29,6 +31,7 @@ const PROBES: ReadonlyArray<readonly [string, string, string]> = [
   ["POST", "/v1beta/models/fast:streamGenerateContent?alt=sse", "/v1beta/models/{model}:streamGenerateContent"],
   ["GET", "/v1/status", "/v1/status"],
   ["GET", "/metrics", "/metrics"],
+  ["GET", "/v1/usage", "/v1/usage"],
 ]
 
 let server: RouteServer | undefined
@@ -38,7 +41,8 @@ afterEach(async () => {
 })
 
 const start = async () => {
-  server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { keys: KEYS, metrics: true } })
+  const usage = createUsageRecorder({ state: createUsageState(), storage: new FakeStorage(), loadCatalog: async () => [], retentionDays: 90 })
+  server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { keys: KEYS, metrics: true }, usage })
   return server
 }
 const listed = async (): Promise<Array<{ method: string; path: string }>> => (await server!.send({ path: "/v1", headers })).json().endpoints

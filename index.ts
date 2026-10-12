@@ -25,10 +25,12 @@ import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
 import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, processLimits, processMetrics, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
+import { ensureBackend, ensurePump, loadServingCatalog, processLimits, processMetrics, processUsage, registerGeneration, sessionStore, withResponseCache } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { installSessionHooks } from "./src/session/context.js"
-import { createHistoryPort, createSessionPort, loadCatalog } from "./src/session/host.js"
+import { createHistoryPort, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
+import { usageHandlers, UsageRpc } from "./src/rpc.js"
+import { createUsageRecorder, withUsage } from "./src/usage.js"
 
 export default Plugin.define({
   id: "opencode-plugboard",
@@ -67,26 +69,42 @@ export default Plugin.define({
         return loadServingCatalog(ownCatalog)
       }
       const limits = options.limits
+      // Usage (src/usage.ts): built from closures only; it reads and writes storage from request handling.
+      const usage = options.usage.enabled
+        ? createUsageRecorder({ state: processUsage(), storage: createStoragePort(ctx), loadCatalog: servingCatalog, retentionDays: options.usage.retentionDays })
+        : undefined
       const handle = createOpenAiRoute({
         options,
-        // Caps are outermost, so one request takes one slot even when it falls back (src/limits.ts).
+        // Usage is outermost, so it records the answer the client gets (src/usage.ts).
+        // Caps are outside the fallbacks, so one request takes one slot even when it falls back (src/limits.ts).
         // Aliases written as a list retry the next target before the first output (src/fallback.ts).
-        // Limits are outermost (one slot per request, refused calls never reach anything); the response
-        // cache sits outside the fallbacks, so a hit never reaches a provider (src/limits.ts, src/cache.ts).
-        caller: withLimits(
-          withResponseCache(
-            withFallbacks(createSessionCaller(callerDeps), {
+        // The response cache sits outside the fallbacks, so a hit never reaches a provider (src/cache.ts).
+        caller: withUsage(
+          withLimits(
+            withResponseCache(
+              withFallbacks(createSessionCaller(callerDeps), {
+                options,
+                loadCatalog: servingCatalog,
+                onFallback: (app) => {
+                  if (options.metrics) processMetrics().fallback(app)
+                  usage?.fallback(app)
+                },
+              }),
               options,
-              loadCatalog: servingCatalog,
-              onFallback: options.metrics ? (app) => processMetrics().fallback(app) : undefined,
-            }),
-            options,
+            ),
+            () => limits,
+            processLimits(),
+            {
+              onLimited: (app, reason) => {
+                if (options.metrics) processMetrics().limited(app, reason)
+                usage?.limited(app)
+              },
+            },
           ),
-          () => limits,
-          processLimits(),
-          { onLimited: options.metrics ? (app, reason) => processMetrics().limited(app, reason) : undefined },
+          usage,
         ),
         loadCatalog: servingCatalog,
+        usage,
       })
       const registration = registerGeneration({
         listen: options.listen,
@@ -112,6 +130,13 @@ export default Plugin.define({
 
       // ---- a rejected generation (different options or `listen`, foreign runtime) serves nothing and installs nothing.
       if (!registration.accepted) return
+
+      // ---- the usage RPC (src/rpc.ts): a synchronous registration; its handler reads the store from request time only.
+      // Its error channel is `unknown` in the host, so a failed registration is logged and the plugin keeps loading.
+      if (usage)
+        yield* ctx.rpc.register(UsageRpc, usageHandlers(usage)).pipe(
+          Effect.catch((error) => Effect.sync(() => logError("rpc.register_failed", { rpc: UsageRpc.id, error: errorMessage(error) }))),
+        )
 
       // ---- the context hook, the agent deny and the seed tools. Ownership of the Location is only
       // known after an asynchronous check (`ensureBackend`), so all three are no-ops until

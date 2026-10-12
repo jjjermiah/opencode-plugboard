@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { authenticate, isLoopbackHost, parseOptions } from "../../src/config.js"
+import { authenticate, authenticateUsage, isLoopbackHost, parseOptions } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -20,6 +20,7 @@ describe("parseOptions: defaults", () => {
       logFormat: "text",
       metrics: false,
       modelIds: "canonical",
+      usage: { enabled: true, retentionDays: 90 },
     })
   })
 
@@ -135,6 +136,35 @@ describe("parseOptions: modelIds", () => {
 
   test("defaults to canonical", () => {
     expect(parseOptions({}).modelIds).toBe("canonical")
+  })
+})
+
+describe("usage and adminKey options", () => {
+  test("usage defaults to on with 90 days, and takes its own keys only", () => {
+    expect(parseOptions({ usage: {} }).usage).toEqual({ enabled: true, retentionDays: 90 })
+    expect(parseOptions({ usage: { enabled: false, retentionDays: 3650 } }).usage).toEqual({ enabled: false, retentionDays: 3650 })
+    expect(() => parseOptions({ usage: { retentionDays: 0 } })).toThrow("usage.retentionDays")
+    expect(() => parseOptions({ usage: { retentionDays: 3651 } })).toThrow("usage.retentionDays")
+    expect(() => parseOptions({ usage: { enabled: "yes" } })).toThrow("usage.enabled")
+    expect(() => parseOptions({ usage: { keep: 1 } })).toThrow("usage.keep")
+  })
+
+  test("adminKey must be a non-empty string that differs from every app key", () => {
+    expect(parseOptions({ keys: { a: "one" }, adminKey: "two" }).adminKey).toBe("two")
+    expect(() => parseOptions({ keys: { a: "one" }, adminKey: "one" })).toThrow("must differ from every app key")
+    expect(() => parseOptions({ keys: { a: "one" }, apps: { b: { key: "two" } }, adminKey: "two" })).toThrow("must differ from every app key")
+    expect(() => parseOptions({ adminKey: "" })).toThrow("adminKey")
+    expect(() => parseOptions({ adminKey: 5 })).toThrow("adminKey")
+  })
+
+  test("authenticateUsage: the admin key sees every app, an app key only its own, keyless is `default`", () => {
+    const keyed = parseOptions({ keys: { a: "one", b: "two" }, adminKey: "root" })
+    expect(authenticateUsage(keyed, "Bearer root")).toEqual({ admin: true })
+    expect(authenticateUsage(keyed, "Bearer one")).toEqual({ admin: false, app: "a" })
+    expect(authenticateUsage(keyed, "Bearer nope")).toMatchObject({ status: 401 })
+    expect(authenticateUsage(keyed, undefined)).toMatchObject({ status: 401 })
+    expect(authenticateUsage(parseOptions({}), undefined)).toEqual({ admin: false, app: "default" })
+    expect(authenticateUsage(parseOptions({ adminKey: "root" }), "Bearer root")).toEqual({ admin: true })
   })
 })
 

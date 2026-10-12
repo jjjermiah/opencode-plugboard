@@ -20,7 +20,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | File | Job |
 |---|---|
 | `contract.ts` | The neutral vocabulary: `PlugRequest`, `PlugEvent`, `PlugError`, `CatalogModel` and the `ModelCaller` seam every front-end calls. |
-| `config.ts` | The options type, defaults, `parseOptions`, `authenticate` and the loopback host check. |
+| `config.ts` | The options type, defaults, `parseOptions`, `authenticate`, `authenticateUsage` (the admin key) and the loopback host check. |
 | `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. |
 | `limits.ts` | Concurrency caps and requests per minute per app (option `limits`): a `ModelCaller` wrapper outside the fallbacks, with its queues on the runtime. |
 | `http.ts` | Ingress and transport: body limits, Host and Origin checks, disconnect abort, the one deadline, JSON and SSE writers. |
@@ -28,6 +28,8 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `discovery.ts` | Pure builders for `GET /`, `GET /v1` and `GET /v1/status`, and `sendText`. |
 | `metrics.ts` | The @prometheus-io/client registry and text rendering. No I/O. |
 | `log.ts` | The pino logger (text or JSON lines), the ambient request id and redaction. Ids and outcomes only. |
+| `usage.ts` | Per-app usage by UTC day: day records, the latency histogram, cost (mirrors OpenCode's `calculateCost`), the recorder with its debounced storage writes and retention, the query, and the `withUsage` model-caller wrapper. |
+| `rpc.ts` | The usage RPC (`opencode-plugboard.usage`, package entry `./rpc`): the definition and its handler builder. Registered by `index.ts`. |
 
 ## `src/` directories
 

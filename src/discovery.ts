@@ -61,7 +61,7 @@ export interface Endpoint {
 /**
  * Every endpoint plugboard serves, in the order the document lists them. Dispatch lives in
  * `src/openai/route.ts` and the front-end routes; `test/http/discovery.test.ts` probes each served
- * route and fails when this list omits one (#136). `/metrics` is added only when option `metrics` is on.
+ * route and fails when this list omits one (#136). `/v1/usage` and `/metrics` are added only when their options are on.
  */
 export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "GET", path: "/", auth: false, description: "This page." },
@@ -81,7 +81,11 @@ export const ENDPOINTS: ReadonlyArray<Endpoint> = [
 ]
 
 function endpoints(options: PlugboardOptions): ReadonlyArray<Endpoint> {
-  return options.metrics ? [...ENDPOINTS, { method: "GET", path: "/metrics", auth: true, description: "Prometheus metrics." }] : ENDPOINTS
+  return [
+    ...ENDPOINTS,
+    ...(options.usage.enabled ? [{ method: "GET", path: "/v1/usage", auth: true, description: "Per-app usage by day: requests, tokens, cost, latency. The admin key reads every app." }] : []),
+    ...(options.metrics ? [{ method: "GET", path: "/metrics", auth: true, description: "Prometheus metrics." }] : []),
+  ]
 }
 
 type ModelsState = "ready" | "no_models_configured" | "none_available" | "catalog_unavailable"

@@ -2,7 +2,7 @@
 
 import { createHash, timingSafeEqual } from "node:crypto"
 import type { CacheConfig } from "./cache.js"
-import type { PlugError } from "./contract.js"
+import { isPlugError, type PlugError } from "./contract.js"
 import { allowedBy, parseModelRef } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
@@ -52,6 +52,16 @@ export interface PlugboardOptions {
   readonly limits?: Limits
   /** Opt-in exact-match response cache (see `src/cache.ts`). Absent: off. */
   readonly cache?: CacheConfig
+  /** Per-app usage statistics (see `src/usage.ts`): recorded and served by `GET /v1/usage` and the RPC. */
+  readonly usage: UsageConfig
+  /** A key that may read every app's usage on `GET /v1/usage`. Compared like app keys; must differ from every one of them. */
+  readonly adminKey?: string
+}
+
+/** Option `usage` after defaults: on, and days of history kept. */
+export interface UsageConfig {
+  readonly enabled: boolean
+  readonly retentionDays: number
 }
 
 export type SystemMode = "prepend" | "append" | "replace"
@@ -99,7 +109,11 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "cache"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "cache", "usage"])
+const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
+const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
+/** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
+const MAX_RETENTION_DAYS = 3650
 const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps"])
 const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
 /** Largest cap accepted: far above any provider's limit, and keeps the error messages short. */
@@ -260,6 +274,18 @@ export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string):
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
 }
 
+function parseUsage(value: unknown): UsageConfig {
+  if (value === undefined) return { ...USAGE_DEFAULTS }
+  if (!isRecord(value)) throw new Error("plugboard option `usage` must be an object")
+  for (const key of Object.keys(value))
+    if (!USAGE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`usage.${key}\` (known: ${[...USAGE_KNOWN].join(", ")})`)
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") throw new Error("plugboard option `usage.enabled` must be a boolean")
+  return {
+    enabled: value.enabled !== false,
+    retentionDays: positiveInt(value.retentionDays, "usage.retentionDays", USAGE_DEFAULTS.retentionDays, MAX_RETENTION_DAYS),
+  }
+}
+
 function parseCache(value: unknown, keys: Readonly<Record<string, string>>): CacheConfig | undefined {
   if (value === undefined) return undefined
   if (!isRecord(value)) throw new Error("plugboard option `cache` must be an object with `ttlSeconds`")
@@ -313,6 +339,10 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   digestsOf(keys)
   if (keyEntries.length === 0 && !isLoopbackHost(host))
     throw new Error(`plugboard refuses to listen on non-loopback host \`${host}\` without \`keys\``)
+  if (input.adminKey !== undefined) {
+    if (typeof input.adminKey !== "string" || input.adminKey.length === 0) throw new Error("plugboard option `adminKey` must be a non-empty string (is its {env:VAR} set?)")
+    if (keyEntries.some(([, key]) => key === input.adminKey)) throw new Error("plugboard option `adminKey` must differ from every app key")
+  }
 
   const models = input.models ?? []
   if (!Array.isArray(models)) throw new Error("plugboard option `models` must be an array of strings")
@@ -366,6 +396,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   const limits = parseLimits(input.limits, keys)
   const cache = parseCache(input.cache, keys)
+  const usage = parseUsage(input.usage)
 
   return {
     listen: { host, port: port ?? DEFAULTS.port },
@@ -385,6 +416,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
     ...(limits === undefined ? {} : { limits }),
     ...(cache ? { cache } : {}),
+    usage,
+    ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
   }
 }
 
@@ -408,6 +441,18 @@ function digestsOf(keys: Readonly<Record<string, string>>): ReadonlyArray<readon
   let digests = keyDigests.get(keys)
   if (!digests) keyDigests.set(keys, (digests = Object.entries(keys).map(([name, key]) => [name, sha256(key)] as const)))
   return digests
+}
+
+/** Who may read `GET /v1/usage`: the admin key (every app), or one app (`default` when keyless). */
+export type UsageScope = { readonly admin: true } | { readonly admin: false; readonly app: string }
+
+/** The admin key is checked first; any other valid key (or keyless mode) is an app, as `authenticate` decides. */
+export function authenticateUsage(options: PlugboardOptions, authorization: string | undefined): UsageScope | PlugError {
+  const bearer = /^Bearer\s+(\S+)\s*$/i.exec(authorization ?? "")?.[1]
+  if (options.adminKey !== undefined && bearer !== undefined && timingSafeEqual(sha256(bearer), sha256(options.adminKey))) return { admin: true }
+  const auth = authenticate(options, authorization)
+  if (isPlugError(auth)) return auth
+  return { admin: false, app: auth.app }
 }
 
 /** No keys -> app `default`; with keys every request needs `Authorization: Bearer <key>`. */
