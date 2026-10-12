@@ -14,7 +14,30 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Per-app budgets** ([#60](https://github.com/jjjermiah/opencode-plugboard/issues/60)). Cap what each app may use per UTC day, ISO week or calendar month, by requests, tokens or estimated cost:
+
+  ```jsonc
+  "budgets": {
+    "perApp": { "tokens": { "day": 2000000 } },
+    "apps": { "discord-bot": { "costUsd": { "month": 20 } } }
+  }
+  ```
+
+  Once an app has used a ceiling, its next call gets 429 `budget_exceeded` with `Retry-After` set to the window reset, before any session is created. Crossing 80% logs `budget.warning` once per window, and `GET /v1/usage` shows each app's budget state. Budgets read the usage records, so they need `usage` on; calls already in flight are not counted yet, so a burst can overshoot by what it started at once.
+- **`x-plugboard-usage` header** ([#52](https://github.com/jjjermiah/opencode-plugboard/issues/52)). Non-streaming answers carry `x-plugboard-usage: input=812; output=64; cache_read=640; cost_usd=0.000412`, so a client can log its own spend without asking the usage API.
+- **Vercel AI SDK default multi-turn works** ([#147](https://github.com/jjjermiah/opencode-plugboard/issues/147)). `/v1/responses` resolves `item_reference` items for answers plugboard returned in the last hour (per app, in memory), so `store: true` clients no longer need `store: false`. An unknown reference is a 400 that suggests `store: false`.
+
+### Fixed
+
+- **Stop sequences are stripped everywhere** ([#149](https://github.com/jjjermiah/opencode-plugboard/issues/149)). Chat Completions, legacy completions and Gemini now remove a caller stop sequence the model stopped on, as Anthropic Messages already did; streams hold back the last few characters so the sequence never reaches the client.
+- **Unknown Gemini paths say what they expected** ([#150](https://github.com/jjjermiah/opencode-plugboard/issues/150)). An authenticated request to a `/v1beta` path that matches nothing gets a 404 naming `/v1beta/models/{model}:generateContent`, not a 401 that looked like a bad key.
+- Gemini non-streaming tool calls and structured output are now covered by tests ([#151](https://github.com/jjjermiah/opencode-plugboard/issues/151)).
+
+### Changed
+
+- Internal runtime version 13. Restart OpenCode after upgrading.
 
 ## [0.18.0] - 2026-10-11: A Window Into Usage
 
