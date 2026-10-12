@@ -35,9 +35,15 @@ const RESPONSE_OVERFLOW: PlugError = {
   message: "The response was not read fast enough; too much output was waiting",
 }
 
-/** A reasoning block's signature from the host's provider metadata (`{ <provider>: { signature } }`), or undefined when there is none. */
+/**
+ * A reasoning block's signature from the host's provider state, or undefined when there is none. The host
+ * publishes the state already unwrapped from its provider key (`{ signature }`, publish-llm-event.ts
+ * `providerState`); the wrapped form (`{ <provider>: { signature } }`) is accepted too.
+ */
 function signatureOf(state: unknown): string | undefined {
   if (typeof state !== "object" || state === null) return undefined
+  const direct = (state as { signature?: unknown }).signature
+  if (typeof direct === "string" && direct.length > 0) return direct
   for (const value of Object.values(state)) {
     const signature = typeof value === "object" && value !== null ? (value as { signature?: unknown }).signature : undefined
     if (typeof signature === "string" && signature.length > 0) return signature
