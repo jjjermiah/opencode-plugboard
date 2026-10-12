@@ -47,7 +47,7 @@ import { errorMessage, log, logError, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { filterByCapability, listAvailableModels, parseCapability, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy } from "../policy.js"
+import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveCompletions } from "../completions/route.js"
@@ -311,6 +311,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),
         onUsage: reportUsage(response, exchange.stream),
+        onServerTools: reportServerTools(response, exchange.stream),
         onCache: reportCache(response),
       }),
       scope,

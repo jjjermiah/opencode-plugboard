@@ -21,7 +21,7 @@ import { bodyLimits } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { listAvailableModels, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy } from "../policy.js"
+import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import type { RouteHost } from "../openai/route.js"
@@ -167,6 +167,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
       onUsage: reportUsage(response, match.stream),
+      onServerTools: reportServerTools(response, match.stream),
       onCache: reportCache(response),
     }),
     scope,

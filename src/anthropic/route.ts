@@ -32,7 +32,7 @@ import {
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy } from "../policy.js"
+import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { dropRejected } from "../openai/sampling.js"
@@ -143,6 +143,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),
         onUsage: reportUsage(response, exchange.stream),
+        onServerTools: reportServerTools(response, exchange.stream),
         onCache: reportCache(response),
       }),
       scope,

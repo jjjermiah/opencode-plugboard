@@ -39,6 +39,16 @@ export const REQUEST_PERMISSIONS: ReadonlyArray<{ action: string; resource: stri
   { action: `${SEED_PREFIX}*`, resource: "*", effect: "allow" },
 ]
 
+/**
+ * Session permissions of a request session of an app with option `serverTools`: the same deny-all, then
+ * each listed OpenCode tool id allowed by its exact name (no wildcard). The host takes the last matching
+ * rule (`Permission.evaluate`, findLast), so the later allows win over the deny. An app without
+ * `serverTools` gets exactly `REQUEST_PERMISSIONS`.
+ */
+export function requestPermissions(serverTools: ReadonlyArray<string>): ReadonlyArray<{ action: string; resource: string; effect: "allow" | "deny" }> {
+  return [...REQUEST_PERMISSIONS, ...serverTools.map((tool) => ({ action: tool, resource: "*", effect: "allow" as const }))]
+}
+
 /** The caller tools that get a seed in the model request (`tool_choice` none offers none, a named tool only that one). */
 export function seedToolsFor(request: PlugRequest): ReadonlyArray<PlugTool> {
   const choice = request.toolChoice

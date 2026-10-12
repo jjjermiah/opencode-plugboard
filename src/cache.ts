@@ -118,18 +118,22 @@ function append(events: PlugEvent[], event: { readonly type: "text-delta" | "rea
   else events.push({ type: event.type, text: event.text })
 }
 
-/** Wraps `inner`: hits are replayed, misses stream through and are stored when they qualify. */
+/**
+ * Wraps `inner`: hits are replayed, misses stream through and are stored when they qualify. `bypass(model, app)`
+ * decides per call that the cache is not used: a persona model, or an app whose answers depend on live OpenCode
+ * tool output (`serverTools`, #82). Both conditions live in the one predicate the runtime passes.
+ */
 export function cachedCaller(
   inner: ModelCaller,
   config: CacheConfig,
   store: CacheStore,
   count?: CacheCounter,
-  bypass?: (model: string) => boolean,
+  bypass?: (model: string, app: string) => boolean,
 ): ModelCaller {
   const apps = config.apps ? new Set(config.apps) : undefined
   return {
     async *stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
-      if (context.noCache || bypass?.(request.model) || (apps && !apps.has(context.app))) return yield* inner.stream(request, context)
+      if (context.noCache || bypass?.(request.model, context.app) || (apps && !apps.has(context.app))) return yield* inner.stream(request, context)
       const key = cacheKey(context.app, request)
       const hit = store.get(key)
       if (hit) {

@@ -355,7 +355,9 @@ export function withResponseCache(caller: ModelCaller, options: PlugboardOptions
       if (rt) rt.cache = held
     }
     const count = options.metrics ? (app: string, result: "hit" | "miss") => processMetrics().cache(app, result) : undefined
-    return cachedCaller(caller, config, held.store, count, (model) => personaOf(options, model) !== undefined)
+    // One bypass predicate: a persona model, or an app whose answers depend on live OpenCode tool output (#82).
+    const serverToolApps = new Set(Object.entries(options.apps).filter(([, policy]) => policy.serverTools !== undefined).map(([app]) => app))
+    return cachedCaller(caller, config, held.store, count, (model, app) => personaOf(options, model) !== undefined || serverToolApps.has(app))
   }
   return { stream: (request, context) => (wrapped ??= build()).stream(request, context) }
 }
