@@ -79,6 +79,7 @@ export default defineConfig({
           { text: "Cline", link: "/clients/cline" },
           { text: "Roo Code", link: "/clients/roo-code" },
           { text: "LlamaIndex", link: "/clients/llamaindex" },
+          { text: "Haystack", link: "/clients/haystack" },
         ],
       },
       {
