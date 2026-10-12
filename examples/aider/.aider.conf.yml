@@ -1,0 +1,8 @@
+# Aider config for plugboard. Copy to your repo root or ~/.aider.conf.yml.
+# Keep the openai/ prefix on every model; the endpoint and key are in .env.
+model: openai/fast
+weak-model: openai/fast          # commit messages and summaries
+no-auto-commits: true            # review the diff yourself
+no-analytics: true
+no-check-update: true
+no-show-model-warnings: true     # plugboard ids are not in Aider's model metadata

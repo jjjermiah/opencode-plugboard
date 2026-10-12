@@ -62,6 +62,7 @@ export default defineConfig({
           { text: "LiteLLM (as a client)", link: "/clients/litellm-client" },
           { text: "Instructor", link: "/clients/instructor" },
           { text: "DSPy", link: "/clients/dspy" },
+          { text: "Aider", link: "/clients/aider" },
           { text: "Open WebUI", link: "/clients/open-webui" },
           { text: "n8n", link: "/clients/n8n" },
         ],

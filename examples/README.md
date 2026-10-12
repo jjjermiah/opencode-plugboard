@@ -10,6 +10,7 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script |
 | [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
 | [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script |
+| [aider/](aider/.aider.conf.yml) | Aider (a terminal coding tool) pointed at plugboard: `.aider.conf.yml` and `.env.example` |
 | [curl](#curl) | One request per API: chat, responses, messages, Gemini, models and usage |
 
 Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option.
@@ -59,6 +60,17 @@ PLUGBOARD_KEY=<your key> uv run example.py
 ```
 
 `PLUGBOARD_URL` defaults to `http://127.0.0.1:4010`.
+
+## Aider
+
+Copy `.env.example` to `.env` and fill in the key, then run from the repo you want to edit:
+
+```sh
+cd examples/aider && cp .env.example .env
+aider --model openai/fast
+```
+
+See [the Aider client page](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/aider.md) for what was tested.
 
 ## curl
 
