@@ -8,7 +8,7 @@
  */
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
-import { unfence } from "../openai/response.js"
+import { structuredMissing, textFallback, unfence } from "../openai/response.js"
 import { StopHoldback } from "../stop.js"
 import { WRAP_KEY } from "./request.js"
 
@@ -33,6 +33,8 @@ export interface GeminiExchange {
   readonly jsonObject?: boolean
   /** The request's `generationConfig.stopSequences`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). Not applied to structured output. */
   readonly stop?: ReadonlyArray<string>
+  /** The caller's schema as sent (converted): a text answer is taken when the model skipped the call (`textFallback`, #173). */
+  readonly structuredSchema?: Readonly<Record<string, unknown>>
 }
 
 /** How an exchange ended. Nothing was emitted when `failure` is set and `started` is false: the caller answers with a real HTTP error. */
@@ -42,6 +44,8 @@ export interface GenerateRun {
   readonly started: boolean
   /** The aggregated response (non-streaming body). Absent on failure. */
   readonly response?: object
+  /** The structured answer came from the final text, not the respond call (`textFallback`). */
+  readonly structuredFallback?: boolean
 }
 
 type Part = Record<string, unknown>
@@ -121,20 +125,6 @@ const structuredText = (exchange: GeminiExchange, call: ToolCall): string => {
   return typeof input === "string" && !exchange.wrapped ? input : JSON.stringify(input ?? {})
 }
 
-/**
- * Structured-output projection, as in the other front-ends: the text is exactly the first
- * `respond` call; prose and other calls are suppressed. Without an answer the exchange fails,
- * except when the model stopped for `length` or `content-filter`.
- */
-const structuredFailure = (exchange: GeminiExchange, finish: Exclude<PlugFinish, "error">, answered: boolean): PlugError | undefined =>
-  exchange.structuredTool === undefined || answered || finish === "length" || finish === "content-filter"
-    ? undefined
-    : {
-        status: 502,
-        kind: "server",
-        code: "structured_output_missing",
-        message: `The model finished without calling the \`${exchange.structuredTool}\` tool, so there is no structured output`,
-      }
 
 export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: GeminiExchange, emit: (chunk: object) => void): Promise<GenerateRun> {
   const responseId = crypto.randomUUID().replaceAll("-", "").slice(0, 22)
@@ -152,6 +142,8 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
   let started = false
   let calls = 0
   let answered = false
+  /** The text of a structured turn (not emitted): it is the answer only if the respond call never comes (#173). */
+  let collected = ""
   /** With caller tools offered the structured answer waits for the finish: a caller tool call in the same step replaces it. */
   let held: ToolCall | undefined
   let finish: Exclude<PlugFinish, "error"> | undefined
@@ -216,6 +208,7 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
         }
         continue
       }
+      if (event.type === "text-delta") collected += event.text
       if (!(exchange.callerTools && event.type === "tool-call")) continue
     }
     if (exchange.jsonObject && event.type === "text-delta" && !passing) {
@@ -233,7 +226,9 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
   }
 
   const passthrough = exchange.callerTools === true && calls > 0
-  failure ??= finish ? (passthrough ? undefined : structuredFailure(exchange, finish, answered)) : noFinish()
+  const fallback = exchange.structuredTool !== undefined && !passthrough && !answered && exchange.structuredSchema !== undefined ? textFallback(collected, exchange.structuredSchema) : undefined
+  const missing = passthrough || answered || fallback !== undefined || exchange.structuredTool === undefined ? undefined : structuredMissing(exchange.structuredTool)
+  failure ??= finish ? missing : noFinish()
   if (failure) return { failure, started }
   flush()
   if (holdback) {
@@ -241,12 +236,13 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
     if (rest.length > 0) push({ text: rest })
   }
   if (held && !passthrough) text(structuredText(exchange, held))
+  if (fallback !== undefined) text(fallback)
   const candidate = { finishReason: FINISH_REASONS[finish!] }
   const extra = usage ? { usageMetadata: encodeUsage(usage) } : {}
   // The last chunk carries the finish reason and usage, with an empty text part as Google's does.
   emit(envelope([{ text: "" }], extra, candidate))
   started = true
-  return { started, response: envelope(parts.length > 0 ? parts : [{ text: "" }], extra, candidate) }
+  return { started, response: envelope(parts.length > 0 ? parts : [{ text: "" }], extra, candidate), ...(fallback !== undefined ? { structuredFallback: true } : {}) }
 }
 
 /** SSE frame of one stream chunk (`alt=sse`): `data: <json>`, no event name and no `[DONE]`. */

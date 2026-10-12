@@ -161,3 +161,45 @@ describe("#147 item_reference resolves to an output item of a recent answer", ()
     expect((await server!.send(nextTurn(id, { authorization: "Bearer key-beta" }))).status).toBe(400)
   })
 })
+
+describe("#173 POST /v1/responses structured output", () => {
+  const schema = { type: "object", required: ["a"], properties: { a: { type: "number" } } }
+  const format = { text: { format: { type: "json_schema", name: "a", schema } } }
+
+  test("a text answer that matches the schema is the message text, with x-plugboard-structured-fallback: text", async () => {
+    await route([ev.text('{"a":3}'), ev.finish("stop")])
+    const reply = await server!.send(responses(format))
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+    expect(reply.json()).toMatchObject({ status: "completed", output: [{ content: [{ text: '{"a":3}' }] }] })
+  })
+
+  test("a respond call is answered without the header", async () => {
+    await route([ev.call("c1", "respond", { a: 3 }), ev.finish("tool-calls")])
+    const reply = await server!.send(responses(format))
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBeUndefined()
+    expect(reply.json().output[0].content[0].text).toBe('{"a":3}')
+  })
+
+  test("a length finish with no answer is a 502 structured_output_missing, not an incomplete response", async () => {
+    await route([ev.finish("length")])
+    const reply = await server!.send(responses(format))
+    expect(reply.status).toBe(502)
+    expect(reply.json().error.code).toBe("structured_output_missing")
+  })
+
+  test("a streamed text answer that matches the schema completes with the text and no error", async () => {
+    await route([ev.text('{"a":3}'), ev.finish("stop")])
+    const stream = await server!.open(responses({ ...format, stream: true }))
+    const types = eventsOf(await stream.ended).map((event) => event.event)
+    expect(types.at(-1)).toBe("response.completed")
+    expect(types).not.toContain("response.failed")
+  })
+
+  test("a streamed prose answer that is not the schema ends as response.failed, after the commit", async () => {
+    await route([ev.text("prose"), ev.finish("stop")])
+    const stream = await server!.open(responses({ ...format, stream: true }))
+    const frames = eventsOf(await stream.ended)
+    expect(frames.at(-1)).toMatchObject({ event: "response.failed", data: { response: { error: { code: "structured_output_missing" } } } })
+  })
+})

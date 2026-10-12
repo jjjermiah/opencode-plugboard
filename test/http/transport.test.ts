@@ -302,6 +302,23 @@ describe("sseWriter: commit rules and keepalive", () => {
     await stream.ended
   })
 
+  test("#173 a buffered structured answer still commits on its first text event and keeps the stream alive until it is written", async () => {
+    const release = gate()
+    const { open } = await serve(async (_request, response) => {
+      const sse = sseWriter(response, undefined, 5)
+      // The encoder holds the prose back (it is not written); the commit and the keepalive come from the paced events.
+      for await (const event of sse.paced(script(ev.text("prose"), release.promise, ev.call("c1", "respond", { a: 1 })))) if (event.type === "tool-call") sse.write("data: answer\n\n")
+      response.end()
+    })
+    const stream = await open()
+    expect(stream.status).toBe(200)
+    await stream.waitFor((text) => text.split(": keepalive").length > 2)
+    expect(stream.received).not.toContain("prose")
+    release.open()
+    const frames = parseSse(await stream.ended)
+    expect(frames.at(-1)).toEqual({ data: "answer" })
+  })
+
   test("an idle committed stream gets a keepalive comment every interval, and none after the events end", async () => {
     const release = gate()
     const { open } = await serve(async (_request, response) => {

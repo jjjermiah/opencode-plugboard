@@ -257,3 +257,39 @@ describe("#151 generateContent JSON answers: tool calls and structured output", 
     expect(reply.json()).toMatchObject({ error: { code: 502, status: "INTERNAL", message: expect.stringContaining("respond") } })
   })
 })
+
+describe("#173 structured output as text, on generateContent and streamGenerateContent", () => {
+  const schema = { type: "object", properties: { a: { type: "number" } }, required: ["a"] }
+  const config = { generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema } }
+
+  test("a JSON text answer that matches the schema is the answer, with x-plugboard-structured-fallback: text", async () => {
+    await route([ev.text('{"a":3}'), ev.finish("stop")])
+    const reply = await server!.send(generate(undefined, config))
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+    expect(reply.json().candidates[0].content.parts).toEqual([{ text: '{"a":3}' }])
+  })
+
+  test("a respond call is answered without the header", async () => {
+    await route([ev.call("c1", "respond", { a: 3 }), ev.finish("tool-calls")])
+    const reply = await server!.send(generate(undefined, config))
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBeUndefined()
+    expect(reply.json().candidates[0].content.parts).toEqual([{ text: '{"a":3}' }])
+  })
+
+  test("a MAX_TOKENS finish with no answer is a 502 in Google's shape, not a candidate with no content", async () => {
+    await route([ev.finish("length")])
+    const reply = await server!.send(generate(undefined, config))
+    expect(reply.status).toBe(502)
+    expect(reply.json()).toMatchObject({ error: { code: 502, message: expect.stringContaining("respond") } })
+  })
+
+  test("a streamed JSON text answer that matches the schema streams it as one text chunk, with no error", async () => {
+    await route([ev.text('{"a":3}'), ev.finish("stop")])
+    const streamed = stream()
+    const text = await (await server!.open({ ...streamed, body: { ...(streamed.body as object), ...config } })).ended
+    const chunks = sseData(text)
+    expect(chunks.flatMap((chunk) => chunk.candidates[0].content.parts.map((part: { text?: string }) => part.text)).filter((part) => part)).toEqual(['{"a":3}'])
+    expect(chunks.some((chunk) => "error" in chunk)).toBe(false)
+  })
+})
