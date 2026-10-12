@@ -18,7 +18,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 # (uv project under compat/, harness file). litellm needs openai<3, the Agents SDK needs openai>=3,
 # so they run in separate environments; see compat/py-litellm/pyproject.toml.
-HARNESSES = [("py", "openai_agents.py"), ("py-litellm", "litellm_client.py"), ("py-litellm", "instructor_client.py")]
+HARNESSES = [("py", "openai_agents.py"), ("py-litellm", "litellm_client.py"), ("py-litellm", "instructor_client.py"), ("py-litellm", "dspy_client.py")]
 
 
 def start_fake() -> tuple[subprocess.Popen[str], str, str]:

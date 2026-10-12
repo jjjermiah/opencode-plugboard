@@ -58,7 +58,9 @@ function dspyAnswer(request: PlugRequest): string | undefined {
   if (!text.includes("[[ ##")) return undefined
   const names = [...text.matchAll(/\[\[ ## (\w+) ## \]\]/g)].map((m) => m[1]!).filter((name) => name !== "completed")
   const fields = [...new Set(names.length > 0 ? names : ["answer"])]
-  return [...fields.map((name) => `[[ ## ${name} ## ]]\npong`), "[[ ## completed ## ]]"].join("\n\n")
+  // A typed output carries its JSON schema in the prompt: answer with an object for it, else a string.
+  const value = text.includes('"type": "object"') ? '{"answer": "pong"}' : "pong"
+  return [...fields.map((name) => `[[ ## ${name} ## ]]\n${value}`), "[[ ## completed ## ]]"].join("\n\n")
 }
 
 const finish = (reason: "stop" | "tool-calls") => ev.finish(reason, { inputTokens: 11, outputTokens: 7 })
