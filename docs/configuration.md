@@ -316,7 +316,7 @@ The fields, in short:
 
 Retention: days older than `retentionDays` are deleted while requests are served, a page of keys at a time. An idle server keeps them until the next request.
 
-Persistence: each day is written to OpenCode's plugin storage at most every 10 seconds, by the request that finds the last write that old. The newest changes can therefore be in memory only: a restart before the next request loses the last few seconds of traffic, or the whole tail of an idle period. Reports read memory first, so they are never behind.
+Persistence: each day is written to OpenCode's plugin storage as its changes land. Writes of one day never overlap, so a change made during a write is written next; a restart loses only changes whose write was still in flight or failed. Reports read memory first, so they are never behind.
 
 ### Dashboard
 
