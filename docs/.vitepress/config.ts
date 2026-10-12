@@ -60,6 +60,7 @@ export default defineConfig({
           { text: "pydantic-ai", link: "/clients/pydantic-ai" },
           { text: "Open WebUI", link: "/clients/open-webui" },
           { text: "n8n", link: "/clients/n8n" },
+          { text: "Claude Code", link: "/clients/claude-code" },
         ],
       },
       {
