@@ -1,0 +1,15 @@
+# SillyTavern on the host. The plugboard connection is set in the UI (API Connections > Custom (OpenAI-compatible)):
+#   Endpoint: http://host.docker.internal:4010/v1   (keep /v1; do not add /chat/completions)
+#   API key:  a plugboard app key
+# Docs: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/sillytavern.md
+# The image tag is not checked against the project's current release; pin one before relying on it.
+services:
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:latest
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./config:/home/node/app/config
+      - ./data:/home/node/app/data

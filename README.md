@@ -470,6 +470,18 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Kilo Code | [kilo-code][client-kilo-code] | docs only, not run yet |
 | LibreChat | [librechat][client-librechat] | docs only, not run yet |
 | Zed | [zed][client-zed] | docs only, not run yet |
+| LobeChat | [lobechat][client-lobechat] | docs only, not run yet (web app) |
+| Chatbox | [chatbox][client-chatbox] | docs only, not run yet (desktop app); OpenAI and Gemini provider types |
+| Jan | [jan][client-jan] | docs only, not run yet (desktop app and CLI); OpenAI and Anthropic API formats |
+| AnythingLLM | [anythingllm][client-anythingllm] | docs only, not run yet (desktop/Docker app); Generic OpenAI provider |
+| SillyTavern | [sillytavern][client-sillytavern] | docs only, not run yet (web app); Custom (OpenAI-compatible) source |
+| Cline | [cline][client-cline] | docs only, not run yet (VS Code extension); OpenAI Compatible provider |
+| Roo Code | [roo-code][client-roo-code] | docs only, not run yet (VS Code extension); needs native tool calling |
+| promptfoo | [promptfoo][client-promptfoo] | pass against the scripted fake: `promptfoo eval` 2/2 (text, tool call); model-graded assertions need a plugboard grader |
+| smolagents | [smolagents][client-smolagents] | partial against the scripted fake: text, stream, tool call pass; tool round trip fails on the fake (scripted reply); needs `smolagents[openai]` |
+| Mastra | [mastra][client-mastra] | pass against the scripted fake: text, stream, tool call, tool round trip; needs `plugboard/fast`, not bare `fast` |
+| Haystack | [haystack][client-haystack] | pass against the scripted fake: pipeline text, stream, tool call, tool round trip |
+| LlamaIndex | [llamaindex][client-llamaindex] | pass against the scripted fake: text, stream, tool call, tool round trip; `OpenAILike` (the `OpenAI` class rejects `fast`) |
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
@@ -559,6 +571,18 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-kilo-code]: https://jjjermiah.github.io/opencode-plugboard/clients/kilo-code
 [client-librechat]: https://jjjermiah.github.io/opencode-plugboard/clients/librechat
 [client-zed]: https://jjjermiah.github.io/opencode-plugboard/clients/zed
+[client-lobechat]: https://jjjermiah.github.io/opencode-plugboard/clients/lobechat
+[client-chatbox]: https://jjjermiah.github.io/opencode-plugboard/clients/chatbox
+[client-jan]: https://jjjermiah.github.io/opencode-plugboard/clients/jan
+[client-anythingllm]: https://jjjermiah.github.io/opencode-plugboard/clients/anythingllm
+[client-sillytavern]: https://jjjermiah.github.io/opencode-plugboard/clients/sillytavern
+[client-cline]: https://jjjermiah.github.io/opencode-plugboard/clients/cline
+[client-roo-code]: https://jjjermiah.github.io/opencode-plugboard/clients/roo-code
+[client-llamaindex]: https://jjjermiah.github.io/opencode-plugboard/clients/llamaindex
+[client-haystack]: https://jjjermiah.github.io/opencode-plugboard/clients/haystack
+[client-mastra]: https://jjjermiah.github.io/opencode-plugboard/clients/mastra
+[client-smolagents]: https://jjjermiah.github.io/opencode-plugboard/clients/smolagents
+[client-promptfoo]: https://jjjermiah.github.io/opencode-plugboard/clients/promptfoo
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
