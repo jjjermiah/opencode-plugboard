@@ -60,7 +60,7 @@ A 400 `invalid_request_error` whose message names the field, for example `tools.
 - A `tool_result` whose `tool_use_id` no earlier `tool_use` block has, and `tool_choice` naming a tool that is not in `tools`.
 - A missing `max_tokens`, `messages` or `model`, values out of range, and more tools than the `maxTools` option.
 
-`POST /v1/messages/count_tokens` answers 404 `not_found_error`: plugboard has no tokenizer for the model behind an id, and a guess would mislead clients that budget with it. Claude Code is expected to fall back to its own estimate (not verified).
+`POST /v1/messages/count_tokens` answers `{ "input_tokens": N }` with an estimate: characters / 4 over the system prompt, messages and tool schemas, plus a fixed cost per image or file. Plugboard has no tokenizer for the model behind an id, so treat it as a budget hint, not the provider's exact count.
 
 ## Output
 

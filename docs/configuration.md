@@ -130,7 +130,7 @@ Without `keys` the only app is `default`, and `apps.default` configures it. Once
 - `perApp` applies to every app. `apps.<name>` overrides `perApp` field by field for that app: `coding` above gets 4 calls at once and still 30 per minute. Each name must be a configured app (a key in `keys`), or `default` when there are no keys.
 - Every value is a positive integer. Unknown keys are rejected at load.
 - A call holds one slot in each cap that applies to its app, until its answer ends, fails or the client disconnects. A request that falls back along an alias list holds one slot for all its targets.
-- Nothing queues. A call that finds a cap full gets 429 `too_many_requests` at once, before any session is created, so the provider never sees it. The HTTP response does not carry a `Retry-After` header yet.
+- Nothing queues. A call that finds a cap full gets 429 `too_many_requests` at once, before any session is created, so the provider never sees it. The response carries `Retry-After`: 1 second for a full concurrency cap, the seconds left in the window for `rate_limit_exceeded`.
 - `requestsPerMinute` is a fixed window of 60 seconds per app, starting at the app's first call in it. A call over the limit gets 429 `rate_limit_exceeded`.
 - A refused call takes no slot and counts toward no window.
 - The counts live in the server process: a restart clears them, and two servers do not share them.
