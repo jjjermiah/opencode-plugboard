@@ -60,6 +60,7 @@ import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
 import { bodyUser, noteEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
+import { reportAffinity } from "../session/affinity.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { STRUCTURED_FALLBACK_HEADER, collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
@@ -323,6 +324,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         onUsage: reportUsage(response, exchange.stream),
         onServerTools: reportServerTools(response, exchange.stream),
         onCache: reportCache(response),
+        onAffinity: reportAffinity(response),
       }),
       scope,
     )

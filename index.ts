@@ -29,6 +29,7 @@ import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
 import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processKeys, processLimits, processMetrics, processUsage, registerGeneration, setConfigError, sessionStore, withResponseCache } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
+import { createAffinity } from "./src/session/affinity.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
 import { createKeyStore } from "./src/keys.js"
@@ -69,6 +70,8 @@ export default Plugin.define({
         apps: options.apps,
         persona: (model: string) => personaOf(options, model),
         remoteImages: options.remoteImages,
+        promptCache: options.promptCache,
+        affinity: createAffinity({ storage: createStoragePort(ctx) }),
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
       }

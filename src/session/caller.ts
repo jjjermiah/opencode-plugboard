@@ -18,15 +18,16 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { log, logError, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
-import { describeError, type SessionPort } from "./host.js"
+import { describeError, MissingParentError, type SessionPort } from "./host.js"
 import { ImageError, prepareImages, type RemoteImages } from "./media.js"
 import { requestPermissions, seedToolsFor, ungrantedServerTool, type OperatorRule } from "./seeds.js"
+import { maxAnchorsOf, PROMPT_CACHE_OFF, scopeKey, type Affinity } from "./affinity.js"
 import type { SessionStore } from "./state.js"
 
 export interface SessionCallerDeps {
@@ -49,6 +50,10 @@ export interface SessionCallerDeps {
    * the skill's content to the system prompt, an agent runs its own system prompt and OpenCode agent.
    */
   readonly persona?: (model: string) => Persona | undefined
+  /** Global prompt-cache affinity (option `promptCache`); an app's `apps.<name>.promptCache` overrides it. Absent: off. */
+  readonly promptCache?: PromptCache
+  /** The store of anchor sessions (src/session/affinity.ts). Absent: no affinity, whatever the policy says. */
+  readonly affinity?: Affinity
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
@@ -58,6 +63,9 @@ const failure = (status: number, message: string, code: string): PlugEvent => ({
   type: "error",
   error: { status, kind: status >= 500 ? "server" : "invalid_request", message, code },
 })
+
+/** The anchor session's title (`plugboard anchor: <app>[/<key>]`); it is never prompted. */
+const anchorTitle = (app: string, key: string): string => (key === "" ? `plugboard anchor: ${app}` : `plugboard anchor: ${app}/${key}`)
 
 const notFound = (message: string): PlugError => ({ status: 404, kind: "not_found", message, code: "model_not_found", param: "model" })
 
@@ -154,6 +162,7 @@ async function checkServerToolsAvailable(port: SessionPort, policy: AppPolicy | 
 
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port, sessions, maxTools, ensureBackend } = deps
+  const affinity = deps.affinity
   const apps = deps.apps ?? {}
   const remoteImages = deps.remoteImages ?? false
 
@@ -265,23 +274,49 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
             : {}),
         })
 
-        const creating = port.create({
-          directory,
-          model: { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) },
-          ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
-          title: makeTitle(request),
-          metadata: { plugboard: { app, model: request.model, requestID } },
-          permissions: requestPermissions(policy?.serverTools ?? [], operatorRules),
-        })
-        const created = await raceAbort(creating, context.signal).catch((error) => {
-          // The host keeps creating after the abort. A session that lands now is in no index, so it is removed.
-          if (context.signal.aborted)
-            void creating.then(
-              (late) => port.remove(late.id).catch((removeError) => logError("session.late_remove_failed", { requestID, app, sessionID: late.id, error: describeError(removeError) })),
-              () => {},
-            )
-          throw error
-        })
+        // 3c. Prompt-cache affinity (#80): under an anchor the request session is its child, so the provider cache key
+        // stays the anchor's id across requests (src/session/affinity.ts).
+        const cache = appPolicy({ apps }, app)?.promptCache ?? deps.promptCache ?? PROMPT_CACHE_OFF
+        const scope = affinity && cache.affinity === "anchor" ? scopeKey(cache, called) : undefined
+        const modelRef = { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) }
+        const makeAnchor = (): Promise<string> =>
+          port.create({ directory, model: modelRef, title: anchorTitle(app, scope ?? ""), metadata: { plugboard: { app, anchor: true } }, permissions: requestPermissions([]) }).then((made) => String(made.id))
+        let parentID: string | undefined
+        const maxAnchors = maxAnchorsOf(cache)
+        if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, maxAnchors, makeAnchor), context.signal)
+        if (context.signal.aborted) return
+
+        const makeChild = (parent: string | undefined) => {
+          const creating = port.create({
+            directory,
+            model: modelRef,
+            ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
+            title: makeTitle(request),
+            metadata: { plugboard: { app, model: request.model, requestID } },
+            permissions: requestPermissions(policy?.serverTools ?? [], operatorRules),
+            ...(parent === undefined ? {} : { parentID: parent }),
+          })
+          return raceAbort(creating, context.signal).catch((error) => {
+            // The host keeps creating after the abort. A session that lands now is in no index, so it is removed.
+            if (context.signal.aborted)
+              void creating.then(
+                (late) => port.remove(late.id).catch((removeError) => logError("session.late_remove_failed", { requestID, app, sessionID: late.id, error: describeError(removeError) })),
+                () => {},
+              )
+            throw error
+          })
+        }
+        let created: { id: string }
+        try {
+          created = await makeChild(parentID)
+        } catch (error) {
+          // The anchor was deleted in OpenCode: forget its record, make one anchor and retry the child once (never more).
+          if (!(error instanceof MissingParentError) || affinity === undefined || scope === undefined || parentID === undefined) throw error
+          logWarn("affinity.anchor_recreated", { requestID, app, previous: parentID })
+          await affinity.forget(app, cache.scope, scope)
+          parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, maxAnchors, makeAnchor), context.signal)
+          created = await makeChild(parentID)
+        }
         sessionID = String(created.id)
         sessions.register({ sessionID, app, requestID, request, collector, prelude })
 
@@ -293,6 +328,13 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           context.onRecord?.(sessionID, directory)
         } catch (error) {
           logError("request.on_record_failed", { requestID, app, error: describeError(error) })
+        }
+        if (cache.affinity === "anchor") {
+          try {
+            context.onAffinity?.(parentID === undefined ? "none" : "anchor")
+          } catch (error) {
+            logError("request.on_affinity_failed", { requestID, app, error: describeError(error) })
+          }
         }
 
         // 4. Prompt concurrently; events stream through the collector while it runs.

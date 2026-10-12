@@ -17,6 +17,17 @@ import type { OperatorRule } from "./seeds.js"
 
 export type HostContext = Plugin.Context
 
+/**
+ * A child session's parent (the anchor, `promptCache`) no longer exists: it was deleted in OpenCode, so the host failed with
+ * `Session.NotFoundError` (packages/core/src/session.ts, the `parentID` check). The caller recreates the anchor once.
+ */
+export class MissingParentError extends Error {
+  constructor() {
+    super("The anchor session of this request no longer exists")
+    this.name = "MissingParentError"
+  }
+}
+
 /** JSON value, the shape of session metadata (the host's `Json`). */
 export type Json = string | number | boolean | null | ReadonlyArray<Json> | { readonly [key: string]: Json }
 
@@ -30,6 +41,8 @@ export interface SessionPort {
     readonly title: string
     readonly metadata: { readonly [key: string]: Json }
     readonly permissions: ReadonlyArray<{ action: string; resource: string; effect: "allow" | "deny" }>
+    /** The anchor session this one is a child of (`promptCache` affinity `anchor`). A child takes its parent's location, so `directory` is not sent. */
+    readonly parentID?: string
   }): Promise<{ id: string }>
   prompt(input: { readonly sessionID: string; readonly text: string; readonly files: ReadonlyArray<{ uri: string; name: string }> }): Promise<unknown>
   interrupt(sessionID: string): Promise<void>
@@ -94,15 +107,26 @@ export function createSessionPort(ctx: HostContext): SessionPort {
   const skillsByDirectory = new Map<string, { readonly at: number; readonly skills: ReadonlyMap<string, string> }>()
   return {
     create: (input) =>
-      run(
-        ctx.session.create({
-          model: hostModel(input.model),
-          ...(input.agent === undefined ? {} : { agent: input.agent as HostAgent }),
-          title: input.title,
-          metadata: input.metadata,
-          permissions: input.permissions,
-          location: { directory: hostDirectory(input.directory) },
-        } satisfies HostCreate),
+      (input.parentID === undefined
+        ? run(
+            ctx.session.create({
+              model: hostModel(input.model),
+              ...(input.agent === undefined ? {} : { agent: input.agent as HostAgent }),
+              title: input.title,
+              metadata: input.metadata,
+              permissions: input.permissions,
+              location: { directory: hostDirectory(input.directory) },
+            } satisfies HostCreate),
+          )
+        : childOrMissing(
+            ctx.session.create({
+              model: hostModel(input.model),
+              title: input.title,
+              metadata: input.metadata,
+              permissions: input.permissions,
+              parentID: input.parentID as NonNullable<HostCreate["parentID"]>,
+            } satisfies HostCreate),
+          )
       ).then((created) => ({ id: String(created.id) })),
     skill: async (directory, id) => {
       const now = Date.now()
@@ -157,6 +181,20 @@ export interface HistoryPort {
 }
 
 const failureTag = (error: unknown): unknown => (typeof error === "object" && error !== null ? (error as { _tag?: unknown })._tag : undefined)
+
+/**
+ * Runs an effect whose failure is a missing parent (`Session.NotFoundError`) as `MissingParentError`. The failure is
+ * captured as a value first, so the promise rejects with the typed error and not with the runtime's wrapper.
+ */
+const childOrMissing = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
+  Effect.runPromise(
+    effect.pipe(
+      Effect.match({ onSuccess: (value) => ({ failed: false as const, value }), onFailure: (error) => ({ failed: true as const, error }) }),
+    ),
+  ).then((result) => {
+    if (!result.failed) return result.value
+    throw failureTag(result.error) === "Session.NotFoundError" ? new MissingParentError() : result.error
+  })
 
 /** `ctx.storage` and `ctx.session.remove` as a Promise port. The branded session ID is the same host-issued string as above. */
 export function createHistoryPort(ctx: HostContext): HistoryPort {

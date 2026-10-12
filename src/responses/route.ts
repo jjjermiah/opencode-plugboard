@@ -18,6 +18,7 @@ import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
+import { reportAffinity } from "../session/affinity.js"
 import { STRUCTURED_FALLBACK_HEADER, encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
@@ -61,6 +62,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
+      onAffinity: reportAffinity(response),
       onUsage: reportUsage(response, exchange.stream),
       onServerTools: reportServerTools(response, exchange.stream),
       onCache: reportCache(response),

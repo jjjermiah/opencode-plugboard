@@ -212,6 +212,8 @@ curl -s "http://127.0.0.1:4010/v1/models?capability=vision" -H "Authorization: B
 
 ### Limits and caching
 
+`promptCache` with `affinity: "anchor"` keeps the provider prompt cache stable across requests, which gains on ChatGPT subscription models. See [prompt-cache affinity][configuration-affinity].
+
 #### Concurrency and rate limits
 
 `limits` caps how many model calls run at once, and how many an app may start per minute. Nothing queues. A call over a cap gets a 429 at once, so the provider never sees it.
@@ -543,6 +545,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [configuration-apps]: https://jjjermiah.github.io/opencode-plugboard/configuration#apps-and-keys
 [configuration-aliases]: https://jjjermiah.github.io/opencode-plugboard/configuration#aliases-and-fallbacks
 [configuration-limits]: https://jjjermiah.github.io/opencode-plugboard/configuration#concurrency-and-rate-limits
+[configuration-affinity]: https://jjjermiah.github.io/opencode-plugboard/configuration#prompt-cache-affinity
 [configuration-usage]: https://jjjermiah.github.io/opencode-plugboard/configuration#usage-statistics
 [configuration-reload]: https://jjjermiah.github.io/opencode-plugboard/configuration#reloads-and-restarts
 [responses]: https://jjjermiah.github.io/opencode-plugboard/responses
