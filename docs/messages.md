@@ -84,7 +84,7 @@ Errors use Anthropic's body, `{"type":"error","error":{"type":"...","message":".
 `stream: true` sends SSE frames `event: <type>` then `data: <json>`:
 
 ```text
-message_start                (usage is zero here: token counts are known at the end)
+message_start                (usage is zero here: the host reports token counts only when the answer ends)
 content_block_start          (thinking or text, one per block)
 ping                         (once, after the first block starts)
 content_block_delta          (thinking_delta or text_delta, one per model chunk)
@@ -92,7 +92,7 @@ content_block_stop
 content_block_start          (tool_use with input {}, one per call)
 content_block_delta          (one input_json_delta holding the whole input)
 content_block_stop
-message_delta                (stop_reason, and the final usage)
+message_delta                (stop_reason, and the final usage: input_tokens, cache_creation_input_tokens, cache_read_input_tokens and output_tokens)
 message_stop
 ```
 

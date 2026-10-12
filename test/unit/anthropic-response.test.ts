@@ -26,6 +26,13 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     expect(emitted.at(-2)).toMatchObject({ delta: { stop_reason: "end_turn" }, usage: message.usage })
   })
 
+  test("#203 message_start carries zero usage, because the host reports counts at the end; message_delta carries the real ones", async () => {
+    const { emitted } = await run(plain, ev.text("hi"), ev.finish("stop", { inputTokens: 10, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 1 }))
+    expect(emitted[0]).toMatchObject({ type: "message_start", message: { usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } })
+    // The Anthropic SDK accumulator (MessageStream) takes input and cache counts from message_delta when they are non-null.
+    expect(emitted.find((event) => event.type === "message_delta")).toMatchObject({ usage: { input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3 } })
+  })
+
   test("a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use", async () => {
     const { emitted, message } = await run(plain, ev.text("let me"), ev.call("call_1", "read", { path: "a" }), ev.finish("stop"))
     expect(emitted.filter((event) => event.type.startsWith("content_block")).map((event) => [event.type, event.index])).toEqual([
