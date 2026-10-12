@@ -154,6 +154,7 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 | `maxTools` | Lowers the global `maxTools` for this app. A request with more tools gets 400 `too_many_tools`. It cannot be higher than the global cap. |
 | `serverTools` | Off by default. A list of exact OpenCode tool ids (for example `websearch`) that this app's sessions may run themselves, 1 to 32 entries. See the warning below. |
 | `maxServerToolSteps` | Model steps that may run server tools in one request, `8` by default, 1 to 100. Needs `serverTools`. |
+| `historyUrl` | The session link template for this app: a string with `{id}` (see [Session links](#session-links)), or `false` for no link, no `x-plugboard-session-url` and no `session_url=` log field. Absent: the global `historyUrl`. Set `false` for an app you do not trust with the OpenCode server address. |
 
 > **Security: `serverTools` lets an app's key run OpenCode tools on the server.** Anyone holding that app's key can make the model call each listed tool, and the tool runs with the server's own OpenCode credentials and permissions. The prompt steers which arguments the model passes. A tool that reads files or runs commands can reach what the server's OpenCode process can reach, within whatever limits that tool enforces itself. Give such a key only to a caller you would trust with those tools, list the fewest tools the app needs, and never list tools on the keyless `default` app or on a key shared with others. Plugboard checks that each listed tool is a direct tool of the server's OpenCode right now and denies every other tool, but it cannot limit what a listed tool does.
 
@@ -368,6 +369,8 @@ A response names its history record in `x-plugboard-session`, but the OpenCode w
 With it set, every response that carries `x-plugboard-session` also carries `x-plugboard-session-url`, and the request log line gets `session_url=`. A call with `n` above 1 lists the links in choice order, like the session ids. A cache hit has neither, because it writes no session.
 
 `{id}` and `{directory}` are URL-encoded, so a value cannot add a path segment or a query. `{directory}` is the app's directory on the OpenCode host. Putting it in the template shows that path to every caller that reads the header, so leave it out unless your UI needs it. The template is checked when the config loads: it must be an `http(s)` URL with `{id}`, and the only other placeholder allowed is `{directory}`.
+
+**The link reveals your OpenCode server's address to every app that receives it.** Whoever holds an app key can read the template's host and port from `x-plugboard-session-url`, and does not need the OpenCode server password to see where the server is. Set `apps.<name>.historyUrl` to `false` for an app you do not trust with that address: its responses then carry no `x-plugboard-session-url`, and its log line has no `session_url=`. A string in the same field gives that app its own template (the same checks apply, and the error names `apps.<name>.historyUrl`). An app without the field inherits the global `historyUrl`.
 
 ## Limits and errors
 

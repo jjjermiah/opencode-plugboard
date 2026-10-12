@@ -22,7 +22,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, historyTemplate, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -305,7 +305,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         onRecord: (recordID, directory) => {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
-          setSessionLink(response, info, host.options.historyUrl, recordID, directory)
+          setSessionLink(response, info, historyTemplate(host.options, auth.app), recordID, directory)
         },
         // An alias with fallbacks: report which target answered, and echo it as the response model.
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
