@@ -134,3 +134,5 @@ Prose in the README, docs, issues and changelog is plain and short. No em or en 
 - `bun run typecheck` and `bun test` pass.
 - The pong gate passed on an isolated server, if you touched `src/` or `index.ts`.
 - `[Unreleased]` in the changelog is updated.
+- `main` is protected. Nothing is pushed to it directly: push your branch, open the pull request, and merge it once the required checks pass (`Typecheck, test and pack`, `Compat kit checks`, `Host versions` and `Lint commit messages`). No approving review is required, so a maintainer can merge their own pull request.
+- Releases follow the same rule. The release script opens a `release/vX.Y.Z` pull request and tags its merge commit; see [docs/releasing.md](docs/releasing.md#the-release-pull-request).

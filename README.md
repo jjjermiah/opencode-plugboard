@@ -3,6 +3,10 @@
 [![npm](https://img.shields.io/npm/v/opencode-plugboard)](https://www.npmjs.com/package/opencode-plugboard)
 [![license](https://img.shields.io/npm/l/opencode-plugboard)](https://github.com/jjjermiah/opencode-plugboard/blob/main/LICENSE)
 [![CI](https://github.com/jjjermiah/opencode-plugboard/actions/workflows/ci.yml/badge.svg)](https://github.com/jjjermiah/opencode-plugboard/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jjjermiah/opencode-plugboard/badge)](https://scorecard.dev/viewer/?uri=github.com/jjjermiah/opencode-plugboard)
+<!-- OpenSSF Best Practices: register at https://www.bestpractices.dev first (answers in docs/best-practices.md). Then replace <id> with the project id and uncomment the next line:
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/<id>/badge)](https://www.bestpractices.dev/projects/<id>)
+-->
 
 Plugboard is an OpenCode V2 plugin. It turns your OpenCode server into one HTTP API that OpenAI, Anthropic and Gemini compatible apps can call with their own key.
 

@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are driven by `CHANGELOG.md` and by the commit messages since the last tag. One script (`.github/scripts/release.ts`, run as `bun run release`) does the version bump, the changelog heading, the commit and the tag. GitHub Actions does the rest.
+Releases are driven by `CHANGELOG.md` and by the commit messages since the last tag. One script (`.github/scripts/release.ts`, run as `bun run release`) does the version bump, the changelog heading and the release commit, opens the release pull request, and tags the merge commit once it lands. GitHub Actions does the rest.
 
 ## Two layers of notes
 
@@ -13,14 +13,36 @@ The release script writes the full story into `CHANGELOG.md` as a collapsed `<de
 
 1. Keep `[Unreleased]` in `CHANGELOG.md` current. The release notes are that text, so write it for users. Fill in `compat/results/release-candidate.md` (see [development.md](development.md)). Update the pinned version (`opencode-plugboard@x.y.z`) in `README.md` and `docs/clients/any-app.md`; the release script does not touch them.
 2. Pick a title: short and creative, 2 to 5 words, at most 40 characters, no trailing period ("No Awkward Silences", "Claude Code, Any Brain"). Every release has one.
-3. From a clean `main`: `bun run release 0.3.0 --title "Your Title" --push`. Add `--dry-run` first to see the diff; it changes nothing and only warns about git state.
-4. With `--push` the script then watches the release for you (see below). Add `--no-watch` to skip that. The "Publish" run checks the gates, publishes to npm and creates the GitHub release.
+3. From a clean `main` that equals `origin/main`: `bun run release 0.3.0 --title "Your Title" --push`. Add `--dry-run` first to see the diff and the plan; it changes nothing and only warns about git state.
+4. The script opens a pull request for the release and enables auto-merge. When the required checks pass, the pull request merges, and the script tags the merge commit and pushes the tag. The tag starts the "Publish" run, which checks the gates, publishes to npm, attests the tarball and creates the GitHub release. The script then watches the release for you (see below); add `--no-watch` to skip that.
 
-The script refuses when the working tree is dirty, the branch is not `main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, the tag exists, or `--title` is missing or invalid. It moves the `[Unreleased]` text under `## [0.3.0] - <today>: Your Title`, appends the commit-level detail block, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json`, commits `chore(release): 0.3.0` and creates the annotated tag `v0.3.0`. Without `--push` it prints the push command instead.
+The script refuses when the working tree is dirty, the branch is not `main`, local `main` differs from `origin/main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, the tag or the branch `release/v0.3.0` already exists, or `--title` is missing or invalid. It moves the `[Unreleased]` text under `## [0.3.0] - <today>: Your Title`, appends the commit-level detail block, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json` and commits `chore(release): 0.3.0` on `release/v0.3.0`. The annotated tag `v0.3.0` is made on the merge commit, not on the release branch. Without `--push` the script refuses, because a release now always goes through a pull request; use `--dry-run` to preview.
+
+### The release pull request
+
+`main` is protected by a repository ruleset: a change lands only through a pull request whose required checks pass. A release follows the same rule:
+
+1. `release/v0.3.0` is created from `main` and pushed.
+2. A pull request into `main` is opened, with the release notes as its body.
+3. Auto-merge is enabled, with a merge commit. The pull request merges when the required checks pass, and its branch is deleted.
+4. The script waits up to 60 minutes for the merge, then tags the merge commit (it is on `main`, and its `package.json` has the new version) and pushes the tag. Tags are not part of a branch ruleset, so the tag push is not blocked by it. Check that on the first release.
+
+If the merge does not happen within 60 minutes, the script stops and prints how to tag the merge commit by hand.
+
+The required status checks are the job names GitHub shows on a pull request:
+
+- `Typecheck, test and pack` (`ci.yml`)
+- `Compat kit checks` (`ci.yml`)
+- `Host versions` (`ci.yml`)
+- `Lint commit messages` (`commits.yml`)
+
+Not required: `OpenCode host <version>` (one job per host version, so the names change), `Request-path benchmarks (advisory)`, the nightly and flake-hunt jobs, and `Analyze (javascript-typescript)` until CodeQL has run on `main`. `Build the site` is not a pull request check: the docs build is a step of `Typecheck, test and pack`.
+
+The repository needs two settings for this: "Allow auto-merge" (General), and a ruleset that requires no approving review. A solo maintainer cannot approve their own pull request, so a required approval would block every release.
 
 ### Watching a release
 
-After the push, `bun run release` finds the Publish run for the tag, follows it with `gh run watch --exit-status`, then polls `npm view` until `opencode-plugboard@0.3.0` is visible and the dist-tag points at it (`latest`, or `next` for a prerelease). npm can acknowledge a publish and keep it staged for a minute, so it waits up to 5 minutes. The exit code is the result: 0 only when the run succeeded and npm serves the version. It needs `gh` logged in.
+After the tag is pushed, `bun run release` finds the Publish run for the tag, follows it with `gh run watch --exit-status`, then polls `npm view` until `opencode-plugboard@0.3.0` is visible and the dist-tag points at it (`latest`, or `next` for a prerelease). npm can acknowledge a publish and keep it staged for a minute, so it waits up to 5 minutes. The exit code is the result: 0 only when the run succeeded and npm serves the version. It needs `gh` logged in.
 
 To follow or re-check an existing tag without releasing anything: `bun run release 0.3.0 --watch-only`.
 
@@ -34,11 +56,25 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
 3. It builds the release notes from the changelog section and the git history with `.github/scripts/release-notes.ts`. A missing or empty section, a heading without a title, or a previous tag missing from the clone fails here, before anything is published. The checkout uses `fetch-depth: 0` so the tag range is available.
 4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.
-5. It creates the GitHub release, named `v0.3.0: Your Title` (marked as a prerelease when the version has a `-`). If the release exists, it leaves it alone.
+5. The `publish` job packs the tarball once, publishes that exact file, and writes its SBOM. The `attest` job checks that the file's sha256 matches the one the publish job packed, then that its sha512 matches the integrity npm serves for that version, and only then attests it with GitHub build provenance. The `release` job creates the GitHub release, named `v0.3.0: Your Title` (marked as a prerelease when the version has a `-`), with the notes, the tarball, the SBOM and the attestation bundle attached. If the release exists, it attaches the files to it with `--clobber` and leaves the notes alone.
 
 Both writes are safe to retry: re-run the failed run, or "Run workflow" on the tag with `dry_run` unticked.
 
 Provenance: npm cannot generate provenance attestations for a private repository, so the workflow passes `--provenance` only when the repository is public. Trusted publishing itself works from a private repository. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) and [provenance](https://docs.npmjs.com/generating-provenance-statements).
+
+## Release files and how to verify them
+
+Each GitHub release has three files:
+
+- `opencode-plugboard-X.Y.Z.tgz`: the npm tarball, the same file npm serves.
+- `opencode-plugboard-X.Y.Z.cdx.json`: a CycloneDX SBOM of the production dependencies (`npm sbom --sbom-format cyclonedx --omit dev`).
+- `opencode-plugboard-X.Y.Z.tgz.sigstore.json`: the GitHub build-provenance attestation bundle for the tarball.
+
+To check a downloaded tarball was built by this repository's Publish workflow:
+
+```sh
+gh attestation verify opencode-plugboard-X.Y.Z.tgz --repo jjjermiah/opencode-plugboard
+```
 
 ## Other checks around releases
 
@@ -55,7 +91,7 @@ Actions tab, "Publish", "Run workflow" on `main` with `dry_run` ticked (the defa
 gh workflow run publish.yml -f dry_run=true
 ```
 
-It runs the gates, checks the changelog notes and runs `npm publish --dry-run`. It does not publish or create a release.
+It runs the gates, checks the changelog notes, runs `npm publish --dry-run` and packs the tarball and its SBOM. It does not publish, attest or create a release: the attestation and the release are writes, so those steps only print what they would do.
 
 ## One-time npm setup (owner)
 

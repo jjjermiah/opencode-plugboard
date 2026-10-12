@@ -58,4 +58,4 @@ jobs:
           echo "Linting $count commit(s) in $from..$to"
           # commitlint refuses an empty range (from equals to), so there is nothing to lint.
           if [ "$from" = "$to" ]; then exit 0; fi
-          bunx commitlint --from "$from" --to "$to" --verbose
+          ./node_modules/.bin/commitlint --from "$from" --to "$to" --verbose

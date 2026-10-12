@@ -103,6 +103,8 @@ export default defineConfig({
           { text: "Compatibility", link: "/compatibility" },
           { text: "Development", link: "/development" },
           { text: "Releasing", link: "/releasing" },
+          { text: "Security reviews", link: "/security-reviews" },
+          { text: "Best practices", link: "/best-practices" },
         ],
       },
     ],

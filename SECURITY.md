@@ -6,7 +6,9 @@ Please report it privately. Do not open a public issue.
 
 Use GitHub's private vulnerability reporting: go to the [Security tab](https://github.com/jjjermiah/opencode-plugboard/security) of the repository and choose "Report a vulnerability". Include the plugboard version, the OpenCode version, your `listen` and `remoteImages` settings (with keys removed) and the smallest request that shows the problem.
 
-I read reports as they come in and aim to reply within a week. This is a one-person project, so there is no bounty and no formal SLA. If a report is valid I will say so, fix it, and credit you in the changelog unless you prefer not to be named.
+I acknowledge a report within 7 days. For a confirmed issue I aim to ship a fix within 30 days. These are targets for a one-person project, not a contract, and there is no bounty. If a report is valid I will say so, fix it, and credit you in the changelog unless you prefer not to be named.
+
+Disclosure is coordinated. Once a fix is ready, I will agree a disclosure date with you and publish a GitHub security advisory that names the fixed version. If a fix will take longer than 30 days, I will tell you why and roughly when to expect it.
 
 ## What is in scope
 
@@ -33,3 +35,7 @@ Plugboard binds a port inside your OpenCode server and answers with your provide
 - `apps.<name>.serverTools` is off by default. Turning it on lets whoever holds that app's key make the model call the listed OpenCode tools, which then run with the server's own credentials and permissions. The prompt chooses the arguments, so the key is close to a shell key for the tools it names. Plugboard allows only the listed exact ids, checks they exist when the request arrives, and rejects the keyless `default` app, but it cannot restrict what a listed tool does. List the fewest tools, keep the key to one trusted caller, and never list tools on a shared or keyless app.
 - Debug logs and captured traffic can contain prompts and tool arguments. Treat them as sensitive. The `server_tool.call` log line never carries arguments or output.
 - Plugboard trusts OpenCode. A hostile OpenCode, plugin or config on the same server is out of scope.
+
+## Security reviews
+
+On 2026-10-12 the project had three AI-assisted staff reviews (security and legal, architecture and bugs, product and developer experience). They were AI reviews, not a human or third-party audit, and the maintainer is accountable for the changes that came out of them. What each one found, and where it was fixed, is in [docs/security-reviews.md](docs/security-reviews.md).
