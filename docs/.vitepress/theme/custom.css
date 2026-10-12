@@ -1,0 +1,39 @@
+/*
+ * Wider pages. The default theme caps the layout at 1440px and the text column at 688px, which
+ * squeezes the diagrams, tables and long config blocks these docs are made of. The layout now uses
+ * most of the window and the text column grows with it; the outline stays on the right.
+ * The theme's own rules are scoped (`[data-v-...]`), so these overrides need `!important`.
+ */
+:root {
+  --vp-layout-max-width: 100%;
+}
+
+@media (min-width: 960px) {
+  .VPDoc .container {
+    max-width: none !important;
+  }
+
+  .VPDoc .content,
+  .VPDoc .content-container,
+  .VPDoc.has-aside .content-container {
+    max-width: 1280px !important;
+  }
+
+  .VPDoc:not(.has-sidebar) .content {
+    max-width: 1280px !important;
+  }
+}
+
+/* Wide tables scroll inside themselves instead of breaking the column. */
+.vp-doc table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Diagrams (images, SVG) may use the full column width. */
+.vp-doc img,
+.vp-doc svg {
+  max-width: 100%;
+  height: auto;
+}
