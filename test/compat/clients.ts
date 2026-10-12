@@ -1,7 +1,7 @@
 /**
  * The clients of the compatibility matrix (#101): each official SDK, run the way its docs show,
- * pointed at plugboard. A client lists the scenarios its endpoint supports; a scenario it leaves
- * out is "n/a" in the matrix (no tools on legacy completions), and one marked `gap` is a known
+ * pointed at plugboard. A client has a case per scenario it runs; a scenario it does not apply to
+ * is `na` with the reason (#148); a scenario with neither is a todo. A case marked `gap` is a known
  * incompatibility that is expected to fail until fixed.
  *
  * SDK retries are off, so the error scenario fails fast instead of backing off.
@@ -15,8 +15,10 @@ import { GoogleGenAI, type Content } from "@google/genai"
 import { APICallError, generateText, jsonSchema, Output, stepCountIs, streamText, tool, type LanguageModel } from "ai"
 import { expect } from "bun:test"
 import OpenAI from "openai"
-import { MULTI_TURN_ANSWER, PARALLEL_ANSWER, PDF_BASE64, PNG_BASE64, STREAM_DELTAS, STRUCTURED, STRUCTURED_SCHEMA, TEXT, THINKING, TOOL_ANSWER, USAGE, WEATHER_SCHEMA, tag, type Scenario } from "./scenarios.js"
+import type { FakeModelCaller } from "../support/model-caller.js"
+import { serverSawAbort } from "./abort.js"
 import { LANGCHAIN_CLIENTS } from "./langchain.js"
+import { CATALOG_ID, MULTI_TURN_ANSWER, PARALLEL_ANSWER, PDF_BASE64, PNG_BASE64, STREAM_DELTAS, STRUCTURED, STRUCTURED_SCHEMA, TEXT, THINKING, TOOL_ANSWER, USAGE, WEATHER_SCHEMA, tag, type Scenario } from "./scenarios.js"
 
 export const ENDPOINTS = {
   chat: "POST /v1/chat/completions",
@@ -27,10 +29,11 @@ export const ENDPOINTS = {
 } as const
 export type Endpoint = keyof typeof ENDPOINTS
 
-/** Where plugboard listens and the key of the app the matrix runs as. */
+/** Where plugboard listens, the key of the app the matrix runs as, and the model caller behind it. */
 export interface Target {
   readonly origin: string
   readonly apiKey: string
+  readonly caller: FakeModelCaller
 }
 
 export type Run = (target: Target) => Promise<void>
@@ -41,6 +44,8 @@ export interface Client {
   readonly name: string
   readonly endpoint: Endpoint
   readonly cases: Partial<Record<Scenario, Case>>
+  /** Scenarios that do not apply to this client, each with the reason (#148). A scenario in neither `cases` nor `na` is a todo. */
+  readonly na?: Partial<Record<Scenario, string>>
 }
 
 const MODEL = "fast"
@@ -56,10 +61,17 @@ async function expect429(call: () => Promise<unknown>, type: abstract new (...ar
   expect((error as { status?: number }).status).toBe(429)
 }
 
+const NA_RESPONSES_STOP = "the Responses API has no stop parameter"
+const NA_RESPONSES_THINKING = "plugboard drops reasoning on /v1/responses (no reasoning items)"
+const NA_LEGACY = "echo and suffix are legacy completions options"
+const NA_NO_COUNT = "OpenAI has no token-count endpoint; clients count locally"
+const NA_NO_LOGPROBS = "logprobs are a Chat Completions and legacy completions field; plugboard refuses top_logprobs on /v1/responses"
+
 // ---------------------------------------------------------------- openai
 
 const openai = ({ origin, apiKey }: Target) => new OpenAI({ baseURL: `${origin}/v1`, apiKey, maxRetries: 0 })
 const weatherTool: OpenAI.Chat.Completions.ChatCompletionTool = { type: "function", function: { name: "weather", description: "Weather in a city", parameters: WEATHER_SCHEMA } }
+const pdfDataUrl = `data:application/pdf;base64,${PDF_BASE64}`
 
 const openaiChat: Client = {
   name: "openai",
@@ -100,6 +112,13 @@ const openaiChat: Client = {
       })
       expect(completion.choices[0]!.message.content).toBe("image: image/png")
     },
+    document: async (target) => {
+      const completion = await openai(target).chat.completions.create({
+        model: MODEL,
+        messages: [{ role: "user", content: [{ type: "text", text: tag("document") }, { type: "file", file: { filename: "a.pdf", file_data: pdfDataUrl } }] }],
+      })
+      expect(completion.choices[0]!.message.content).toBe("document: application/pdf")
+    },
     structured: async (target) => {
       const completion = await openai(target).chat.completions.create({
         model: MODEL,
@@ -128,16 +147,15 @@ const openaiChat: Client = {
     n: async (target) => {
       const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [{ role: "user", content: tag("n") }]
       const completion = await openai(target).chat.completions.create({ model: MODEL, n: 2, messages })
-      expect(completion.choices.map((choice) => [choice.index, choice.message.content])).toEqual([[0, TEXT], [1, TEXT]])
+      expect(completion.choices.map((choice) => [choice.index, choice.message.content])).toEqual([
+        [0, TEXT],
+        [1, TEXT],
+      ])
       // Streamed: the chunks of each choice carry its own index, so the client reassembles per choice.
       const stream = await openai(target).chat.completions.create({ model: MODEL, n: 2, stream: true, messages })
       const text: Record<number, string> = {}
       for await (const chunk of stream) for (const choice of chunk.choices) text[choice.index] = (text[choice.index] ?? "") + (choice.delta.content ?? "")
       expect([text[0], text[1]]).toEqual([TEXT, TEXT])
-    },
-    // A model id with a slash (the provider/model form the catalog lists) goes through the route unchanged.
-    "model-id": async (target) => {
-      expect((await openai(target).chat.completions.create({ model: "test/echo", messages: [{ role: "user", content: tag("model-id") }] })).choices[0]!.message.content).toBe(TEXT)
     },
     "stream-usage": async (target) => {
       const stream = await openai(target).chat.completions.create({ model: MODEL, stream: true, stream_options: { include_usage: true }, messages: [{ role: "user", content: tag("stream-usage") }] })
@@ -145,6 +163,44 @@ const openaiChat: Client = {
       for await (const chunk of stream) usage = chunk.usage ?? usage
       expect(usage).toMatchObject({ prompt_tokens: USAGE.inputTokens, completion_tokens: USAGE.outputTokens })
     },
+    "model-id": async (target) => {
+      expect((await openai(target).chat.completions.create({ model: CATALOG_ID, messages: [{ role: "user", content: tag("model-id") }] })).choices[0]!.message.content).toBe(TEXT)
+    },
+    // The sequence is part of the model's output; OpenAI's stop excludes it, plugboard does not remove it on this endpoint (#145 covers /v1/messages).
+    "stop-sequence": {
+      gap: "stop sequences are not removed from the answer on /v1/chat/completions (only /v1/messages strips the matched sequence, #145); OpenAI excludes it",
+      run: async (target) => {
+        const completion = await openai(target).chat.completions.create({ model: MODEL, stop: ["END"], messages: [{ role: "user", content: tag("stop-sequence") }] })
+        expect(completion.choices[0]!.message.content).toBe(TEXT)
+      },
+    },
+    logprobs: async (target) => {
+      const completion = await openai(target).chat.completions.create({ model: MODEL, messages: [{ role: "user", content: tag("logprobs") }] })
+      expect(completion.choices[0]!.logprobs ?? null).toBeNull()
+      const error = await openai(target)
+        .chat.completions.create({ model: MODEL, logprobs: true, messages: [{ role: "user", content: tag("logprobs") }] })
+        .then(
+          () => undefined,
+          (caught: unknown) => caught,
+        )
+      expect(error).toBeInstanceOf(OpenAI.BadRequestError)
+    },
+    cancel: async (target) => {
+      const controller = new AbortController()
+      const stream = await openai(target).chat.completions.create({ model: MODEL, stream: true, messages: [{ role: "user", content: tag("cancel") }] }, { signal: controller.signal })
+      for await (const chunk of stream)
+        if (chunk.choices[0]?.delta.content) {
+          controller.abort()
+          break
+        }
+      await serverSawAbort(target)
+    },
+  },
+  na: {
+    thinking: "Chat Completions has no thinking blocks",
+    "echo-suffix": NA_LEGACY,
+    "count-tokens": NA_NO_COUNT,
+    "prompt-array": "a prompt array is a legacy completions field",
   },
 }
 
@@ -162,6 +218,9 @@ const openaiResponses: Client = {
       let text = ""
       for await (const event of stream) if (event.type === "response.output_text.delta") text += event.delta
       expect(text).toBe(STREAM_DELTAS.join(""))
+      // The SDK's helper: streams the same events and resolves to the final response.
+      const helper = openai(target).responses.stream({ model: MODEL, input: tag("stream") })
+      expect((await helper.finalResponse()).output_text).toBe(TEXT)
     },
     tools: async (target) => {
       const input: OpenAI.Responses.ResponseInput = [{ role: "user", content: tag("tools") }]
@@ -186,6 +245,13 @@ const openaiResponses: Client = {
       })
       expect(response.output_text).toBe("image: image/png")
     },
+    document: async (target) => {
+      const response = await openai(target).responses.create({
+        model: MODEL,
+        input: [{ role: "user", content: [{ type: "input_text", text: tag("document") }, { type: "input_file", filename: "a.pdf", file_data: pdfDataUrl }] }],
+      })
+      expect(response.output_text).toBe("document: application/pdf")
+    },
     structured: async (target) => {
       const response = await openai(target).responses.create({ model: MODEL, input: tag("structured"), text: { format: { type: "json_schema", name: "answer", schema: STRUCTURED_SCHEMA, strict: true } } })
       expect(JSON.parse(response.output_text)).toEqual(STRUCTURED)
@@ -206,6 +272,34 @@ const openaiResponses: Client = {
     developer: async (target) => {
       expect((await openai(target).responses.create({ model: MODEL, input: [{ role: "developer", content: "Be brief." }, { role: "user", content: tag("developer") }] })).output_text).toBe(TEXT)
     },
+    "stream-usage": async (target) => {
+      const stream = await openai(target).responses.create({ model: MODEL, input: tag("stream-usage"), stream: true })
+      let usage: OpenAI.Responses.ResponseUsage | undefined
+      for await (const event of stream) if (event.type === "response.completed") usage = event.response.usage
+      expect(usage).toMatchObject({ input_tokens: USAGE.inputTokens, output_tokens: USAGE.outputTokens })
+    },
+    "model-id": async (target) => {
+      expect((await openai(target).responses.create({ model: CATALOG_ID, input: tag("model-id") })).output_text).toBe(TEXT)
+    },
+    cancel: async (target) => {
+      const controller = new AbortController()
+      const stream = await openai(target).responses.create({ model: MODEL, input: tag("cancel"), stream: true }, { signal: controller.signal })
+      for await (const event of stream)
+        if (event.type === "response.output_text.delta") {
+          controller.abort()
+          break
+        }
+      await serverSawAbort(target)
+    },
+  },
+  na: {
+    thinking: NA_RESPONSES_THINKING,
+    n: "the Responses API has no n",
+    "stop-sequence": NA_RESPONSES_STOP,
+    "echo-suffix": NA_LEGACY,
+    "count-tokens": NA_NO_COUNT,
+    "prompt-array": "a prompt array is a legacy completions field",
+    logprobs: NA_NO_LOGPROBS,
   },
 }
 
@@ -227,7 +321,10 @@ const openaiCompletions: Client = {
     },
     n: async (target) => {
       const completion = await openai(target).completions.create({ model: MODEL, prompt: tag("n"), n: 2 })
-      expect(completion.choices.map((choice) => [choice.index, choice.text])).toEqual([[0, TEXT], [1, TEXT]])
+      expect(completion.choices.map((choice) => [choice.index, choice.text])).toEqual([
+        [0, TEXT],
+        [1, TEXT],
+      ])
     },
     "stream-usage": async (target) => {
       const stream = await openai(target).completions.create({ model: MODEL, prompt: tag("stream-usage"), stream: true, stream_options: { include_usage: true } })
@@ -235,11 +332,60 @@ const openaiCompletions: Client = {
       for await (const chunk of stream) usage = chunk.usage ?? usage
       expect(usage).toMatchObject({ prompt_tokens: USAGE.inputTokens, completion_tokens: USAGE.outputTokens })
     },
-    // The echoed prompt comes first, then the completion; the suffix is only an instruction to the model.
+    // The echoed prompt comes first, then the completion. `suffix` alone is an instruction to the model, not an output.
     "echo-suffix": async (target) => {
-      const completion = await openai(target).completions.create({ model: MODEL, prompt: tag("echo-suffix"), echo: true, suffix: " world" })
-      expect(completion.choices[0]!.text).toBe(tag("echo-suffix") + TEXT)
+      const echoed = await openai(target).completions.create({ model: MODEL, prompt: tag("echo-suffix"), echo: true, suffix: " world" })
+      expect(echoed.choices[0]!.text).toBe(tag("echo-suffix") + TEXT)
+      const suffixed = await openai(target).completions.create({ model: MODEL, prompt: tag("echo-suffix"), suffix: " world" })
+      expect(suffixed.choices[0]!.text).toBe(TEXT)
     },
+    "prompt-array": async (target) => {
+      const completion = await openai(target).completions.create({ model: MODEL, prompt: [tag("prompt-array"), `${tag("prompt-array")} again`] })
+      expect(completion.choices.map((choice) => [choice.index, choice.text])).toEqual([
+        [0, TEXT],
+        [1, TEXT],
+      ])
+    },
+    "model-id": async (target) => {
+      expect((await openai(target).completions.create({ model: CATALOG_ID, prompt: tag("model-id") })).choices[0]!.text).toBe(TEXT)
+    },
+    "stop-sequence": {
+      gap: "stop sequences are not removed from the answer on /v1/completions (only /v1/messages strips the matched sequence, #145); OpenAI excludes it",
+      run: async (target) => {
+        expect((await openai(target).completions.create({ model: MODEL, prompt: tag("stop-sequence"), stop: ["END"] })).choices[0]!.text).toBe(TEXT)
+      },
+    },
+    logprobs: async (target) => {
+      expect((await openai(target).completions.create({ model: MODEL, prompt: tag("logprobs") })).choices[0]!.logprobs ?? null).toBeNull()
+      const error = await openai(target)
+        .completions.create({ model: MODEL, prompt: tag("logprobs"), logprobs: 5 })
+        .then(
+          () => undefined,
+          (caught: unknown) => caught,
+        )
+      expect(error).toBeInstanceOf(OpenAI.BadRequestError)
+    },
+    cancel: async (target) => {
+      const controller = new AbortController()
+      const stream = await openai(target).completions.create({ model: MODEL, prompt: tag("cancel"), stream: true }, { signal: controller.signal })
+      for await (const chunk of stream)
+        if (chunk.choices[0]?.text) {
+          controller.abort()
+          break
+        }
+      await serverSawAbort(target)
+    },
+  },
+  na: {
+    tools: "legacy completions take a prompt, no tools",
+    "parallel-tools": "legacy completions take a prompt, no tools",
+    image: "legacy completions take text only",
+    structured: "legacy completions have no response_format",
+    "multi-turn": "legacy completions take one prompt, not a conversation",
+    thinking: "legacy completions return no reasoning",
+    developer: "legacy completions take a prompt, no messages",
+    "count-tokens": NA_NO_COUNT,
+    document: "legacy completions take text only",
   },
 }
 
@@ -299,6 +445,11 @@ const anthropicMessages: Client = {
         expect(JSON.parse(block?.type === "text" ? block.text : "")).toEqual(STRUCTURED)
       },
     },
+    error: (target) => expect429(() => anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("error") }] }), Anthropic.APIError),
+    usage: async (target) => {
+      const { usage } = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("usage") }] })
+      expect(usage).toMatchObject({ input_tokens: USAGE.inputTokens, output_tokens: USAGE.outputTokens })
+    },
     "multi-turn": async (target) => {
       const message = await anthropic(target).messages.create({
         model: MODEL,
@@ -314,19 +465,22 @@ const anthropicMessages: Client = {
         thinking: { type: "enabled", budget_tokens: 1024 },
         messages: [{ role: "user", content: tag("thinking") }],
       })
-      // plugboard sends an empty signature (src/anthropic/response.ts); the SDK only needs a string, so the case accepts any.
+      // plugboard sends an empty signature (src/anthropic/response.ts, #146); the SDK only needs a string, so the case accepts any.
       expect(message.content as unknown).toEqual([
         { type: "thinking", thinking: THINKING, signature: expect.any(String) },
         { type: "text", text: TEXT },
       ])
     },
-    "stop-sequence": {
-      gap: "stop_sequences never reach the stop reason: a stop returns end_turn with stop_sequence null, where Anthropic reports stop_sequence and the matched text",
-      run: async (target) => {
-        const message = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, stop_sequences: ["END"], messages: [{ role: "user", content: tag("stop-sequence") }] })
-        expect(message.stop_reason).toBe("stop_sequence")
-        expect(message.stop_sequence).toBe("END")
-      },
+    // The model's answer ends with the sequence; plugboard removes it and reports it (#145).
+    "stop-sequence": async (target) => {
+      const message = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, stop_sequences: ["END"], messages: [{ role: "user", content: tag("stop-sequence") }] })
+      expect(message.stop_reason).toBe("stop_sequence")
+      expect(message.stop_sequence).toBe("END")
+      expect(message.content as unknown).toEqual([{ type: "text", text: TEXT }])
+    },
+    // An estimate (src/anthropic/tokens.ts): the case checks it is a positive count, not its value (#143).
+    "count-tokens": async (target) => {
+      expect((await anthropic(target).messages.countTokens({ model: MODEL, messages: [{ role: "user", content: tag("count-tokens") }] })).input_tokens).toBeGreaterThan(0)
     },
     document: async (target) => {
       const message = await anthropic(target).messages.create({
@@ -337,19 +491,27 @@ const anthropicMessages: Client = {
       expect(message.content as unknown).toEqual([{ type: "text", text: "document: application/pdf" }])
     },
     "model-id": async (target) => {
-      expect((await anthropic(target).messages.create({ model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: tag("model-id") }] })).content as unknown).toEqual([{ type: "text", text: TEXT }])
+      expect((await anthropic(target).messages.create({ model: CATALOG_ID, max_tokens: 100, messages: [{ role: "user", content: tag("model-id") }] })).content as unknown).toEqual([{ type: "text", text: TEXT }])
     },
-    "count-tokens": {
-      gap: "count_tokens is not served: plugboard answers 404 not_found_error",
-      run: async (target) => {
-        expect((await anthropic(target).messages.countTokens({ model: MODEL, messages: [{ role: "user", content: tag("count-tokens") }] })).input_tokens).toBeGreaterThan(0)
-      },
+    "stream-usage": async (target) => {
+      const stream = anthropic(target).messages.stream({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("stream-usage") }] })
+      const message = await stream.finalMessage()
+      expect(message.usage).toMatchObject({ input_tokens: USAGE.inputTokens, output_tokens: USAGE.outputTokens })
     },
-    error: (target) => expect429(() => anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("error") }] }), Anthropic.APIError),
-    usage: async (target) => {
-      const { usage } = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("usage") }] })
-      expect(usage).toMatchObject({ input_tokens: USAGE.inputTokens, output_tokens: USAGE.outputTokens })
+    cancel: async (target) => {
+      const controller = new AbortController()
+      const stream = anthropic(target).messages.stream({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("cancel") }] }, { signal: controller.signal })
+      stream.on("text", () => controller.abort())
+      await stream.done().catch(() => undefined)
+      await serverSawAbort(target)
     },
+  },
+  na: {
+    n: "Anthropic has no n: one answer per request",
+    developer: "Anthropic has no developer role; system prompts go in the system field",
+    "echo-suffix": NA_LEGACY,
+    "prompt-array": "a prompt array is a legacy completions field",
+    logprobs: "Anthropic has no logprobs option",
   },
 }
 
@@ -386,29 +548,13 @@ const genaiGemini: Client = {
       const response = await genai(target).models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: tag("image") }, { inlineData: { mimeType: "image/png", data: PNG_BASE64 } }] }] })
       expect(response.text).toBe("image: image/png")
     },
+    document: async (target) => {
+      const response = await genai(target).models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: tag("document") }, { inlineData: { mimeType: "application/pdf", data: PDF_BASE64 } }] }] })
+      expect(response.text).toBe("document: application/pdf")
+    },
     structured: async (target) => {
       const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("structured"), config: { responseMimeType: "application/json", responseJsonSchema: STRUCTURED_SCHEMA } })
       expect(JSON.parse(response.text!)).toEqual(STRUCTURED)
-    },
-    "multi-turn": async (target) => {
-      const response = await genai(target).models.generateContent({
-        model: MODEL,
-        contents: [
-          { role: "user", parts: [{ text: tag("multi-turn") }] },
-          { role: "model", parts: [{ text: TEXT }] },
-          { role: "user", parts: [{ text: "Again?" }] },
-        ],
-      })
-      expect(response.text).toBe(MULTI_TURN_ANSWER)
-    },
-    "model-id": async (target) => {
-      expect((await genai(target).models.generateContent({ model: "test/echo", contents: tag("model-id") })).text).toBe(TEXT)
-    },
-    "count-tokens": {
-      gap: "countTokens is not served: plugboard answers 404 NOT_FOUND",
-      run: async (target) => {
-        expect((await genai(target).models.countTokens({ model: MODEL, contents: tag("count-tokens") })).totalTokens).toBeGreaterThan(0)
-      },
     },
     error: async (target) => {
       const error = await genai(target)
@@ -423,6 +569,61 @@ const genaiGemini: Client = {
       const { usageMetadata } = await genai(target).models.generateContent({ model: MODEL, contents: tag("usage") })
       expect(usageMetadata).toMatchObject({ promptTokenCount: USAGE.inputTokens, totalTokenCount: USAGE.inputTokens + USAGE.outputTokens })
     },
+    "multi-turn": async (target) => {
+      const response = await genai(target).models.generateContent({
+        model: MODEL,
+        contents: [
+          { role: "user", parts: [{ text: tag("multi-turn") }] },
+          { role: "model", parts: [{ text: TEXT }] },
+          { role: "user", parts: [{ text: "Again?" }] },
+        ],
+      })
+      expect(response.text).toBe(MULTI_TURN_ANSWER)
+    },
+    "model-id": async (target) => {
+      expect((await genai(target).models.generateContent({ model: CATALOG_ID, contents: tag("model-id") })).text).toBe(TEXT)
+    },
+    // A candidate count above 1 is refused (src/gemini/request.ts): the scenario is a gap until plugboard serves several candidates.
+    n: {
+      gap: "candidateCount above 1 is refused with a 400 (only one candidate is served); the OpenAI endpoints serve n",
+      run: async (target) => {
+        const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("n"), config: { candidateCount: 2 } })
+        expect(response.candidates).toHaveLength(2)
+      },
+    },
+    "stop-sequence": {
+      gap: "stopSequences are not removed from the answer on the Gemini endpoint (only /v1/messages strips the matched sequence, #145)",
+      run: async (target) => {
+        const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("stop-sequence"), config: { stopSequences: ["END"] } })
+        expect(response.text).toBe(TEXT)
+      },
+    },
+    "stream-usage": async (target) => {
+      let usage: { totalTokenCount?: number } | undefined
+      for await (const chunk of await genai(target).models.generateContentStream({ model: MODEL, contents: tag("stream-usage") })) usage = chunk.usageMetadata ?? usage
+      expect(usage).toMatchObject({ promptTokenCount: USAGE.inputTokens, totalTokenCount: USAGE.inputTokens + USAGE.outputTokens })
+    },
+    // An estimate (src/anthropic/tokens.ts), for the Gemini countTokens route (#144).
+    "count-tokens": async (target) => {
+      expect((await genai(target).models.countTokens({ model: MODEL, contents: tag("count-tokens") })).totalTokens).toBeGreaterThan(0)
+    },
+    cancel: async (target) => {
+      const controller = new AbortController()
+      for await (const chunk of await genai(target).models.generateContentStream({ model: MODEL, contents: tag("cancel"), config: { abortSignal: controller.signal } })) {
+        if (chunk.text) {
+          controller.abort()
+          break
+        }
+      }
+      await serverSawAbort(target)
+    },
+  },
+  na: {
+    thinking: "Gemini thought parts are dropped by plugboard (no thought output)",
+    developer: "Gemini has no developer role; system prompts go in systemInstruction",
+    "echo-suffix": NA_LEGACY,
+    "prompt-array": "a prompt array is a legacy completions field",
+    logprobs: "Gemini logprobs are not served by plugboard and are not part of this matrix",
   },
 }
 
@@ -431,13 +632,34 @@ const genaiGemini: Client = {
 /** Provider options the AI SDK takes on each call (e.g. `{ openai: { store: false } }`). */
 type ProviderOptions = NonNullable<Parameters<typeof generateText>[0]["providerOptions"]>
 
+interface AiOptions {
+  /** Known incompatibilities, by scenario, with the reason. */
+  readonly gaps?: Partial<Record<Scenario, string>>
+  /** Provider options on every call (e.g. `{ openai: { store: false } }`). */
+  readonly providerOptions?: ProviderOptions
+  /** Cases beyond the shared set, for what only this provider does (documents, thinking). */
+  readonly extra?: Partial<Record<Scenario, Run>>
+  /** Scenarios that do not apply to this provider, with the reason. Merged over the defaults. */
+  readonly na?: Partial<Record<Scenario, string>>
+}
+
+const AI_NA: Partial<Record<Scenario, string>> = {
+  developer: "the AI SDK sends system messages, not the developer role",
+  "echo-suffix": NA_LEGACY,
+  n: "generateText has no n option",
+  "count-tokens": "the AI SDK does not call a token-count endpoint",
+  "prompt-array": "a prompt array is a legacy completions field",
+  logprobs: "the AI SDK does not request logprobs by default",
+  thinking: "the AI SDK's default calls do not request reasoning",
+}
+
 /**
- * The same AI SDK calls against any provider's model: the AI SDK runs the tool loop itself. A
- * scenario missing from `cases` is n/a; `gaps` marks a known incompatibility.
+ * The same AI SDK calls against any provider's model: the AI SDK runs the tool loop itself. `model`
+ * takes the model id, so the model-id scenario can send a catalog id.
  */
-function aiSdk(name: string, endpoint: Endpoint, model: (target: Target) => LanguageModel, gaps: Partial<Record<Scenario, string>> = {}, providerOptions?: ProviderOptions): Client {
+function aiSdk(name: string, endpoint: Endpoint, model: (target: Target, id?: string) => LanguageModel, options: AiOptions = {}): Client {
   const weather = tool({ description: "Weather in a city", inputSchema: jsonSchema<{ city: string }>(WEATHER_SCHEMA), execute: async ({ city }) => `sunny in ${city}` })
-  const common = { maxRetries: 0, providerOptions }
+  const common = { maxRetries: 0, providerOptions: options.providerOptions }
   const cases: Partial<Record<Scenario, Run>> = {
     text: async (target) => {
       expect((await generateText({ model: model(target), prompt: tag("text"), ...common })).text).toBe(TEXT)
@@ -486,11 +708,106 @@ function aiSdk(name: string, endpoint: Endpoint, model: (target: Target) => Lang
       })
       expect(second.text).toBe(MULTI_TURN_ANSWER)
     },
+    "stream-usage": async (target) => {
+      const result = streamText({ model: model(target), prompt: tag("stream-usage"), ...common, onError: () => {} })
+      await result.text
+      expect(await result.usage).toMatchObject({ inputTokens: USAGE.inputTokens, outputTokens: USAGE.outputTokens })
+    },
+    "model-id": async (target) => {
+      expect((await generateText({ model: model(target, CATALOG_ID), prompt: tag("model-id"), ...common })).text).toBe(TEXT)
+    },
+    "stop-sequence": async (target) => {
+      const result = await generateText({ model: model(target), prompt: tag("stop-sequence"), stopSequences: ["END"], ...common })
+      expect(result.text).toBe(TEXT)
+    },
+    cancel: async (target) => {
+      const controller = new AbortController()
+      const result = streamText({ model: model(target), prompt: tag("cancel"), abortSignal: controller.signal, ...common, onError: () => {} })
+      for await (const text of result.textStream) {
+        if (text) {
+          controller.abort()
+          break
+        }
+      }
+      await serverSawAbort(target)
+    },
   }
-  const withGaps = Object.fromEntries(Object.entries(cases).map(([scenario, run]) => [scenario, gaps[scenario as Scenario] ? { gap: gaps[scenario as Scenario]!, run } : run]))
-  return { name, endpoint, cases: withGaps as Client["cases"] }
+  // A scenario the provider refuses is n/a: its case is not run at all.
+  for (const scenario of Object.keys(options.na ?? {})) delete cases[scenario as Scenario]
+  const withGaps = Object.fromEntries(Object.entries(cases).map(([scenario, run]) => [scenario, options.gaps?.[scenario as Scenario] ? { gap: options.gaps[scenario as Scenario]!, run } : run]))
+  const all = { ...withGaps, ...options.extra }
+  // A scenario with a case is never n/a: the extra cases win over the defaults.
+  const na = Object.fromEntries(Object.entries({ ...AI_NA, ...options.na }).filter(([scenario]) => !(scenario in all)))
+  return { name, endpoint, cases: all as Client["cases"], na }
 }
 
+/** A PDF as a file part: the provider's document or file block (the AI SDK maps it per provider). */
+const pdfRun =
+  (model: (target: Target) => LanguageModel): Run =>
+  async (target) => {
+    const result = await generateText({
+      model: model(target),
+      maxRetries: 0,
+      messages: [{ role: "user", content: [{ type: "text", text: tag("document") }, { type: "file", data: PDF_BASE64, mediaType: "application/pdf" }] }],
+    })
+    expect(result.text).toBe("document: application/pdf")
+  }
+
+const aiOpenAI = ({ origin, apiKey }: Target) => createOpenAI({ baseURL: `${origin}/v1`, apiKey })
+const aiAnthropic = ({ origin, apiKey }: Target, id = MODEL) => createAnthropic({ baseURL: `${origin}/v1`, apiKey })(id)
+const aiGoogle = ({ origin, apiKey }: Target, id = MODEL) => createGoogle({ baseURL: `${origin}/v1beta`, apiKey })(id)
+const aiCompatible = ({ origin, apiKey }: Target, id = MODEL) => createOpenAICompatible({ name: "plugboard", baseURL: `${origin}/v1`, apiKey, includeUsage: true }).chatModel(id)
+
+const aiChat = aiSdk("ai + @ai-sdk/openai (chat)", "chat", (target, id) => aiOpenAI(target).chat(id ?? MODEL), {
+  gaps: { "stop-sequence": "the chat endpoint does not remove stop sequences from the answer (#145 covers /v1/messages)" },
+  extra: { document: pdfRun((target) => aiOpenAI(target).chat(MODEL)) },
+})
+
+const aiResponses = aiSdk("ai + @ai-sdk/openai (responses)", "responses", (target, id) => aiOpenAI(target).responses(id ?? MODEL), {
+  // The default `store: true` makes the AI SDK resend the earlier answer as an item_reference, which plugboard refuses (#147).
+  gaps: { "multi-turn": "the AI SDK's default (store: true) resends the first answer as an item_reference, which plugboard refuses with a 400 (#147); the store: false row passes" },
+  na: { "stop-sequence": NA_RESPONSES_STOP, thinking: NA_RESPONSES_THINKING, logprobs: NA_NO_LOGPROBS },
+  extra: { document: pdfRun((target) => aiOpenAI(target).responses(MODEL)) },
+})
+
+const aiResponsesStoreFalse = aiSdk("ai + @ai-sdk/openai (responses, store: false)", "responses", (target, id) => aiOpenAI(target).responses(id ?? MODEL), {
+  providerOptions: { openai: { store: false } },
+  na: { "stop-sequence": NA_RESPONSES_STOP, thinking: NA_RESPONSES_THINKING, logprobs: NA_NO_LOGPROBS },
+  extra: { document: pdfRun((target) => aiOpenAI(target).responses(MODEL)) },
+})
+
+const aiCompatibleClient = aiSdk("ai + @ai-sdk/openai-compatible", "chat", (target, id) => aiCompatible(target, id), {
+  gaps: { "stop-sequence": "the chat endpoint does not remove stop sequences from the answer (#145 covers /v1/messages)" },
+  na: { document: "openai-compatible sends PDFs only through providers that take file parts; not written for plugboard" },
+})
+
+const aiAnthropicClient = aiSdk("ai + @ai-sdk/anthropic", "messages", (target, id) => aiAnthropic(target, id), {
+  extra: {
+    document: pdfRun((target) => aiAnthropic(target)),
+    // Thinking through the provider option: the reasoning comes back as reasoning content, then the answer.
+    thinking: async (target) => {
+      const result = await generateText({
+        model: aiAnthropic(target),
+        maxRetries: 0,
+        prompt: tag("thinking"),
+        providerOptions: { anthropic: { thinking: { type: "enabled", budgetTokens: 1024 } } },
+      })
+      expect(result.reasoningText).toBe(THINKING)
+      expect(result.text).toBe(TEXT)
+    },
+  },
+  na: { n: "generateText has no n option" },
+})
+
+const aiGoogleClient = aiSdk("ai + @ai-sdk/google", "gemini", (target, id) => aiGoogle(target, id), {
+  gaps: {
+    "stop-sequence": "stopSequences are not removed from the answer on the Gemini endpoint (only /v1/messages strips the matched sequence, #145)",
+    // The AI SDK's getModelPath treats an id with a slash as a full resource name and drops the models/ prefix, so the request misses the route (401).
+    "model-id": "the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (401); the @google/genai rows pass",
+  },
+  extra: { document: pdfRun((target) => aiGoogle(target)) },
+  na: { "count-tokens": "the AI SDK does not call countTokens" },
+})
 
 export const CLIENTS: ReadonlyArray<Client> = [
   openaiChat,
@@ -498,14 +815,11 @@ export const CLIENTS: ReadonlyArray<Client> = [
   openaiCompletions,
   anthropicMessages,
   genaiGemini,
-  aiSdk("ai + @ai-sdk/openai (chat)", "chat", ({ origin, apiKey }) => createOpenAI({ baseURL: `${origin}/v1`, apiKey }).chat(MODEL)),
-  aiSdk("ai + @ai-sdk/openai (responses)", "responses", ({ origin, apiKey }) => createOpenAI({ baseURL: `${origin}/v1`, apiKey }).responses(MODEL), {
-    // The default `store: true` makes the AI SDK resend the earlier answer as an item_reference, which plugboard refuses (it keeps no state).
-    "multi-turn": "the AI SDK's default (store: true) resends the first answer as an item_reference, which plugboard refuses with a 400; the store: false row passes",
-  }),
-  aiSdk("ai + @ai-sdk/openai (responses, store: false)", "responses", ({ origin, apiKey }) => createOpenAI({ baseURL: `${origin}/v1`, apiKey }).responses(MODEL), {}, { openai: { store: false } }),
-  aiSdk("ai + @ai-sdk/openai-compatible", "chat", ({ origin, apiKey }) => createOpenAICompatible({ name: "plugboard", baseURL: `${origin}/v1`, apiKey }).chatModel(MODEL)),
-  aiSdk("ai + @ai-sdk/anthropic", "messages", ({ origin, apiKey }) => createAnthropic({ baseURL: `${origin}/v1`, apiKey })(MODEL)),
-  aiSdk("ai + @ai-sdk/google", "gemini", ({ origin, apiKey }) => createGoogle({ baseURL: `${origin}/v1beta`, apiKey })(MODEL)),
+  aiChat,
+  aiResponses,
+  aiResponsesStoreFalse,
+  aiCompatibleClient,
+  aiAnthropicClient,
+  aiGoogleClient,
   ...LANGCHAIN_CLIENTS,
 ]

@@ -60,14 +60,14 @@ describe("#4 authentication", () => {
 })
 
 describe("#4 the route", () => {
-  test("GET is a 405; count_tokens is a 404, both Anthropic-shaped", async () => {
+  test("GET is a 405, Anthropic-shaped; count_tokens answers { input_tokens } (#143)", async () => {
     await route([ev.finish()])
     const get = await server!.send({ path: "/v1/messages" })
     expect(get.status).toBe(405)
     expect(get.json()).toEqual(anthropicError("invalid_request_error"))
     const count = await server!.send({ ...messages(), path: "/v1/messages/count_tokens" })
-    expect(count.status).toBe(404)
-    expect(count.json()).toEqual(anthropicError("not_found_error"))
+    expect(count.status).toBe(200)
+    expect(count.json()).toEqual({ input_tokens: expect.any(Number) })
   })
 
   test("every response carries Anthropic's request-id and plugboard's request id", async () => {

@@ -17,6 +17,8 @@ export interface MessagesExchange {
   readonly stream: boolean
   /** `thinking` was enabled or adaptive: reasoning text is returned as thinking blocks. */
   readonly thinking: boolean
+  /** The request's `stop_sequences`. The host reports a stop without the sequence that caused it, so the end of the text is checked. */
+  readonly stop?: ReadonlyArray<string>
 }
 
 /** A stream event as emitted: `type` is also the SSE event name. */
@@ -74,6 +76,10 @@ const STOP_REASON: Record<Exclude<PlugFinish, "error">, string> = {
   "content-filter": "refusal",
 }
 
+/** The longest stop sequence the text ends with, if any. */
+const stopTail = (tail: string, stops: ReadonlyArray<string>): string | undefined =>
+  stops.filter((stop) => tail.endsWith(stop)).sort((a, b) => b.length - a.length)[0]
+
 const noFinish = (): PlugError => ({ status: 500, kind: "server", message: "Model stream ended without a finish event" })
 const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
 
@@ -121,6 +127,10 @@ export async function runMessage(
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
+  // Text is held back by the longest stop sequence (`holdback` characters), so a sequence at the end of
+  // the answer can be found and removed before it is sent. Without stop sequences nothing is held.
+  const holdback = Math.max(0, ...(exchange.stop ?? []).map((stop) => stop.length))
+  let held = ""
 
   const message = (extra: Record<string, unknown>) => ({
     id,
@@ -147,8 +157,24 @@ export async function runMessage(
   const close = () => {
     if (!open) return
     emit({ type: "content_block_stop", index: open.index })
+    // The signature is always empty: the host does not expose the provider's thinking signature (#146), so a
+    // replayed thinking block cannot carry the real one. Clients that replay thinking are told by the docs.
     content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: "" })
     open = undefined
+  }
+  const releaseHeld = () => {
+    const out = held
+    held = ""
+    delta("text", out)
+  }
+  const text = (chunk: string) => {
+    if (holdback === 0) return delta("text", chunk)
+    held += chunk
+    if (held.length > holdback) {
+      const out = held.slice(0, held.length - holdback)
+      held = held.slice(out.length)
+      delta("text", out)
+    }
   }
   const delta = (kind: "text" | "thinking", text: string) => {
     if (text.length === 0) return
@@ -172,6 +198,7 @@ export async function runMessage(
   }
   /** Tool calls arrive whole, so each goes out as one `input_json_delta` holding the full input. */
   const toolCall = (call: ToolCall) => {
+    releaseHeld()
     start()
     close()
     const index = nextIndex++
@@ -197,8 +224,9 @@ export async function runMessage(
       continue
     }
     if (event.type === "reasoning-delta") {
+      releaseHeld()
       if (exchange.thinking) delta("thinking", event.text)
-    } else if (event.type === "text-delta") delta("text", event.text)
+    } else if (event.type === "text-delta") text(event.text)
     else toolCall(event)
   }
 
@@ -206,16 +234,23 @@ export async function runMessage(
   if (failure) {
     if (!started) return { failure, started }
     // The stream is already committed: close what is open and end with an `error` event (no `message_stop`).
+    releaseHeld()
     close()
     emit(encodeError(failure))
     return { failure, started }
   }
+  // A plain stop with no tool calls that ends on a stop sequence: the sequence is not part of the answer.
+  const matched = holdback > 0 && finish === "stop" && calls === 0 ? stopTail(held, exchange.stop ?? []) : undefined
+  if (matched !== undefined) held = held.slice(0, held.length - matched.length)
+  releaseHeld()
   start()
   close()
   ping()
   const reason = finish === "stop" && calls > 0 ? "tool-calls" : (finish ?? "stop")
-  const final = message({ stop_reason: STOP_REASON[reason as Exclude<PlugFinish, "error">], usage: encodeUsage(usage) })
-  emit({ type: "message_delta", delta: { stop_reason: final.stop_reason, stop_sequence: null }, usage: final.usage })
+  const stopReason = matched !== undefined ? "stop_sequence" : STOP_REASON[reason as Exclude<PlugFinish, "error">]
+  const stopSequence = matched ?? null
+  const final = message({ stop_reason: stopReason, stop_sequence: stopSequence, usage: encodeUsage(usage) })
+  emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: stopSequence }, usage: final.usage })
   emit({ type: "message_stop" })
   return { started, message: final }
 }

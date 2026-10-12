@@ -78,11 +78,14 @@ describe("routes", () => {
     expect((await server!.send({ path: "/v1/models" })).json().object).toBe("list")
   })
 
-  test("an unsupported method (countTokens) is a Google 404 method_not_supported", async () => {
+  test("countTokens answers { totalTokens } (#144); an unsupported method is a Google 404 method_not_supported", async () => {
     await route([ev.finish()])
-    const reply = await server!.send(generate("/v1beta/models/fast:countTokens"))
+    const count = await server!.send(generate("/v1beta/models/fast:countTokens"))
+    expect(count.status).toBe(200)
+    expect(count.json()).toEqual({ totalTokens: expect.any(Number) })
+    const reply = await server!.send(generate("/v1beta/models/fast:embedContent"))
     expect(reply.status).toBe(404)
-    expect(reply.json().error.message).toContain("countTokens is not supported")
+    expect(reply.json().error.message).toContain("embedContent is not supported")
   })
 
   test("the /v1/models/{model}:generateContent spelling works too, and is logged by route label", async () => {

@@ -336,7 +336,7 @@ export function parseMessagesRequest(body: unknown, options: PlugboardOptions): 
   }
   return {
     request,
-    exchange: { model: body.model, stream: body.stream === true, thinking: thinking.enabled },
+    exchange: { model: body.model, stream: body.stream === true, thinking: thinking.enabled, stop: generation.stop },
     ...(thinking.effort ? { reasoningEffort: thinking.effort } : {}),
     topKIgnored: body.top_k != null,
   }

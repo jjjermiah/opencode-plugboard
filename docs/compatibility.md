@@ -7,34 +7,45 @@ PLUGBOARD_COMPAT_RESULTS=compat.json bun test test/compat
 bun .github/scripts/compat-matrix.ts compat.json --docs docs/compatibility.md
 ```
 
-Each official SDK runs the same scenarios against plugboard, in CI on every push. The model behind plugboard is scripted, so this checks the clients against plugboard's wire formats, not a provider's behaviour; the live provider matrix is tracked in #99. **pass**: the client worked as its docs describe. **gap**: a known incompatibility, explained in the notes. **n/a**: the endpoint has no such feature.
+Each official SDK runs the same scenarios against plugboard, in CI on every push. The model behind plugboard is scripted, so this checks the clients against plugboard's wire formats, not a provider's behaviour; the live provider matrix is tracked in #99. **pass**: the client worked as its docs describe. **gap**: a known incompatibility, explained in the notes. **n/a**: the endpoint has no such feature. **todo**: no case written yet (#148); a todo is work left, not a verdict.
 
-| Client | Endpoint | text | stream | tools | parallel-tools | image | structured | error | usage | multi-turn | thinking | stop-sequence | n | stream-usage | developer | echo-suffix | count-tokens | document | model-id |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| openai | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | pass | pass | pass | n/a | n/a | n/a | pass |
-| openai | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | n/a | pass | n/a | n/a | n/a | n/a |
-| openai | `POST /v1/completions` | pass | pass | n/a | n/a | n/a | n/a | pass | pass | n/a | n/a | n/a | pass | pass | n/a | pass | n/a | n/a | n/a |
-| @anthropic-ai/sdk | `POST /v1/messages` | pass | pass | pass | pass | pass | gap [1] | pass | pass | pass | pass | gap [2] | n/a | n/a | n/a | n/a | gap [3] | pass | pass |
-| @google/genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | gap [4] | n/a | pass |
-| ai + @ai-sdk/openai (chat) | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| ai + @ai-sdk/openai (responses) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | gap [5] | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| ai + @ai-sdk/openai (responses, store: false) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| ai + @ai-sdk/openai-compatible | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| ai + @ai-sdk/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| ai + @ai-sdk/google | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| @langchain/openai (chat) | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | n/a | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| @langchain/openai (responses) | `POST /v1/responses` | pass | pass | pass | pass | pass | n/a | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| @langchain/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | n/a | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| @langchain/google-genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | n/a | n/a | pass | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-| @langchain/openai (completions) | `POST /v1/completions` | pass | pass | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| Client | Endpoint | text | stream | tools | parallel-tools | image | structured | error | usage | multi-turn | thinking | stop-sequence | n | stream-usage | developer | echo-suffix | count-tokens | document | model-id | prompt-array | logprobs | cancel |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| openai | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [1] | pass | pass | pass | n/a | n/a | pass | pass | n/a | pass | pass |
+| openai | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass | pass | n/a | n/a | pass |
+| openai | `POST /v1/completions` | pass | pass | n/a | n/a | n/a | n/a | pass | pass | n/a | n/a | gap [2] | pass | pass | n/a | pass | n/a | n/a | pass | pass | pass | pass |
+| @anthropic-ai/sdk | `POST /v1/messages` | pass | pass | pass | pass | pass | gap [3] | pass | pass | pass | pass | pass | n/a | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
+| @google/genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [4] | gap [5] | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
+| ai + @ai-sdk/openai (chat) | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [6] | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
+| ai + @ai-sdk/openai (responses) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | gap [7] | n/a | n/a | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
+| ai + @ai-sdk/openai (responses, store: false) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
+| ai + @ai-sdk/openai-compatible | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [8] | n/a | pass | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
+| ai + @ai-sdk/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
+| ai + @ai-sdk/google | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [9] | n/a | pass | n/a | n/a | n/a | pass | gap [10] | n/a | n/a | pass |
+| @langchain/openai (chat) | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [11] | pass | pass | n/a | n/a | n/a | n/a | pass | n/a | pass | pass |
+| @langchain/openai (responses) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
+| @langchain/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [12] | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
+| @langchain/google-genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | n/a | pass | pass | pass | pass | n/a | gap [13] | n/a | pass | n/a | n/a | n/a | n/a | gap [14] | n/a | n/a | gap [15] |
+| @langchain/openai (completions) | `POST /v1/completions` | pass | pass | n/a | n/a | n/a | n/a | pass | pass | n/a | n/a | gap [16] | pass | n/a | n/a | n/a | n/a | n/a | pass | pass | n/a | pass |
 
-137 pass, 5 gap, 0 fail, 146 n/a.
+203 pass, 16 gap, 0 fail, 117 n/a, 0 todo.
 
-1. @anthropic-ai/sdk, structured: output_config.format (structured outputs) is refused with a 400; plugboard maps json_schema only on the OpenAI and Gemini endpoints
-2. @anthropic-ai/sdk, stop-sequence: stop_sequences never reach the stop reason: a stop returns end_turn with stop_sequence null, where Anthropic reports stop_sequence and the matched text
-3. @anthropic-ai/sdk, count-tokens: count_tokens is not served: plugboard answers 404 not_found_error
-4. @google/genai, count-tokens: countTokens is not served: plugboard answers 404 NOT_FOUND
-5. ai + @ai-sdk/openai (responses), multi-turn: the AI SDK's default (store: true) resends the first answer as an item_reference, which plugboard refuses with a 400; the store: false row passes
+1. openai, stop-sequence: stop sequences are not removed from the answer on /v1/chat/completions (only /v1/messages strips the matched sequence, #145); OpenAI excludes it
+2. openai, stop-sequence: stop sequences are not removed from the answer on /v1/completions (only /v1/messages strips the matched sequence, #145); OpenAI excludes it
+3. @anthropic-ai/sdk, structured: output_config.format (structured outputs) is refused with a 400; plugboard maps json_schema only on the OpenAI and Gemini endpoints
+4. @google/genai, stop-sequence: stopSequences are not removed from the answer on the Gemini endpoint (only /v1/messages strips the matched sequence, #145)
+5. @google/genai, n: candidateCount above 1 is refused with a 400 (only one candidate is served); the OpenAI endpoints serve n
+6. ai + @ai-sdk/openai (chat), stop-sequence: the chat endpoint does not remove stop sequences from the answer (#145 covers /v1/messages)
+7. ai + @ai-sdk/openai (responses), multi-turn: the AI SDK's default (store: true) resends the first answer as an item_reference, which plugboard refuses with a 400 (#147); the store: false row passes
+8. ai + @ai-sdk/openai-compatible, stop-sequence: the chat endpoint does not remove stop sequences from the answer (#145 covers /v1/messages)
+9. ai + @ai-sdk/google, stop-sequence: stopSequences are not removed from the answer on the Gemini endpoint (only /v1/messages strips the matched sequence, #145)
+10. ai + @ai-sdk/google, model-id: the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (401); the @google/genai rows pass
+11. @langchain/openai (chat), stop-sequence: the chat endpoint does not remove stop sequences from the answer (#145 covers /v1/messages)
+12. @langchain/anthropic, stream-usage: message_start reports input_tokens 0; the real input count arrives only in message_delta, so a client that reads usage from message_start sees 0
+13. @langchain/google-genai, stop-sequence: stopSequences are not removed from the answer on the Gemini endpoint (only /v1/messages strips the matched sequence, #145)
+14. @langchain/google-genai, model-id: LangChain's Google class sends the model id without the models/ prefix, so the request misses the Gemini route (401); the @google/genai rows pass
+15. @langchain/google-genai, cancel: the @google/generative-ai SDK that LangChain uses reports the client's abort as an unhandled 'Error reading from the stream'
+16. @langchain/openai (completions), stop-sequence: stop sequences are not removed from the answer on /v1/completions (only /v1/messages strips the matched sequence, #145)
 
 Scenarios:
 
@@ -56,3 +67,6 @@ Scenarios:
 - **count-tokens**: Token counting before a request (count_tokens, countTokens) returns a count (#102, #103).
 - **document**: A PDF sent as a document block reaches the model as a document (#102).
 - **model-id**: A model id with a `/` (provider/model) is passed through to the route unchanged (#103).
+- **prompt-array**: Legacy completions with an array prompt: one choice per prompt, each with its index (#106).
+- **logprobs**: Logprobs absent: a client that does not ask gets null logprobs; one that asks is refused with a 400 (#105).
+- **cancel**: The client aborts mid-stream and the server sees the abort on the model call (#101).

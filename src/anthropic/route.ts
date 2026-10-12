@@ -1,5 +1,5 @@
 /**
- * `POST /v1/messages` (and a clear 404 for `POST /v1/messages/count_tokens`): the Anthropic
+ * `POST /v1/messages` and `POST /v1/messages/count_tokens` (an estimate, see `tokens.ts`): the Anthropic
  * Messages front-end's half of the route. `src/openai/route.ts` hands every request for these
  * paths over before it does anything else, because this route differs from the OpenAI ones in
  * three ways: errors use Anthropic's body shape from the first check on, `x-api-key` authenticates
@@ -32,7 +32,10 @@ import { reportPolicy } from "../policy.js"
 import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
+import { estimateTokens } from "./tokens.js"
 import { encodeError, runMessage, sseFrame } from "./response.js"
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
@@ -91,18 +94,20 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const auth = authenticateRequest(host, request)
     if (isPlugError(auth)) return fail(auth)
     info.app = auth.app
-    if (path === COUNT_TOKENS)
-      return fail({ status: 404, kind: "not_found", code: "not_found", message: "count_tokens is not supported by plugboard" })
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
 
     const body = await readJsonBody(request, scope.signal)
-    const parsed = parseMessagesRequest(body, host.options)
+    // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
+    // (the count never uses it). A max_tokens the client did send is still validated.
+    const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : body
+    const parsed = parseMessagesRequest(sized, host.options)
     if (isPlugError(parsed)) return fail(parsed)
     const catalog = await scope.race(host.loadCatalog())
     const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
+    if (path === COUNT_TOKENS) return sendJson(response, 200, { input_tokens: estimateTokens(parsed.request) })
     // Sampling parameters the model is known to reject are dropped; `top_k` has no neutral
     // equivalent and is always dropped. Both are reported before any response bytes.
     const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined

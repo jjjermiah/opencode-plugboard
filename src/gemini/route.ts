@@ -1,6 +1,6 @@
 /**
  * The Gemini front-end's half of the route: `GET /v1beta/models`, `GET /v1beta/models/{model}`,
- * `POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent?alt=sse` (and the
+ * `POST /v1beta/models/{model}:generateContent`, `:streamGenerateContent?alt=sse` and `:countTokens` (an estimate, #144) (and the
  * `POST /v1/models/{model}:...` spelling). `src/openai/route.ts` matches the path
  * (`matchGeminiRoute`), checks the origin, authenticates (`geminiAuthorization` supplies the
  * credential) and hands over here; errors on these routes use Google's body (`encodeGeminiError`).
@@ -23,6 +23,7 @@ import { reportCache } from "../cache.js"
 import { reportPolicy } from "../policy.js"
 import type { RouteHost } from "../openai/route.js"
 import { dropRejected } from "../openai/sampling.js"
+import { estimateTokens } from "../anthropic/tokens.js"
 import { parseGeminiRequest } from "./request.js"
 import { encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk } from "./response.js"
 
@@ -33,8 +34,13 @@ export type GeminiMatch =
   | { readonly op: "list"; readonly route: string }
   | { readonly op: "get"; readonly route: string; readonly model: string }
   | { readonly op: "generate"; readonly route: string; readonly model: string; readonly stream: boolean }
+  | { readonly op: "count"; readonly route: string; readonly model: string }
   /** A method on a model that plugboard does not serve (`countTokens`, `embedContent`, ...). */
   | { readonly op: "unsupported"; readonly route: string; readonly verb: string }
+
+/** `countTokens` takes the request's contents at the top level, or wrapped as `generateContentRequest`. */
+const countBody = (body: unknown): unknown =>
+  typeof body === "object" && body !== null && "generateContentRequest" in body ? (body as { generateContentRequest: unknown }).generateContentRequest : body
 
 const decode = (raw: string): string | undefined => {
   try {
@@ -67,6 +73,7 @@ export function matchGeminiRoute(method: string | undefined, path: string): Gemi
     const label = `POST ${prefix.slice(0, -1)}/{model}:${verb}`
     if (verb === "generateContent" || verb === "streamGenerateContent")
       return { op: "generate", route: label, model: model.startsWith("models/") ? model.slice(7) : model, stream: verb === "streamGenerateContent" }
+    if (verb === "countTokens") return { op: "count", route: label, model: model.startsWith("models/") ? model.slice(7) : model }
     return { op: "unsupported", route: label, verb }
   }
   return undefined
@@ -98,7 +105,20 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const fail = (error: PlugError) => sendJson(response, error.status, encodeGeminiError(error))
 
   if (match.op === "unsupported")
-    return fail({ status: 404, kind: "not_found", code: "method_not_supported", message: `Method ${match.verb} is not supported; plugboard serves generateContent and streamGenerateContent` })
+    return fail({ status: 404, kind: "not_found", code: "method_not_supported", message: `Method ${match.verb} is not supported; plugboard serves generateContent, streamGenerateContent and countTokens` })
+
+  if (match.op === "count") {
+    const unsupported = checkJsonContentType(request)
+    if (unsupported) return fail(unsupported)
+    const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal)), host.options)
+    if (isPlugError(parsed)) return fail(parsed)
+    const catalog = await scope.race(host.loadCatalog())
+    const ref = resolveModel(host.options, match.model, catalog, parsed.reasoningEffort)
+    if (isPlugError(ref)) return fail(ref)
+    info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
+    // An estimate, not the provider's count (see src/anthropic/tokens.ts).
+    return sendJson(response, 200, { totalTokens: estimateTokens(parsed.request) })
+  }
 
   if (match.op === "list" || match.op === "get") {
     const listed = listAvailableModels(host.options, await scope.race(host.loadCatalog()), app)
