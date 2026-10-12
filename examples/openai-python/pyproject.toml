@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-openai-python"
+version = "0.1.0"
+description = "The OpenAI Python SDK against plugboard: S1 to S7 and the error paths. Pins from compat/py, as in the dated record."
+requires-python = ">=3.12"
+# Exact pins: the versions the 3fcedc7 record ran on (openai 3.29.0, Python 3.13).
+dependencies = ["openai==3.29.0", "pydantic==2.14.1", "httpx==0.28.1"]
