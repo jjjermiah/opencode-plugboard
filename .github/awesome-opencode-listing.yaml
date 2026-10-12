@@ -1,0 +1,45 @@
+# Submit as data/plugins/opencode-plugboard.yaml in https://github.com/awesome-opencode/awesome-opencode
+# (fork, copy this file in, open a PR titled "docs: add opencode-plugboard to plugins").
+# Schema: data/schema.json in that repo, checked at commit bcc5c03 (2026-07-03).
+# The installation snippet pins the version: bump it with each release.
+name: opencode-plugboard
+repo: https://github.com/jjjermiah/opencode-plugboard
+homepage: https://jjjermiah.github.io/opencode-plugboard/
+tagline: Serve OpenAI, Anthropic and Gemini compatible APIs from your OpenCode server, using your logins.
+description: >-
+  Plugboard runs inside your OpenCode server and serves OpenAI Chat Completions and Responses, Anthropic
+  Messages and Gemini APIs. Any app that takes a base URL and a key can then use the ChatGPT, Claude,
+  Copilot or OpenCode Go models your server is signed in to. Each app gets its own key, a model
+  allowlist and optional limits, a response cache and per-app usage counts. Tool calls go back to the
+  caller, which runs them: plugboard never runs a tool itself.
+scope:
+  - global
+min_version: "2.0.26"
+tags:
+  - api
+  - openai-compatible
+  - anthropic
+  - gemini
+  - llm-gateway
+  - llm-proxy
+  - usage
+installation: |
+  Add the plugin to your global config, `~/.config/opencode/opencode.jsonc`, pinned to a version:
+
+  ```jsonc
+  {
+    "plugins": [
+      {
+        "package": "opencode-plugboard@0.17.0",
+        "options": {
+          "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
+          "models": ["anthropic/claude-sonnet-4-6", "opencode-go/glm-5.3-flash"],
+          "aliases": { "fast": "opencode-go/glm-5.3-flash" }
+        }
+      }
+    ]
+  }
+  ```
+
+  Restart OpenCode, then point the app at `http://127.0.0.1:4010/v1` with the key. The full setup and the
+  client guides are at https://jjjermiah.github.io/opencode-plugboard/.
