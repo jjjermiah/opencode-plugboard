@@ -46,6 +46,33 @@ bun .github/scripts/test-gates.ts .coverage --ratchet
 
 and commit `.github/floors/` with the tests. Lowering a floor is a deliberate edit that the PR must explain.
 
+## Benchmarks (#118)
+
+`bun run bench` runs `test/bench/request.bench.ts` with mitata (exact-pinned): each front-end over loopback HTTP with a replayed model, a 2,000-delta stream, `n=3` fan-out, the pure decode and model resolution with a 1,000-model allowlist. It is not part of `bun test`. Connections are kept alive, because a new TCP connection per request made the medians swing by two orders of magnitude on loopback.
+
+```sh
+bun run bench -- --json run.json
+bun .github/scripts/bench-gate.ts run.json --summary
+```
+
+`.github/floors/bench-baseline.json` holds the median per benchmark (ns) from one machine. The gate fails when a median is more than 2x its baseline, or when a baseline entry did not run. Runners differ from that machine, so the CI job is advisory. To move the baseline after an intended change, run the bench on the same kind of machine, `bun .github/scripts/bench-gate.ts run.json --update`, and commit it with the change.
+
+## Mutation catalogue (#111)
+
+`test/mutations/catalogue.ts` lists the guards that must never break silently, each as one exact text in one source file, the replacement that breaks it, and the test files that must fail. Invariant numbers cite `docs/architecture.md`. `bun run mutations` copies the source and tests to a temporary directory, checks that the named tests pass unmodified, then applies each entry there and requires a failing test. The working tree is never touched. A surviving entry is a gap in the tests: add the test, never delete the entry. The weekly workflow `.github/workflows/mutations.yml` runs it; it is not part of `bun test`.
+
+Adding a guard: pick a snippet that occurs once, make sure a test names the behaviour, and run `bun run mutations -- --only <id>`.
+
+## Route coverage manifest (#116)
+
+`test/coverage-manifest.ts` is a table of every route the router serves, per request format (openai-chat, openai-responses, openai-completions, anthropic, gemini), with one cell per mode: json, stream, tools, images, structured output, n > 1 and errors. A cell names the tests that cover it (a file and a literal from a test title), says `n/a` with a reason, or is a `gap` that names its issue. `test/http/coverage-manifest.test.ts` fails when the router has a route with no row, a row names a route the router lacks, a cell is empty, or a cover does not resolve. The router's route names come from the quoted `METHOD /path` literals in `src/**/route.ts`; the few spelled by a template or constant are listed in `MANUAL_ROUTES` and probed on the live router. CI prints the table in the job summary (`bun run coverage-manifest`).
+
+A new route needs its rows in the same change. A new route written as a template fails the probe until it is listed in `MANUAL_ROUTES`.
+
+## Flake hunting (#115)
+
+`bun run flake-hunt` runs the suite several ways and reports tests whose outcome depends on how they are run: Bun's shuffle (`--randomize --seed=N`, N printed), `--parallel`, and each test file alone. A test that fails in some runs and passes in others, fails in every run, or differs between a file alone and the suite is flagged, and the script exits 1. Runtime tests share `globalThis` and the data root, so this is where leaks show up. Options: `--runs N` (shuffles, default 10), `--seed S` (base seed), `--file <path>` (repeat one file, shuffled), `--summary`. Nightly in `.github/workflows/nightly.yml`, not on every push. A failing seed replays with `bun test --randomize --seed=N`.
+
 ## Shared fakes (`support/`)
 
 ### `fixtures.ts`
