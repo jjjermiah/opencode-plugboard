@@ -25,6 +25,8 @@ describe("parseChatRequest: every validation rule answers 400 with its param", (
     ["n = 0", body({ n: 0 }), { param: "n" }],
     ["#58 n above maxN (default 1)", body({ n: 2 }), { param: "n", code: "too_many_choices" }],
     ["a fractional n", body({ n: 1.5 }), { param: "n" }],
+    ["#287 a string stream", body({ stream: "yes" }), { param: "stream" }],
+    ["#287 a numeric stream", body({ stream: 1 }), { param: "stream" }],
     ["logprobs", body({ logprobs: true }), { param: "logprobs", code: "unsupported_parameter" }],
     ["top_logprobs", body({ top_logprobs: 2 }), { param: "top_logprobs", code: "unsupported_parameter" }],
     ["a message that is not an object", body({ messages: ["hi"] }), { param: "messages[0]" }],
@@ -220,7 +222,8 @@ describe("parseChatRequest: generation and exchange", () => {
 
   test("the exchange carries the client's model string, stream and include_usage", () => {
     expect(parse(body({ stream: true, stream_options: { include_usage: true } })).exchange).toEqual({ model: "test/echo", stream: true, includeUsage: true })
-    expect(parse(body({ stream: "yes" })).exchange).toEqual({ model: "test/echo", stream: false, includeUsage: false })
+    expect(parse(body({ stream: null })).exchange).toEqual({ model: "test/echo", stream: false, includeUsage: false })
+    expect(parse(body({ stream: false })).exchange).toEqual({ model: "test/echo", stream: false, includeUsage: false })
   })
 
   test("reasoning_effort is passed on for variant selection", () => {

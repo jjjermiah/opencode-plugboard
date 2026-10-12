@@ -279,6 +279,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions): Pars
   // Parameters the session backend cannot honour are rejected, not ignored.
   const n = parseChoiceCount(body, options)
   if (typeof n === "object") return n
+  if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
   if (body.logprobs === true) return bad("logprobs is not supported", "logprobs", "unsupported_parameter")
   if (body.top_logprobs != null) return bad("top_logprobs is not supported", "top_logprobs", "unsupported_parameter")
 

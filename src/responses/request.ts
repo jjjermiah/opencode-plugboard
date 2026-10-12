@@ -319,6 +319,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   if (refused) return refused
   if (body.instructions != null && typeof body.instructions !== "string") return bad("instructions must be a string", "instructions")
   if (body.reasoning != null && !isRecord(body.reasoning)) return bad("reasoning must be an object", "reasoning")
+  if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
 
   const parsed = parseInput(body.input, resolve)
   if (isPlugError(parsed)) return parsed
