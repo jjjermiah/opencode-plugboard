@@ -38,6 +38,17 @@ async function drain(stream: AsyncIterable<PlugEvent>): Promise<PlugEvent[]> {
   return out
 }
 
+describe("#77 the session link gets the session and its app directory", () => {
+  test("#77 onRecord names the session and the app directory it lives in, for the link template", async () => {
+    const run = setup()
+    run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop"), bus(id).executionSucceeded()])
+    const seen: Array<[string, string | undefined]> = []
+    const context: CallContext = { app: "app", signal: new AbortController().signal, onRecord: (id, directory) => void seen.push([id, directory]) }
+    await drain(run.caller.stream(plugRequest(), context))
+    expect(seen).toEqual([["ses_1", (await ensureAppDir("app")) as string]])
+  })
+})
+
 describe("#57 the end user labels the session title", () => {
   test("#57 a kept end user is the title prefix `[user] ` before the first words of the prompt", async () => {
     const run = setup()

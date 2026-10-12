@@ -58,6 +58,7 @@ import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
 import { bodyUser, noteEndUser } from "../user.js"
+import { setSessionLink } from "../session/link.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
@@ -294,9 +295,10 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       host.caller.stream(call, {
         app: auth.app,
         signal: scope.signal,
-        onRecord: (recordID) => {
+        onRecord: (recordID, directory) => {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
+          setSessionLink(response, info, host.options.historyUrl, recordID, directory)
         },
         // An alias with fallbacks: report which target answered, and echo it as the response model.
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
@@ -414,7 +416,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms, ...(info.user === undefined ? {} : { user: info.user }) })
       // Probes and scrapes that succeed are not worth a line each.
       if ((info.route !== "GET /healthz" && info.route !== "GET /metrics") || outcome !== "ok") {
-        const fields = { id, route: info.route, app: info.app, user: info.user, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
+        const fields = { id, route: info.route, app: info.app, user: info.user, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
         else log("request", fields)
       }

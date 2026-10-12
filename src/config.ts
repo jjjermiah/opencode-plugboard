@@ -58,6 +58,8 @@ export interface PlugboardOptions {
   readonly usage: UsageConfig
   /** A key that may read every app's usage on `GET /v1/usage`. Compared like app keys; must differ from every one of them. */
   readonly adminKey?: string
+  /** A template for the OpenCode session page of each request: `{id}`, and optional `{directory}` (see src/session/link.ts, #77). */
+  readonly historyUrl?: string
 }
 
 /** Option `usage` after defaults: on, and days of history kept. */
@@ -139,7 +141,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -396,6 +398,26 @@ function parseBudgets(raw: unknown, keys: Readonly<Record<string, string>>): Bud
   return { ...(perApp === undefined ? {} : { perApp }), ...(raw.apps === undefined ? {} : { apps }) }
 }
 
+/**
+ * Option `historyUrl` (#77): an http(s) URL template that must contain `{id}`. Its only other placeholder is
+ * `{directory}`, so a typo such as `{sesion}` fails at load instead of producing a link that is wrong.
+ */
+function parseHistoryUrl(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  const at = "plugboard option `historyUrl`"
+  if (typeof value !== "string" || !value.includes("{id}")) throw new Error(`${at} must be a URL template with {id} (for example http://host:4096/session/{id})`)
+  const unknown = (value.match(/\{[^{}]*\}/g) ?? []).find((placeholder) => placeholder !== "{id}" && placeholder !== "{directory}")
+  if (unknown !== undefined) throw new Error(`${at} has the unknown placeholder ${unknown} (known: {id}, {directory})`)
+  let url: URL
+  try {
+    url = new URL(value.replaceAll("{id}", "x").replaceAll("{directory}", "x"))
+  } catch {
+    throw new Error(`${at} must be an http(s) URL template`)
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`${at} must be http or https`)
+  return value
+}
+
 /** Validates raw plugin options and applies defaults. Throws `Error` with an actionable message. */
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
@@ -493,6 +515,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (budgets !== undefined && !usage.enabled) throw new Error("plugboard option `budgets` needs `usage` enabled: budgets are counted from the usage records")
   if (budgets !== undefined && usage.retentionDays < widestWindowDays(budgets))
     throw new Error(`plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`)
+  const historyUrl = parseHistoryUrl(input.historyUrl)
 
   return {
     listen: { host, port: port ?? DEFAULTS.port },
@@ -515,6 +538,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     usage,
     ...(budgets === undefined ? {} : { budgets }),
     ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
+    ...(historyUrl === undefined ? {} : { historyUrl }),
   }
 }
 

@@ -34,6 +34,7 @@ These are the rules a change must not break. Tests, reviews and the mutation cat
 - **I24. Usage reads are scoped by key.** The admin key reads every app. An app key reads only its own app, and asking for another is a 403. The RPC returns every app, because OpenCode's own API is already authenticated by the server password (`src/config.ts` `authenticateUsage`, `src/openai/route.ts` `serveUsage`, `src/rpc.ts`).
 - **I25. Runtime app keys are stored as digests, read only from request handling, and the admin routes answer the admin key alone.** A key is shown once, by its create call; its record holds the SHA-256 of the key, never the key. The cache is filled by the first request that authenticates, never by setup, and a create or revoke writes storage before the cache, so a revoked key stops authenticating on the next request. Without `adminKey` the admin paths are 404; with it, every other credential is 401 (`src/keys.ts`, `src/admin/route.ts`, `src/config.ts` `authenticate`).
 - **I26. The end user is a label, never a path, and its counts are capped.** The caller's `user` or `metadata.user_id` is kept only when it matches the allowed charset and length (`src/user.ts`), and it is used as a key in a record and in the title and log line, never in a path. A day keeps at most 200 distinct users per app, and later ones count under `_other` (`src/usage.ts` `userSlot`).
+- **I27. A session link is filled only from the id and the directory, URL-encoded.** Option `historyUrl` is validated at load, and `sessionUrl` in `src/session/link.ts` encodes both values, so a session id or a path cannot add a segment or a query to the link the operator configured.
 
 ## Three lifetimes
 
@@ -270,6 +271,7 @@ src/dashboard/assets.ts      serves the dashboard page and its files (`app.js`, 
 src/dashboard/app.js         the page's script (plain browser JS, no build); app.css is its stylesheet
 src/keys.ts                 runtime app keys (#55): the store on `ctx.storage` (`keys/<id>`, SHA-256 digests), the lazy cache on the runtime, create, list and revoke (see I25)
 src/admin/route.ts          the admin routes `/v1/admin/keys` (`GET`, `POST`) and `/v1/admin/keys/{keyId}` (`DELETE`), served only with `adminKey`
+src/session/link.ts         the session page link of a response (#77): `sessionUrl` fills `historyUrl`, `setSessionLink` sets `x-plugboard-session-url`
 src/runtime.ts              process singleton: generations, confirmed directories, ensureBackend, listener lifetime, event pump, session store, history sweep state, metrics registry
 src/http.ts                 ingress: body limits, origin checks, disconnect abort, deadline, JSON/SSE transport
 src/openai/route.ts         front door and Chat Completions and /v1/models orchestration; dispatches POST /v1/messages, /v1/responses, /v1/completions and the Gemini paths

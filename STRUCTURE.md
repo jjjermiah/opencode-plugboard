@@ -51,7 +51,7 @@ Each API front-end has the same three files: `request.ts` decodes the wire body 
 | `anthropic/` | `POST /v1/messages`. Takes the request over early: Anthropic error bodies and `x-api-key` auth. |
 | `gemini/` | `generateContent`, `streamGenerateContent` and the Gemini model list. The model is in the URL, errors use Google's body. |
 | `completions/` | Legacy `POST /v1/completions`. Always goes through the fan-out. |
-| `session/` | The OpenCode back end. `host.ts` adapts the Effect plugin API to a Promise port. `caller.ts` runs one model call as one kept session. `context.ts` holds the context hook, seed tools and agent deny. `events.ts` turns bus events into `PlugEvent`s and host errors into safe `PlugError`s. `state.ts` is the session store shared by generations. `history.ts` has the data root, app directory and transcript. `prune.ts` has the history index and sweep. `media.ts` prepares images, including the remote fetch filter. `seeds.ts` has the seed names and the request permissions. |
+| `session/` | The OpenCode back end. `host.ts` adapts the Effect plugin API to a Promise port. `caller.ts` runs one model call as one kept session. `context.ts` holds the context hook, seed tools and agent deny. `events.ts` turns bus events into `PlugEvent`s and host errors into safe `PlugError`s. `state.ts` is the session store shared by generations. `history.ts` has the data root, app directory and transcript. `prune.ts` has the history index and sweep. `media.ts` prepares images, including the remote fetch filter. `seeds.ts` has the seed names and the request permissions. `link.ts` fills the session page link (`historyUrl`, #77). |
 
 ## Request flow
 

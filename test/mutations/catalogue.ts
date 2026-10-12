@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I27-session-link-unencoded",
+    invariant: "I27",
+    file: "src/session/link.ts",
+    find: 'return template.replaceAll("{id}", encodeURIComponent(recordID)).replaceAll("{directory}", encodeURIComponent(directory))',
+    replace: 'return template.replaceAll("{id}", recordID).replaceAll("{directory}", encodeURIComponent(directory))',
+    tests: ["test/unit/session-link.test.ts"],
+  },
+  {
     id: "I26-user-cap-off-by-one",
     invariant: "I26",
     file: "src/usage.ts",

@@ -174,7 +174,7 @@ export interface CallContext {
   /** Aborted on client disconnect or timeout. */
   readonly signal: AbortSignal
   /** Called once, before the first event, with the id of the history record this call writes (if any). */
-  readonly onRecord?: (recordID: string) => void
+  readonly onRecord?: (recordID: string, directory?: string) => void
   /**
    * Called once, before the first event, only for a request whose model is an alias with fallbacks
    * (`src/fallback.ts`): which target answered and how many earlier targets failed first. A front-end

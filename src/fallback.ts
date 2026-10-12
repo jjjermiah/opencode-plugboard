@@ -51,6 +51,8 @@ export const FALLBACKS_HEADER = "x-plugboard-fallbacks"
 export interface ServedInfo {
   served?: string
   fallbacks?: number
+  /** The session page link of the request (option `historyUrl`, src/session/link.ts), for the log line. */
+  sessionUrl?: string
 }
 
 /**
@@ -90,9 +92,9 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
   let attempt = 0
   for (;;) {
     // The history id of this attempt: handed on only if the attempt is the one that answers (or the last).
-    let recordID: string | undefined
+    let recorded: { id: string; directory?: string } | undefined
     const next = attempt === 0 ? request : retarget(deps.options, request, ref)
-    const iterator = inner.stream(next, { ...context, onRecord: (id) => void (recordID = id) })[Symbol.asyncIterator]()
+    const iterator = inner.stream(next, { ...context, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
 
     let first: IteratorResult<PlugEvent> | undefined
     let thrown: { readonly error: unknown } | undefined
@@ -124,7 +126,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     }
 
     // Answered, ran out of targets, or the request ended: this attempt's outcome is the response.
-    if (recordID !== undefined) report(context, recordID)
+    if (recorded !== undefined) report(context, recorded)
     if (thrown) throw thrown.error
     if (first!.done) return
     // An error is not an answer: a call that fails (non-retryable, or on its last target) reports no served model.
@@ -153,9 +155,9 @@ async function resolveRest(deps: FallbackDeps, request: PlugRequest, app: string
   }
 }
 
-const report = (context: CallContext, recordID: string): void => {
+const report = (context: CallContext, recorded: { readonly id: string; readonly directory?: string }): void => {
   try {
-    context.onRecord?.(recordID)
+    context.onRecord?.(recorded.id, recorded.directory)
   } catch {}
 }
 
