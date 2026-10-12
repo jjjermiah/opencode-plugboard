@@ -3,7 +3,7 @@
     {
       "request": {
         "body": {
-          "max_tokens": 256,
+          "max_tokens": 1024,
           "messages": [
             {
               "content": "What is the weather in Paris? Use the tool.",
@@ -72,7 +72,7 @@
     {
       "request": {
         "body": {
-          "max_tokens": 256,
+          "max_tokens": 1024,
           "messages": [
             {
               "content": "What is the weather in Paris? Use the tool.",
