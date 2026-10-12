@@ -52,6 +52,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/policy.test.ts"],
   },
   {
+    id: "I9-server-tool-calls-cap-off",
+    invariant: "I9",
+    file: "src/session/events.ts",
+    find: "if (this.serverCalls.size > (this.hooks.maxServerToolCalls ?? 0))",
+    replace: "if (false)",
+    tests: ["test/session/server-tools.test.ts"],
+  },
+  {
     id: "I24-metrics-app-key-reads-all-apps",
     invariant: "I24",
     file: "src/openai/route.ts",

@@ -216,8 +216,10 @@ export interface CollectorHooks {
   readonly app?: string
   /** The app's `serverTools` (option `apps`): OpenCode runs these calls, the caller never sees them. */
   readonly serverTools?: ReadonlySet<string>
-  /** Steps that may run server tools before the turn is stopped. The owner passes it with `serverTools`. */
+  /** Model steps that may run server tools before the turn is stopped. The owner passes it with `serverTools`. */
   readonly maxServerToolSteps?: number
+  /** Server tool calls allowed across all steps; the call past it fails the request. The owner passes it with `serverTools`. */
+  readonly maxServerToolCalls?: number
 }
 
 interface ServerCall {
@@ -320,6 +322,14 @@ export class RequestCollector {
         if (this.hooks.serverTools?.has(name)) {
           this.serverCalls.set(id, { name, startedAt: Date.now(), done: false })
           this.stepServerCalls++
+          // The cap counts calls across steps (#198). The call past it is not returned to the caller, and the turn stops.
+          if (this.serverCalls.size > (this.hooks.maxServerToolCalls ?? 0))
+            this.abort({
+              status: 502,
+              kind: "server",
+              code: "server_tool_calls_exceeded",
+              message: "The model used more OpenCode tool calls than this app allows",
+            })
           return
         }
         this.calls.add(id)

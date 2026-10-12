@@ -149,7 +149,7 @@ describe("the context hook keeps the server tools (#82)", () => {
 })
 
 /** A collector in a real store, for an app whose `serverTools` are `websearch`. */
-function collectorRun(maxServerToolSteps = 8) {
+function collectorRun(maxServerToolSteps = 8, maxServerToolCalls = 16) {
   let stops = 0
   const collector = new RequestCollector({
     stopTurn: () => void stops++,
@@ -157,6 +157,7 @@ function collectorRun(maxServerToolSteps = 8) {
     app: "app",
     serverTools: new Set(["websearch"]),
     maxServerToolSteps,
+    maxServerToolCalls,
   })
   const store = createSessionStore()
   store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
@@ -204,6 +205,40 @@ describe("step classification (#82)", () => {
       },
     ])
     expect(run.stops()).toBe(1)
+  })
+
+  test("#198 the call cap counts calls across steps: the call past it fails 502 server_tool_calls_exceeded and stops the turn", async () => {
+    const run = collectorRun(8, 3)
+    run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.toolCalled("s3", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.toolCalled("s4", "websearch", {}), run.host.stepEnded("tool-calls"))
+    expect(await run.drain()).toEqual([
+      {
+        type: "error",
+        error: { status: 502, kind: "server", code: "server_tool_calls_exceeded", message: "The model used more OpenCode tool calls than this app allows" },
+      },
+    ])
+    expect(run.stops()).toBe(1)
+  })
+
+  test("#198 a mixed step whose server calls pass the cap fails the request; the caller's call is not returned", async () => {
+    const run = collectorRun(8, 1)
+    run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolCalled("s2", "websearch", {}), run.host.toolCalled("c1", "lookup", {}), run.host.stepEnded("tool-calls"))
+    const events = await run.drain()
+    expect(events.map((event) => event.type)).toEqual(["error"])
+    expect(events.some((event) => event.type === "tool-call")).toBe(false)
+    expect(run.stops()).toBe(1)
+  })
+
+  test("#198 the calls up to the cap are allowed, whatever the steps", async () => {
+    const run = collectorRun(8, 2)
+    run.send(run.host.toolCalled("s1", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
+    run.send(run.host.textDelta("Done"), run.host.stepEnded("stop"), run.host.executionSucceeded())
+    expect(await run.drain()).toEqual([
+      { type: "text-delta", text: "Done" },
+      { type: "finish", reason: "stop", usage: undefined },
+    ])
   })
 
   test("the steps up to the cap are allowed", async () => {

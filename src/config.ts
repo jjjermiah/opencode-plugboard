@@ -104,8 +104,10 @@ export interface AppPolicy {
    * Absent: none, the session denies every real tool. Trusted apps only, see docs/configuration.md.
    */
   readonly serverTools?: ReadonlyArray<string>
-  /** Server-tool steps one request may run before the turn is stopped (option `maxServerToolSteps`). */
+  /** Model steps that may run server tools in one request before the turn is stopped (option `maxServerToolSteps`). */
   readonly maxServerToolSteps?: number
+  /** Server tool calls one request may run across all its steps (option `maxServerToolCalls`). */
+  readonly maxServerToolCalls?: number
   /**
    * This app's session link template (option `apps.<name>.historyUrl`), or `false` for none. Absent: the global
    * `historyUrl`. Look the effective template up with `historyTemplate`.
@@ -177,8 +179,10 @@ export interface Budgets {
 
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
 export const DEFAULT_APP = "default"
-/** Server-tool steps per request when `maxServerToolSteps` is not set. */
+/** Model steps that may run server tools per request when `maxServerToolSteps` is not set. */
 export const DEFAULT_SERVER_TOOL_STEPS = 8
+/** Server tool calls per request when `maxServerToolCalls` is not set (across all steps). */
+export const DEFAULT_SERVER_TOOL_CALLS = 16
 const DEFAULTS = {
   host: "127.0.0.1",
   port: 4010,
@@ -265,10 +269,11 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "historyUrl"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl"])
 const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
 const MAX_SERVER_TOOLS = 32
 const MAX_SERVER_TOOL_STEPS = 100
+const MAX_SERVER_TOOL_CALLS = 1000
 /** Tools that start a child session. The child runs with its own agent's rules, not the request session's deny-all (#195). */
 const SESSION_SPAWNING_TOOLS: ReadonlySet<string> = new Set(["subagent", "task"])
 
@@ -329,6 +334,9 @@ function parseApps(
     if (value.maxServerToolSteps !== undefined && serverTools === undefined) throw new Error(`${at}.maxServerToolSteps needs \`serverTools\``)
     const maxServerToolSteps =
       value.maxServerToolSteps === undefined ? undefined : positiveInt(value.maxServerToolSteps, `apps.${app}.maxServerToolSteps`, DEFAULT_SERVER_TOOL_STEPS, MAX_SERVER_TOOL_STEPS)
+    if (value.maxServerToolCalls !== undefined && serverTools === undefined) throw new Error(`${at}.maxServerToolCalls needs \`serverTools\``)
+    const maxServerToolCalls =
+      value.maxServerToolCalls === undefined ? undefined : positiveInt(value.maxServerToolCalls, `apps.${app}.maxServerToolCalls`, DEFAULT_SERVER_TOOL_CALLS, MAX_SERVER_TOOL_CALLS)
 
     // `false` turns the link off for this app; a string is its own template (validated like the global one).
     const historyUrl = value.historyUrl === false ? false : parseHistoryUrl(value.historyUrl, `plugboard option \`apps.${app}.historyUrl\``)
@@ -340,6 +348,7 @@ function parseApps(
       ...(maxTools === undefined ? {} : { maxTools }),
       ...(serverTools === undefined ? {} : { serverTools }),
       ...(maxServerToolSteps === undefined ? {} : { maxServerToolSteps }),
+      ...(maxServerToolCalls === undefined ? {} : { maxServerToolCalls }),
       ...(historyUrl === undefined ? {} : { historyUrl }),
     }
     // An app that only carries a key has no policy to look up.

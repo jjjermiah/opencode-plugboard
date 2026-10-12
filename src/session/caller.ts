@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { log, logError, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
@@ -236,7 +236,11 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           requestID,
           app,
           ...(policy?.serverTools
-            ? { serverTools: new Set(policy.serverTools), maxServerToolSteps: policy.maxServerToolSteps ?? DEFAULT_SERVER_TOOL_STEPS }
+            ? {
+                serverTools: new Set(policy.serverTools),
+                maxServerToolSteps: policy.maxServerToolSteps ?? DEFAULT_SERVER_TOOL_STEPS,
+                maxServerToolCalls: policy.maxServerToolCalls ?? DEFAULT_SERVER_TOOL_CALLS,
+              }
             : {}),
         })
 
