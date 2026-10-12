@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.21.0] - 2026-10-11: Answers to the Reviewers
+
+**Full diff:** [v0.20.0...v0.21.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.20.0...v0.21.0)
+
 This release is mostly the answer to three staff-engineer reviews and a first live run against real providers. If you installed 0.18.0 to 0.20.0 from npm, the `/plugboard` TUI page never loaded; it does now.
 
 ### Fixed
@@ -43,6 +49,344 @@ This release is mostly the answer to three staff-engineer reviews and a first li
 
 - CI builds the docs site on pull requests ([#167](https://github.com/jjjermiah/opencode-plugboard/issues/167)), the host-bump workflow tests with read-only permissions and opens its PR from a separate clean job ([#157](https://github.com/jjjermiah/opencode-plugboard/issues/157)), the compat log proxy redacts every key header ([#162](https://github.com/jjjermiah/opencode-plugboard/issues/162)), and `@types/escape-html` ships as a dependency so TypeScript consumers compile ([#166](https://github.com/jjjermiah/opencode-plugboard/issues/166)).
 - Internal runtime version 15. Restart OpenCode after upgrading.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (32 commits)</summary>
+
+#### Features
+
+**feat(runtime): fail plugin setup on invalid options and show the error** ([`65b48df`](https://github.com/jjjermiah/opencode-plugboard/commit/65b48dfc1511e2e98b7ac5870077f6aeb1b7ef46))
+
+An invalid plugboard option used to be caught in index.ts and turned into a silent return. The plugin then showed as active with nothing registered, and an operator only saw connection refused. Now the setup fails with the parser's message (field path included), so the host shows the plugin as failed.
+
+Evidence for the host state (OpenCode v2.0.26, read from the tagged source): packages/core/src/plugin.ts load() turns a failed setup into { error } (line 86); activate() stores it as the slot's error (line 154); slotInfo() reports { status: "failed", error } (lines 286-290). The CLI plugin inventory prints that error (packages/cli/src/commands/handlers/plugin/inventory.ts:40). A failed setup is attempted again on each activation, which is cheap: the setup fails before it registers anything.
+
+The setup still registers nothing and returns promptly, so the freeze rules (I1, I2) hold: the error is thrown before any registration, and the message is recorded with a synchronous call. The error log line `options.invalid` stays at error level.
+
+When a listener from an earlier good generation still serves the port, the runtime keeps the message (`setConfigError`, a field on the runtime) and `GET /v1/status` returns `configError: { message, at }`. The next Location that parses valid options clears it. I chose last outcome wins over a per-directory record, because a per-directory record would stay set forever after a project config entry is removed.
+
+Not done: a TUI toast. I did not verify a host API that shows a plugin error to a TUI user, so the failed state in the plugin inventory is the surface this change relies on.
+
+Runtime VERSION is unchanged. The runtime gained the optional field `configError`, which an older runtime object simply lacks.
+
+Checked: test/runtime/plugin.test.ts (failing setup with the message and the error log; status and /v1/status while a good generation serves; a valid load clears it). `bun run typecheck` passes and `bun test` reports 1729 pass, 0 fail.
+
+Fixes #159
+
+**feat(http): add GET /readyz for backend readiness** ([`f0c3a34`](https://github.com/jjjermiah/opencode-plugboard/commit/f0c3a347ec0f7eb5712548072811dbfa8215956e))
+
+/healthz answers {"ok":true} as soon as the route runs, so a service unit or load balancer could send traffic to a plugboard that cannot serve yet: no app directory confirmed, no event pump, or no model catalog loaded.
+
+GET /readyz needs no key, like /healthz, and makes no host call. It answers {"ready":true} when a generation serves, the event pump runs and the catalog has loaded at least once. Otherwise it answers 503 {"ready":false,"reason"} with the first missing piece, in the order a person fixes them: a recorded invalid config (#159, its own message as the reason), no live generation, no app directory used since start, the pump stopped, the catalog not loaded. The reason never includes config values or keys.
+
+The pieces come from the runtime status. `catalogLoaded` is new: it is set only when `loadServingCatalog` succeeds, so a failed load keeps readiness false. `readiness` in src/discovery.ts is a pure function of those facts.
+
+Readiness does not start from setup. The first request to an app confirms its directory (ensureBackend), and any request that reaches the handler starts the event pump; the route only reads the status. A readiness probe is never logged, because it repeats until the backend is ready.
+
+Rejected: making /readyz confirm the app directory itself. That would run ensureBackend, which creates directories, from a probe. Instead the docs say one model request to an app makes a restarted server ready, and the 503 reason says so.
+
+Runtime VERSION is unchanged. The runtime gained an optional field, `catalogLoaded`, on the Runtime object, and RuntimeStatus gained a required `catalogLoaded`. An older runtime object simply has the field unset.
+
+Checked: test/http/readyz.test.ts (ready with no key; each 503 reason; a wrong key or none is never 401 and never echoes a key), and test/runtime/plugin.test.ts (a real generation: 503 until an app is used, then 503 for the catalog, then {"ready":true} after one /v1/models request). Route manifest row and discovery probe added. The test gates ratcheted to the new counts. `bun run typecheck` passes, `bun test` reports 1734 pass, 0 fail, `bun run coverage-manifest` reports 0 gaps, and check-pack and smoke-pack pass.
+
+Fixes #160
+
+**feat(config): add apps.<name>.serverTools and maxServerToolSteps** ([`ce7cdcd`](https://github.com/jjjermiah/opencode-plugboard/commit/ce7cdcd569d592ba79cd53c07535edb3719a4eae))
+
+Option apps.<name>.serverTools lets one trusted app opt in to a named list of OpenCode's own tools (for example websearch). It is off by default: an app without the field keeps the deny-all request sessions it has today. This commit only validates and parses the two fields; the session code that acts on them follows in the next commit.
+
+Each id must be an exact tool id (letters, digits, _ . : -, no wildcards), at most 32 entries, no duplicates. `execute` is rejected because it is CodeMode and would run every tool it wraps, and plugboard_seed_* names are reserved for the seed pool. The keyless default app cannot have server tools, because loopback callers are not isolated from each other (#87). maxServerToolSteps is optional (default 8, 1 to 100) and needs serverTools.
+
+Rejected alternatives: a wildcard or prefix form, which would widen silently when OpenCode adds tools, and a top-level option, since the per-app policy already carries the other app-scoped settings.
+
+Checked with bun test test/unit/config.test.ts (new #82 block: accepted shapes, each rejection, the default app).
+
+Refs #82
+
+**feat(session): run an app's listed OpenCode tools in request sessions** ([`66428a4`](https://github.com/jjjermiah/opencode-plugboard/commit/66428a46d3d192df79c65703b24b8d7695b7118b))
+
+A request session of an app with serverTools gets deny-all, the seed allow, and one exact allow per listed id (requestPermissions). OpenCode evaluates session rules last match wins, so the later allows override the deny. This was checked against the pinned host (v2.0.26): Wildcard.match and the findLast loop in Permission.evaluate, with ids that are exact names only. Apps without serverTools keep REQUEST_PERMISSIONS unchanged.
+
+At request time, after the backend is ready and before session.create, every listed id must be a direct tool of the location (codemode false, permission name equal to its id), read through SessionPort.directTools. A missing one is a 400 server_tool_unavailable and nothing is created. The message says that CodeMode tools, including MCP tools by default, cannot be listed and need codemode: false. A caller tool with the same name is a 400 server_tool_collision.
+
+The context hook keeps the host's own descriptor for each listed tool, so the host maps the call back to the real tool. Those tools are not offered when tool_choice is none. The collector treats a call to a listed tool as a server call. It is not emitted as a tool call, a step with only server calls continues the turn, a step with a caller call returns to the caller as before, and at most maxServerToolSteps server steps run before the request fails with 502 server_tool_steps_exceeded. Each server call writes one server_tool.call log line (tool, duration, ok) and never its arguments. Apps with serverTools bypass the response cache, through the same bypass predicate as persona models.
+
+A non-streaming answer that ran server tools carries x-plugboard-server-tools with the count. The session caller reports it once per call when the call ends (CallContext.onServerTools), and every front-end's reportServerTools sums the choices of n while the headers are open. Streams never get the header.
+
+Rejected alternatives: asking the caller to run the tools (the point of the issue is that OpenCode runs them), a wildcard in the session permission (it would widen with every new tool), and interrupting on every step with server calls (the model would never get to answer with the tool's result).
+
+Checked with bun test: test/session/server-tools.test.ts (permissions, request checks, hook identity, step classification, the cap, log lines, the host port, the count callback, the header writer), test/http/policy.test.ts (the header on chat, n = 2 and streams) and test/runtime/cache.test.ts. Not run: a live websearch call against a real provider on an isolated server.
+
+Refs #82
+
+#### Fixes
+
+**fix(runtime): fail closed when the last key is revoked** ([`823b725`](https://github.com/jjjermiah/opencode-plugboard/commit/823b72512c036bb0f73a319ae44aea54f714554f))
+
+With one key and an older generation still serving, a reload that removes that key kept the old key working: an empty key set was rejected as not a revocation. Removing the last key now sets the live key set to one entry that no request can match, so every request gets 401 until restart. Adding a key back is still rejected until restart (I5). Catalogue entry I5-revoked-last-key-goes-keyless guards the rule.
+
+Fixes #152
+
+**fix(tests): redact every API key header and the key query in logproxy** ([`2fc13e2`](https://github.com/jjjermiah/opencode-plugboard/commit/2fc13e2aba249ff79e7ab789191784a9ca5aa556))
+
+compat/tools/logproxy.py redacted only the Authorization header. Anthropic clients send their key as x-api-key, Gemini clients as x-goog-api-key or as the key query parameter, so a capture written with those clients kept the live key in plain text. The proxy now redacts those two headers (matched case-insensitively, with Authorization) and the value of the key query parameter. The request target is redacted in the record only; the upstream request still carries it unchanged. Other query parameters are kept as sent.
+
+The capture file was created with mode 600, but touch() applies a mode only when it creates the file, so a capture that already existed kept its old mode. The proxy now chmods the file to 0600 on every start.
+
+Rejected: a generic "redact anything that looks like a key" rule. It would hide ordinary headers and parameters that the captures need to show, and the list of credential names is short and known. Stdlib only, as before.
+
+Checked: python3 -m py_compile compat/tools/logproxy.py passes. Ran the proxy against a local upstream with x-api-key, x-goog-api-key, Authorization and ?key=, on a capture file that already existed with mode 644. The record shows <redacted> for all four, the other query parameters are intact, the file contains none of the secret strings, and the mode is 600.
+
+Fixes #162
+
+**fix(cache): bound memory held by streams and cache capture** ([`4b77d6e`](https://github.com/jjjermiah/opencode-plugboard/commit/4b77d6e64604f2b2436118a2348bb4d92039ba09))
+
+The Anthropic and Gemini encoders built the full content or parts aggregate for every answer, and the stream routes never read it. A streamed answer now keeps no aggregate: only a non-streamed body is built. The response cache recorded every text byte of a miss and checked maxBytes only when storing, so a long answer was held in full and then dropped. Capture now stops once the captured text passes maxBytes, which frees what it kept, and the answer is served but not stored. Both checks use the configured cap, so no new option is needed.
+
+Fixes #153
+
+**fix(cache): answer hits before the concurrency limiter** ([`fb19893`](https://github.com/jjjermiah/opencode-plugboard/commit/fb198936b85c437137d48eda719c0282d7b039c7))
+
+index.ts put the response cache inside the limiter, so admission checked the app's concurrency before the cache lookup: a cached prompt got 429 while one miss held the app's only slot. The cache is now outside the budgets and the limiter, and only a miss is budgeted and limited. A hit spends no budget, takes no slot and counts toward no requests-per-minute window, so the window counts only calls that reach a model. Budgets stay outside the limiter. The wrapper order is documented in docs/architecture.md and docs/configuration.md.
+
+Fixes #154
+
+**fix(session): delete a session created after its request was aborted** ([`dde2b1e`](https://github.com/jjjermiah/opencode-plugboard/commit/dde2b1ee00cc0ec0b3f45d95402944d71c251941))
+
+raceAbort rejects as soon as the request aborts, but the host keeps running session.create. A session that landed after the disconnect was never indexed, so history pruning never removed it. The caller now deletes such a session when the create resolves late, logging a failed delete. SessionPort gains remove(), backed by ctx.session.remove.
+
+Fixes #155
+
+**fix(completions): honour response_format on legacy /v1/completions** ([`8ed3df4`](https://github.com/jjjermiah/opencode-plugboard/commit/8ed3df43f6e1f417a4799e4b75caa4afc755f74f))
+
+Legacy completions ignored response_format, so a json_schema prompt got prose back while the docs said it worked. The decoder now parses it with the chat parser: json_schema is the forced respond tool, and the answer is its arguments as text; json_object is the same system instruction, with one code fence stripped. A structured turn without the call is a 502 structured_output_missing, as on chat. Streamed structured answers are written as one text chunk at the end. The three live cells that failed on this are removed from test/live/known.ts.
+
+Fixes #169
+
+**fix(openai): answer structured output from text when respond is skipped** ([`b0acb3a`](https://github.com/jjjermiah/opencode-plugboard/commit/b0acb3afb32b4e124e260610c8211b81639edf69))
+
+Claude Haiku with one caller tool plus json_schema often ends the turn in text and never calls respond, so the caller got a 502 even though the text was the JSON it asked for. When the final text parses as JSON (one code fence stripped) and matches the caller's schema, that text is now the structured answer. Chat Completions and legacy completions share the rule. The check is deliberately small, because ajv is a dev dependency and the runtime carries no schema library: the top-level type, the top-level required keys, and the type of each top-level property. Other schema keywords are not checked, and docs/configuration.md says so.
+
+A non-streamed answer taken this way carries x-plugboard-structured-fallback: text. A streamed one cannot, because the headers are sent before the answer is known. Text that does not match still fails with the structured_output_missing 502.
+
+Fixes #170
+
+**fix(session): report provider usage, auth and model errors by their class** ([`01f517d`](https://github.com/jjjermiah/opencode-plugboard/commit/01f517d0a65b19df300144a84e5ed495d237542b))
+
+A ChatGPT subscription at its limit came back as 502 provider_unavailable, which told the caller nothing about what to do. The host reports it as a provider.invalid-request with no status, so the status could not decide. The provider wording in the message or the raw body now decides the class when the status does not: a usage limit is 429 quota_exceeded, a rate limit 429 rate_limited, a rejected key 502 provider_auth_failed, and an unknown model 404 model_not_found. Typed 401 and 403 keep their statuses.
+
+The caller still gets only the code and a fixed message (#88). The raw class and the code it mapped to are logged once as model.failed at error level. Once the session exists, its x-plugboard-session id is set before the first event, so it is on these error responses. A failure before the session is created has no id. A provider Retry-After is not forwarded: the host's session error carries no response headers.
+
+Fixes #171
+
+**fix(openai): never answer a structured turn with no answer as a 200** ([`3bcef84`](https://github.com/jjjermiah/opencode-plugboard/commit/3bcef84c5e777e65228faf321c6132159f3ee8b5))
+
+glm-5.3-flash sometimes ended a json_schema turn with empty text and no tool call, and the 200 went out with null content. Structured output that never arrived was already a 502 for a plain stop, but a length or content-filter finish kept a 200 with null content. That exception is gone: a structured turn without the respond call (or a matching text answer, see #170) is a 502 structured_output_missing whatever the finish reason. The streamed path fails the same way before any output.
+
+Plain turns that stop with no text, reasoning or tool call are still 200, because some models answer empty on purpose. The session now logs a warning, answer.empty, with the session id, the model and the tool count, so the session can be read when it recurs. Responses and Gemini keep their own length and content-filter handling and are not changed here.
+
+Fixes #172
+
+**fix(responses): answer structured output from text and 502 every missing answer** ([`d7d0f8f`](https://github.com/jjjermiah/opencode-plugboard/commit/d7d0f8fa9d273b167af5c88dcd7e0a2c310c24ee))
+
+Responses exempted a length or content-filter finish from the missing structured output 502, and had no text fallback. The shared rules from Chat Completions now apply: a turn without the respond call is a 502 structured_output_missing for every finish reason, unless its final text is the JSON the schema asks for (#170), in which case that text is the answer and a non-streamed response carries x-plugboard-structured-fallback: text.
+
+A streamed structured answer is held back until the turn ends. The commit still comes with the first output event, so keepalive comments run while the answer is held. A missing answer after streamed prose therefore ends as response.failed, not as an HTTP status. A transport test pins that buffered text still commits and keeps the stream alive.
+
+**fix(gemini): answer structured output from text and 502 every missing answer** ([`b7d19d1`](https://github.com/jjjermiah/opencode-plugboard/commit/b7d19d150f65d6291f1ba223c99afddaf2226e5e))
+
+Gemini had the same gaps as Responses: a length or content-filter finish kept its candidate with no content, and a text answer was never taken. A turn without the respond call now fails with the 502 in Google's shape for every finish reason, unless its final text is the JSON the schema asks for (#170). The schema the caller sent is carried on the exchange for that check; a wrapped (non-object) schema is checked as sent. A non-streamed answer carries x-plugboard-structured-fallback: text.
+
+A streamed structured answer is held back until the turn ends, and the commit still comes with the first output event, so keepalive comments run meanwhile. A missing answer after streamed text ends as an error chunk.
+
+The Haiku tools-json cells on chat, responses and gemini are removed from test/live/known.ts: the text fallback is their fix. The manifest, the configuration and gemini docs, and the ratcheted test-count floors come with this commit.
+
+Fixes #173
+
+#### Security
+
+**security(http): admit request bodies against a process-wide budget** ([`497341b`](https://github.com/jjjermiah/opencode-plugboard/commit/497341bbb877a23cd6c930f557085fa46590860b))
+
+Every route read its JSON body into memory with no bound on the total. Each request could buffer up to 32 MiB, so many concurrent large bodies from one key holder, or from any local caller on a keyless endpoint, could exhaust the OpenCode process before the model-call limits ran. readJsonBody is the one place every route reads a body, so the bound lives there and covers every route at once.
+
+What changed: the bytes held by all bodies being read are counted in one process-wide budget, option limits.maxBodyBytesInFlight (default 128 MiB). A declared Content-Length is charged before the first byte is read, so a refusal costs no buffering. A body without one is charged as it arrives and refused once it would go over. A refusal is 503 server_busy with Retry-After 1. A body not complete within limits.bodyReadTimeoutMs (default 30 s) is 408 body_read_timeout. The bytes come back on every exit: complete, refused, timed out or abandoned.
+
+Rejected: a module-level counter. docs/architecture.md says process-wide state lives on globalThis under a versioned key, because a plugin module can be evaluated once per Location. The budget uses its own Symbol.for key, so the runtime's shape and VERSION do not change. Rejected: capping the number of bodies in flight. A count does not bound bytes, and one 32 MiB body is not the same load as a hundred small ones. Rejected: reusing the model-call limits. They run after the body is read, which is too late.
+
+Checked: transport tests on a loopback socket. Two bodies, the second refused with 503 while the first holds the budget, and admitted once it is released. A chunked body is charged as it arrives. A stalled body gets 408 and its bytes come back. Route tests check the 503 and 408 wire bodies, Retry-After and the logged outcome. Config tests cover the two options, their defaults and their rejections. Mutation entries I25 (admission, release, timeout) are each killed by the new tests. bun test: 1738 pass. Coverage gates pass; test floors were raised, not lowered.
+
+Fixes #156
+
+#### Tests
+
+**test(tests): ratchet floors after the runtime hardening fixes** ([`aca52c1`](https://github.com/jjjermiah/opencode-plugboard/commit/aca52c1653be4de493f5c9611e7d38de766d9d47))
+
+The new tests for the key, cache, encoder and late-session fixes raise the per-layer test counts, and function coverage rose to 92.8%. Floors are raised to these values (never lowered) with test-gates --ratchet.
+
+**test(tests): add the opt-in live suite against an isolated OpenCode server** ([`b9786df`](https://github.com/jjjermiah/opencode-plugboard/commit/b9786dfdb2cabea1c6d0e61fba5509009e39b381))
+
+The live layer runs the same provider x endpoint x scenario cells that the matrix uses, as tests, against a real isolated OpenCode server. The fakes in test/compat cannot show provider quirks, what the host records for a session, or what a client disconnect does to a request that is still streaming (#99).
+
+It is skipped unless PLUGBOARD_LIVE=1, so bun test stays offline. With the variable unset the run reports the same 1547 passing tests as before and 126 skipped live tests. Configuration comes only from the environment: PLUGBOARD_LIVE_KEY (required), PLUGBOARD_LIVE_URL, PLUGBOARD_LIVE_MODELS and PLUGBOARD_LIVE_OC (the wrapper that reaches the server). The key is never written to a file or a report.
+
+test/setup.ts records the real HOME before it sandboxes HOME. The wrapper finds the isolated server's directories under the real home, so the suite passes it on explicitly. Nothing else in the sandbox changes, and the suite never edits the server's config.
+
+test/live/cells.ts is the table. Five endpoints (chat, responses, messages, gemini, completions) against seven scenarios: text, stream, a tool call returned unexecuted, a tool result in the history, a PNG image, json_schema output and a tool together with json_schema. A scenario an endpoint does not carry is n-a with its reason (naReason). Each cell is one call on a cheap model with max_tokens 512. A failing cell reads the provider's own error from its session, because plugboard answers a provider failure with a generic 502.
+
+Lifecycle checks run without a restart. A client disconnect mid-stream must drain sessionGuards to 0 and leave the host with the session as interrupted; the test first checks that the request was still in flight at the hang-up. A tool-call turn and a tool-result turn each leave one assistant message in the session. Not covered: the request deadline and a plugin reload during a request. Both need a server started for that purpose, so they are left out rather than run against the shared dev server.
+
+test/live/known.ts lists the cells that fail today. Each one runs as test.failing, so the suite keeps it visible and goes red when a fix lands, which is the cue to remove the entry. Cells that fail only sometimes are not listed. Sessions the run creates are deleted afterwards (cleanup).
+
+Checked on the isolated dev server with PLUGBOARD_LIVE=1 bun test test/live: 122 pass, 2 fail in the last run. The two were glm-5.3-flash chat tools-json (intermittent, one failure in six runs) and anthropic gemini tools-json (known, passed once). The matrix in the next commit has the full table. Offline: bun run typecheck passes and bun test is unchanged apart from the skips.
+
+Fixes #99
+
+**test(tests): add the provider x endpoint live matrix (bun run live-matrix)** ([`2b32112`](https://github.com/jjjermiah/opencode-plugboard/commit/2b32112b5a4e46b5d3d1d4c1b8610ccb8d33fabd))
+
+`bun run live-matrix` runs every cell of the live table once for each logged-in model: 4 models x 5 endpoints x 7 scenarios. Twenty cells are n/a, each with its reason. It writes docs/live-matrix.md, one table per endpoint with pass, FAIL (the reason and a snippet) or n/a for every cell, and docs/live-matrix.json with all 140 cells. Sessions the run creates are deleted at the end (--keep-sessions keeps them). A refused connection is retried once after 10 s, as docs/development.md advises, and the run keeps going if the server reloads mid-run. The exit code is 0 unless the run cannot start, because a failing cell is a finding and not a broken run.
+
+The models are the defaults in test/live/env.ts. Each id was checked against GET /v1/models on the dev server first.
+
+Plugboard answers a provider failure with a generic 502, so a failing cell reads the provider's error from its session. That is how the matrix shows the openai rows failed on the ChatGPT account's usage limit (subscription_sharing_usage_limit_exceeded). That is an account limit, not a plugboard fault, and it blocks every openai cell until it resets.
+
+Findings from the committed run (plugboard 0.20.0 at 914dec6, the checkout the dev server loads; the server reloaded during the work, so the result covers that commit only):
+
+- /v1/completions does not enforce response_format json_schema. The answer is plain text for glm-5.3-flash, gpt-5.5 and claude-haiku-4-5, although docs/completions.md says response_format works. Known in test/live/known.ts.
+- Claude Haiku 4.5 with a tool and a json_schema together (chat, responses, gemini) mostly answers in text instead of calling the respond tool, so plugboard returns 502 "finished without calling the respond tool". Failed in most runs, passed once. Known.
+- glm-5.3-flash chat tools-json failed in one run of six. Not listed in known.ts: it runs as a plain test.
+
+The matrix and the suite share test/live/cells.ts. The suite is the same cells as tests (see the commit before this one); this commit adds the report, the script, and the docs. test/README.md has a Live layer section with the variables, the cost and what is not covered. CONTRIBUTING.md points to it.
+
+Checked: bun run typecheck passes, bun test runs the same 1547 tests and skips the live ones, bun .github/scripts/check-pack.ts passes, and bun run live-matrix on the dev server gives 84 pass, 36 fail, 20 n/a of 140 cells, with sessionGuards at 0 and all 120 created sessions deleted afterwards.
+
+Fixes #108
+
+**test(tests): add the untrusted-app mutation and ratchet the floors** ([`f6f8aeb`](https://github.com/jjjermiah/opencode-plugboard/commit/f6f8aeb31659391bc1ce7cfec6cff7003bb1b6ee))
+
+Adds the I8-untrusted-app-gets-server-tools mutation: it makes an app without serverTools get websearch allowed in its request session, and the named test file must then fail. The floors move to the new totals after the tests landed (session 211, unit 813, runtime 65, functions coverage 92 percent).
+
+Mutations: 19 of 20 killed. The I15-unknown-route-before-auth entry is an anchor that already fails at HEAD: src/openai/route.ts reads liveOptions(host.options) since #90, and the catalogue still has host.options. That is not caused by this change and is left for its own fix.
+
+Refs #82
+
+#### Docs
+
+**docs(docs): fix stale contradictions and link README to the docs site** ([`ecdd72a`](https://github.com/jjjermiah/opencode-plugboard/commit/ecdd72a7a5dd6a2e4aa11fc30d2cc3808c2dd17c))
+
+Several pages described features as missing that the code now serves: /v1/responses is served, stop_sequence is returned, inline images work as `data:` URLs, and limits has a per-app concurrency cap. The reload rule was also wrong. Only key revocation and rotation apply on reload at once. Adding a key or changing any other option is rejected while an older generation still serves, so it needs an OpenCode restart. That rule now lives once in configuration.md under "Reloads and restarts", and the other mentions link to it. README links to docs pages point at the docs site instead of GitHub blob URLs. Links to CHANGELOG, LICENSE and compat/ stay on GitHub. The README known gaps for Responses storage and stop sequences were stale too.
+
+Checked against src/openai, src/anthropic, src/limits.ts, src/stop.ts and registerGeneration in src/runtime.ts. bun run docs:build passes with no dead links.
+
+Fixes #161
+
+**docs(tests): add third-party notices for the vendored schema fixtures** ([`fbc1436`](https://github.com/jjjermiah/opencode-plugboard/commit/fbc1436fed1976191617ffdf35f5c0f4b5841dde))
+
+test/fixtures/specs/openai.json is derived from openai/openai-openapi, which is MIT licensed. The MIT notice has to travel with substantial portions of the work, and the fixture carried only its source URL. THIRD_PARTY_NOTICES.md now holds the upstream copyright and license text, copied from the repository LICENSE file, plus a table that maps each fixture to its source and retrieval date.
+
+test/fixtures/specs/gemini.json is derived from the public Gemini API discovery document. The document has no license of its own. The Google APIs Terms of Service restrict content returned by the APIs, and the Developers Site Policies cover documentation, not discovery documents. The notice says the terms are unclear and claims no open license. Keeping, replacing or removing that fixture is left to the owner. The notice is not in the npm package, because test fixtures are not in the package "files" list.
+
+vendor.ts has a one-line comment that points to the notice. Nothing else in the test changed.
+
+Checked with bun .github/scripts/check-pack.ts, which still passes.
+
+Fixes #163
+
+**docs(docs): state non-affiliation and trademark ownership in the README** ([`fb89d02`](https://github.com/jjjermiah/opencode-plugboard/commit/fb89d02351cae44a23724264b9b5a4cb54581e9d))
+
+The README names OpenAI, Anthropic, Claude, ChatGPT, Gemini and Copilot, and readers could take the project for a product of one of those companies. A single line under the license section says that plugboard is not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsoft, and that product names are their owners' trademarks. docs/index.md includes the README, so the docs site shows the same line. Terms-of-service commentary for the providers is left out on purpose. The owner decides that separately.
+
+Fixes #164
+
+**docs(docs): add a remote access guide and link it from the README** ([`fbab4cc`](https://github.com/jjjermiah/opencode-plugboard/commit/fbab4cc742ce0fcae876e2769be1e607341f1dae))
+
+Non-loopback binds serve plain HTTP, so a key sent to another machine can be read on the path. Keyless loopback is also not user isolation on a shared machine. Neither point was written down in one place, and a reader had to infer the TLS and tunnel options from the client pages. docs/remote-access.md covers when remote access is needed, what plugboard does and does not protect, and four options: a tailnet bind, a TLS reverse proxy with Caddy and Traefik examples (private bind and loopback bind, with the Host rewrite the loopback check needs), an SSH tunnel, and a firewall rule. It also says that a key sent over plain HTTP should be rotated if it crossed an untrusted path, and that each OpenCode server runs its own cache, limits and usage, so one replica per deployment is the rule.
+
+The page is in the docs sidebar. The listen option in configuration.md and the README security section link to it. The Caddy and Traefik examples have not been run against plugboard, and the page says so.
+
+Fixes #168
+
+**docs(docs): document serverTools and amend the deny-all invariant** ([`7b3f036`](https://github.com/jjjermiah/opencode-plugboard/commit/7b3f036ea65bed4f11b50f159575eecce6a250e3))
+
+docs/configuration.md gains the serverTools and maxServerToolSteps fields, a security warning (a key holder can make the server run the listed tools with the server's own credentials, and the prompt steers the arguments), the rules (request-time check, no wildcards, no execute, no keyless app, no cache), and the three new error rows.
+
+docs/architecture.md amends I8 and I9 in place: deny-all still holds for every app that does not name a tool, and the one exception is described precisely. The request guard and seed tool sections restate the backstop with the same exception. SECURITY.md gets the threat note.
+
+The CHANGELOG entry is left to the release notes; this commit does not touch CHANGELOG.md or README.md.
+
+Fixes #82
+
+#### CI and tooling
+
+**ci(ci): build the docs site on pull requests** ([`95f6c9e`](https://github.com/jjjermiah/opencode-plugboard/commit/95f6c9e8720806590b7b51d323b1ca244dbf1606))
+
+docs.yml builds and deploys VitePress only on a push to main. A broken link, a bad page or a VitePress error therefore showed up after the merge, when the site was already published. The package job in ci.yml now runs bun run docs:build as its last step, so the same build runs on every pull request and push. It reuses the job's frozen install and needs no new permissions (the job stays contents: read). I added a step rather than a job: the install is already there, and a separate job would install the dependencies a second time for one command.
+
+Checked: bun run docs:build exits 0 locally, and actionlint passes on ci.yml.
+
+Fixes #167
+
+**ci(ci): split the host bump into a read-only check and a write-only PR job** ([`b78f13a`](https://github.com/jjjermiah/opencode-plugboard/commit/b78f13a7dfa0e958a7ed5ecc56afe5e6c6521c12))
+
+host-bump.yml had one job with contents: write and pull-requests: write. That job installed the newest @opencode/plugin, ran its code (bun install, the typecheck and the tests) and then opened a PR with whatever the workspace held. Code that runs under the write token could change the PR it opens.
+
+The workflow now has two jobs. check runs with contents: read: it installs the host, runs the typecheck and the tests, and uploads package.json and bun.lock as the host-bump artifact. open-pr needs check, holds the write permissions, and runs on a clean checkout of the default branch. It downloads the artifact, copies the two files in, and fails unless git status shows only " M package.json" and " M bun.lock" (no other change, no untracked file). Then create-pull-request opens the PR with add-paths limited to those two files. The PR body and draft state read the outcomes from check's outputs.
+
+Rejected: a single job with the write token only on the last step. Any step that runs after the host install still shares the job's token, and the install runs the new host's code. Rejected: letting the PR job reuse the checkout from check. Artifacts only carry what check chose to upload, and the PR job starts clean.
+
+Action pins match the other workflows (full SHA with the version as a comment). upload-artifact v7.0.2 and download-artifact v8.0.2 are the latest releases; neither was used in this repo before.
+
+Checked: actionlint passes on every workflow. The path check's grep accepts the two allowed paths and rejects an untracked file. The workflow has not run on GitHub yet; the first run is the real check of the artifact hand-off.
+
+Fixes #157
+
+**chore(tests): ratchet test-count and coverage floors** ([`f3f3718`](https://github.com/jjjermiah/opencode-plugboard/commit/f3f3718f40d2021088e4f8985f9117cd6823a0f0))
+
+The new tests for #169 to #172 raised the layer counts and the line and function coverage, so the floors move up to the measured values. The floors never go down.
+
+**ci: build the compiled TUI entry before the pack checks** ([`b70da5f`](https://github.com/jjjermiah/opencode-plugboard/commit/b70da5fde13d0a7c848f716f7062e7fb24d05607))
+
+check-pack and smoke-pack run "npm pack --ignore-scripts", which skips prepack, so dist/tui.js (the ./tui export) must be built explicitly first. ci.yml and nightly.yml now run "bun run build:tui" before check-pack. The publish workflow reuses ci.yml's jobs, so a release gets the same step, and npm publish still runs prepack for the real package.
+
+smoke-pack builds the file itself, so the smoke job needs no extra step.
+
+**ci(ci): build the TUI entry in the publish job, and notes for 0.21.0** ([`dca0852`](https://github.com/jjjermiah/opencode-plugboard/commit/dca085206652fb1b9ab63a000f0ff130dd8ba7f8))
+
+publish.yml now installs dependencies and runs build:tui before npm publish, and fails if dist/tui.js is empty. npm publish would run prepack anyway, but the publish job had no node_modules, so the Babel devDependencies prepack needs were missing.
+
+Curated [Unreleased] notes cover the TUI install fix, the structured output and provider error fixes found by the first live run (#169-#173), the staff-review hardening (#152-#157, #159-#168), trusted-app server tools (#82) and the live test layer (#99, #108). Pinned install examples bumped to 0.21.0.
+
+#### Dependencies
+
+**fix(deps): ship @types/escape-html with the package** ([`f1c5292`](https://github.com/jjjermiah/opencode-plugboard/commit/f1c5292dfa7e40488c761fd0972e4aad0106b17c))
+
+src/discovery.ts imports escape-html, and its types were a devDependency. A consumer that typechecks the packed package reads the .ts source and failed with TS7016 (Could not find a declaration file for module 'escape-html'). Moving @types/escape-html to dependencies, pinned to 1.0.4, gives the consumer the types with the package. The types package has no dependencies and no install script (npm view), so the unattended install with ignoreScripts stays safe. A declare module shim was the other option. Rejected: it would hide the real types and go stale when they change.
+
+Checked: packed the tree before and after, installed each tarball with the peers into a throwaway consumer, and ran tsc with skipLibCheck over index.ts. Before: TS7016 at src/discovery.ts. After: exit 0. bun install changed only the dependency list in bun.lock. docs/packaging.md no longer lists this as a known gap.
+
+Fixes #166
+
+**fix(deps): compile the TUI entry so npm installs load it** ([`6c44bed`](https://github.com/jjjermiah/opencode-plugboard/commit/6c44bedd9c8747d602ca7de15fd34458cac7afed))
+
+The /plugboard page never loaded from an npm install of 0.20.0. OpenCode 2.0.26 showed "TUI plugin error ... Cannot find package '@opentui/solid' imported from .../node_modules/opencode-plugboard/src/tui.tsx" (reproduced in an isolated HOME with the packed tarball installed as a local plugin). A checkout worked because it loads outside node_modules.
+
+Two host facts cause it, both in OpenCode 2.0.26 and @opentui/solid 0.5.17:
+
+- The Solid transform skips node_modules. The runtime plugin support registers babel-preset-solid through createSolidTransformPlugin, whose sourceFilter excludes any path containing node_modules. So src/tui.tsx installed from npm is never Solid-compiled. createRuntimePlugin only rewrites literal from "..." specifiers there, and the JSX pragma adds @opentui/solid/jsx-runtime after that rewrite, so it does not resolve.
+- Installed peers do not help. Peers installed with the plugin (0.6.1 @opentui/solid) load a different JSX runtime, which calls components eagerly, and the page crashed with "props.report.totals" undefined.
+
+The fix compiles the file once, before publish, with the host's own pipeline: babel-preset-solid (generate "universal", moduleName "@opentui/solid") plus @babel/preset-typescript, the versions OpenCode 2.0.26's @opentui/solid uses (1.9.12, 7.29.7, 7.27.1), pinned exactly. The output keeps literal "solid-js", "@opentui/solid", "@opentui/core" and "@opencode/plugin/tui" imports, which the host rewrites to its own copies. The peers stay optional. dist/tui.js is gitignored and built in prepack and by CI; "npm pack --ignore-scripts" skips prepack, so check-pack and the smoke test also require the file.
+
+The ./tui export points at dist/tui.js. The root tui.ts (local-path plugins resolve <dir>/tui) re-exports dist/tui.js too; tsconfig.tui.json checks only src/tui.tsx, so typecheck does not need a build.
+
+smoke-pack now builds, packs, installs with --ignore-scripts into a clean project, and checks the installed dist/tui.js: it exists, has no JSX runtime calls, imports only host-provided modules, and resolves every relative import. The static check replaces import(): the optional peers are absent in a user's install by design, so a real import would fail there for the reason the host supplies them.
+
+Checked: typecheck, bun test (1825 pass), check-pack, smoke-pack, docs build. Isolated OpenCode 2.0.26 with the fixed tarball installed under node_modules and loaded as a local plugin: /plugboard renders "Plugboard usage", w changes the range to 2026-10-06 to 2026-10-12, r reloads, and the server reports tui, rpc and server features, state active. The same run on the 0.20.0 tree shows the original "Cannot find package" error.
+
+Not on the verdaccio path yet: the local-path install is the same node_modules file loading the npm install path uses, but the npm installer itself was not exercised on this build.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.20.0] - 2026-10-11: Keys, Users, Personas
 
@@ -2346,7 +2690,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.17.0...v0.18.0
