@@ -45,6 +45,8 @@ export interface AffinityDeps {
 export interface Affinity {
   /** The anchor session of one scope key: remembered once created, and concurrent first requests share one creation. */
   anchor(app: string, scope: AffinityScope, key: string, make: () => Promise<string>): Promise<string>
+  /** Drops the stored anchor of a key (its session was deleted in OpenCode). The next `anchor` call makes a new one. */
+  forget(app: string, scope: AffinityScope, key: string): Promise<void>
 }
 
 const recordKey = (app: string, scope: AffinityScope, key: string): string => `affinity/${app}/anchor/${scope}/${key}`
@@ -68,6 +70,10 @@ export function createAffinity(deps: AffinityDeps): Affinity {
   const pending = new Map<string, Promise<string>>()
 
   return {
+    async forget(app, scope, key) {
+      await storage.drop(recordKey(app, scope, key))
+    },
+
     async anchor(app, scope, key, make) {
       const id = recordKey(app, scope, key)
       const known = await readAnchor(storage, id)

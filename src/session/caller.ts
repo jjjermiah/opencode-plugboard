@@ -24,7 +24,7 @@ import { log, logError, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
-import { describeError, type SessionPort } from "./host.js"
+import { describeError, MissingParentError, type SessionPort } from "./host.js"
 import { ImageError, prepareImages, type RemoteImages } from "./media.js"
 import { requestPermissions, seedToolsFor } from "./seeds.js"
 import { PROMPT_CACHE_OFF, scopeKey, type Affinity } from "./affinity.js"
@@ -248,33 +248,43 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const cache = appPolicy({ apps }, app)?.promptCache ?? deps.promptCache ?? PROMPT_CACHE_OFF
         const scope = affinity && cache.affinity === "anchor" ? scopeKey(cache, called) : undefined
         const modelRef = { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) }
+        const makeAnchor = (): Promise<string> =>
+          port.create({ directory, model: modelRef, title: anchorTitle(app, scope ?? ""), metadata: { plugboard: { app, anchor: true } }, permissions: requestPermissions([]) }).then((made) => String(made.id))
         let parentID: string | undefined
-        if (affinity && scope !== undefined) {
-          const anchor = affinity.anchor(app, cache.scope, scope, () =>
-            port.create({ directory, model: modelRef, title: anchorTitle(app, scope), metadata: { plugboard: { app, anchor: true } }, permissions: requestPermissions([]) }).then((made) => String(made.id)),
-          )
-          parentID = await raceAbort(anchor, context.signal)
-        }
+        if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, makeAnchor), context.signal)
         if (context.signal.aborted) return
 
-        const creating = port.create({
-          directory,
-          model: modelRef,
-          ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
-          title: makeTitle(request),
-          metadata: { plugboard: { app, model: request.model, requestID } },
-          permissions: requestPermissions(policy?.serverTools ?? []),
-          ...(parentID === undefined ? {} : { parentID }),
-        })
-        const created = await raceAbort(creating, context.signal).catch((error) => {
-          // The host keeps creating after the abort. A session that lands now is in no index, so it is removed.
-          if (context.signal.aborted)
-            void creating.then(
-              (late) => port.remove(late.id).catch((removeError) => logError("session.late_remove_failed", { requestID, app, sessionID: late.id, error: describeError(removeError) })),
-              () => {},
-            )
-          throw error
-        })
+        const makeChild = (parent: string | undefined) => {
+          const creating = port.create({
+            directory,
+            model: modelRef,
+            ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
+            title: makeTitle(request),
+            metadata: { plugboard: { app, model: request.model, requestID } },
+            permissions: requestPermissions(policy?.serverTools ?? []),
+            ...(parent === undefined ? {} : { parentID: parent }),
+          })
+          return raceAbort(creating, context.signal).catch((error) => {
+            // The host keeps creating after the abort. A session that lands now is in no index, so it is removed.
+            if (context.signal.aborted)
+              void creating.then(
+                (late) => port.remove(late.id).catch((removeError) => logError("session.late_remove_failed", { requestID, app, sessionID: late.id, error: describeError(removeError) })),
+                () => {},
+              )
+            throw error
+          })
+        }
+        let created: { id: string }
+        try {
+          created = await makeChild(parentID)
+        } catch (error) {
+          // The anchor was deleted in OpenCode: forget its record, make one anchor and retry the child once (never more).
+          if (!(error instanceof MissingParentError) || affinity === undefined || scope === undefined || parentID === undefined) throw error
+          logWarn("affinity.anchor_recreated", { requestID, app, previous: parentID })
+          await affinity.forget(app, cache.scope, scope)
+          parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, makeAnchor), context.signal)
+          created = await makeChild(parentID)
+        }
         sessionID = String(created.id)
         sessions.register({ sessionID, app, requestID, request, collector, prelude })
 
