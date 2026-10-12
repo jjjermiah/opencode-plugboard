@@ -1,0 +1,16 @@
+{
+  "provider": {
+    "plugboard": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Plugboard",
+      "options": {
+        "baseURL": "http://127.0.0.1:4010/v1",
+        "apiKey": "{env:PLUGBOARD_KEY_KILO_CODE}"
+      },
+      "models": {
+        "fast": { "name": "fast", "limit": { "context": 200000, "output": 16384 } }
+      }
+    }
+  },
+  "model": "plugboard/fast"
+}

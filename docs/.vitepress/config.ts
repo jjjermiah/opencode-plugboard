@@ -63,6 +63,7 @@ export default defineConfig({
           { text: "Claude Code", link: "/clients/claude-code" },
           { text: "Codex CLI", link: "/clients/codex-cli" },
           { text: "Continue", link: "/clients/continue" },
+          { text: "Kilo Code", link: "/clients/kilo-code" },
         ],
       },
       {
