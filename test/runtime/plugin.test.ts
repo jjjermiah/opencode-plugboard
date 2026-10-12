@@ -134,6 +134,28 @@ describe("plugin setup only registers and returns", () => {
     await until(async () => (await fetch(`http://127.0.0.1:${live.listen.port}/healthz`).catch(() => undefined))?.status === 200, 1_000, "the listener")
     expect(spy.during("after-setup")).toContain("event.subscribe")
   })
+
+  test("#160 /readyz follows a real generation: not ready until an app is used and the catalog loads", async () => {
+    const live = await options()
+    const directory = (await ensureAppDir("app")) as string
+    load(live, directory)
+    const readyz = () => fetch(`http://127.0.0.1:${live.listen.port}/readyz`)
+    await until(async () => (await readyz().catch(() => undefined))?.status === 503, 1_000, "the listener")
+    expect(await (await readyz()).json()).toMatchObject({ ready: false, reason: expect.stringContaining("no app directory has been used") })
+
+    // A model request to the app confirms its directory (the context hook is ready after this).
+    expect(await ensureBackend("app", new AbortController().signal, async () => {})).toBeUndefined()
+    const confirmed = await readyz()
+    expect(confirmed.status).toBe(503)
+    // The probe itself reached the handler, which starts the event pump (no model call), so the catalog is what is missing.
+    expect(await confirmed.json()).toMatchObject({ ready: false, reason: "the model catalog has not loaded yet" })
+
+    // A model listing loads the catalog.
+    expect((await fetch(`http://127.0.0.1:${live.listen.port}/v1/models`)).status).toBe(200)
+    const ready = await readyz()
+    expect(ready.status).toBe(200)
+    expect(await ready.json()).toEqual({ ready: true })
+  })
 })
 
 describe("finalizers are synchronous and call nothing on ctx", () => {

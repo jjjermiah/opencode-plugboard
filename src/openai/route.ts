@@ -1,5 +1,5 @@
 /**
- * OpenAI front-end route table: `GET /healthz`, `GET /v1/models`, `GET /v1/models/{id}`,
+ * OpenAI front-end route table: `GET /healthz`, `GET /readyz`, `GET /v1/models`, `GET /v1/models/{id}`,
  * `POST /v1/chat/completions` (`n` > 1 through `./fanout.ts`), and the dispatch of `POST /v1/responses`
  * and `POST /v1/completions` to `src/responses/route.ts` and `src/completions/route.ts`.
  * Observability and first-run routes (`src/discovery.ts`, `src/metrics.ts`): `GET /` and `GET /v1`
@@ -23,7 +23,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { DEFAULT_APP, authenticate, authenticateUsage, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
-import { buildDiscovery, buildStatus, renderDiscoveryHtml, sendText } from "../discovery.js"
+import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
   BodyError,
   RequestAborted,
@@ -161,7 +161,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (googleShaped) googleErrors.add(response)
     const route = gemini?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
-    info.route = gemini || modelId !== undefined || known(route) || route === "GET /healthz" ? route : "unknown"
+    info.route = gemini || modelId !== undefined || known(route) || route === "GET /healthz" || route === "GET /readyz" ? route : "unknown"
     // Anthropic Messages: its own error shape and x-api-key auth, so it takes the request from here.
     if (isMessagesPath(path)) return serveMessages(host, { path, request, response, scope, info })
 
@@ -169,6 +169,12 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (rejected) return fail(response, rejected)
 
     if (route === "GET /healthz") return sendJson(response, 200, { ok: true })
+
+    // Readiness (#160): no key, like /healthz. 503 until a generation serves, the pump runs and the catalog has loaded.
+    if (route === "GET /readyz") {
+      const verdict = readiness(runtimeStatus())
+      return sendJson(response, verdict.ready ? 200 : 503, verdict)
+    }
 
     // First-run pages: reachable without a key, so what they show depends on the caller (`buildDiscovery`).
     // With `keys` set, a request without credentials gets the minimal page; wrong credentials are a 401.
@@ -397,8 +403,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const ms = Date.now() - started
       metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
       if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
-      // Probes and scrapes that succeed are not worth a line each.
-      if ((info.route !== "GET /healthz" && info.route !== "GET /metrics") || outcome !== "ok") {
+      // Probes and scrapes that succeed are not worth a line each. A readiness probe is never logged: it repeats until the backend is ready.
+      const probe = info.route === "GET /readyz" || ((info.route === "GET /healthz" || info.route === "GET /metrics") && outcome === "ok")
+      if (!probe) {
         const fields = { id, route: info.route, app: info.app, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
         else log("request", fields)

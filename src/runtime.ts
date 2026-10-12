@@ -192,6 +192,8 @@ interface Runtime {
   readonly budgets: BudgetState
   /** The last plugin options error (`index.ts`), cleared by the next Location whose options parse (#159). */
   configError?: ConfigError
+  /** Set once the serving catalog has loaded successfully (`loadServingCatalog`); `/readyz` reads it (#160). */
+  catalogLoaded?: boolean
   listener?: Listener
   /** Present while a fiber is subscribed to the server event bus. */
   pump?: Pump
@@ -359,12 +361,14 @@ export interface RuntimeStatus extends RuntimeSnapshot {
   readonly servingConfirmed: boolean
   /** The last plugin options error, when its Location was the latest to load the plugin (#159). */
   readonly configError?: ConfigError
+  /** The serving catalog has loaded at least once in this process (`/readyz`, #160). */
+  readonly catalogLoaded: boolean
 }
 
 /** A synchronous snapshot of the runtime: no host call, no filesystem. */
 export function processStatus(): RuntimeStatus {
   const rt = runtime()
-  if (!rt) return { runtimeVersion: VERSION, generations: 0, pumpRunning: false, guards: detachedSessions.size(), startedAt: detachedStartedAt, servingConfirmed: false }
+  if (!rt) return { runtimeVersion: VERSION, generations: 0, pumpRunning: false, guards: detachedSessions.size(), startedAt: detachedStartedAt, servingConfirmed: false, catalogLoaded: false }
   const serving = preferred(rt)
   return {
     runtimeVersion: rt.version,
@@ -373,6 +377,7 @@ export function processStatus(): RuntimeStatus {
     guards: rt.sessions.size(),
     startedAt: rt.startedAt,
     servingConfirmed: serving !== undefined && rt.confirmed.has(serving.directory),
+    catalogLoaded: rt.catalogLoaded === true,
     ...(rt.listener ? { listener: { host: rt.listener.listen.host, port: rt.listener.listen.port, bound: rt.listener.bound } } : {}),
     ...(rt.configError ? { configError: rt.configError } : {}),
   }
@@ -399,9 +404,11 @@ function preferred(rt: Runtime): Generation | undefined {
  * The catalog of the preferred accepted generation. `fallback` (the caller's own loader) is only
  * used when no generation is registered, which a live request does not normally see.
  */
-export function loadServingCatalog(fallback: () => Promise<ReadonlyArray<CatalogModel>>): Promise<ReadonlyArray<CatalogModel>> {
+export async function loadServingCatalog(fallback: () => Promise<ReadonlyArray<CatalogModel>>): Promise<ReadonlyArray<CatalogModel>> {
   const rt = runtime()
-  return (rt ? (preferred(rt)?.loadCatalog ?? fallback) : fallback)()
+  const models = await (rt ? (preferred(rt)?.loadCatalog ?? fallback) : fallback)()
+  if (rt) rt.catalogLoaded = true
+  return models
 }
 
 /** JSON with object keys sorted at every level, so equal options compare equal whatever their key order (undefined values are left out, as in `JSON.stringify`). */
