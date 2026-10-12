@@ -39,7 +39,7 @@ import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
 import { estimateTokens } from "./tokens.js"
-import { encodeError, runMessage, sseFrame } from "./response.js"
+import { encodeError, messagesStatus, runMessage, sseFrame } from "./response.js"
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -76,7 +76,7 @@ const authenticateRequest = async (host: RouteHost, request: IncomingMessage) =>
 
 export async function serveMessages(host: RouteHost, call: MessagesCall): Promise<void> {
   const { path, request, response, scope, info } = call
-  const fail = (error: PlugError, close = false) => sendError(response, error, encodeError(error), { close })
+  const fail = (error: PlugError, close = false) => sendError(response, { ...error, status: messagesStatus(error) }, encodeError(error), { close })
   if (request.method === "POST") info.route = `POST ${path}`
   response.setHeader("request-id", `req_${crypto.randomUUID().replaceAll("-", "")}`)
 

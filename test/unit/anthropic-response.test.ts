@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { encodeError, runMessage, sseFrame, type MessagesExchange, type MessagesStreamEvent } from "../../src/anthropic/response.js"
+import { encodeError, messagesStatus, runMessage, sseFrame, type MessagesExchange, type MessagesStreamEvent } from "../../src/anthropic/response.js"
 import type { PlugErrorKind, PlugEvent } from "../../src/contract.js"
 import { ev, events } from "../support/fixtures.js"
 
@@ -109,6 +109,15 @@ describe("#4 encodeError: Anthropic's error body", () => {
   ]
   test.each(kinds)("%s with status %d -> %s", (kind, status, type) => {
     expect(encodeError({ status, kind, message: "m", code: "c" })).toEqual({ type: "error", error: { type, message: "m" } })
+  })
+
+  test("#204 a provider overload is overloaded_error on HTTP 529; other 503s stay api_error on 503", () => {
+    const overloaded = { status: 503, kind: "server" as const, code: "provider_overloaded", message: "m" }
+    expect(encodeError(overloaded)).toEqual({ type: "error", error: { type: "overloaded_error", message: "m" } })
+    expect(messagesStatus(overloaded)).toBe(529)
+    const unavailable = { status: 503, kind: "server" as const, code: "provider_unavailable", message: "m" }
+    expect(encodeError(unavailable)).toEqual({ type: "error", error: { type: "api_error", message: "m" } })
+    expect(messagesStatus(unavailable)).toBe(503)
   })
 
   test("sseFrame names the event", () => {

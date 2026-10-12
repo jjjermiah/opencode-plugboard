@@ -135,6 +135,13 @@ describe("#4 answers", () => {
     expect(reply.json()).toEqual({ type: "error", error: { type: "rate_limit_error", message: "slow" } })
   })
 
+  test("#204 a provider overload is HTTP 529 with overloaded_error, the status Anthropic clients retry on", async () => {
+    await route([ev.error({ status: 503, kind: "server", code: "provider_overloaded", message: "The model provider is overloaded; retry later" })])
+    const reply = await server!.send(messages())
+    expect(reply.status).toBe(529)
+    expect(reply.json()).toEqual({ type: "error", error: { type: "overloaded_error", message: "The model provider is overloaded; retry later" } })
+  })
+
   test("a stream is Anthropic's named event sequence, with no [DONE]", async () => {
     await route([ev.text("Hi"), ev.call("t1", "read", { p: 1 }), ev.finish()])
     const stream = await server!.open(messages({ stream: true }))

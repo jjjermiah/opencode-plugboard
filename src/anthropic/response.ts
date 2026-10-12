@@ -80,10 +80,16 @@ const STOP_REASON: Record<Exclude<PlugFinish, "error">, string> = {
 const noFinish = (): PlugError => ({ status: 500, kind: "server", message: "Model stream ended without a finish event" })
 const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
 
+/** The `code` of a provider overload (events.ts): Anthropic's `overloaded_error`, answered with HTTP 529 (#204). */
+const OVERLOADED = "provider_overloaded"
+
+/** The HTTP status of a neutral error on this route: a provider overload is 529, the status Anthropic clients retry on. */
+export const messagesStatus = (error: PlugError): number => (error.code === OVERLOADED ? 529 : error.status)
+
 /** Anthropic's error `type` for a neutral error. */
 const errorType = (error: PlugError): string => {
   if (error.status === 413) return "request_too_large"
-  if (error.status === 529) return "overloaded_error"
+  if (error.status === 529 || error.code === OVERLOADED) return "overloaded_error"
   switch (error.kind) {
     case "invalid_request":
       return "invalid_request_error"
