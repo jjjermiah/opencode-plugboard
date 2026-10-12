@@ -96,4 +96,4 @@ message_delta                (stop_reason, and the final usage: input_tokens, ca
 message_stop
 ```
 
-Tool calls arrive whole from the model, so each call is a single `input_json_delta`. Thinking blocks carry an empty `signature`. Nothing is sent until there is output, so a failure before the first token is a real HTTP error. A failure after that ends the stream with an `event: error` frame (`{"type":"error","error":{"type","message"}}`) and no `message_stop`.
+Tool calls arrive whole from the model, so each call is a single `input_json_delta`. A thinking block carries the provider's `signature` when the host reports one (Anthropic's does), streamed as a `signature_delta` before the block stops (#146). Otherwise the signature is empty. Plugboard drops `thinking` and `redacted_thinking` blocks from the messages a client sends, so a replayed block never reaches a provider, and a next turn cannot fail on its signature. Nothing is sent until there is output, so a failure before the first token is a real HTTP error. A failure after that ends the stream with an `event: error` frame (`{"type":"error","error":{"type","message"}}`) and no `message_stop`.

@@ -40,6 +40,18 @@ async function play(...events: BusEnvelope[]): Promise<PlugEvent[]> {
 }
 
 describe("event mapping", () => {
+  test("#146 the provider signature of a reasoning block is carried on an empty reasoning-delta at its end", async () => {
+    expect(await play(host.reasoningDelta("think"), host.reasoningEnded({ anthropic: { signature: "sig_abc" } }), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "think" },
+      { type: "reasoning-delta", text: "", signature: "sig_abc" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
+  test("#146 a reasoning block without a signature in its metadata emits nothing at its end", async () => {
+    expect(await play(host.reasoningDelta("think"), host.reasoningEnded({}), host.stepEnded("stop"))).toEqual([{ type: "reasoning-delta", text: "think" }, expect.objectContaining({ type: "finish" })])
+  })
+
   test("text and reasoning deltas, then a plain stop", async () => {
     expect(await play(host.reasoningDelta("think"), host.textDelta("Hel"), host.textDelta(""), host.textDelta("lo"), host.stepEnded("stop"))).toEqual([
       { type: "reasoning-delta", text: "think" },

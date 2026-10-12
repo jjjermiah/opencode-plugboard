@@ -126,6 +126,8 @@ export function bus(sessionID: string) {
     textDelta: (delta: string, ordinal = 0) => envelope("session.text.delta", { delta, ordinal }),
     textEnded: (text: string, ordinal = 0) => envelope("session.text.ended", { text, ordinal }),
     reasoningDelta: (delta: string) => envelope("session.reasoning.delta", { delta }),
+    /** The end of a reasoning block; `state` is the provider metadata the host attaches (`{ anthropic: { signature } }`). */
+    reasoningEnded: (state: Json = {}) => envelope("session.reasoning.ended", { text: "", ordinal: 0, state }),
     toolInputStarted: (id: string, name: string) => envelope("session.tool.input.started", { id, name }),
     toolCalled: (id: string, name: string, input: Json = {}) => envelope("session.tool.called", { id, name, input }),
     usage: (tokens: HostTokens) => envelope("session.usage.updated", { tokens }),

@@ -33,6 +33,21 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     expect(emitted.find((event) => event.type === "message_delta")).toMatchObject({ usage: { input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3 } })
   })
 
+  test("#146 a thinking block carries the provider signature the host reported, as a signature_delta before it stops", async () => {
+    const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig_abc" }
+    const { emitted, message } = await run(thinking, ev.reasoning("hmm"), signed, ev.text("answer"), ev.finish())
+    const signature = emitted.find((event) => event.type === "content_block_delta" && (event as { delta?: { type?: string } }).delta?.type === "signature_delta")
+    expect(signature).toEqual({ type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig_abc" } })
+    expect(message.content[0]).toEqual({ type: "thinking", thinking: "hmm", signature: "sig_abc" })
+  })
+
+  test("#146 a signature is ignored when the caller did not ask for thinking", async () => {
+    const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig_abc" }
+    const { types, message } = await run(plain, ev.reasoning("hmm"), signed, ev.text("answer"), ev.finish())
+    expect(types).not.toContain("signature_delta")
+    expect(message.content).toEqual([{ type: "text", text: "answer" }])
+  })
+
   test("a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use", async () => {
     const { emitted, message } = await run(plain, ev.text("let me"), ev.call("call_1", "read", { path: "a" }), ev.finish("stop"))
     expect(emitted.filter((event) => event.type.startsWith("content_block")).map((event) => [event.type, event.index])).toEqual([

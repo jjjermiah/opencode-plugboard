@@ -108,6 +108,19 @@ describe("#4 parseMessagesRequest: content mapping", () => {
     ])
   })
 
+  test("#146 a replayed thinking block is dropped whatever its signature, so the empty signature plugboard sends never reaches a provider", () => {
+    const { request } = parse(
+      body({
+        messages: [
+          user("look"),
+          assistant([{ type: "thinking", thinking: "hidden", signature: "" }, { type: "redacted_thinking", data: "opaque" }, { type: "text", text: "done" }]),
+          user("again"),
+        ],
+      }),
+    )
+    expect(request.messages[1]).toEqual({ role: "assistant", content: [{ type: "text", text: "done" }] })
+  })
+
   test("a tool round trip: tool_use becomes a call, each tool_result its own tool message, result images follow as user media", () => {
     const { request } = parse(
       body({

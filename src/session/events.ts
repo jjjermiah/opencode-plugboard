@@ -33,6 +33,16 @@ const RESPONSE_OVERFLOW: PlugError = {
   message: "The response was not read fast enough; too much output was waiting",
 }
 
+/** A reasoning block's signature from the host's provider metadata (`{ <provider>: { signature } }`), or undefined when there is none. */
+function signatureOf(state: unknown): string | undefined {
+  if (typeof state !== "object" || state === null) return undefined
+  for (const value of Object.values(state)) {
+    const signature = typeof value === "object" && value !== null ? (value as { signature?: unknown }).signature : undefined
+    if (typeof signature === "string" && signature.length > 0) return signature
+  }
+  return undefined
+}
+
 /** Rough size of an event's payload, for the queue's byte bound. */
 function sizeOf(event: PlugEvent): number {
   switch (event.type) {
@@ -311,6 +321,13 @@ export class RequestCollector {
         if (this.finished) return
         const delta = String(item.delta ?? "")
         if (delta.length > 0) this.emit({ type: "reasoning-delta", text: delta })
+        return
+      }
+      case "session.reasoning.ended": {
+        // The block's provider metadata carries the provider's signature (#146). It goes out as an empty-text reasoning-delta.
+        if (this.finished) return
+        const signature = signatureOf(item.state)
+        if (signature !== undefined) this.emit({ type: "reasoning-delta", text: "", signature })
         return
       }
       case "session.tool.input.started":

@@ -227,6 +227,20 @@ describe("what is stored", () => {
     ])
   })
 
+  test("#146 a reasoning signature is replayed as its own event, after the block it closes", async () => {
+    const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig" }
+    const fake = new FakeModelCaller([ev.reasoning("th"), signed, ev.text("A"), ev.finish()])
+    const cached = cachedCaller(fake, CONFIG, store())
+    await collect(cached.stream(plugRequest(), context().ctx))
+    const replay = await collect(cached.stream(plugRequest(), context().ctx))
+    expect(replay).toEqual([
+      { type: "reasoning-delta", text: "th" },
+      { type: "reasoning-delta", text: "", signature: "sig" },
+      { type: "text-delta", text: "A" },
+      { type: "finish", reason: "stop", usage: { inputTokens: 0, outputTokens: 0 } },
+    ])
+  })
+
   test("an aborted turn is not stored, and a later complete one is", async () => {
     const controller = new AbortController()
     const kept = store()

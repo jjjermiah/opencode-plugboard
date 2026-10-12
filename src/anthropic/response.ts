@@ -125,7 +125,7 @@ export async function runMessage(
   const content: Block[] = []
   /** Blocks opened so far: the next block's `index`. */
   let nextIndex = 0
-  let open: { kind: "text" | "thinking"; index: number; text: string } | undefined
+  let open: { kind: "text" | "thinking"; index: number; text: string; signature?: string } | undefined
   let started = false
   let pinged = false
   let calls = 0
@@ -161,10 +161,16 @@ export async function runMessage(
   const close = () => {
     if (!open) return
     emit({ type: "content_block_stop", index: open.index })
-    // The signature is always empty: the host does not expose the provider's thinking signature (#146), so a
-    // replayed thinking block cannot carry the real one. Clients that replay thinking are told by the docs.
-    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: "" })
+    // A thinking block carries the provider's signature when the host reported one (#146); otherwise it is empty. Plugboard drops
+    // thinking blocks it receives, so a replayed block never reaches a provider with an empty signature.
+    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: open.signature ?? "" })
     open = undefined
+  }
+  /** The provider's signature for the open thinking block (#146): a `signature_delta` before the block stops. */
+  const sign = (signature: string) => {
+    if (open?.kind !== "thinking") return
+    open.signature = signature
+    emit({ type: "content_block_delta", index: open.index, delta: { type: "signature_delta", signature } })
   }
   const releaseHeld = () => delta("text", holdback.release())
   const text = (chunk: string) => delta("text", holdback.push(chunk))
@@ -217,7 +223,10 @@ export async function runMessage(
     }
     if (event.type === "reasoning-delta") {
       releaseHeld()
-      if (exchange.thinking) delta("thinking", event.text)
+      if (exchange.thinking) {
+        delta("thinking", event.text)
+        if (event.signature !== undefined) sign(event.signature)
+      }
     } else if (event.type === "text-delta") text(event.text)
     else toolCall(event)
   }
