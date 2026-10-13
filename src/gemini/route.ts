@@ -24,7 +24,7 @@ import { reportCache } from "../cache.js"
 import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
-import { requestSystem } from "../session/context.js"
+import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
 import type { RouteHost } from "../openai/route.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
@@ -122,8 +122,10 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     const ref = resolveModel(host.options, match.model, catalog, parsed.reasoningEffort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-    // An estimate, not the provider's count (see src/anthropic/tokens.ts). The app's system policy and steering count too (#201).
-    return sendJson(response, 200, { totalTokens: estimateTokens({ ...parsed.request, system: requestSystem(parsed.request, [], appPolicy(host.options, app)) }) })
+    // An estimate, not the provider's count (see src/anthropic/tokens.ts). The request as the session sends it: the app's policy, persona and server tools count too (#201).
+    const counted = await scope.race(sessionRequest(host.session, app, { ...parsed.request, ref }, appPolicy(host.options, app), scope.signal))
+    if (isPlugError(counted)) return fail(counted)
+    return sendJson(response, 200, { totalTokens: estimateTokens(counted) })
   }
 
   if (match.op === "list" || match.op === "get") {

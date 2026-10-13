@@ -7,6 +7,8 @@ import { CATALOG, ev, gate } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { parseSse, sseData, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
+import { FakeSessionPort } from "../support/session.js"
+import { personaOf } from "../../src/models.js"
 
 const logs = captureLogs()
 let server: RouteServer | undefined
@@ -300,5 +302,40 @@ describe("#173 structured output as text, on generateContent and streamGenerateC
     const chunks = sseData(text)
     expect(chunks.flatMap((chunk) => chunk.candidates[0].content.parts.map((part: { text?: string }) => part.text)).filter((part) => part)).toEqual(['{"a":3}'])
     expect(chunks.some((chunk) => "error" in chunk)).toBe(false)
+  })
+})
+
+describe("#201 countTokens counts the persona, skill and server tools the session sends", () => {
+  /** Starts the route with a session port; the persona lookup reads the options the server parsed. */
+  async function countServerWith(options: Record<string, unknown>, port: FakeSessionPort) {
+    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options, session: { port, persona: (model) => personaOf(server!.options, model) } })
+  }
+  const count = (model: string, headers: Record<string, string> = {}) => generate(`/v1beta/models/${model}:countTokens`, {}, headers)
+
+  test("a skill alias counts the skill's content, which leads the system prompt", async () => {
+    const port = new FakeSessionPort()
+    port.skills.set("invoice-parser", "S".repeat(400))
+    await countServerWith({ models: ["test/*"], aliases: { fast: "test/echo", "invoice-parser": "skill:invoice-parser@test/echo" } }, port)
+    // ceil((400 skill characters + 2 for "hi") / 4)
+    expect((await server!.send(count("invoice-parser"))).json()).toEqual({ totalTokens: 101 })
+    expect((await server!.send(count("fast"))).json()).toEqual({ totalTokens: 1 })
+  })
+
+  test("a skill missing from the app directory is the 404 the request would get", async () => {
+    await countServerWith({ models: ["test/*"], aliases: { fast: "test/echo", "invoice-parser": "skill:invoice-parser@test/echo" } }, new FakeSessionPort())
+    const reply = await server!.send(count("invoice-parser"))
+    expect(reply.status).toBe(404)
+    expect(reply.json()).toMatchObject({ error: { message: "Skill invoice-parser is not available" } })
+  })
+
+  test("the app's server tools count with their schemas", async () => {
+    const port = new FakeSessionPort()
+    port.toolIDs.push("websearch")
+    const input = { type: "object", properties: { q: { type: "string" } } }
+    port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
+    await countServerWith({ aliases: { fast: "test/echo" }, keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
+    // ceil((2 for "hi" + name + description + JSON schema characters) / 4)
+    const reply = await server!.send(count("fast", { "x-goog-api-key": "secret" }))
+    expect(reply.json()).toEqual({ totalTokens: Math.ceil((2 + "websearch".length + 200 + JSON.stringify(input).length) / 4) })
   })
 })

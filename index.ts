@@ -134,6 +134,8 @@ export default Plugin.define({
         usage,
         // Runtime app keys (#55): read from storage on the first authentication, cached on the runtime.
         keys: createKeyStore({ state: processKeys(), storage: createStoragePort(ctx) }),
+        // The prompt a count reads (persona, server tools): the same port, persona lookup and backend gate as the session caller (#201).
+        session: callerDeps,
       })
       const registration = registerGeneration({
         listen: options.listen,

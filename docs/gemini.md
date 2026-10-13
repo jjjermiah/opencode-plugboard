@@ -67,7 +67,7 @@ A 400 `INVALID_ARGUMENT` whose message and `details.fieldViolations` name the fi
 - A `functionResponse` that answers no earlier `functionCall`, and a `functionCall` that has no `functionResponse` anywhere in `contents`.
 - Parts plugboard cannot use: `fileData` with a Gemini file id or `gs://` URI, `executableCode`, `codeExecutionResult`, `videoMetadata`, `inlineData` in a model turn.
 
-`countTokens` answers `{ "totalTokens": N }` with the same estimate as Anthropic `count_tokens` (characters / 4 plus a fixed cost per image or file), including the app's `system` policy and the tool-choice steering. Agent prompts, skill content and the schemas of `serverTools` are not counted (see [Messages](messages.md)). Other methods on a model (`embedContent`, `batchEmbedContents`, ...) get a 404 `NOT_FOUND`. A mode `ANY` tool choice with one allowed function cannot be combined with `responseSchema`.
+`countTokens` answers `{ "totalTokens": N }` with the same estimate as Anthropic `count_tokens` (characters / 4 plus a fixed cost per image or file), built the same way: the app's `system` policy and the tool-choice steering, the agent prompt or skill content of the model, and the schemas of `serverTools` (see [Messages](messages.md) for the details and the errors). Other methods on a model (`embedContent`, `batchEmbedContents`, ...) get a 404 `NOT_FOUND`. A mode `ANY` tool choice with one allowed function cannot be combined with `responseSchema`.
 
 ## Function calls
 
