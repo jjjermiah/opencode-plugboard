@@ -24,7 +24,8 @@ E1 (wrong key) and E2 (unknown model) are `n/a`: n8n shows plugboard's message a
 
 ## Settings that matter
 
-- **Use Responses API is off** in every workflow except `s1-responses-default.json`, which leaves the node's default on. Plugboard serves `/v1/responses`, so the default works; the `responses` variant of S1 tests that path on purpose. Its finish reason and usage are not recorded by n8n, so it is a gap (see the runs).
+- **Leave Use Responses API off.** Plugboard serves `/v1/responses`, and plain chat works on it. Only S1 was run on that path: tools, streaming and structured output were not tried with the setting on, so do not assume they work. [docs/clients/n8n.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/n8n.md) gives the same advice. Every workflow here sets it off except `s1-responses-default.json`, which the `responses` variant of S1 uses. n8n records no finish reason for that path, so its finish check is a gap (#343).
+- **Gaps cover the whole row.** A gap turns any failing check of its scenario into `gap`, not only the known one. The note and issue name the known check; the scripted S6 gap (#344) is the same kind.
 - **Structured Output Parser** asks the model for JSON with an `output` wrapper. A model that answers bare JSON fails the parse. The live model writes the wrapper.
 - **Background requests**: n8n calls `GET /v1/models` when the credential is tested and when the model dropdown opens. Those land in `transcripts/_background.json`.
 
@@ -45,7 +46,7 @@ PLUGBOARD_BASE_URL=http://127.0.0.1:4010/v1 PLUGBOARD_KEY=<compat key> \
   bun examples/_harness/run.ts n8n --target live --docker
 ```
 
-Live runs write `runs/live/<date>-<commit>/`. The 2026-10-11 record is `runs/live/2026-10-11-f351307/REPORT.md`, copied unchanged from `compat/results/n8n.md`.
+Live runs write `runs/live/<date>-<commit>/`. The 2026-10-11 record is `runs/live/2026-10-11-f351307/REPORT.md`, kept unchanged from the earlier run.
 
 ## Run one file
 

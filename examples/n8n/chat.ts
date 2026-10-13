@@ -1,5 +1,5 @@
 // #region snippet
-import { at, fromEnv, lastExecution, turns, webhook, type N8n } from "./n8n.ts"
+import { at, fromEnv, invoke, turns, type N8n } from "./n8n.ts"
 
 /**
  * S1: one non-streamed answer from a Basic LLM Chain. The variant picks the API: `chat` (Chat Completions, the node's
@@ -7,8 +7,8 @@ import { at, fromEnv, lastExecution, turns, webhook, type N8n } from "./n8n.ts"
  */
 export async function run(n8n: N8n, model: string, variant = "chat") {
   const workflow = variant === "responses" ? "pb-s1-responses-default" : "pb-s1-chain"
-  const answer = await webhook(n8n, workflow, { model, prompt: "Reply with exactly: pong" })
-  const last = turns(await lastExecution(n8n, workflow)).at(-1)
+  const { answer, execution } = await invoke(n8n, workflow, { model, prompt: "Reply with exactly: pong" })
+  const last = turns(execution).at(-1)
   return {
     text: at(answer.json, "text"),
     finish_reason: last?.finish_reason ?? null,

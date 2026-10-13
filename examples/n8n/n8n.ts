@@ -68,25 +68,42 @@ export async function webhook(n8n: N8n, path: string, body: unknown): Promise<Re
   return send(`${n8n.base}/webhook/${path}`, { "content-type": "application/json" }, "POST", body)
 }
 
-/**
- * The newest execution of a workflow, with its run data, once n8n has finished saving it. Webhook answers come
- * before the save, so this polls. Used for everything n8n does not put in the webhook answer: the model's finish
- * reasons and token usage, and the tool call.
- */
-export async function lastExecution(n8n: N8n, workflow: string): Promise<Record<string, any>> {
+const TERMINAL = ["success", "error", "crashed", "canceled"]
+
+/** The id of the workflow's newest execution, or 0 when it has none. Read it before a webhook call. */
+export async function newestExecutionId(n8n: N8n, workflow: string): Promise<number> {
   const id = await workflowId(n8n, workflow)
   const list = await api(n8n, "GET", `/api/v1/executions?workflowId=${id}&limit=1`)
-  const executionId = at(list.json, "data", 0, "id")
+  const newest = at(list.json, "data", 0, "id")
+  return newest === undefined ? 0 : Number(newest)
+}
+
+/**
+ * The execution a webhook call made: the workflow's newest execution with an id above `after` (the value read before
+ * the call), with its run data, once it has a terminal status. The webhook answers before n8n saves the run, so this
+ * waits. The previous scenario's execution is never returned, and an empty list is an error, not a poll on `undefined`.
+ */
+export async function executionAfter(n8n: N8n, workflow: string, after: number): Promise<Record<string, any>> {
+  const id = await workflowId(n8n, workflow)
   for (let attempt = 0; attempt < 60; attempt++) {
-    const execution = await api(n8n, "GET", `/api/v1/executions/${executionId}?includeData=true`)
-    // An execution that failed is not `finished`, so any terminal status ends the wait.
-    if (at(execution.json, "finished") === true || ["success", "error", "crashed", "canceled"].includes(String(at(execution.json, "status")))) {
-      return execution.json as Record<string, any>
+    const list = await api(n8n, "GET", `/api/v1/executions?workflowId=${id}&limit=1`)
+    const newest = at(list.json, "data", 0, "id")
+    if (newest !== undefined && Number(newest) > after) {
+      const execution = await api(n8n, "GET", `/api/v1/executions/${newest}?includeData=true`)
+      if (TERMINAL.includes(String(at(execution.json, "status")))) return execution.json as Record<string, any>
     }
     await new Promise((resolve) => setTimeout(resolve, 500))
   }
-  throw new Error(`execution ${executionId} of ${workflow} did not finish`)
+  throw new Error(`no execution of ${workflow} above id ${after} finished within 30 seconds`)
 }
+
+/** A webhook call with the execution it made: the answer, and the run data the scenario reads. */
+export async function invoke(n8n: N8n, workflow: string, body: unknown): Promise<{ answer: Reply; execution: Record<string, any> }> {
+  const before = await newestExecutionId(n8n, workflow)
+  const answer = await webhook(n8n, workflow, body)
+  return { answer, execution: await executionAfter(n8n, workflow, before) }
+}
+
 
 /** One model turn in an execution, in order: the finish reason the model gave and its token usage. */
 export interface Turn {

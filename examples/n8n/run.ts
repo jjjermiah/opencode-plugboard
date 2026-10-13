@@ -57,8 +57,19 @@ async function waitForRest(base: string): Promise<void> {
 
 const port = freePort()
 const base = `http://127.0.0.1:${port}`
-await docker("rm", "-f", NAME)
-await docker("volume", "rm", NAME)
+
+/** Removes the container and its volume. The volume holds the plugboard key n8n stores in its credential. */
+async function cleanup(): Promise<void> {
+  await docker("rm", "-f", NAME)
+  await docker("volume", "rm", NAME)
+}
+
+// `finally` does not run on a signal, so a killed run cleans up here before it exits.
+for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
+  process.once(signal, () => void cleanup().finally(() => process.exit(code)))
+}
+
+await cleanup()
 try {
   const run = await docker(
     "run", "-d", "--name", NAME,
@@ -125,6 +136,8 @@ try {
     },
     {
       variants: { S1: ["chat", "responses"] },
+      // A gap covers the whole row: a failing check of that row is reported as the gap, so each note names the known
+      // check. The harness has no per-check gaps; the issues say which check is known.
       gaps: {
         "S1|responses": {
           note: "n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read",
@@ -142,6 +155,5 @@ try {
     },
   )
 } finally {
-  await docker("rm", "-f", NAME)
-  await docker("volume", "rm", NAME)
+  await cleanup()
 }

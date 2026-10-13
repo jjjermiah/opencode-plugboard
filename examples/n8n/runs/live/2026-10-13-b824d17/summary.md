@@ -1,7 +1,7 @@
 # n8n · live
 
 Verdict: **partial** · n8n 2.42.6 on bun 1.4 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
-Date: 2026-10-13 · plugboard 0.27.0 (b824d17)
+Date: 2026-10-13 · plugboard 0.28.0 (b824d17)
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
