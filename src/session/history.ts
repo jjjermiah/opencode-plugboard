@@ -96,6 +96,9 @@ export function renderTranscript(request: PlugRequest): string {
         case "tool-result":
           lines.push(`[tool result ${oneLine(part.name)} (${oneLine(part.id)})${part.isError ? " (error)" : ""}] ${part.result}`)
           break
+        case "reasoning":
+          // Not shown: the transcript is the caller's visible conversation, and reasoning is replayed structurally (context.ts).
+          break
       }
     }
     lines.push("")
