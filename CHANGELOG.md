@@ -21,6 +21,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Fixed
 
+- **Live example runs record the version of the commit they name** ([#335](https://github.com/jjjermiah/opencode-plugboard/issues/335)). The harness wrote the checkout's `package.json` version next to a commit from `PLUGBOARD_COMMIT`, so a run of an older commit named the wrong version. It now reads that commit's `package.json`, and refuses a commit the checkout does not have before the runner starts. The server exposes no OpenCode version, so new live runs record `opencode` as `null` with a note in `summary.md`. Existing live records are not rewritten.
 - **`count_tokens` and Gemini `countTokens` count what the session sends** ([#201](https://github.com/jjjermiah/opencode-plugboard/issues/201)). The count left out an agent's prompt, a skill's content and the schemas of `serverTools`, so Claude Code could budget against a number that was too small. The count now runs the same builders as the session caller, so it cannot drift from the request: it counts only the caller tools the request offers (none for `tool_choice: none`, one for a named choice), and it refuses what the request would refuse. An app with `tools: false` is also counted without the caller's tools that the request drops. The tool schemas are an estimate: they are converted without OpenCode's draft-07 step.
 
 ## [0.27.0] - 2026-10-12: Every App Its Own Rules
