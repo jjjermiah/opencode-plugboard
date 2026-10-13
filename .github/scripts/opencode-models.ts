@@ -6,8 +6,8 @@
  *
  *   PLUGBOARD_KEY=<app key> bun .github/scripts/opencode-models.ts http://127.0.0.1:4010
  *
- * Input is the hub's `context_length`, `max_output_tokens` and `pricing` (USD per token, decimal
- * strings). Context tiers (`aboveContext` in `plugboard.cost`) become OpenCode cost entries with a
+ * Input is the hub's `context_length`, `max_output_tokens`, `plugboard.limit.input` and `pricing` (USD per
+ * token, decimal strings). Ids with a `#variant` suffix are skipped; the base id is listed on its own. Context tiers (`aboveContext` in `plugboard.cost`) become OpenCode cost entries with a
  * `tier`. A fact the hub does not list is left out: no entry gets a made-up limit or price.
  */
 
@@ -60,9 +60,12 @@ export function costOf(model: Json): Json | Json[] | undefined {
 /** One model's OpenCode entry: `limit` and `cost`, each only when the hub reports it. */
 export function modelEntry(model: Json): Json {
   const limit: Json = {}
+  const plugboard = isRecord(model.plugboard) ? model.plugboard : {}
   const context = finite(model.context_length)
   const output = finite(model.max_output_tokens)
+  const input = isRecord(plugboard.limit) ? finite(plugboard.limit.input) : undefined
   if (context !== undefined) limit.context = context
+  if (input !== undefined) limit.input = input
   if (output !== undefined) limit.output = output
   const cost = costOf(model)
   return { ...(Object.keys(limit).length === 0 ? {} : { limit }), ...(cost === undefined ? {} : { cost }) }
@@ -74,7 +77,8 @@ export function modelsBlock(body: unknown): Record<string, Json> {
   if (!data) throw new Error("not a /v1/models body: no data array")
   const block: Record<string, Json> = {}
   for (const model of data) {
-    if (isRecord(model) && typeof model.id === "string") block[model.id] = modelEntry(model)
+    // A `#variant` id is not a model of its own: OpenCode reads `provider/model#variant` as the base model plus a variant.
+    if (isRecord(model) && typeof model.id === "string" && !model.id.includes("#")) block[model.id] = modelEntry(model)
   }
   return block
 }

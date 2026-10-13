@@ -132,6 +132,11 @@ describe("#376 /v1/models entries carry context_length, max_output_tokens and Op
     expect(tierOnly).not.toHaveProperty("pricing")
   })
 
+  test("a tiny non-zero price stays non-zero, printed as plain decimals", async () => {
+    const tiny = await list({ cost: [{ input: 0.0000001, output: 1e-9 }] })
+    expect(tiny.pricing).toEqual({ prompt: "0.0000000000001", completion: "0.000000000000001" })
+  })
+
   test("an explicit zero price stays a price (a free model), not a missing one", async () => {
     const free = await list({ limit: { context: 1000 }, cost: [{ input: 0, output: 0 }] })
     expect(free).toMatchObject({ context_length: 1000, pricing: { prompt: "0", completion: "0" } })

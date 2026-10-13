@@ -51,6 +51,17 @@ describe("opencode-models: a hub's /v1/models as OpenCode's models block", () =>
     })
   })
 
+  test("a #variant id is skipped; plugboard.limit.input becomes limit.input", () => {
+    const block = modelsBlock({
+      data: [
+        { id: "openai/gpt-6.1-sol", context_length: 400000, plugboard: { limit: { input: 272000 } } },
+        { id: "openai/gpt-6.1-sol#low", context_length: 400000 },
+      ],
+    })
+    expect(Object.keys(block)).toEqual(["openai/gpt-6.1-sol"])
+    expect(block["openai/gpt-6.1-sol"]).toEqual({ limit: { context: 400000, input: 272000 } })
+  })
+
   test("a body without data is an error, not an empty block", () => {
     expect(() => modelsBlock({ error: { message: "nope" } })).toThrow("not a /v1/models body")
   })

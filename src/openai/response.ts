@@ -123,7 +123,17 @@ const encodePlugboard = (model: ListedModel["model"]) => ({
 })
 
 /** USD per million tokens -> OpenRouter's price per token as a decimal string (`0.000003`), never an exponent. */
-const perToken = (usdPerMillion: number): string => (usdPerMillion / 1_000_000).toFixed(12).replace(/\.?0+$/, "")
+const perToken = (usdPerMillion: number): string => {
+  // Plain decimal digits of the value (never an exponent), so a tiny non-zero price stays non-zero.
+  const value = usdPerMillion / 1_000_000
+  if (value === 0) return "0"
+  // 13 significant digits: the float division leaves noise past the 16th (1e-13 comes out as 9.9999...e-14).
+  const [mantissa = "0", exponent = "0"] = value.toExponential(12).split("e")
+  const digits = mantissa.replace(".", "").replace(/0+$/, "")
+  const point = Number(exponent)
+  if (point < 0) return `0.${"0".repeat(-point - 1)}${digits}`
+  return digits.length <= point + 1 ? digits.padEnd(point + 1, "0") : `${digits.slice(0, point + 1)}.${digits.slice(point + 1)}`
+}
 
 /**
  * The OpenRouter names a client may already read: `context_length` and `pricing` (USD per token, base entry only; `aboveContext`
