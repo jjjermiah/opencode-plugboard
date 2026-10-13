@@ -194,7 +194,7 @@ describe("#4 parseMessagesRequest: content mapping", () => {
     })
   })
 
-  test("#374 an assistant turn that is only signed thinking is kept, not dropped as empty", () => {
+  test("#374 an omitted-thinking block (empty text, signature) is kept as a signed reasoning part, and its turn is not dropped as empty", () => {
     const { request } = parse(body({ messages: [user("a"), assistant([{ type: "thinking", thinking: "", signature: "sig_2" }]), user("b")] }))
     expect(request.messages[1]).toEqual({ role: "assistant", content: [{ type: "reasoning", text: "", signature: "sig_2" }] })
   })

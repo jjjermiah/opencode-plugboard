@@ -146,6 +146,15 @@ describe("the context hook", () => {
     ])
   })
 
+  test("#374 a host event without a model replays no reasoning and does not throw", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [{ role: "assistant", content: [{ type: "reasoning", text: "plan", signature: "sig_1" }, { type: "text", text: "done" }] }],
+      }),
+    )
+    expect(run(event()).messages as unknown).toEqual([{ role: "assistant", content: [{ type: "text", text: "done" }] }])
+  })
+
   test("caller images are the host-built media parts of the prompt files, in order", () => {
     const hostMedia = [{ type: "media", asset: "A" }, { type: "media", asset: "B" }]
     const { run } = hook(plugRequest({ messages: [{ role: "user", content: [{ type: "media", url: "data:x" }, { type: "text", text: "and" }, { type: "media", url: "data:y" }] }] }))

@@ -73,7 +73,7 @@ const mediaPart = (block: JsonObject, at: string, what: "image" | "document"): P
 
 /**
  * A `thinking` block with a signature, or a `redacted_thinking` block: the reasoning a provider can verify on replay (#374). An
- * unsigned `thinking` block is dropped (undefined): the provider would reject its empty signature. Malformed blocks are dropped too,
+ * unsigned `thinking` block is dropped (undefined): it has no signature to replay. Malformed blocks are dropped too,
  * as they were before this change, so a request that used to pass still passes.
  */
 const reasoningPart = (block: JsonObject): PlugPart | undefined => {
