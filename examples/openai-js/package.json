@@ -1,0 +1,18 @@
+{
+  "name": "plugboard-example-openai-js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The OpenAI JS SDK against plugboard: S1 to S7 and the error paths. Pins from compat/js, as in the dated record.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openai": "7.32.0",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

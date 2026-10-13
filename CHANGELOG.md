@@ -20,11 +20,404 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - **Per-app request body cap** ([#258](https://github.com/jjjermiah/opencode-plugboard/issues/258)). `limits.maxBodyBytes` (since 0.29.0) sets the largest body for every app, at most 32 MiB, and `limits.apps.<name>.maxBodyBytes` lowers it for one app. A body over the app's cap gets 413 before it is read, so a chat widget can be held to a few hundred kilobytes while a bot keeps a larger one. Unset, the 32 MiB cap applies as before.
 - **Per-app output token cap** ([#263](https://github.com/jjjermiah/opencode-plugboard/issues/263)). `apps.<name>.maxOutputTokens` (since 0.29.0) bounds one answer of an app. A caller with no limit gets the cap, a higher limit is lowered to it, and a lower one is kept, on Chat Completions, Responses, legacy completions, Messages and Gemini. On Messages a thinking budget the cap cannot hold gets the existing 400, not a silent change to thinking.
 - **Per-app sampling defaults** ([#264](https://github.com/jjjermiah/opencode-plugboard/issues/264)). `apps.<name>.sampling` (since 0.29.0) sets `temperature`, `topP`, `maxTokens`, `stop` and the penalties for one app. A default fills a request only where the caller sent none, so an app's answers stay stable when the model changes. A default a model rejects is dropped and reported like a caller's value.
+
+### Changed
+
+- **Releases wait for every check, and the tag is made only on a tested commit.** The release script used to enable auto-merge, which waits only for the required checks, and it tagged the merge commit without checking CI on it. Two gaps let a red commit ship: the host matrix was not a required check, and the merge commit was never tested (v0.25.0 failed on Examples and needed 0.25.1). Now the release pull request merges only after every check on it passes (the advisory benchmark aside), the tag is pushed only after CI passes on the merge commit, and `main` requires one aggregate check, `CI passed`, that needs every CI job. The GitHub release still appears only after npm has the version. See [docs/releasing.md](docs/releasing.md).
+
+## [0.28.0] - 2026-10-13: Counts That Add Up
+
+**Full diff:** [v0.27.0...v0.28.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.27.0...v0.28.0)
+
+### Added
+
+- **`examples/openai-js` runs the OpenAI JS SDK against plugboard** ([#178](https://github.com/jjjermiah/opencode-plugboard/issues/178)). Every scenario (chat, tools, streaming with and without usage, streamed tool calls, images, structured output, models, errors) is one copyable file, and the scripted run is checked in CI. `examples/tool-bot` gets a runner too; its tool-call checks are a gap until [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
 - **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
 
 ### Fixed
 
 - **`count_tokens` and Gemini `countTokens` count what the session sends** ([#201](https://github.com/jjjermiah/opencode-plugboard/issues/201)). The count left out an agent's prompt, a skill's content and the schemas of `serverTools`, so Claude Code could budget against a number that was too small. The count now runs the same builders as the session caller, so it cannot drift from the request: it counts only the caller tools the request offers (none for `tool_choice: none`, one for a named choice), and it refuses what the request would refuse. An app with `tools: false` is also counted without the caller's tools that the request drops. The tool schemas are an estimate: they are converted without OpenCode's draft-07 step.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (17 commits)</summary>
+
+#### Features
+
+**feat(examples): add the Vercel AI SDK runnable example** ([`4277849`](https://github.com/jjjermiah/opencode-plugboard/commit/427784937c1bf708967377a5043311cb31589953))
+
+Adds examples/vercel-ai-sdk, the Vercel AI SDK (ai 7) against plugboard, replacing the Vercel AI SDK part of compat/js/vercel_ai.ts. One scenario file per S1-S7, E1 and E2, each with a region snippet readers can copy, a runner on the harness helpers, a README and the committed runs.
+
+What:
+- Three ways in, run as variants of each scenario: compat (createOpenAICompatible, Chat Completions), openai-chat (openai.chat(id)) and responses (the default openai(id), POST /v1/responses). Issue #179 asks for all three; the lane brief named two.
+- Exact pins in package.json (ai 7.0.137, @ai-sdk/openai-compatible 3.0.67, @ai-sdk/openai 4.0.91, zod 4.6.6, typescript 7.0.2, @types/bun 1.4.2), locked in bun.lock. bunx tsc --noEmit passes.
+- Every call sets maxOutputTokens 1024; fast is a reasoning model.
+- Finish reasons map tool-calls to tool_calls so the shared checks apply.
+- Images go as a file part; the image content part is deprecated in v7.
+- S6 uses Output.object. generateObject is deprecated and not used.
+- S7 is a plain GET /v1/models with fetch: the SDK has no model-list call.
+- CI's examples job runs the scripted target and fails on a diff.
+- The 2026-10-11 record moves to runs/live/2026-10-11-3fcedc7/REPORT.md, byte-identical to compat/results/vercel-ai-sdk.md. compat/ is untouched.
+
+Decisions:
+- The scenario function takes a client (id -> model) rather than a provider, so one file serves all three ways in.
+- The unflagged createOpenAICompatible (no supportsStructuredOutputs) is documented as a gotcha, not run as a variant. The harness keys gaps by scenario id, not variant, so a gap on the unflagged run would also hide real failures on the other variants.
+
+Validation (run from the worktree):
+- bun examples/_harness/run.ts vercel-ai-sdk --target scripted: verdict pass, 45 rows (S1-S6 on 3 ways in, S7, E1, E2).
+- second scripted run, git diff --exit-code examples/vercel-ai-sdk/runs: byte-identical.
+- bun examples/_harness/run.ts all --target scripted, then git diff --exit-code examples/: no diff.
+- bun run typecheck: pass. bun test: 2306 pass, 126 skip, 0 fail.
+
+Not verified:
+- Live run. The dev server at 127.0.0.1:4010 was not listening when this was written, so no runs/live directory for this example is committed. The lane rules forbid starting or restarting the shared server.
+
+Refs #179
+Refs #174
+
+**feat(examples): add LangChain Python example with committed scripted runs** ([`29e629e`](https://github.com/jjjermiah/opencode-plugboard/commit/29e629ee1ab30320428368f13824ac2b0bb4ea3b))
+
+What changed: examples/langchain-python is a standalone uv project that runs the LangChain Python client (langchain-openai's ChatOpenAI) against plugboard. One file per scenario (chat, tools, stream, stream_tools, image, structured, models, errors) plus llm.py, the shared client factory. Each copyable part sits between region markers. run.py is the runner the harness starts and writes nothing. runs/scripted holds the deterministic run; runs/live/2026-10-11-3fcedc7 holds the old compat record, copied byte-for-byte as REPORT.md (cmp-identical to compat/results/langchain.md).
+
+Why this change: part of the runnable-examples epic (#174). compat/ holds the LangChain Python check as a script with no committed output; this makes it a self-checking example whose results can be diffed.
+
+Decisions made:
+- Exact pins copied from compat/py: langchain-openai 1.7.0, langchain-core 1.6.9, openai 3.29.0, httpx 0.28.1, pydantic 2.14.1. Python 3.13 in .python-version, the interpreter the old record used. uv 0.12.18 (CI's pin) generated uv.lock.
+- use_responses_api=False on every call, so a gpt-5.6 id cannot switch to /v1/responses (the JS client's failure in the old record).
+- fast gets max_tokens 1024. LangChain sends it as max_completion_tokens.
+- S6 checks the json_schema method, which is what the contract names. The function_calling and json_mode outcomes run in the same scenario and are recorded in observations, not checked. The old record saw json_mode on fast return {}; the scripted model answers every S6 prompt, so the scripted run cannot show that and it stays a live-only question.
+- No gaps and no n/a in the scripted run. LangChain has no list call, so S7 lists through root_client.models.list().
+- CI's examples job runs langchain-python with the other scripted runs. It takes a few seconds on top of the existing uv install.
+
+Rejected alternatives:
+- One shared client object passed to every file: a factory is needed because fast takes max_tokens and each scenario builds other model ids.
+- Checking json_mode as a scenario failure: that would turn a known model behaviour into a required failure before the live run has been looked at.
+
+Validation (worktree, scripted target):
+- bun examples/_harness/run.ts langchain-python --target scripted: pass, 16 rows, all checks ok. Run twice, git diff --exit-code clean.
+- bun examples/_harness/run.ts all --target scripted && git diff --exit-code examples/: exit 0, clean.
+- bun run typecheck: exit 0. bun test: 2306 pass, 0 fail, 126 skip.
+- bun test --coverage plus test-gates --ratchet: floors met, no floor changed. coverage-manifest: ok. check-pack and smoke-pack: ok. docs:build: ok.
+
+Not done yet: the live run. The isolated dev server on 127.0.0.1:4010 was not listening at the time of the run (connection refused), and it is shared with other lanes, so it was not restarted. Live directory and REPORT.md are still to be recorded.
+
+Refs #180
+
+**feat(anthropic): count the persona, skill and server tools in count_tokens** ([`c8c504f`](https://github.com/jjjermiah/opencode-plugboard/commit/c8c504f4d4ea365d3e7339eb75156cf6824f1a94))
+
+count_tokens and Gemini countTokens estimated the caller's parsed request only, plus the app's system policy and the tool-choice steering (#201). The session also adds an agent's prompt (agent/<name> replaces the system prompt), a skill's content (a skill alias leads it) and the schemas of the app's serverTools, so Claude Code sized its context against a number that was too small.
+
+What changed: sessionRequest (src/session/caller.ts) builds the request the way the session caller does, with personaPrompt shared by both, so the count cannot drift from what is sent. It applies the app's tools policy (tools: false drops the caller's tools in the count too, as in the request), the persona prompt, requestSystem, and the serverTools schemas unless tool_choice is none. The session port gets directToolSchemas, and RouteHost gets an optional session that index.ts fills with the same callerDeps the session caller uses. With no persona and no serverTools the count reads nothing from the host, as before.
+
+Decisions: a skill or agent that is missing, a server tool the location does not offer, and a refused backend get the error the request would get, so a count never reports a size for a request that would fail. Tool schemas are converted like OpenCode core does (standard JSON Schema, Effect schema, plain object) but without core's draft-07 step, because core's conversion is internal and plugboard may not import it. The count is still an estimate.
+
+Rejected: reading the schemas from the session's context hook (no session exists when counting); importing OpenCode's tool conversion (internal to core, and session code may not import core at runtime).
+
+Validation: bun run typecheck clean; bun test 2316 pass, 0 fail; coverage 98.6% lines and 94.5% functions, at the floors; coverage-manifest, check-pack, smoke-pack, docs:build and the scripted examples pass. New tests in test/http/messages.test.ts and test/http/gemini.test.ts cover skill, agent, missing skill, server tools, tool_choice none, unavailable server tool and the backend refusal; test/session/server-tools.test.ts covers directToolSchemas.
+
+Closes #201
+
+#### Fixes
+
+**fix(examples): pydantic-ai S6 reads the output tool before the text** ([`daae0f9`](https://github.com/jjjermiah/opencode-plugboard/commit/daae0f9733cdc202a3f33e9445b897f9aa2f56ee))
+
+Claude answers tool-mode structured output with a text part and a final_result tool call in one message. The observation took the first part, the text, and failed to parse it as JSON on the live run at c97ac66 (JSONDecodeError). pydantic-ai had already validated the tool call.
+
+Now the output tool arguments are read first, text only when there is no tool call. The scripted run is unchanged: its transcripts did not move.
+
+Refs #182
+
+**fix(examples): record the live run as plugboard 0.26.0 and split the error scenarios** ([`14c70d3`](https://github.com/jjjermiah/opencode-plugboard/commit/14c70d32dc647af8c72d81f3c2fee703fc025b53))
+
+Review of #323 (SHOULD and NIT items). Five changes:
+
+1. Live record version. runs/live/2026-10-13-c97ac66 said plugboard 0.25.1. The commit is c97ac66, the 0.26.0 release merge, so the record was wrong. The harness reads the version from the checkout's package.json, and this branch was based on 3e6960a (0.25.1), so the two disagreed. The branch now merges origin/main, so package.json reads 0.26.0 at c97ac66. Fix: edited plugboard.version in summary.json and the header line in summary.md (0.25.1 -> 0.26.0). The harness has no render-only path, and re-running the live target would write a second directory, so I edited the two files. Nothing else in them changed; the transcripts are the 0.26.0 server's and were not touched. The live directory name stays 2026-10-13-c97ac66. The earlier commit subject and body (96873f3) still say 0.25.1; this commit supersedes them. The README known-gaps line now says 0.26.0.
+
+2. errors.ts split. It held two regions named "snippet", which VitePress reads ambiguously, and two scenarios in one file. Now wrong_key.ts (E1) and unknown_model.ts (E2), each with one region, and run.ts imports both. The requests are the same as before by inspection; the live run was made with the combined file and not re-run after the split.
+
+3. README. The table lists the two files. The known-gaps and gotchas name the new file names and 0.26.0.
+
+4. docs/clients/vercel-ai-sdk.md. Header: tested live 2026-10-13 at 0.26.0, all 45 rows pass; the 2026-10-11 record is older. Responses gotcha: the 2026-10-11 record failed every scenario on openai(id) with a 404 (no route yet); the 2026-10-13 live run passes all 45 rows on it. The old "All 17 scenarios passed" sentence was wrong against the migrated record.
+
+5. examples/README.md. It is hand-written (no generator exists on this branch), so I added the vercel-ai-sdk row.
+
+Decisions:
+- "Show both settings" (#179) is not fully met. The unflagged createOpenAICompatible case is a README gotcha, not a run variant. The harness keys gaps by scenario id, not variant, so a gap on that run would hide real failures on the other variants. The unflagged failure is shown only by the 2026-10-11 record, not a current run.
+- No gap entries. The live run passes everything.
+
+Validation (from the worktree, after the merge):
+- bunx tsc --noEmit in examples/vercel-ai-sdk: exit 0.
+- bun examples/_harness/run.ts vercel-ai-sdk --target scripted, twice, git diff --exit-code examples/vercel-ai-sdk/runs/scripted between them: exit 0. The runs match the committed state.
+- bun examples/_harness/run.ts curl and openai-python --target scripted, then git diff --exit-code on their runs: exit 0.
+- bun run typecheck: exit 0. bun test: 2483 tests, 0 fail.
+
+Closes #179
+Refs #174
+
+**fix(anthropic): count only the tools a request sends, and refuse what it refuses** ([`85a45b1`](https://github.com/jjjermiah/opencode-plugboard/commit/85a45b1240eeb0febf1e7db52c59b42964008a25))
+
+Review of #329 found that the count answered a size for requests the session would never send or would refuse, and that its docs said otherwise.
+
+The count listed every caller tool. The session seeds only what seedToolsFor returns: none for tool_choice none, only the named tool for a named choice. sessionRequest now uses seedToolsFor, and the test that asserted the drifted number (a caller tool counted under none) now expects 1. A named choice case is added.
+
+sessionRequest also runs the pure refusals stream runs, in the same order and before any host read: checkAppModel, checkAppTools and checkServerToolNames. It runs the ungranted server-tool check against the operator's agent rules too (ungrantedServerTool, the same as the request), so a count reports no size for a request that would be refused with 400. Image preparation is still not run; the request's decoders already enforce the global tool cap.
+
+test/session/session-request.test.ts covers the tools policy (caller tools and steering dropped; a structured tool kept, forced), model scope, maxTools, the name clash, the operator refusal, tool_choice none, a named choice, granted server tools, and the no-session fallback. The route tests in messages.test.ts add the named choice and the unoffered-tool refusal.
+
+The count paragraph in docs/messages.md is now a short list plus one sentence on side effects (app directory, Location boot, possible 503, the host's tool and agent reads). docs/gemini.md points there. Mirroring the operator check was cheap, and a size for a refused request would mislead budgeting, so the gap is not documented instead.
+
+Validation: typecheck clean; bun test 2327 pass, 0 fail; coverage at the floors (98.6% lines, 94.5% functions); the ratchet raised the test-count floors (http 532, session 311); coverage-manifest, check-pack, smoke-pack, docs:build and the scripted examples gate pass; bun run mutations 53 of 53 killed.
+
+Refs #201
+
+**fix(examples): correct the LangChain Python example after review** ([`87bd680`](https://github.com/jjjermiah/opencode-plugboard/commit/87bd680f51972a3bd47bf8d5e95ca8b1ebf4941c))
+
+What changed:
+- Merged origin/main into the branch (a merge commit, not a rebase).
+- Live record runs/live/2026-10-13-c97ac66: plugboard version is 0.26.0 in summary.json, summary.md and REPORT.md. The earlier 0.25.1 came from the worktree's package.json, which was older than the main checkout at c97ac66.
+- Reverted the examples/README.md index row. The index has no generator and no "generated" marker, and #174 gives it to the docs issue, so the example does not touch it.
+- Snippet regions: tools.py and errors.py had duplicate "snippet" names, so each region is now named (snippet-tool, snippet-round-trip, snippet-wrong-key, snippet-unknown-model). stream_tools.py moves get_weather inside its snippet region. llm.py keeps max_retries out of the copyable region: it is now a module-level NO_RETRIES constant.
+- docs/clients/langchain-python.md: the Tested header names the 2026-10-13 live run against c97ac66 (0.26.0), and the error classes at the gotchas are openai.AuthenticationError and openai.NotFoundError, which the example catches. Docs pages belong to the docs issue; this is the one edit made here on the reviewer's request.
+- README Known gaps names the live pass.
+
+Why: review asked for unique region names so the docs can include the S2 round trip and the unknown-model case, a copyable region that holds only the example's own code, and a live record that names the right plugboard version.
+
+Decisions: the scripted run is regenerated twice and is byte-identical across both runs. Live transcripts are unchanged; the code change moves a constant and renames markers, so the wire traffic does not change.
+
+Rejected: rerunning the live record under a new directory, since the record is being corrected, not re-measured, and a new run would need a live server round trip. Rebasing onto origin/main, which the review did not ask for.
+
+Validation: bun run typecheck exit 0. bun test: 2483 tests, 0 fail. Coverage ratchet met with no floor change. coverage-manifest, check-pack, smoke-pack and docs:build all exit 0. bun examples/_harness/run.ts all --target scripted then git diff --exit-code examples/: exit 0, no diff.
+
+Refs #180
+
+**fix(docs): make the vercel-ai-sdk live record a code path, not a link** ([`c77cf51`](https://github.com/jjjermiah/opencode-plugboard/commit/c77cf5117a15c2dd552eb12119fcfeea3c8ad08c))
+
+CI's docs build failed: VitePress reads a link to a file outside docs/ as a dead link. docs/clients/vercel-ai-sdk.md linked to examples/vercel-ai-sdk/runs/live/2026-10-13-c97ac66/summary.md. The path is now plain code. `bun run docs:build` passes locally.
+
+Refs #179
+
+#### Tests
+
+**test(examples): pydantic-ai runnable example with scripted runs (#174, #182)** ([`032caa1`](https://github.com/jjjermiah/opencode-plugboard/commit/032caa1e7cbee49d66463c3d0920db03a1d15099))
+
+Adds examples/pydantic-ai, the pydantic-ai (OpenAIChatModel, Chat Completions) client example from the runnable-examples epic. It replaces the pydantic-ai part of compat/py for the examples track; compat/ itself is not touched.
+
+What
+- One copyable file per scenario: chat.py (S1), tools.py (S2), stream.py (S3), stream_tools.py (S4), image.py (S5), structured.py (S6), models.py (S7), errors.py (E1, E2). Snippets sit between region markers.
+- run.py, the runner the harness starts. It writes nothing.
+- Exact pins: pydantic-ai-slim[openai]==2.55.0, openai==3.29.0, pydantic==2.14.1, httpx==0.28.1. .python-version 3.13, uv.lock.
+- runs/scripted: the deterministic run, all 3 models pass every scenario.
+- runs/live/2026-10-11-3fcedc7/REPORT.md: the old compat/results record, copied byte for byte.
+- ci.yml examples job: the scripted run and the stale-run diff now include pydantic-ai.
+
+Decisions
+- Every scenario is async and runs on its own event loop. run.py opens a client per scenario and closes it inside that loop. A pooled httpx connection cannot cross loops (RuntimeError: bound to a different event loop), and pydantic-ai's run_sync makes a loop per call.
+- max_tokens 1024 on every model (ModelSettings), so fast has room to reason.
+- finish_reason: pydantic-ai names the wire value tool_calls "tool_call". The observation maps it back so the shared checks stay unchanged.
+- S3 done: pydantic-ai reads the stream to its end, and the SDK consumes the [DONE] frame. The observation is "the stream ran to its end without error"; the transcript keeps the raw frame.
+- S6 uses tool mode (output_type=Meal). The observation reads a tool call or text, because the provider decides which.
+- S7 uses the OpenAI client under the provider: pydantic-ai has no list-models API.
+- Rejected: ImageUrl data URL (the old record's second form). BinaryContent already goes out as a data URL, so one form covers S5.
+
+Validation
+- bun examples/_harness/run.ts pydantic-ai --target scripted: pass, all 3 models, every required scenario. Second run byte-identical (diff -r against a snapshot of the first).
+- Known scripted limit: pydantic-ai sends tool_choice "required" for tool mode, not a named tool, so the scripted model answers S6 as text. The forced-tool branch of scripted-model.ts is not exercised by this example.
+
+Not verified
+- Live run. The dev server at 127.0.0.1:4010 was not listening when this was written (connection refused), and the lane rules forbid restarting it. runs/live has only the historical record. The checkbox in #182 stays open.
+
+Refs #182
+
+**test(examples): add the LangChain JS example, with scripted runs and a CI check** ([`768d3c5`](https://github.com/jjjermiah/opencode-plugboard/commit/768d3c52dbb1f4c71d546d920625d37e95282d89))
+
+Part of the runnable-examples epic (#174). examples/langchain-js/ replaces the LangChain JS parts of compat/js. It runs S1 to S7 and the two error paths through @langchain/openai, one copyable file per scenario, and writes the scripted run under runs/scripted/ through the harness.
+
+What changed
+- Standalone bun project with exact pins from compat/js: @langchain/openai 1.6.2, @langchain/core 1.2.17, openai 7.32.0, zod 4.6.6, typescript 7.0.2, @types/bun 1.4.2. bun.lock is committed; CI installs with --frozen-lockfile through run.ts.
+- chat.ts, tools.ts, stream.ts, stream_tools.ts, image.ts, structured.ts, models.ts, errors.ts: one scenario each, snippet between // #region snippet markers, import.meta.main block so each file runs alone.
+- run.ts: the runner. Imports the scenario functions, passes the proxy URL and key from the environment, emits the client line, calls runAll. Writes nothing.
+- README.md: what each file shows, setup, the gotchas (checked against this run), and the known gaps.
+- runs/scripted/: summary.json, summary.md, one transcript per scenario and model. The verdict is partial: S1 and S2 on openai/gpt-5.6-luna#low are gaps.
+- .github/workflows/ci.yml: the examples job runs langchain-js with the scripted target and includes its runs/scripted in the freshness check.
+- CHANGELOG.md: one bullet under Unreleased.
+
+Decisions
+- Every scenario sets maxTokens 1024, not only fast. It maps to max_tokens on chat models and max_output_tokens on the Responses path, so one setting covers all three models, as messages.sh does in examples/curl.
+- gpt-5.6* ids go to /v1/responses. @langchain/openai forces that route for the id and ignores useResponsesApi: false, so no setting avoids it. The example does not work around it; the run records the real route.
+- The Responses path sets no finish_reason in response_metadata (the reply has status "completed"). S1 and S2 on gpt-5.6-luna#low are recorded as gap with #104 (Responses API clients) as the tracking issue. No new issue, since #104 already covers Responses client behaviour. The tool-call and text checks pass.
+- S6 checks the jsonSchema (text) and functionCalling (forced tool) forms, as the contract asks. jsonMode runs too but is not checked: on fast it returned {} in the 2026-10-11 record. Its request is in the S6 transcripts.
+- S7 uses the openai SDK directly. LangChain has no list-models call.
+- The old 2026-10-11 record (compat/results/langchain.md) is not moved here. It covers Python and JS and moves with examples/langchain-python.
+
+Rejected
+- Wrapping the error checks in a helper. The snippet has to be complete for a reader who copies it, so each error path keeps its own try/catch.
+- Running the Chat Completions path for gpt-5.6 via a different model id. That would hide the route the docs say plugboard serves.
+
+Validation
+- bunx tsc --noEmit in examples/langchain-js: clean.
+- bun run typecheck: clean.
+- bun test: 2306 pass, 126 skip, 0 fail.
+- bun examples/_harness/run.ts langchain-js --target scripted, twice: the second run gives git diff --exit-code with no change (DIFF=0). Verdict partial, exit 0.
+- No key literal in runs/: grep for the scripted key finds nothing.
+
+Not verified
+- Live run: the dev server on 127.0.0.1:4010 was not listening (no listener on the port; connection refused). The lane says not to restart it, so the live run is not recorded here and runs/live/ does not exist yet.
+
+Refs #181
+
+**test(examples): record the LangChain Python live run against plugboard c97ac66** ([`65f16d3`](https://github.com/jjjermiah/opencode-plugboard/commit/65f16d36cf4c65c61b126c53f960d694c9a42e1b))
+
+What changed: examples/langchain-python/runs/live/2026-10-13-c97ac66 holds the live run of the LangChain Python example against the isolated dev server at 127.0.0.1:4010, which loads the main checkout at c97ac66. The directory has summary.json, summary.md and the transcripts, written by the harness, plus a REPORT.md with the human notes. Every scenario passed on every model: fast, anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low. The ChatGPT model was not quota-limited on this run. Nothing failed, so no gaps and no issues were filed.
+
+Why this commit: the scripted run was already committed in 29e629e. The acceptance in #180 also asks for a recorded live run. With it recorded, the example is complete, so this commit closes the issue.
+
+Decisions: the live directory is named by the run's UTC start date, which is 2026-10-13 here. The local date was still 2026-10-12, so the name follows the harness, not the local clock. PLUGBOARD_COMMIT was set to c97ac66, the main checkout's HEAD, because the dev server loads that checkout, not this branch. The app key was read from the isolated config into an environment variable and never printed; grep finds it in no file under the example.
+
+Rejected: rewriting the scripted run or the old 3fcedc7 record. Both stay as they were.
+
+json_mode on fast, which the contract does not check, returned valid JSON on this run (one sample). The empty-object answer from the 2026-10-11 record did not reproduce, so no gap entry is needed. The sample is not a fix claim.
+
+Validation: bun examples/_harness/run.ts langchain-python --target live exited 0 with verdict pass, 16 rows. The app key appears in no file under the example. Scripted run from the earlier commit is unchanged.
+
+Closes #180
+
+**test(examples): record the vercel-ai-sdk live run against plugboard 0.25.1** ([`96873f3`](https://github.com/jjjermiah/opencode-plugboard/commit/96873f34f665081089ecf85129e9dcd70edfb682))
+
+Runs the Vercel AI SDK example against the isolated dev server (127.0.0.1:4010, main at c97ac66) with the compat app key. Verdict pass: all 45 rows pass on all three ways in (compat, openai-chat, responses), including openai(id) on /v1/responses, which the docs page and the 2026-10-11 record listed as failing.
+
+Why: the example's live target had never run, so the scripted pass proved only the harness path. This is the first real provider run.
+
+Decisions:
+- No gaps. Nothing failed, so no issue was filed and no gaps entry was needed.
+- README "Known gaps" now names this run. The 2026-10-11 record stays unchanged, and its superseded note points at this run.
+- docs/clients/vercel-ai-sdk.md was not edited: it never said openai(id) fails. It already says the Responses path passes.
+
+Validation:
+- PLUGBOARD_COMMIT=c97ac66 bun examples/_harness/run.ts vercel-ai-sdk --target live -> "vercel-ai-sdk live: pass", exit 0.
+- Directory runs/live/2026-10-13-c97ac66 holds summary.json, summary.md and 46 transcripts (45 scenario rows plus _background.json).
+
+Refs #179
+Refs #174
+
+**test(examples): record the LangChain JS live run at c97ac66** ([`2291dae`](https://github.com/jjjermiah/opencode-plugboard/commit/2291daea6795e86a3807c52cd57e13fd4d91cbc1))
+
+Live run against the isolated dev server (plugboard 0.25.1 at c97ac66, compat app key). Verdict partial, the same as the scripted run: S1 and S2 on openai/gpt-5.6-luna#low are gap (#104, no finish_reason on the Responses path). Everything else passes, including S5 and S6 on the ChatGPT model, so no quota limit during the run. jsonMode on fast returned a correct object once (not checked; see REPORT.md).
+
+Refs #181
+
+**test(examples): scripted model forces a single tool on tool_choice required** ([`34ba924`](https://github.com/jjjermiah/opencode-plugboard/commit/34ba924b95bd0f757f625477e7505338be9e1043))
+
+The scripted model answered only named forced tools. pydantic-ai's tool-mode structured output sends tool_choice "required" with its one output tool, so the scripted S6 run answered as text and never reached the forced-tool branch.
+
+What
+- scripted-model.ts: tool_choice "required" with exactly one tool forces that tool. Named tool choices and auto/none are unchanged.
+- Regenerated scripted runs: only examples/pydantic-ai/runs/scripted S6 transcripts for fast, anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low changed (the answer is now a final_result tool call). curl and openai-python runs did not change.
+
+Decisions
+- Matching on "required" with one tool, not on the tool name, so any client that sends the same shape gets the same answer.
+- Rejected: a pydantic-ai-specific answer in the scenario. The harness owns the scripted behaviour.
+
+Validation
+- bun examples/_harness/run.ts all --target scripted: exit 0, every scripted example passes.
+- Second run: examples/ byte-identical to the first (diff -r).
+
+Refs #182
+
+**test(examples): pydantic-ai live run against the isolated server at c97ac66** ([`853ac18`](https://github.com/jjjermiah/opencode-plugboard/commit/853ac183b798cfcbf6225708b55e5d12c8e47816))
+
+First live run of the pydantic-ai example on the isolated dev server, with the scripted-model and S6 fixes in this PR. Closes #182.
+
+What
+- runs/live/2026-10-13-c97ac66-2: all 16 rows pass on fast, anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low. S7 lists the models, E1 gets 401 invalid_api_key, E2 gets 404 model_not_found.
+- runs/live/2026-10-13-c97ac66: the first attempt, kept as the record. S6 on Claude failed in structured.py, which read the text part before the tool call. REPORT.md there explains the cause and the fix (daae0f9).
+- runs/live/2026-10-11-3fcedc7: the old record, unchanged (earlier commit).
+
+Decisions
+- The live directory is named for the plugboard commit the server runs (PLUGBOARD_COMMIT=c97ac66, the checkout HEAD). The second run gets -2, since live directories are never rewritten.
+- No gaps: nothing failed plugboard-side.
+- Keys: read from the isolated config into the environment, never printed or written. The writer refuses any file containing the key.
+
+Validation
+- bun examples/_harness/run.ts pydantic-ai --target live: pass (the -2 run); the first run failed only on the structured.py bug.
+- bun examples/_harness/run.ts all --target scripted, then git diff --exit-code examples/: exit 0.
+- bun run typecheck: exit 0. bun test: 2432 tests, 0 fail.
+
+Closes #182
+
+**test(examples): address review of the LangChain JS example (#181)** ([`5ae8a7a`](https://github.com/jjjermiah/opencode-plugboard/commit/5ae8a7a5c9ad230ab27ef5b83bb5cb435f3b7ec4))
+
+Review of #327 (PR comments, 2291dae). What changed, and why.
+
+Variants (S1, S2)
+- chat.ts and tools.ts take a variant: "chat" uses ChatOpenAICompletions, which always calls /v1/chat/completions; "auto" uses ChatOpenAI, which sends gpt-5.6* ids to /v1/responses.
+- On luna the chat variant passes both scenarios. The auto variant stays a gap (#104), with the note "LangChain exposes no finish_reason on the Responses route (plugboard returns status completed)". Plugboard's reply is correct; the client does not expose the field.
+- The gap is keyed per scenario and model, not per variant, so a future failure of the chat variant on luna would also show as a gap. Accepted for now; the harness has no variant key.
+
+errors.ts split (VitePress allows one snippet region per file)
+- wrong_key.ts (E1) and unknown_model.ts (E2), one region each. errors.ts removed.
+
+Checks that could not fail
+- stream.ts: done is true only when the stream produced a message (it was hard-coded true).
+- structured.ts: extra_keys is read from the raw model text (includeRaw). Zod drops unknown keys from parsed, so the old check was always empty.
+
+Snippets
+- The prompts, fixtures and tool definitions move inside the region, so a copied snippet runs without the rest of the file. Imports stay outside.
+- stream_tools.ts reads the shared get_weather result like tools.ts; S4 streams the call and never runs the tool body.
+
+Scripted run
+- Regenerated twice; git diff --exit-code clean after the second run.
+
+Live record
+- New run runs/live/2026-10-13-c97ac66-2 at the same commit c97ac66 (a second live run, with the variants). REPORT.md explains it.
+- Hand edit, not a harness output: the harness reads plugboard.version from the worktree's package.json (0.27.0 after the merge), and c97ac66's package.json says 0.26.0. The version is corrected to 0.26.0 in summary.json, summary.md and REPORT.md of the -2 directory, and in summary.json, summary.md and REPORT.md of the first directory (2026-10-13-c97ac66, which said 0.25.1). Nothing else in the live records was edited.
+
+Docs and README
+- README: the variants, ChatOpenAICompletions snippet, the two error files, a relative link to the 2026-10-11 JS record (in examples/langchain-python, moved by #326), and the known-gaps table with the variant.
+- docs/clients/langchain-js.md: Tested header now the 2026-10-13 run (linked on GitHub: VitePress reads a relative link out of docs/ as dead), and the Responses gotcha says which scenarios pass on which route.
+
+Validation
+- bun run typecheck: clean. bunx tsc --noEmit in examples/langchain-js: clean.
+- bun run docs:build: built (one dead-link error fixed by the GitHub link above).
+- bun examples/_harness/run.ts all --target scripted: exit 0, clean diff.
+- bun test: 2483 pass, 0 fail, 126 skip.
+
+Refs #181
+
+**test(examples): split errors, fix live plugboard version, harden scripted tools** ([`7ff395c`](https://github.com/jjjermiah/opencode-plugboard/commit/7ff395c906b4c26d9c5099a0576f0673c8500bd9))
+
+Review fixes for #328.
+
+Split errors.py (both examples)
+- The contract allows one "# region snippet" per file. errors.py had two in pydantic-ai and openai-python, so VitePress would include the wrong part or the whole file.
+- Now wrong_key.py (E1) and unknown_model.py (E2) per example, each with one region and its own __main__. errors.py is removed. Runners and the two READMEs follow. Observations are unchanged.
+- langchain-python/errors.py uses snippet-wrong-key and snippet-unknown-model region names, which the contract does not allow. Not touched here (another lane's file).
+
+Live records: plugboard version corrected by hand
+- runs/live/2026-10-13-c97ac66 and -c97ac66-2 said "plugboard 0.25.1" (summary.json "version" and summary.md line 4). c97ac66 is the 0.26.0 release merge (git show c97ac66:package.json). The harness read the version from this branch's base, not from the commit it names.
+- Hand edit, as the review asked: the four summaries now say 0.26.0. Nothing else in those directories changed. REPORT.md in c97ac66 records the correction. Follow-up: the harness should read the version from the commit it names.
+
+Scripted model: required forces only what it can fill
+- forcedTool(): a named choice forces its tool as before. "required" forces only a single tool that has a "calories" property (the meal), and only before any tool result. Any other "required" request takes the same paths as "auto". Without this, a required get_weather call got an empty forced input, and turn 2 could loop on the forced call.
+- test/unit/examples-scripted-model.test.ts: five cases for the tool choices (fillable required, unfillable required, named, auto, required after a tool result).
+
+README
+- pydantic-ai: the file table lists wrong_key.py and unknown_model.py. The S6 gotcha says the scripted run takes the tool path too. The live section names runs/live/2026-10-13-c97ac66-2 as the latest and -c97ac66 as the failed first attempt.
+- openai-python: the file table lists the two new files.
+
+Merge
+- origin/main merged into the branch (merge, not rebase). ci.yml keeps both examples: the scripted run and the RUNS array now list openai-python, langchain-python and pydantic-ai.
+- test-count floor raised by the ratchet (2488 tests), committed with the tests.
+
+Validation
+- Scripted runs regenerated with all --target scripted, twice: the second run is identical to the first (diff -r). No scripted transcript changed.
+- bun run typecheck: exit 0. bun test: 2488 tests, 0 fail.
+- coverage + test-gates --ratchet: all floors met.
+- coverage-manifest, check-pack, smoke-pack, docs:build: all exit 0.
+
+Refs #182
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.27.0] - 2026-10-12: Every App Its Own Rules
 
@@ -4568,7 +4961,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.0...v0.25.1

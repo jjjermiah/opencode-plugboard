@@ -11,9 +11,12 @@ on:
 
 permissions: {}
 
+# Pull request and branch runs: a newer run on the same ref cancels the older one. A push to main gets a group
+# keyed by its commit SHA, so no later push can cancel or replace an earlier one. The release script tags a merge
+# commit only after that commit's own run passed (.github/scripts/release.ts), and that run must stay its own.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   package:
@@ -162,6 +165,10 @@ jobs:
       # stop conflicting on this list).
       - name: Scripted runs of every example
         run: bun examples/_harness/run.ts all --target scripted
+      - name: Type check the OpenAI JS example and the tool bot
+        run: |
+          (cd examples/openai-js && bunx tsc --noEmit)
+          (cd examples/tool-bot && bunx tsc --noEmit)
       - name: The committed scripted runs match a fresh run
         run: |
           shopt -s nullglob
@@ -172,6 +179,28 @@ jobs:
             echo "a scripted run is stale or not deterministic: regenerate it and commit the result"
             exit 1
           fi
+
+  # The one check the ruleset requires for "all of CI" (see docs/releasing.md). It runs even when a job failed, and passes
+  # only when every job in `needs` succeeded: a failed, cancelled or skipped job all count as not passed. A new gating job
+  # goes in `needs` here. The advisory benchmark stays out. publish.yml calls this workflow, so a release is gated on it too.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [package, host-versions, host, compat, examples]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every gating job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          not_passed=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"')
+          if [ -n "$not_passed" ]; then
+            echo "::error::these CI jobs did not succeed:"
+            echo "$not_passed"
+            exit 1
+          fi
+          echo "All gating CI jobs succeeded."
 
   # #118, #315: request-path medians of the PR head against its base commit, both run in this job on the same
   # runner, so the comparison is like with like. Advisory: a shared runner is noisy, so a failure here never

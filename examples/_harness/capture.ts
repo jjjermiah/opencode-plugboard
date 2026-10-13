@@ -35,6 +35,8 @@ export interface Exchange {
 export interface Capture {
   /** The origin the runner calls, e.g. `http://127.0.0.1:53124`. */
   readonly url: string
+  /** The ephemeral port, so a container can reach the proxy on another address (see `bind`). */
+  readonly port: number
   readonly marks: Mark[]
   /** Exchanges in request-start order. Complete once `close` resolves. */
   readonly exchanges: Exchange[]
@@ -45,7 +47,11 @@ export interface Capture {
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "proxy-connection", "host", "content-length", "accept-encoding"])
 const RESPONSE_DROP = new Set([...HOP, "content-encoding"])
 
-export async function startCapture(upstream: string): Promise<Capture> {
+/**
+ * `bind` is the address the proxy listens on. Loopback by default; a Docker example passes `0.0.0.0` so its container
+ * can reach the proxy through host.docker.internal. The proxy never holds the app key: it forwards the caller's.
+ */
+export async function startCapture(upstream: string, bind = "127.0.0.1"): Promise<Capture> {
   const origin = new URL(upstream)
   if (origin.protocol !== "http:") throw new Error(`capture upstream must be http:// (got ${upstream}); the proxy does not speak TLS`)
 
@@ -60,7 +66,7 @@ export async function startCapture(upstream: string): Promise<Capture> {
   }
 
   const server = Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: bind,
     port: 0,
     idleTimeout: 255,
     async fetch(request) {
@@ -118,6 +124,7 @@ export async function startCapture(upstream: string): Promise<Capture> {
 
   return {
     url: `http://127.0.0.1:${server.port}`,
+    port: server.port!,
     marks,
     exchanges,
     async close() {
