@@ -13,7 +13,8 @@ The OpenAI Python SDK against plugboard: plain chat, a tool round trip, streamin
 | `image.py` | S5 | a red PNG as a data URL in a multi-part message |
 | `structured.py` | S6 | `beta.chat.completions.parse` with a Pydantic model, `chat.completions.parse`, and the raw `json_schema` form |
 | `models.py` | S7 | `models.list()` and `models.retrieve("fast")` |
-| `errors.py` | E1, E2 | a wrong key (401) and an unknown model (404) |
+| `wrong_key.py` | E1 | a wrong key (401) |
+| `unknown_model.py` | E2 | an unknown model (404) |
 
 Each file has a `__main__` block, so it runs on its own. `run.py` is the runner the harness starts; it prints results and writes nothing.
 

@@ -1,0 +1,100 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "stream": false,
+          "tool_choice": "required",
+          "tools": [
+            {
+              "function": {
+                "description": "The final response which ends this conversation",
+                "name": "final_result",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "calories": {
+                      "type": "number"
+                    },
+                    "protein_g": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "calories",
+                    "protein_g"
+                  ],
+                  "type": "object"
+                },
+                "strict": true
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "I'll estimate the nutritional content of 2 boiled eggs and a slice of toast.\n\n**Breakdown:**\n- **2 boiled eggs**: approximately 140 calories and 12g protein\n- **1 slice of toast** (white/wheat bread): approximately 80 calories and 2.5g protein\n\n**Total estimate:**\n- Calories: ~220\n- Protein: ~14.5g",
+                "refusal": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{\"calories\":220,\"protein_g\":14.5}",
+                      "name": "final_result"
+                    },
+                    "id": "<id-2>",
+                    "type": "function"
+                  }
+                ]
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-3>",
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 183,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 640,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 823
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=640; output=183; cache_read=0; cache_write=0; cost_usd=0.001555"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
