@@ -115,6 +115,7 @@ export default defineConfig({
           { text: "paperless-ai", link: "/self-hosted/paperless-ai" },
           { text: "LLM Vision", link: "/self-hosted/llm-vision" },
           { text: "Onyx", link: "/self-hosted/onyx" },
+          { text: "RAGFlow", link: "/self-hosted/ragflow" },
         ],
       },
       {
