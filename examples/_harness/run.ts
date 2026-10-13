@@ -122,8 +122,8 @@ export async function plugboardCommit(): Promise<string> {
 
 /**
  * The plugboard version of a commit: its package.json at that commit (`git show <commit>:package.json`), not the checkout's
- * working tree, which may be another branch (#335). The server exposes no package version (`/plugboard/status` has the plugin's
- * runtime version only), so the commit is the source. A commit the checkout does not know is an error, raised before the runner starts.
+ * working tree, which may be another branch (#335). This is the fallback when the live server's `/plugboard/status` gives no
+ * `packageVersion` (#347). A commit the checkout does not know is an error, raised before the runner starts.
  */
 export async function plugboardVersion(commit: string): Promise<string> {
   const { dir, fromEnv } = checkout()
@@ -138,10 +138,33 @@ export async function plugboardVersion(commit: string): Promise<string> {
   return version
 }
 
-/** What a live run records about plugboard: the commit it names and that commit's version (#335). */
-export async function livePlugboard(): Promise<{ version: string; commit: string }> {
+/**
+ * The versions `GET /plugboard/status` reports on the live server, when the key can read it (#347). Anything else (no key, the
+ * server unreachable, a refusal, a server without `packageVersion`) is undefined, and the caller falls back to git.
+ */
+export async function servedVersions(url: string, key: string | undefined): Promise<{ packageVersion: string; opencodeVersion: string | null } | undefined> {
+  if (!key) return undefined
+  try {
+    const reply = await fetch(new URL("/plugboard/status", new URL(url).origin), { headers: { authorization: `Bearer ${key}` } })
+    if (!reply.ok) return undefined
+    const body = (await reply.json()) as { packageVersion?: unknown; opencodeVersion?: unknown }
+    if (typeof body.packageVersion !== "string") return undefined
+    return { packageVersion: body.packageVersion, opencodeVersion: typeof body.opencodeVersion === "string" ? body.opencodeVersion : null }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * What a live run records about plugboard: the commit it names, and its version and OpenCode version (#335, #347). The version and
+ * OpenCode version come from the server's `/plugboard/status` when the key can read it, else from git (`plugboardVersion`). The commit
+ * is still checked against the checkout first, so a commit the checkout does not have stops the run either way.
+ */
+export async function livePlugboard(server?: { url: string; key: string | undefined }): Promise<{ version: string; commit: string; opencode: string | null }> {
   const commit = await plugboardCommit()
-  return { version: await plugboardVersion(commit), commit }
+  const gitVersion = await plugboardVersion(commit)
+  const served = server ? await servedVersions(server.url, server.key) : undefined
+  return { version: served?.packageVersion ?? gitVersion, commit, opencode: served?.opencodeVersion ?? null }
 }
 
 /** `<date>-<shortsha>`, `-2` on a collision. Live directories are never rewritten. */
@@ -157,7 +180,7 @@ function liveDirectory(base: string, date: string, sha: string): string {
 async function runExample(name: string, target: "scripted" | "live", docker: boolean): Promise<ScenarioRow[]> {
   const dir = exampleDir(name)
   // Resolved before anything runs: a commit the checkout does not have fails here, not after the runner has spent its time.
-  const plugboard = target === "live" ? await livePlugboard() : undefined
+  const plugboard = target === "live" ? await livePlugboard({ url: process.env.PLUGBOARD_BASE_URL ?? LIVE_DEFAULT_URL, key: process.env.PLUGBOARD_KEY }) : undefined
   const scenarios = (await Bun.file(join(EXAMPLES, "_shared/scenarios.json")).json()) as ScenariosFile
   if (existsSync(join(dir, "package.json")) && !existsSync(join(dir, "node_modules"))) {
     const install = Bun.spawn(["bun", "install", "--frozen-lockfile"], { cwd: dir, stdout: "inherit", stderr: "inherit" })
@@ -224,7 +247,7 @@ interface Collected {
   readonly endedAt: number
   readonly started: number
   /** Live runs only: the commit the run names and its version (`livePlugboard`). */
-  readonly plugboard: { readonly version: string; readonly commit: string } | undefined
+  readonly plugboard: { readonly version: string; readonly commit: string; readonly opencode: string | null } | undefined
 }
 
 async function writeExample(name: string, target: "scripted" | "live", scenarios: ScenariosFile, got: Collected): Promise<ScenarioRow[]> {
@@ -293,9 +316,9 @@ async function writeExample(name: string, target: "scripted" | "live", scenarios
     ...(target === "live" && got.plugboard
       ? {
           date: new Date(got.started).toISOString().slice(0, 10),
-          plugboard: got.plugboard,
-          // The server exposes no OpenCode version, so it is recorded as null (render.ts names that in the markdown).
-          opencode: null,
+          plugboard: { version: got.plugboard.version, commit: got.plugboard.commit },
+          // From the server's `/plugboard/status` when it reports one, else null (render.ts names that in the markdown).
+          opencode: got.plugboard.opencode,
         }
       : {}),
   }

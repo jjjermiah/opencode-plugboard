@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { livePlugboard, plugboardVersion } from "../../examples/_harness/run.ts"
+import { livePlugboard, plugboardVersion, servedVersions } from "../../examples/_harness/run.ts"
 
 const harness = (name: string) => fileURLToPath(new URL(`../../examples/_harness/${name}`, import.meta.url))
 
@@ -84,7 +84,7 @@ describe("#335 live runs record the version of the commit they name", () => {
 
   test("a live run that names an older commit records that commit's version", async () => {
     process.env.PLUGBOARD_COMMIT = oldCommit
-    expect(await livePlugboard()).toEqual({ version: "0.25.1", commit: oldCommit })
+    expect(await livePlugboard()).toEqual({ version: "0.25.1", commit: oldCommit, opencode: null })
   })
 
   test("a commit the checkout does not have is refused, not recorded as unknown", async () => {
@@ -105,5 +105,62 @@ describe("#335 live runs record the version of the commit they name", () => {
   test("a PLUGBOARD_COMMIT that starts with a dash is refused, not handed to git as an option", async () => {
     process.env.PLUGBOARD_COMMIT = "--output=/dev/null"
     await expect(livePlugboard()).rejects.toThrow("must not start with `-`")
+  })
+})
+
+describe("#347 a live run reads the versions from the server's /plugboard/status when its key can read it", () => {
+  const own = (JSON.parse(readFileSync(join(import.meta.dir, "../..", "package.json"), "utf8")) as { version: string }).version
+  let saved: { PLUGBOARD_CHECKOUT?: string; PLUGBOARD_COMMIT?: string }
+  let server: ReturnType<typeof Bun.serve> | undefined
+
+  beforeEach(() => {
+    saved = { PLUGBOARD_CHECKOUT: process.env.PLUGBOARD_CHECKOUT, PLUGBOARD_COMMIT: process.env.PLUGBOARD_COMMIT }
+    delete process.env.PLUGBOARD_CHECKOUT
+    delete process.env.PLUGBOARD_COMMIT
+  })
+
+  afterEach(() => {
+    server?.stop(true)
+    server = undefined
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+
+  /** A loopback server that answers `/plugboard/status` with `body` to the good key, and 401 to any other. */
+  function serve(body: Record<string, unknown>): string {
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: (request) => (request.headers.get("authorization") === "Bearer k-good" ? Response.json(body) : Response.json({ error: "unauthorised" }, { status: 401 })),
+    })
+    return `http://127.0.0.1:${server.port}/v1`
+  }
+
+  test("the served package and OpenCode versions win over the checkout's package.json", async () => {
+    const url = serve({ ok: true, packageVersion: "9.9.9", opencodeVersion: "2.0.27" })
+    expect(await livePlugboard({ url, key: "k-good" })).toMatchObject({ version: "9.9.9", opencode: "2.0.27" })
+    expect(await servedVersions(url, "k-good")).toEqual({ packageVersion: "9.9.9", opencodeVersion: "2.0.27" })
+  })
+
+  test("a key the server refuses falls back to the checkout's package.json, and OpenCode is null", async () => {
+    const url = serve({ ok: true, packageVersion: "9.9.9", opencodeVersion: "2.0.27" })
+    expect(await livePlugboard({ url, key: "k-bad" })).toEqual({ version: own, commit: expect.any(String), opencode: null })
+  })
+
+  test("no key, or a server that is not there, falls back to git", async () => {
+    expect((await livePlugboard({ url: serve({ packageVersion: "9.9.9" }), key: undefined })).version).toBe(own)
+    expect((await livePlugboard({ url: "http://127.0.0.1:1/v1", key: "k-good" })).version).toBe(own)
+  })
+
+  test("a server that does not report packageVersion (an older plugboard) falls back to git; a missing opencodeVersion is null", async () => {
+    expect((await livePlugboard({ url: serve({ ok: true }), key: "k-good" })).version).toBe(own)
+    expect(await livePlugboard({ url: serve({ ok: true, packageVersion: "9.9.9" }), key: "k-good" })).toMatchObject({ version: "9.9.9", opencode: null })
+  })
+
+  test("a commit the checkout does not have still stops the run, even when the server answers", async () => {
+    process.env.PLUGBOARD_COMMIT = "0000000"
+    await expect(livePlugboard({ url: serve({ ok: true, packageVersion: "9.9.9" }), key: "k-good" })).rejects.toThrow("cannot read package.json at commit 0000000")
   })
 })

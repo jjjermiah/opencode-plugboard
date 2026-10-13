@@ -90,6 +90,8 @@ export default Plugin.define({
         : undefined
       const handle = createOpenAiRoute({
         options,
+        // The host's own version (`ctx.app`), shown on `/plugboard/status` (#347).
+        opencodeVersion: ctx.app?.version,
         // Usage is outermost, so it records the answer the client gets (src/usage.ts).
         // Caps are outside the fallbacks, so one request takes one slot even when it falls back (src/limits.ts).
         // Aliases written as a list retry the next target before the first output (src/fallback.ts).
