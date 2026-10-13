@@ -62,7 +62,13 @@ A 400 `invalid_request_error` whose message names the field, for example `tools.
 - A `tool_result` whose `tool_use_id` no earlier `tool_use` block has, and `tool_choice` naming a tool that is not in `tools`.
 - A missing `max_tokens`, `messages` or `model`, values out of range, and more tools than the `maxTools` option.
 
-`POST /v1/messages/count_tokens` answers `{ "input_tokens": N }` with an estimate: characters / 4 over everything the session would send, plus a fixed cost per image or file. The count follows the same path as a request (#201): the app's `system` policy (`prepend`, `append` or `replace`) and the tool-choice steering sentence; an agent's prompt when the model is `agent/<name>` (it replaces the caller's system prompt); a skill's content when the model is a skill alias (it leads the system prompt); and the schemas of the app's `serverTools`, unless `tool_choice` is `none`. An app with `tools: false` is counted without the caller's tools, since the request drops them. A skill or agent the location does not have, or a server tool it does not offer, gets the error the request would get. Server tool schemas are converted the way OpenCode converts its tools, without OpenCode's draft-07 normalisation, so they can differ a little from the document the model reads. Plugboard has no tokenizer for the model behind an id, so treat it as a budget hint, not the provider's exact count.
+`POST /v1/messages/count_tokens` answers `{ "input_tokens": N }`: an estimate of the input the session would send (characters / 4, plus a fixed cost per image or file). It follows the request's path (#201):
+
+- **System:** the app's `system` policy, the tool-choice steering, a skill's content for a skill alias, or an agent's prompt for `agent/<name>` (which replaces the caller's system prompt).
+- **Tools:** the caller's tools the session offers (none for `tool_choice: none`, only the named one for a named choice, none with `tools: false`), and the app's `serverTools` schemas (none with `tool_choice: none`).
+- **Refusals:** the same 400s and 404s as the request, so no size is given for a refused request: a model outside the app's `models`, too many tools for `maxTools`, a server-tool name clash, a server tool the location does not offer or the operator's agent does not grant, and an unknown skill or agent.
+
+A count for an app with a persona or `serverTools` has side effects, as the request has: the app directory is created, the Location may boot, and a backend that is not ready answers 503. Each such count also reads the app's tool and agent lists from OpenCode. Image downloads are not run, and the server-tool schemas are converted without OpenCode's draft-07 normalisation, so they can differ a little. Plugboard has no tokenizer for the model behind an id, so treat the count as a budget hint, not the provider's exact count.
 
 ## Output
 

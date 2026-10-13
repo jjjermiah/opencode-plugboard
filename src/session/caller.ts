@@ -186,11 +186,14 @@ export async function personaPrompt(port: SessionPort, directory: string, person
 export type SessionPromptDeps = Pick<SessionCallerDeps, "port" | "persona" | "ensureBackend">
 
 /**
- * The request as the session sends it, for `count_tokens` and `countTokens` (#201): the app's tool policy, the persona's prompt,
- * the system prompt with the app's policy and steering, and the app's server-tool schemas. It runs the functions the caller runs,
- * so the estimate cannot drift from what is sent. The persona and server tools are read from the session only when there are
- * some and `deps` is given; without `deps` the count covers the caller's request and the app's policy. Returns the request with
- * `system` and `tools` as the model reads them, or the error the request would stop with.
+ * The request as the session sends it, for `count_tokens` and `countTokens` (#201): the same refusals as `stream` (model scope,
+ * tool count, server-tool name clash, the app's server tools' existence and operator grant), the app's tool policy, the persona's
+ * prompt, the system prompt with the app's policy and steering, and the tools the session offers: the caller's tools that get a
+ * seed (`seedToolsFor`) and the app's server-tool schemas, unless the tool choice is `none`. Returns the request with `system` and
+ * `tools` as the model reads them, or the error the request would stop with. The persona and server tools are read from the
+ * session only when there are some and `deps` is given. Side effects, as the request has them: the app directory is created and
+ * the Location may boot (`ensureAppDir`, `ensureBackend`), and a backend that is not ready answers 503. Image preparation (remote
+ * fetches) is not run. `app` is the authenticated app name, validated by config, so the caller's name check is not repeated.
  */
 export async function sessionRequest(
   deps: SessionPromptDeps | undefined,
@@ -199,7 +202,15 @@ export async function sessionRequest(
   policy: AppPolicy | undefined,
   signal: AbortSignal,
 ): Promise<PlugRequest | PlugError> {
+  // The pure refusals first, in the order `stream` makes them: a count never sizes a request that would be refused.
+  const outOfScope = checkAppModel(policy, called.model, called.ref)
+  if (outOfScope) return outOfScope
   let { request } = applyToolPolicy(called, policy)
+  const tooMany = checkAppTools(request, app, policy)
+  if (tooMany) return tooMany
+  const clash = checkServerToolNames(request, policy)
+  if (clash) return clash
+
   const persona = deps?.persona?.(called.model)
   const serverTools = policy?.serverTools
   let prelude: ReadonlyArray<string> = []
@@ -209,24 +220,31 @@ export async function sessionRequest(
     if (isPlugError(directory)) return directory
     const unavailable = await deps.ensureBackend?.(app, signal)
     if (unavailable) return unavailable
+    const missing = await checkServerToolsAvailable(deps.port, policy, signal)
+    if (missing) return missing
     const parts = await personaPrompt(deps.port, directory, persona)
     if (isPlugError(parts)) return parts
     prelude = parts.prelude
     if (parts.system !== undefined) request = { ...request, system: [...parts.system] }
-    const missing = await checkServerToolsAvailable(deps.port, policy, signal)
-    if (missing) return missing
-    // Offered only when the caller's tool choice allows tools, as the context hook does (src/session/context.ts).
-    if (serverTools !== undefined && request.toolChoice !== "none") {
-      const offered = await raceAbort(deps.port.directToolSchemas(), signal)
-      serverSchemas = offered.filter((tool) => serverTools.includes(tool.id))
+    if (serverTools !== undefined) {
+      // The operator's grant for the agent the session runs as (#194): an ungranted tool is refused before any session exists.
+      const rules = (await raceAbort(deps.port.agentRules(directory, persona?.kind === "agent" ? persona.agent : undefined), signal)) ?? []
+      const ungranted = ungrantedServerTool(serverTools, rules)
+      if (ungranted) return deniedByOperator(ungranted)
+      // Offered only when the tool choice allows tools, as the context hook does (src/session/context.ts).
+      if (request.toolChoice !== "none") {
+        const offered = await raceAbort(deps.port.directToolSchemas(), signal)
+        serverSchemas = offered.filter((tool) => serverTools.includes(tool.id))
+      }
     }
   }
   return {
     ...request,
     system: requestSystem(request, prelude, policy),
-    tools: [...request.tools, ...serverSchemas.map((tool) => ({ name: tool.id, description: tool.description, parameters: tool.input }))],
+    tools: [...seedToolsFor(request), ...serverSchemas.map((tool) => ({ name: tool.id, description: tool.description, parameters: tool.input }))],
   }
 }
+
 
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port, sessions, maxTools, ensureBackend } = deps

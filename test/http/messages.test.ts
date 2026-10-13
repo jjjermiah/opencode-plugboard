@@ -273,10 +273,23 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const headers = { "x-api-key": "secret" }
     // ceil((2 for "hi" + name + description + JSON schema characters) / 4)
     expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil((2 + "websearch".length + 200 + JSON.stringify(input).length) / 4) })
-    // tool_choice is kept only with a caller tool (src/anthropic/request.ts), so the case needs one: none drops the server tools too.
+    // tool_choice is kept only with a caller tool (src/anthropic/request.ts). `none` offers no caller tool and no server tool.
     const caller = { name: "lookup", description: "Looks up", input_schema: { type: "object" } }
-    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({
-      input_tokens: Math.ceil((2 + "lookup".length + "Looks up".length + JSON.stringify(caller.input_schema).length) / 4),
+    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({ input_tokens: 1 })
+  })
+
+  test("a named tool choice counts only that caller tool, its steering sentence, and the server tools", async () => {
+    const port = new FakeSessionPort()
+    port.toolIDs.push("websearch")
+    const input = { type: "object", properties: { q: { type: "string" } } }
+    port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
+    await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
+    const lookup = { name: "lookup", description: "Looks up", input_schema: { type: "object" } }
+    const fetch = { name: "fetch", description: "Fetches", input_schema: { type: "object" } }
+    const steering = "You must respond by calling the `fetch` tool."
+    const chars = 2 + steering.length + "fetch".length + "Fetches".length + JSON.stringify(fetch.input_schema).length + "websearch".length + 200 + JSON.stringify(input).length
+    expect((await countOf("test/echo", { tools: [lookup, fetch], tool_choice: { type: "tool", name: "fetch" } }, { "x-api-key": "secret" })).body).toEqual({
+      input_tokens: Math.ceil(chars / 4),
     })
   })
 
