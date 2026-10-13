@@ -106,6 +106,7 @@ export default defineConfig({
           { text: "Open Notebook", link: "/self-hosted/open-notebook" },
           { text: "Langflow", link: "/self-hosted/langflow" },
           { text: "SparkyFitness", link: "/self-hosted/sparkyfitness" },
+          { text: "PR-Agent", link: "/self-hosted/pr-agent" },
         ],
       },
       {
