@@ -28,7 +28,7 @@ Verdict: **partial** · @langchain/openai 1.6.2 on bun 1 · models: fast, anthro
 | E1 | fast | no | pass | 2/2 |
 | E2 | nope | no | pass | 2/2 |
 
-## Failures and gaps
+## Failures, gaps and unchecked items
 
 ### S1 (auto) on openai/gpt-5.6-luna#low: gap
 

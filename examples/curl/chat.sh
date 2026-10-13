@@ -18,16 +18,16 @@ post() { # $1 = JSON body
 
 s1() { # plain chat, non-stream
   local out
-  # region snippet
+  # region snippet-s1
   out=$(post "$(jq -cn --arg m "$1" '{model: $m, messages: [{role: "user", content: "Reply with exactly: pong"}]}')")
-  # endregion snippet
+  # endregion snippet-s1
   jq -c '{text: (.choices[0].message.content // ""), finish_reason: .choices[0].finish_reason, usage: .usage}' <<<"$out"
 }
 
 s2() { # tool call, then the tool result turn
   local model=$1 tool body out1 out2 call_id args
   tool=$(jq -c '.' "$SHARED/get_weather.tool.json")
-  # region snippet
+  # region snippet-s2
   body=$(jq -cn --arg m "$model" --argjson tool "$tool" \
     '{model: $m, messages: [{role: "user", content: "What is the weather in Paris? Use the tool."}], tools: [$tool]}')
   out1=$(post "$body")
@@ -38,7 +38,7 @@ s2() { # tool call, then the tool result turn
     --arg id "$call_id" --rawfile result "$SHARED/get_weather.result.json" \
     '{model: $m, tools: [$tool], messages: [{role: "user", content: "What is the weather in Paris? Use the tool."}, $turn1, {role: "tool", tool_call_id: $id, content: $result}]}')
   out2=$(post "$body")
-  # endregion snippet
+  # endregion snippet-s2
   jq -cn --argjson one "$out1" --argjson two "$out2" --arg args "$args" --arg id "$call_id" '{
     finish_reason: $one.choices[0].finish_reason,
     tool_name: ($one.choices[0].message.tool_calls[0].function.name // ""),
@@ -51,10 +51,10 @@ s2() { # tool call, then the tool result turn
 
 s3() { # streaming text, with include_usage
   local out frames
-  # region snippet
+  # region snippet-s3
   out=$(curl -sS -N "$PLUGBOARD_BASE_URL/chat/completions" -H "Authorization: Bearer $PLUGBOARD_KEY" -H "Content-Type: application/json" \
     -d "$(jq -cn --arg m "$1" '{model: $m, stream: true, stream_options: {include_usage: true}, messages: [{role: "user", content: "Reply with exactly: pong"}]}')")
-  # endregion snippet
+  # endregion snippet-s3
   frames=$(grep '^data: ' <<<"$out" | sed 's/^data: //' | grep -v '^\[DONE\]$' || true)
   jq -cn --arg text "$(jq -rs '[.[] | .choices[]?.delta.content // empty] | join("")' <<<"$frames")" \
     --arg finish "$(jq -rs '[.[] | .choices[]?.finish_reason // empty] | last // ""' <<<"$frames")" \
@@ -81,11 +81,11 @@ s4() { # streaming tool call: the name and id arrive in one delta, the arguments
 s5() { # image as a data URL
   local url out
   url=$(tr -d '\n' <"$SHARED/red32.dataurl.txt")
-  # region snippet
+  # region snippet-s5
   out=$(post "$(jq -cn --arg m "$1" --arg url "$url" '{model: $m, messages: [{role: "user", content: [
     {type: "text", text: "What color is this image? One word."},
     {type: "image_url", image_url: {url: $url}}]}]}')")
-  # endregion snippet
+  # endregion snippet-s5
   jq -c '{text: (.choices[0].message.content // "")}' <<<"$out"
 }
 

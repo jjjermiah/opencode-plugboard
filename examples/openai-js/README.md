@@ -59,7 +59,7 @@ bun examples/_harness/run.ts openai-js --target live       # the isolated server
 
 None. On both targets all 17 checks pass for `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The live run is `runs/live/2026-10-13-50219b1/`, on the isolated server at the main checkout's commit `50219b1` (plugboard 0.27.0). It ran the ChatGPT model without a quota error, and `models.retrieve` passes there, so the 2026-10-11 gotcha above is resolved. `runs/live/2026-10-13-c97ac66/` is an earlier run at `c97ac66` (0.26.0), before S3 gained its without-usage call; it is kept as recorded.
 
-The tool-bot runner (`examples/tool-bot/run.ts`, the same SDK) has S2 as a gap: the bot prints only its final answer, so the tool-call checks cannot be read from its output. See [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
+The tool-bot runner (`examples/tool-bot/run.ts`, the same SDK) reads its S2 round trip from the capture proxy, since the bot prints only its final answer. See [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
 
 ## Historical record
 

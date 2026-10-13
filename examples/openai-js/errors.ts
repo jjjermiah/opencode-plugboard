@@ -2,7 +2,7 @@
 import OpenAI from "openai"
 
 export async function runWrongKey(client: OpenAI, model: string) {
-  // #region wrong-key
+  // #region snippet-wrong-key
   // A fixed fake key: it may appear in the run, the app key may not.
   const wrong = new OpenAI({ baseURL: client.baseURL, apiKey: "sk-wrong-key-example", maxRetries: 0 })
   try {
@@ -11,19 +11,19 @@ export async function runWrongKey(client: OpenAI, model: string) {
     if (error instanceof OpenAI.AuthenticationError) return { status: error.status ?? null, code: error.code ?? null }
     throw error
   }
-  // #endregion wrong-key
+  // #endregion snippet-wrong-key
   throw new Error("a wrong key was accepted")
 }
 
 export async function runUnknownModel(client: OpenAI, model: string) {
-  // #region unknown-model
+  // #region snippet-unknown-model
   try {
     await client.chat.completions.create({ model, messages: [{ role: "user", content: "Reply with exactly: pong" }], max_tokens: 1024 })
   } catch (error) {
     if (error instanceof OpenAI.NotFoundError) return { status: error.status ?? null, code: error.code ?? null }
     throw error
   }
-  // #endregion unknown-model
+  // #endregion snippet-unknown-model
   throw new Error(`model ${model} was accepted`)
 }
 
