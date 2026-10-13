@@ -75,7 +75,7 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
   if (isPlugError(n)) return n
   if (prompts.length * n > options.maxN)
     return bad(
-      `${prompts.length} prompt${prompts.length === 1 ? "" : "s"} with n=${n} make ${prompts.length * n} model calls, above the limit of ${options.maxN} (option \`maxN\`)`,
+      `${prompts.length} prompt${prompts.length === 1 ? "" : "s"} with n=${n} make ${prompts.length * n} model calls, above the limit of ${options.maxN} (option \`maxN\`, or \`apps.<name>.maxN\` for this app)`,
       prompts.length > 1 ? "prompt" : "n",
       "too_many_choices",
     )

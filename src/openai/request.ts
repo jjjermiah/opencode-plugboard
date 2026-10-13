@@ -238,7 +238,7 @@ export const parseChoiceCount = (body: JsonObject, options: PlugboardOptions): n
   if (body.n == null) return 1
   if (typeof body.n !== "number" || !Number.isInteger(body.n) || body.n < 1) return bad("n must be a positive integer", "n")
   if (body.n > options.maxN)
-    return bad(`n=${body.n} is above the limit of ${options.maxN} (option \`maxN\`; each choice is a full model call)`, "n", "too_many_choices")
+    return bad(`n=${body.n} is above the limit of ${options.maxN} (option \`maxN\`, or \`apps.<name>.maxN\` for this app; each choice is a full model call)`, "n", "too_many_choices")
   return body.n
 }
 

@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, type Endpoint, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -356,7 +356,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     noteEndUser(response, info, bodyUser(body))
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
-    const parsed = parseChatRequest(body, host.options)
+    // The app's own `maxN` (#270) is the cap for this request; the decoder checks against `options.maxN`.
+    const parsed = parseChatRequest(body, { ...host.options, maxN: maxNFor(host.options, auth.app) })
     if (isPlugError(parsed)) return fail(response, parsed)
     const catalog = await scope.race(host.loadCatalog())
     const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)

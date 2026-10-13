@@ -161,6 +161,8 @@ export interface AppPolicy {
   readonly tools: boolean
   /** Lowers the global `maxTools` for this app. */
   readonly maxTools?: number
+  /** Lowers the global `maxN` for this app (option `apps.<name>.maxN`, since 0.26.0, #270). Look the effective cap up with `maxNFor`. */
+  readonly maxN?: number
   /**
    * Exact OpenCode tool ids this app's sessions may run themselves (option `apps.<name>.serverTools`).
    * Absent: none, the session denies every real tool. Trusted apps only, see docs/configuration.md.
@@ -404,7 +406,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
 
 /** Option `apps.<name>.endpoints` (#268): a non-empty list of endpoint names from `ENDPOINTS`. */
 function parseEndpoints(raw: unknown, at: string): Endpoint[] {
@@ -444,7 +446,7 @@ const MODEL_IDS: ReadonlySet<string> = new Set(["canonical", "slugs", "both"])
 /** Validates `apps` (the `key` field was merged into `keys` already) into per-app policies. */
 function parseApps(
   raw: unknown,
-  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; maxTools: number },
+  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; maxTools: number; maxN: number },
 ): Record<string, AppPolicy> {
   const entries: Array<[string, AppPolicy]> = []
   for (const [app, value] of Object.entries(isRecord(raw) ? raw : {})) {
@@ -472,6 +474,8 @@ function parseApps(
     if (value.systemMode !== undefined && value.system === undefined) throw new Error(`${at}.systemMode needs \`system\``)
     if (value.tools !== undefined && typeof value.tools !== "boolean") throw new Error(`${at}.tools must be a boolean`)
     const maxTools = value.maxTools === undefined ? undefined : positiveInt(value.maxTools, `apps.${app}.maxTools`, 0, context.maxTools)
+    // Only lowers the global `maxN` (#270), like `maxTools`: a higher value would be a second, unchecked global.
+    const maxN = value.maxN === undefined ? undefined : positiveInt(value.maxN, `apps.${app}.maxN`, 0, context.maxN)
     if (value.serverTools !== undefined && app === DEFAULT_APP)
       throw new Error(`${at}.serverTools needs a key: the keyless app cannot run OpenCode tools; name the app and give it a key`)
     const serverTools = value.serverTools === undefined ? undefined : parseServerTools(value.serverTools, at)
@@ -492,6 +496,7 @@ function parseApps(
       systemMode: (value.systemMode as SystemMode | undefined) ?? "prepend",
       tools: value.tools !== false,
       ...(maxTools === undefined ? {} : { maxTools }),
+      ...(maxN === undefined ? {} : { maxN }),
       ...(serverTools === undefined ? {} : { serverTools }),
       ...(maxServerToolSteps === undefined ? {} : { maxServerToolSteps }),
       ...(maxServerToolCalls === undefined ? {} : { maxServerToolCalls }),
@@ -500,7 +505,7 @@ function parseApps(
       ...(endpoints === undefined ? {} : { endpoints }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -579,6 +584,14 @@ export function endpointRefusal(options: Pick<PlugboardOptions, "apps">, app: st
   const allowed = appPolicy(options, app)?.endpoints
   if (allowed === undefined || allowed.includes(endpoint)) return undefined
   return { status: 403, kind: "permission", code: "endpoint_forbidden", message: `This app may not call the ${endpoint} endpoint: \`apps.${app}.endpoints\` does not list it` }
+}
+
+/**
+ * The most choices (`n`) one request of `app` may ask for (#270): its `apps.<name>.maxN` when set, else the global `maxN`. The app's
+ * value only lowers the global one (checked at load), so this is never more than `options.maxN`.
+ */
+export function maxNFor(options: Pick<PlugboardOptions, "apps" | "maxN">, app: string): number {
+  return appPolicy(options, app)?.maxN ?? options.maxN
 }
 
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
@@ -811,7 +824,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const agents = parseAgents(input.agents, models as string[])
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
-  const apps = parseApps(input.apps, { keys, aliases, maxTools })
+  const maxN = positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64)
+  const apps = parseApps(input.apps, { keys, aliases, maxTools, maxN })
 
   const remoteImages = parseRemoteImages(input.remoteImages)
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")
@@ -859,7 +873,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     agents,
     fallbacks,
     maxTools,
-    maxN: positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64),
+    maxN,
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
     remoteImages,
     history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) },

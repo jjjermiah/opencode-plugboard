@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { authenticate, authenticateUsage, bodyLimits, isLoopbackHost, parseOptions } from "../../src/config.js"
+import { authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -488,5 +488,27 @@ describe("#262 logLevel and logRequests", () => {
 
   test("logRequests must be a boolean", () => {
     expect(() => parseOptions({ logRequests: "no" })).toThrow("plugboard option `logRequests` must be a boolean")
+  })
+})
+
+describe("#270 apps.<name>.maxN", () => {
+  test("only lowers: a value above the global maxN is rejected at load and the message names the app option", () => {
+    expect(() => parseOptions({ keys: { chat: "k" }, maxN: 2, apps: { chat: { maxN: 3 } } })).toThrow("`apps.chat.maxN` must be an integer between 1 and 2")
+  })
+
+  test("an in-range value is kept, and an app with only a maxN has a policy", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxN: 4, apps: { chat: { maxN: 1 } } })
+    expect(options.apps.chat).toMatchObject({ maxN: 1 })
+    expect(maxNFor(options, "chat")).toBe(1)
+  })
+
+  test("without it, the app's cap is the global one", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxN: 4 })
+    expect(maxNFor(options, "chat")).toBe(4)
+  })
+
+  test("rejects a non-integer and zero", () => {
+    expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxN: 0 } } })).toThrow("`apps.chat.maxN`")
+    expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxN: 1.5 } } })).toThrow("`apps.chat.maxN`")
   })
 })

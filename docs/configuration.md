@@ -12,7 +12,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
 | `adminKey` | none | A key that reads every app's usage at `GET /plugboard/usage` and manages app keys at runtime under `/plugboard/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
-| `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools?, serverTools?, maxServerToolSteps? }`: per-app model scope, system prompt, tool policy and OpenCode tools the app may run. See [Apps and keys](#apps-and-keys). |
+| `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools?, maxN?, serverTools?, maxServerToolSteps? }`: per-app model scope, system prompt, tool policy and OpenCode tools the app may run. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model, since 0.20.0). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
 | `agents` (since 0.20.0) | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
@@ -222,6 +222,7 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 | `systemMode` | `prepend` (default), `append` or `replace`. `replace` drops the caller's system prompt, including the instruction a `json_object` response format adds. |
 | `tools` | `false` drops every tool the caller sends before the model sees it. The request still succeeds, and the response carries `x-plugboard-policy: tools-stripped`. A `json_schema` response format is still answered: the `respond` tool it uses is kept and forced, and only the caller's tools go (#252). History that already holds tool calls may be rejected by the provider. |
 | `maxTools` | Lowers the global `maxTools` for this app. A request with more tools gets 400 `too_many_tools`. It cannot be higher than the global cap. |
+| `maxN` | Lowers the global `maxN` for this app (since 0.26.0). A request with a higher `n` (or prompts times `n`) gets 400 `too_many_choices`, and the message names `apps.<name>.maxN`. It cannot be higher than the global cap. Unset: the global `maxN` applies. |
 | `serverTools` (since 0.21.0) | Off by default. A list of exact OpenCode tool ids (for example `websearch`) that this app's sessions may run themselves, 1 to 32 entries. See the warning below. |
 | `maxServerToolSteps` (since 0.21.0) | How many model steps of one request may run a server tool, `8` by default, 1 to 100. It counts steps, not calls. Needs `serverTools`. |
 | `maxServerToolCalls` (since 0.24.0) | How many server tool calls one request may run in all its steps together, `16` by default, 1 to 1000. The call past it fails the request. Needs `serverTools`. |
@@ -528,7 +529,7 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 | 400 | `server_tool_collision` | A caller tool has the name of one of the app's `serverTools` | Tool &lt;name&gt; is one of this app's OpenCode server tools (option `apps.<name>.serverTools`); rename the caller's tool |
 | 502 | `server_tool_calls_exceeded` | The model ran more server tool calls than `maxServerToolCalls` | The model used more OpenCode tool calls than this app allows |
 | 502 | `server_tool_steps_exceeded` | The model ran more server-tool steps than `maxServerToolSteps` | The model used more OpenCode tool steps than this app allows |
-| 400 | `too_many_choices` | `n` (or prompts times `n`) above `maxN` | n=&lt;n&gt; is above the limit of &lt;max&gt; (option `maxN`; each choice is a full model call) |
+| 400 | `too_many_choices` | `n` (or prompts times `n`) above `maxN` or the app's `apps.<name>.maxN` | n=&lt;n&gt; is above the limit of &lt;max&gt; (option `maxN`, or `apps.<name>.maxN` for this app; each choice is a full model call) |
 | 400 | `unsupported_parameter` | `logprobs`, `top_logprobs`, `best_of` above 1, token-array prompts | names the parameter |
 | 429 | `too_many_requests` | A cap on concurrent calls in `limits` is full | Too many concurrent requests |
 | 429 | `rate_limit_exceeded` | The app's requests per minute in `limits` are used up | Too many requests per minute |
