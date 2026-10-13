@@ -33,7 +33,7 @@ def check(name: str, ok: bool, detail: str = "") -> bool:
 
 
 def main() -> int:
-    model = OpenAIModel(model_id="fast", api_base=URL, api_key=KEY)
+    model = OpenAIModel(model_id="fast", api_base=URL, api_key=KEY, max_completion_tokens=1024)
     results = []
 
     msg = model.generate([{"role": "user", "content": [{"type": "text", "text": "Reply with exactly: pong"}]}])

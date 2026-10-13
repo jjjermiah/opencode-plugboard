@@ -1,6 +1,6 @@
 # Roo Code
 
-Verified: docs only, 2026-10-12. The **OpenAI Compatible** provider, the Base URL, API Key and Model fields, the Model Configuration fields (max output tokens, context window, image support, computer use), and the native-tool-calling requirement were checked against Roo Code's OpenAI Compatible provider page (docs.roocode.com/providers/openai-compatible). That page says Roo Code uses native tool calling only and that some OpenAI-compatible providers partially implement the tools API. Not run: Roo Code is a VS Code extension, and the dev server at `127.0.0.1:4010` was not listening.
+Verified: docs only, 2026-10-13. The **OpenAI Compatible** provider, the Base URL, API Key and Model fields, the Model Configuration fields (max output tokens, context window, image support, computer use), and the native-tool-calling requirement were rechecked today against Roo Code's OpenAI Compatible provider page, <https://docs.roocode.com/providers/openai-compatible> (last updated on that page: May 15, 2026). That page says Roo Code uses native tool calling only and that some OpenAI-compatible providers partially implement the tools API. Not run: Roo Code is a VS Code extension, and the dev server at `127.0.0.1:4010` was not listening.
 
 Roo Code is a VS Code coding agent, a fork of Cline. Its **OpenAI Compatible** provider sends Chat Completions requests to any base URL, so it calls plugboard's `POST /v1/chat/completions`. Roo Code needs native tool calling: a model without it cannot be used.
 

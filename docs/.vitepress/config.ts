@@ -98,6 +98,7 @@ export default defineConfig({
           { text: "Mastra", link: "/clients/mastra" },
           { text: "smolagents", link: "/clients/smolagents" },
           { text: "promptfoo", link: "/clients/promptfoo" },
+          { text: "Langfuse", link: "/clients/langfuse" },
         ],
       },
       {
