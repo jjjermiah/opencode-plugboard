@@ -14,7 +14,15 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+0.25.0 was tagged but never published: its publish run stopped at a CI gate, so npm never had it. This release is 0.25.0's content, published. Read the [0.25.0 notes](#0250---2026-10-12-its-own-front-door) for the breaking route moves and the new defaults.
+
+### Added
+
+- **Runnable examples that check themselves** ([#175](https://github.com/jjjermiah/opencode-plugboard/issues/175), [#176](https://github.com/jjjermiah/opencode-plugboard/issues/176), [#185](https://github.com/jjjermiah/opencode-plugboard/issues/185), [#177](https://github.com/jjjermiah/opencode-plugboard/issues/177)). `examples/curl` and `examples/openai-python` run every scenario (chat, tools, streaming, images, structured output, models, errors) against a scripted plugboard in CI and against a live one on demand, and commit their results under `runs/`. `bun examples/_harness/run.ts <example> --target scripted|live` runs one.
+
+### Fixed
+
+- The scripted example runs recorded the curl, bash and Python versions of whoever ran them, so CI saw them as stale and blocked the 0.25.0 publish. They now record only pinned versions.
 
 ## [0.25.0] - 2026-10-12: Its Own Front Door
 
