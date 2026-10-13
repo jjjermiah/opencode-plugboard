@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P264-app-sampling-overrides-caller",
+    invariant: "#264",
+    file: "src/openai/sampling.ts",
+    find: "if (out[key] === undefined) out[key] = defaults[key] as never",
+    replace: "out[key] = defaults[key] as never",
+    tests: ["test/http/per-app-sampling.test.ts"],
+  },
+  {
     id: "P263-app-output-cap-raises",
     invariant: "#263",
     file: "src/openai/sampling.ts",

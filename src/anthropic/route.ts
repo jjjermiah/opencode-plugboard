@@ -37,7 +37,7 @@ import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
-import { dropRejected } from "../openai/sampling.js"
+import { appGeneration, dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
 import { estimateTokens } from "./tokens.js"
@@ -134,13 +134,14 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     }
     // Sampling parameters the model is known to reject are dropped; `top_k` has no neutral
     // equivalent and is always dropped. Both are reported before any response bytes.
-    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined
+    const generation = appGeneration(appPolicy(host.options, auth.app), parsed.request.generation)
+    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined
     const dropped = [...(sampled?.dropped ?? []), ...(parsed.topKIgnored ? ["top_k"] : [])]
     if (dropped.length > 0) {
       info.dropped = dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
     }
-    const model: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
+    const model: PlugRequest = { ...parsed.request, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, model)
     const { exchange } = parsed
 

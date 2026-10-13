@@ -2,7 +2,7 @@
 
 import { createHash, timingSafeEqual } from "node:crypto"
 import type { CacheConfig } from "./cache.js"
-import { isPlugError, type PlugError } from "./contract.js"
+import { isPlugError, type PlugError, type PlugGeneration } from "./contract.js"
 import { parseTrustProxy } from "./forwarded.js"
 import { allowedBy, parseAliasTarget, parseModelRef, SKILL_PREFIX } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
@@ -196,6 +196,11 @@ export interface AppPolicy {
    * caller's limit, or sets one when the caller sent none; it is never raised. Applied by `appGeneration` (src/openai/sampling.ts).
    */
   readonly maxOutputTokens?: number
+  /**
+   * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.29.0, #264): a field fills the request only where the caller
+   * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
+   */
+  readonly sampling?: PlugGeneration
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -432,7 +437,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling"])
 
 /** Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set. Unset fields fall back to the global `history`. */
 function parseAppHistory(raw: unknown, at: string): HistoryLimits {
@@ -478,6 +483,41 @@ function parseServerTools(value: unknown, at: string): string[] {
 }
 const SYSTEM_MODES: ReadonlySet<string> = new Set(["prepend", "append", "replace"])
 const MODEL_IDS: ReadonlySet<string> = new Set(["canonical", "slugs", "both"])
+
+const SAMPLING_KNOWN = ["temperature", "topP", "maxTokens", "stop", "presencePenalty", "frequencyPenalty"] as const
+
+/**
+ * Option `apps.<name>.sampling` (#264): the sampling defaults of one app. Each field is checked like the same field of a request
+ * (`temperature` 0 to 2, `topP` 0 to 1, the penalties -2 to 2, `maxTokens` a positive integer, `stop` 1 to 4 strings).
+ */
+function parseSampling(raw: unknown, at: string): PlugGeneration {
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.sampling\` must be an object`)
+  for (const key of Object.keys(raw))
+    if (!(SAMPLING_KNOWN as readonly string[]).includes(key)) throw new Error(`Unknown plugboard option \`${at}.sampling.${key}\` (known: ${SAMPLING_KNOWN.join(", ")})`)
+  const number = (key: "temperature" | "topP" | "presencePenalty" | "frequencyPenalty", min: number, max: number): number | undefined => {
+    const value = raw[key]
+    if (value === undefined) return undefined
+    if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max)
+      throw new Error(`plugboard option \`${at}.sampling.${key}\` must be a number from ${min} to ${max}`)
+    return value
+  }
+  const stop = raw.stop === undefined ? undefined : raw.stop
+  if (stop !== undefined && (!Array.isArray(stop) || stop.length === 0 || stop.length > 4 || stop.some((entry) => typeof entry !== "string")))
+    throw new Error(`plugboard option \`${at}.sampling.stop\` must be an array of 1 to 4 strings`)
+  const temperature = number("temperature", 0, 2)
+  const topP = number("topP", 0, 1)
+  const presencePenalty = number("presencePenalty", -2, 2)
+  const frequencyPenalty = number("frequencyPenalty", -2, 2)
+  const maxTokens = raw.maxTokens === undefined ? undefined : positiveInt(raw.maxTokens, `${at}.sampling.maxTokens`, 0, MAX_TIMER_MS)
+  return {
+    ...(temperature === undefined ? {} : { temperature }),
+    ...(topP === undefined ? {} : { topP }),
+    ...(maxTokens === undefined ? {} : { maxTokens }),
+    ...(stop === undefined ? {} : { stop: stop as string[] }),
+    ...(presencePenalty === undefined ? {} : { presencePenalty }),
+    ...(frequencyPenalty === undefined ? {} : { frequencyPenalty }),
+  }
+}
 
 /** Validates `apps` (the `key` field was merged into `keys` already) into per-app policies. */
 function parseApps(
@@ -530,6 +570,7 @@ function parseApps(
     // A deadline may be longer or shorter than the global one (#257); it is checked against the same ceiling as the global option.
     const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
     const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
+    const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -546,9 +587,10 @@ function parseApps(
       ...(endpoints === undefined ? {} : { endpoints }),
       ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
       ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+      ...(sampling === undefined ? {} : { sampling }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)

@@ -78,13 +78,19 @@ export interface Sampled {
 }
 
 /**
- * The request's generation as the app allows it (#263): `apps.<name>.maxOutputTokens` lowers the caller's `maxTokens` or sets it
- * when the caller sent none, and never raises it. Routes apply it before `dropRejected`, so the cap is what the model sees.
+ * The request's generation as the app allows it. Sampling defaults (`apps.<name>.sampling`, #264) fill only the fields the caller
+ * left unset. `apps.<name>.maxOutputTokens` (#263) lowers the caller's `maxTokens` or sets it when none is left, and never raises it.
+ * Routes apply this before `dropRejected`, so the drop sees the values the model would get.
  */
 export function appGeneration(policy: AppPolicy | undefined, generation: PlugGeneration): PlugGeneration {
+  const defaults = policy?.sampling
   const cap = policy?.maxOutputTokens
-  if (cap === undefined) return generation
-  return { ...generation, maxTokens: generation.maxTokens === undefined ? cap : Math.min(generation.maxTokens, cap) }
+  if (defaults === undefined && cap === undefined) return generation
+  const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = { ...generation }
+  if (defaults)
+    for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined) out[key] = defaults[key] as never
+  if (cap !== undefined) out.maxTokens = out.maxTokens === undefined ? cap : Math.min(out.maxTokens, cap)
+  return out
 }
 
 /** `generation` without the parameters the model is known to reject, and which ones those were. */
