@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-smolagents"
+version = "0.1.0"
+description = "smolagents against plugboard: text, stream and a tool round trip. Pins as in the dated record."
+requires-python = ">=3.12"
+# Exact pin: the smolagents version the example and docs/clients/smolagents.md record.
+dependencies = ["smolagents[openai]==1.26.0"]

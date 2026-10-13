@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-langfuse"
+version = "0.1.0"
+description = "Langfuse's OpenAI wrapper against plugboard: text, stream and a tool round trip, tracing off. Pins as in the dated record."
+requires-python = ">=3.10"
+# Exact pins: the versions docs/clients/langfuse.md records (langfuse 4.17.0, openai 3.29.0).
+dependencies = ["langfuse==4.17.0", "openai==3.29.0"]

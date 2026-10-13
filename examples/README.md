@@ -17,14 +17,14 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [crewai/](crewai/) | CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard | not run | not run |
 | [curl/](curl/) | One request per API in plain shell: chat, responses, Anthropic Messages, Gemini, legacy completions and models | pass | [`2026-10-12-a38860b-2`](curl/runs/live/2026-10-12-a38860b-2/), fail |
 | [dspy/](dspy/) | DSPy (through its LiteLLM route, `openai/` prefix): a Predict and a ChainOfThought on one question, and a typed output | pass | [`2026-10-12-a67e176`](dspy/runs/live/2026-10-12-a67e176/), historical record |
-| [go-openai/](go-openai/) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard | not run | not run |
+| [go-openai/](go-openai/) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard | pass | not run |
 | [haystack/](haystack/) | Haystack `OpenAIChatGenerator` in a two-component pipeline, with streaming and a tool round trip. A PEP 723 script | not run | not run |
 | [instructor/](instructor/) | Instructor extracting a validated Pydantic object, in TOOLS mode, JSON_SCHEMA mode and as a partial stream | pass | [`2026-10-12-a67e176`](instructor/runs/live/2026-10-12-a67e176/), historical record |
 | [jan/](jan/) | Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example` | not run | not run |
 | [kilo-code/](kilo-code/) | Kilo Code CLI provider block for plugboard's Chat Completions route | not run | not run |
 | [langchain-js/](langchain-js/) | LangChain JS (`@langchain/openai`): the same scenarios, with a `chat` and an `auto` variant | partial | [`2026-10-13-c97ac66-2`](langchain-js/runs/live/2026-10-13-c97ac66-2/), partial |
 | [langchain-python/](langchain-python/) | LangChain (`langchain-openai`'s `ChatOpenAI`): chat, tools, streaming, images, structured output, models and the error paths | pass | [`2026-10-13-c97ac66`](langchain-python/runs/live/2026-10-13-c97ac66/), pass |
-| [langfuse/](langfuse/) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off | not run | not run |
+| [langfuse/](langfuse/) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off | pass | not run |
 | [librechat/](librechat/) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` | not run | not run |
 | [litellm-client/](litellm-client/) | LiteLLM's `completion()` with the `openai/` prefix: a completion, a stream, a tool round trip and structured output | pass | [`2026-10-12-a67e176`](litellm-client/runs/live/2026-10-12-a67e176/), historical record |
 | [llamaindex/](llamaindex/) | LlamaIndex `OpenAILike` against plugboard: text, stream and a tool round trip. A PEP 723 script | not run | not run |
@@ -33,7 +33,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [n8n/](n8n/) | n8n in Docker, driven headless through webhooks: S1 to S7; workflows in `workflows/` | pass | [`2026-10-13-b92fb6f`](n8n/runs/live/2026-10-13-b92fb6f/), partial |
 | [open-webui/](open-webui/) | Open WebUI in Docker, pointed at plugboard on the host, with the plugboard options it needs; driven over its HTTP API | pass | [`2026-10-13-0cf8030`](open-webui/runs/live/2026-10-13-0cf8030/), pass |
 | [openai-agents/](openai-agents/) | The OpenAI Agents SDK on the Responses API and on Chat Completions: text, stream, tool and structured output. Run with `uv run` | pass | [`2026-10-12-a67e176`](openai-agents/runs/live/2026-10-12-a67e176/), historical record |
-| [openai-dotnet/](openai-dotnet/) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard | not run | not run |
+| [openai-dotnet/](openai-dotnet/) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard | pass | not run |
 | [openai-js/](openai-js/) | The OpenAI JS SDK: the same scenarios in TypeScript | pass | [`2026-10-13-50219b1`](openai-js/runs/live/2026-10-13-50219b1/), pass |
 | [openai-python/](openai-python/) | The OpenAI Python SDK: chat, tools, streaming, images, structured output, models and the error paths | pass | [`2026-10-12-a38860b`](openai-python/runs/live/2026-10-12-a38860b/), pass |
 | [promptfoo/](promptfoo/) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check | not run | not run |
@@ -41,7 +41,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt, paperless-ai (`.env` and compose), PR-Agent (`.env`), SiYuan (`.env` and compose). Page per app in docs/self-hosted | not run | not run |
 | [semantic-kernel/](semantic-kernel/) | Semantic Kernel (Python) with a text call, a stream and a plugin call through automatic function calling. A PEP 723 script, run with `uv run`; passes against plugboard | not run | not run |
 | [sillytavern/](sillytavern/) | SillyTavern in Docker; the plugboard endpoint and key are set in its UI | not run | not run |
-| [smolagents/](smolagents/) | smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`) | not run | not run |
+| [smolagents/](smolagents/) | smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`) | partial | not run |
 | [tool-bot/](tool-bot/) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines | pass | [`2026-10-13-50219b1`](tool-bot/runs/live/2026-10-13-50219b1/), partial |
 | [vercel-ai-sdk/](vercel-ai-sdk/) | The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses`. Chat, tools, streaming, structured output, images, models and errors | pass | [`2026-10-13-c97ac66`](vercel-ai-sdk/runs/live/2026-10-13-c97ac66/), pass |
 | [zed/](zed/) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider | not run | not run |
