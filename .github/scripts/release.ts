@@ -255,14 +255,23 @@ async function tagAfterMergeCi(mergeSha: string): Promise<void> {
   const short = mergeSha.slice(0, 7)
   const mergeRun = await waitForMergeCi(mergeSha)
   if (mergeRun.conclusion === "cancelled") {
-    fail(`CI on the merge commit ${short} was cancelled (${mergeRun.url}). Nothing is tagged and npm has nothing. Re-run it with gh run rerun ${mergeRun.databaseId}. Once it concludes success, tag ${short} by hand: git tag -a ${tag} ${mergeSha} -m "Release ${version}" && git push origin ${tag}. If it fails, fix forward on main and cut the next patch.`)
+    fail(`CI on the merge commit ${short} was cancelled (${mergeRun.url}). Nothing is tagged and npm has nothing. Re-run it with gh run rerun ${mergeRun.databaseId}. Once that run concludes success, run bun run release ${version} --title "..." --push --resume: it tags ${short} after the re-run passes. If the re-run fails, fix forward on main and cut the next patch.`)
   }
   if (mergeRun.conclusion !== "success") {
     fail(`CI on the merge commit ${short} concluded ${mergeRun.conclusion} (${mergeRun.url}). Nothing is tagged and npm has nothing. main now carries the release commit: fix forward through a pull request and cut the next patch. Do not tag ${short}.`)
   }
-  git("tag", "-a", tag, mergeSha, "-m", `Release ${version}`)
+  // A local tag at this commit is left from an earlier run whose push failed: push it, do not create it again.
+  if (tryGit("rev-list", "-n1", tag) !== mergeSha) git("tag", "-a", tag, mergeSha, "-m", `Release ${version}`)
   git("push", "origin", tag)
   console.log(`CI passed on ${short}, tagged ${tag} and pushed the tag`)
+}
+
+// After a merged resume, brings a clean local main up to origin/main, as the normal run does. Anything else is left alone.
+function fastForwardMain(): void {
+  if (tryGit("branch", "--show-current") !== "main" || tryGit("status", "--porcelain")) return
+  const ff = Bun.spawnSync(["git", "merge", "--ff-only", "origin/main"], { stderr: "pipe" })
+  if (ff.exitCode !== 0) console.log(`main not fast-forwarded to origin/main: ${ff.stderr.toString().trim()}`)
+  else console.log("local main fast-forwarded to origin/main")
 }
 
 // Follows the Publish run for the tag, then the npm registry, and returns the exit code:
@@ -345,20 +354,34 @@ if (title.replace(/^v/i, "") === version) fail("title must be more than the vers
 
 // --resume on a release whose pull request is already merged (the merge deleted its branch). Nothing is cut again:
 // the merge commit's CI is waited for, and that commit is tagged, as the normal run does. This runs before the version
-// and changelog checks below, which a merged release has already moved past.
+// and changelog checks below, which a merged release has already moved past. A merged pull request is tagged only when
+// it was merged into main, its merge commit is on origin/main, and that commit is the release of this version.
+// An open or closed pull request falls through to the normal resume, which judges it.
 if (resume && push) {
-  const view = gh("pr", "view", releaseBranch, "--json", "state,mergeCommit,url")
-  const pr = view.ok ? (JSON.parse(view.out) as { state: string; mergeCommit: { oid: string } | null; url: string }) : undefined
-  if (pr?.state === "MERGED" && pr.mergeCommit) {
+  const view = gh("pr", "view", releaseBranch, "--json", "state,mergeCommit,baseRefName,url")
+  if (!view.ok) fail(`gh pr view ${releaseBranch} failed: ${view.err || "no output"}. Nothing is tagged. Check that gh is logged in and that the release pull request exists.`)
+  const pr = JSON.parse(view.out) as { state: string; mergeCommit: { oid: string } | null; baseRefName: string; url: string }
+  if (pr.state === "MERGED") {
+    if (!pr.mergeCommit) fail(`${pr.url} is merged, but gh reports no merge commit. Nothing is tagged.`)
+    if (pr.baseRefName !== "main") fail(`${pr.url} was merged into ${pr.baseRefName}, not main. Nothing is tagged.`)
     const mergeSha = pr.mergeCommit.oid
-    console.log(`${pr.url} is already merged at ${mergeSha.slice(0, 7)}`)
+    const short = mergeSha.slice(0, 7)
+    console.log(`${pr.url} is already merged at ${short}`)
     fetchOrFail("origin", "main")
+    if (Bun.spawnSync(["git", "merge-base", "--is-ancestor", mergeSha, "origin/main"], { stderr: "pipe" }).exitCode !== 0) {
+      fail(`merge commit ${short} of ${pr.url} is not on origin/main. Nothing is tagged.`)
+    }
+    const pkgVersion = (JSON.parse(git("show", `${mergeSha}:package.json`)) as { version: string }).version
+    if (pkgVersion !== version) fail(`package.json at merge commit ${short} says ${pkgVersion}, not ${version}. Nothing is tagged.`)
+    fastForwardMain()
+    const localAt = tryGit("rev-list", "-n1", tag)
+    if (localAt && localAt !== mergeSha) fail(`local tag ${tag} is at ${localAt.slice(0, 7)}, not at the merge commit ${short}. Nothing is tagged or pushed. Check it, and delete the local tag if it is wrong.`)
     if (tryGit("ls-remote", "--tags", "origin", `refs/tags/${tag}`)) {
       fetchOrFail("origin", `refs/tags/${tag}:refs/tags/${tag}`)
       const tagAt = git("rev-list", "-n1", tag)
-      if (tagAt !== mergeSha) fail(`${tag} already exists on origin at ${tagAt.slice(0, 7)}, not at the merge commit ${mergeSha.slice(0, 7)}. Nothing is tagged. Check the tag by hand.`)
-      console.log(`${tag} already exists on origin at ${mergeSha.slice(0, 7)}, so nothing is tagged again. Watching the release.`)
-      process.exit(await watchRelease())
+      if (tagAt !== mergeSha) fail(`${tag} already exists on origin at ${tagAt.slice(0, 7)}, not at the merge commit ${short}. Nothing is tagged. Check the tag by hand.`)
+      console.log(`${tag} already exists on origin at ${short}, so nothing is tagged again.`)
+      process.exit(watch ? await watchRelease() : 0)
     }
     await tagAfterMergeCi(mergeSha)
     process.exit(watch ? await watchRelease() : 0)
