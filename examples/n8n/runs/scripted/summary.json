@@ -367,11 +367,11 @@
       "checks": [
         {
           "name": "calories is a number",
-          "ok": false
+          "ok": true
         },
         {
           "name": "protein_g is a number",
-          "ok": false
+          "ok": true
         },
         {
           "name": "no extra keys",
@@ -381,20 +381,20 @@
       "error": null,
       "id": "S6",
       "model": "fast",
-      "note": "the scripted S6 answer has no output wrapper for n8n's Structured Output Parser (live passes) (https://github.com/jjjermiah/opencode-plugboard/issues/344)",
+      "note": null,
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S6.fast.json"
     },
     {
       "checks": [
         {
           "name": "calories is a number",
-          "ok": false
+          "ok": true
         },
         {
           "name": "protein_g is a number",
-          "ok": false
+          "ok": true
         },
         {
           "name": "no extra keys",
@@ -404,20 +404,20 @@
       "error": null,
       "id": "S6",
       "model": "anthropic/claude-haiku-4-5",
-      "note": "the scripted S6 answer has no output wrapper for n8n's Structured Output Parser (live passes) (https://github.com/jjjermiah/opencode-plugboard/issues/344)",
+      "note": null,
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S6.anthropic-claude-haiku-4-5.json"
     },
     {
       "checks": [
         {
           "name": "calories is a number",
-          "ok": false
+          "ok": true
         },
         {
           "name": "protein_g is a number",
-          "ok": false
+          "ok": true
         },
         {
           "name": "no extra keys",
@@ -427,9 +427,9 @@
       "error": null,
       "id": "S6",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "the scripted S6 answer has no output wrapper for n8n's Structured Output Parser (live passes) (https://github.com/jjjermiah/opencode-plugboard/issues/344)",
+      "note": null,
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S6.openai-gpt-5.6-luna-low.json"
     },
     {

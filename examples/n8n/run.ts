@@ -143,10 +143,6 @@ try {
           note: "n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read",
           issue: "https://github.com/jjjermiah/opencode-plugboard/issues/343",
         },
-        // The scripted model answers S6 without the output wrapper n8n's parser needs; the live model writes it.
-        ...(process.env.PLUGBOARD_TARGET === "scripted"
-          ? { S6: { note: "the scripted S6 answer has no output wrapper for n8n's Structured Output Parser (live passes)", issue: "https://github.com/jjjermiah/opencode-plugboard/issues/344" } }
-          : {}),
       },
       na: {
         E1: "n8n shows plugboard's message (Missing or invalid API key) and LangChain's error class (MODEL_AUTHENTICATION), not the error code, so invalid_api_key cannot be read here",

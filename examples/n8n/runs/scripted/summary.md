@@ -18,9 +18,9 @@ Verdict: **partial** · n8n 2.42.6 on bun 1 · models: fast, anthropic/claude-ha
 | S5 | fast | yes | pass | 1/1 |
 | S5 | anthropic/claude-haiku-4-5 | yes | pass | 1/1 |
 | S5 | openai/gpt-5.6-luna#low | yes | pass | 1/1 |
-| S6 | fast | yes | gap | 1/3 |
-| S6 | anthropic/claude-haiku-4-5 | yes | gap | 1/3 |
-| S6 | openai/gpt-5.6-luna#low | yes | gap | 1/3 |
+| S6 | fast | yes | pass | 3/3 |
+| S6 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
+| S6 | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
 | S7 | - | yes | pass | 3/3 |
 | E1 | fast | no | n/a |  |
 | E2 | nope | no | n/a |  |
@@ -44,22 +44,4 @@ Failed checks: finish_reason is stop; usage present
 n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read (https://github.com/jjjermiah/opencode-plugboard/issues/343)
 
 Failed checks: finish_reason is stop; usage present
-
-### S6 on fast: gap
-
-the scripted S6 answer has no output wrapper for n8n's Structured Output Parser (live passes) (https://github.com/jjjermiah/opencode-plugboard/issues/344)
-
-Failed checks: calories is a number; protein_g is a number
-
-### S6 on anthropic/claude-haiku-4-5: gap
-
-the scripted S6 answer has no output wrapper for n8n's Structured Output Parser (live passes) (https://github.com/jjjermiah/opencode-plugboard/issues/344)
-
-Failed checks: calories is a number; protein_g is a number
-
-### S6 on openai/gpt-5.6-luna#low: gap
-
-the scripted S6 answer has no output wrapper for n8n's Structured Output Parser (live passes) (https://github.com/jjjermiah/opencode-plugboard/issues/344)
-
-Failed checks: calories is a number; protein_g is a number
 

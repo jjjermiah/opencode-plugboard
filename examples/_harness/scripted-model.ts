@@ -25,6 +25,8 @@ const userText = (request: PlugRequest): string =>
 const hasPngPart = (request: PlugRequest): boolean =>
   request.messages.some((message) => message.content.some((part) => part.type === "media" && part.url.startsWith("data:image/png")))
 const answered = (request: PlugRequest): boolean => request.messages.some((message) => message.role === "tool")
+/** n8n's Structured Output Parser puts its schema in the prompt, with the answer wrapped in `output` (#344). Other clients send no such text. */
+const wantsOutputWrapper = (text: string): boolean => text.includes('"properties":{"output"')
 
 /** Text as two deltas, so a streaming client has to accumulate. */
 function say(answer: string): PlugEvent[] {
@@ -62,7 +64,7 @@ export function answer(request: PlugRequest): PlugEvent[] {
     }
   }
   if (text.includes(prompt("S5"))) return say(hasPngPart(request) ? "red" : "no image")
-  if (text.includes(prompt("S6"))) return say(JSON.stringify(MEAL))
+  if (text.includes(prompt("S6"))) return say(JSON.stringify(wantsOutputWrapper(text) ? { output: MEAL } : MEAL))
   return [ev.error({ status: 500, kind: "server", message: `scripted model has no answer for this prompt: ${text.slice(0, 80)}` })]
 }
 
