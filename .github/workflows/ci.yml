@@ -11,9 +11,11 @@ on:
 
 permissions: {}
 
+# A newer run on the same branch cancels the older one, but never on main: the release script tags a merge commit
+# only after that commit's own run on main passed (.github/scripts/release.ts), so a later push must not cancel it.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   package:

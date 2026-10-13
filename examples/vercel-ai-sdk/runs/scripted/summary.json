@@ -3,7 +3,7 @@
     "name": "vercel-ai-sdk",
     "runtime": {
       "name": "bun",
-      "version": "1.4"
+      "version": "1"
     },
     "version": "7.0.137"
   },

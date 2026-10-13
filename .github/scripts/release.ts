@@ -18,8 +18,10 @@
 //   3. watches every check on that pull request (the advisory benchmark aside). A check that fails
 //      stops the script with the pull request open and nothing merged or tagged. Auto-merge is not used.
 //   4. when every check has passed, merges that exact commit (a merge commit, the branch is deleted),
-//   5. tags the merge commit (which is on main and has the new package.json version) and pushes the
-//      tag. The tag starts the Publish workflow.
+//   5. waits for the ci.yml push run on the merge commit (a new commit, tested only by that run) and tags
+//      it only if the run succeeded, then pushes the tag. The tag starts the Publish workflow. A failed or
+//      cancelled run stops here with nothing tagged. --resume re-enters step 3 for the open pull request,
+//      after a fix is pushed to the release branch.
 //   6. follows the release to the end (unless --no-watch): it finds the Publish run for the tag,
 //      waits for it, then polls npm until the version is visible and the dist-tag points at it.
 //      It exits with that result. --watch-only does only that part for an existing tag.
@@ -36,7 +38,7 @@ import { changelogBlock, collectCommits } from "./commit-detail.ts"
 const PLACEHOLDER = "Nothing yet."
 
 const USAGE =
-  'usage: bun run release <version> --title "Short Creative Title" (--push [--no-watch] | --dry-run)\n       bun run release <version> --watch-only'
+  'usage: bun run release <version> --title "Short Creative Title" (--push [--no-watch] [--resume] | --dry-run)\n       bun run release <version> --watch-only'
 let title: string | undefined
 const flags = new Set<string>()
 const positional: string[] = []
@@ -46,7 +48,7 @@ for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === "--title") title = argv[++i] ?? ""
   else if (a.startsWith("--title=")) title = a.slice("--title=".length)
-  else if (["--push", "--dry-run", "--watch", "--no-watch", "--watch-only"].includes(a)) flags.add(a)
+  else if (["--push", "--dry-run", "--watch", "--no-watch", "--watch-only", "--resume"].includes(a)) flags.add(a)
   else if (a.startsWith("--")) unknown.push(a)
   else positional.push(a)
 }
@@ -56,6 +58,7 @@ if (unknown.length || positional.length !== 1) {
 }
 const dryRun = flags.has("--dry-run")
 const push = flags.has("--push")
+const resume = flags.has("--resume")
 const watchOnly = flags.has("--watch-only")
 const watch = !flags.has("--no-watch") && (push || flags.has("--watch"))
 const version = positional[0].replace(/^v/, "")
@@ -83,6 +86,11 @@ const PUBLISH_TIMEOUT_MS = 5 * 60_000
 const POLL_MS = 10_000
 const CHECKS_TIMEOUT_MS = 60 * 60_000
 const CHECKS_POLL_MS = 20_000
+// How long a required check may take to report on the pull request before the release fails.
+const CHECKS_GRACE_MS = 10 * 60_000
+// The ci.yml run on the merge commit: its wait, and the poll.
+const MERGE_CI_TIMEOUT_MS = 45 * 60_000
+const MERGE_CI_POLL_MS = 20_000
 // The checks that must have reported before the release can merge: the required checks of the main
 // ruleset (docs/releasing.md). A check that never appears is not a pass.
 const EXPECTED_CHECKS = ["CI passed", "Lint commit messages", "Analyze (javascript-typescript)"]
@@ -105,37 +113,60 @@ function tryGit(...gitArgs: string[]): string {
   return run.exitCode === 0 ? run.stdout.toString().trim() : ""
 }
 
-// The problem with CI on a commit of main, or undefined when the newest CI run on it is completed and
-// successful. No run at all is a problem too: a release is never cut from an unverified commit.
-function ciProblemOn(sha: string): string | undefined {
+type CiRun = { databaseId: number; status: string; conclusion: string; url: string }
+type Check = { name: string; bucket: string; link: string }
+
+// The newest ci.yml push run on a commit of main, or the reason there is none (gh failed, or no run yet).
+// Highest databaseId: a re-run keeps its id, so this is always the latest attempt, not the first.
+function latestCiRun(sha: string): { run?: CiRun; problem?: string } {
   const listed = gh("run", "list", "--workflow", "ci.yml", "--branch", "main", "--commit", sha, "--event", "push", "--limit", "10", "--json", "databaseId,status,conclusion,url")
-  if (!listed.ok) return `gh run list failed, so CI on main cannot be read (${listed.err || "is gh installed and logged in?"}).`
-  const runs = JSON.parse(listed.out || "[]") as { databaseId: number; status: string; conclusion: string; url: string }[]
-  if (!runs.length) return `there is no CI run for origin/main ${sha.slice(0, 7)}.`
-  const newest = runs.reduce((a, b) => (b.databaseId > a.databaseId ? b : a))
-  if (newest.status !== "completed") return `the newest CI run for origin/main ${sha.slice(0, 7)} is ${newest.status} (${newest.url}). Wait for it to finish.`
-  if (newest.conclusion !== "success") return `the newest CI run for origin/main ${sha.slice(0, 7)} concluded ${newest.conclusion} (${newest.url}).`
+  if (!listed.ok) return { problem: `gh run list failed (${listed.err || "is gh installed and logged in?"}).` }
+  const runs = JSON.parse(listed.out || "[]") as CiRun[]
+  if (!runs.length) return { problem: `there is no CI run for ${sha.slice(0, 7)} yet.` }
+  return { run: runs.reduce((a, b) => (b.databaseId > a.databaseId ? b : a)) }
+}
+
+// The problem with CI on a commit of main, or undefined when its newest CI run is completed and successful.
+// No run at all is a problem too: a release is never cut from an unverified commit.
+function ciProblemOn(sha: string): string | undefined {
+  const { run, problem } = latestCiRun(sha)
+  if (!run) return problem
+  if (run.status !== "completed") return `the newest CI run for ${sha.slice(0, 7)} is ${run.status} (${run.url}). Wait for it to finish.`
+  if (run.conclusion !== "success") return `the newest CI run for ${sha.slice(0, 7)} concluded ${run.conclusion} (${run.url}).`
   return undefined
 }
 
-// Watches every check on the release pull request until the required checks have reported and all of
-// them passed. The advisory benchmark is ignored. A failing check stops at once: the pull request stays
-// open, nothing is merged or tagged, and the script exits non-zero.
+// Watches every check on the release pull request until all of them have passed. The advisory benchmark is
+// ignored. A failing, cancelled or skipped check stops at once: the pull request stays open, nothing is merged
+// or tagged, and the script exits non-zero. Only a parsed check list is judged. Empty output, "no checks
+// reported yet" and transient gh errors keep the watch going, bounded by CHECKS_TIMEOUT_MS. A required check
+// (EXPECTED_CHECKS) that has not reported after CHECKS_GRACE_MS fails the release, because its name changed or it
+// does not run on pull requests.
 async function waitForChecks(branch: string, url: string): Promise<void> {
-  const deadline = Date.now() + CHECKS_TIMEOUT_MS
-  while (Date.now() < deadline) {
+  const start = Date.now()
+  while (Date.now() - start < CHECKS_TIMEOUT_MS) {
     const listed = gh("pr", "checks", branch, "--json", "name,bucket,link")
-    // gh exits non-zero while a check is failing or pending, but it still prints the JSON.
-    if (!listed.out.startsWith("[")) fail(`gh pr checks ${branch} failed: ${listed.err}`)
-    const gating = (JSON.parse(listed.out) as { name: string; bucket: string; link: string }[]).filter((c) => !ADVISORY_CHECKS.has(c.name))
+    // gh prints "no checks reported" on stderr with nothing on stdout, and a failed or pending check still exits
+    // non-zero with the JSON on stdout. The exit code is not used: only the parsed list is.
+    const checks = listed.out.startsWith("[") ? (JSON.parse(listed.out) as Check[]) : undefined
+    if (!checks) {
+      console.log(`waiting: no usable check list yet (${listed.err || "empty output"})`)
+      await Bun.sleep(CHECKS_POLL_MS)
+      continue
+    }
+    const gating = checks.filter((c) => !ADVISORY_CHECKS.has(c.name))
     const failing = gating.filter((c) => c.bucket === "fail" || c.bucket === "cancel" || c.bucket === "skipping")
     if (failing.length) {
-      console.error(`release: ${failing.length} check(s) did not pass on ${url}. Nothing is merged or tagged; the pull request stays open for a fix.`)
+      console.error(`release: ${failing.length} check(s) did not pass on ${url}. Nothing is merged or tagged; the pull request stays open.`)
       for (const c of failing) console.error(`  ${c.bucket}: ${c.name} ${c.link}`)
+      console.error(`Fix it on the release branch and push (git switch ${branch}, commit, git push), then run bun run release ${version} --title "..." --push --resume from main. See docs/releasing.md, "When a check fails".`)
       process.exit(1)
     }
     const pending = gating.filter((c) => c.bucket === "pending")
     const unreported = EXPECTED_CHECKS.filter((name) => !gating.some((c) => c.name === name))
+    if (unreported.length && Date.now() - start > CHECKS_GRACE_MS) {
+      fail(`required check(s) never reported on ${url}: ${unreported.join(", ")}. Their names changed, or the workflow does not run on pull requests. Nothing is merged or tagged.`)
+    }
     if (!pending.length && !unreported.length) {
       console.log(`all ${gating.length} checks passed on ${url}`)
       return
@@ -156,6 +187,19 @@ async function mergedCommit(branch: string): Promise<string> {
     if (pr.state === "MERGED" && pr.mergeCommit) return pr.mergeCommit.oid
     if (Date.now() > deadline) fail(`${pr.url} is ${pr.state}, not merged. Nothing is tagged.`)
     await Bun.sleep(5_000)
+  }
+}
+
+// Waits for the ci.yml push run on the merge commit: the run that tests the exact commit the tag will point at.
+// Gh errors and a run that has not appeared yet keep the wait going, up to MERGE_CI_TIMEOUT_MS.
+async function waitForMergeCi(sha: string): Promise<CiRun> {
+  const deadline = Date.now() + MERGE_CI_TIMEOUT_MS
+  for (;;) {
+    const { run, problem } = latestCiRun(sha)
+    if (run?.status === "completed") return run
+    console.log(run ? `waiting for ${run.url}: ${run.status}` : `waiting for the CI run on ${sha.slice(0, 7)}: ${problem}`)
+    if (Date.now() > deadline) fail(`no completed CI run on the merge commit ${sha.slice(0, 7)} within 45 minutes. Nothing is tagged. Check the Actions tab for ci.yml on ${sha.slice(0, 7)}.`)
+    await Bun.sleep(MERGE_CI_POLL_MS)
   }
 }
 
@@ -310,11 +354,13 @@ if (dryRun) {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+  // The remote-tracking ref only: the working tree and the remote are untouched. Without it the CI line can be stale.
+  tryGit("fetch", "-q", "origin", "main")
   const mainSha = tryGit("rev-parse", "--verify", "-q", "origin/main")
   const ci = mainSha ? ciProblemOn(mainSha) : "origin/main is not known locally (git fetch origin main)."
   console.log(ci ? `warning (would refuse with --push): ${ci}` : `CI on origin/main ${mainSha.slice(0, 7)} is green`)
   if (push) {
-    console.log(`dry run: would create ${releaseBranch} and commit "${commitSubject}", push it, open a pull request into main, wait until every check on it passes (the advisory benchmark aside; a failure stops there with the pull request open), merge it (a merge commit, the branch is deleted), tag the merge commit as ${tag} and push the tag${watch ? ", then watch the release" : ""}`)
+    console.log(`dry run: would create ${releaseBranch} and commit "${commitSubject}", push it, open a pull request into main, wait until every check on it passes (the advisory benchmark aside; a failure stops there with the pull request open), merge that exact commit, wait for the CI run on the merge commit, and tag the merge commit as ${tag} only if that run succeeded, then push the tag${watch ? ", then watch the release" : ""}`)
   } else {
     console.log(`dry run: a real run needs --push (releases go through a pull request). It would commit "${commitSubject}" on ${releaseBranch} and open the pull request`)
   }
@@ -322,6 +368,7 @@ if (dryRun) {
 }
 
 if (!push) fail(`releases go through a pull request now: add --push (or --dry-run to preview). ${USAGE}`)
+if (resume && !push) fail("--resume needs --push")
 if (problems.length) fail(problems.join("; "))
 if (!existsSync(".git")) fail("run this from the repository root")
 
@@ -329,32 +376,48 @@ if (!existsSync(".git")) fail("run this from the repository root")
 // ride along in it, so refuse until the two agree.
 git("fetch", "origin", "main")
 if (git("rev-parse", "main") !== git("rev-parse", "origin/main")) fail("local main differs from origin/main. Pull or push it first, so the release pull request carries only the release.")
-if (git("branch", "--list", releaseBranch)) fail(`branch ${releaseBranch} already exists locally; delete it first`)
 // A release is cut only from a green main: the newest CI run on origin/main's commit must have passed.
 const mainCiProblem = ciProblemOn(git("rev-parse", "origin/main"))
 if (mainCiProblem) fail(`${mainCiProblem} Nothing was committed or pushed.`)
 
-git("switch", "-c", releaseBranch)
-writeFileSync("CHANGELOG.md", next)
-writeFileSync("package.json", nextPkg)
-git("add", "CHANGELOG.md", "package.json")
-git("commit", "-m", commitSubject, "-m", commitBody)
-console.log(`committed "${commitSubject}" on ${releaseBranch}`)
-git("push", "-u", "origin", releaseBranch)
-console.log(`pushed ${releaseBranch}`)
-const headSha = git("rev-parse", "HEAD")
-
-const bodyDir = mkdtempSync(join(tmpdir(), "plugboard-release-"))
-const bodyFile = join(bodyDir, "pr-body.md")
 let prUrl: string
-try {
-  writeFileSync(bodyFile, [`Release ${tag}: ${title}`, "", body, ...(detail ? ["", detail] : []), ""].join("\n"))
-  const created = gh("pr", "create", "--base", "main", "--head", releaseBranch, "--title", commitSubject, "--body-file", bodyFile)
-  if (!created.ok) fail(`gh pr create failed: ${created.err}. ${releaseBranch} is pushed; open the pull request by hand, then merge it and tag its merge commit.`)
-  prUrl = created.out
-  console.log(`opened ${prUrl}`)
-} finally {
-  rmSync(bodyDir, { recursive: true, force: true })
+let headSha: string
+if (resume) {
+  // A check failed earlier and its fix is pushed to the release branch: watch that same pull request again.
+  if (!tryGit("ls-remote", "--heads", "origin", releaseBranch)) fail(`${releaseBranch} is not on origin, so there is nothing to resume. Run it without --resume.`)
+  git("fetch", "origin", releaseBranch)
+  headSha = git("rev-parse", `origin/${releaseBranch}`)
+  const view = gh("pr", "view", releaseBranch, "--json", "state,url")
+  if (!view.ok) fail(`gh pr view ${releaseBranch} failed: ${view.err}`)
+  const pr = JSON.parse(view.out) as { state: string; url: string }
+  if (pr.state !== "OPEN") fail(`${pr.url} is ${pr.state}, not open, so there is nothing to resume.`)
+  prUrl = pr.url
+  console.log(`resuming ${prUrl} at ${headSha.slice(0, 7)}`)
+} else {
+  if (git("branch", "--list", releaseBranch)) fail(`branch ${releaseBranch} already exists locally; delete it first`)
+  if (tryGit("ls-remote", "--heads", "origin", releaseBranch)) fail(`branch ${releaseBranch} already exists on origin. If its pull request is open and failed a check, fix it there and run with --resume.`)
+
+  git("switch", "-c", releaseBranch)
+  writeFileSync("CHANGELOG.md", next)
+  writeFileSync("package.json", nextPkg)
+  git("add", "CHANGELOG.md", "package.json")
+  git("commit", "-m", commitSubject, "-m", commitBody)
+  console.log(`committed "${commitSubject}" on ${releaseBranch}`)
+  git("push", "-u", "origin", releaseBranch)
+  console.log(`pushed ${releaseBranch}`)
+  headSha = git("rev-parse", "HEAD")
+
+  const bodyDir = mkdtempSync(join(tmpdir(), "plugboard-release-"))
+  const bodyFile = join(bodyDir, "pr-body.md")
+  try {
+    writeFileSync(bodyFile, [`Release ${tag}: ${title}`, "", body, ...(detail ? ["", detail] : []), ""].join("\n"))
+    const created = gh("pr", "create", "--base", "main", "--head", releaseBranch, "--title", commitSubject, "--body-file", bodyFile)
+    if (!created.ok) fail(`gh pr create failed: ${created.err}. ${releaseBranch} is pushed; open the pull request by hand, then merge it and tag its merge commit.`)
+    prUrl = created.out
+    console.log(`opened ${prUrl}`)
+  } finally {
+    rmSync(bodyDir, { recursive: true, force: true })
+  }
 }
 
 // Nothing merges unless every check passes. Auto-merge is not used: it would merge on the required
@@ -368,13 +431,25 @@ const merged = gh("pr", "merge", releaseBranch, "--merge", "--delete-branch", "-
 if (!merged.ok) fail(`could not merge ${prUrl}: ${merged.err}. Every check passed, nothing is tagged. Merge it by hand, then tag its merge commit.`)
 const mergeSha = await mergedCommit(releaseBranch)
 git("fetch", "origin", "main")
-git("tag", "-a", tag, mergeSha, "-m", `Release ${version}`)
-git("push", "origin", tag)
-console.log(`merged to main at ${mergeSha.slice(0, 7)}, tagged ${tag} and pushed the tag`)
-
 // Back on main, fast-forwarded to the merge, and the local release branch removed (it is merged).
 git("merge", "--ff-only", "origin/main")
 Bun.spawnSync(["git", "branch", "-d", releaseBranch], { stderr: "pipe" })
+const short = mergeSha.slice(0, 7)
+console.log(`merged to main at ${short}`)
+
+// The tag goes only on the commit whose own CI run passed. The checks above ran on the pull request head, and a
+// merge commit is a new commit: nobody has tested it until its ci.yml push run finishes. main is not in the
+// concurrency cancel (ci.yml), so a later push cannot cancel this run.
+const mergeRun = await waitForMergeCi(mergeSha)
+if (mergeRun.conclusion === "cancelled") {
+  fail(`CI on the merge commit ${short} was cancelled (${mergeRun.url}). Nothing is tagged and npm has nothing. Re-run it with gh run rerun ${mergeRun.databaseId}. Once it concludes success, tag ${short} by hand: git tag -a ${tag} ${mergeSha} -m "Release ${version}" && git push origin ${tag}. If it fails, fix forward on main and cut the next patch.`)
+}
+if (mergeRun.conclusion !== "success") {
+  fail(`CI on the merge commit ${short} concluded ${mergeRun.conclusion} (${mergeRun.url}). Nothing is tagged and npm has nothing. main now carries the release commit: fix forward through a pull request and cut the next patch. Do not tag ${short}.`)
+}
+git("tag", "-a", tag, mergeSha, "-m", `Release ${version}`)
+git("push", "origin", tag)
+console.log(`CI passed on ${short}, tagged ${tag} and pushed the tag`)
 
 if (watch) process.exit(await watchRelease())
 console.log(`next: bun run release ${version} --watch-only`)
