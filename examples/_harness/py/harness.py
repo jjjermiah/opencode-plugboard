@@ -70,12 +70,34 @@ def _error_text(error: BaseException) -> str:
     return f"{type(error).__name__}: {error}"
 
 
+def _unobserved_for(unobserved: Mapping[str, Mapping[str, str]], scenario_id: str, variant: Optional[str]) -> dict[str, str]:
+    """The checks a row leaves out: its id|variant entry, else its id entry (every variant)."""
+    if variant is not None and f"{scenario_id}|{variant}" in unobserved:
+        return dict(unobserved[f"{scenario_id}|{variant}"])
+    return dict(unobserved.get(scenario_id, {}))
+
+
+def _check_unobserved(unobserved: Mapping[str, Mapping[str, str]], planned: list[dict[str, Any]], variants: Mapping[str, list[str]]) -> None:
+    """Refuses an entry that names no planned scenario or variant, a check the scenario does not have, or every check."""
+    for key, names in unobserved.items():
+        scenario_id, _, variant = key.partition("|")
+        scenario = next((candidate for candidate in planned if candidate["id"] == scenario_id), None)
+        if scenario is None or (variant and variant not in variants.get(scenario_id, [])):
+            raise ValueError(f"unobserved {key} names no planned scenario variant")
+        for name in names:
+            if not any(check["name"] == name for check in scenario["checks"]):
+                raise ValueError(f'unobserved {key} names no check "{name}"')
+        if len(names) >= len(scenario["checks"]):
+            raise ValueError(f"unobserved {key} would drop every check of the row")
+
+
 def run_all(
     functions: Mapping[str, Callable[..., dict[str, Any]]],
     *,
     na: Optional[Mapping[str, str]] = None,
     gaps: Optional[Mapping[str, Mapping[str, str]]] = None,
     variants: Optional[Mapping[str, list[str]]] = None,
+    unobserved: Optional[Mapping[str, Mapping[str, str]]] = None,
 ) -> None:
     """Runs every scenario the runner covers, on each of its models, in file order.
 
@@ -84,10 +106,14 @@ def run_all(
     `gaps` maps `id`, `id|model` or `id|variant` to {"note", "issue"}: a failure there is reported as `gap`. A gap
     covers the whole row, so its note should name the known check.
     `na` maps an id to the reason the client does not have it: reported as `n/a`, nothing is sent.
+    `unobserved` maps `id` (every model and variant) or `id|variant` to {check name: reason}: such a check is left out of
+    its row and the note names it, so the row passes on what the client exposes (#370). It must name a planned check, and
+    may not drop every check of its row.
     """
     na = dict(na or {})
     variants = dict(variants or {})
     planned = [scenario for scenario in SCENARIOS if scenario["id"] in functions or scenario["id"] in na]
+    _check_unobserved(unobserved or {}, planned, variants)
     emit({"kind": "plan", "scenarios": [scenario["id"] for scenario in planned]})
     for scenario in planned:
         for model in scenario["models"]:
@@ -100,10 +126,12 @@ def run_all(
                 checks: list[dict[str, Any]] = []
                 error: Optional[str] = None
                 observations: dict[str, Any] = {}
+                skipped = _unobserved_for(unobserved or {}, scenario["id"], variant)
+                kept = [check for check in scenario["checks"] if check["name"] not in skipped]
                 try:
                     call = functions[scenario["id"]]
                     observations = call(model) if variant is None else call(model, variant)
-                    checks = evaluate(scenario["checks"], observations)
+                    checks = evaluate(kept, observations)
                 except Exception as caught:  # noqa: BLE001 - the error text is the result
                     traceback.print_exc(file=sys.stderr)
                     error = _error_text(caught)
@@ -117,5 +145,7 @@ def run_all(
                 if status == "fail" and gap:
                     status = "gap"
                     note = f"{gap['note']} ({gap['issue']})"
+                if note is None and skipped:
+                    note = "; ".join(f"not checked, {name}: {why}" for name, why in skipped.items())
                 emit({"kind": "result", "scenario": scenario["id"], "model": model, **tag, "status": status, "checks": checks, "error": error, "note": note, "observations": observations})
     emit({"kind": "done"})

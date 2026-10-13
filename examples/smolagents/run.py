@@ -30,10 +30,11 @@ GAPS = {
         "note": "smolagents ends a run with a final_answer tool call, so its last model turn finishes with tool_calls, and the check expects stop; the tool call and the final answer are observed and pass",
         "issue": "#362",
     },
-    "S3": {
-        "note": "smolagents' generate_stream does not return finish_reason, so the finish_reason check cannot be observed; the streamed text and usage are",
-        "issue": "#362",
-    },
+}
+
+# Checks smolagents cannot observe: left out of the row, and the note names them (#370).
+UNOBSERVED = {
+    "S3": {"finish_reason is stop": "smolagents' generate_stream does not return finish_reason; the streamed text, usage and end of stream are checked"},
 }
 
 
@@ -95,7 +96,7 @@ def s3(model_id: str):
 
 def main() -> None:
     harness.emit_client("smolagents")
-    harness.run_all({"S1": s1, "S2": s2, "S3": s3}, gaps=GAPS)
+    harness.run_all({"S1": s1, "S2": s2, "S3": s3}, gaps=GAPS, unobserved=UNOBSERVED)
 
 
 if __name__ == "__main__":

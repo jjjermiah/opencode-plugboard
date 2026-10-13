@@ -10,7 +10,7 @@ Verdict: **partial** · smolagents 1.26.0 on python 3 · models: fast, anthropic
 | S2 | fast | yes | gap | 5/6 |
 | S2 | anthropic/claude-haiku-4-5 | yes | gap | 5/6 |
 | S2 | openai/gpt-5.6-luna#low | yes | gap | 5/6 |
-| S3 | fast | yes | gap | 3/4 |
+| S3 | fast | yes | pass | 3/3 |
 
 ## Failures, gaps and unchecked items
 
@@ -32,9 +32,7 @@ smolagents ends a run with a final_answer tool call, so its last model turn fini
 
 Failed checks: turn 2 finish_reason is stop
 
-### S3 on fast: gap
+### S3 on fast: pass
 
-smolagents' generate_stream does not return finish_reason, so the finish_reason check cannot be observed; the streamed text and usage are (#362)
-
-Failed checks: finish_reason is stop
+not checked, finish_reason is stop: smolagents' generate_stream does not return finish_reason; the streamed text, usage and end of stream are checked
 

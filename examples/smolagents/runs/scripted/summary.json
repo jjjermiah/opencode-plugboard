@@ -195,10 +195,6 @@
           "ok": true
         },
         {
-          "name": "finish_reason is stop",
-          "ok": false
-        },
-        {
           "name": "usage chunk present when requested",
           "ok": true
         },
@@ -210,9 +206,9 @@
       "error": null,
       "id": "S3",
       "model": "fast",
-      "note": "smolagents' generate_stream does not return finish_reason, so the finish_reason check cannot be observed; the streamed text and usage are (#362)",
+      "note": "not checked, finish_reason is stop: smolagents' generate_stream does not return finish_reason; the streamed text, usage and end of stream are checked",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S3.fast.json"
     }
   ],

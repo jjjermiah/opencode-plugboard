@@ -40,8 +40,9 @@ export interface RunOptions {
   /** Scenarios run once per API, by id, e.g. `{ S1: ["chat", "messages"] }`. The function gets the variant as its second argument. */
   readonly variants?: Readonly<Record<string, ReadonlyArray<string>>>
   /**
-   * Checks the client cannot observe, by `id|variant`: check name to the reason. Such a check is left out of its row, and
-   * the note names it, so the row passes on what the client does expose. For a permanent client limitation, not a bug.
+   * Checks the client cannot observe, by `id` (every model and variant of the scenario) or `id|variant`: check name to the
+   * reason. Such a check is left out of its row, and the note names it, so the row passes on what the client does expose.
+   * For a permanent client limitation, not a bug (#370).
    */
   readonly unobserved?: Readonly<Record<string, Readonly<Record<string, string>>>>
 }
@@ -97,7 +98,7 @@ function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>):
     const [id = "", variant] = key.split("|")
     const scenario = planned.find((candidate) => candidate.id === id)
     const variantsOf = options.variants?.[id] ?? []
-    if (!scenario || variant === undefined || !variantsOf.includes(variant)) {
+    if (!scenario || (variant !== undefined && !variantsOf.includes(variant))) {
       throw new Error("unobserved " + key + " names no planned scenario variant")
     }
     for (const name of Object.keys(names)) {
@@ -109,7 +110,7 @@ function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>):
 
 /** The checks a row leaves out, by name, with the reason (RunOptions.unobserved). */
 function unobservedFor(options: RunOptions, scenario: string, variant?: string): Readonly<Record<string, string>> {
-  return variant === undefined ? {} : (options.unobserved?.[scenario + "|" + variant] ?? {})
+  return (variant === undefined ? undefined : options.unobserved?.[scenario + "|" + variant]) ?? options.unobserved?.[scenario] ?? {}
 }
 
 /**
