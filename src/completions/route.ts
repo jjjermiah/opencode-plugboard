@@ -17,6 +17,7 @@ import { resolveModel } from "../models.js"
 import { serveChoices } from "../openai/fanout.js"
 import { encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
+import { maxNFor, maxNOption } from "../config.js"
 import { dropRejected } from "../openai/sampling.js"
 import { parseCompletionsRequest } from "./request.js"
 import { completionsCodec } from "./response.js"
@@ -35,7 +36,8 @@ export interface CompletionsCall {
 export async function serveCompletions(host: RouteHost, { app, body, response, scope, info }: CompletionsCall): Promise<void> {
   const fail = (error: PlugError) => sendError(response, error, encodeError(error))
 
-  const parsed = parseCompletionsRequest(body, host.options)
+  // The app's own `maxN` (#270) is the cap for this request; the decoder checks against `options.maxN`.
+  const parsed = parseCompletionsRequest(body, { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())
   const ref = resolveModel(host.options, parsed.requests[0]!.model, catalog, parsed.reasoningEffort)

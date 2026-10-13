@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, type Endpoint, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -37,6 +37,7 @@ import {
   checkJsonContentType,
   checkHost,
   checkOrigin,
+  CORS_EXPOSED_HEADERS,
   corsOrigin,
   finishRequest,
   readJsonBody,
@@ -50,7 +51,7 @@ import { reportServed, type ServedInfo } from "../fallback.js"
 import { clientAddress, forwardedOrigin } from "../forwarded.js"
 import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
-import { errorMessage, log, logError, withRequestId } from "../log.js"
+import { errorMessage, logError, logRequest, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { filterByCapability, listAvailableModels, parseCapability, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
@@ -210,6 +211,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const allowed = corsOrigin(request, host.options)
       if (allowed !== undefined) {
         response.setHeader("access-control-allow-origin", allowed)
+        response.setHeader("access-control-expose-headers", CORS_EXPOSED_HEADERS)
         if (request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined) {
           const hostError = checkHost(request, host.options)
           if (hostError) return fail(response, hostError)
@@ -357,7 +359,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     noteEndUser(response, info, bodyUser(body))
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
-    const parsed = parseChatRequest(body, host.options)
+    // The app's own `maxN` (#270) is the cap for this request; the decoder checks against `options.maxN`.
+    const parsed = parseChatRequest(body, { ...host.options, maxN: maxNFor(host.options, auth.app) }, maxNOption(host.options, auth.app))
     if (isPlugError(parsed)) return fail(response, parsed)
     const catalog = await scope.race(host.loadCatalog())
     const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
@@ -511,7 +514,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       if (!probe) {
         const fields = { id, route: info.route, app: info.app, user: info.user, client: info.client, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
-        else log("request", fields)
+        else logRequest("request", fields)
       }
     }
   }

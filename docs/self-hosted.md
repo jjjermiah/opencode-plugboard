@@ -25,12 +25,12 @@ Checked 2026-10-11. Statuses come from each app's docs or source, not from a liv
 | Langflow (about 155.5k) | Language model components in flows | Chat | Chat only: the SSRF allowlist must include the host | [page](self-hosted/langflow.md) |
 | SparkyFitness (owner's deployment) | AI assistant, with tools | Chat, tools | Works | [page](self-hosted/sparkyfitness.md) |
 | paperless-ai (about 6.0k) | Classification, tags, RAG chat | Chat | Not checked: upstream is mid-rewrite | [#243](https://github.com/jjjermiah/opencode-plugboard/issues/243) |
-| Vane, formerly Perplexica (about 37.3k) | Answering engine | Chat | Not checked: embedding need unknown | [#244](https://github.com/jjjermiah/opencode-plugboard/issues/244) |
+| Vane, formerly Perplexica (about 37.3k) | Answering engine | Chat | Not chat only: chat and search need an embedding provider beside plugboard | [page](self-hosted/vane.md) |
 | Onyx (about 32.4k) | RAG search and chat | Chat | Chat only expected: indexing needs embeddings | [#245](https://github.com/jjjermiah/opencode-plugboard/issues/245) |
-| Tandoor Recipes (about 8.7k) | Recipe import, step sorting, nutrition | Chat, vision | Not checked: provider fields verified | [#246](https://github.com/jjjermiah/opencode-plugboard/issues/246) |
+| Tandoor Recipes (about 8.7k) | Recipe import, step sorting, nutrition | Chat, vision | Works for text import. Photo import needs a vision alias. JSON mode not checked | [page](self-hosted/tandoor.md) |
 | LLM Vision for Home Assistant (about 1.5k) | Image and video analysis | Chat, vision | Not checked: provider form unverified | [#247](https://github.com/jjjermiah/opencode-plugboard/issues/247) |
-| SiYuan (about 46.7k) | AI writing and Q/A | Chat | Not checked: base URL setting unverified | [#248](https://github.com/jjjermiah/opencode-plugboard/issues/248) |
-| PR-Agent code review (about 13.4k) | Pull request review, describe, improve | Chat | Not checked for Gitea or Forgejo | [#249](https://github.com/jjjermiah/opencode-plugboard/issues/249) |
+| SiYuan (about 46.7k) | AI writing and Q/A | Chat | Works for writing and chat. Embeddings need another provider | [page](self-hosted/siyuan.md) |
+| PR-Agent code review (about 13.4k) | Pull request review, describe, improve | Chat | Works through chat. Gitea and Forgejo not checked | [page](self-hosted/pr-agent.md) |
 | RAGFlow (about 92k) | Document RAG | Chat | Chat only: embeddings and reranker need another provider | [#250](https://github.com/jjjermiah/opencode-plugboard/issues/250) |
 | Home Assistant OpenAI Conversation (core) | Voice and conversation agent | None | Not possible: the core integration supports only the official OpenAI endpoint | Use [#237](https://github.com/jjjermiah/opencode-plugboard/issues/237) (Extended OpenAI Conversation) |
 | Immich | No LLM feature: smart search and face recognition use local models | None | Not applicable | none |

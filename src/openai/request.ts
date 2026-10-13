@@ -234,11 +234,11 @@ export const parseResponseFormat = (raw: unknown): { structured?: PlugTool; inst
 }
 
 /** `n` is how many completions to return. Each one is a full model call (see `src/openai/fanout.ts`), so it is capped by the `maxN` option. */
-export const parseChoiceCount = (body: JsonObject, options: PlugboardOptions): number | PlugError => {
+export const parseChoiceCount = (body: JsonObject, options: PlugboardOptions, capOption = "maxN"): number | PlugError => {
   if (body.n == null) return 1
   if (typeof body.n !== "number" || !Number.isInteger(body.n) || body.n < 1) return bad("n must be a positive integer", "n")
   if (body.n > options.maxN)
-    return bad(`n=${body.n} is above the limit of ${options.maxN} (option \`maxN\`; each choice is a full model call)`, "n", "too_many_choices")
+    return bad(`n=${body.n} is above the limit of ${options.maxN} (option \`${capOption}\`; each choice is a full model call)`, "n", "too_many_choices")
   return body.n
 }
 
@@ -275,13 +275,13 @@ export const parseGeneration = (body: JsonObject): PlugGeneration | PlugError =>
   return out
 }
 
-export function parseChatRequest(body: unknown, options: PlugboardOptions): ParsedChat | PlugError {
+export function parseChatRequest(body: unknown, options: PlugboardOptions, capOption = "maxN"): ParsedChat | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (!Array.isArray(body.messages) || body.messages.length === 0) return bad("messages must be a non-empty array", "messages")
 
   // Parameters the session backend cannot honour are rejected, not ignored.
-  const n = parseChoiceCount(body, options)
+  const n = parseChoiceCount(body, options, capOption)
   if (typeof n === "object") return n
   if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
   if (body.parallel_tool_calls != null && typeof body.parallel_tool_calls !== "boolean") return bad("parallel_tool_calls must be a boolean", "parallel_tool_calls")

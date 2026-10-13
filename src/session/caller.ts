@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
 import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
-import { log, logError, logWarn } from "../log.js"
+import { log, logError, logRequest, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
 import { requestSystem } from "./context.js"
@@ -457,7 +457,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
         // A turn that stopped with nothing in it is kept as a session for inspection: the session id finds it.
         if (outcome === "finish:stop" && !produced) logWarn("answer.empty", { requestID, app, model: request.model, sessionID, tools: request.tools.length })
-        log("request.finished", { requestID, app, model: request.model, durationMs: Date.now() - startedAt, outcome })
+        logRequest("request.finished", { requestID, app, model: request.model, durationMs: Date.now() - startedAt, outcome })
       }
     },
   }

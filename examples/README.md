@@ -22,11 +22,14 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider |
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
 | [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |
+| [go-openai/](go-openai/main.go) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard |
+| [vercel-ai-sdk/](vercel-ai-sdk/README.md) | The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses`. Chat, tools, streaming, structured output, images, models and errors, with a committed live run (`runs/live/2026-10-13-c97ac66`) that passes |
+| [openai-dotnet/](openai-dotnet/Program.cs) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard |
 | [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script |
 | [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
 | [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script |
 | [aider/](aider/.aider.conf.yml) | Aider (a terminal coding tool) pointed at plugboard: `.aider.conf.yml` and `.env.example` |
-| [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt. Page per app in [docs/self-hosted](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted.md) |
+| [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt, PR-Agent (`.env`), SiYuan (`.env` and compose). Page per app in [docs/self-hosted](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted.md) |
 | [curl](#curl) | One request per API: chat, responses, messages, Gemini, models and usage |
 
 Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option.
@@ -38,6 +41,8 @@ The examples in [self-hosted/](self-hosted/) are for apps that already run in Do
 - [Karakeep](self-hosted/karakeep/README.md): `.env.example` and a compose override for the upstream `docker-compose.yml`
 - [Frigate](self-hosted/frigate/README.md): a `genai` provider in `config.yml`
 - [paperless-gpt](self-hosted/paperless-gpt/README.md): a compose service and `.env.example`
+- [PR-Agent](self-hosted/pr-agent/README.md): `.env.example` for the OpenAI-like provider, and the model in `configuration.toml`
+- [SiYuan](self-hosted/siyuan/README.md): a compose file and `.env.example` for its OpenAI provider environment variables
 
 ## LlamaIndex
 

@@ -20,7 +20,7 @@
 
 import { Plugin } from "@opencode/plugin/effect"
 import { Effect } from "effect"
-import { parseOptions } from "./src/config.js"
+import { appHistoryLimits, parseOptions } from "./src/config.js"
 import { personaOf } from "./src/models.js"
 import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
@@ -145,7 +145,7 @@ export default Plugin.define({
         // Rebuild the transforms below once a request has confirmed this Location as an app directory.
         refresh: () => Effect.runPromise(Effect.all([ctx.agent.reload(), ctx.tool.reload()], { discard: true })),
         // Host handles for indexing and pruning request sessions; only called from request handling.
-        history: { port: createHistoryPort(ctx), limits: options.history },
+        history: { port: createHistoryPort(ctx), limits: options.history, apps: appHistoryLimits(options) },
         handler: (request, response) => {
           startPump()
           handle(request, response).catch((error) => {
