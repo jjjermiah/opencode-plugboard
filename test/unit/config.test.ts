@@ -22,6 +22,7 @@ describe("parseOptions: defaults", () => {
       logLevel: "info",
       logRequests: true,
       metrics: false,
+      reasoningOutput: false,
       modelIds: "canonical",
       usage: { enabled: true, retentionDays: 90 },
     })
@@ -598,5 +599,20 @@ describe("#270 review NIT 8: maxN edge cases", () => {
     const options = parseOptions({ keys: { chat: "k" }, maxN: 3, apps: { chat: { maxN: 1 } } })
     expect(maxNFor(options, "nobody")).toBe(3)
     expect(maxNFor(options, "constructor")).toBe(3)
+  })
+})
+
+describe("reasoningOutput (since 0.34.0)", () => {
+  test("defaults to off, so reasoning stays dropped", () => {
+    expect(parseOptions({}).reasoningOutput).toBe(false)
+  })
+
+  test("true is kept, false is kept", () => {
+    expect(parseOptions({ reasoningOutput: true }).reasoningOutput).toBe(true)
+    expect(parseOptions({ reasoningOutput: false }).reasoningOutput).toBe(false)
+  })
+
+  test("must be a boolean, and the message names the option", () => {
+    expect(() => parseOptions({ reasoningOutput: "yes" })).toThrow("plugboard option `reasoningOutput` must be a boolean")
   })
 })

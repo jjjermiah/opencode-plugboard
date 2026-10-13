@@ -65,6 +65,8 @@ export interface PlugboardOptions {
   readonly logRequests: boolean
   /** Serve `GET /plugboard/metrics` (Prometheus text). Off by default; same authentication as the model routes. */
   readonly metrics: boolean
+  /** Option `reasoningOutput` (since 0.34.0): return the model's reasoning on Chat Completions (`reasoning_content` and `reasoning`) and Responses (`reasoning` items). Off by default: reasoning is dropped, as before. */
+  readonly reasoningOutput: boolean
   /** Ids listed by `/v1/models`: canonical, slugs (`provider--model__variant`) or both. See `toSlug` in `src/models.ts`. */
   readonly modelIds: ModelIds
   /** Concurrency caps and requests per minute per app (see `src/limits.ts`). Absent: unlimited. */
@@ -298,7 +300,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests", "reasoningOutput"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -1024,6 +1026,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     throw new Error("plugboard option `logLevel` must be `debug`, `info`, `warn` or `error`")
   if (input.logRequests !== undefined && typeof input.logRequests !== "boolean") throw new Error("plugboard option `logRequests` must be a boolean")
   if (input.metrics !== undefined && typeof input.metrics !== "boolean") throw new Error("plugboard option `metrics` must be a boolean")
+  if (input.reasoningOutput !== undefined && typeof input.reasoningOutput !== "boolean") throw new Error("plugboard option `reasoningOutput` must be a boolean")
   if (input.modelIds !== undefined && (typeof input.modelIds !== "string" || !MODEL_IDS.has(input.modelIds)))
     throw new Error("plugboard option `modelIds` must be `canonical`, `slugs` or `both`")
 
@@ -1080,6 +1083,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     logLevel: (input.logLevel as LogLevel | undefined) ?? "info",
     logRequests: input.logRequests !== false,
     metrics: input.metrics === true,
+    reasoningOutput: input.reasoningOutput === true,
     modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
     ...(limits === undefined ? {} : { limits }),
     ...(cache ? { cache } : {}),

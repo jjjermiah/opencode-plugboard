@@ -350,6 +350,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions, capOp
       ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
       ...(format.instruction ? { jsonObject: true } : {}),
       ...(generation.stop ? { stop: generation.stop } : {}),
+      ...(options.reasoningOutput ? { reasoningOutput: true } : {}),
     },
     ...(typeof body.reasoning_effort === "string" ? { reasoningEffort: body.reasoning_effort } : {}),
   }

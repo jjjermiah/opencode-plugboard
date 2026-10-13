@@ -50,7 +50,7 @@ A copyable version is in [examples/codex-cli/](https://github.com/jjjermiah/open
 ## Features exercised
 
 - `/v1/responses` with streaming, and function tool calls, which Codex's shell tool uses. Each call comes back to Codex unexecuted.
-- Reasoning: plugboard accepts reasoning items in the input and drops them. It does not return reasoning text.
+- Reasoning: plugboard accepts reasoning items in the input and drops them. It does not return reasoning text unless the server sets `reasoningOutput` (since 0.34.0). Codex is not tested with that setting on.
 
 ## Quirks
 

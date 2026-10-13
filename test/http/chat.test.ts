@@ -296,3 +296,31 @@ describe("client disconnects", () => {
     expect(logs.of("request")[0]!.fields.outcome).toBe("disconnected")
   })
 })
+
+describe("reasoningOutput (since 0.34.0): reasoning on the wire", () => {
+  test("JSON: the message carries reasoning_content and reasoning when the option is on", async () => {
+    await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")], { reasoningOutput: true })
+    const reply = await server!.send(chat())
+    expect(reply.json().choices[0].message).toMatchObject({ content: "Hi", reasoning_content: "hm", reasoning: "hm" })
+  })
+
+  test("JSON: the default drops reasoning, the message has no reasoning field", async () => {
+    await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")])
+    const reply = await server!.send(chat())
+    expect(reply.json().choices[0].message).not.toHaveProperty("reasoning_content")
+    expect(reply.json().choices[0].message).not.toHaveProperty("reasoning")
+  })
+
+  test("SSE: reasoning comes as deltas under both names before the content", async () => {
+    await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")], { reasoningOutput: true })
+    const stream = await server!.open(streamed())
+    const text = await stream.ended
+    expect(sseData(text).flatMap((frame) => frame.choices?.map((choice: any) => choice.delta) ?? [])).toEqual([
+      { role: "assistant", content: "" },
+      { reasoning_content: "hm", reasoning: "hm" },
+      { content: "Hi" },
+      {},
+    ])
+    expect(text.endsWith("data: [DONE]\n\n")).toBe(true)
+  })
+})

@@ -4,7 +4,8 @@
  *
  * One state machine (`runResponse`) serves both: it emits stream events as it goes and returns
  * the final response object, so the JSON body and the stream never disagree. A non-streaming
- * call passes a no-op `emit`. Reasoning deltas are dropped (no reasoning items are produced).
+ * call passes a no-op `emit`. Reasoning deltas are dropped unless the exchange asks for them (option
+ * `reasoningOutput`): then each run of them is one `reasoning` output item with a `summary_text` part, as OpenAI sends.
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import { structuredMissing, textFallback } from "../openai/response.js"
@@ -28,6 +29,8 @@ export interface ResponsesExchange {
   readonly callerTools?: boolean
   /** The caller's `text.format` schema: a text answer is taken when the model skipped the respond call (`textFallback`, #173). */
   readonly structuredSchema?: Readonly<Record<string, unknown>>
+  /** Option `reasoningOutput` (since 0.34.0): reasoning is returned as a `reasoning` item. Never in structured output. */
+  readonly reasoningOutput?: boolean
 }
 
 /** A stream event as emitted: `type` is also the SSE event name. */
@@ -101,6 +104,8 @@ export async function runResponse(
   /** Output items that are open or done: the next item's `output_index`. */
   let nextIndex = 0
   let open: { id: string; index: number; text: string } | undefined
+  /** The open reasoning item: a run of reasoning deltas (summary part 0). Closed before any message or tool call. */
+  let reasoning: { id: string; index: number; text: string } | undefined
   let started = false
   let calls = 0
   let answered = false
@@ -125,9 +130,37 @@ export async function runResponse(
     role: "assistant",
     content: text === undefined ? [] : [{ type: "output_text", text, annotations: [], logprobs: [] }],
   })
+  const reasoningDelta = (delta: string) => {
+    if (delta.length === 0) return
+    start()
+    if (!reasoning) {
+      closeMessage()
+      reasoning = { id: newId("rs"), index: nextIndex++, text: "" }
+      send("response.output_item.added", { output_index: reasoning.index, item: { id: reasoning.id, type: "reasoning", status: "in_progress", summary: [] } })
+      send("response.reasoning_summary_part.added", {
+        item_id: reasoning.id,
+        output_index: reasoning.index,
+        summary_index: 0,
+        part: { type: "summary_text", text: "" },
+      })
+    }
+    reasoning.text += delta
+    send("response.reasoning_summary_text.delta", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, delta })
+  }
+  const closeReasoning = () => {
+    if (!reasoning) return
+    const part = { type: "summary_text", text: reasoning.text }
+    send("response.reasoning_summary_text.done", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, text: reasoning.text })
+    send("response.reasoning_summary_part.done", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, part })
+    const item = { id: reasoning.id, type: "reasoning", status: "completed", summary: [part] }
+    send("response.output_item.done", { output_index: reasoning.index, item })
+    items.push(item)
+    reasoning = undefined
+  }
   const text = (delta: string) => {
     if (delta.length === 0) return
     start()
+    closeReasoning()
     if (!open) {
       open = { id: newId("msg"), index: nextIndex++, text: "" }
       send("response.output_item.added", { output_index: open.index, item: messageItem(open.id, "in_progress", undefined) })
@@ -154,6 +187,7 @@ export async function runResponse(
   /** Tool calls arrive whole, so each goes out as one arguments delta. */
   const toolCall = (call: ToolCall) => {
     start()
+    closeReasoning()
     closeMessage()
     const index = nextIndex++
     const itemId = newId("fc")
@@ -179,7 +213,11 @@ export async function runResponse(
       else finish = event.reason
       continue
     }
-    if (event.type === "reasoning-delta") continue
+    if (event.type === "reasoning-delta") {
+      // Not in structured output: its content is the answer's arguments.
+      if (exchange.reasoningOutput && exchange.structuredTool === undefined) reasoningDelta(event.text)
+      continue
+    }
     if (exchange.structuredTool !== undefined) {
       // Structured mode: only the first answer is content; prose and other tool calls are
       // suppressed, except the caller's own tools when they are offered.
@@ -206,6 +244,7 @@ export async function runResponse(
   if (failure) {
     if (!started && !committed()) return { failure, started }
     start()
+    closeReasoning()
     closeMessage()
     const response = envelope("failed", items, {
       error: { code: failure.code ?? failure.kind, message: failure.message },
@@ -217,6 +256,7 @@ export async function runResponse(
   start()
   if (held && structuredAnswer) text(args(held.input))
   if (fallback !== undefined) text(fallback)
+  closeReasoning()
   closeMessage()
   const incomplete = finish === "length" ? "max_output_tokens" : finish === "content-filter" ? "content_filter" : undefined
   const response = envelope(incomplete ? "incomplete" : "completed", items, {

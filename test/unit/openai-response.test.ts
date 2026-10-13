@@ -335,3 +335,58 @@ describe("#170 matchesSchema and textFallback: the schema subset", () => {
     expect(textFallback('Here:\n```json\n{"town":"Oslo"}\n```', schema)).toBeUndefined()
   })
 })
+
+describe("reasoningOutput (since 0.34.0): reasoning on Chat Completions", () => {
+  const on: OpenAiExchange = { ...plain, reasoningOutput: true }
+
+  test("the JSON message carries the reasoning under both names, beside the content", async () => {
+    const { body } = await collect(on, ev.reasoning("hm"), ev.reasoning("mm"), ev.text("Hel"), ev.text("lo"), ev.finish("stop"))
+    expect(body.choices[0].message).toEqual({ role: "assistant", content: "Hello", refusal: null, reasoning_content: "hmmm", reasoning: "hmmm" })
+  })
+
+  test("off (the default): the message has no reasoning fields", async () => {
+    const { body } = await collect(plain, ev.reasoning("hm"), ev.text("Hel"), ev.finish("stop"))
+    expect(body.choices[0].message).not.toHaveProperty("reasoning_content")
+    expect(body.choices[0].message).not.toHaveProperty("reasoning")
+  })
+
+  test("a turn with a tool call keeps the reasoning next to tool_calls", async () => {
+    const { body } = await collect(on, ev.reasoning("need the file"), ev.call("c1", "read", { path: "a" }), ev.finish("tool-calls"))
+    expect(body.choices[0].message).toMatchObject({ content: null, reasoning_content: "need the file", reasoning: "need the file", tool_calls: [{ id: "c1" }] })
+    expect(body.choices[0].finish_reason).toBe("tool_calls")
+  })
+
+  test("structured output never carries reasoning: its content is the answer's arguments", async () => {
+    const { body } = await collect({ ...structured, reasoningOutput: true }, ev.reasoning("secret"), ev.call("c1", "respond", { a: 1 }), ev.finish())
+    expect(JSON.stringify(body)).not.toContain("secret")
+    expect(body.choices[0].message.content).toBe('{"a":1}')
+  })
+
+  test("the stream sends reasoning as deltas under both names, after the role and before the content", async () => {
+    const { deltas } = await stream(on, ev.reasoning("hm"), ev.reasoning("mm"), ev.text("Hel"), ev.finish("stop"))
+    expect(deltas).toEqual([
+      { role: "assistant", content: "" },
+      { reasoning_content: "hm", reasoning: "hm" },
+      { reasoning_content: "mm", reasoning: "mm" },
+      { content: "Hel" },
+      {},
+    ])
+  })
+
+  test("a signature-only reasoning event (empty text) sends nothing", async () => {
+    const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig" }
+    const { deltas } = await stream(on, signed, ev.text("A"), ev.finish("stop"))
+    expect(deltas).toEqual([{ role: "assistant", content: "" }, { content: "A" }, {}])
+  })
+
+  test("off: the stream sends no reasoning delta", async () => {
+    const { text } = await stream(plain, ev.reasoning("secret"), ev.text("A"), ev.finish("stop"))
+    expect(text).not.toContain("secret")
+  })
+
+  test("structured streaming never sends reasoning", async () => {
+    const { text } = await stream({ ...structured, reasoningOutput: true }, ev.reasoning("secret"), ev.call("c1", "respond", { a: 1 }), ev.finish())
+    expect(text).not.toContain("secret")
+    expect(text).toContain('{\\"a\\":1}')
+  })
+})
