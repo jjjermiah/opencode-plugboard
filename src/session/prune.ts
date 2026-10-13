@@ -29,6 +29,17 @@ export interface HistoryLimits {
   readonly maxAgeDays?: number
 }
 
+/**
+ * The limits one app is pruned by (#265): its own field when set (`apps.<name>.history`), else the global one, field by field.
+ * An app with no limit in either place gets `{}`, which keeps its sessions forever.
+ */
+export function limitsFor(global: HistoryLimits, apps: Readonly<Record<string, HistoryLimits>> | undefined, app: string): HistoryLimits {
+  const own = apps !== undefined && Object.hasOwn(apps, app) ? apps[app] : undefined
+  const maxSessions = own?.maxSessions ?? global.maxSessions
+  const maxAgeDays = own?.maxAgeDays ?? global.maxAgeDays
+  return { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) }
+}
+
 export interface SweepResult {
   readonly apps: number
   /** Index entries read. */
@@ -46,7 +57,10 @@ export interface SweepResult {
 
 export interface SweepInput {
   readonly port: HistoryPort
+  /** The global limits; `apps` overrides them per app (see `limitsFor`). */
   readonly limits: HistoryLimits
+  /** Each app's own limits (`apps.<name>.history`, #265), keyed by app name. */
+  readonly apps?: Readonly<Record<string, HistoryLimits>>
   readonly sessions: SessionStore
   readonly now: number
   /** Aborts the sweep between host calls. */
@@ -127,10 +141,9 @@ async function readApp(port: HistoryPort, app: string, maxScan: number, signal: 
  * delete fewer sessions than the limit asks for, never more.
  */
 export async function sweepHistory(input: SweepInput): Promise<SweepResult> {
-  const { port, limits, sessions, signal } = input
+  const { port, sessions, signal } = input
   const maxDeletes = input.maxDeletes ?? MAX_DELETES
   const maxScan = input.maxScan ?? MAX_SCAN
-  const cutoff = limits.maxAgeDays === undefined ? undefined : input.now - limits.maxAgeDays * DAY_MS
   let scanned = 0
   let removed = 0
   let missing = 0
@@ -145,6 +158,10 @@ export async function sweepHistory(input: SweepInput): Promise<SweepResult> {
       more = true
       break
     }
+    const limits = limitsFor(input.limits, input.apps, app)
+    // An app with no limit today is not read: a scan over it would report `more` and re-sweep every minute for nothing (#319).
+    if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) continue
+    const cutoff = limits.maxAgeDays === undefined ? undefined : input.now - limits.maxAgeDays * DAY_MS
     const { entries, capped } = await readApp(port, app, maxScan, signal)
     scanned += entries.length
     if (capped) more = true

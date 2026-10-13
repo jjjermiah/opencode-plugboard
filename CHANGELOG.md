@@ -14,10 +14,44 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.26.0] - 2026-10-12: Locks and a Heartbeat
+
+**Full diff:** [v0.25.1...v0.26.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...v0.26.0)
+
 Five options for locking down who and what can reach plugboard, and a fix for a listener that went silent after an idle hour. Nothing changes until you set an option, except the keep-alive, which is on by default.
 
 ### Added
 
+- **Browser scripts can read the plugboard response headers** ([#314](https://github.com/jjjermiah/opencode-plugboard/issues/314)). With `cors` set, an allowed origin's answers now send `Access-Control-Expose-Headers` with the `x-plugboard-*` headers and `retry-after`. Before, a browser hid them, so `x-plugboard-session` or `x-plugboard-usage` could not be read from a page. Origins off the list still get no CORS headers.
+- **History retention per app** ([#265](https://github.com/jjjermiah/opencode-plugboard/issues/265)). `history` was one pair of numbers for every app. A high-volume bot wants to keep few sessions while a coding assistant keeps many. `apps.<name>.history` sets `maxSessions` and `maxAgeDays` for one app. A field replaces the global one for that app, and an unset field falls back to it. The stricter field still wins inside an app. An app with no limit anywhere keeps its sessions forever, as before. The history index is written only for an app that has a limit, so an unlimited app adds nothing to host storage.
+
+  ```jsonc
+  {
+    "history": { "maxSessions": 500, "maxAgeDays": 30 },
+    "apps": {
+      "discord-bot": { "history": { "maxSessions": 20 } },
+      "coding": { "history": { "maxSessions": 5000, "maxAgeDays": 180 } }
+    }
+  }
+  ```
+- **A per-app cap on `n`** ([#270](https://github.com/jjjermiah/opencode-plugboard/issues/270)). `maxN` was one number for every app, so a batch tool that needed `n: 4` forced the same allowance onto the chat widget. `apps.<name>.maxN` lowers the global cap for one app. A request above it gets the usual 400 `too_many_choices`, and the message names `apps.<name>.maxN`. It cannot be higher than the global `maxN`, the same rule as `maxTools`. Unset, the global cap applies as before. The 400 `too_many_choices` message now names the option that applied (`apps.<name>.maxN` for an app with its own cap, else `maxN`). Before, it always named `apps.<name>.maxN`, so the text changes for a request refused under the global cap.
+
+  ```jsonc
+  {
+    "maxN": 4,
+    "apps": { "chat-widget": { "maxN": 1 }, "batch": { "maxN": 4 } }
+  }
+  ```
+- **Log levels and an access log switch** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). Plugboard wrote one access line per request and had no way to change how much it logged. `logLevel` sets the lowest level written (`debug`, `info`, `warn` or `error`). `logRequests: false` drops the per-request access lines and keeps warnings and errors, so an operator can keep the alerts without the traffic. Neither option changes what a line holds: keys and bodies are still never logged. The defaults are `info` and `true`, as before. What each level shows is listed in [configuration](docs/configuration.md): `warn` keeps the rate limit, budget, failed fallback and failed history deletion lines, and the admin key audit lines (`admin.key_created`, `admin.key_revoked`) are written at every level. `debug` adds only the keep-alive line for now; the per-step debug lines the issue lists are not written yet, so #262 stays open.
+
+  ```jsonc
+  {
+    "logLevel": "warn",
+    "logRequests": false
+  }
+  ```
 - **`requireKeys` makes a keyless server impossible** ([#271](https://github.com/jjjermiah/opencode-plugboard/issues/271)). On a shared machine, loopback is not a boundary, so a keyless server should be something you can rule out in config. With `requireKeys: true`, the plugin refuses to load without `keys`, and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. The default is `false`, so keyless loopback works as before.
 
   ```jsonc
@@ -73,6 +107,186 @@ Five options for locking down who and what can reach plugboard, and a fix for a 
 
 - **The listener no longer goes deaf after an hour idle** ([#310](https://github.com/jjjermiah/opencode-plugboard/issues/310)). OpenCode closes a Location after 60 minutes with no durable session event for it, and closing it closed plugboard's listener too. The TTL is fixed upstream, so plugboard now keeps its own Location warm: every 30 minutes it renames one dedicated session, `plugboard keep-alive`, which it creates once and never prompts. The rename is a durable event, so the timer restarts. The session stays out of the history index, pruning and usage. The new option `keepAlive` (default on) turns it off. The systemd keepalive timer is no longer needed, except as a belt.
 - **`/plugboard/status` takes the admin key** ([#311](https://github.com/jjjermiah/opencode-plugboard/issues/311)). The admin key already read `/plugboard/usage` and `/plugboard/metrics`, but status answered it 401, so monitoring had to borrow an app key. Status now answers the admin key with the operator view, which names no app. The key rule for every `/plugboard/` route is one table in `docs/configuration.md`.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (14 commits)</summary>
+
+#### Features
+
+**feat(config): add requireKeys to refuse a keyless server** ([`2e3c5bc`](https://github.com/jjjermiah/opencode-plugboard/commit/2e3c5bc74c2c8950fe512254691f239d880d9e3e))
+
+Loopback is not a security boundary on a shared or multi-user host, and the keyless default serves every local caller as the app `default`. An operator needs to rule that out by configuration, not by hoping no drift removes `keys`.
+
+`requireKeys: true` makes two things hold:
+- with no `keys` the plugin refuses to load (I5: the generation is rejected loudly, nothing is served), so the server never runs keyless;
+- with keys, a loopback request without a key is a 401, as on any non-loopback endpoint. `/healthz` and `/readyz` stay open.
+
+Default `false` (absent from the parsed options), so keyless loopback behaves exactly as before. The authentication path is unchanged: keyed servers already required a key on every route; the flag only adds the load-time refusal.
+
+Rejected: a per-app override (this is a server property, per the issue) and a separate loopback-only key check (the same rule already applies to any keyed server, so a second path would be a second thing to keep right).
+
+Validation: test/unit/config.test.ts (#271 block: default absent, refusal without keys, boolean type), test/http/ingress.test.ts (#271: loopback request without a key is a 401, /healthz open). Mutation I16-require-keys-refuses-keyless is killed by the config tests.
+
+Fixes #271
+
+**feat(config): limit an app to some endpoint families with apps.<name>.endpoints** ([`c119fb5`](https://github.com/jjjermiah/opencode-plugboard/commit/c119fb54f229e517ecc937af96f67f521b88c743))
+
+Every key reaches every model route, so a key given to a polling bot can also call Messages or Responses. The narrower the surface a key can reach, the smaller the blast radius of a leak.
+
+`apps.<name>.endpoints` takes a non-empty list of `chat`, `completions`, `responses`, `messages` (both Messages paths), `gemini` and `models` (the list and the by-id route). A call outside the list is 403 `endpoint_forbidden`, in the route's own error shape (OpenAI, Anthropic Messages, or Google for Gemini). The message names the option. The model is never called. Unset keeps every endpoint reachable, as before.
+
+The check runs after authentication and route existence (I15): an unauthenticated caller still gets 401, and an unknown path still 404, so the list reveals nothing a caller could not already see. It refuses with 403 because the caller is authenticated and the reason is policy. Usage, status, metrics, the dashboard and the probes are not restricted.
+
+Rejected: a separate `models` permission on the key itself (the policy already lives in `apps`, and one list keeps every per-app limit in one place), and a 404 for a refused route (it would look like a missing route to a client that has every right to know the route exists).
+
+Validation: test/http/endpoints.test.ts (chat-only app: 403 on responses, completions and models with no model call; models-only app; 401 before 403; unknown route stays 404; Anthropic and Google shapes; unset keeps everything) and test/unit/config.test.ts (#268 block: parse, unknown name, empty list, string). Mutations I15-endpoint-check-skipped and I15-messages-endpoint-check-skipped are killed by the endpoint tests. Full `bun test`: 2331 pass, 0 fail.
+
+Fixes #268
+
+**feat(config): bound remote image fetches with remoteImages schemes, size, items, redirects and time** ([`fc82c5e`](https://github.com/jjjermiah/opencode-plugboard/commit/fc82c5e9e8a07c486fed9568f085d66e74309bc5))
+
+`remoteImages` was on or off, and every bound on a fetch was a constant in the code (20 MB per image, 20 s, no redirects, any http or https URL). An operator who allows one internal image host could not tighten those, and could not require HTTPS only.
+
+The object form takes five optional fields, each of which only tightens:
+- `schemes`: `["http", "https"]` by default; `["https"]` refuses an http URL. Redirect targets are checked too.
+- `maxBytes`: one image, 1 to 104857600; default 20 MB as before. The 50 MB total per request is unchanged.
+- `maxItems`: remote URLs per request, 1 to 1000; absent means no count cap, as before. The next remote URL fails with `too_many_remote_images` before its fetch; data URLs are not counted.
+- `maxRedirects`: 0 to 10; default 0, so no redirect is followed, as before. A followed redirect's target goes through the same address check (I17) as the first URL, so a redirect cannot reach an address the first URL could not.
+- `timeoutMs`: 1 to 600000; default 20000.
+
+`true` and `{ "allow": [...] }` keep working with the same defaults. A field that is not set is absent from the parsed object, so existing configs parse to the same values.
+
+Rejected: a per-app `remoteImages` (the issue keeps it global; a later issue can add it), and following redirects by default (today's behaviour is no redirect, and a redirect is the usual way around an address check).
+
+Validation: test/session/media.test.ts (#259 block: https-only refuses http before any connection, maxBytes boundary, maxRedirects 0 and 1, a redirect to a private address is refused even with redirects allowed, a server that never answers fails at timeoutMs, maxItems refuses the second remote URL before its fetch and counts no data URL) and test/unit/config.test.ts (#259 blocks: parse, absent fields, each bad value named). Mutations I17-remote-scheme-check-skipped, I17-remote-redirect-cap-ignored and I17-remote-max-items-skipped are killed. Full `bun test`: 2221 pass, 0 fail.
+
+Fixes #259
+
+**feat(http): allow named browser origins to call plugboard with cors.origins** ([`278a1ff`](https://github.com/jjjermiah/opencode-plugboard/commit/278a1ff3f7404458c8a01c2e52ac11c99aa86acf))
+
+A web UI on another origin (Open WebUI, LibreChat, a dashboard widget) could not call plugboard: no Access-Control-Allow-Origin was ever sent, and a keyless endpoint refused every Origin with 403. The workarounds were a same-origin reverse proxy or turning the browser's CORS checks off.
+
+`cors.origins` lists the origins that may call. Each is canonical `http(s)://host[:port]` (no path, query, credentials, trailing slash or wildcard host), or `"*"` alone. For an allowed origin:
+- every answer carries Access-Control-Allow-Origin (the origin itself, echoed, or `*` when configured), and Vary: Origin;
+- its preflight (OPTIONS with Access-Control-Request-Method) is answered 204 before authentication, since a preflight carries no credentials, with the allowed methods and headers;
+- the Host check still runs first, so CORS does not bypass the DNS rebinding check (I16);
+- the actual request still needs its key on a keyed endpoint.
+
+An origin off the list gets no CORS header, so the browser blocks the response. On a keyless endpoint it keeps the 403 cross_origin_forbidden. `allowPrivateNetwork: true` adds Access-Control-Allow-Private-Network when the preflight asks for it (default false).
+
+Fail closed: `"*"` is refused without keys, because a wildcard must not sit in front of an unauthenticated model route. A specific allowed origin works on a keyless endpoint, as the issue asks.
+
+Rejected: a `*` default or a reflect-any-origin mode (it would let any page read answers), and exposing x-plugboard-* headers to scripts with Access-Control-Expose-Headers (not asked for; a follow-up if a UI needs the session header).
+
+Validation: test/http/cors.test.ts (preflight 204 keyless and keyed, no key needed for the preflight but still for the call, disallowed origin gets no header, Host refused on preflight, Messages preflight, actual answer header and unchanged body, * with keys, Private Network Access both ways) and test/unit/config.test.ts (#256 block: default absent, origin forms refused with the option named, * with keys only). Mutations I16-cors-off-list-origin- echoed, I16-preflight-skips-host-check and I16-keyless-origin-refusal- ignores-cors are killed. Full `bun test`: 2241 pass, 0 fail.
+
+Fixes #256
+
+**feat(http): read forwarded headers from listed reverse proxies with listen.trustProxy** ([`dedf120`](https://github.com/jjjermiah/opencode-plugboard/commit/dedf12017eeed62e28a41a367ea0f40b541205f8))
+
+Behind Traefik, nginx or Caddy, plugboard saw the proxy's address for every client, and its loopback Host check refused the proxy's public name (403 invalid_host). The discovery page also showed 127.0.0.1 as its base URL.
+
+`listen.trustProxy` takes `true` (loopback only), or a list of IP addresses and CIDR ranges. Forwarded headers are read only when the immediate peer's socket address is on the list. From any other peer they are ignored, and the socket address is used.
+- The client for the log is the rightmost X-Forwarded-For address that is not a trusted proxy. A client's own leftmost value cannot win. The request log gets `client=`, and only when the option is set.
+- On a keyed endpoint, a trusted proxy's X-Forwarded-Host passes the Host check (last value, well-formed), and the discovery base URL uses X-Forwarded-Proto with that host.
+- A forwarded header never authenticates. Auth reads only Authorization and x-api-key, as before.
+
+Rejected: using the forwarded host on a keyless endpoint. A page that rebinds its name to a loopback listener can send the same header, so on keyless loopback it would switch off the one check that stops that page. The cost is that keyless plus a proxy is refused by the Host check; the docs say to set keys.
+
+Known trade-off, reported in SECURITY.md: with a loopback peer in the list and keys set, a rebinding page can pass the Host check. It then reaches only the endpoints that need no key (healthz, readyz, the minimal discovery page). Every model, usage and admin route still needs a key.
+
+Validation: test/unit/forwarded.test.ts (option forms and refusals, the client rule for one and two hops and a spoofed leftmost value, the IPv4-mapped peer, the forwarded host and origin from trusted peers only), test/http/forwarded.test.ts (trusted keyed host passes, untrusted ignored, keyless never takes it, base URL, log client, no auth from headers, option unset keeps today's behaviour) and test/unit/config.test.ts (#266 block). loopback.ts now keeps the caller's other `listen` fields, so a route test can set trustProxy. Mutations I16-forwarded-host-from-untrusted-peer and I16-keyed-proxied-host-check-skipped are killed. Full `bun test`: 2263 pass, 0 fail.
+
+Fixes #266
+
+#### Fixes
+
+**fix(http): return void from the CORS preflight answer** ([`4a1892b`](https://github.com/jjjermiah/opencode-plugboard/commit/4a1892b4ef8a4e2cc39b0931c6fd1bf69c47b020))
+
+`bun run typecheck` failed at src/openai/route.ts: the preflight answer in #256 ended with `return response.end()`, which returns a ServerResponse, while `serve` returns Promise<void>. The response is ended the same way before the return; no behaviour changes.
+
+Validation: `bun run typecheck` exit 0; `bun test test/http/cors.test.ts` passes.
+
+**fix(runtime): keep the Location warm so idle eviction does not close the listener** ([`deefd2a`](https://github.com/jjjermiah/opencode-plugboard/commit/deefd2ab38f4026fed0d0e4f70fbbd25b5b93bde))
+
+OpenCode's LocationActivity evicts a Location after 60 minutes with no durable session event that carries it, and eviction closes the Location's scope. Plugboard's listener lives in that scope, so an idle server went deaf after an hour. The TTL is hard-coded upstream (no config key, no env var), so plugboard keeps its own Location warm.
+
+What: an accepted generation forks a loop into its plugin scope. Setup still only registers and returns (I1). Every 30 minutes the loop renames one dedicated session, "plugboard keep-alive", with ctx.session.update. A rename is the session.renamed durable event, and the bus stamps it with the publishing fiber's Location, which is this plugin's Location, so the eviction timer restarts. The session is created once, is deny-all, is never prompted, and its id lives in ctx.storage under keepalive/session. A deleted session is recreated. It is never registered with the session store, so it is not indexed, pruned or counted in usage. One loop runs per process: Registration.keepAliveOwner hands the lease to one live generation and passes it on when that generation leaves. VERSION goes to 16 because the runtime shape changed (I6). Option keepAlive (default on) and the keepalive.ts module are new; the parse in src/config.ts is the one option.
+
+Rejected: a session in the data root. The touch is keyed by the publishing Location, not by the session's, so the session's location buys nothing, and creating a session there boots another Location. A warm-up call does not reset the timer (only durable events do). The warming option stops 30 minutes after the last real activity, so it does not help either.
+
+Evidence (OpenCode v2.0.26): packages/core/src/location-activity.ts (touch on a durable session event with a location, 60 minute TTL), session.ts rename, bus.ts publish (location from the caller's Location service), projector.ts (session.renamed sets time_updated). Live on the isolated dev server with PLUGBOARD_KEEPALIVE_INTERVAL_MS=60000: session ses_ecce45d68ffedmXR6QNPVlw3B2 had time.updated advance by 60 s per interval (871559, 931566, 991573 ms) and sat in the plugin's Location. The 60 minute TTL itself was not reproduced: it is not configurable, so the live run shows the durable event the TTL counts, not the eviction.
+
+Tests: test/runtime/keepalive.test.ts covers the loop starting after setup, a touch per interval, create once, rename a stored session, recreate a deleted one, stopping with the generation, no loop with keepAlive false, one loop per process with failover, and the session staying out of history and usage. Mutation I1-keepalive-setup-waits is killed by that file.
+
+Fixes #310
+
+**fix(http): /plugboard/status takes the admin key** ([`7e7e663`](https://github.com/jjjermiah/opencode-plugboard/commit/7e7e66341ce903f204de7f03c723e142ea7eb3e7))
+
+GET /plugboard/status answered 401 to the adminKey. Usage, metrics and the admin routes all accept it, so monitoring had to borrow an app key or fall back to the probes. Status is an operator view that names no app, so the admin key now reads it, answered without an app.
+
+What: src/openai/route.ts checks the admin key for GET /plugboard/status before the general authenticate step. The admin key stays out of the model routes, and every other credential goes through the same rules as before. buildStatus takes no app for the admin key (src/discovery.ts), and its models count is the catalog's available models without an app policy.
+
+Docs: docs/configuration.md has one table, "Which key opens which route", for every /plugboard/ route and its four credentials. It also documents the keepAlive option (see the previous commit). CHANGELOG.md [Unreleased] gets both fixes.
+
+Tests: test/http/plugboard-key-rule.test.ts checks every /plugboard/ route with none, app, admin and wrong keys over loopback, the app-scoped usage 403, and the admin key's 401 on the model routes. The test-count and coverage floors are ratcheted (test/http and test/runtime rose).
+
+Live: the isolated dev server returned 200 for the admin key on this branch (runtime v16), and 401 invalid_api_key on the main checkout, which is the bug.
+
+Fixes #311
+
+#### Tests
+
+**test(gates): raise the test-count and coverage floors for the security options** ([`0b16352`](https://github.com/jjjermiah/opencode-plugboard/commit/0b16352bf38974b205bb3dfbf357c657c1fb644e))
+
+The five security options added tests across unit, http and session (#271, #268, #259, #256, #266). Ratcheted with `bun .github/scripts/test-gates.ts .coverage --ratchet`, which only raises: test counts per layer and line and function coverage of index.ts and src/ are now at their measured values (total 98.6% lines, 94.4% functions). Floors were not lowered.
+
+Validation: `bun test --coverage` 2263 pass, 0 fail; test-gates exit 0 with "All floors met".
+
+**test(mutations): repoint I16-keyless-origin-allowed at the CORS-aware refusal** ([`6d8a631`](https://github.com/jjjermiah/opencode-plugboard/commit/6d8a63137be5bb7286e0bfffa74b507289d37177))
+
+#256 changed the keyless Origin refusal in checkOrigin to allow an origin on the cors allowlist. The entry's find text no longer occurred, so the mutation run reported an anchor failure (1 of 52 not run). The entry keeps its id and its intent: the refusal is switched off and the ingress test must fail. The new find text includes the corsOrigin check.
+
+Validation: `bun run mutations -- --only I16-keyless-origin-allowed` killed (2 failing test lines); full `bun run mutations`: 52 of 52 killed.
+
+#### Docs
+
+**docs: point the endpoint names link at its heading slug** ([`04c5427`](https://github.com/jjjermiah/opencode-plugboard/commit/04c54277b0069e8e4be1930dfbe71e72d02b1267))
+
+The link to the endpoint names section used #endpoint-names. The heading is "Endpoint names (since 0.26.0)", so its slug is endpoint-names-since-0-26-0. VitePress does not fail on a dead anchor, so docs:build passed with the wrong link.
+
+**docs(changelog): notes for 0.26.0 and pin the install examples** ([`bf2de8b`](https://github.com/jjjermiah/opencode-plugboard/commit/bf2de8baedad503e922e55c431aa6be84e304f98))
+
+Adds the summary line for the unreleased security options (#271 #268 #259 #256 #266), the location keep-alive (#310) and the admin key on /plugboard/status (#311), whose notes the lanes already wrote. Bumps the pinned install examples to 0.26.0 so the release ships right after the merge instead of waiting for the per-app options lane.
+
+#### CI and tooling
+
+**ci(ci): wait up to ten minutes for npm before attesting** ([`0e9ec6c`](https://github.com/jjjermiah/opencode-plugboard/commit/0e9ec6c180bd34bd36f8a4ab931a2071fcd3e121))
+
+The 0.25.1 attest job failed with an empty served integrity: npm had accepted the publish but did not serve the new version's metadata within the two minutes the check waited. Re-running the failed jobs a few minutes later attested the same tarball and created the release, so the bytes were right and only the wait was short.
+
+The check now polls for up to ten minutes, fails at once on a real digest mismatch, and says when the version never appeared, with the re-run as the next step. actionlint passes.
+
+**ci(ci): compare the PR head with its base in one job, not a laptop baseline** ([`278fd0e`](https://github.com/jjjermiah/opencode-plugboard/commit/278fd0e1d7da1d133939b9b00d72f14e55676865))
+
+The advisory request-path benchmark job failed on every PR since #118. The committed baseline (.github/floors/bench-baseline.json) was recorded on an M4 laptop, and the Ubuntu runner measured 2-5x slower on every row, including paths the PR does not touch. The gate could not tell a regression from a machine difference.
+
+Compare like with like. The bench job now runs on pull requests only and checks out the PR's base commit (pull_request.base.sha) into base/ next to the PR head. Both trees install with the frozen lockfile and run test/bench/request.bench.ts --json on the same runner, one after the other, then bench-gate.ts compares base.json with head.json.
+
+- Gate fails when a head median is more than 1.5x its base median (was: 2x against a foreign baseline). A benchmark that ran on the base and not on the head fails too, so a rename is said out loud. A new benchmark never fails.
+- Baseline file removed. Nothing else read it, and a committed number from another machine is the thing this change removes. --update is gone.
+- Local use compares two runs on one machine (documented in test/README.md).
+- Job stays advisory (continue-on-error). Non-PR events skip it: a push to main has no base to compare with.
+
+Why run both instead of a workflow_dispatch baseline: a full bench run is about 13 s on a laptop and 23 s for the pair (measured locally), so two runs in one job fit well under the 10 minute timeout and need no baseline PR to keep in sync. Measured locally: base and head of the same tree gave ratios of 0.98x to 1.10x on every row.
+
+Docs: test/README.md (the new comparison and local recipe), CONTRIBUTING.md (the gate description, no longer a baseline to move).
+
+Closes #315
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.25.1] - 2026-10-12: Front Door, Unlocked
 
@@ -4086,7 +4300,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.23.0...v0.24.0

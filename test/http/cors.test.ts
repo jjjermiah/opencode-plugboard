@@ -105,6 +105,30 @@ describe("#256 cors: an allowed origin's actual answer", () => {
   })
 })
 
+describe("#314 cors: the plugboard response headers are exposed to the browser", () => {
+  test("an allowed origin's actual answer lists the x-plugboard-* headers and retry-after in Access-Control-Expose-Headers", async () => {
+    await route({ cors })
+    const reply = await server!.send(chat({ origin: APP }))
+    const exposed = (reply.headers["access-control-expose-headers"] ?? "").split(", ")
+    for (const name of ["x-plugboard-request-id", "x-plugboard-model", "x-plugboard-session", "x-plugboard-usage", "retry-after"])
+      expect(exposed).toContain(name)
+    // The header the answer really carries is one of the exposed ones.
+    expect(reply.headers["x-plugboard-request-id"]).toBeDefined()
+  })
+
+  test("an origin off the list gets no Access-Control-Expose-Headers either", async () => {
+    await route({ cors })
+    const reply = await server!.send(preflight("https://evil.example"))
+    expect(reply.headers["access-control-expose-headers"]).toBeUndefined()
+  })
+
+  test("with cors absent, no CORS header is sent (the answer is unchanged)", async () => {
+    await route({})
+    const reply = await server!.send(chat({}))
+    expect(reply.headers["access-control-expose-headers"]).toBeUndefined()
+  })
+})
+
 describe("#256 cors: Private Network Access", () => {
   test("the header is sent only when allowPrivateNetwork is on and the preflight asks for it", async () => {
     const asks = { "access-control-request-private-network": "true" }
@@ -114,5 +138,36 @@ describe("#256 cors: Private Network Access", () => {
     await route({ cors: { origins: [APP], allowPrivateNetwork: true } })
     expect((await server!.send(preflight(APP, asks))).headers["access-control-allow-private-network"]).toBe("true")
     expect((await server!.send(preflight(APP))).headers["access-control-allow-private-network"]).toBeUndefined()
+  })
+})
+
+/** Review of #319 (SHOULD 5): the preflight and an error answer carry the list too, and the list is the whole set of names. */
+describe("#314 review: Access-Control-Expose-Headers on every allowed answer, the whole list", () => {
+  const exposed = (headers: Record<string, string | string[] | undefined>) => (String(headers["access-control-expose-headers"] ?? "")).split(", ")
+
+  test("an allowed origin's 204 preflight carries the list", async () => {
+    await route({ cors })
+    const reply = await server!.send(preflight(APP))
+    expect(reply.status).toBe(204)
+    expect(exposed(reply.headers).length).toBeGreaterThan(0)
+  })
+
+  test("an allowed origin's 401 answer (a wrong key) carries the list, so the page can read the refusal headers", async () => {
+    await route({ keys: { app: "secret" }, cors })
+    const reply = await server!.send(chat({ origin: APP, authorization: "Bearer wrong" }))
+    expect(reply.status).toBe(401)
+    expect(exposed(reply.headers)).toContain("x-plugboard-request-id")
+    expect(exposed(reply.headers)).toContain("retry-after")
+  })
+
+  test("the list is exactly the x-plugboard-* names the source sets, plus retry-after", async () => {
+    await route({ cors })
+    const reply = await server!.send(chat({ origin: APP }))
+    const names = new Set<string>()
+    for (const path of new Bun.Glob("src/**/*.ts").scanSync({ cwd: `${import.meta.dir}/../..` })) {
+      const text = await Bun.file(`${import.meta.dir}/../../${path}`).text()
+      for (const match of text.matchAll(/"(x-plugboard-[a-z-]+)"/g)) names.add(match[1]!)
+    }
+    expect(exposed(reply.headers).sort()).toEqual([...names, "retry-after"].sort())
   })
 })
