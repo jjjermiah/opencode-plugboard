@@ -66,6 +66,7 @@ export default defineConfig({
           { text: "LangChain JS", link: "/clients/langchain-js" },
           { text: "pydantic-ai", link: "/clients/pydantic-ai" },
           { text: "OpenAI Agents SDK", link: "/clients/openai-agents" },
+          { text: "Go (go-openai)", link: "/clients/go-openai" },
           { text: "LiteLLM (as a client)", link: "/clients/litellm-client" },
           { text: "Instructor", link: "/clients/instructor" },
           { text: "DSPy", link: "/clients/dspy" },

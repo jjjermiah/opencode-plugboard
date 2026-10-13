@@ -22,6 +22,7 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider |
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
 | [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |
+| [go-openai/](go-openai/main.go) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; builds, not yet run live |
 | [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script |
 | [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
 | [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script |
