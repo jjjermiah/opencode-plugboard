@@ -1,0 +1,62 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.\nYou must format your output as a JSON value that adheres to a given \"JSON Schema\" instance.\n\n\"JSON Schema\" is a declarative language that allows you to annotate and validate JSON documents.\n\nFor example, the example \"JSON Schema\" instance {{\"properties\": {{\"foo\": {{\"description\": \"a list of test words\", \"type\": \"array\", \"items\": {{\"type\": \"string\"}}}}}}, \"required\": [\"foo\"]}}}}\nwould match an object with one required property, \"foo\". The \"type\" property specifies \"foo\" must be an \"array\", and the \"description\" property semantically describes it as \"a list of test words\". The items within \"foo\" must be strings.\nThus, the object {{\"foo\": [\"bar\", \"baz\"]}} is a well-formatted instance of this example \"JSON Schema\". The object {{\"properties\": {{\"foo\": [\"bar\", \"baz\"]}}}} is not well-formatted.\n\nYour output will be parsed and type-checked according to the provided schema instance, so make sure all fields in your output match the schema exactly and there are no trailing commas!\n\nHere is the JSON Schema instance your output must adhere to. Include the enclosing markdown codeblock:\n```json\n{\"type\":\"object\",\"properties\":{\"output\":{\"type\":\"object\",\"properties\":{\"calories\":{\"type\":\"number\"},\"protein_g\":{\"type\":\"number\"}},\"required\":[\"calories\",\"protein_g\"],\"additionalProperties\":false}},\"required\":[\"output\"],\"additionalProperties\":false,\"$schema\":\"http://json-schema.org/draft-07/schema#\"}\n```\n",
+              "role": "user"
+            }
+          ],
+          "model": "openai/gpt-5.6-luna#low",
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "```json\n{\"output\":{\"calories\":236,\"protein_g\":15.6}}\n```",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-2>",
+          "model": "openai/gpt-5.6-luna#low",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 69,
+            "completion_tokens_details": {
+              "reasoning_tokens": 44
+            },
+            "prompt_tokens": 350,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 419
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=350; output=69; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

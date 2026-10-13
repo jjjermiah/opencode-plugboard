@@ -1,6 +1,6 @@
 # open-webui · scripted
 
-Verdict: **pass** · Open WebUI 0.12.0 on bun 1.4 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
+Verdict: **pass** · Open WebUI 0.12.0 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |

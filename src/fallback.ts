@@ -15,7 +15,7 @@
 import type { ServerResponse } from "node:http"
 import type { PlugboardOptions } from "./config.js"
 import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest, ServedModel } from "./contract.js"
-import { log, logWarn } from "./log.js"
+import { debugEnabled, log, logDebug, logWarn } from "./log.js"
 import { fallbackRefs, refToString } from "./models.js"
 import { dropRejected } from "./openai/sampling.js"
 
@@ -67,6 +67,7 @@ export function reportServed(response: ServerResponse, info: ServedInfo, then?: 
     if (info.served !== undefined) return
     info.served = served.model
     info.fallbacks = served.fallbacks
+    if (debugEnabled()) logDebug("model.resolved", { served: served.model, fallbacks: served.fallbacks, chain: served.chain === true })
     if (!response.headersSent && !response.destroyed) {
       response.setHeader(MODEL_HEADER, served.model)
       if (served.fallbacks > 0) response.setHeader(FALLBACKS_HEADER, String(served.fallbacks))

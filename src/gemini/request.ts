@@ -168,7 +168,8 @@ const parseContents = (raw: unknown): PlugMessage[] | PlugError => {
     const param = `contents[${index}]`
     if (!isRecord(content)) return bad("Each content must be an object", param)
     const role = content.role ?? "user"
-    if (role !== "user" && role !== "model" && role !== "function") return bad(`Unsupported role "${String(role)}": use "user" or "model"`, `${param}.role`)
+    // A non-string role is named by its type: String() on an object whose toString is not callable throws (#130 property run).
+    if (role !== "user" && role !== "model" && role !== "function") return bad(`Unsupported role "${typeof role === "string" ? role : typeof role}": use "user" or "model"`, `${param}.role`)
     if (!Array.isArray(content.parts)) return bad("Each content needs a parts array", `${param}.parts`)
 
     const parts: PlugPart[] = []
