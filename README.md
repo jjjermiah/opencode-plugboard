@@ -513,6 +513,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | AutoGen / AG2 | [autogen][client-autogen] | partial: text, stream and a two-agent tool round on `fast` (autogen 0.14.1, OpenAI route); Anthropic route not run |
 | Semantic Kernel | [semantic-kernel][client-semantic-kernel] | pass on Python: text, stream and a plugin call on `fast` (semantic-kernel 1.45.0); .NET route not run |
 | Spring AI | [spring-ai][client-spring-ai] | docs-verified, not run: config checked against the reference; no Java build or run yet |
+| LangChain4j | [langchain4j][client-langchain4j] | docs-verified, not run: builder checked against the OpenAI-compatible page; no Java build or run yet |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
 | DSPy | [dspy][client-dspy] | pass: Predict, ChainOfThought, typed output |
@@ -623,6 +624,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-autogen]: https://jjjermiah.github.io/opencode-plugboard/clients/autogen
 [client-semantic-kernel]: https://jjjermiah.github.io/opencode-plugboard/clients/semantic-kernel
 [client-spring-ai]: https://jjjermiah.github.io/opencode-plugboard/clients/spring-ai
+[client-langchain4j]: https://jjjermiah.github.io/opencode-plugboard/clients/langchain4j
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
 [client-dspy]: https://jjjermiah.github.io/opencode-plugboard/clients/dspy

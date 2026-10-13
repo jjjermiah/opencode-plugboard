@@ -73,6 +73,7 @@ export default defineConfig({
           { text: "AutoGen / AG2", link: "/clients/autogen" },
           { text: "Semantic Kernel", link: "/clients/semantic-kernel" },
           { text: "Spring AI", link: "/clients/spring-ai" },
+          { text: "LangChain4j", link: "/clients/langchain4j" },
           { text: "LiteLLM (as a client)", link: "/clients/litellm-client" },
           { text: "Instructor", link: "/clients/instructor" },
           { text: "DSPy", link: "/clients/dspy" },
