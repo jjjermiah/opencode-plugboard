@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Releases wait for every check, and the tag is made only on a tested commit.** The release script used to enable auto-merge, which waits only for the required checks, and it tagged the merge commit without checking CI on it. Two gaps let a red commit ship: the host matrix was not a required check, and the merge commit was never tested (v0.25.0 failed on Examples and needed 0.25.1). Now the release pull request merges only after every check on it passes (the advisory benchmark aside), the tag is pushed only after CI passes on the merge commit, and `main` requires one aggregate check, `CI passed`, that needs every CI job. The GitHub release still appears only after npm has the version. See [docs/releasing.md](docs/releasing.md).
 
 ## [0.28.0] - 2026-10-13: Counts That Add Up
 
