@@ -626,6 +626,14 @@ export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string):
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
 }
 
+/**
+ * The request deadline (ms) of a request of `app`, `undefined` when no credential matched yet. Only the global
+ * `requestTimeoutMs` for now: the app's own value (`apps.<name>.requestTimeoutMs`, #257) is read here next.
+ */
+export function requestTimeoutFor(options: Pick<PlugboardOptions, "requestTimeoutMs">, _app: string | undefined): number {
+  return options.requestTimeoutMs
+}
+
 function parseUsage(value: unknown): UsageConfig {
   if (value === undefined) return { ...USAGE_DEFAULTS }
   if (!isRecord(value)) throw new Error("plugboard option `usage` must be an object")

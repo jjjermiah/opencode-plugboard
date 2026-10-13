@@ -68,7 +68,7 @@ const header = (request: IncomingMessage, name: string): string | undefined => {
 }
 
 /** `Authorization: Bearer` first (Claude Code with ANTHROPIC_AUTH_TOKEN), then `x-api-key` (the Anthropic SDKs). One key store. */
-const authenticateRequest = async (host: RouteHost, request: IncomingMessage) => {
+export const authenticateRequest = async (host: RouteHost, request: IncomingMessage) => {
   const options = liveOptions(host.options)
   const runtime = host.keys ? await host.keys.digests() : []
   const bearer = authenticate(options, request.headers.authorization, runtime)

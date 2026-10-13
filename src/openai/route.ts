@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, type Endpoint, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -57,7 +57,7 @@ import { filterByCapability, listAvailableModels, parseCapability, resolveModel 
 import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
-import { isMessagesPath, serveMessages } from "../anthropic/route.js"
+import { authenticateRequest, isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
@@ -182,6 +182,27 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     } catch (caught) {
       if (caught instanceof RequestAborted) throw caught
       logError("catalog.failed", { error: errorMessage(caught) })
+      return undefined
+    }
+  }
+
+  /**
+   * The app the request authenticates as, read before its deadline is armed (#257). It applies the same credential rules as
+   * `serve` and answers nothing: any refusal is `serve`'s to give (I15), so `undefined` only means the global deadline applies.
+   */
+  async function requestApp(request: IncomingMessage): Promise<string | undefined> {
+    try {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1")
+      const path = url.pathname
+      const auth = isMessagesPath(path)
+        ? await authenticateRequest(host, request)
+        : authenticate(
+            liveOptions(host.options),
+            path === "/v1beta" || path.startsWith("/v1beta/") ? geminiAuthorization(request, url) : request.headers.authorization,
+            await runtimeDigests(),
+          )
+      return isPlugError(auth) ? undefined : auth.app
+    } catch {
       return undefined
     }
   }
@@ -467,7 +488,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const info: RequestInfo = { route: "unparsed" }
     if (host.options.listen.trustProxy !== undefined) info.client = clientAddress(request, host.options.listen.trustProxy)
     metrics?.requestStarted()
-    const scope = beginRequest(request, response, host.options.requestTimeoutMs)
+    // The deadline is armed after the app is known, so an app's own `requestTimeoutMs` (#257) applies from the first await.
+    const scope = beginRequest(request, response, requestTimeoutFor(host.options, await requestApp(request)))
     let outcome = "ok"
     let error: string | undefined
     try {
