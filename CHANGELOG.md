@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Docs
+
+- **Prompt-cache reads by provider, measured again** ([#277](https://github.com/jjjermiah/opencode-plugboard/issues/277)). The [prompt-cache affinity](docs/configuration.md#prompt-cache-affinity) section has a table for ChatGPT, GLM and Copilot Gemini: what OpenCode sends, what each provider documents, and cached tokens with and without `anchor`. `anchor` helps ChatGPT. GLM and Copilot Gemini still showed no cache reads, and plugboard sends nothing that would change that, so the cause sits upstream.
 
 ## [0.33.0] - 2026-10-13: Stays Awake
 
