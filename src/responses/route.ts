@@ -20,6 +20,7 @@ import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
 import { STRUCTURED_FALLBACK_HEADER, encodeError } from "../openai/response.js"
+import type { ResponsesExchange } from "./response.js"
 import { appGeneration } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
@@ -46,9 +47,19 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-  const call: PlugRequest = { ...parsed.request, generation: appGeneration(appPolicy(host.options, app), parsed.request.generation), ref }
+  const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
+  const call: PlugRequest = { ...parsed.request, generation, ref }
   reportParallelTools(response, call)
-  const { exchange } = parsed
+  // The echoed object shows what the model gets: the app's cap and sampling defaults, not only the caller's values (#263, #264).
+  const exchange: ResponsesExchange = {
+    ...parsed.exchange,
+    envelope: {
+      ...parsed.exchange.envelope,
+      max_output_tokens: generation.maxTokens ?? null,
+      temperature: generation.temperature ?? null,
+      top_p: generation.topP ?? null,
+    },
+  }
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason

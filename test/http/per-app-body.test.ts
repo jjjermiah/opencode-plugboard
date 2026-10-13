@@ -52,6 +52,45 @@ describe("#258 limits.apps.<name>.maxBodyBytes: a per-app body cap", () => {
   })
 })
 
+describe("#258 the app's cap on the other front-ends, in their own error shapes", () => {
+  const big = (key: string, chars: number): SendInit => ({
+    method: "POST",
+    path: "/v1/messages",
+    headers: { authorization: `Bearer ${key}` },
+    body: { model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: "x".repeat(chars) }] },
+  })
+  const gemini = (key: string, chars: number): SendInit => ({
+    method: "POST",
+    path: "/v1beta/models/test%2Fecho:generateContent",
+    headers: { authorization: `Bearer ${key}` },
+    body: { contents: [{ role: "user", parts: [{ text: "x".repeat(chars) }] }] },
+  })
+
+  test("Messages: a body over the app's cap is a 413 in Anthropic's shape, and another app is accepted", async () => {
+    const caller = await route({ limits: { apps: { widget: { maxBodyBytes: 256 } } } })
+    const refused = await server!.send(big(KEYS.widget, 400))
+    expect(refused.status).toBe(413)
+    expect(refused.json()).toMatchObject({ type: "error", error: { type: "request_too_large", message: "Request body too large" } })
+    expect(caller.calls).toEqual([])
+    expect((await server!.send(big(KEYS.bot, 400))).status).toBe(200)
+  })
+
+  test("Gemini: a body over the app's cap is a 413 in Google's shape, and another app is accepted", async () => {
+    const caller = await route({ limits: { apps: { widget: { maxBodyBytes: 256 } } } })
+    const refused = await server!.send(gemini(KEYS.widget, 400))
+    expect(refused.status).toBe(413)
+    expect(refused.json().error).toMatchObject({ code: 413, message: "Request body too large" })
+    expect(caller.calls).toEqual([])
+    expect((await server!.send(gemini(KEYS.bot, 400))).status).toBe(200)
+  })
+
+  test("the global cap applies to Messages and Gemini as well", async () => {
+    await route({ limits: { maxBodyBytes: 1024 } })
+    expect((await server!.send(big(KEYS.bot, 2000))).status).toBe(413)
+    expect((await server!.send(gemini(KEYS.bot, 2000))).status).toBe(413)
+  })
+})
+
 describe("#258 limits.maxBodyBytes: the global ceiling for every app", () => {
   test("a body over the global cap is a 413 for every app", async () => {
     await route({ limits: { maxBodyBytes: 1024 } })

@@ -617,10 +617,10 @@ export function parsePromptCache(raw: unknown, at: string): PromptCache | undefi
 }
 
 /** Validates one set of caps (`limits.perApp`, or one `limits.apps` entry): each cap is a positive integer. */
-function parseCaps(raw: unknown, at: string, perAppBody = false): LimitCaps {
+function parseCaps(raw: unknown, at: string, allowBodyCap = false): LimitCaps {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object`)
   // `maxBodyBytes` is a cap only for an app (`limits.apps`), never for `limits.perApp`, which would apply it to every app.
-  const known = perAppBody ? [...LIMIT_CAP_KNOWN, "maxBodyBytes"] : [...LIMIT_CAP_KNOWN]
+  const known = allowBodyCap ? [...LIMIT_CAP_KNOWN, "maxBodyBytes"] : [...LIMIT_CAP_KNOWN]
   for (const key of Object.keys(raw))
     if (!known.includes(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${known.join(", ")})`)
   return {
@@ -715,6 +715,11 @@ export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string):
  */
 export function requestTimeoutFor(options: Pick<PlugboardOptions, "apps" | "requestTimeoutMs">, app: string | undefined): number {
   return (app === undefined ? undefined : appPolicy(options, app)?.requestTimeoutMs) ?? options.requestTimeoutMs
+}
+
+/** The option that set `requestTimeoutFor` for `app`, named in the 504 message (#257): the app's own, else the global one. */
+export function requestTimeoutOption(options: Pick<PlugboardOptions, "apps">, app: string | undefined): string {
+  return app !== undefined && appPolicy(options, app)?.requestTimeoutMs !== undefined ? `apps.${app}.requestTimeoutMs` : "requestTimeoutMs"
 }
 
 function parseUsage(value: unknown): UsageConfig {

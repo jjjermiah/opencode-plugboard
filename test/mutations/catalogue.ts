@@ -36,6 +36,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/http/per-app-sampling.test.ts"],
   },
   {
+    id: "P263-count-tokens-capped",
+    invariant: "#263",
+    file: "src/anthropic/route.ts",
+    find: "    const cap = path === COUNT_TOKENS ? undefined : appPolicy(host.options, auth.app)?.maxOutputTokens",
+    replace: "    const cap = appPolicy(host.options, auth.app)?.maxOutputTokens",
+    tests: ["test/http/per-app-output-cap.test.ts"],
+  },
+  {
+    id: "P257-timeout-names-global-option",
+    invariant: "#257",
+    file: "src/openai/route.ts",
+    find: "requestTimeoutOption(host.options, app))",
+    replace: "\"requestTimeoutMs\")",
+    tests: ["test/http/per-app-timeout.test.ts"],
+  },
+  {
     id: "P263-app-output-cap-raises",
     invariant: "#263",
     file: "src/openai/sampling.ts",
@@ -44,7 +60,7 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/http/per-app-output-cap.test.ts"],
   },
   {
-    id: "P263-messages-cap-after-parse",
+    id: "P263-messages-cap-removed",
     invariant: "#263",
     file: "src/anthropic/route.ts",
     find: "    const capped = cap !== undefined && isRecord(body) && typeof body.max_tokens === \"number\" && body.max_tokens > cap ? { ...body, max_tokens: cap } : body",

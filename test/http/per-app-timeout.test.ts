@@ -25,6 +25,55 @@ const chat = (key: string): SendInit => ({
 /** Answers after `ms`: longer than a short deadline, shorter than a long one. */
 const slowAnswer = (ms: number) => () => [{ wait: new Promise((resolve) => setTimeout(resolve, ms)) }, ev.text("late"), ev.finish()]
 
+const messagesFrom = (headers: Record<string, string>): SendInit => ({
+  method: "POST",
+  path: "/v1/messages",
+  headers,
+  body: { model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: "hi" }] },
+})
+const geminiFrom = (path: string, headers: Record<string, string>): SendInit => ({
+  method: "POST",
+  path,
+  headers,
+  body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] },
+})
+
+describe("#257 the deadline on the other front-ends, by their key forms", () => {
+  const GEMINI_PATH = "/v1beta/models/test%2Fecho:generateContent"
+  const hangingWithChatDeadline = async () => {
+    server = await startRoute({ caller: new FakeModelCaller(() => ["hang"]), options: { keys: KEYS, requestTimeoutMs: 60_000, apps: { chat: { requestTimeoutMs: 20 } } } })
+  }
+
+  test("Messages with x-api-key: the app's own deadline fires, named by its option", async () => {
+    await hangingWithChatDeadline()
+    const reply = await server!.send(messagesFrom({ "x-api-key": KEYS.chat }))
+    expect(reply.status).toBe(504)
+    expect(reply.json().error.message).toBe("Request timed out after 20 ms (option apps.chat.requestTimeoutMs)")
+  })
+
+  test("Messages with Authorization: Bearer: the same app deadline", async () => {
+    await hangingWithChatDeadline()
+    expect((await server!.send(messagesFrom({ authorization: `Bearer ${KEYS.chat}` }))).status).toBe(504)
+  })
+
+  test("Gemini with x-goog-api-key: the app's own deadline fires", async () => {
+    await hangingWithChatDeadline()
+    const reply = await server!.send(geminiFrom(GEMINI_PATH, { "x-goog-api-key": KEYS.chat }))
+    expect(reply.status).toBe(504)
+    expect(reply.json().error.message).toContain("apps.chat.requestTimeoutMs")
+  })
+
+  test("Gemini with the ?key= query: the app's own deadline fires", async () => {
+    await hangingWithChatDeadline()
+    expect((await server!.send(geminiFrom(`${GEMINI_PATH}?key=${KEYS.chat}`, {}))).status).toBe(504)
+  })
+
+  test("Gemini with a wrong key gets the global deadline and the 401, not a timeout", async () => {
+    await hangingWithChatDeadline()
+    expect((await server!.send(geminiFrom(GEMINI_PATH, { "x-goog-api-key": "k-wrong" }))).status).toBe(401)
+  })
+})
+
 describe("#257 apps.<name>.requestTimeoutMs", () => {
   test("an app with a short deadline times out before the global deadline would", async () => {
     // The global deadline is a minute; the chat app's 20 ms interrupts a call that never answers.
@@ -32,7 +81,7 @@ describe("#257 apps.<name>.requestTimeoutMs", () => {
     server = await startRoute({ caller, options: { keys: KEYS, requestTimeoutMs: 60_000, apps: { chat: { requestTimeoutMs: 20 } } } })
     const reply = await server.send(chat(KEYS.chat))
     expect(reply.status).toBe(504)
-    expect(reply.json().error).toMatchObject({ code: "timeout", message: "Request timed out after 20 ms (option requestTimeoutMs)" })
+    expect(reply.json().error).toMatchObject({ code: "timeout", message: "Request timed out after 20 ms (option apps.chat.requestTimeoutMs)" })
   })
 
   test("an app with a long deadline outlives the global one", async () => {

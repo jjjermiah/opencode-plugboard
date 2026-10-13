@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { parseOptions } from "../../src/config.js"
 import type { ModelRef, PlugGeneration } from "../../src/contract.js"
 import { appGeneration, dropRejected } from "../../src/openai/sampling.js"
-import { ev } from "../support/fixtures.js"
+import { ev, model } from "../support/fixtures.js"
 import { startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller } from "../support/model-caller.js"
 
@@ -68,6 +68,22 @@ describe("#264 apps.<name>.sampling on the wire", () => {
       body: { model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: "hi" }] },
     })
     expect(caller.call.request.generation.temperature).toBe(0.2)
+  })
+})
+
+describe("#264 a default the model rejects, on the wire", () => {
+  test("it is dropped and listed in x-plugboard-dropped-params, and the rest of the default still goes", async () => {
+    // opencode-go glm-5.3-flash takes only frequency_penalty 0: the app's 0.3 is dropped, its temperature is kept.
+    const caller = new FakeModelCaller(() => [ev.text("answer"), ev.finish()])
+    server = await startRoute({
+      caller,
+      catalog: [model("opencode-go", "glm-5.3-flash")],
+      options: { keys: KEYS, models: ["opencode-go/*"], apps: { bot: { sampling: { frequencyPenalty: 0.3, temperature: 0.2 } } } },
+    })
+    const reply = await server.send(chat(KEYS.bot, { model: "opencode-go/glm-5.3-flash" }))
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-dropped-params"]).toBe("frequency_penalty")
+    expect(caller.call.request.generation).toEqual({ temperature: 0.2 })
   })
 })
 

@@ -162,12 +162,12 @@ describe("readJsonBody", () => {
   test("a declared Content-Length over 32 MiB is a 413 before reading", async () => {
     const result = await read("{}", { "content-length": 32 * 1024 * 1024 + 1 }).catch(() => undefined)
     // The client lied about the length; the server answered 413 without waiting for the bytes.
-    expect(result).toEqual(new BodyError(413, "Request body too large"))
+    expect(result).toEqual(new BodyError(413, "Request body too large", "request_body_too_large"))
   })
 
   test("a chunked body that grows past 32 MiB is a 413", async () => {
     const big = Buffer.alloc(32 * 1024 * 1024 + 1, 0x20)
-    expect(await read(big, { "transfer-encoding": "chunked" })).toEqual(new BodyError(413, "Request body too large"))
+    expect(await read(big, { "transfer-encoding": "chunked" })).toEqual(new BodyError(413, "Request body too large", "request_body_too_large"))
   })
 })
 

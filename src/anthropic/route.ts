@@ -48,6 +48,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MESSAGES = "/v1/messages"
+/** The 400 `parseThinking` gives when the budget is not below `max_tokens` (src/anthropic/request.ts). */
+const BUDGET_REFUSAL = "thinking.budget_tokens: must be less than max_tokens"
 const COUNT_TOKENS = "/v1/messages/count_tokens"
 
 /** Paths this front-end owns, whatever the method. */
@@ -116,12 +118,18 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.
     // The app's output cap (#263) lowers `max_tokens` before it is parsed, so the thinking-budget rule (budget < max_tokens) refuses a
-    // cap that cannot hold the budget with the existing 400, and no other part of the request changes.
-    const cap = appPolicy(host.options, auth.app)?.maxOutputTokens
+    // cap that cannot hold the budget with the existing 400. A count never uses `max_tokens`, so the cap does not apply to it.
+    const cap = path === COUNT_TOKENS ? undefined : appPolicy(host.options, auth.app)?.maxOutputTokens
     const capped = cap !== undefined && isRecord(body) && typeof body.max_tokens === "number" && body.max_tokens > cap ? { ...body, max_tokens: cap } : body
     const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : capped
     const parsed = parseMessagesRequest(sized, host.options)
-    if (isPlugError(parsed)) return fail(parsed)
+    // A budget refused because the app's cap lowered `max_tokens` says so: the same 400, with the option named (#263).
+    if (isPlugError(parsed))
+      return fail(
+        capped !== body && parsed.message === BUDGET_REFUSAL
+          ? { ...parsed, message: `${BUDGET_REFUSAL}; apps.${auth.app}.maxOutputTokens (${cap}) lowers max_tokens` }
+          : parsed,
+      )
     const catalog = await scope.race(host.loadCatalog())
     const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
     if (isPlugError(ref)) return fail(ref)

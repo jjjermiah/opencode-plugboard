@@ -80,7 +80,14 @@ export interface RequestScope {
  * Establishes cancellation and the deadline. Call before the first `await` of a request: a socket
  * that is already gone aborts immediately, so abandoned work never starts. `graceMs` is for tests.
  */
-export function beginRequest(request: IncomingMessage, response: ServerResponse, timeoutMs: number, graceMs = DEADLINE_GRACE_MS): RequestScope {
+export function beginRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  timeoutMs: number,
+  graceMs = DEADLINE_GRACE_MS,
+  /** The option that set `timeoutMs`, named in the timeout error: `requestTimeoutMs`, or `apps.<name>.requestTimeoutMs` (#257). */
+  timeoutOption = "requestTimeoutMs",
+): RequestScope {
   const controller = new AbortController()
   const abort = (kind: RequestAborted["kind"]) => {
     if (!controller.signal.aborted) controller.abort(new RequestAborted(kind))
@@ -125,7 +132,7 @@ export function beginRequest(request: IncomingMessage, response: ServerResponse,
       status: 504,
       kind: "timeout",
       code: "timeout",
-      message: `Request timed out after ${timeoutMs} ms (option requestTimeoutMs)`,
+      message: `Request timed out after ${timeoutMs} ms (option ${timeoutOption})`,
     },
     race: (promise) => raceAbort(promise, signal),
     dispose,
@@ -148,7 +155,7 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     const declared = Math.max(0, Number(request.headers["content-length"]) || 0)
     if (declared > maxBodyBytes) {
       request.resume()
-      return reject(new BodyError(413, "Request body too large"))
+      return reject(new BodyError(413, "Request body too large", "request_body_too_large"))
     }
     if (signal.aborted) return reject(signal.reason)
     const budget = bodyBudget()
@@ -181,7 +188,7 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     }
     const onData = (chunk: Buffer) => {
       size += chunk.length
-      if (size > maxBodyBytes) return stop(new BodyError(413, "Request body too large"))
+      if (size > maxBodyBytes) return stop(new BodyError(413, "Request body too large", "request_body_too_large"))
       if (size > held && !charge(size - held)) return stop(busy())
       chunks.push(chunk)
     }

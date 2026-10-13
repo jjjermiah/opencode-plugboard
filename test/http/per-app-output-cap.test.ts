@@ -84,8 +84,10 @@ describe("#263 apps.<name>.maxOutputTokens on Chat Completions", () => {
 describe("#263 apps.<name>.maxOutputTokens on the other routes", () => {
   test("Responses: max_output_tokens is lowered to the cap, and a missing one is set", async () => {
     const caller = await route()
-    await server!.send(responses(KEYS.widget, { max_output_tokens: 9000 }))
+    const reply = await server!.send(responses(KEYS.widget, { max_output_tokens: 9000 }))
     expect(caller.call.request.generation.maxTokens).toBe(400)
+    // The echoed response object carries the cap the model got, not the caller's 9000.
+    expect(reply.json().max_output_tokens).toBe(400)
     await server!.send(responses(KEYS.widget))
     expect(caller.calls[1]!.request.generation.maxTokens).toBe(400)
   })
@@ -114,7 +116,21 @@ describe("#263 apps.<name>.maxOutputTokens on the other routes", () => {
     const caller = await route()
     const reply = await server!.send(messages(KEYS.widget, { max_tokens: 2000, thinking: { type: "enabled", budget_tokens: 1024 } }))
     expect(reply.status).toBe(400)
-    expect(reply.json().error.message).toBe("thinking.budget_tokens: must be less than max_tokens")
+    expect(reply.json().error.message).toBe("thinking.budget_tokens: must be less than max_tokens; apps.widget.maxOutputTokens (400) lowers max_tokens")
+    expect(caller.calls).toEqual([])
+  })
+
+  test("count_tokens is not refused by the cap: a count never uses max_tokens, so a budget the cap cannot hold still counts", async () => {
+    const caller = await route()
+    const count: SendInit = {
+      method: "POST",
+      path: "/v1/messages/count_tokens",
+      headers: bearer(KEYS.widget),
+      body: { model: "test/echo", messages: [{ role: "user", content: "hi" }], max_tokens: 2000, thinking: { type: "enabled", budget_tokens: 1024 } },
+    }
+    const reply = await server!.send(count)
+    expect(reply.status).toBe(200)
+    expect(reply.json()).toHaveProperty("input_tokens")
     expect(caller.calls).toEqual([])
   })
 

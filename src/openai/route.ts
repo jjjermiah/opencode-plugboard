@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, type Endpoint, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, requestTimeoutOption, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -490,7 +490,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (host.options.listen.trustProxy !== undefined) info.client = clientAddress(request, host.options.listen.trustProxy)
     metrics?.requestStarted()
     // The deadline is armed after the app is known, so an app's own `requestTimeoutMs` (#257) applies from the first await.
-    const scope = beginRequest(request, response, requestTimeoutFor(host.options, await requestApp(request)))
+    const app = await requestApp(request)
+    const scope = beginRequest(request, response, requestTimeoutFor(host.options, app), undefined, requestTimeoutOption(host.options, app))
     let outcome = "ok"
     let error: string | undefined
     try {
