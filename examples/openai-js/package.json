@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The OpenAI JS SDK against plugboard: S1 to S7 and the error paths. Pins from compat/js, as in the dated record.",
+  "description": "The OpenAI JS SDK against plugboard: S1 to S7 and the error paths. Pins from the 2026-10-11 record.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

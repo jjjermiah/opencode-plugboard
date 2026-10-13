@@ -74,4 +74,4 @@ The 2026-10-11 record under `runs/live/2026-10-11-3fcedc7/REPORT.md` predates th
 
 ## Historical record
 
-`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied from `compat/results/vercel-ai-sdk.md` without change. The `openai-default` failures it describes are superseded: `/v1/responses` is served now, and the live run `runs/live/2026-10-13-c97ac66` passes the same scenarios.
+`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied without change from the kit's record before the old kit was removed. The `openai-default` failures it describes are superseded: `/v1/responses` is served now, and the live run `runs/live/2026-10-13-c97ac66` passes the same scenarios.

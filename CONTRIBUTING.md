@@ -65,7 +65,7 @@ After every plugin change, run the pong gate from that document: a normal prompt
 
 ## Client checks
 
-The [`compat/`](compat/README.md) kit runs real OpenAI clients against a plugboard server. Use it when a change touches the wire format. Results there are dated evidence for a commit, so add a new record instead of editing an old one.
+The [client examples](examples/README.md) run real clients against a plugboard server, and their scripted runs are checked in CI. Use them when a change touches the wire format: rerun `bun examples/_harness/run.ts all --target scripted` and commit the diff. Live runs are dated evidence for a commit, so add a new record instead of editing an old one.
 
 ## Commits
 

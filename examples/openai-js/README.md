@@ -63,4 +63,4 @@ The tool-bot runner (`examples/tool-bot/run.ts`, the same SDK) reads its S2 roun
 
 ## Historical record
 
-`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied from `compat/results/openai-js.md` without change. It predates the `models.retrieve` fix and the usage fix in [#10](https://github.com/jjjermiah/opencode-plugboard/issues/10).
+`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied without change from the kit's record before the old kit was removed. It predates the `models.retrieve` fix and the usage fix in [#10](https://github.com/jjjermiah/opencode-plugboard/issues/10).

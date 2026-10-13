@@ -61,4 +61,4 @@ None. Both targets pass every scenario.
 
 ## Historical record
 
-`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied from `compat/results/openai-python.md` without change. It predates the `models.retrieve` fix.
+`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied without change from the kit's record before the old kit was removed. It predates the `models.retrieve` fix.

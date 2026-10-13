@@ -11,7 +11,7 @@ The release script writes the full story into `CHANGELOG.md` as a collapsed `<de
 
 ## Everyday flow
 
-1. Keep `[Unreleased]` in `CHANGELOG.md` current. The release notes are that text, so write it for users. Fill in `compat/results/release-candidate.md` (see [development.md](development.md)). Update the pinned version (`opencode-plugboard@x.y.z`) in `README.md` and `docs/clients/any-app.md`; the release script does not touch them.
+1. Keep `[Unreleased]` in `CHANGELOG.md` current. The release notes are that text, so write it for users. Fill in `examples/_release/release-candidate.md` (see [development.md](development.md)). Update the pinned version (`opencode-plugboard@x.y.z`) in `README.md` and `docs/clients/any-app.md`; the release script does not touch them.
 2. Pick a title: short and creative, 2 to 5 words, at most 40 characters, no trailing period ("No Awkward Silences", "Claude Code, Any Brain"). Every release has one.
 3. From a clean `main` that equals `origin/main`: `bun run release 0.3.0 --title "Your Title" --push`. Add `--dry-run` first to see the diff and the plan; it changes nothing and only warns about git state.
 4. The script opens a pull request for the release, watches every check on it, and merges it once they all pass. It waits for CI on the merge commit and tags it only when that CI passes. The tag starts the "Publish" run, which checks the gates, publishes to npm, attests the tarball and creates the GitHub release. The script then watches the release for you (see below); add `--no-watch` to skip that. If a check fails, the script stops with the pull request open and nothing merged or tagged.

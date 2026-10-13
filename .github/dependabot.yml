@@ -9,17 +9,51 @@ updates:
         patterns: ["@opencode/*", "effect"]
     open-pull-requests-limit: 5
 
-  - package-ecosystem: npm
-    directory: /compat/js
+  # One entry per example with a lockfile, and one for the remaining Python checks (compat/py).
+  - package-ecosystem: uv
+    directory: /compat/py
     schedule:
       interval: weekly
-    groups:
-      opencode-host:
-        patterns: ["@opencode/*", "effect"]
     open-pull-requests-limit: 5
 
   - package-ecosystem: uv
-    directory: /compat/py
+    directory: /examples/openai-python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /examples/langchain-python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /examples/pydantic-ai
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /examples/openai-js
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /examples/vercel-ai-sdk
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /examples/langchain-js
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /examples/tool-bot
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
