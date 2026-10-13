@@ -20,7 +20,7 @@ ChatClient client = new(model: "fast", credential: new ApiKeyCredential(key), op
 // 1. Text. `fast` is an alias from the plugboard `aliases` option.
 ChatCompletion text = client.CompleteChat(
     [new UserChatMessage("Reply with exactly: pong")],
-    new ChatCompletionOptions { MaxOutputTokenCount = 1024 }); // reasoning model: 1024 output tokens
+    new ChatCompletionOptions { MaxOutputTokenCount = 1024 }); // room for reasoning models to answer
 Console.WriteLine($"text: {text.Content[0].Text}");
 
 // 2. Stream.

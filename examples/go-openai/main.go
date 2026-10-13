@@ -36,7 +36,7 @@ func main() {
 	// 1. Text.
 	text, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:               model,
-		MaxCompletionTokens: 1024, // reasoning model: max_completion_tokens, not max_tokens
+		MaxCompletionTokens: 1024, // room for reasoning models to answer
 		Messages: []openai.ChatCompletionMessage{
 			{Role: openai.ChatMessageRoleUser, Content: "Reply with exactly: pong"},
 		},

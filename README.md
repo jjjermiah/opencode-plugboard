@@ -485,8 +485,8 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Haystack | [haystack][client-haystack] | pass against the scripted fake: pipeline text, stream, tool call, tool round trip |
 | LlamaIndex | [llamaindex][client-llamaindex] | pass against the scripted fake: text, stream, tool call, tool round trip; `OpenAILike` (the `OpenAI` class rejects `fast`) |
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
-| Go (go-openai) | [go-openai][client-go-openai] | build only: example compiles against go-openai v1.43.0; not run against plugboard yet (dev server down) |
-| .NET (openai-dotnet) | [openai-dotnet][client-openai-dotnet] | build only: example builds against the OpenAI NuGet 2.14.0; not run against plugboard yet (dev server down) |
+| Go (go-openai) | [go-openai][client-go-openai] | pass: text, stream and a tool round trip on `fast` (go-openai v1.43.0) |
+| .NET (openai-dotnet) | [openai-dotnet][client-openai-dotnet] | pass: text, stream and a tool round trip on `fast` (OpenAI NuGet 2.14.0) |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
 | DSPy | [dspy][client-dspy] | pass: Predict, ChainOfThought, typed output |

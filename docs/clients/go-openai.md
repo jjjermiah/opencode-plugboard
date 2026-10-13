@@ -1,6 +1,6 @@
 # Go (go-openai)
 
-Verified: build only. `examples/go-openai` compiles with `go build` against `github.com/sashabaranov/go-openai` v1.43.0 (2026-10-12). Not run: the dev server at `127.0.0.1:4010` refused connections that day, so the text, stream and tool calls have not been driven against plugboard. The config was checked against the go-openai README (`DefaultConfig`, `BaseURL`), <https://github.com/sashabaranov/go-openai>.
+Verified: run, 2026-10-13. `examples/go-openai` (go-openai v1.43.0, Go 1.27.2) ran twice against plugboard with model `fast`: a text call, a stream and one tool round trip all passed. The config was checked against the go-openai README (`DefaultConfig`, `BaseURL`), <https://github.com/sashabaranov/go-openai>. Not in `docs/compatibility.md` yet: there is no scripted test for it.
 
 go-openai is the community Go client for the OpenAI API. It is not an official OpenAI library. It covers Chat Completions, the Responses API, streaming and tool calls.
 
@@ -43,6 +43,6 @@ Not exercised: the Responses API (`CreateResponse`, which go-openai also has) an
 
 ## Quirks
 
-- Reasoning models need `max_completion_tokens`, not `max_tokens`. The example sets `MaxCompletionTokens: 1024`. go-openai checks reasoning model ids client-side for the deprecated field.
+- The example sets `MaxCompletionTokens: 1024`, so a model that spends tokens on reasoning (such as `fast`, which points at a reasoning model) still has room to answer. go-openai rejects the deprecated `MaxTokens` field client-side only for real OpenAI reasoning model ids (`o1`, `o3`, `o4`, `gpt-5` and later), never for an alias like `fast`, and plugboard accepts either field.
 - `NewClientWithConfig` takes the whole config. Changing `BaseURL` after `NewClient` is not possible; build the config first.
 - The README's quick start uses the Responses API. Plugboard serves `/v1/responses` too ([Responses API](../responses.md)), but this page uses Chat Completions because that is the path the example checks.
