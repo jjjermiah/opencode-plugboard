@@ -55,6 +55,7 @@ bun examples/_harness/run.ts <example>|all --target scripted|live [--docker]
 - `scripted` starts `scripted-server.ts` in the same process. Output is byte-identical between runs; CI fails on a diff.
 - `live` attaches to `PLUGBOARD_BASE_URL` (default `http://127.0.0.1:4010/v1`) with `PLUGBOARD_KEY`. Only on the isolated server from [docs/development.md](../../docs/development.md), never your everyday OpenCode. It writes `runs/live/<date>-<shortsha>/`, a new directory every time, and never rewrites one. `PLUGBOARD_COMMIT` overrides the commit name; otherwise the commit is the HEAD of `PLUGBOARD_CHECKOUT`. The recorded `plugboard.version` is that commit's `package.json` version (`git show <commit>:package.json`), not the checkout's working tree (#335). The server exposes no package or OpenCode version, so `opencode` is recorded as `null` with a note in `summary.md`. A commit the checkout does not have stops the run before the runner starts.
 - `all` runs every example with a runner, skipping `smoke-*` (the harness's own self-tests, run by name) and Docker examples (a compose file in the directory) unless `--docker` is given.
+- Every run passes the runner `PLUGBOARD_TARGET` (`scripted` or `live`). A gap can differ by target, so a runner may name gaps only for one target, as the n8n runner does for S6.
 - `--docker` is for runners that start containers (Open WebUI, n8n). The capture proxy then listens on `0.0.0.0` for the length of the run, and the runner gets `PLUGBOARD_CONTAINER_URL` (`http://host.docker.internal:<port>`), the address a container uses to reach it. The proxy forwards the caller's key and never holds one, but run it only on a machine you trust.
 
 The run exits 1 when a required scenario fails. A verdict is `fail` on a required failure, `partial` on a gap or an optional failure, `pass` otherwise.
@@ -80,7 +81,7 @@ Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `trans
 
 1. Create `examples/<client>/` with its own dependencies pinned (`pyproject.toml` + `uv.lock`, or `package.json` + `bun.lock`).
 2. Write one scenario file per scenario the client supports, `run(client, model)` returning the observations the checks name (see `scenarios.json` for the names). Put the copyable part between `# region snippet` / `# endregion snippet` (Python, shell) or `// #region snippet` / `// #endregion snippet` (TypeScript). Give the file a `__main__` / `import.meta.main` block so it runs alone.
-3. Write the runner: `run.py` (import `harness` from `examples/_harness/py`), `run.ts` (import from `examples/_harness/ts/harness.ts`), or `run.sh`. Call `emit_client` / `emitClient` once, then `run_all` / `runAll` with one function per scenario id, and `na` (or `gaps`) for what the client cannot do.
+3. Write the runner: `run.py` (import `harness` from `examples/_harness/py`), `run.ts` (import from `examples/_harness/ts/harness.ts`), or `run.sh`. Call `emit_client` / `emitClient` once, then `run_all` / `runAll` with one function per scenario id, and `na` (or `gaps`) for what the client cannot do. Gap keys are `id`, `id|model` or `id|variant`; a gap covers the whole row, so its note names the known check.
 4. Run `bun examples/_harness/run.ts <client> --target scripted` and run it again: `git diff --exit-code` must pass.
 
 ## When a run is stale
