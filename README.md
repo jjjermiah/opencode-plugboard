@@ -505,6 +505,8 @@ One page per client, with the config, a chat, a tool call, structured output and
 | promptfoo | [promptfoo][client-promptfoo] | pass against the scripted fake: `promptfoo eval` 2/2 (text, tool call); model-graded assertions need a plugboard grader |
 | smolagents | [smolagents][client-smolagents] | partial against the scripted fake: text, stream, tool call pass; tool round trip fails on the fake (scripted reply); needs `smolagents[openai]` |
 | Mastra | [mastra][client-mastra] | pass against the scripted fake: text, stream, tool call, tool round trip; needs `plugboard/fast`, not bare `fast` |
+| Dify | [dify][client-dify] | docs only, not run yet (self-hosted web app); OpenAI-API-compatible provider, Chat mode, Tool Call off by default |
+| Home Assistant (Extended OpenAI Conversation) | [home-assistant-extended-openai][client-home-assistant-extended-openai] | docs only, not run yet (custom component); Base Url field, one default tool |
 | Haystack | [haystack][client-haystack] | pass against the scripted fake: pipeline text, stream, tool call, tool round trip |
 | LlamaIndex | [llamaindex][client-llamaindex] | pass against the scripted fake: text, stream, tool call, tool round trip; `OpenAILike` (the `OpenAI` class rejects `fast`) |
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
@@ -618,6 +620,8 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-mastra]: https://jjjermiah.github.io/opencode-plugboard/clients/mastra
 [client-smolagents]: https://jjjermiah.github.io/opencode-plugboard/clients/smolagents
 [client-promptfoo]: https://jjjermiah.github.io/opencode-plugboard/clients/promptfoo
+[client-dify]: https://jjjermiah.github.io/opencode-plugboard/clients/dify
+[client-home-assistant-extended-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/home-assistant-extended-openai
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-go-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/go-openai
 [client-openai-dotnet]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-dotnet

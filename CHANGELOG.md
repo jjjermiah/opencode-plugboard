@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.30.0] - 2026-10-13: Out of Sight
+
+**Full diff:** [v0.29.0...v0.30.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.29.0...v0.30.0)
+
 ### Added
 
 - **Per-app request deadline** ([#257](https://github.com/jjjermiah/opencode-plugboard/issues/257)). `apps.<name>.requestTimeoutMs` (since 0.30.0) gives one app its own deadline in place of the global `requestTimeoutMs`, higher or lower, so a batch job and a chat widget can differ. The timeout error is the same as today. Unset, the global value applies unchanged.
@@ -31,6 +37,289 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - **CrewAI client page and example** ([#231](https://github.com/jjjermiah/opencode-plugboard/issues/231)). `docs/clients/crewai.md` and `examples/crewai` run a text call, a stream and a crew task with one tool call against plugboard with model `fast`.
 - **AutoGen client page and example** ([#230](https://github.com/jjjermiah/opencode-plugboard/issues/230)). `docs/clients/autogen.md` and `examples/autogen` use the classic `autogen` 0.14.1 `config_list` API. A text call, a stream and a two-agent tool round pass on the OpenAI route with model `fast`. The Anthropic route is not run yet.
 - **Semantic Kernel client page and example** ([#229](https://github.com/jjjermiah/opencode-plugboard/issues/229)). `docs/clients/semantic-kernel.md` and `examples/semantic-kernel` run a text call, a stream and a plugin function call against plugboard with model `fast`, on the Python route.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (17 commits)</summary>
+
+#### Features
+
+**feat(session): opt-in history.hidden parents app request sessions under one per-app parent** ([`18eb180`](https://github.com/jjjermiah/opencode-plugboard/commit/18eb180fe8a51344ff038536ae41e8c71183a777))
+
+OpenCode's session lists (TUI, app home, session switcher) show root sessions only. Every plugboard request is a session, so an API app fills those lists with requests nobody opens. Issue #337 asks for an opt-in way to keep them stored and reachable but out of the lists.
+
+What changed:
+- Option history.hidden (global) and apps.<name>.history.hidden (per app, overrides the global one; an explicit false keeps an app visible). Default off, so today's top-level sessions are unchanged.
+- When on, each request session is a child of one parent titled "plugboard: <app>". The parent is the app-scope prompt-cache anchor: same record (affinity/<app>/anchor/app/), same creation, same single recreate when OpenCode reports the parent deleted (affinity.anchor_recreated).
+- A promptCache app-scope anchor and history.hidden on one app share that parent, so the provider cache key stays stable.
+- promptCache scope "user" with history.hidden on the same app is refused at config load. The hidden parent is one per app; it cannot also be the per-user anchor without merging users' cache keys.
+- If the app is at maxAnchors, the request runs top-level and the warn line history.hidden_parent_unavailable is written.
+
+Decisions:
+- Reuse the anchor store rather than a second parent store, so recovery, the cap and the storage keys stay one code path.
+- Hidden is kept out of HistoryLimits pruning fields: limitsFor does not copy it and it starts no sweep (the sweep still indexes the child sessions).
+- Existing sessions are not moved, because OpenCode cannot reparent one.
+- The parent title is "plugboard: <app>" only for the hidden parent. A promptCache-only anchor keeps "plugboard anchor: <app>", so the existing affinity tests and anything reading that title are unchanged.
+
+Rejected:
+- Hiding by filtering in OpenCode or in the app: OpenCode has no hidden flag and no plugin call sets one (see the issue's research).
+- Letting the hidden parent win over a per-user anchor: silently merges users' provider cache keys, which is the thing promptCache user scope exists to prevent.
+
+Not verified:
+- Live on the dev server. It runs main, so this branch cannot be loaded there. The parentID is proven on the fake host in test/session/hidden.test.ts.
+- The settings workspace view still lists children (known leak, documented).
+- The iOS app is not in this repo and was not checked.
+
+Validation:
+- bun run typecheck: clean.
+- bun test: 2525 tests, 2399 pass, 126 skip (live), 0 fail.
+- test gates --ratchet: all floors met; session 319 -> 325, unit 1200 -> 1210 (floors raised, committed in .github/floors).
+- bun run coverage-manifest: 67 covered, 0 gaps.
+- check-pack and smoke-pack: ok.
+- bun run docs:build: complete.
+- examples harness scripted: pass, git diff examples/ empty.
+- bun run mutations: 63 of 63 killed, including I30-hidden-off-still-top-level.
+
+Refs #337
+
+**feat(examples): runnable n8n example with scripted and live runs** ([`dc8af3f`](https://github.com/jjjermiah/opencode-plugboard/commit/dc8af3fb348aa6f0e46be4fc6cd3776f606aba68))
+
+examples/n8n/ now has a bun runner (run.ts) that starts the n8n 2.42.6 container, creates an owner, a public API key and an OpenAI credential pointed at the capture proxy, imports and activates the workflows, and runs each scenario through its webhook. The observations come from the webhook answer and the execution's run data (GET /api/v1/executions/{id}): the model's finish reason and token usage from the chat model node, and the tool call from the AI Agent's run metadata. Each scenario has a copyable file (chat, tools, stream, stream_tools, image, structured, models) with a region snippet. E1 and E2 are n/a: n8n shows plugboard's message and LangChain's error class, not the error codes invalid_api_key and model_not_found.
+
+The workflows are the old compat/docker/n8n JSON, copied unchanged except s1-responses-default.json, whose model is now read from the webhook body like the others (it was fixed to fast, and S1 runs every model). The 2026-10-11 record is migrated byte-identical to runs/live/2026-10-11-f351307/REPORT.md; compat/ is not touched.
+
+S1 runs twice: chat (Use Responses API off, the workflows' setting) and responses (the node's default). The responses path answers correctly through plugboard's /v1/responses, but n8n records no finish reason and only an estimated usage, so that variant is a gap (issue 343). S6 is a gap on the scripted target only: n8n's Structured Output Parser needs the output wrapper that the live model writes, and the shared scripted answer has none (issue 344). Changing the shared answer would change other clients' transcripts, so that stays for a later change.
+
+The harness changes are small. PLUGBOARD_TARGET is passed to runners, because a gap can differ by target. A gap key may name a variant (id|variant), so the Responses gap does not touch the chat variant.
+
+Validation: scripted (bun examples/_harness/run.ts n8n --target scripted --docker) gives verdict partial, with every required scenario pass or gap and E1 and E2 n/a. Two runs are identical (sha256 of every file). Live (same command with --target live, against the isolated dev server at plugboard b824d17) gives verdict partial, with the same single gap as scripted and S6 passing. Recorded in runs/live/2026-10-13-b824d17 with a REPORT.md. bun run typecheck passes, the examples unit tests pass, and bun examples/_harness/run.ts all --target scripted exits 0 with no file changed under any other example. The compat key appears in no file under examples/n8n.
+
+Not verified: the n8n UI, Chat Hub, memory sub-nodes, parallel tool calls, reasoning_effort and extra body. The sampling-option (S8) and JSON-mode (S6b) workflows are kept in workflows/ but are not scenarios here.
+
+Closes #184
+
+#### Fixes
+
+**fix(examples): n8n review fixes: execution ids, signal cleanup, live record** ([`aa6ebbf`](https://github.com/jjjermiah/opencode-plugboard/commit/aa6ebbf4dbfa6d7f1eeeb8a61b523751ed746028))
+
+A review of #346 found that lastExecution could read the previous run's execution. It took the newest execution after the webhook answered, but n8n saves a run after it answers, so the previous scenario's run (same workflow, next model, or S3 then S4) could still be the newest, and it returned at once because that run was finished. Now invoke() reads the newest execution id before the webhook call and waits for an execution with a larger id that has a terminal status. An empty list is an error, not a poll on /executions/undefined.
+
+The container and its volume are removed on SIGINT and SIGTERM as well as at the end of the run, because finally does not run on a signal. The volume holds the plugboard key n8n stores in its credential.
+
+The Responses section of the README now says only plain chat was run on that path, and advises leaving Use Responses API off, as docs/clients/n8n.md does. The README no longer links to compat/; it names the migrated record. It also says a gap covers the whole row, because the harness has no per-check gaps. The issues #343 and #344 say the same.
+
+The Python harness (py/harness.py) accepts the id|variant gap key that the TypeScript one does, and the harness README documents PLUGBOARD_TARGET and the gap key forms.
+
+The live record for b824d17 reported plugboard 0.27.0, but that came from a working tree on another branch, not from the commit. Its three version labels are corrected by hand to 0.28.0 and its REPORT.md says so. A new live run is recorded in runs/live/2026-10-13-b92fb6f (plugboard 0.29.0, the main checkout's HEAD when the run started): verdict partial, with the S1 Responses gap as the only gap, and S6 passing live. Which code the dev server on :4010 ran is not verified, because its status endpoint reports no commit.
+
+Validation: the scripted run was made twice (bun examples/_harness/run.ts n8n --target scripted --docker) and the two outputs are identical. bun run typecheck passes; the examples unit tests pass (24); bun examples/_harness/run.ts all --target scripted exits 0 with no change outside examples/n8n and the harness docs. The compat key appears in no file under examples/n8n.
+
+SIGTERM was tested: the runner was blocked after its container started, got SIGTERM, exited 143, and left no container and no volume. Not verified: which code the dev server runs, since its status endpoint reports no commit.
+
+Refs #184
+
+#### Docs
+
+**docs(docs): add paperless-ai self-hosted page and example** ([`2cba6c9`](https://github.com/jjjermiah/opencode-plugboard/commit/2cba6c90ffd481afbf9f5179e3b1ee655154eb3c))
+
+Adds a self-hosted page for paperless-ai, a runnable example, and the index, sidebar, examples README and CHANGELOG rows for them. The page records what works through plugboard: text suggestions and chat, with no vision and no embeddings.
+
+What: docs/self-hosted/paperless-ai.md, examples/self-hosted/paperless-ai (compose file, .env.example, README), the paperless-ai row in docs/self-hosted.md, a sidebar entry, an examples/README row and one CHANGELOG bullet.
+
+Why: #243 asks which paperless-ai features work through plugboard. Checked at upstream d2fda69, the current main head. The custom provider (services/customService.js) sends a text-only chat.completions call. It fetches the document thumbnail and caches it, but never puts it in the request, so no image reaches plugboard. Its RAG index is built locally in main.py (paraphrase-multilingual-MiniLM-L12-v2 and a ms-marco cross-encoder through sentence-transformers), so plugboard needs no embeddings or rerank route. Chat is text, streamed.
+
+Decisions: the example publishes the web UI on 127.0.0.1 only. The upstream compose file publishes on all interfaces, and the setup route is open until setup is done. The example keeps the upstream cap_drop and security_opt. Provider settings come from .env through the compose env_file. dotenv does not overwrite an existing variable, so a value changed in the web UI is ignored while .env sets it. The page documents this and the example README says to edit .env. The app is not changed.
+
+Rejected: a vision alias (the app never sends images). Documenting the upstream rewrite (it is not on main).
+
+Validation: bun run docs:build passes. The example is not run: no live paperless-ai instance was started, so the acceptance check in #243 (a live suggestion through plugboard) is still open. Every claim cites upstream source at d2fda69. The page says "docs-verified, not run".
+
+Refs #243
+
+**docs(docs): add LLM Vision self-hosted page** ([`ce3e84d`](https://github.com/jjjermiah/opencode-plugboard/commit/ce3e84dca49d362c15f7dcdc1b6e37574c80d46a))
+
+Adds a self-hosted page for LLM Vision for Home Assistant, plus its index, sidebar and CHANGELOG rows. The page records that vision works through the Custom OpenAI provider, and that the LocalAI provider cannot be used with plugboard keys.
+
+What: docs/self-hosted/llm-vision.md, the LLM Vision row in docs/self-hosted.md, a sidebar entry and one CHANGELOG bullet. No example: the integration is configured in the Home Assistant UI, not by env or compose.
+
+Why: #247 asks whether LLM Vision can run its image analysis through plugboard, and which image form it sends. Checked at upstream b81d626, the head of main on 2026-09-17. Its Custom OpenAI step (custom_openai in config_flow.py) takes an API key sent as a Bearer token and a full endpoint URL. The OpenAI provider (providers.py) sends images as data:image/jpeg;base64 URLs. It sends no http(s) image URL, so the remoteImages option can stay off. Plugboard accepts max_completion_tokens and json_schema, and checks each data: image's signature (PNG, JPEG, GIF or WebP). The media encoder saves snapshots as JPEG, so they pass.
+
+Decisions: the page points users at Custom OpenAI and names the vision alias. It says not to use LocalAI. That provider builds its request with an empty header set (providers.py, around line 1601), so the plugboard key is never sent and plugboard refuses the call once keys are set. The page states this from source and does not change the integration.
+
+Rejected: a live example (the setup is in the HA UI, so it cannot be a file). Documenting the text-only path: #237 owns it.
+
+Validation: bun run docs:build passes. The page is not run: no Home Assistant instance was set up against plugboard, so the acceptance check in #247 (a snapshot analysed through a vision alias, and whether remoteImages was needed) is still open. The sources were read at b81d626. The page says "docs-verified, not run".
+
+Refs #247
+
+**docs(docs): add Onyx self-hosted page** ([`a4f77a5`](https://github.com/jjjermiah/opencode-plugboard/commit/a4f77a5e125e25984de4916065166ad8a405a162))
+
+Adds a self-hosted page for Onyx, plus its index, sidebar and CHANGELOG rows. The page records that Onyx can use plugboard for chat only: its indexing and search need an embedding model, and plugboard serves none.
+
+What: docs/self-hosted/onyx.md, the Onyx row in docs/self-hosted.md, a sidebar entry and one CHANGELOG bullet. No example: Onyx's LLM provider is set in its admin UI, so there is no env file or compose change to ship.
+
+Why: #245 asks which model roles Onyx needs, and which ones plugboard can serve. Checked at upstream e89ebea, the head of main on 2026-10-13. Onyx's OpenAI-Compatible provider (openai_compatible) sends chat through LiteLLM's openai route, with the base coerced to /v1 (multi_llm.py) and a placeholder key when none is set. Its model list comes from <base>/models (_get_openai_compatible_server_response in api.py). Plugboard's /v1/models lists the aliases for the calling app's key (src/openai/route.ts passes the app, and listAvailableModels narrows the list). The default embedding model is nomic-ai/nomic-embed-text-v1 on Onyx's own model server, and the cloud embedding providers all need their own endpoint. The LiteLLM embedding path posts to whatever URL it is given and reads data[].embedding, so plugboard cannot serve it either.
+
+Decisions: the page sets plugboard as the LLM only and names the embedding options outside plugboard (keep the local default, a cloud provider, or a gateway with /v1/embeddings). The reranker is optional and off by default in the env config. Whether the admin defaults add one was not traced, and the page says so.
+
+Rejected: an example directory (the setup is the admin UI). Claiming the UI labels verbatim: the page names the admin routes and the form fields from the source, and does not quote button text.
+
+Validation: bun run docs:build passes. The page is not run: no Onyx instance was set up against plugboard, so the acceptance check in #245 (the page names each role and its provider, and a live answer through plugboard) is still open. Every claim cites upstream source at e89ebea. The page says "docs-verified, not run".
+
+Refs #245
+
+**docs(docs): add RAGFlow self-hosted page** ([`1b42d3b`](https://github.com/jjjermiah/opencode-plugboard/commit/1b42d3b148bad17fd3e32f59ea95ef9a42b6ba1b))
+
+Adds a self-hosted page for RAGFlow, plus its index, sidebar and CHANGELOG rows. The page records that plugboard can be the LLM for RAGFlow's OpenAI-API-Compatible provider. Dataset embeddings and an optional reranker need another provider.
+
+What: docs/self-hosted/ragflow.md, the RAGFlow row in docs/self-hosted.md, a sidebar entry and one CHANGELOG bullet. No example: RAGFlow keeps model providers in its web UI, so there is no env file or compose change to ship.
+
+Why: #250 asks which RAGFlow roles plugboard can serve. Checked at upstream ae1d8fb, the head of main on 2026-10-13. The provider's URL map (conf/models/openai-api-compatible.json) sends chat to chat/completions, embeddings to embeddings and rerank to rerank, all under the base URL. The chat driver joins the base to chat/completions with a slash (openai_api_compatible.go). So the base must end in /v1, which the docs also say to check. Dataset creation needs an embedding model: the docs say so (dataset_list_and_creation.md) and the embedding setting rejects an empty embd_id (internal/service/dataset/embedding.go). Retrieval uses a rerank model only when one is set (chunk.go).
+
+Decisions: the page sets plugboard as the chat model only. It names the embedding and rerank providers as needing another endpoint, and it does not suggest one. It tells users to leave Thinking off for the plugboard alias: the driver then adds a thinking object or chat_template_kwargs (vllm.go), and plugboard's handling of those fields was not checked. It also warns that auto-listed models are filtered by name-based type inference, so the alias may need adding by hand.
+
+Rejected: an example directory (the setup is the web UI). Quoting UI button text (the page gives the menu path and the field names from the docs).
+
+Validation: bun run docs:build passes. The page is not run: no RAGFlow instance was set up against plugboard, so the acceptance check in #250 (a document uploaded, chunked and answered, with plugboard as the LLM and a separate embedding provider recorded) is still open. Every claim cites upstream source or docs at ae1d8fb. The page says "docs-verified, not run".
+
+Refs #250
+
+**docs: add Rust (async-openai) client page and example** ([`e1fa8da`](https://github.com/jjjermiah/opencode-plugboard/commit/e1fa8da52f91adab1e8a3e3df0c5f0e5566df5bd))
+
+Adds docs/clients/async-openai.md, examples/async-openai (a cargo binary with a text call, a stream and one tool round trip), a Clients sidebar row, a README client-table row, an examples/README row and a CHANGELOG bullet.
+
+Issue #235 says OPENAI_API_BASE is the env var. Checked in async-openai 0.42.2 src/config.rs: the crate reads OPENAI_BASE_URL. The page and the example set the base with with_api_base instead of relying on either env var. Docs: https://docs.rs/async-openai/latest/async_openai/config/struct.OpenAIConfig.html
+
+Acceptance in #235 is met: the client answers and streams through plugboard, and the page is in the README client table. The automated fake-server test in the issue's proposed deliverables is not written here, and the page is not in docs/compatibility.md.
+
+Validation:
+- cargo build in examples/async-openai (async-openai 0.42.2, feature chat-completion, cargo 1.98.1): clean after cargo fmt.
+- Live run against the dev server 127.0.0.1:4010, model fast, compat key, 2026-10-13: text "pong"; stream "1, 2, 3" (2 text deltas); tool call get_weather({"city":"Lisbon"}) then a final answer that uses the tool result. Exit 0.
+- bun run docs:build: pass.
+
+Not verified: Responses API and structured output.
+
+Closes #235
+
+**docs: add CrewAI client page and example** ([`5b39084`](https://github.com/jjjermiah/opencode-plugboard/commit/5b3908469d701495cce8b5d1d44620187b67812f))
+
+Adds docs/clients/crewai.md, examples/crewai/crew.py (a PEP 723 script, run with uv run: a text call, a stream and a crew task that must call one tool), a Clients sidebar row, a README client-table row, an examples/README row and a CHANGELOG bullet.
+
+Acceptance in #231 is met: a crew completes a task with a tool call through plugboard, and the page is in the README client table. Closes #231.
+
+The page checks the config against the CrewAI LLM docs (https://docs.crewai.com/en/concepts/llms). It uses the native OpenAI path (model openai/fast, base_url, api_key). The Anthropic route with custom_openai=True is not run here, and structured output is not exercised.
+
+Validation:
+- uv run crew.py in examples/crewai, crewai 1.15.27, against the dev server 127.0.0.1:4010, model fast, compat key, 2026-10-13: text "pong"; stream "1, 2, 3"; tool calls ['Lisbon']; crew answer names sunny, 24 C. Exit 0.
+- Raw SSE check: 3 data events from plugboard for a stream request. CrewAI reported 1 non-empty chunk event; the page says so.
+- bun run docs:build: pass.
+
+Closes #231
+
+**docs: add AutoGen client page and example (OpenAI route)** ([`42b86a1`](https://github.com/jjjermiah/opencode-plugboard/commit/42b86a1ff3783cd4c5a953b6a41d99b29f4a4b06))
+
+Adds docs/clients/autogen.md, examples/ag2/chat.py (a PEP 723 script, run with uv run: a text call, a stream and a two-agent chat in which the assistant calls one tool), a Clients sidebar row, a README client-table row, an examples/README row and a CHANGELOG bullet.
+
+Package choice: #230 says "autogen or ag2". The classic config_list / ConversableAgent API is in autogen 0.14.1 on PyPI. ag2 1.x (module ag2) is a redesigned API with no ConversableAgent, so the example and page pin autogen.
+
+Refs #230. Acceptance is only partly met: the issue asks for a two-agent conversation with a tool call on both the OpenAI and Anthropic routes. Only the OpenAI route is run here, so the issue stays open. The page and README say "partial".
+
+Validation:
+- uv run chat.py (autogen 0.14.1, Python 3.13) against the dev server 127.0.0.1:4010, model fast, compat key, 2026-10-13: text "pong"; stream "1, 2, 3"; two-agent tool round: get_weather(Lisbon) executed, assistant final answer "sunny ... 24°C" from the tool result. The run stops on Maximum turns (4) after the answer; the script's exit code is 0.
+- Config checked against the installed LLMConfig and ConversableAgent signatures in autogen 0.14.1.
+- bun run docs:build: pass.
+
+Not verified: Anthropic Messages route (api_type anthropic); the scripted fake-server test from the issue.
+
+**docs: add Semantic Kernel client page and example (Python)** ([`08479c5`](https://github.com/jjjermiah/opencode-plugboard/commit/08479c5ea269af0bc550a9abae6fb7e4b3f74657))
+
+Adds docs/clients/semantic-kernel.md, examples/semantic-kernel/chat.py (a PEP 723 script, run with uv run: a text call, a stream and a plugin function call through automatic function calling), a Clients sidebar row, a README client-table row, an examples/README row and a CHANGELOG bullet.
+
+Acceptance in #229 is met: a Semantic Kernel plugin call round-trips through plugboard, and the page is in the README client table. Closes #229.
+
+Scope: the Python route only. The .NET route (AddOpenAIChatCompletion with an endpoint) is documented from the issue and not run. The README row says so.
+
+Validation:
+- uv run chat.py (semantic-kernel 1.45.0, Python 3.13) against the dev server 127.0.0.1:4010, model fast, compat key, 2026-10-13: text "pong"; stream "1, 2, 3" (one non-empty content update); plugin calls ['Lisbon']; tool answer "sunny ... 24°C" from the plugin result. Exit 0.
+- bun run docs:build: pass.
+
+Not verified: the .NET route; structured output; the Responses-API agent.
+
+**docs: add Spring AI client page (docs-verified, not run)** ([`89625b6`](https://github.com/jjjermiah/opencode-plugboard/commit/89625b63645de6706369cfb159b0603df41f5a27))
+
+Adds docs/clients/spring-ai.md, a Clients sidebar row and a README client-table row. The row says "docs-verified, not run".
+
+Refs #232. Acceptance is not met: it asks for a Spring AI chat client that answers and streams through plugboard, and that was not run. No Java build or run here: Maven is not installed, so there is no example and no CHANGELOG bullet.
+
+The page checks the property names against the Spring AI reference (https://docs.spring.io/spring-ai/reference/api/chat/openai-chat.html): spring.ai.openai.base-url and api-key. Two points stay unverified and are marked as such: the /v1 path behaviour per Spring AI version, and the completions-path property named in the issue, which is not in the Connection Properties table.
+
+Validation:
+- bun run docs:build: pass.
+
+Not verified: any Spring AI run against plugboard; streaming, tools and structured output.
+
+**docs: add LangChain4j client page (docs-verified, not run)** ([`1c936d4`](https://github.com/jjjermiah/opencode-plugboard/commit/1c936d4800aac1dfad4d99de11e3a366144954b5))
+
+Adds docs/clients/langchain4j.md, a Clients sidebar row and a README client-table row. The row says "docs-verified, not run".
+
+Refs #233. Acceptance is not met: it asks for a LangChain4j chat and tool call to complete through plugboard, and that was not run. No Java build or run here: Maven is not installed, so there is no example and no CHANGELOG bullet.
+
+The page checks the dependency (langchain4j-open-ai 1.22.0) and the builder (baseUrl, apiKey, modelName) against the LangChain4j OpenAI-compatible page (https://docs.langchain4j.dev/integrations/language-models/openai-compatible/). Unverified and marked: the trailing slash on baseUrl, accumulateToolCallId for plugboard, and whether the OPENAI_BASE_URL path applies to the langchain4j-open-ai-official artifact.
+
+Validation:
+- bun run docs:build: pass.
+
+Not verified: any LangChain4j run against plugboard; streaming, tools and structured output.
+
+**docs: address review of client pages (#348)** ([`9f06521`](https://github.com/jjjermiah/opencode-plugboard/commit/9f065214574da33845a614283282cf2d72575d8e))
+
+Fixes from the review of PR 348:
+
+- Spring AI: the model property is spring.ai.openai.chat.model, per the current reference (Configuration Properties table), not spring.ai.openai.chat.options.model. The page now says the reference was read on 2026-10-13 and that the review identifies it as Spring AI 2.0.1.
+- LangChain4j: a quirk for the HTTP/1.1 note before 1.23.0, which the review cites. The note was not found in the OpenAI-compatible page sections read here, so the page says it is unconfirmed and not run against plugboard.
+- Semantic Kernel: the stream gave one or two content updates across runs; the SSE-count claim is removed because it was not measured.
+- Rename examples/ag2 to examples/autogen (git mv), with the page, the examples index and the CHANGELOG link updated.
+- AutoGen: the unknown-model line is about autogen's price table, not plugboard.
+- CHANGELOG: the async-openai bullet states the env var the crate reads without the internal wording.
+- examples/async-openai/Cargo.toml: drop default-features = true (the default). No cargo build was run for this change.
+- async-openai page: the OPENAI_BASE_URL / OPENAI_API_BASE quirk is reworded and cites src/config.rs:60.
+
+No behaviour change. Refs #230, #232, #233; #235 still needs its comment.
+
+**docs: keep client bullets under Unreleased after the 0.29.0 merge** ([`8e4d81e`](https://github.com/jjjermiah/opencode-plugboard/commit/8e4d81eee80e80770edb2f8de6296e8669b24785))
+
+Merging origin/main (release 0.29.0) put the four client-page bullets under [0.29.0], which has already shipped without them. Moved them back to [Unreleased] ### Added; [0.29.0] is again identical to origin/main.
+
+Refs #230, #232, #233. Closes #229, #231, #235 when this PR merges.
+
+**docs(docs): correct the self-hosted pages after review of #342** ([`a281531`](https://github.com/jjjermiah/opencode-plugboard/commit/a2815316c29cfea956ed55c5044d92feb3f90211))
+
+Fixes what the review found wrong or unsettled in the four pages and the paperless-ai example. Every change is checked against plugboard source or upstream source at the pinned commits.
+
+paperless-ai: the web UI does not get "ignored while .env sets it". At d2fda69, saveConfig (services/setupService.js, lines 238 to 243) writes data/.env and sets process.env, so a UI change applies at once. After a recreate, the compose env_file value wins again, because dotenv does not overwrite an existing variable. The page's gotcha, the example README and the example .env.example now say so. The page also says the upstream repo is unmaintained (README line 9), cites the rewrite and the paperless-ngx integration (lines 10 and 11), and states that plugboard does not clamp max_tokens (request.ts line 262, context.ts line 47). The example notes that SYSTEM_PROMPT comes from finishing setup.
+
+RAGFlow: the Thinking toggle does nothing through plugboard. parseChatRequest reads only the fields it knows, so thinking and chat_template_kwargs are dropped without an error. The thinking code lives in vllm.go (the compatible driver calls it), and the block is added only when the chat config sets Thinking. The page adds the sampling note: the chat setter sends top_p with temperature, so a Claude 4.6 target drops top_p and reports it in x-plugboard-dropped-params. With dropUnsupportedParams: false the call gets a 400.
+
+LLM Vision: the same sampling note (temperature 0.5 and top_p 0.9 by default). reasoning_effort is never sent for the vision alias, because the provider adds it only for GPT-5 names. The provider docs page is now read: it lists Ollama, Open WebUI and LocalAI as self-hosted and does not list Custom OpenAI, so the page says that step comes from source.
+
+Onyx: "plugboard's image input is data URLs only" was wrong. data: URLs are the default. http(s) URLs are fetched only when remoteImages is on, which is off by default (src/config.ts). The API row now says image generation, not images.
+
+Merge of origin/main is a separate commit, so this diff shows only the page fixes.
+
+Validation: bun run docs:build passes after these edits.
+
+Refs #243, Refs #245, Refs #247, Refs #250
+
+#### CI and tooling
+
+**chore(examples): regenerate the Open WebUI scripted run for the runtime major** ([`da31d65`](https://github.com/jjjermiah/opencode-plugboard/commit/da31d659902513489eca2d3c33ec0f1c485a1a8a))
+
+The harness now records only the runtime's major version in summary.json (see emitClient in examples/_harness/ts/harness.ts), so the committed Open WebUI scripted run says bun 1 where it said bun 1.4. Nothing else changed: the transcripts and the checks are byte-identical. Without this, the Docker run that CI cannot execute would be the one stale record on main, and a local regeneration would show a diff.
+
+Regenerated with bun examples/_harness/run.ts open-webui --target scripted --docker. The diff is two lines in summary.json and summary.md.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.29.0] - 2026-10-13: Every Step on the Record
 
@@ -5209,7 +5498,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.26.0...v0.27.0
