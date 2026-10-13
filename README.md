@@ -317,6 +317,13 @@ With `true` or an `allow` list, the server fetches only public addresses by defa
 
 Above the cap the request gets a 400 `too_many_choices`. `n` works on Chat Completions and on `/v1/completions`.
 
+Since 0.27.0 one app can have a lower cap (#270). It only lowers the global one:
+
+```jsonc
+"maxN": 4,
+"apps": { "chat-widget": { "maxN": 1 } }   // this app's n above 1 gets the same 400
+```
+
 #### Token counting
 
 Clients that budget context before they send, such as Claude Code and the Anthropic and Gemini SDKs, can count tokens first. The count is an estimate, because plugboard has no tokenizer.
@@ -368,10 +375,22 @@ Cost is an estimate at list prices, so use it to compare apps, not as a bill. Th
 Every request is kept as an OpenCode session in a directory for its app, so it never mixes with your projects. You can read what each app asked and what the model answered. Chat responses carry the session id as `x-plugboard-session`.
 
 ```jsonc
-"history": { "maxSessions": 500, "maxAgeDays": 30 }   // per app; the stricter limit wins
+"history": { "maxSessions": 500, "maxAgeDays": 30 }   // the global limits; the stricter one wins within an app
 ```
 
 Without `history`, sessions older than 30 days are pruned (`maxAgeDays` defaults to 30). Set `"maxAgeDays": 0` to keep them forever. Sessions created before the upgrade are not indexed, so they are never pruned.
+
+Since 0.27.0 one app can keep a different amount (#265). A field set on the app replaces the global one for that app, and an unset field falls back to it:
+
+```jsonc
+"history": { "maxSessions": 500 },
+"apps": {
+  "discord-bot": { "history": { "maxSessions": 20 } },
+  "coding": { "history": { "maxSessions": 5000, "maxAgeDays": 180 } }
+}
+```
+
+Gotcha: the global `maxAgeDays` defaults to 30, so an app that sets only `maxSessions` is still pruned after 30 days. To keep it longer, set its `maxAgeDays`; an app cannot set `0` (keep forever), so use a large value such as `36500`.
 
 #### Metrics and logs
 
@@ -381,6 +400,8 @@ Prometheus metrics are off by default. Turn them on, and get structured logs whe
 "metrics": true,
 "logFormat": "json"   // one object per line; ids and outcomes only, never keys or bodies
 ```
+
+Since 0.27.0 `logLevel` picks the lowest level written, and `logRequests: false` drops the per-request access lines (#262). Problems stay visible at `warn`: rate limits, budget refusals, failed fallbacks and failed history deletions. Admin key creation and revocation are audit lines and are written at every level. See [`logLevel` in the configuration](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) for the full list.
 
 ```sh
 curl -s http://127.0.0.1:4010/plugboard/metrics -H "Authorization: Bearer $KEY" | grep plugboard_requests_total

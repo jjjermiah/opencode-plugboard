@@ -15,7 +15,7 @@
 import type { ServerResponse } from "node:http"
 import type { PlugboardOptions } from "./config.js"
 import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest, ServedModel } from "./contract.js"
-import { log } from "./log.js"
+import { log, logWarn } from "./log.js"
 import { fallbackRefs, refToString } from "./models.js"
 import { dropRejected } from "./openai/sampling.js"
 
@@ -138,7 +138,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
         attempt++
         continue
       }
-      log("model.fallback_exhausted", { app: context.app, attempts: attempt + 1, reason })
+      logWarn("model.fallback_exhausted", { app: context.app, attempts: attempt + 1, reason })
     }
 
     // Answered, ran out of targets, or the request ended: this attempt's outcome is the response.

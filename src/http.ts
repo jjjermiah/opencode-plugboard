@@ -228,6 +228,28 @@ export function finishRequest(request: IncomingMessage, response: ServerResponse
 export const REQUEST_ID_HEADER = "x-plugboard-request-id"
 
 /**
+ * `Access-Control-Expose-Headers` on an allowed CORS answer (#314): the plugboard response headers a browser script reads,
+ * plus `retry-after`. Without it a browser hides every header but the CORS-safelisted ones.
+ */
+export const CORS_EXPOSED_HEADERS = [
+  "x-plugboard-request-id",
+  "x-plugboard-session",
+  "x-plugboard-session-url",
+  "x-plugboard-model",
+  "x-plugboard-fallbacks",
+  "x-plugboard-usage",
+  "x-plugboard-policy",
+  "x-plugboard-server-tools",
+  "x-plugboard-parallel-tools",
+  "x-plugboard-dropped-params",
+  "x-plugboard-cache",
+  "x-plugboard-affinity",
+  "x-plugboard-user-dropped",
+  "x-plugboard-structured-fallback",
+  "retry-after",
+].join(", ")
+
+/**
  * `close`: also tell the client to drop the connection (after an unread or abandoned body).
  * `retryAfterSeconds`: sent as `Retry-After` (a rate-limit refusal, see `PlugError.retryAfterSeconds`).
  */

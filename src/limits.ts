@@ -21,7 +21,7 @@
 import PQueue from "p-queue"
 import type { LimitCaps, Limits } from "./config.js"
 import type { CallContext, ModelCaller, PlugError, PlugEvent, PlugRequest } from "./contract.js"
-import { log } from "./log.js"
+import { logWarn } from "./log.js"
 
 /** The process-wide queues and windows. Held on the runtime (`src/runtime.ts`), not on a generation. */
 export interface LimitState {
@@ -94,7 +94,7 @@ async function* admit(
     refusal = { reason: "rate", retryAfterSeconds: Math.max(1, Math.ceil((live.start + WINDOW_MS - at) / 1000)) }
   if (refusal) {
     onLimited?.(app, refusal.reason)
-    log("request.limited", { app, reason: refusal.reason, retryAfterSeconds: refusal.retryAfterSeconds })
+    logWarn("request.limited", { app, reason: refusal.reason, retryAfterSeconds: refusal.retryAfterSeconds })
     yield { type: "error", error: limitedError(refusal.reason, refusal.retryAfterSeconds) }
     return
   }

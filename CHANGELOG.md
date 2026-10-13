@@ -24,6 +24,34 @@ Five options for locking down who and what can reach plugboard, and a fix for a 
 
 ### Added
 
+- **Browser scripts can read the plugboard response headers** ([#314](https://github.com/jjjermiah/opencode-plugboard/issues/314)). With `cors` set, an allowed origin's answers now send `Access-Control-Expose-Headers` with the `x-plugboard-*` headers and `retry-after`. Before, a browser hid them, so `x-plugboard-session` or `x-plugboard-usage` could not be read from a page. Origins off the list still get no CORS headers.
+- **History retention per app** ([#265](https://github.com/jjjermiah/opencode-plugboard/issues/265)). `history` was one pair of numbers for every app. A high-volume bot wants to keep few sessions while a coding assistant keeps many. `apps.<name>.history` sets `maxSessions` and `maxAgeDays` for one app. A field replaces the global one for that app, and an unset field falls back to it. The stricter field still wins inside an app. An app with no limit anywhere keeps its sessions forever, as before. The history index is written only for an app that has a limit, so an unlimited app adds nothing to host storage.
+
+  ```jsonc
+  {
+    "history": { "maxSessions": 500, "maxAgeDays": 30 },
+    "apps": {
+      "discord-bot": { "history": { "maxSessions": 20 } },
+      "coding": { "history": { "maxSessions": 5000, "maxAgeDays": 180 } }
+    }
+  }
+  ```
+- **A per-app cap on `n`** ([#270](https://github.com/jjjermiah/opencode-plugboard/issues/270)). `maxN` was one number for every app, so a batch tool that needed `n: 4` forced the same allowance onto the chat widget. `apps.<name>.maxN` lowers the global cap for one app. A request above it gets the usual 400 `too_many_choices`, and the message names `apps.<name>.maxN`. It cannot be higher than the global `maxN`, the same rule as `maxTools`. Unset, the global cap applies as before. The 400 `too_many_choices` message now names the option that applied (`apps.<name>.maxN` for an app with its own cap, else `maxN`). Before, it always named `apps.<name>.maxN`, so the text changes for a request refused under the global cap.
+
+  ```jsonc
+  {
+    "maxN": 4,
+    "apps": { "chat-widget": { "maxN": 1 }, "batch": { "maxN": 4 } }
+  }
+  ```
+- **Log levels and an access log switch** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). Plugboard wrote one access line per request and had no way to change how much it logged. `logLevel` sets the lowest level written (`debug`, `info`, `warn` or `error`). `logRequests: false` drops the per-request access lines and keeps warnings and errors, so an operator can keep the alerts without the traffic. Neither option changes what a line holds: keys and bodies are still never logged. The defaults are `info` and `true`, as before. What each level shows is listed in [configuration](docs/configuration.md): `warn` keeps the rate limit, budget, failed fallback and failed history deletion lines, and the admin key audit lines (`admin.key_created`, `admin.key_revoked`) are written at every level. `debug` adds only the keep-alive line for now; the per-step debug lines the issue lists are not written yet, so #262 stays open.
+
+  ```jsonc
+  {
+    "logLevel": "warn",
+    "logRequests": false
+  }
+  ```
 - **`requireKeys` makes a keyless server impossible** ([#271](https://github.com/jjjermiah/opencode-plugboard/issues/271)). On a shared machine, loopback is not a boundary, so a keyless server should be something you can rule out in config. With `requireKeys: true`, the plugin refuses to load without `keys`, and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. The default is `false`, so keyless loopback works as before.
 
   ```jsonc
