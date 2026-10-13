@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The keep-alive now holds the location** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.31.0). Since 0.26.0 the keep-alive renamed one session every 30 minutes, but a rename does not restart OpenCode's 60-minute idle timer. Plugin calls publish their events without the Location, and the timer only counts events that carry one. The keep-alive now creates a new session in its own Location every 30 minutes and removes the previous one. The create carries the Location, so the timer restarts. A session left by an older version is removed on the first tick. Servers on 0.26.0 to 0.30.0 still need the external timer in `docs/warm-up.md`.
 
 ## [0.30.0] - 2026-10-13: Out of Sight
 

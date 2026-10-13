@@ -27,7 +27,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `budgets.ts` | Per-app budgets (option `budgets`): requests, tokens and cost per UTC day, week or month, read from the usage records. A `ModelCaller` wrapper outside `limits.ts`, with its warning state on the runtime. |
 | `forwarded.ts` | Reverse-proxy headers (#266): `listen.trustProxy` parsing, the client address for the log, the forwarded host and origin. Read only from a trusted peer, never for authentication. |
 | `http.ts` | Ingress and transport: body limits, Host and Origin checks, disconnect abort, the one deadline, JSON and SSE writers. |
-| `keepalive.ts` | The location keep-alive (#310): the loop that renames one dedicated session every 30 minutes so OpenCode's idle eviction does not close the listener. Forked from setup by `index.ts`; the host calls are in `session/host.ts`. |
+| `keepalive.ts` | The location keep-alive (#310, #350): the loop that creates and removes one dedicated session every 30 minutes so OpenCode's idle eviction does not close the listener. Forked from setup by `index.ts`; the host calls are in `session/host.ts`. |
 | `runtime.ts` | The process-wide runtime on `globalThis`: generations, confirmed app directories, `ensureBackend`, the listener, the event pump, the session store, history sweep state, the metrics registry. |
 | `discovery.ts` | Pure builders for `GET /`, `GET /v1` and `GET /plugboard/status`, and `sendText`. |
 | `dashboard/` | The usage dashboard (`GET /plugboard/dashboard`, #141): `page.ts` is the static page, its CSP headers and route names; `assets.ts` serves the page and its files (`app.js`, `app.css`, uPlot from `node_modules`); `app.js` and `app.css` are the browser script and stylesheet, with no build step. |

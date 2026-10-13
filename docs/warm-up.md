@@ -9,7 +9,7 @@ On Linux, in the OpenCode systemd unit (retry until the server answers; pass the
 ExecStartPost=-/bin/sh -c 'for i in $(seq 1 30); do opencode api get /api/agent >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
 ```
 
-Since 0.26.0 the plugin keeps its own location warm (option `keepAlive`, on by default). OpenCode closes a location after an hour with no session activity, and that closed plugboard's listener too, so an idle server went deaf. Now the plugin renames one dedicated session every 30 minutes, which keeps the location alive. A periodic call to the server is needed only as a belt, or when you set `keepAlive: false`. It still does not help after a restart, which needs one call, as above.
+Since 0.26.0 the plugin keeps its own location warm (option `keepAlive`, on by default). OpenCode closes a location after an hour with no session activity, and that closed plugboard's listener too, so an idle server went deaf. Now the plugin creates and removes one dedicated session every 30 minutes, which keeps the location alive. Up to 0.30.0 the plugin renamed a session instead, and a rename does not hold the location (#350), so on those versions keep the periodic call below. From 0.31.0 a periodic call to the server is needed only as a belt, or when you set `keepAlive: false`. It still does not help after a restart, which needs one call, as above.
 
 On macOS, a launchd job (`~/Library/LaunchAgents/dev.plugboard.warmup.plist`). It runs once when launchd loads it, which is at login and after boot. It does not run again when OpenCode restarts by itself, so after an OpenCode restart on its own, touch the server yourself (`launchctl kickstart -k gui/$(id -u)/dev.plugboard.warmup` reruns it) or run the same command from whatever restarts OpenCode.
 

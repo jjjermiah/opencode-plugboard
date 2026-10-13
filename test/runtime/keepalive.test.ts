@@ -1,8 +1,9 @@
 /**
- * The location keep-alive (#310, src/keepalive.ts) against the spy context: the loop starts after setup
- * returns, touches the keep-alive session on each interval, creates it once, renames a stored one,
- * recreates a deleted one, stops with its generation, never runs with `keepAlive: false`, keeps one
- * generation as the owner, and leaves the session out of the history index and usage.
+ * The location keep-alive (#310, #350, src/keepalive.ts) against the spy context: the loop starts after setup
+ * returns, creates a keep-alive session on each interval and removes the one the previous tick stored (the create
+ * is the touch; a rename is not), removes a session an older plugboard stored, goes on when that session is already
+ * gone, stops with its generation, never runs with `keepAlive: false`, keeps one generation as the owner, and leaves
+ * the session out of the history index and usage.
  *
  * The interval is shortened with `PLUGBOARD_KEEPALIVE_INTERVAL_MS` (read at setup): the real one is 30 minutes.
  */
@@ -30,8 +31,8 @@ afterEach(() => {
 const options = async (extra: Record<string, unknown> = {}) => ({ listen: { port: await freePort() }, models: ["test/*"], maxTools: 2, ...extra })
 
 /**
- * A fake host for the keep-alive calls: plugin storage, session create and update. A session in `deleted` answers an
- * update with the host's `Session.NotFoundError`, as a deleted session does.
+ * A fake host for the keep-alive calls: plugin storage, session create and remove. A session in `deleted` answers a
+ * remove with the host's `Session.NotFoundError`, as a session that is already gone does.
  */
 function fakeHost(input: { stored?: Record<string, string>; deleted?: string[] } = {}) {
   const storage = new Map(Object.entries(input.stored ?? {}))
@@ -45,7 +46,7 @@ function fakeHost(input: { stored?: Record<string, string>; deleted?: string[] }
       "storage.get": (key: string) => Effect.succeed(storage.get(key)),
       "storage.set": (key: string, value: string) => Effect.sync(() => void storage.set(key, value)),
       "session.create": () => Effect.sync(() => ({ id: `ses_keep_${++created}` })),
-      "session.update": (input: { sessionID: string }) => (deleted.has(input.sessionID) ? Effect.fail({ _tag: "Session.NotFoundError" }) : Effect.void),
+      "session.remove": (input: { sessionID: string }) => (deleted.has(input.sessionID) ? Effect.fail({ _tag: "Session.NotFoundError" }) : Effect.void),
     },
   }
 }
@@ -70,10 +71,11 @@ function load(opts: unknown, directory: string, respond: Record<string, (...args
 }
 
 /** The host methods the keep-alive uses (setup registers the context hook, which is not one of them). */
-const KEEP_ALIVE_METHODS = new Set("storage.get storage.set session.create session.update session.remove session.prompt".split(" "))
+const KEEP_ALIVE_METHODS = new Set("storage.get storage.set session.create session.remove session.prompt session.update".split(" "))
 
 const callsOf = (spy: SpyContext, path: string): SpyCall[] => spy.calls.filter((call) => call.path === path)
-const updates = (spy: SpyContext) => callsOf(spy, "session.update")
+const creates = (spy: SpyContext) => callsOf(spy, "session.create")
+const removes = (spy: SpyContext) => callsOf(spy, "session.remove")
 /** The storage and session calls the keep-alive makes (not the setup registrations or the event pump). */
 const keepAliveCalls = (spy: SpyContext) => spy.calls.filter((call) => KEEP_ALIVE_METHODS.has(call.path))
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -87,53 +89,52 @@ describe("#310 the keep-alive runs after setup, on the interval", () => {
     expect(keepAliveCalls(spy)[0]!.phase).toBe("after-setup")
   })
 
-  test("the loop touches the keep-alive session on each interval (a rename keeps its time.updated moving)", async () => {
+  test("each interval creates a session in this Location and removes the one the previous tick stored; no rename", async () => {
     const host = fakeHost()
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => updates(spy).length >= 2, 2_000, "two renames")
-    expect(updates(spy).every((call) => (call.args[0] as { sessionID: string; title: string }).title === KEEP_ALIVE_TITLE)).toBe(true)
-    expect(new Set(updates(spy).map((call) => (call.args[0] as { sessionID: string }).sessionID))).toEqual(new Set(["ses_keep_1"]))
+    await until(async () => removes(spy).length >= 2, 2_000, "two removes")
+    expect(creates(spy).every((call) => (call.args[0] as { title: string }).title === KEEP_ALIVE_TITLE)).toBe(true)
+    expect(removes(spy).map((call) => (call.args[0] as { sessionID: string }).sessionID).slice(0, 2)).toEqual(["ses_keep_1", "ses_keep_2"])
+    expect(callsOf(spy, "session.update")).toEqual([])
   })
 
-  test("the first tick creates one session, denies it every permission, and stores its id under keepalive/session", async () => {
+  test("the first tick creates one session with no location argument (so it is this Location), denies it every permission, and stores its id", async () => {
     const host = fakeHost()
     const { spy } = load(await options(), "/projects/a", host.respond)
     await until(async () => callsOf(spy, "storage.set").length > 0, 2_000, "the stored session id")
-    expect(callsOf(spy, "session.create")[0]!.args[0]).toMatchObject({
+    expect(creates(spy)[0]!.args[0]).toMatchObject({
       title: KEEP_ALIVE_TITLE,
       metadata: { plugboard: "keep-alive" },
       permissions: [{ action: "*", resource: "*", effect: "deny" }],
     })
+    expect(creates(spy)[0]!.args[0]).not.toHaveProperty("location")
     expect(callsOf(spy, "storage.set")[0]!.args).toEqual([KEEP_ALIVE_KEY, "ses_keep_1"])
-    expect(host.storage.get(KEEP_ALIVE_KEY)).toBe("ses_keep_1")
   })
 
-  test("a stored session is renamed on each tick and never created again", async () => {
+  test("a session stored by an earlier plugboard is replaced: the new one is created first, then the old one removed", async () => {
     const host = fakeHost({ stored: { [KEEP_ALIVE_KEY]: "ses_old" } })
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => updates(spy).length >= 1, 2_000, "a rename of the stored session")
-    expect((updates(spy)[0]!.args[0] as { sessionID: string }).sessionID).toBe("ses_old")
-    expect(callsOf(spy, "session.create")).toEqual([])
+    await until(async () => removes(spy).length >= 1, 2_000, "the removal of the stored session")
+    expect((removes(spy)[0]!.args[0] as { sessionID: string }).sessionID).toBe("ses_old")
+    const order = spy.calls.map((call) => call.path)
+    expect(order.indexOf("session.create")).toBeLessThan(order.indexOf("session.remove"))
   })
 
-  test("a deleted keep-alive session is recreated and its new id stored", async () => {
+  test("a stored session that is already gone is not an error: the loop goes on and stores the new id", async () => {
     const host = fakeHost({ stored: { [KEEP_ALIVE_KEY]: "ses_gone" }, deleted: ["ses_gone"] })
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => callsOf(spy, "storage.set").length > 0, 2_000, "the recreated session id")
-    expect(callsOf(spy, "session.create")).toHaveLength(1)
-    expect(host.storage.get(KEEP_ALIVE_KEY)).toBe("ses_keep_1")
-    // The next tick renames the new session.
-    await until(async () => updates(spy).some((call) => (call.args[0] as { sessionID: string }).sessionID === "ses_keep_1"), 2_000, "a rename of the new session")
+    await until(async () => creates(spy).length >= 2, 2_000, "a second tick after the missing session")
+    expect(host.storage.get(KEEP_ALIVE_KEY)).toMatch(/^ses_keep_\d+$/)
   })
 
   test("the loop stops when its generation is disposed", async () => {
     const host = fakeHost()
     const loaded = load(await options(), "/projects/a", host.respond)
-    await until(async () => updates(loaded.spy).length >= 1, 2_000, "a rename")
+    await until(async () => creates(loaded.spy).length >= 1, 2_000, "a create")
     loaded.unload()
-    const stopped = updates(loaded.spy).length
+    const stopped = creates(loaded.spy).length
     await pause(25)
-    expect(updates(loaded.spy).length).toBe(stopped)
+    expect(creates(loaded.spy).length).toBe(stopped)
   })
 
   test("with `keepAlive: false` no keep-alive call is ever made", async () => {
@@ -148,19 +149,18 @@ describe("#310 the keep-alive runs after setup, on the interval", () => {
     const shared = await options()
     const first = load(shared, "/projects/a", host.respond)
     const second = load(shared, "/projects/b", host.respond)
-    await until(async () => updates(first.spy).length >= 2, 2_000, "the first generation's renames")
+    await until(async () => creates(first.spy).length >= 2, 2_000, "the first generation's creates")
     await pause(10)
     expect(keepAliveCalls(second.spy)).toEqual([])
     first.unload()
-    await until(async () => updates(second.spy).length >= 1, 2_000, "the second generation takes the lease")
+    await until(async () => creates(second.spy).length >= 1, 2_000, "the second generation takes the lease")
   })
 
   test("the keep-alive session is not a request session: no history index, no usage, no session store entry", async () => {
     const host = fakeHost()
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => updates(spy).length >= 1, 2_000, "a rename")
-    expect(callsOf(spy, "storage.set").map((call) => call.args[0])).toEqual([KEEP_ALIVE_KEY])
-    expect(callsOf(spy, "session.remove")).toEqual([])
+    await until(async () => removes(spy).length >= 1, 2_000, "a remove")
+    expect(new Set(callsOf(spy, "storage.set").map((call) => call.args[0]))).toEqual(new Set([KEEP_ALIVE_KEY]))
     expect(callsOf(spy, "session.prompt")).toEqual([])
     expect(sessionStore().size()).toBe(0)
   })

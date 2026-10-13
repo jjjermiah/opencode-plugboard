@@ -275,21 +275,15 @@ export function createStoragePort(ctx: HostContext): StoragePort {
 }
 
 /**
- * The keep-alive's host calls (src/keepalive.ts): plugin storage for the session id, `session.update` (a rename, which is a
- * durable session event carrying this Location) and `session.create`. A deleted session answers `missing`, so the caller creates
- * a new one. The session is never registered with the session store, so it is never indexed, pruned or counted in usage.
+ * The keep-alive's host calls (src/keepalive.ts): plugin storage for the session id, and `session.create` and `session.remove`.
+ * The create takes no `location`, so it is this plugin's Location, which is what restarts the eviction timer (#350). A session
+ * already gone answers `NotFoundError` on remove, which counts as removed. The sessions are never registered with the session
+ * store, so they are never indexed, pruned or counted in usage.
  */
 export function createKeepAliveHost(ctx: HostContext, storage: StoragePort): KeepAliveHost {
   return {
     get: storage.get,
     put: storage.put,
-    rename: (sessionID, title) =>
-      Effect.runPromise(
-        ctx.session.update({ sessionID: hostSessionID(sessionID), title }).pipe(
-          Effect.map(() => "renamed" as const),
-          Effect.catch((error) => (failureTag(error) === "Session.NotFoundError" ? Effect.succeed("missing" as const) : Effect.fail(error))),
-        ),
-      ),
     create: (title) =>
       Effect.runPromise(
         ctx.session.create({
@@ -298,6 +292,15 @@ export function createKeepAliveHost(ctx: HostContext, storage: StoragePort): Kee
           permissions: [{ action: "*", resource: "*", effect: "deny" }],
         }),
       ).then((created) => String(created.id)),
+    remove: (sessionID) =>
+      Effect.runPromise(
+        ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0]).pipe(
+          Effect.match({ onSuccess: () => undefined, onFailure: (error) => ({ error }) }),
+        ),
+      ).then((failed) => {
+        if (failed === undefined || failureTag(failed.error) === "Session.NotFoundError") return
+        throw failed.error
+      }),
   }
 }
 

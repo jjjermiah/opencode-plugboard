@@ -1,16 +1,22 @@
 /**
- * The location keep-alive (#310). OpenCode evicts a Location after 60 minutes without a durable
+ * The location keep-alive (#310, #350). OpenCode evicts a Location after 60 minutes without a durable
  * session event that carries it (packages/core/src/location-activity.ts), and eviction closes the
  * Location's scope, which takes plugboard's listener with it. The TTL is fixed upstream, so
  * plugboard keeps its own Location warm: one loop per process, forked from plugin setup into the
- * plugin scope (setup itself still only registers and returns), makes one cheap durable change every
- * 30 minutes on one dedicated session: a rename to the same title. `session.renamed` is durable and
- * the bus stamps it with the publishing fiber's Location, which is this plugin's Location, so the
- * eviction timer restarts for it. The rename also advances the session's `time.updated`.
+ * plugin scope (setup itself still only registers and returns), makes one durable change every
+ * 30 minutes.
  *
- * The session is created once, lazily, and its id is kept in plugin storage. It is never prompted,
- * never registered with the session store (so it is not in the history index, never pruned) and
- * never reaches the usage recorder, because only request handling does either.
+ * That change is a `session.create`, not a rename (#350). The eviction timer only counts a durable
+ * event whose envelope carries a Location, and the bus takes that Location from the publishing
+ * fiber's Location service. Plugin calls run in a fresh fiber without one (the host closes over
+ * this plugin's Location instead), so a rename publishes with no Location and does not restart the
+ * timer. `session.create` passes its Location explicitly, and the default is this plugin's own, so
+ * the create restarts the timer. Each tick creates a fresh keep-alive session and then removes the
+ * previous one, so at most two exist at once.
+ *
+ * The sessions are never prompted, never registered with the session store (so they are not in the
+ * history index, never pruned) and never reach the usage recorder, because only request handling does
+ * either.
  */
 
 import { Effect } from "effect"
@@ -26,22 +32,21 @@ export const KEEP_ALIVE_INTERVAL_MS = 30 * 60_000
 export interface KeepAliveHost {
   get(key: string): Promise<string | undefined>
   put(key: string, value: string): Promise<void>
-  /** Renames the session. `missing` when the host no longer has it (it was deleted). */
-  rename(sessionID: string, title: string): Promise<"renamed" | "missing">
-  /** Creates the keep-alive session with its id as text. */
+  /** Creates the keep-alive session in this Location and returns its id. This create is the durable event that restarts the eviction timer. */
   create(title: string): Promise<string>
+  /** Deletes a session. Resolves when it is gone, including when it was already deleted. */
+  remove(sessionID: string): Promise<void>
 }
 
 /**
- * One keep-alive step: rename the stored session, or create and store a new one when none is stored or the
- * stored one was deleted. Returns which of the two happened.
+ * One keep-alive step: create a new session (the Location touch), store its id, then remove the session the
+ * previous tick stored. A session stored by an older plugboard (renamed, not created) is removed the same way.
  */
-export async function keepAliveOnce(host: KeepAliveHost): Promise<"renamed" | "created"> {
-  const held = await host.get(KEEP_ALIVE_KEY)
-  if (held !== undefined && (await host.rename(held, KEEP_ALIVE_TITLE)) === "renamed") return "renamed"
+export async function keepAliveOnce(host: KeepAliveHost): Promise<void> {
+  const previous = await host.get(KEEP_ALIVE_KEY)
   const id = await host.create(KEEP_ALIVE_TITLE)
   await host.put(KEEP_ALIVE_KEY, id)
-  return "created"
+  if (previous !== undefined) await host.remove(previous)
 }
 
 /**
@@ -62,7 +67,8 @@ export function keepAliveLoop(input: { readonly host: KeepAliveHost; readonly in
   const tick = Effect.promise(async () => {
     if (!input.isOwner()) return
     try {
-      logDebug("location.keepalive", { outcome: await keepAliveOnce(input.host) })
+      await keepAliveOnce(input.host)
+      logDebug("location.keepalive", { outcome: "ok" })
     } catch (error) {
       logError("location.keepalive_failed", { error: errorMessage(error) })
     }
