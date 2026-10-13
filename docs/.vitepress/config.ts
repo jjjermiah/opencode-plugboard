@@ -109,6 +109,7 @@ export default defineConfig({
           { text: "PR-Agent", link: "/self-hosted/pr-agent" },
           { text: "SiYuan", link: "/self-hosted/siyuan" },
           { text: "Tandoor Recipes", link: "/self-hosted/tandoor" },
+          { text: "Vane", link: "/self-hosted/vane" },
         ],
       },
       {
