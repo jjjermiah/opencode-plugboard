@@ -508,6 +508,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
 | Go (go-openai) | [go-openai][client-go-openai] | pass: text, stream and a tool round trip on `fast` (go-openai v1.43.0) |
 | .NET (openai-dotnet) | [openai-dotnet][client-openai-dotnet] | pass: text, stream and a tool round trip on `fast` (OpenAI NuGet 2.14.0) |
+| Rust (async-openai) | [async-openai][client-async-openai] | pass: text, stream and a tool round trip on `fast` (async-openai 0.42.2) |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
 | DSPy | [dspy][client-dspy] | pass: Predict, ChainOfThought, typed output |
@@ -613,6 +614,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-go-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/go-openai
 [client-openai-dotnet]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-dotnet
+[client-async-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/async-openai
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
 [client-dspy]: https://jjjermiah.github.io/opencode-plugboard/clients/dspy

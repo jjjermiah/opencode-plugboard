@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- **Rust (async-openai) client page and example** ([#235](https://github.com/jjjermiah/opencode-plugboard/issues/235)). `docs/clients/async-openai.md` and `examples/async-openai` run a text call, a stream and one tool round trip against plugboard with model `fast`. The issue named the wrong env var: the crate reads `OPENAI_BASE_URL`, so the example sets the base with `with_api_base`.
+
 ### Changed
 
 - **Releases wait for every check, and the tag is made only on a tested commit.** The release script used to enable auto-merge, which waits only for the required checks, and it tagged the merge commit without checking CI on it. Two gaps let a red commit ship: the host matrix was not a required check, and the merge commit was never tested (v0.25.0 failed on Examples and needed 0.25.1). Now the release pull request merges only after every check on it passes (the advisory benchmark aside), the tag is pushed only after CI passes on the merge commit, and `main` requires one aggregate check, `CI passed`, that needs every CI job. The GitHub release still appears only after npm has the version. See [docs/releasing.md](docs/releasing.md).

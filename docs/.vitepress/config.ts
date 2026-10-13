@@ -68,6 +68,7 @@ export default defineConfig({
           { text: "OpenAI Agents SDK", link: "/clients/openai-agents" },
           { text: "Go (go-openai)", link: "/clients/go-openai" },
           { text: ".NET (openai-dotnet)", link: "/clients/openai-dotnet" },
+          { text: "Rust (async-openai)", link: "/clients/async-openai" },
           { text: "LiteLLM (as a client)", link: "/clients/litellm-client" },
           { text: "Instructor", link: "/clients/instructor" },
           { text: "DSPy", link: "/clients/dspy" },

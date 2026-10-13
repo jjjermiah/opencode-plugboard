@@ -25,6 +25,7 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [go-openai/](go-openai/main.go) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard |
 | [vercel-ai-sdk/](vercel-ai-sdk/README.md) | The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses`. Chat, tools, streaming, structured output, images, models and errors, with a committed live run (`runs/live/2026-10-13-c97ac66`) that passes |
 | [openai-dotnet/](openai-dotnet/Program.cs) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard |
+| [async-openai/](async-openai/src/main.rs) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard |
 | [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script |
 | [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
 | [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script |
