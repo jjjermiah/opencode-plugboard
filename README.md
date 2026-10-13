@@ -502,7 +502,8 @@ One page per client, with the config, a chat, a tool call, structured output and
 | SillyTavern | [sillytavern][client-sillytavern] | docs only, not run yet (web app); Custom (OpenAI-compatible) source |
 | Cline | [cline][client-cline] | docs only, not run yet (VS Code extension); OpenAI Compatible provider |
 | Roo Code | [roo-code][client-roo-code] | docs only, not run yet (VS Code extension); needs native tool calling |
-| promptfoo | [promptfoo][client-promptfoo] | pass against the scripted fake: `promptfoo eval` 2/2 (text, tool call); model-graded assertions need a plugboard grader |
+| promptfoo | [promptfoo][client-promptfoo] | pass against the live dev server (2026-10-13): `promptfoo eval` 2/2 (text, tool call); model-graded assertions need a plugboard grader |
+| lm-evaluation-harness | [lm-eval][client-lm-eval] | pass against the live dev server (2026-10-13): `local-completions` and `local-chat-completions` on a generate-until task (the chat type was flaky once: 0.5, then 1.0); loglikelihood tasks need logprobs, which plugboard refuses |
 | smolagents | [smolagents][client-smolagents] | pass: text, stream, tool call and tool round trip on `fast` (smolagents 1.26.0); needs `smolagents[openai]` |
 | Langfuse | [langfuse][client-langfuse] | pass: text, stream and one tool round trip on `fast` through the OpenAI wrapper (langfuse 4.17.0), tracing off; traces to a Langfuse server not run |
 | Mastra | [mastra][client-mastra] | pass against the scripted fake: text, stream, tool call, tool round trip; needs `plugboard/fast`, not bare `fast` |
@@ -622,6 +623,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-smolagents]: https://jjjermiah.github.io/opencode-plugboard/clients/smolagents
 [client-langfuse]: https://jjjermiah.github.io/opencode-plugboard/clients/langfuse
 [client-promptfoo]: https://jjjermiah.github.io/opencode-plugboard/clients/promptfoo
+[client-lm-eval]: https://jjjermiah.github.io/opencode-plugboard/clients/lm-eval
 [client-dify]: https://jjjermiah.github.io/opencode-plugboard/clients/dify
 [client-home-assistant-extended-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/home-assistant-extended-openai
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents

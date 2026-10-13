@@ -346,6 +346,21 @@ const openaiCompletions: Client = {
       const last = chunks.at(-1)!
       expect(last.choices).toEqual([])
       expect(last.usage).toMatchObject({ prompt_tokens: 2 * USAGE.inputTokens, completion_tokens: 2 * USAGE.outputTokens })
+      // A prompt array times n (#106): two prompts with n 2 make four choices, and each is a full call, so usage is summed over four.
+      // echo puts each choice's prompt in front of its answer, so the text shows which prompt it answered: choice i answers prompt floor(i / n).
+      const prompts = [tag("n"), `${tag("n")} again`]
+      const batch = await openai(target).completions.create({ model: MODEL, prompt: prompts, n: 2, echo: true })
+      expect(batch.choices.map((choice) => [choice.index, choice.text])).toEqual([
+        [0, prompts[0] + TEXT],
+        [1, prompts[0] + TEXT],
+        [2, prompts[1] + TEXT],
+        [3, prompts[1] + TEXT],
+      ])
+      expect(batch.usage).toMatchObject({ prompt_tokens: 4 * USAGE.inputTokens, completion_tokens: 4 * USAGE.outputTokens })
+      const batchStream = await openai(target).completions.create({ model: MODEL, prompt: prompts, n: 2, stream: true, echo: true })
+      const streamed: Record<number, string> = {}
+      for await (const chunk of batchStream) for (const choice of chunk.choices) streamed[choice.index] = (streamed[choice.index] ?? "") + choice.text
+      expect([streamed[0], streamed[1], streamed[2], streamed[3]]).toEqual([prompts[0] + TEXT, prompts[0] + TEXT, prompts[1] + TEXT, prompts[1] + TEXT])
     },
     "stream-usage": async (target) => {
       const stream = await openai(target).completions.create({ model: MODEL, prompt: tag("stream-usage"), stream: true, stream_options: { include_usage: true } })
