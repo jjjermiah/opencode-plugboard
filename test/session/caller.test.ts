@@ -75,7 +75,34 @@ describe("#262 the per-step debug lines", () => {
     expect(logs.of("model.first_event")[0]!.fields).toMatchObject({ type: "text-delta" })
     expect(logs.of("model.finished")[0]!.fields).toMatchObject({ finish: "stop", inputTokens: "12", outputTokens: "5" })
     expect(logs.of("model.finished")[0]!.fields.durationMs).toMatch(/^\d+$/)
-    expect(stepLines().map((line) => line.raw).join("\n")).not.toContain("hello")
+    const raw = stepLines().map((line) => line.raw).join("\n")
+    expect(raw).not.toContain("hello")
+    expect(raw).not.toContain("Hi")
+    expect(raw).not.toContain("!")
+  })
+
+  test("at debug, model.finished fires when the prompt cannot start: the outcome is the error, there is no finish reason", async () => {
+    setLogLevel("debug")
+    const run = setup()
+    run.port.script.prompt = () => Promise.reject(new Error("host refused"))
+    await drain(run.caller.stream(plugRequest({ model: "fast" }), run.context))
+    expect(logs.of("model.finished")).toHaveLength(1)
+    expect(logs.of("model.finished")[0]!.fields.outcome).toMatch(/^error:502:prompt_failed$/)
+    expect(logs.of("model.finished")[0]!.fields.finish).toBeUndefined()
+    expect(logs.of("model.finished")[0]!.fields.durationMs).toMatch(/^\d+$/)
+  })
+
+  test("at debug, model.finished fires on a cancelled request with outcome cancelled and no finish reason", async () => {
+    setLogLevel("debug")
+    const run = setup()
+    run.port.script.prompt = () => new Promise<void>(() => {})
+    const pending = drain(run.caller.stream(plugRequest({ model: "fast" }), run.context))
+    await until(() => run.port.created.length === 1)
+    run.controller.abort()
+    await pending
+    expect(logs.of("model.finished")).toHaveLength(1)
+    expect(logs.of("model.finished")[0]!.fields.outcome).toBe("cancelled")
+    expect(logs.of("model.finished")[0]!.fields.finish).toBeUndefined()
   })
 })
 

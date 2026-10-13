@@ -471,7 +471,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         // A turn that stopped with nothing in it is kept as a session for inspection: the session id finds it.
         if (outcome === "finish:stop" && !produced) logWarn("answer.empty", { requestID, app, model: request.model, sessionID, tools: request.tools.length })
         if (debugEnabled())
-          logDebug("model.finished", { requestID, app, finish: finish?.reason, inputTokens: finish?.usage?.inputTokens, outputTokens: finish?.usage?.outputTokens, durationMs: Date.now() - startedAt })
+          logDebug("model.finished", { requestID, app, outcome, finish: finish?.reason, inputTokens: finish?.usage?.inputTokens, outputTokens: finish?.usage?.outputTokens, durationMs: Date.now() - startedAt })
         logRequest("request.finished", { requestID, app, model: request.model, durationMs: Date.now() - startedAt, outcome })
       }
     },

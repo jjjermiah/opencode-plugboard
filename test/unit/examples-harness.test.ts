@@ -4,7 +4,7 @@
  */
 import { beforeEach, afterEach, describe, expect, test } from "bun:test"
 import Ajv2020 from "ajv/dist/2020"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -89,5 +89,21 @@ describe("#335 live runs record the version of the commit they name", () => {
 
   test("a commit the checkout does not have is refused, not recorded as unknown", async () => {
     await expect(plugboardVersion("0000000")).rejects.toThrow("cannot read package.json at commit 0000000")
+  })
+
+  test("the error names git's stderr and that PLUGBOARD_CHECKOUT was the checkout", async () => {
+    await expect(plugboardVersion("0000000")).rejects.toThrow(/in PLUGBOARD_CHECKOUT; git said: fatal/)
+  })
+
+  test("without PLUGBOARD_CHECKOUT, the default checkout is the harness's own repo, and the error says so", async () => {
+    delete process.env.PLUGBOARD_CHECKOUT
+    const own = JSON.parse(readFileSync(join(import.meta.dir, "../..", "package.json"), "utf8")).version as string
+    expect(await plugboardVersion("HEAD")).toBe(own)
+    await expect(plugboardVersion("0000000")).rejects.toThrow(/in the default checkout \(the harness's own repo, PLUGBOARD_CHECKOUT is unset\); git said: fatal/)
+  })
+
+  test("a PLUGBOARD_COMMIT that starts with a dash is refused, not handed to git as an option", async () => {
+    process.env.PLUGBOARD_COMMIT = "--output=/dev/null"
+    await expect(livePlugboard()).rejects.toThrow("must not start with `-`")
   })
 })

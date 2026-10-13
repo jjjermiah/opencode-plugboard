@@ -20,6 +20,8 @@ import { verdictOf, writeRun, type RunSummary, type ScenarioRow, type Status } f
 import { startScriptedServer } from "./scripted-server.ts"
 
 const EXAMPLES = resolve(import.meta.dir, "..")
+/** The repo this harness lives in: the default plugboard checkout for a live run. */
+const ROOT = resolve(EXAMPLES, "..")
 const LIVE_DEFAULT_URL = "http://127.0.0.1:4010/v1"
 const RUNNER_TIMEOUT_MS = 20 * 60_000
 
@@ -98,13 +100,20 @@ function parseRunnerOutput(text: string) {
   return { plan, results, client, done }
 }
 
-/** The plugboard checkout a live run reads commits from: PLUGBOARD_CHECKOUT, else the default clone. */
-const checkoutDir = (): string => process.env.PLUGBOARD_CHECKOUT ?? join(process.env.HOME ?? "", "projects/repos/open-source/opencode-plugboard")
+/**
+ * The plugboard checkout a live run reads commits from: PLUGBOARD_CHECKOUT, else the harness's own repo (ROOT). `fromEnv` says which,
+ * so an error can name it without printing a path.
+ */
+const checkout = (): { dir: string; fromEnv: boolean } =>
+  process.env.PLUGBOARD_CHECKOUT ? { dir: process.env.PLUGBOARD_CHECKOUT, fromEnv: true } : { dir: ROOT, fromEnv: false }
 
 /** The plugboard commit a live run is recorded against: PLUGBOARD_COMMIT, else the checkout's HEAD. */
 export async function plugboardCommit(): Promise<string> {
-  if (process.env.PLUGBOARD_COMMIT) return process.env.PLUGBOARD_COMMIT
-  const proc = Bun.spawn(["git", "-C", checkoutDir(), "rev-parse", "--short=7", "HEAD"], { stdout: "pipe", stderr: "ignore" })
+  const named = process.env.PLUGBOARD_COMMIT
+  // An option-looking name would be read by git as a flag (`git show -x:package.json`), so it is refused here.
+  if (named?.startsWith("-")) throw new Error("PLUGBOARD_COMMIT is a commit name, and must not start with `-`")
+  if (named) return named
+  const proc = Bun.spawn(["git", "-C", checkout().dir, "rev-parse", "--short=7", "HEAD"], { stdout: "pipe", stderr: "ignore" })
   const sha = (await new Response(proc.stdout).text()).trim()
   return (await proc.exited) === 0 && sha ? sha : "unknown"
 }
@@ -115,9 +124,13 @@ export async function plugboardCommit(): Promise<string> {
  * runtime version only), so the commit is the source. A commit the checkout does not know is an error, raised before the runner starts.
  */
 export async function plugboardVersion(commit: string): Promise<string> {
-  const proc = Bun.spawn(["git", "-C", checkoutDir(), "show", `${commit}:package.json`], { stdout: "pipe", stderr: "ignore" })
-  const text = await new Response(proc.stdout).text()
-  if ((await proc.exited) !== 0) throw new Error(`cannot read package.json at commit ${commit} in PLUGBOARD_CHECKOUT (set PLUGBOARD_COMMIT to a commit it has)`)
+  const { dir, fromEnv } = checkout()
+  const proc = Bun.spawn(["git", "-C", dir, "show", `${commit}:package.json`], { stdout: "pipe", stderr: "pipe" })
+  const [text, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+  if ((await proc.exited) !== 0) {
+    const where = fromEnv ? "PLUGBOARD_CHECKOUT" : "the default checkout (the harness's own repo, PLUGBOARD_CHECKOUT is unset)"
+    throw new Error(`cannot read package.json at commit ${commit} in ${where}; git said: ${stderr.trim()}`)
+  }
   const version = (JSON.parse(text) as { version?: unknown }).version
   if (typeof version !== "string") throw new Error(`package.json at commit ${commit} has no version`)
   return version

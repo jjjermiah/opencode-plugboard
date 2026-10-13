@@ -1,6 +1,6 @@
 /** #76 the logger: text and JSON lines, and the ambient request id. */
 import { afterEach, describe, expect, test } from "bun:test"
-import { errorMessage, log, logAudit, logDebug, logError, logRequest, logWarn, outsideRequest, setLogFormat, setLogLevel, setLogRequests, withRequestId } from "../../src/log.js"
+import { debugEnabled, errorMessage, log, logAudit, logDebug, logError, logRequest, logWarn, outsideRequest, setLogFormat, setLogLevel, setLogRequests, withRequestId } from "../../src/log.js"
 import { captureLogs } from "../support/logs.js"
 
 const logs = captureLogs()
@@ -110,6 +110,15 @@ describe("#262 log level and access lines", () => {
   test("at info (the default), a debug line is dropped", () => {
     logDebug("location.keepalive", { outcome: "ok" })
     expect(logs.lines).toHaveLength(0)
+  })
+
+  /** #262: the guard callers check before building debug fields. If it were always true, the info-level test below would fail. */
+  test("debugEnabled is false at info and at warn, true at debug (the guard callers build fields behind)", () => {
+    expect(debugEnabled()).toBe(false)
+    setLogLevel("warn")
+    expect(debugEnabled()).toBe(false)
+    setLogLevel("debug")
+    expect(debugEnabled()).toBe(true)
   })
 
   test("logRequests off drops the access line and keeps an error line", () => {

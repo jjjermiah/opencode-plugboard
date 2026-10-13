@@ -16,7 +16,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Added
 
-- **Per-step debug lines** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). At `logLevel: debug`, each model request writes one line per step: `request.received` (app and model asked), `model.resolved` (the target that answered, its failed fallbacks, whether it was a list alias), `session.created`, `model.first_event` and `model.finished` (finish reason, input and output tokens, duration). They hold ids, counts and enums only, never a prompt, body or key. Each is checked against the level before its fields are built, so `info` pays nothing. The `logLevel` row in [configuration](docs/configuration.md) lists them.
+- **Per-step debug lines** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). At `logLevel: debug`, each model request writes one line per step: `request.received` (app and model asked), `model.resolved` (the target that answered, its failed fallbacks, whether it was a list alias), `session.created`, `model.first_event` and `model.finished` (finish reason, input and output tokens, duration). They hold ids, counts and enums only, never a prompt, body or key. Each is checked against the level before its fields are built, so at `info` none of them is built. The `logLevel` row in [configuration](docs/configuration.md) lists them.
 
 ### Fixed
 
