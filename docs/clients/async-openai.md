@@ -48,7 +48,7 @@ Not exercised: the Responses API and structured output. The crate also covers bo
 
 ## Quirks
 
-- The crate reads `OPENAI_BASE_URL` for its default base, not `OPENAI_API_BASE`. Issue #235 named `OPENAI_API_BASE`; the crate's own doc comment on `new()` also names that constant, which is easy to misread. The example sets the base in code with `with_api_base`, so the env var does not matter here.
+- The crate reads `OPENAI_BASE_URL` for its default base (`src/config.rs:60`). `OPENAI_API_BASE` is the name of the constant that holds the default URL, and the doc comment on `new()` names both, so the two are easy to confuse. Issue #235 says `OPENAI_API_BASE` is the env var; it is not. The example sets the base in code with `with_api_base`, so the env var does not matter here.
 - The API is behind Cargo features. A project that only needs chat must enable `chat-completion`; without it, `async_openai::config` and the chat types do not compile.
-- Chat types live under `async_openai::types::chat`. Some message and tool types are plain structs (build them with a struct literal), and others have `*Args` builders. Check the 0.42 docs when you upgrade: the layout changed from earlier releases.
+- Chat types live under `async_openai::types::chat`. Some message and tool types are plain structs (build them with a struct literal), and others have `*Args` builders. Check the 0.42 docs when you upgrade.
 - The example sets `max_completion_tokens` to 1024, so a reasoning model behind the `fast` alias still has room to answer.

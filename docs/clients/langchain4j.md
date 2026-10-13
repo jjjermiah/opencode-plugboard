@@ -34,6 +34,7 @@ ChatModel model = OpenAiChatModel.builder()
 ## Quirks (from the page and #233, not run here)
 
 - The page lists `accumulateToolCallId` for `OpenAiStreamingChatModel`. #233 says to set `accumulateToolCallId(false)` for providers that repeat the tool-call id in every chunk. Plugboard's behaviour here was not checked.
+- The pinned version is 1.22.0. A note cited by the review of this PR says LangChain4j versions before 1.23.0 need HTTP/1.1 configured explicitly. The OpenAI-compatible page's sections I could read (Prerequisites, Plain Java, Spring Boot and the provider sections) do not show that note, so it could not be confirmed on the page. If it applies, configure HTTP/1.1 on the client, or pin 1.23.0 or later. Not run against plugboard, so the effect on plugboard is unverified.
 - #233 says the custom Java REST client appends `chat/completions` to `baseUrl`, and the official-SDK integration (`langchain4j-open-ai-official`) reads `OPENAI_BASE_URL`. Neither was checked; the page does not pin which one the `langchain4j-open-ai` artifact uses.
 
 ## Unverified

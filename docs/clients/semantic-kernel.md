@@ -57,5 +57,5 @@ Not exercised: structured output, the .NET route, and the Responses API (`OpenAI
 
 ## Quirks
 
-- The streamed reply gave one non-empty content update through Semantic Kernel, while the server sent several SSE events. The count is what the connector yields, not a server limit; the script does not check it.
+- The streamed reply gave one or two non-empty content updates across runs (one and two were observed). The count varies per run, so the script prints it and does not check it against a number.
 - `max_completion_tokens` is set to 1024, so a reasoning model behind the `fast` alias still has room to answer.

@@ -1,6 +1,6 @@
 # Spring AI
 
-Status: docs-verified, not run. No example. Spring AI's OpenAI module was not built or run against plugboard in this change: no Maven on the machine, and the lane had no Java build. The property names are checked against the Spring AI reference, <https://docs.spring.io/spring-ai/reference/api/chat/openai-chat.html> (Connection Properties and Manual Configuration). Not in `docs/compatibility.md`.
+Status: docs-verified, not run. No example. Spring AI's OpenAI module was not built or run against plugboard in this change: no Maven on the machine, and the lane had no Java build. The property names are checked against the Spring AI reference, <https://docs.spring.io/spring-ai/reference/api/chat/openai-chat.html> (Connection Properties, Configuration Properties and Runtime Options), read 2026-10-13. The page does not print a version number; the review of this PR identifies it as Spring AI 2.0.1, and the properties above were checked against that reference. Not in `docs/compatibility.md`.
 
 Spring AI is the Spring project's AI framework. Its OpenAI module talks Chat Completions to any OpenAI-compatible base URL. It is not an official OpenAI library.
 
@@ -18,7 +18,7 @@ spring:
 
 - `spring.ai.openai.base-url` is "the URL to connect to" in the reference table. Include `/v1` as the issue states, and check the path on your Spring AI version (see Quirks).
 - `api-key` is a plugboard app key, not an OpenAI key.
-- Pick a model with `spring.ai.openai.chat.options.model: fast` or `OpenAiChatOptions.builder().model("fast")`. `fast` is the plugboard alias.
+- Pick a model with `spring.ai.openai.chat.model: fast` or `OpenAiChatOptions.builder().model("fast")`. `fast` is the plugboard alias.
 - Set a token limit high enough for a reasoning model behind `fast`. The reference's Token Limit Parameters section covers which parameter to use for which model.
 
 Manual configuration, per the reference:

@@ -27,7 +27,7 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [openai-dotnet/](openai-dotnet/Program.cs) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard |
 | [async-openai/](async-openai/src/main.rs) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard |
 | [crewai/](crewai/crew.py) | CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard |
-| [ag2/](ag2/chat.py) | AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run |
+| [autogen/](autogen/chat.py) | AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run |
 | [semantic-kernel/](semantic-kernel/chat.py) | Semantic Kernel (Python) with a text call, a stream and a plugin call through automatic function calling. A PEP 723 script, run with `uv run`; passes against plugboard |
 | [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script |
 | [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
