@@ -2,7 +2,7 @@
 
 Extended OpenAI Conversation is a custom component for Home Assistant. It adds a **Base Url** to the OpenAI conversation agent and lets the model call Home Assistant services. Plugboard works as its base URL: setup calls `GET /v1/models`, and each conversation turn calls `POST /v1/chat/completions` with tools.
 
-Verified: docs only, 2026-10-13. The setup fields, the `change_config` service, the default request parameters and the default function list were checked against the component source at [extended_openai_conversation `66aafab`](https://github.com/jekalmin/extended_openai_conversation/tree/66aafab5f15c189c0475b41b1368f94787df94a7/custom_components/extended_openai_conversation) (manifest version 3.0.0), and the install and expose steps against its [README](https://github.com/jekalmin/extended_openai_conversation/tree/66aafab5f15c189c0475b41b1368f94787df94a7). Not run: no Home Assistant instance called plugboard, so no voice or text turn and no service call was made through it.
+Verified: docs only, 2026-10-13. The setup fields, the `change_config` service, the default request parameters, the default function list and the AI Task response format were checked against the component source at [extended_openai_conversation `66aafab`](https://github.com/jekalmin/extended_openai_conversation/tree/66aafab5f15c189c0475b41b1368f94787df94a7/custom_components/extended_openai_conversation) (manifest version 3.0.0), and the install and expose steps against its [README](https://github.com/jekalmin/extended_openai_conversation/tree/66aafab5f15c189c0475b41b1368f94787df94a7). Not run: no Home Assistant instance called plugboard, so no voice or text turn, AI Task or service call was made through it.
 
 ## Plugboard options
 
@@ -38,13 +38,17 @@ Setup validates the key and URL by calling `client.models.list` (`helpers.py`, l
 ## What the component sends
 
 - **Model parameters.** Model names that start with `gpt-5` or `o1` to `o4` get `max_completion_tokens` and no `temperature` or `top_p` (`const.py`, `MODEL_CONFIG_PATTERNS`). Any other name, including a plugboard id, gets `max_tokens` (the max tokens option, default 500), `temperature` 0.5 and `top_p` 1 (`DEFAULT_MODEL_CONFIG`). Do not name a plugboard alias with those prefixes unless you want that parameter set.
-- **Reasoning aliases.** A reasoning model spends part of `max_tokens` on reasoning. 500 may leave no visible answer. Raise **Maximum tokens** for such an alias. Not measured here.
-- **Sampling that providers reject.** Plugboard drops `temperature` and `top_p` for models known to reject them and lists them in `x-plugboard-dropped-params`. Leave `dropUnsupportedParams` on ([configuration](../configuration.md)).
+- **Reasoning names.** The same `gpt-5` and `o1` to `o4` names also get `reasoning_effort` (default `low`) and `service_tier` (default `flex`) (`entity.py`, lines 285 to 294; `const.py`, lines 241 to 248). Plugboard reads `reasoning_effort` and does not read `service_tier`, so it has no effect here.
+- **Reasoning aliases and the token limit.** A reasoning model spends part of `max_tokens` on reasoning, so 500 may leave no visible answer. Raise the max tokens option for such an alias. Not measured here.
+- **Sampling that providers reject.** Plugboard drops parameters the model is known to reject and lists them in `x-plugboard-dropped-params` ([configuration](../configuration.md), `dropUnsupportedParams`). With the sample alias, `claude-sonnet-4-6`, HA sends `temperature` 0.5 and `top_p` 1 together. Claude 4.6 and older refuse both together, so plugboard drops `top_p` and the response carries `x-plugboard-dropped-params: top_p` (`src/openai/sampling.ts`). Claude 4.7 and newer, and every 5.x, drop both `temperature` and `top_p`. The rules key on the model that the alias resolves to, not on the alias name. Leave `dropUnsupportedParams` on.
 - **Streaming.** `stream: true` with `stream_options.include_usage`. Plugboard supports both. A streamed tool call arrives as one delta carrying the whole arguments string ([configuration](../configuration.md)).
+- **Structured output for AI Task.** When an AI Task asks for a structure, the component sends `response_format` with `type: json_schema` and a `json_schema` holding `name` (slugified), `strict: true` and `schema` (`entity.py`, lines 315 to 323). That is the wrapper plugboard requires, and plugboard answers it through its `respond` tool. The conversation agent does not send this. Not run.
 
 ## Tools
 
-The default **Functions** list has one tool, `execute_services` (`const.py`, `DEFAULT_CONF_FUNCTION_TOOLS`). Each entry you add under **Functions** becomes one more tool in every request. Plugboard's `maxTools` default is 64. The 32 that older notes give was the default before 0.25.0 ([Claude Code](claude-code.md)). A default install sends one tool and never reaches the cap. Many custom functions can reach it: a request over the cap gets 400 `too_many_tools`, and the fix is a higher `maxTools` (a global option).
+The default **Functions** list has one tool, `execute_services` (`const.py`, `DEFAULT_CONF_FUNCTION_TOOLS`). A non-empty **Functions** value replaces that default, so a list with one entry you add sends only that entry. To keep `execute_services`, copy it into the list along with your own functions (`conversation.py`, lines 225 to 247).
+
+Plugboard's `maxTools` default is 64. The 32 that older notes give was the default before 0.25.0 ([Claude Code](claude-code.md)). With many custom functions the request can reach the cap: a request over it gets 400 `too_many_tools`, and the fix is a higher `maxTools` (a global option).
 
 Plugboard returns the model's `tool_calls` and never runs them. Home Assistant runs the service, then sends the result back. **Maximum Function Calls Per Conversation** (default 10) limits the rounds per turn.
 
@@ -72,7 +76,7 @@ The service runs the same `models.list` check before it saves (`services.py`, `g
 ## Sources
 
 - [extended_openai_conversation README](https://github.com/jekalmin/extended_openai_conversation/tree/66aafab5f15c189c0475b41b1368f94787df94a7) (commit 66aafab, read 2026-10-13)
-- `custom_components/extended_openai_conversation/` at 66aafab: `config_flow.py`, `services.py`, `services.yaml`, `helpers.py`, `const.py`, `entity.py`, `strings.json`, `manifest.json` (read 2026-10-13)
-- Plugboard: [configuration.md](../configuration.md) (`maxTools`, `dropUnsupportedParams`, streamed tool calls), [any-app.md](any-app.md)
+- `custom_components/extended_openai_conversation/` at 66aafab: `config_flow.py`, `services.py`, `services.yaml`, `helpers.py`, `const.py`, `entity.py`, `conversation.py`, `strings.json`, `manifest.json` (read 2026-10-13)
+- Plugboard: [configuration.md](../configuration.md) (`maxTools`, `dropUnsupportedParams`, streamed tool calls), [any-app.md](any-app.md), `src/openai/sampling.ts`
 
 Status: docs-verified, not run (checked 2026-10-13). Home Assistant, the component and the plugboard alias were not run together.
