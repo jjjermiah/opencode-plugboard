@@ -4,7 +4,8 @@
  * started. Requests start after a mark and finish before the next one, so a slice by mark is one scenario.
  *
  * The runner marks a scenario with `POST <capture>/__mark` `{scenario, model}`. The mark waits until nothing is in
- * flight, so a late answer from the previous scenario cannot land in the next slice. Ported from compat/tools/logproxy.py
+ * flight, so a late answer from the previous scenario cannot land in the next slice. `GET <capture>/__exchanges` returns
+ * the exchanges of the current mark once they have finished (a runner that reads its own round trip, as tool-bot does). Ported from compat/tools/logproxy.py
  * (which stays until the cleanup issue deletes it).
  */
 
@@ -78,6 +79,12 @@ export async function startCapture(upstream: string, bind = "127.0.0.1"): Promis
         const variant = typeof body.variant === "string" ? body.variant : undefined
         marks.push({ scenario: body.scenario, model: body.model, ...(variant === undefined ? {} : { variant }), at: Date.now() })
         return new Response(null, { status: 204 })
+      }
+      // The exchanges of the current mark, once they have all finished. A runner reads its own round trip here, since the
+      // transcript file is written only after the runner exits.
+      if (url.pathname === "/__exchanges" && request.method === "GET") {
+        await settle()
+        return Response.json(exchanges.filter((exchange) => exchange.mark === marks.length - 1))
       }
       inFlight++
       const start = Date.now()
