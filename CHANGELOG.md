@@ -14,10 +14,62 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.33.0] - 2026-10-13: Stays Awake
+
+**Full diff:** [v0.32.0...v0.33.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.32.0...v0.33.0)
+
 ### Fixed
 
 - **The keep-alive now holds the location** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.33.0). Since 0.26.0 the keep-alive renamed one session every 30 minutes, but a rename does not restart OpenCode's 60-minute idle timer. Plugin calls publish their events without the Location, and the timer only counts events that carry one. The keep-alive now creates one child session every 30 minutes under a long-lived parent in its own Location, and removes the children the earlier ticks left. A child create carries the Location, so the timer restarts, and the lists show one stable parent row. The parent is reused from 0.26.0 to 0.32.0. A removal that fails is kept and retried on a later tick, and a failed write removes the child it just created, so nothing is left behind. Versions 0.26.0 to 0.32.0 still need the external timer in `docs/warm-up.md`.
 - **`/readyz` stays ready after an idle app directory is evicted** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.33.0). Readiness used to follow the newest generation, so when OpenCode evicted the idle app directory after an hour, `/readyz` went to 503 until the next request. It now counts a confirmed app directory for the whole process.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Fixes
+
+**fix(runtime): hold the location with a session create, not a rename (#350)** ([`1654a3f`](https://github.com/jjjermiah/opencode-plugboard/commit/1654a3fd0497b3c4b85b4c3057b0f3c4b6bd7b87))
+
+The keep-alive renamed one session every 30 minutes. OpenCode 2.0.27 still evicted the location after about an hour idle on aihub (location services evicted, then listener.closed). Renaming does not hold it.
+
+Why: LocationActivity (packages/core/src/location-activity.ts) restarts the 60 minute TTL only for a durable session event whose envelope carries a Location. The bus takes that envelope Location from the publishing fiber's Location service (bus.ts publish). Plugin calls run in a fresh fiber without one, because the plugin host closes over its Location instead, so a rename (session.renamed, published by Session.rename) has no Location and the timer never restarts. The aihub timeline fits exactly: the first tick after startup creates the session (touch), the later renames do not, and eviction comes 60 minutes after the create.
+
+What: each tick creates a new keep-alive session in this plugin's Location (session.create with no location argument, so the create's publish carries the Location explicitly), stores its id, then removes the session the previous tick stored. A session left by an older plugboard is removed on the first tick. A session already gone is not an error.
+
+Decisions:
+- Remove the old session after the create, so a failed create keeps the old one and never leaves the Location without a fresh touch.
+- Keep the sessions out of the session store, the history index and usage, as before.
+- Rejected: a child session per tick (parentID), which would need the same remove and would add a second session tree; a move (Session.move) or metadata update, which publish without a Location like the rename; a plugin-side Effect.provide of the Location, which the plugin API does not expose.
+
+Validation: typecheck clean; bun test 2424 pass, 0 fail, 126 skipped; coverage gates met; coverage-manifest 67 covered, 0 gaps; mutations 65 of 65 killed (new I30-keepalive-tick-reuses-session); check-pack and smoke-pack pass; docs:build pass; examples scripted run clean. Live proof on the isolated dev server with this branch: see the PR body.
+
+Refs #350
+Refs #310
+
+**fix(runtime): keep /readyz ready after an idle app directory, list one parent, stop leaks (#350)** ([`d0eb68e`](https://github.com/jjjermiah/opencode-plugboard/commit/d0eb68e9df73a5efa85abfa494b91071cdcab7ac))
+
+Review of #358 found three problems in the create-based keep-alive, plus a readiness gap it exposed. Each is fixed here.
+
+Readiness. `/readyz` followed the newest generation whose directory was confirmed. OpenCode evicts an idle app directory after 60 minutes, which disposes its generation, so the fallback generation (the plugin's own Location, never confirmed) became the serving one and `/readyz` went to 503 with "no app directory has been used since start". The listener was up and the next request would boot the directory again. Readiness now uses a process-wide fact: an app directory has been confirmed in this process (`rt.confirmed.size > 0`). Nothing in the confirmed set is removed on a generation's disposal. `servingConfirmed` keeps its name, so the status shape does not change, and its meaning is documented as process-wide.
+
+Churn. Each tick used to create a new root session and remove the old one, so the lists flashed a new row every 30 minutes. Now one parent, titled `plugboard keep-alive`, is created once in the plugin's Location and kept under `keepalive/session` (a parent from 0.26.0 to 0.31.0 is reused). Each tick creates a child under it. A child takes its parent's Location (Session.create publishes with `{ location }` from the parent), so the create still restarts OpenCode's 60 minute timer. Children are hidden from root lists. A missing parent is created again.
+
+Leaks. The children still to remove are tracked in `keepalive/children` (a JSON array). Each tick writes the new child into that list before it removes anything, then removes the tracked ones and writes back only the ones that failed. A failed remove is retried on a later tick. A failed write of the list removes the child just created. A list that is not JSON counts as empty. A crash between the create and the first write still leaks one child: closing that needs a durable intent record before the create, which the plugin host does not offer. Rare and bounded to one session.
+
+The host port is `createRoot`, `createChild` (undefined when the parent is gone) and `remove` (NotFound counts as removed). The remove wrapper is a plain `Effect.catch`.
+
+Rejected: a child for every app directory (more churn, and the first request after an idle still needs no boot if readiness is process-wide, which it now is); keeping the rename for the parent (a rename never touches).
+
+Validation: typecheck clean; bun test 2578 pass, 0 fail, 126 skip; test gates with --ratchet met (floors raised for runtime and unit counts); coverage- manifest 67 covered, 0 gaps; mutations 82 of 82 killed (new I30-keepalive-children-never-removed; I30-keepalive-tick-reuses-session retargeted to the child create); check-pack and smoke-pack pass; docs:build passes; examples scripted run clean. Not re-run: the idle live proof (the dev server is in use by another agent, and these changes do not change the eviction timing).
+
+Refs #350
+Refs #310
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.32.0] - 2026-10-13: Every App Its Own Dials
 
@@ -6024,7 +6076,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.29.0...v0.30.0
