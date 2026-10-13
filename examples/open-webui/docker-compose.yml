@@ -5,6 +5,7 @@
 #   docker compose up -d
 #
 # Then open http://127.0.0.1:3000 and pick `fast` in the model list.
+# region snippet
 services:
   open-webui:
     image: ghcr.io/open-webui/open-webui:0.12.0
@@ -27,3 +28,4 @@ services:
 
 volumes:
   open-webui:
+# endregion snippet
