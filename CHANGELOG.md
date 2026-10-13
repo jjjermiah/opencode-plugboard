@@ -59,6 +59,13 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
     }
   }
   ```
+- **Read the real client and the public host behind a reverse proxy** ([#266](https://github.com/jjjermiah/opencode-plugboard/issues/266)). Behind Traefik, nginx or Caddy, every request logged the proxy's address, and the loopback Host check refused the proxy's public name. `listen.trustProxy` names the proxies whose `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` are read, and only from those peers. The log gets a `client=` field, and on a keyed endpoint the forwarded host passes the Host check. Forwarded headers never authenticate. Unset means the headers are ignored, as before.
+
+  ```jsonc
+  {
+    "listen": { "host": "127.0.0.1", "port": 4010, "trustProxy": ["127.0.0.1", "10.0.0.0/8"] }
+  }
+  ```
 
 ## [0.25.1] - 2026-10-12: Front Door, Unlocked
 

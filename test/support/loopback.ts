@@ -196,7 +196,8 @@ export interface RouteSetup {
 export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
   let handle: ((request: IncomingMessage, response: ServerResponse) => Promise<void>) | undefined
   const server = await listen((request, response) => void handle!(request, response))
-  const options = testOptions({ ...setup.options, listen: { host: "127.0.0.1", port: server.port } })
+  // Keeps the caller's other `listen` fields (`trustProxy`, #266); only the host and the port are the listener's.
+  const options = testOptions({ ...setup.options, listen: { ...(setup.options?.listen as object | undefined), host: "127.0.0.1", port: server.port } })
   const catalog = setup.catalog ?? CATALOG
   const metrics = createMetrics()
   handle = createOpenAiRoute({

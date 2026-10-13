@@ -3,6 +3,7 @@
 import { createHash, timingSafeEqual } from "node:crypto"
 import type { CacheConfig } from "./cache.js"
 import { isPlugError, type PlugError } from "./contract.js"
+import { parseTrustProxy } from "./forwarded.js"
 import { allowedBy, parseAliasTarget, parseModelRef, SKILL_PREFIX } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
@@ -13,7 +14,8 @@ export type ModelIds = "canonical" | "slugs" | "both"
 
 /** Plugin options, after defaults and validation (see `parseOptions`). */
 export interface PlugboardOptions {
-  readonly listen: { readonly host: string; readonly port: number }
+  /** `listen.trustProxy` (#266): the proxies whose forwarded headers are read; absent: none (see `src/forwarded.ts`). */
+  readonly listen: { readonly host: string; readonly port: number; readonly trustProxy?: ReadonlyArray<string> }
   /** App name -> API key, from `keys` and `apps.<name>.key` merged. App names match APP_NAME_PATTERN; "default" is reserved. */
   readonly keys: Readonly<Record<string, string>>
   /** Per-app policy (`apps`); only apps that set a policy field appear. Look one up with `appPolicy`. */
@@ -725,6 +727,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const port = listenInput?.port
   if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535))
     throw new Error("plugboard option `listen.port` must be an integer between 1 and 65535")
+  const trustProxy = parseTrustProxy(listenInput?.trustProxy)
 
   const keyEntries: Array<[string, string]> = []
   if (input.keys !== undefined && !isRecord(input.keys)) throw new Error("plugboard option `keys` must be an object of app name -> key")
@@ -831,7 +834,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   return {
     ...(promptCache === undefined ? {} : { promptCache }),
-    listen: { host, port: port ?? DEFAULTS.port },
+    listen: { host, port: port ?? DEFAULTS.port, ...(trustProxy === undefined ? {} : { trustProxy }) },
     keys,
     apps,
     models: models as string[],

@@ -28,6 +28,22 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I16-forwarded-host-from-untrusted-peer",
+    invariant: "I16",
+    file: "src/forwarded.ts",
+    find: "  if (trusted === undefined || !trustedPeer(request, trusted)) return undefined",
+    replace: "  if (false) return undefined",
+    tests: ["test/http/forwarded.test.ts"],
+  },
+  {
+    id: "I16-keyed-proxied-host-check-skipped",
+    invariant: "I16",
+    file: "src/http.ts",
+    find: "  if (Object.keys(options.keys).length > 0 && forwardedHost(request, options.listen.trustProxy) !== undefined) return undefined",
+    replace: "  if (false) return undefined",
+    tests: ["test/http/forwarded.test.ts"],
+  },
+  {
     id: "I16-cors-off-list-origin-echoed",
     invariant: "I16",
     file: "src/http.ts",

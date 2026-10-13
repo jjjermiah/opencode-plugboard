@@ -22,6 +22,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `history` | `{ maxAgeDays: 30 }` | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app (unset: no count limit). `maxAgeDays` deletes older ones: 30 by default, `0` turns the age limit off (keep forever). With both, the stricter wins. See [History](history.md). |
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
+| `listen.trustProxy` (since 0.26.0) | none | The reverse proxies whose forwarded headers are read: `true` (loopback only), or a list of IP addresses and CIDR ranges such as `["127.0.0.1", "10.0.0.0/8"]`. Headers from any other peer are ignored. See [Reverse proxies](#reverse-proxies-since-0-26-0). |
 | `cors` (since 0.26.0) | none | Browser origins that may call plugboard: `{ "origins": ["https://chat.example.net"], "allowPrivateNetwork": false }`. Each origin is `http(s)://host[:port]`; `"*"` alone needs `keys`. See [Browser origins](#browser-origins-since-0-26-0). |
 | `requireKeys` (since 0.26.0) | `false` | Makes a keyless server impossible. With `true`, `keys` must be set (otherwise the plugin refuses to load), and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. Absent or `false`: keyless loopback works as before. Use it on a shared machine, where loopback is not a security boundary.
 | `metrics` | `false` | Serve Prometheus metrics at `GET /plugboard/metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
@@ -33,6 +34,26 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `historyUrl` (since 0.20.0) | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /plugboard/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
+
+### Reverse proxies (since 0.26.0)
+
+Behind Traefik, nginx or Caddy, plugboard sees the proxy's address, and the proxy's own `Host` (the public name) fails the loopback Host check. Option `listen.trustProxy` (#266) names the proxies whose forwarded headers are read:
+
+```jsonc
+"listen": {
+  "host": "127.0.0.1",
+  "port": 4010,
+  "trustProxy": ["127.0.0.1", "10.0.0.0/8"]
+}
+```
+
+- Headers are read only when the request's immediate peer (the socket address, never a header) is on the list. From any other peer, `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` are ignored.
+- `X-Forwarded-For` gives the client: the rightmost address that is not a trusted proxy. The request log line gets a `client=` field, and only when this option is set.
+- On a keyed endpoint, a trusted proxy's `X-Forwarded-Host` passes the Host check, and the discovery page's base URL uses `X-Forwarded-Proto` with that host. The proxy must send `X-Forwarded-Host`; without it the Host check reads the `Host` header as before.
+- On a keyless endpoint, forwarded headers are never used for the Host check: a page that rebinds its name to the listener could send the same header. Keyless plus a proxy is refused by the Host check, so set `keys`.
+- Forwarded headers never authenticate: a key is still required on a keyed endpoint.
+
+Read [SECURITY](https://github.com/jjjermiah/opencode-plugboard/blob/main/SECURITY.md) before you trust a loopback address: a browser on the same machine can reach a loopback listener through DNS rebinding.
 
 ### Browser origins (since 0.26.0)
 

@@ -141,6 +141,8 @@ export interface Discovery {
 }
 
 export interface DiscoveryInput {
+  /** The public origin a trusted proxy names (`src/forwarded.ts`, #266): the base URL uses it. Absent: the listen address. */
+  readonly publicOrigin?: string
   readonly options: PlugboardOptions
   /** The authenticated app; undefined when the caller sent no credentials (only possible when `keys` are set). */
   readonly app?: string
@@ -162,9 +164,9 @@ function summarize(catalog: ReadonlyArray<CatalogModel>): { providers: ProviderS
   }
 }
 
-export function buildDiscovery({ options, app, catalog }: DiscoveryInput): Discovery {
+export function buildDiscovery({ options, app, catalog, publicOrigin }: DiscoveryInput): Discovery {
   const keyed = Object.keys(options.keys).length > 0
-  const base = `${origin(options.listen)}/v1`
+  const base = `${publicOrigin ?? origin(options.listen)}/v1`
   const detail = !keyed || app !== undefined
   const auth = keyed ? ({ required: true, scheme: "Bearer" } as const) : { required: false }
 

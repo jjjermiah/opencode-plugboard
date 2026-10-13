@@ -95,6 +95,14 @@ The client then uses `http://127.0.0.1:4010/v1` with a key. Keep the local port 
 
 A browser UI on another origin calls plugboard only when that origin is named in `cors.origins` (see [configuration](configuration#browser-origins-since-0-26-0)). Behind a TLS proxy, list the public origin the browser sees, such as `https://chat.example.net`, and trust the proxy's address with `listen.trustProxy` so the Host check and the logs see the real client.
 
+```jsonc
+"keys": { "chat-ui": "{env:PLUGBOARD_KEY_CHAT}" },
+"listen": { "host": "127.0.0.1", "port": 4010, "trustProxy": ["127.0.0.1"] },
+"cors": { "origins": ["https://chat.example.net"] }
+```
+
+The proxy must send `X-Forwarded-Host` and `X-Forwarded-Proto`. Keep `keys` set: a keyless endpoint never takes the forwarded host (see [reverse proxies](configuration#reverse-proxies-since-0-26-0)).
+
 ## Remote image URLs (since 0.26.0)
 
 A request may name an `http(s)` image URL, and the server fetches it when `remoteImages` is on. From a remote deployment, prefer the stricter choice: `"remoteImages": { "schemes": ["https"], "maxBytes": 5242880, "maxRedirects": 0 }`, plus `allow` for each internal image host. Every field is listed in [configuration](configuration#remote-image-limits-since-0-26-0).

@@ -143,6 +143,18 @@ describe("parseOptions: every rejection names the option", () => {
   })
 })
 
+describe("#266 listen.trustProxy in parseOptions", () => {
+  test("is absent from listen by default, and carries the list when set", () => {
+    expect(parseOptions({}).listen).not.toHaveProperty("trustProxy")
+    expect(parseOptions({ keys: { app: "secret" }, listen: { trustProxy: ["127.0.0.1", "10.0.0.0/8"] } }).listen.trustProxy).toEqual(["127.0.0.1", "10.0.0.0/8"])
+    expect(parseOptions({ keys: { app: "secret" }, listen: { trustProxy: true } }).listen.trustProxy).toEqual(["127.0.0.0/8", "::1/128"])
+  })
+
+  test("an invalid entry is refused at load and names the option", () => {
+    expect(() => parseOptions({ listen: { trustProxy: ["proxy.internal"] } })).toThrow("`listen.trustProxy`")
+  })
+})
+
 describe("#256 cors option", () => {
   test("is absent by default, and parses origins and allowPrivateNetwork", () => {
     expect(parseOptions({})).not.toHaveProperty("cors")

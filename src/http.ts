@@ -8,6 +8,7 @@ import { STATUS_CODES, type IncomingMessage, type ServerResponse } from "node:ht
 import { raceAbort } from "./abort.js"
 import { BODY_LIMIT_DEFAULTS, type BodyLimits, isLoopbackHost, type PlugboardOptions } from "./config.js"
 import type { PlugError, PlugEvent } from "./contract.js"
+import { forwardedHost } from "./forwarded.js"
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024
 /** Largest delay `setTimeout` accepts; anything larger fires at once. */
@@ -450,8 +451,14 @@ function hostAllowed(options: PlugboardOptions, hostHeader: string | undefined):
   return (match[2] ?? "80") === String(options.listen.port)
 }
 
-/** The `Host` header check on its own (I16). A preflight runs it too: it carries no credentials, but still must not bypass the DNS rebinding check. */
+/**
+ * The `Host` header check (I16). On a keyed loopback endpoint behind a trusted proxy (`listen.trustProxy`, #266), the
+ * proxy's `X-Forwarded-Host` is checked instead: that is the public name the proxy served. A keyless endpoint never
+ * takes it, because a page that rebinds its name to the listener could send the header too. A preflight runs this
+ * check as well: it carries no credentials, but must not bypass the DNS rebinding check.
+ */
 export function checkHost(request: IncomingMessage, options: PlugboardOptions): PlugError | undefined {
+  if (Object.keys(options.keys).length > 0 && forwardedHost(request, options.listen.trustProxy) !== undefined) return undefined
   if (!hostAllowed(options, request.headers.host))
     return { status: 403, kind: "permission", code: "invalid_host", message: "Host header not allowed" }
 }

@@ -47,6 +47,7 @@ import {
   type RequestScope,
 } from "../http.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
+import { clientAddress, forwardedOrigin } from "../forwarded.js"
 import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, log, logError, withRequestId } from "../log.js"
@@ -143,6 +144,8 @@ interface RequestInfo extends ServedInfo {
   dropped?: string
   /** The end user the body named, when kept (src/user.ts). */
   user?: string
+  /** The client address behind a trusted proxy (`listen.trustProxy`, #266); set only when that option is on. */
+  client?: string
 }
 
 export function createOpenAiRoute(routeHost: RouteHost) {
@@ -247,7 +250,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         app = auth.app
       }
       info.app = app
-      const doc = buildDiscovery({ options: host.options, app, catalog: app === undefined ? undefined : await optionalCatalog(scope) })
+      // Behind a trusted proxy on a keyed endpoint, the base URL is the public origin the proxy names (#266).
+      const publicOrigin = keyed ? forwardedOrigin(request, host.options.listen.trustProxy) : undefined
+      const doc = buildDiscovery({ options: host.options, app, catalog: app === undefined ? undefined : await optionalCatalog(scope), publicOrigin })
       if (route === "GET /v1") return sendJson(response, 200, doc)
       return sendText(response, 200, "text/html; charset=utf-8", renderDiscoveryHtml(doc), PAGE_HEADERS)
     }
@@ -445,6 +450,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   async function run(request: IncomingMessage, response: ServerResponse, id: string): Promise<void> {
     const started = Date.now()
     const info: RequestInfo = { route: "unparsed" }
+    if (host.options.listen.trustProxy !== undefined) info.client = clientAddress(request, host.options.listen.trustProxy)
     metrics?.requestStarted()
     const scope = beginRequest(request, response, host.options.requestTimeoutMs)
     let outcome = "ok"
@@ -491,7 +497,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       // Probes and scrapes that succeed are not worth a line each. A readiness probe is never logged: it repeats until the backend is ready.
       const probe = READY_ROUTES.includes(info.route) || ((HEALTH_ROUTES.includes(info.route) || info.route === "GET /plugboard/metrics") && outcome === "ok")
       if (!probe) {
-        const fields = { id, route: info.route, app: info.app, user: info.user, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
+        const fields = { id, route: info.route, app: info.app, user: info.user, client: info.client, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
         else log("request", fields)
       }
