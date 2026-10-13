@@ -54,13 +54,15 @@ export interface CatalogModel {
 // ---------------------------------------------------------------- request
 
 /**
- * `cache`: the caller placed a cache breakpoint on this part (Anthropic `cache_control`). It is always the default 5-minute
- * breakpoint (#275); a `ttl` of 1h is not carried, because Anthropic rejects a 1h breakpoint after a 5-minute one.
+ * `cache`: the caller placed a cache breakpoint on this part (Anthropic `cache_control`). `cacheTtl` is `"1h"` when the caller
+ * asked for the 1-hour TTL, else the default 5 minutes (#275). The 1h TTL is carried only when the request has no tools; see
+ * `src/session/context.ts` (`orderOneHourHints`) and docs/messages.md.
  */
 export interface TextPart {
   readonly type: "text"
   readonly text: string
   readonly cache?: boolean
+  readonly cacheTtl?: "1h"
 }
 /** Image or file. `url` is a data: URL or http(s) URL; the backend turns it into a host media asset. */
 export interface MediaPart {
@@ -68,6 +70,7 @@ export interface MediaPart {
   readonly url: string
   readonly mediaType?: string
   readonly cache?: boolean
+  readonly cacheTtl?: "1h"
 }
 export interface ToolCallPart {
   readonly type: "tool-call"
@@ -84,6 +87,7 @@ export interface ToolResultPart {
   readonly isError?: boolean
   /** A caller cache breakpoint on the result (see `TextPart.cache`). */
   readonly cache?: boolean
+  readonly cacheTtl?: "1h"
 }
 
 export type PlugPart = TextPart | MediaPart | ToolCallPart | ToolResultPart

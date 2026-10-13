@@ -325,12 +325,17 @@ export function buildStatus(input: {
   }
   readonly catalog?: ReadonlyArray<CatalogModel>
   readonly now?: number
+  /** The plugboard package version (`src/version.ts`), and the host OpenCode version when the plugin context has one (#347). */
+  readonly packageVersion?: string
+  readonly opencodeVersion?: string
 }): object {
   const { options, app, runtime, catalog } = input
   const now = input.now ?? Date.now()
   return {
     ok: true,
     app,
+    ...(input.packageVersion === undefined ? {} : { packageVersion: input.packageVersion }),
+    ...(input.opencodeVersion === undefined ? {} : { opencodeVersion: input.opencodeVersion }),
     runtimeVersion: runtime.runtimeVersion,
     startedAt: new Date(runtime.startedAt).toISOString(),
     uptimeSeconds: Math.max(0, Math.floor((now - runtime.startedAt) / 1000)),

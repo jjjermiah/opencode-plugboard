@@ -36,8 +36,8 @@ Define the aliases in the plugboard `aliases` option (for example `"claude-sonne
 | --- | --- |
 | `model` | Same as Chat Completions: an alias or `provider/model[#variant]`. The response echoes the string you sent. |
 | `max_tokens` | Required, a positive integer, passed to the model. |
-| `system` | A string, or text blocks (`cache_control` is accepted and ignored: the app's policy and OpenCode's own placement decide the system cache). |
-| `messages` | `user` and `assistant` turns with a string or content blocks: `text`, `image` (`base64` or `url` source), `document` (`base64`, `url` or `text` source), `tool_use` (assistant), `tool_result` (user). `thinking` and `redacted_thinking` blocks are accepted and dropped. `cache_control` (`ephemeral`) on a `text`, `image`, `document` or `tool_result` block is a cache breakpoint the caller chose: OpenCode keeps it and fills the rest of its own budget, so the caller controls what is cached but cannot turn caching off. A `ttl` of `1h` is sent as the default 5-minute breakpoint: a 1h breakpoint placed after OpenCode's 5-minute ones (its tool and system breakpoints) is rejected by Anthropic, so it is not carried (#275). `cache_control` on `tools` is ignored, because the OpenCode context hook does not carry a tool's cache hint. |
+| `system` | A string, or text blocks. `cache_control` on a system block is accepted and ignored: the app's policy and OpenCode's own placement decide the system cache. The one exception is a caller's `ttl: "1h"` block later in `messages`, which can set the 1-hour TTL on the system's first and last part (see [Prompt caching](#prompt-caching)). |
+| `messages` | `user` and `assistant` turns with a string or content blocks: `text`, `image` (`base64` or `url` source), `document` (`base64`, `url` or `text` source), `tool_use` (assistant), `tool_result` (user). `thinking` and `redacted_thinking` blocks are accepted and dropped. `cache_control` (`ephemeral`) on a `text`, `image`, `document` or `tool_result` block is a cache breakpoint the caller chose: it is kept, and OpenCode fills the rest of its own budget, so the caller controls what is cached but cannot turn caching off. A `ttl` of `1h` is carried only on a request without tools; otherwise it is the 5-minute default. See [Prompt caching](#prompt-caching). `cache_control` on `tools` is ignored: the context hook can rewrite a tool's name, description and schema but not its cache hint. |
 | `tool_result` | `content` as a string or text and image blocks, `is_error` passed on. Each result must answer a `tool_use` block from an earlier assistant turn. Images inside a result are passed as user media after the results. |
 | `tools` | Custom tools with `name`, `description` and `input_schema`. |
 | `tool_choice` | `auto`, `any`, `none`, `{"type":"tool","name":"..."}`. `disable_parallel_tool_use: true` keeps only the first tool call of the answer, as `parallel_tool_calls: false` does on Chat Completions; the response carries `x-plugboard-parallel-tools: limited`. |
@@ -51,6 +51,24 @@ Define the aliases in the plugboard `aliases` option (for example `"claude-sonne
 Sampling parameters follow the same `dropUnsupportedParams` rule as Chat Completions: parameters a model is known to reject are dropped and listed in `x-plugboard-dropped-params`.
 
 **System messages inside `messages` are lifted, not rejected.** Claude Code sends a `role: "system"` entry for models it does not know, and the real API refuses it. Plugboard moves each one out of `messages` and appends its text after the top-level `system`, in the order they were sent. The system prompt is therefore the top-level `system` first, then the lifted entries in their `messages` order. A lifted entry's `content` takes the same string or text-block forms as `system`.
+
+## Prompt caching
+
+A caller's `cache_control` breakpoint on a `text`, `image`, `document` or `tool_result` block is kept. Its `ttl` is honoured only as described under TTL `1h` below (since 0.32.0). Anthropic allows four breakpoints per request, and the caller's breakpoints count against the same four.
+
+**OpenCode's own breakpoints.** On the Anthropic Messages route, and on the OpenRouter and Vercel gateway routes for `anthropic/` models, OpenCode adds its breakpoints when the caller has not used the four slots: the last tool, the first and last system part, and the last text part of the last message (the conversation tail). All are 5-minute. A part that already has a breakpoint is skipped. Plugboard sends no cache policy, so this placement always runs. Other routes and models differ: Qwen gets system and tail breakpoints only, and some get none. The rest of this section describes the Claude placement.
+
+**TTL `1h`.** A caller block with `ttl: "1h"` gets the 1-hour TTL only when the request has no tools. That means no caller `tools` and no server tools reach the model, or `tool_choice` is `none`. Then plugboard:
+
+- gives 1h to every breakpoint before the last 1h block, including a caller's 5-minute block there (the raise adds no cost, see Pricing);
+- gives 1h to the first and last system part and to the tail part, where OpenCode would otherwise put a 5-minute breakpoint before the 1h block, as far as the four slots allow;
+- leaves a block after the last 1h block at 5 minutes.
+
+The result keeps every 1-hour breakpoint before every 5-minute one. Anthropic documents that order as required: a 1-hour cache entry must appear before any 5-minute cache entry. That is the documented constraint; plugboard has not seen it rejected on the wire.
+
+With tools, a 1h block is sent as 5 minutes. OpenCode's last-tool breakpoint is 5 minutes and comes before every message, so a 1h block could not come before it, and the context hook cannot set the tool's hint to 1h.
+
+Pricing: Anthropic bills a 1-hour cache write at 2 times the base input price and a 5-minute write at 1.25 times. Reads cost the same. With mixed TTLs Anthropic bills a 1-hour write for every token up to the highest 1-hour breakpoint, whatever breakpoints come before it. So the caller's 1h block already prices everything before it as a 1-hour write, and raising an earlier 5-minute block to 1h adds no cost. Without the raise, Anthropic's documented order would be broken and the request rejected.
 
 ## What is rejected
 

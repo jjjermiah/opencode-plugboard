@@ -501,7 +501,8 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Cline | [cline][client-cline] | docs only, not run yet (VS Code extension); OpenAI Compatible provider |
 | Roo Code | [roo-code][client-roo-code] | docs only, not run yet (VS Code extension); needs native tool calling |
 | promptfoo | [promptfoo][client-promptfoo] | pass against the scripted fake: `promptfoo eval` 2/2 (text, tool call); model-graded assertions need a plugboard grader |
-| smolagents | [smolagents][client-smolagents] | partial against the scripted fake: text, stream, tool call pass; tool round trip fails on the fake (scripted reply); needs `smolagents[openai]` |
+| smolagents | [smolagents][client-smolagents] | pass: text, stream, tool call and tool round trip on `fast` (smolagents 1.26.0); needs `smolagents[openai]` |
+| Langfuse | [langfuse][client-langfuse] | pass: text, stream and one tool round trip on `fast` through the OpenAI wrapper (langfuse 4.17.0), tracing off; traces to a Langfuse server not run |
 | Mastra | [mastra][client-mastra] | pass against the scripted fake: text, stream, tool call, tool round trip; needs `plugboard/fast`, not bare `fast` |
 | Dify | [dify][client-dify] | docs only, not run yet (self-hosted web app); OpenAI-API-compatible provider, Chat mode, Tool Call off by default |
 | Home Assistant (Extended OpenAI Conversation) | [home-assistant-extended-openai][client-home-assistant-extended-openai] | docs only, not run yet (custom component); Base Url field, one default tool |
@@ -617,6 +618,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-haystack]: https://jjjermiah.github.io/opencode-plugboard/clients/haystack
 [client-mastra]: https://jjjermiah.github.io/opencode-plugboard/clients/mastra
 [client-smolagents]: https://jjjermiah.github.io/opencode-plugboard/clients/smolagents
+[client-langfuse]: https://jjjermiah.github.io/opencode-plugboard/clients/langfuse
 [client-promptfoo]: https://jjjermiah.github.io/opencode-plugboard/clients/promptfoo
 [client-dify]: https://jjjermiah.github.io/opencode-plugboard/clients/dify
 [client-home-assistant-extended-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/home-assistant-extended-openai
