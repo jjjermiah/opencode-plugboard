@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.25.1] - 2026-10-12: Front Door, Unlocked
+
+**Full diff:** [v0.25.0...v0.25.1](https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.0...v0.25.1)
+
 0.25.0 was tagged but never published: its publish run stopped at a CI gate, so npm never had it. This release is 0.25.0's content, published. Read the [0.25.0 notes](#0250---2026-10-12-its-own-front-door) for the breaking route moves and the new defaults.
 
 ### Added
@@ -23,6 +29,33 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Fixed
 
 - The scripted example runs recorded the curl, bash and Python versions of whoever ran them, so CI saw them as stale and blocked the 0.25.0 publish. They now record only pinned versions.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Tests
+
+**test(examples): record only pinned versions in the scripted runs, so CI matches a laptop** ([`df231e6`](https://github.com/jjjermiah/opencode-plugboard/commit/df231e66acd18bc8d17806d5c835ad4f96da7f33))
+
+The Examples job in CI failed on PR #303. The committed scripted runs recorded the local host's versions (curl 8.7.1 on bash 5.3, Python 3.13), and the CI runner has curl 8.5.0, bash 5.2 and Python 3.12. A scripted run must not depend on the machine it ran on, so this fixes the inputs rather than the check.
+
+examples/openai-python and examples/_harness/smoke-py get a .python-version pinning 3.13. uv then runs the same interpreter everywhere, including the CI runner, which downloads it.
+
+curl and bash have no lockfile, and their minor versions differ between hosts. The curl runner now reports their major version only (curl 8, bash 5). The schema accepts a major-only runtime version, and the contract in #174 says so: a system tool records its major version. Live records already committed keep their full versions. They match the schema as before and are not rewritten.
+
+The scripted runs are regenerated and checked twice, with git diff --exit-code clean after the second pass. openai-python and both smoke runs did not change, since their pins already gave the same values.
+
+Refs #174, #177, #185
+
+#### Docs
+
+**docs(changelog): notes for 0.25.1, which publishes 0.25.0** ([`6146673`](https://github.com/jjjermiah/opencode-plugboard/commit/6146673ac418500aa337ce2e7b68d5b6671d8461))
+
+The 0.25.0 tag's publish run stopped at the new Examples gate: the scripted example runs had recorded the local curl, bash and Python versions, which differ on the CI runner. That was fixed on main in #306, after the tag. Re-running the publish on the 0.25.0 tag would hit the same commit, and moving a pushed tag rewrites shared history, so 0.25.1 publishes the same content plus the fix. The notes say 0.25.0 never reached npm and point at its breaking-change section. Install pins move to 0.25.1.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.25.0] - 2026-10-12: Its Own Front Door
 
@@ -3995,7 +4028,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...HEAD
+[0.25.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.22.0...v0.23.0
