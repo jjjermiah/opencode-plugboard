@@ -127,6 +127,12 @@ describe("#56 buildStatus", () => {
     })
   })
 
+  test("#347 the package version and the host OpenCode version come first, and an unknown OpenCode version is left out", () => {
+    const status = buildStatus({ options: testOptions(), runtime, catalog: CATALOG, packageVersion: "0.30.0", opencodeVersion: "2.0.27", now: Date.UTC(2026, 9, 11) }) as Record<string, unknown>
+    expect(status).toMatchObject({ packageVersion: "0.30.0", opencodeVersion: "2.0.27", runtimeVersion: 8 })
+    expect(Object.keys(buildStatus({ options: testOptions(), runtime, packageVersion: "0.30.0", now: Date.UTC(2026, 9, 11) }))).not.toContain("opencodeVersion")
+  })
+
   test("without a catalog the models field says so; without a listener bound is false", () => {
     const { listener: _, ...noListener } = runtime
     expect(buildStatus({ options: testOptions(), app: "a", runtime: noListener, now: runtime.startedAt })).toMatchObject({ models: { error: "catalog_unavailable" }, listen: { bound: false } })

@@ -109,7 +109,7 @@ The request body did not arrive within `limits.bodyReadTimeoutMs`. Send the body
 
 ### request_body_too_large {#request-body-too-large}
 
-The request body is over the body cap: `limits.maxBodyBytes` (32 MiB by default), or the app's `limits.apps.<name>.maxBodyBytes`. Send a smaller body, or ask the operator to raise the cap. Before 0.31.0 this 413 had no code.
+The request body is over the body cap: `limits.maxBodyBytes` (32 MiB by default), or the app's `limits.apps.<name>.maxBodyBytes`. Send a smaller body, or ask the operator to raise the cap. Before 0.32.0 this 413 had no code.
 
 ### server_busy {#server-busy}
 

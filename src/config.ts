@@ -187,27 +187,27 @@ export interface AppPolicy {
   /** Endpoint families this app may call (option `apps.<name>.endpoints`, #268). Absent: every endpoint. Check with `endpointRefusal`. */
   readonly endpoints?: ReadonlyArray<Endpoint>
   /**
-   * This app's request deadline in ms (option `apps.<name>.requestTimeoutMs`, since 0.31.0, #257). Absent: the global
+   * This app's request deadline in ms (option `apps.<name>.requestTimeoutMs`, since 0.32.0, #257). Absent: the global
    * `requestTimeoutMs`. Look the effective value up with `requestTimeoutFor`.
    */
   readonly requestTimeoutMs?: number
   /**
-   * The most output tokens one answer of this app may have (option `apps.<name>.maxOutputTokens`, since 0.31.0, #263). It lowers the
+   * The most output tokens one answer of this app may have (option `apps.<name>.maxOutputTokens`, since 0.32.0, #263). It lowers the
    * caller's limit, or sets one when the caller sent none; it is never raised. Applied by `appGeneration` (src/openai/sampling.ts).
    */
   readonly maxOutputTokens?: number
   /**
-   * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.31.0, #264): a field fills the request only where the caller
+   * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.32.0, #264): a field fills the request only where the caller
    * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
    */
   readonly sampling?: PlugGeneration
   /**
-   * The one model every request of this app runs on (option `apps.<name>.model`, since 0.31.0, #261): a canonical id or an alias.
+   * The one model every request of this app runs on (option `apps.<name>.model`, since 0.32.0, #261): a canonical id or an alias.
    * The caller's `model` is ignored when it is set. Checked at load against the global `models` and the app's `models`.
    */
   readonly model?: string
   /**
-   * A request header that names the end user (option `apps.<name>.userHeader`, since 0.31.0, #272), read instead of the body's
+   * A request header that names the end user (option `apps.<name>.userHeader`, since 0.32.0, #272), read instead of the body's
    * `user` (or `metadata.user_id`) when the request sends it. Lower case. Looked up by `requestUser` (src/user.ts).
    */
   readonly userHeader?: string
@@ -219,7 +219,7 @@ export interface LimitCaps {
   readonly maxConcurrent?: number
   /** Model calls started per minute (a fixed one-minute window). */
   readonly requestsPerMinute?: number
-  /** Largest request body this app may send, in bytes (`limits.apps.<name>` only, since 0.31.0, #258). It can only lower `limits.maxBodyBytes`. */
+  /** Largest request body this app may send, in bytes (`limits.apps.<name>` only, since 0.32.0, #258). It can only lower `limits.maxBodyBytes`. */
   readonly maxBodyBytes?: number
 }
 
@@ -239,7 +239,7 @@ export interface Limits {
   /** Milliseconds a request body may take to arrive in full; a slower one is refused with 408. */
   readonly bodyReadTimeoutMs?: number
   /**
-   * The largest request body any app may send (since 0.31.0, #258), 1 to 33554432. Absent: 32 MiB. It is the ceiling for
+   * The largest request body any app may send (since 0.32.0, #258), 1 to 33554432. Absent: 32 MiB. It is the ceiling for
    * `apps.<name>.maxBodyBytes`-style caps in `limits.apps`, and a body over it is refused with 413 before it is read.
    */
   readonly maxBodyBytes?: number

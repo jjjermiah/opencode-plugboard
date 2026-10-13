@@ -1,6 +1,6 @@
 # DSPy
 
-Tested: `dspy` 3.4.0 (with `litellm` 1.105.0 and `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12, against the scripted fake plugboard. `Predict`, `ChainOfThought` and a typed pydantic output passed. The same day, all 3 scenarios also passed on the isolated live dev server (`fast` = `opencode-go/glm-5.3-flash`); see [compatibility](../compatibility.md#python-clients).
+Tested: `dspy` 3.4.0 (with `litellm` 1.105.0 and `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12. Live on the isolated dev server (`fast` = `opencode-go/glm-5.3-flash`): all 3 scenarios passed. `predict` and `chain-of-thought` answered `pong`, and the typed output returned `answer='42'`. Streaming was not run. The same 3 scenarios pass on the scripted fake. See [compatibility](../compatibility.md#python-clients).
 
 DSPy routes its models through LiteLLM. The `openai/` prefix sends them to Chat Completions.
 
@@ -34,7 +34,7 @@ out = dspy.ChainOfThought(QA)(question="What is 6 times 7?")
 print(out.answer)  # an Answer
 ```
 
-DSPy asks for the output in its own text format first, then falls back to a JSON schema when the text does not parse. The typed run passed on the fake, which answers the JSON form. A real model's own JSON was not tested here.
+DSPy asks for the output in its own text format first, then falls back to a JSON schema when the text does not parse. The typed run passed on the fake, which answers the JSON form, and live, where the model returned `answer='42'`. The live run did not record which of DSPy's two formats the model used, so whether the live model took the JSON fallback is not shown.
 
 ## Gotchas
 

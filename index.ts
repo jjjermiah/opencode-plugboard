@@ -36,6 +36,7 @@ import { keepAliveIntervalMs, keepAliveLoop } from "./src/keepalive.js"
 import { createKeyStore } from "./src/keys.js"
 import { usageHandlers, UsageRpc } from "./src/rpc.js"
 import { createUsageRecorder, withUsage } from "./src/usage.js"
+import { hostVersion } from "./src/version.js"
 
 export default Plugin.define({
   id: "opencode-plugboard",
@@ -90,6 +91,8 @@ export default Plugin.define({
         : undefined
       const handle = createOpenAiRoute({
         options,
+        // The host's own version (`ctx.app`), shown on `/plugboard/status` (#347).
+        opencodeVersion: hostVersion(ctx.app?.version),
         // Usage is outermost, so it records the answer the client gets (src/usage.ts).
         // Caps are outside the fallbacks, so one request takes one slot even when it falls back (src/limits.ts).
         // Aliases written as a list retry the next target before the first output (src/fallback.ts).
