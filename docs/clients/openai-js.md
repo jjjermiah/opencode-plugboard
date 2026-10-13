@@ -12,11 +12,13 @@ const client = new OpenAI({ baseURL: "http://localhost:4010/v1", apiKey: process
 
 ## Chat
 
+The snippet uses `client` (above) and `model` (`"fast"`).
+
 <<< @/../examples/openai-js/chat.ts#snippet
 
 ## Tool call
 
-Plugboard returns the call. Your code runs it and sends the result back.
+Plugboard returns the call. Your code runs it and sends the result back. The snippet uses `client` and `model` (above) and imports `OpenAI` from `openai`.
 
 <<< @/../examples/openai-js/tools.ts#snippet
 
@@ -25,6 +27,8 @@ Plugboard returns the call. Your code runs it and sends the result back.
 ## Structured output
 
 `zodResponseFormat(Meal, "meal")` with `.parse()` or `.stream()` works on every model tested and fills `message.parsed`. Plugboard instructs the model to answer through a `respond` tool. The provider does not enforce the schema. The raw `json_schema` form is in [`structured.ts`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/openai-js/structured.ts).
+
+The snippet uses `client`, `model`, and `zodResponseFormat` from `openai/helpers/zod` with `z` from `zod`.
 
 <<< @/../examples/openai-js/structured.ts#snippet-parse
 

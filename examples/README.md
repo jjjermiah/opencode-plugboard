@@ -31,7 +31,9 @@ Status is the verdict of the newest run in each directory (`pass`, `partial`, `f
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines | pass | `2026-10-13-50219b1`, partial |
 | [curl/](curl/README.md) | One request per API in plain shell: chat, responses, Anthropic Messages, Gemini, legacy completions and models | pass | `2026-10-12-a38860b-2`, fail (see its report) |
 
-The clients below are examples without a harness run yet. Their status is "not run": the example's README says what was tested, and any earlier record of a run is in its `runs/` directory when one was migrated.
+The clients below are examples without a harness run yet. Their status is "not run", or "live record only" where a dated live record was migrated from the old `compat/py/clients` checks: the example's README says what was tested, and the record is in its `runs/live/` directory.
+
+Five of these (aider, dspy, instructor, litellm-client, openai-agents) have a 2026-10-12 live record and no scripted run. Their Python checks still run from `compat/py/clients` (`bun run compat:python`), see [#366](https://github.com/jjjermiah/opencode-plugboard/issues/366).
 
 | Example | Shows | Status |
 | --- | --- | --- |
@@ -51,20 +53,30 @@ The clients below are examples without a harness run yet. Their status is "not r
 | [langfuse/](langfuse/example.py) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off | not run |
 | [promptfoo/](promptfoo/promptfooconfig.yaml) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check | not run |
 | [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider | not run |
-| [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` | not run |
+| [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` | live record only (compat/py/clients), 2026-10-12 |
 | [go-openai/](go-openai/main.go) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard | not run |
 | [openai-dotnet/](openai-dotnet/Program.cs) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard | not run |
 | [async-openai/](async-openai/src/main.rs) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard | not run |
 | [crewai/](crewai/crew.py) | CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard | not run |
 | [autogen/](autogen/chat.py) | AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run | not run |
 | [semantic-kernel/](semantic-kernel/chat.py) | Semantic Kernel (Python) with a text call, a stream and a plugin call through automatic function calling. A PEP 723 script, run with `uv run`; passes against plugboard | not run |
-| [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script | not run |
-| [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script | not run |
-| [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script | not run |
-| [aider/](aider/.aider.conf.yml) | Aider (a terminal coding tool) pointed at plugboard: `.aider.conf.yml` and `.env.example` | not run |
+| [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script | live record only (compat/py/clients), 2026-10-12 |
+| [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script | live record only (compat/py/clients), 2026-10-12 |
+| [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script | live record only (compat/py/clients), 2026-10-12 |
+| [aider/](aider/.aider.conf.yml) | Aider (a terminal coding tool) pointed at plugboard: `.aider.conf.yml` and `.env.example` | live record only (compat/py/clients), 2026-10-12 |
 | [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt, paperless-ai (`.env` and compose), PR-Agent (`.env`), SiYuan (`.env` and compose). Page per app in [docs/self-hosted](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted.md) | docs-verified, not run |
 
 Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option. The [curl example](curl/README.md) covers the chat, responses, messages, Gemini, completions and models routes. The usage route (`/plugboard/usage`) is not in it yet.
+
+## Historical records
+
+A `runs/live/<date>-<sha>/REPORT.md` is a copy of a dated record and is never rewritten. Three things in those copies are out of date, and none is a fact about the run:
+
+- Records dated before 2026-10-13 name scripts under `compat/` that were removed in `5412c51` (for example `compat/docker/open-webui.sh`, `compat/docker/n8n/run.sh`, `compat/tools/logproxy.py`, `compat/py/openai_py.py`). `git show 3d3735c:<path>` restores any of them.
+- The header of the seven 2026-10-11 copies (openai-python, openai-js, vercel-ai-sdk, pydantic-ai, langchain-python, n8n, open-webui) links `release-candidate.md` by a relative path. It now lives at `examples/_release/release-candidate.md`.
+- `langchain-python`'s 2026-10-11 record names `compat/py/langchain_py.py` and `compat/js/langchain_js.ts`; those scripts are in `git show 3d3735c:<path>`.
+
+A new record for a client goes in `runs/live/<date>-<sha>/REPORT.md`, written from [`_release/_template.md`](_release/_template.md). Rules for records and superseded notes are in [_harness/README.md](_harness/README.md#record-keeping).
 
 ## Self-hosted apps
 

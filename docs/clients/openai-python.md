@@ -13,11 +13,15 @@ client = OpenAI(base_url="http://localhost:4010/v1", api_key=os.environ["PLUGBOA
 
 ## Chat
 
+The snippet uses `client` (above) and `model` (`"fast"`).
+
 <<< @/../examples/openai-python/chat.py#snippet
 
 ## Tool call
 
 Plugboard returns the call. Your code runs it and sends the result back.
+
+The snippet uses `client`, `model`, `messages` (a list holding the user prompt), `TOOL` (the `get_weather` schema, `examples/_shared/get_weather.tool.json`) and `TOOL_RESULT` (`examples/_shared/get_weather.result.json`).
 
 <<< @/../examples/openai-python/tools.py#snippet
 

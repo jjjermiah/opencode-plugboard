@@ -9,7 +9,9 @@ updates:
         patterns: ["@opencode/*", "effect"]
     open-pull-requests-limit: 5
 
-  # One entry per example with a lockfile, and one for the remaining Python checks (compat/py).
+  # Entries for the example projects a contributor edits and for the remaining Python checks (compat/py). Not covered:
+  # the examples/_harness smoke projects (harness test fixtures), examples/async-openai (Cargo) and compat/py-litellm
+  # (pinned with compat/py/clients). Add one if a dependency there needs automatic bumps.
   - package-ecosystem: uv
     directory: /compat/py
     schedule:

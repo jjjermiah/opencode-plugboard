@@ -6,6 +6,8 @@ Use `createOpenAICompatible`. It passed every scenario with `supportsStructuredO
 
 <<< @/../examples/vercel-ai-sdk/providers.ts#snippet
 
+The scenario files take `client`, a function from a model id to a model. In [`providers.ts`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/vercel-ai-sdk/providers.ts), `apis.compat` is `(id) => compat.chatModel(id)`. The snippets below use `client(model)`, with `model` set to `"fast"`.
+
 `fast` is an alias from the plugboard `aliases` option. Use any allowed `provider/model[#variant]` instead.
 
 ## Chat
@@ -16,13 +18,13 @@ Use `createOpenAICompatible`. It passed every scenario with `supportsStructuredO
 
 <<< @/../examples/vercel-ai-sdk/tools.ts#snippet
 
-The SDK runs `execute` and sends the second request. Plugboard only returns the call.
+The SDK runs `execute` and sends the second request. Plugboard only returns the call. The snippet uses `client`, `model`, and `PROMPT` (`"What is the weather in Paris? Use the tool."`) and `wireFinish` from the file's top; `weatherResult` is `examples/_shared/get_weather.result.json`.
 
 ## Structured output
 
 <<< @/../examples/vercel-ai-sdk/structured.ts#snippet
 
-`generateObject` is deprecated in `ai` v7 and sends the same request.
+The snippet uses `Meal`, a zod `strictObject` with `calories` and `protein_g`, and `PROMPT` from the file's top. `generateObject` is deprecated in `ai` v7 and sends the same request.
 
 ## Gotchas
 
