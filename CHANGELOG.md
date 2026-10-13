@@ -35,6 +35,20 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
     }
   }
   ```
+- **Set the limits on remote image fetches** ([#259](https://github.com/jjjermiah/opencode-plugboard/issues/259)). `remoteImages` was on or off, and its bounds were fixed in the code: 20 MB per image, a 20 second timeout, no redirects, any `http` or `https` URL. An operator who allows one internal image host could not tighten the rest. The object form now takes `schemes`, `maxBytes`, `maxItems`, `maxRedirects` and `timeoutMs`. Each is optional and only tightens the fetch: the SSRF filter, the address pinning and the 50 MB total per request are unchanged. `true` and `{ "allow": [...] }` keep working, with the same defaults.
+
+  ```jsonc
+  {
+    "remoteImages": {
+      "allow": ["images.internal"],
+      "schemes": ["https"],
+      "maxBytes": 5242880,
+      "maxItems": 4,
+      "maxRedirects": 0,
+      "timeoutMs": 10000
+    }
+  }
+  ```
 
 ## [0.25.1] - 2026-10-12: Front Door, Unlocked
 

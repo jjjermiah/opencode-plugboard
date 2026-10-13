@@ -281,18 +281,42 @@ function positiveInt(value: unknown, name: string, fallback: number, max = Numbe
 const REMOTE_IMAGES_ERROR =
   "plugboard option `remoteImages` must be a boolean or `{ allow: [...] }` with host names, IP addresses or CIDR ranges that may be fetched even when they are not public"
 
+/** Option `remoteImages` (#259): the object fields are optional and tighten the fetch; an unset field keeps today's bound. */
+const REMOTE_IMAGES_KNOWN = ["allow", "schemes", "maxBytes", "maxItems", "maxRedirects", "timeoutMs"]
+
+function remoteImagesInt(value: unknown, name: string, min: number, max: number): number | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max)
+    throw new Error(`plugboard option \`remoteImages.${name}\` must be an integer between ${min} and ${max}`)
+  return value
+}
+
 function parseRemoteImages(value: unknown): RemoteImages {
   if (value === undefined) return false
   if (typeof value === "boolean") return value
   if (!isRecord(value)) throw new Error(REMOTE_IMAGES_ERROR)
   for (const key of Object.keys(value))
-    if (key !== "allow") throw new Error(`Unknown plugboard option \`remoteImages.${key}\` (known: allow)`)
+    if (!REMOTE_IMAGES_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`remoteImages.${key}\` (known: ${REMOTE_IMAGES_KNOWN.join(", ")})`)
   const allow = value.allow ?? []
   if (!Array.isArray(allow)) throw new Error(REMOTE_IMAGES_ERROR)
   for (const entry of allow)
     if (typeof entry !== "string" || parseAllowEntry(entry) === undefined)
       throw new Error(`plugboard \`remoteImages.allow\` entry \`${String(entry)}\` must be a host name (\`images.internal\`, \`*.internal\`), an IP address or a CIDR range`)
-  return { allow: allow as string[] }
+  const schemes = value.schemes
+  if (schemes !== undefined && (!Array.isArray(schemes) || schemes.length === 0 || schemes.some((scheme) => scheme !== "http" && scheme !== "https")))
+    throw new Error("plugboard option `remoteImages.schemes` must be a non-empty list of `http` and `https`")
+  const maxBytes = remoteImagesInt(value.maxBytes, "maxBytes", 1, 104_857_600)
+  const maxItems = remoteImagesInt(value.maxItems, "maxItems", 1, 1000)
+  const maxRedirects = remoteImagesInt(value.maxRedirects, "maxRedirects", 0, 10)
+  const timeoutMs = remoteImagesInt(value.timeoutMs, "timeoutMs", 1, 600_000)
+  return {
+    allow: allow as string[],
+    ...(schemes === undefined ? {} : { schemes: schemes as string[] }),
+    ...(maxBytes === undefined ? {} : { maxBytes }),
+    ...(maxItems === undefined ? {} : { maxItems }),
+    ...(maxRedirects === undefined ? {} : { maxRedirects }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  }
 }
 
 /**

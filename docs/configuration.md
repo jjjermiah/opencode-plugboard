@@ -33,6 +33,29 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /plugboard/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
 
+### Remote image limits (since 0.26.0)
+
+`remoteImages` (#259) takes the same `true` and `{ "allow": [...] }` forms as before. Each field below is optional and only tightens the fetch: the SSRF filter (I17), the address pinning and the 50 MB total per request stay in force.
+
+| Field | Default (today's behaviour) | Meaning |
+|---|---|---|
+| `schemes` | `["http", "https"]` | URL schemes that may be fetched. `["https"]` makes an `http` URL fail with `image_fetch_failed`. Redirect targets are checked too. |
+| `maxBytes` | `20971520` (20 MB) | Size cap for one fetched image, 1 to 104857600. The 50 MB total per request still applies. |
+| `maxItems` | none | Most remote URLs one request may fetch, 1 to 1000. The next one fails with `too_many_remote_images`; data URLs are not counted. |
+| `maxRedirects` | `0` | Redirects the fetcher follows, 0 to 10. Each target goes through the address check again. |
+| `timeoutMs` | `20000` | Time allowed for one fetch, 1 to 600000. |
+
+```jsonc
+"remoteImages": {
+  "allow": ["images.internal"],
+  "schemes": ["https"],
+  "maxBytes": 5242880,
+  "maxItems": 4,
+  "maxRedirects": 0,
+  "timeoutMs": 10000
+}
+```
+
 ### Reloads and restarts
 
 Each plugin load is checked against the listener that is already running:

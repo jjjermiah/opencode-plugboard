@@ -143,6 +143,35 @@ describe("parseOptions: every rejection names the option", () => {
   })
 })
 
+describe("#259 remoteImages object fields", () => {
+  test("each field is optional and parses as given; an unset field is absent", () => {
+    expect(parseOptions({ remoteImages: { allow: ["images.internal"] } }).remoteImages).toEqual({ allow: ["images.internal"] })
+    expect(parseOptions({ remoteImages: { allow: [], schemes: ["https"], maxBytes: 5242880, maxItems: 4, maxRedirects: 0, timeoutMs: 10000 } }).remoteImages).toEqual({
+      allow: [],
+      schemes: ["https"],
+      maxBytes: 5242880,
+      maxItems: 4,
+      maxRedirects: 0,
+      timeoutMs: 10000,
+    })
+    expect(parseOptions({ remoteImages: true }).remoteImages).toBe(true)
+  })
+
+  test.each([
+    ["schemes with a scheme other than http or https", { schemes: ["ftp"] }, /`remoteImages.schemes` must be a non-empty list of `http` and `https`/],
+    ["schemes empty", { schemes: [] }, /`remoteImages.schemes` must be a non-empty list/],
+    ["maxBytes of zero", { maxBytes: 0 }, /`remoteImages.maxBytes` must be an integer between 1 and 104857600/],
+    ["maxBytes above 100 MiB", { maxBytes: 104857601 }, /`remoteImages.maxBytes` must be an integer between 1 and 104857600/],
+    ["maxItems of zero", { maxItems: 0 }, /`remoteImages.maxItems` must be an integer between 1 and 1000/],
+    ["maxRedirects above 10", { maxRedirects: 11 }, /`remoteImages.maxRedirects` must be an integer between 0 and 10/],
+    ["maxRedirects that is not an integer", { maxRedirects: 1.5 }, /`remoteImages.maxRedirects` must be an integer between 0 and 10/],
+    ["timeoutMs of zero", { timeoutMs: 0 }, /`remoteImages.timeoutMs` must be an integer between 1 and 600000/],
+    ["an unknown field", { cache: true }, /Unknown plugboard option `remoteImages.cache` \(known: allow, schemes, maxBytes, maxItems, maxRedirects, timeoutMs\)/],
+  ])("%s is refused at load and names the option", (_name, remoteImages, message) => {
+    expect(() => parseOptions({ remoteImages })).toThrow(message)
+  })
+})
+
 describe("#268 apps.<name>.endpoints", () => {
   test("parses a non-empty list of endpoint names, and is absent when unset", () => {
     const options = parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { endpoints: ["chat", "models"] } } })

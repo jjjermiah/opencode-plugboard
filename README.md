@@ -302,7 +302,7 @@ curl -s http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY
 Send images as `data:` URLs, which always work. Plain `http(s)` URLs are fetched by the server only when you allow it.
 
 ```jsonc
-"remoteImages": { "allow": ["images.internal"] }   // or true for public addresses only
+"remoteImages": { "allow": ["images.internal"], "schemes": ["https"], "maxBytes": 5242880 }   // tightened (since 0.26.0): HTTPS only, 5 MB per image. `true` is public addresses only
 ```
 
 With `true` or an `allow` list, the server fetches only public addresses by default, and refuses loopback, private, link-local and CGNAT ranges. Turn it on only if you need it, because it makes the server fetch URLs that callers send.

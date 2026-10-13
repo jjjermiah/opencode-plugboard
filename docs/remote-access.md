@@ -91,6 +91,10 @@ ssh -N -L 4010:127.0.0.1:4010 <server>
 
 The client then uses `http://127.0.0.1:4010/v1` with a key. Keep the local port equal to `listen.port`, because the `Host` check compares the port. Set `keys` on the server anyway: a keyless loopback bind trusts every local user on that server, and the tunnel's traffic arrives from that loopback.
 
+## Remote image URLs (since 0.26.0)
+
+A request may name an `http(s)` image URL, and the server fetches it when `remoteImages` is on. From a remote deployment, prefer the stricter choice: `"remoteImages": { "schemes": ["https"], "maxBytes": 5242880, "maxRedirects": 0 }`, plus `allow` for each internal image host. Every field is listed in [configuration](configuration#remote-image-limits-since-0-26-0).
+
 ## Firewall
 
 Whichever bind you choose, let only the clients that need it reach the port, and drop the rest. Example with `ufw` on the plugboard host. Rules match in order, so the allow comes first:

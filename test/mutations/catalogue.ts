@@ -28,6 +28,30 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I17-remote-scheme-check-skipped",
+    invariant: "I17",
+    file: "src/session/media.ts",
+    find: "    if (!schemes.includes(target.protocol.slice(0, -1))) throw FETCH_FAILED()",
+    replace: "    if (false) throw FETCH_FAILED()",
+    tests: ["test/session/media.test.ts"],
+  },
+  {
+    id: "I17-remote-redirect-cap-ignored",
+    invariant: "I17",
+    file: "src/session/media.ts",
+    find: "    if (status < 300 || status > 399 || redirects >= maxRedirects) break",
+    replace: "    if (status < 300 || status > 399 || redirects >= 10) break",
+    tests: ["test/session/media.test.ts"],
+  },
+  {
+    id: "I17-remote-max-items-skipped",
+    invariant: "I17",
+    file: "src/session/media.ts",
+    find: '        if (maxItems !== undefined && !part.url.startsWith("data:") && ++remote > maxItems)',
+    replace: "        if (false)",
+    tests: ["test/session/media.test.ts"],
+  },
+  {
     id: "I15-endpoint-check-skipped",
     invariant: "I15",
     file: "src/openai/route.ts",

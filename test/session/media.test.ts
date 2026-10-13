@@ -20,6 +20,8 @@ const LOCALHOST = (await lookup("localhost", { all: true, verbatim: true })).map
 const PNG = Buffer.from("89504e470d0a1a0a", "hex")
 let server: Loopback
 let hits = 0
+/** Responses a `/hang` fetch leaves open; a test destroys them when it is done. */
+const hung: ServerResponse[] = []
 const routes: Record<string, (response: ServerResponse) => void> = {
   "/ok.png": (response) => {
     response.writeHead(200, { "content-type": "image/png" })
@@ -36,6 +38,13 @@ const routes: Record<string, (response: ServerResponse) => void> = {
   "/missing": (response) => {
     response.writeHead(404)
     response.end()
+  },
+  "/to-private": (response) => {
+    response.writeHead(302, { location: "http://10.0.0.1/a.png" })
+    response.end()
+  },
+  "/hang": (response) => {
+    hung.push(response)
   },
   "/huge": (response) => {
     response.writeHead(200, { "content-type": "image/png", "content-length": String(21 * 1024 * 1024) })
@@ -194,6 +203,47 @@ describe("fetch rules on an allowed host", () => {
     ["a declared size over 20 MB", "/huge", "image_too_large"],
   ])("%s", async (_name, path, expected) => {
     expect(code(await fetchImage(url(path), allow))).toBe(expected)
+  })
+})
+
+describe("#259 remoteImages limits tighten the fetch", () => {
+  const allow = ["127.0.0.1"]
+  const url = (path: string) => `http://127.0.0.1:${server.port}${path}`
+
+  test("schemes [\"https\"] refuses an http URL before any connection", async () => {
+    const before = hits
+    expect(code(await fetchImage(url("/ok.png"), { allow, schemes: ["https"] }))).toBe("image_fetch_failed")
+    expect(hits).toBe(before)
+  })
+
+  test("maxBytes below the image size is image_too_large; at the size it is fetched", async () => {
+    expect(code(await fetchImage(url("/ok.png"), { allow, maxBytes: PNG.length - 1 }))).toBe("image_too_large")
+    expect(code(await fetchImage(url("/ok.png"), { allow, maxBytes: PNG.length }))).toBe("fetched")
+  })
+
+  test("maxRedirects 0 refuses a redirect; 1 follows it, and the target is checked again", async () => {
+    expect(code(await fetchImage(url("/redirect"), { allow, maxRedirects: 0 }))).toBe("image_fetch_failed")
+    expect(code(await fetchImage(url("/redirect"), { allow, maxRedirects: 1 }))).toBe("fetched")
+  })
+
+  test("a redirect to a non-public address is refused even with redirects allowed (I17)", async () => {
+    expect(code(await fetchImage(url("/to-private"), { allow, maxRedirects: 1 }))).toBe("image_fetch_failed")
+    expect(logs.of("media.remote_refused").at(-1)!.fields.reason).toBe("address_not_allowed")
+  })
+
+  test("timeoutMs bounds one fetch: an answer that never comes is a generic failure", async () => {
+    expect(code(await fetchImage(url("/hang"), { allow, timeoutMs: 1 }))).toBe("image_fetch_failed")
+    for (const response of hung.splice(0)) response.destroy()
+  })
+
+  test("maxItems: a second remote URL is refused before its fetch; data URLs are not counted", async () => {
+    const before = hits
+    const error = await prepareImages(withImages(url("/ok.png"), url("/ok.png")), new AbortController().signal, { allow, maxItems: 1 }).catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(ImageError)
+    expect((error as ImageError).code).toBe("too_many_remote_images")
+    expect(hits).toBe(before + 1)
+    const files = await prepareImages(withImages("data:a", url("/ok.png"), "data:b"), new AbortController().signal, { allow, maxItems: 1 })
+    expect(files).toHaveLength(3)
   })
 })
 
