@@ -9,17 +9,53 @@ updates:
         patterns: ["@opencode/*", "effect"]
     open-pull-requests-limit: 5
 
-  - package-ecosystem: npm
-    directory: /compat/js
+  # Entries for the example projects a contributor edits and for the remaining Python checks (compat/py). Not covered:
+  # the examples/_harness smoke projects (harness test fixtures), examples/async-openai (Cargo) and compat/py-litellm
+  # (pinned with compat/py/clients). Add one if a dependency there needs automatic bumps.
+  - package-ecosystem: uv
+    directory: /compat/py
     schedule:
       interval: weekly
-    groups:
-      opencode-host:
-        patterns: ["@opencode/*", "effect"]
     open-pull-requests-limit: 5
 
   - package-ecosystem: uv
-    directory: /compat/py
+    directory: /examples/openai-python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /examples/langchain-python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /examples/pydantic-ai
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /examples/openai-js
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /examples/vercel-ai-sdk
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /examples/langchain-js
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /examples/tool-bot
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

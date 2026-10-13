@@ -73,4 +73,4 @@ The latest live run is `runs/live/2026-10-13-c97ac66-2`: all 16 rows pass on the
 
 ## Historical record
 
-`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied from `compat/results/pydantic-ai.md` without change. It predates the harness and this example's code, so its script name refers to `compat/py/pydantic_ai_check.py`.
+`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied without change from the kit's record before the old kit was removed. It predates the harness and this example's code, so its script name refers to a file that no longer exists.

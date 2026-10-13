@@ -1,42 +1,39 @@
 # pydantic-ai
 
-Tested: `pydantic-ai-slim[openai]` 2.55.0 (Chat Completions API), `openai` 3.29.0, 2026-10-11, at an earlier commit. Every scenario passed, though one `ImageUrl` data URL answer on `fast` failed on its first run and passed on a rerun with an identical request.
+Tested: `pydantic-ai-slim[openai]` 2.55.0 (Chat Completions API), `openai` 3.29.0. Live run [`2026-10-13-c97ac66-2`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/pydantic-ai/runs/live/2026-10-13-c97ac66-2) at plugboard 0.26.0 (`c97ac66`): pass. One `ImageUrl` data URL answer on `fast` failed in run `2026-10-13-c97ac66` (verdict fail) and passed on the rerun with an identical request in `2026-10-13-c97ac66-2`, which is the run above. The code below is the example's snippet, and the run's summary and transcripts are in the example directory.
+
+The snippets are the body of an `async` function that takes `client` (an `AsyncOpenAI` pointed at plugboard) and `model`. Set up the client and the imports like this, and run the function with `asyncio.run`:
 
 ```python
+import asyncio
 import os
+from openai import AsyncOpenAI
 from pydantic_ai import Agent
+from pydantic_ai.models import ModelSettings
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-provider = OpenAIProvider(base_url="http://localhost:4010/v1", api_key=os.environ["PLUGBOARD_KEY"])
-model = OpenAIChatModel("fast", provider=provider)
-agent = Agent(model)
+client = AsyncOpenAI(base_url="http://localhost:4010/v1", api_key=os.environ["PLUGBOARD_KEY"])
+model = "fast"
 ```
 
 `fast` is an alias from the plugboard `aliases` option. Use any allowed `provider/model[#variant]` instead.
 
 ## Chat
 
-```python
-print(agent.run_sync("Reply with exactly: pong").output)
-```
+<<< @/../examples/pydantic-ai/chat.py#snippet
 
 ## Tool call
 
-```python
-@agent.tool_plain
-def get_weather(city: str) -> str:
-    """Current weather for a city."""
-    return '{"temp_c": 18, "sky": "cloudy"}'
+pydantic-ai runs the tool and makes the second request itself. The snippet uses `client`, `model`, and `PROMPT` (`"What is the weather in Paris? Use the tool."`) from the file's top.
 
-print(agent.run_sync("What is the weather in Paris? Use the tool.").output)
-```
-
-pydantic-ai runs the tool and makes the second request itself.
+<<< @/../examples/pydantic-ai/tools.py#snippet
 
 ## Structured output
 
-`Agent(model, output_type=Meal)` (tool mode), `NativeOutput(Meal)` and `PromptedOutput(Meal)` all worked on three models. `PromptedOutput` sends `json_object` with the schema in the prompt, and `fast` returned numbers as strings once. Lax validation hid that. Prefer the default tool mode or `NativeOutput`.
+`Agent(model, output_type=Meal)` (tool mode), `NativeOutput(Meal)` and `PromptedOutput(Meal)` all worked on three models. `PromptedOutput` sends `json_object` with the schema in the prompt, and `fast` returned numbers as strings once. Lax validation hid that. Prefer the default tool mode or `NativeOutput`. The snippet uses `client`, `model`, `PROMPT` and a `Meal` model (`calories: float`, `protein_g: float`) from the file's top.
+
+<<< @/../examples/pydantic-ai/structured.py#snippet
 
 ## Gotchas
 

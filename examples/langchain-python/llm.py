@@ -6,8 +6,8 @@ import os
 NO_RETRIES = {"max_retries": 0}
 
 
+# region snippet
 def chat_model(model, **overrides):
-    # region snippet
     from langchain_openai import ChatOpenAI
 
     settings = {

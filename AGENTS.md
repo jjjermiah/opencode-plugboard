@@ -43,6 +43,6 @@ A plugin effect that blocked once froze every prompt in the project that loaded 
 - Prose (README, docs, issues, changelog): plain and short, no em or en dashes as punctuation. Nothing machine- or homelab-specific in the repo (no private IPs, `/Users/...` paths, keys).
 - Tested hosts: OpenCode 2.0.26 and 2.0.27 (dev dependencies pinned to 2.0.27 with `effect` 4.0.1; CI also runs 2.0.26 with `effect` 4.0.0-rc.112; peer range `>=2.0.26 <2.1`). Host source for reading: a shallow clone of anomalyco/opencode at the `v2.0.27` tag (or `v2.0.26`).
 
-## Client checks (`compat/`)
+## Client checks (`examples/`)
 
-Manual compatibility kit, separate from the package: `compat/py` (uv) and `compat/js` (bun) each have their own lockfile. Scripts read `PLUGBOARD_KEY` and optional `PLUGBOARD_BASE_URL`. `compat/tools/logproxy.py` captures traffic (captures are sensitive), `compat/tools/sessions.py` lists/deletes test history (`--dry-run`). Results in `compat/results/` are dated evidence for a commit; don't edit old observations, add new records.
+Each client has a runnable example in `examples/<client>/` with its own lockfile. An SDK bump or a wire-format change in `src/` leaves the scripted runs stale until `bun examples/_harness/run.ts all --target scripted` is rerun and the diff is committed (CI fails on a stale run). Live runs are dated records under `examples/<client>/runs/live/`; add a new directory, don't rewrite an old one. `examples/_tools/sessions.py` lists/deletes test history (`--dry-run`). The Python checks with no example yet are in `compat/` (see its README).

@@ -55,7 +55,7 @@ if (flags.includes("--summary")) {
 }
 const docs = flags[flags.indexOf("--docs") + 1]
 if (flags.includes("--docs") && docs) {
-  // The Python section (#206) is written by hand from compat/results/; keep it when regenerating.
+  // The Python section (#206) is written by hand from the examples' runs/live/ records; keep it when regenerating.
   const previous = existsSync(docs) ? readFileSync(docs, "utf8") : ""
   const kept = previous.indexOf("\n## Python clients\n")
   writeFileSync(

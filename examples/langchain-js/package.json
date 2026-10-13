@@ -2,7 +2,7 @@
   "name": "plugboard-example-langchain-js",
   "version": "0.1.0",
   "private": true,
-  "description": "LangChain JS (@langchain/openai) against plugboard: S1 to S7 and the error paths. Pins from compat/js, as in the dated record.",
+  "description": "LangChain JS (@langchain/openai) against plugboard: S1 to S7 and the error paths. Pins from the 2026-10-11 record.",
   "type": "module",
   "dependencies": {
     "@langchain/core": "1.2.17",

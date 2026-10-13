@@ -1,6 +1,6 @@
 # n8n
 
-Tested: n8n 2.42.6 (Docker), OpenAI Chat Model node v1.3, 2026-10-11, at an earlier commit. S1 to S7 passed, driven headless through webhooks. The "Response Format: JSON" check on `fast` was flaky (see Structured output), and the Responses API default and some sampling options failed (see Gotchas).
+Tested: n8n 2.42.6 (Docker), OpenAI Chat Model node v1.3. Live run [`2026-10-13-b92fb6f`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/n8n/runs/live/2026-10-13-b92fb6f) at plugboard 0.29.0 (`b92fb6f`): partial. The run's report and transcripts are in the example directory. S1 to S7 were driven headless through webhooks. The "Response Format: JSON" check on `fast` was flaky (see Structured output), and the Responses API default and some sampling options failed (see Gotchas).
 
 ## Setup
 

@@ -10,7 +10,8 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `src/` | All runtime code. This is what gets published. |
 | `docs/` | Architecture, configuration, per-API field lists, history, development and release notes. |
 | `test/` | The `bun test` suite, including the automated client matrix (`test/compat`) and SDK wire-type goldens (`test/types`). See [test/README.md](test/README.md). Not published. |
-| `compat/` | Manual client checks against a real server (real OpenAI, Anthropic and Gemini clients) and helper tools. Not published. |
+| `examples/` | Runnable client examples, one directory per client, with scripted runs checked in CI and live runs as dated records. Not published. See [examples/README.md](examples/README.md). |
+| `compat/` | The Python client checks that have no example yet (aider, DSPy, Instructor, LiteLLM, OpenAI Agents SDK). Not published. |
 | `.github/floors/` | Ratcheting CI floors: tests per layer and coverage. Raised with `.github/scripts/test-gates.ts --ratchet`. |
 | `.github/` | CI, release scripts, the pack check, the test gates and the compatibility matrix renderer. Not published. |
 | `CONTRIBUTING.md`, `AGENTS.md` | Rules for people and for coding agents. |

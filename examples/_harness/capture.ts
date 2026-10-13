@@ -9,7 +9,7 @@
  * The control routes, `POST /__mark` and `GET /__exchanges`, answer only a loopback caller (the runner, on the host). The
  * proxied routes take any caller, since a container reaches them through host.docker.internal. `GET /__exchanges` returns
  * the current mark's exchanges once they have finished, as seq, path, status and response body with the caller's
- * credentials removed (no headers, no request body): a runner reads its own round trip there, as tool-bot does. Ported from compat/tools/logproxy.py
+ * credentials removed (no headers, no request body): a runner reads its own round trip there, as tool-bot does. Replaces the old logproxy script
  * (which stays until the cleanup issue deletes it).
  */
 

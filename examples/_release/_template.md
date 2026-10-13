@@ -2,7 +2,7 @@
 
 - Date / tester:
 - Client + exact version(s) (and adapter packages):
-- Env: compat/py | compat/js | docker (image + tag)
+- Env: the example's directory (`examples/<client>/`, its lockfile pins the client) | docker (image + tag)
 - Plugboard commit (`git -C <repo> rev-parse --short HEAD`):
 - Verdict (README gate = S1 and S2 pass): PASS | FAIL | PARTIAL
 
@@ -35,4 +35,4 @@ e.g. `max_tokens` vs `max_completion_tokens`, `developer` role, `stream_options`
 
 ## Notes / follow-ups
 
-Scripts committed under: `compat/py/<client>/` or `compat/js/<client>/`
+Scripts committed under: `examples/<client>/` (the scenario files and `run.*`). Put the run's output in `examples/<client>/runs/live/<date>-<shortsha>/`, which holds `summary.json`, `summary.md`, `transcripts/` and this file as `REPORT.md`. The harness writes the first three: see [`examples/_harness/README.md`](../_harness/README.md).

@@ -88,7 +88,7 @@ PLUGBOARD_BASE_URL=http://127.0.0.1:4010/v1 PLUGBOARD_KEY=<compat key> \
   bun examples/_harness/run.ts open-webui --target live --docker
 ```
 
-The live run writes `runs/live/<date>-<commit>/`. Old runs are not rewritten; the record from 2026-10-11 is `runs/live/2026-10-11-f351307/REPORT.md`, migrated unchanged from `compat/results/open-webui.md`.
+The live run writes `runs/live/<date>-<commit>/`. Old runs are not rewritten; the record from 2026-10-11 is `runs/live/2026-10-11-f351307/REPORT.md`, migrated unchanged from the old kit's record before it was removed.
 
 ## Run one file
 
