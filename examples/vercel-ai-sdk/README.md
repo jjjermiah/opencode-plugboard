@@ -67,10 +67,10 @@ bunx tsc --noEmit
 
 ## Known gaps
 
-Scripted: none. All scenarios pass on all three ways in.
+Scripted and live (`runs/live/2026-10-13-c97ac66`, plugboard 0.25.1): none. All scenarios pass on all three ways in, including `openai(id)` on `/v1/responses`.
 
-Live: not run yet. The isolated dev server was not listening when this example was written (2026-10-12), so no live run of this example is committed. The only live record is the 2026-10-11 run under `runs/live/2026-10-11-3fcedc7/REPORT.md`, which predates this example and shows the old `openai-default` failure. Per the contract it is kept unchanged.
+The 2026-10-11 record under `runs/live/2026-10-11-3fcedc7/REPORT.md` predates this example and shows the old `openai-default` failure. Per the contract it is kept unchanged.
 
 ## Historical record
 
-`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied from `compat/results/vercel-ai-sdk.md` without change. The `openai-default` failures it describes are superseded: `/v1/responses` is served now, and the scripted run passes the same scenarios.
+`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied from `compat/results/vercel-ai-sdk.md` without change. The `openai-default` failures it describes are superseded: `/v1/responses` is served now, and the live run `runs/live/2026-10-13-c97ac66` passes the same scenarios.
