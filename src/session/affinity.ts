@@ -15,6 +15,9 @@
  * 9, no clear gain) and dropped.
  *
  * The anchor id is stored in the plugin's host storage (`affinity/...`), so it survives a restart.
+ *
+ * Option `history.hidden` (since 0.29.0, #337) reuses this store: the app-scope record (`affinity/<app>/anchor/app/`) is the
+ * app's parent, which OpenCode's top-level lists do not show, so its request sessions are hidden with it. Same recovery.
  */
 
 import { DEFAULT_MAX_ANCHORS, type AffinityScope, type PromptCache } from "../config.js"
@@ -57,6 +60,12 @@ export interface Affinity {
   anchor(app: string, scope: AffinityScope, key: string, maxAnchors: number, make: () => Promise<string>): Promise<string | undefined>
   /** Drops the stored anchor of a key (its session was deleted in OpenCode). The next `anchor` call makes a new one. */
   forget(app: string, scope: AffinityScope, key: string): Promise<void>
+  /**
+   * Replaces a stored anchor that OpenCode reported missing (`previous`). Only the stored record equal to `previous` is dropped;
+   * a record already replaced by another request is returned as it is. Concurrent calls on one key share one replacement, so
+   * no request drops a fresh record another request just made. Resolves like `anchor` (undefined at the cap).
+   */
+  replace(app: string, scope: AffinityScope, key: string, previous: string, maxAnchors: number, make: () => Promise<string>): Promise<string | undefined>
 }
 
 const recordKey = (app: string, scope: AffinityScope, key: string): string => `affinity/${app}/anchor/${scope}/${key}`
@@ -76,8 +85,27 @@ async function readAnchor(storage: StoragePort, key: string): Promise<string | u
 
 export function createAffinity(deps: AffinityDeps): Affinity {
   const { storage } = deps
-  // Anchor creations in flight, by record key: concurrent first requests on one key share one anchor.
+  // Anchor work in flight, by record key: concurrent first requests on one key share one anchor, and concurrent
+  // replacements share one replacement.
   const pending = new Map<string, Promise<string | undefined>>()
+
+  const track = (id: string, work: Promise<string | undefined>): Promise<string | undefined> => {
+    pending.set(id, work)
+    const clear = () => {
+      pending.delete(id)
+    }
+    work.then(clear, clear)
+    return work
+  }
+
+  const create = async (id: string, app: string, maxAnchors: number, make: () => Promise<string>): Promise<string | undefined> => {
+    // The cap counts the stored anchors of the app, every scope. Concurrent first requests may pass it together.
+    const stored = await storage.scan({ prefix: `affinity/${app}/anchor/`, limit: maxAnchors })
+    if (stored.keys.length >= maxAnchors) return undefined
+    const sessionID = await make()
+    await storage.put(id, JSON.stringify({ sessionID }))
+    return sessionID
+  }
 
   return {
     async forget(app, scope, key) {
@@ -88,23 +116,23 @@ export function createAffinity(deps: AffinityDeps): Affinity {
       const id = recordKey(app, scope, key)
       const known = await readAnchor(storage, id)
       if (known !== undefined) return known
-      let creating = pending.get(id)
-      if (!creating) {
-        creating = (async () => {
-          // The cap counts the stored anchors of the app, every scope. Concurrent first requests may pass it together.
-          const stored = await storage.scan({ prefix: `affinity/${app}/anchor/`, limit: maxAnchors })
-          if (stored.keys.length >= maxAnchors) return undefined
-          const sessionID = await make()
-          await storage.put(id, JSON.stringify({ sessionID }))
-          return sessionID
-        })()
-        pending.set(id, creating)
-        const clear = () => {
-          pending.delete(id)
-        }
-        creating.then(clear, clear)
-      }
-      return creating
+      return pending.get(id) ?? track(id, create(id, app, maxAnchors, make))
+    },
+
+    async replace(app, scope, key, previous, maxAnchors, make) {
+      const slot = recordKey(app, scope, key)
+      return (
+        pending.get(slot) ??
+        track(
+          slot,
+          (async () => {
+            const stored = await readAnchor(storage, slot)
+            if (stored !== undefined && stored !== previous) return stored
+            await storage.drop(slot)
+            return create(slot, app, maxAnchors, make)
+          })(),
+        )
+      )
     },
   }
 }

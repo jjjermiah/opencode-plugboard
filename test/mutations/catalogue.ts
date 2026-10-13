@@ -300,6 +300,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/affinity.test.ts"],
   },
   {
+    id: "I31-hidden-off-still-top-level",
+    invariant: "I31",
+    file: "src/session/caller.ts",
+    find: "const hidden = (appPolicy({ apps }, app)?.history?.hidden ?? deps.historyHidden) === true",
+    replace: "const hidden = (appPolicy({ apps }, app)?.history?.hidden ?? deps.historyHidden) !== false",
+    tests: ["test/session/hidden.test.ts"],
+  },
+  {
+    id: "I31-replace-drops-fresh-record",
+    invariant: "I31",
+    file: "src/session/affinity.ts",
+    find: "if (stored !== undefined && stored !== previous) return stored",
+    replace: "if (false) return stored",
+    tests: ["test/session/affinity.test.ts", "test/session/hidden.test.ts"],
+  },
+  {
     id: "I8-server-tools-reject-subagent",
     invariant: "I8",
     file: "src/config.ts",

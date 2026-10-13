@@ -24,14 +24,14 @@ Checked 2026-10-11. Statuses come from each app's docs or source, not from a liv
 | Open Notebook (about 40.1k) | Notebook chat and transformations | Chat | Chat only: embeddings need another provider | [page](self-hosted/open-notebook.md) |
 | Langflow (about 155.5k) | Language model components in flows | Chat | Chat only: the SSRF allowlist must include the host | [page](self-hosted/langflow.md) |
 | SparkyFitness (owner's deployment) | AI assistant, with tools | Chat, tools | Works | [page](self-hosted/sparkyfitness.md) |
-| paperless-ai (about 6.0k) | Classification, tags, RAG chat | Chat | Not checked: upstream is mid-rewrite | [#243](https://github.com/jjjermiah/opencode-plugboard/issues/243) |
+| paperless-ai (about 6.0k) | Titles, tags, correspondents, RAG chat | Chat | Chat only: text, no vision, no embeddings (RAG index is local) | [page](self-hosted/paperless-ai.md) |
 | Vane, formerly Perplexica (about 37.3k) | Answering engine | Chat | Not chat only: chat and search need an embedding provider beside plugboard | [page](self-hosted/vane.md) |
-| Onyx (about 32.4k) | RAG search and chat | Chat | Chat only expected: indexing needs embeddings | [#245](https://github.com/jjjermiah/opencode-plugboard/issues/245) |
+| Onyx (about 32.4k) | RAG search and chat | Chat | Chat only: indexing and search need an embedding model (default is Onyx's local model) | [page](self-hosted/onyx.md) |
 | Tandoor Recipes (about 8.7k) | Recipe import, step sorting, nutrition | Chat, vision | Works for text import. Photo import needs a vision alias. JSON mode not checked | [page](self-hosted/tandoor.md) |
-| LLM Vision for Home Assistant (about 1.5k) | Image and video analysis | Chat, vision | Not checked: provider form unverified | [#247](https://github.com/jjjermiah/opencode-plugboard/issues/247) |
+| LLM Vision for Home Assistant (about 1.5k) | Image and video analysis | Chat, vision | Vision works through the Custom OpenAI provider, per source, not run. Do not use LocalAI (no key sent) | [page](self-hosted/llm-vision.md) |
 | SiYuan (about 46.7k) | AI writing and Q/A | Chat | Works for writing and chat. Embeddings need another provider | [page](self-hosted/siyuan.md) |
 | PR-Agent code review (about 13.4k) | Pull request review, describe, improve | Chat | Works through chat. Gitea and Forgejo not checked | [page](self-hosted/pr-agent.md) |
-| RAGFlow (about 92k) | Document RAG | Chat | Chat only: embeddings and reranker need another provider | [#250](https://github.com/jjjermiah/opencode-plugboard/issues/250) |
+| RAGFlow (about 92k) | Document RAG | Chat | Chat only: dataset embeddings need another provider, and so does reranking if you set one | [page](self-hosted/ragflow.md) |
 | Home Assistant OpenAI Conversation (core) | Voice and conversation agent | None | Not possible: the core integration supports only the official OpenAI endpoint | Use [#237](https://github.com/jjjermiah/opencode-plugboard/issues/237) (Extended OpenAI Conversation) |
 | Immich | No LLM feature: smart search and face recognition use local models | None | Not applicable | none |
 
