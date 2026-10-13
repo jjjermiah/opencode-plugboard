@@ -1,0 +1,63 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": "Reply with exactly: pong",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "pong",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-2>",
+          "model": "fast",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 14,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 17,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 31
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=17; output=14; cache_read=0; cache_write=0; cost_usd=0.000010"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
