@@ -186,6 +186,51 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
     expect(oneHourBeforeFiveMinute(wireTtls(after))).toBe(true)
   })
 
+  test("no tools: two 1h blocks with a 5m block between them: the 5m block between is raised, the 5m after the last 1h stays", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          { role: "user", content: [{ type: "text", text: "first", cache: true, cacheTtl: "1h" }] },
+          { role: "user", content: [{ type: "text", text: "between", cache: true }] },
+          { role: "user", content: [{ type: "text", text: "second", cache: true, cacheTtl: "1h" }] },
+          { role: "user", content: [{ type: "text", text: "after", cache: true }] },
+        ],
+      }),
+    )
+    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }] }, { content: [{ type: "text", text: "b" }] }, { content: [{ type: "text", text: "c" }] }, { content: [{ type: "text", text: "d" }] }] }))
+    expect(after.messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "first", cache: hour }] },
+      { role: "user", content: [{ type: "text", text: "between", cache: hour }] },
+      { role: "user", content: [{ type: "text", text: "second", cache: hour }] },
+      { role: "user", content: [{ type: "text", text: "after", cache: five }] },
+    ])
+    expect(wireTtls(after)).toEqual([3600, 3600, 3600, 300])
+    expect(oneHourBeforeFiveMinute(wireTtls(after))).toBe(true)
+  })
+
+  test("no tools: a whitespace-only text part with a hint before the 1h block is raised like any other part (the lowering skips it, but it is a hinted part on the host)", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [{ role: "user", content: [{ type: "text", text: "   ", cache: true }, { type: "text", text: "ctx", cache: true, cacheTtl: "1h" }] }],
+      }),
+    )
+    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }] }))
+    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "   ", cache: hour }, { type: "text", text: "ctx", cache: hour }] }])
+    expect(wireTtls(after)).toEqual([3600, 3600])
+  })
+
+  test("no tools: a whitespace-only hinted text part as the tail, after the 1h block, stays 5m and is not pinned", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [{ role: "user", content: [{ type: "text", text: "ctx", cache: true, cacheTtl: "1h" }, { type: "text", text: "  ", cache: true }] }],
+      }),
+    )
+    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }] }))
+    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: hour }, { type: "text", text: "  ", cache: five }] }])
+    expect(wireTtls(after)).toEqual([3600, 300])
+    expect(oneHourBeforeFiveMinute(wireTtls(after))).toBe(true)
+  })
+
   test("no tools: the tail hint OpenCode would put on the last text part is pinned 1h when a 1h media block follows it", () => {
     const hostMedia = { type: "media", asset: "A" }
     const { run } = hook(

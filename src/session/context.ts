@@ -183,6 +183,11 @@ function orderOneHourHints(session: ContextHookEvent): void {
   for (let index = 0; index < last; index++) if (hinted(index)) pin(index)
   // OpenCode's own 5m candidates that come before `last`: the system first and last part, then the tail part. Each is a
   // slot index: system parts come first in `slots`, and the tail is the last text part of the last message (or its last part).
+  // Known gap (not handled): the host can swap a part after this pass. The host's `replaceMedia` (OpenCode, packages/core/src/session/model-request.ts) replaces
+  // media it cannot send, on a text-only model or above the image byte budget, with a hint-less text part. If that part is the
+  // tail, AUTO hints it 5m after this pass, so a `[text, image A (replaced), image B (1h)]` tail gives 1h, 5m, 1h and Anthropic
+  // rejects the order. It needs an Anthropic-protocol route with a text-only model or images over the budget. The request then
+  // fails with Anthropic's order error. Covering it means pinning every part after the last text part before `last`.
   const lastContent = messages.at(-1) ?? []
   const tailOffset = lastContent.findLastIndex((part) => part.type === "text")
   const candidates: number[] = []

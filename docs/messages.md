@@ -54,13 +54,13 @@ Sampling parameters follow the same `dropUnsupportedParams` rule as Chat Complet
 
 ## Prompt caching
 
-A caller's `cache_control` breakpoint on a `text`, `image`, `document` or `tool_result` block is kept. Its `ttl` is honoured only as described under TTL `1h` below (since 0.31.0). Anthropic allows four breakpoints per request, and the caller's breakpoints count against the same four.
+A caller's `cache_control` breakpoint on a `text`, `image`, `document` or `tool_result` block is kept. Its `ttl` is honoured only as described under TTL `1h` below (since 0.32.0). Anthropic allows four breakpoints per request, and the caller's breakpoints count against the same four.
 
 **OpenCode's own breakpoints.** On the Anthropic Messages route, and on the OpenRouter and Vercel gateway routes for `anthropic/` models, OpenCode adds its breakpoints when the caller has not used the four slots: the last tool, the first and last system part, and the last text part of the last message (the conversation tail). All are 5-minute. A part that already has a breakpoint is skipped. Plugboard sends no cache policy, so this placement always runs. Other routes and models differ: Qwen gets system and tail breakpoints only, and some get none. The rest of this section describes the Claude placement.
 
 **TTL `1h`.** A caller block with `ttl: "1h"` gets the 1-hour TTL only when the request has no tools. That means no caller `tools` and no server tools reach the model, or `tool_choice` is `none`. Then plugboard:
 
-- gives 1h to every breakpoint before the last 1h block, including a caller's 5-minute block there (it is raised, so it costs the 1-hour write price);
+- gives 1h to every breakpoint before the last 1h block, including a caller's 5-minute block there (the raise adds no cost, see Pricing);
 - gives 1h to the first and last system part and to the tail part, where OpenCode would otherwise put a 5-minute breakpoint before the 1h block, as far as the four slots allow;
 - leaves a block after the last 1h block at 5 minutes.
 
@@ -68,7 +68,7 @@ The result keeps every 1-hour breakpoint before every 5-minute one. Anthropic do
 
 With tools, a 1h block is sent as 5 minutes. OpenCode's last-tool breakpoint is 5 minutes and comes before every message, so a 1h block could not come before it, and the context hook cannot set the tool's hint to 1h.
 
-Pricing: Anthropic bills a 1-hour cache write at 2 times the base input price and a 5-minute write at 1.25 times. Reads cost the same. Raising the earlier blocks to 1h makes their writes cost more.
+Pricing: Anthropic bills a 1-hour cache write at 2 times the base input price and a 5-minute write at 1.25 times. Reads cost the same. With mixed TTLs Anthropic bills a 1-hour write for every token up to the highest 1-hour breakpoint, whatever breakpoints come before it. So the caller's 1h block already prices everything before it as a 1-hour write, and raising an earlier 5-minute block to 1h adds no cost. Without the raise, Anthropic's documented order would be broken and the request rejected.
 
 ## What is rejected
 
