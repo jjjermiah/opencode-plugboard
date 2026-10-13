@@ -14,7 +14,14 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`/v1/models` carries `context_length`, `max_output_tokens` and `pricing`, and a generator writes OpenCode's `models` block** ([#376](https://github.com/jjjermiah/opencode-plugboard/issues/376), since 0.35.0). Each entry (and `GET /v1/models/{id}`) now has `context_length` and `pricing` under OpenRouter's names, so clients that read OpenRouter's list can read these too: `pricing` holds `prompt` and `completion` as USD-per-token decimal strings, plus `input_cache_read` and `input_cache_write` when the catalog reports them. `max_output_tokens` is plugboard's name for the output cap; OpenRouter puts that cap at `top_provider.max_completion_tokens`, which plugboard does not send. Context tiers are not in `pricing`; they stay in `plugboard.cost`. A fact the catalog does not know is left out, never zero. `bun .github/scripts/opencode-models.ts <hub>` turns a hub's `/v1/models` into an OpenCode client `models` block with `limit` and `cost`, so a custom provider stops getting OpenCode's 200k/32k default and zero cost.
+- **Setting up OpenCode as a client of plugboard** ([#373](https://github.com/jjjermiah/opencode-plugboard/issues/373)). [docs/clients/opencode.md](docs/clients/opencode.md) has a custom OpenAI-compatible provider and the built-in Anthropic provider pointed at a hub, verified with OpenCode 2.0.27 on both: answers, a tool round trip, and the `maxTools` 400.
+
+### Changed
+
+- **Unknown cache prices are left out of `/v1/models`, not reported as zero** ([#376](https://github.com/jjjermiah/opencode-plugboard/issues/376), since 0.35.0). A catalog model with no cache price used to list `cache: { read: 0, write: 0 }` under `plugboard.cost`. It now omits the fields it does not know. The usage estimate still prices an unknown cache read or write at zero, as before, so `/plugboard/usage` costs do not change.
 
 ## [0.34.0] - 2026-10-13: Thinking Carries Over
 
@@ -23,7 +30,6 @@ Nothing yet.
 ### Added
 
 - **Go, .NET, Langfuse and smolagents examples run in CI against the scripted fake** ([#362](https://github.com/jjjermiah/opencode-plugboard/issues/362)). Until now these four clients were checked only by hand against the dev server. Each example now has a runner, so `run.ts all --target scripted` covers it and CI fails on a stale or non-deterministic run. The Go and .NET runners print raw observations, and a shared relay applies the same checks as the Python and TypeScript runners. The `examples` job installs Go 1.27.2 and the .NET SDK 8.0.423 for them. go-openai and openai-dotnet pass text, stream and a tool round trip. Langfuse passes the same three. smolagents passes text. Its stream and tool round trip are recorded as gaps, not passes: smolagents' stream does not return the finish reason, and the scripted fake answers a tool turn only after a `tool`-role message.
-
 - **Signed reasoning replays to Anthropic models across turns** ([#374](https://github.com/jjjermiah/opencode-plugboard/issues/374), since 0.34.0). A client's `thinking` block with its `signature`, and each `redacted_thinking` block, now reach an `anthropic` model in the history. Until now plugboard dropped every thinking block, so the model lost its earlier reasoning on the next turn. Why: with the reasoning in context, the model keeps thinking across turns. Measured on `claude-opus-4-5`: turn 2 thought again only when the replayed block was sent. Dropping the block does not make Anthropic reject the request, since plugboard's host sends the interleaved-thinking beta. A forged signature gets a provider 400, so the provider checks it. Unsigned thinking is still dropped, and every other model still gets the history without reasoning, because a signature is only valid for the provider that issued it. Plugboard does not return `redacted_thinking` yet, so only a block the client got from elsewhere replays.
 
 ### Changed

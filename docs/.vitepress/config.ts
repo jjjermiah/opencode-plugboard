@@ -82,6 +82,7 @@ export default defineConfig({
           { text: "Open WebUI", link: "/clients/open-webui" },
           { text: "n8n", link: "/clients/n8n" },
           { text: "Claude Code", link: "/clients/claude-code" },
+          { text: "OpenCode", link: "/clients/opencode" },
           { text: "Codex CLI", link: "/clients/codex-cli" },
           { text: "Continue", link: "/clients/continue" },
           { text: "Kilo Code", link: "/clients/kilo-code" },

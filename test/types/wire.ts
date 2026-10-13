@@ -163,6 +163,7 @@ export const chatModelList = {
       "object": "model",
       "created": 0,
       "owned_by": "test",
+      "context_length": 8192,
       "plugboard": {
         "capabilities": {
           "tools": true
@@ -171,7 +172,7 @@ export const chatModelList = {
       }
     }
   ]
-} satisfies Wire<{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown }> }>
+} satisfies Wire<{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown; context_length?: number; max_output_tokens?: number; pricing?: { prompt: string; completion: string; input_cache_read?: string; input_cache_write?: string } }> }>
 
 export const responsesResponse = {
   "id": "resp_ID",
@@ -854,7 +855,7 @@ export const geminiChunks = [
 exact<OpenAI.Chat.Completions.ChatCompletion>(chatCompletion)
 exact<OpenAI.Chat.Completions.ChatCompletionChunk[]>(chatCompletionChunks)
 exact<{ error: OpenAI.ErrorObject }>(chatError)
-exact<{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown }> }>(chatModelList)
+exact<{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown; context_length?: number; max_output_tokens?: number; pricing?: { prompt: string; completion: string; input_cache_read?: string; input_cache_write?: string } }> }>(chatModelList)
 // @ts-expect-error plugboard omits output_text (the SDK computes it client-side), access_programs and usage.input_tokens_details.cache_write_tokens
 exact<OpenAI.Responses.Response & { store: boolean }>(responsesResponse)
 // @ts-expect-error the response objects in created/in_progress/completed omit output_text, access_programs and cache_write_tokens (see responsesResponse)
