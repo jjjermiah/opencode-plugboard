@@ -67,6 +67,11 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
   }
   ```
 
+### Fixed
+
+- **The listener no longer goes deaf after an hour idle** ([#310](https://github.com/jjjermiah/opencode-plugboard/issues/310)). OpenCode closes a Location after 60 minutes with no durable session event for it, and closing it closed plugboard's listener too. The TTL is fixed upstream, so plugboard now keeps its own Location warm: every 30 minutes it renames one dedicated session, `plugboard keep-alive`, which it creates once and never prompts. The rename is a durable event, so the timer restarts. The session stays out of the history index, pruning and usage. The new option `keepAlive` (default on) turns it off. The systemd keepalive timer is no longer needed, except as a belt.
+- **`/plugboard/status` takes the admin key** ([#311](https://github.com/jjjermiah/opencode-plugboard/issues/311)). The admin key already read `/plugboard/usage` and `/plugboard/metrics`, but status answered it 401, so monitoring had to borrow an app key. Status now answers the admin key with the operator view, which names no app. The key rule for every `/plugboard/` route is one table in `docs/configuration.md`.
+
 ## [0.25.1] - 2026-10-12: Front Door, Unlocked
 
 **Full diff:** [v0.25.0...v0.25.1](https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.0...v0.25.1)

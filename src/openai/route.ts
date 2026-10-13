@@ -277,6 +277,14 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (path === "/plugboard/admin/keys" || path.startsWith("/plugboard/admin/keys/"))
       return serveAdmin({ options: liveOptions(host.options), keys: host.keys }, { path, request, response, scope, info })
 
+    // `/plugboard/status` also takes the admin key (#311): the operator view names no app, so it is answered without one. The admin key
+    // is checked here and not in `authenticate`, so it stays out of the model routes. Any other credential goes on to the rules below.
+    if (route === "GET /plugboard/status") {
+      const operator = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
+      if (!isPlugError(operator) && operator.admin)
+        return sendJson(response, 200, buildStatus({ options: host.options, runtime: runtimeStatus(), catalog: await optionalCatalog(scope) }))
+    }
+
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but the probes and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
     const auth = authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
