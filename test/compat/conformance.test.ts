@@ -164,11 +164,14 @@ describe("#107 OpenAI responses conform to the vendored OpenAPI schemas", () => 
     expectConforms("openai", "Response", reply.json())
   })
 
-  test("#107 GET /v1/models is a ListModelsResponse, with the plugboard extension field of each model set aside", async () => {
+  test("#107 GET /v1/models is a ListModelsResponse, with the extension fields of each model set aside", async () => {
     const reply = await server.send({ method: "GET", path: "/v1/models", headers: auth })
     const listed = reply.json() as { data: Array<Record<string, unknown>> }
-    // `plugboard` is an extension (the catalog's capabilities and limits); the OpenAI Model does not declare it.
-    expectConforms("openai", "ListModelsResponse", { ...listed, data: listed.data.map(({ plugboard: _, ...model }) => model) })
+    // `plugboard` (the catalog's capabilities and limits) and the OpenRouter-style `context_length`, `max_output_tokens` and `pricing` are extensions; the OpenAI Model does not declare them.
+    expectConforms("openai", "ListModelsResponse", {
+      ...listed,
+      data: listed.data.map(({ plugboard: _, context_length: _c, max_output_tokens: _m, pricing: _p, ...model }) => model),
+    })
   })
 
   test.failing("#107 gap: each model in GET /v1/models carries a plugboard field the OpenAI Model does not declare", async () => {

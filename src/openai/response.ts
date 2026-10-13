@@ -122,6 +122,33 @@ const encodePlugboard = (model: ListedModel["model"]) => ({
   released: isoDate(model.released),
 })
 
+/** USD per million tokens -> OpenRouter's price per token as a decimal string (`0.000003`), never an exponent. */
+const perToken = (usdPerMillion: number): string => (usdPerMillion / 1_000_000).toFixed(12).replace(/\.?0+$/, "")
+
+/**
+ * The OpenRouter names a client may already read: `context_length` and `pricing` (USD per token, base entry only; `aboveContext`
+ * tiers are not in it), plus `max_output_tokens`. A fact the catalog does not know is left out, never zero.
+ */
+const standardFields = (model: ListedModel["model"]) => {
+  const context = model.limits?.context ?? model.contextLimit
+  const output = model.limits?.output
+  const base = model.cost?.find((entry) => entry.aboveContext === undefined)
+  return {
+    ...(context === undefined ? {} : { context_length: context }),
+    ...(output === undefined ? {} : { max_output_tokens: output }),
+    ...(base === undefined
+      ? {}
+      : {
+          pricing: {
+            prompt: perToken(base.input),
+            completion: perToken(base.output),
+            ...(base.cacheRead === undefined ? {} : { input_cache_read: perToken(base.cacheRead) }),
+            ...(base.cacheWrite === undefined ? {} : { input_cache_write: perToken(base.cacheWrite) }),
+          },
+        }),
+  }
+}
+
 /** `GET /v1/models` body. */
 export const encodeModelList = (models: ReadonlyArray<ListedModel>): object => ({
   object: "list",
@@ -130,6 +157,7 @@ export const encodeModelList = (models: ReadonlyArray<ListedModel>): object => (
     object: "model",
     created: 0,
     owned_by: ref.providerID,
+    ...standardFields(model),
     plugboard: { ...encodePlugboard(model), ...(skill === undefined ? {} : { skill }), ...(agent === undefined ? {} : { agent }) },
   })),
 })

@@ -332,8 +332,8 @@ function toCosts(raw: unknown): CatalogCost[] | undefined {
     costs.push({
       input,
       output,
-      cacheRead: finite(cache?.read) ?? 0,
-      cacheWrite: finite(cache?.write) ?? 0,
+      cacheRead: finite(cache?.read),
+      cacheWrite: finite(cache?.write),
       ...(size === undefined ? {} : { aboveContext: size }),
     })
   }

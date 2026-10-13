@@ -27,8 +27,9 @@ export interface ModelRef {
 export interface CatalogCost {
   readonly input: number
   readonly output: number
-  readonly cacheRead: number
-  readonly cacheWrite: number
+  /** Cache prices when the host reports them; absent means unknown (not free). */
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
   readonly aboveContext?: number
 }
 

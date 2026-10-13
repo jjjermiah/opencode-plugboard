@@ -47,7 +47,7 @@ describe("encodeModelList", () => {
     expect(encodeModelList(listed)).toEqual({
       object: "list",
       data: [
-        { id: "test/echo#high", object: "model", created: 0, owned_by: "test", plugboard: { capabilities: { tools: true }, contextLimit: 8192 } },
+        { id: "test/echo#high", object: "model", created: 0, owned_by: "test", context_length: 8192, plugboard: { capabilities: { tools: true }, contextLimit: 8192 } },
         { id: "test/vision", object: "model", created: 0, owned_by: "test", plugboard: { capabilities: { tools: true, image: true }, contextLimit: undefined } },
       ],
     })
