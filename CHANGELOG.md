@@ -14,7 +14,16 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`requireKeys` makes a keyless server impossible** ([#271](https://github.com/jjjermiah/opencode-plugboard/issues/271)). On a shared machine, loopback is not a boundary, so a keyless server should be something you can rule out in config. With `requireKeys: true`, the plugin refuses to load without `keys`, and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. The default is `false`, so keyless loopback works as before.
+
+  ```jsonc
+  {
+    "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
+    "requireKeys": true
+  }
+  ```
 
 ## [0.25.1] - 2026-10-12: Front Door, Unlocked
 

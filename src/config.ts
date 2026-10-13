@@ -69,6 +69,11 @@ export interface PlugboardOptions {
   readonly usage: UsageConfig
   /** A key that may read every app's usage on `GET /plugboard/usage`. Compared like app keys; must differ from every one of them. */
   readonly adminKey?: string
+  /**
+   * Option `requireKeys` (#271). `true`: `keys` must be set and every request needs a key, loopback included
+   * (`/healthz` and `/readyz` stay open). Absent or `false`: keyless loopback works as before.
+   */
+  readonly requireKeys?: boolean
   /** A template for the OpenCode session page of each request: `{id}`, and optional `{directory}` (see src/session/link.ts, #77). */
   readonly historyUrl?: string
 }
@@ -216,7 +221,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -632,6 +637,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   digestsOf(keys)
   if (keyEntries.length === 0 && !isLoopbackHost(host))
     throw new Error(`plugboard refuses to listen on non-loopback host \`${host}\` without \`keys\``)
+  if (input.requireKeys !== undefined && typeof input.requireKeys !== "boolean") throw new Error("plugboard option `requireKeys` must be a boolean")
+  if (input.requireKeys === true && keyEntries.length === 0)
+    throw new Error("plugboard option `requireKeys` needs `keys`: without them every local caller would be served as the keyless app; add `keys` or remove `requireKeys`")
   if (input.adminKey !== undefined) {
     if (typeof input.adminKey !== "string" || input.adminKey.length === 0) throw new Error("plugboard option `adminKey` must be a non-empty string (is its {env:VAR} set?)")
     if (keyEntries.some(([, key]) => key === input.adminKey)) throw new Error("plugboard option `adminKey` must differ from every app key")
@@ -734,6 +742,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     usage,
     ...(budgets === undefined ? {} : { budgets }),
     ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
+    ...(input.requireKeys === true ? { requireKeys: true } : {}),
     ...(historyUrl === undefined ? {} : { historyUrl }),
   }
 }

@@ -143,6 +143,23 @@ describe("parseOptions: every rejection names the option", () => {
   })
 })
 
+describe("#271 requireKeys", () => {
+  test("is absent by default, and true when set with keys", () => {
+    expect(parseOptions({})).not.toHaveProperty("requireKeys")
+    expect(parseOptions({ keys: { app: "secret" }, requireKeys: false })).not.toHaveProperty("requireKeys")
+    expect(parseOptions({ keys: { app: "secret" }, requireKeys: true }).requireKeys).toBe(true)
+  })
+
+  test("a keyless server with requireKeys refuses to load, so it never runs keyless by drift (I16)", () => {
+    expect(() => parseOptions({ requireKeys: true })).toThrow("`requireKeys` needs `keys`")
+    expect(() => parseOptions({ apps: { bot: { key: "k-bot" } }, requireKeys: true })).not.toThrow()
+  })
+
+  test("must be a boolean", () => {
+    expect(() => parseOptions({ keys: { app: "secret" }, requireKeys: "yes" })).toThrow("`requireKeys` must be a boolean")
+  })
+})
+
 describe("parseOptions: modelIds", () => {
   test.each(["canonical", "slugs", "both"] as const)("accepts %p", (modelIds) => {
     expect(parseOptions({ modelIds }).modelIds).toBe(modelIds)

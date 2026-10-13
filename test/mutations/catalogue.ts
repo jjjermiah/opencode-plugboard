@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I16-require-keys-refuses-keyless",
+    invariant: "I16",
+    file: "src/config.ts",
+    find: "  if (input.requireKeys === true && keyEntries.length === 0)",
+    replace: "  if (false && keyEntries.length === 0)",
+    tests: ["test/unit/config.test.ts"],
+  },
+  {
     id: "I25-plugboard-errors-problem-json",
     invariant: "I25",
     file: "src/openai/route.ts",
