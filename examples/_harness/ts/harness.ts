@@ -39,6 +39,11 @@ export interface RunOptions {
   readonly na?: Readonly<Record<string, string>>
   /** Scenarios run once per API, by id, e.g. `{ S1: ["chat", "messages"] }`. The function gets the variant as its second argument. */
   readonly variants?: Readonly<Record<string, ReadonlyArray<string>>>
+  /**
+   * Checks the client cannot observe, by `id|variant`: check name to the reason. Such a check is left out of its row, and
+   * the note names it, so the row passes on what the client does expose. For a permanent client limitation, not a bug.
+   */
+  readonly unobserved?: Readonly<Record<string, Readonly<Record<string, string>>>>
 }
 
 /** The scenarios in their file order. */
@@ -84,6 +89,30 @@ export function emitClient(name: string, version: string): void {
 const errorText = (error: unknown): string => (error instanceof Error ? `${error.name}: ${error.message}` : String(error))
 
 /**
+ * Refuses an `unobserved` entry that names no planned scenario, variant or check, or that would drop every check of its row:
+ * a renamed check must not leave a stale entry, and a row with no checks must not pass vacuously.
+ */
+function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>): void {
+  for (const [key, names] of Object.entries(options.unobserved ?? {})) {
+    const [id = "", variant] = key.split("|")
+    const scenario = planned.find((candidate) => candidate.id === id)
+    const variantsOf = options.variants?.[id] ?? []
+    if (!scenario || variant === undefined || !variantsOf.includes(variant)) {
+      throw new Error("unobserved " + key + " names no planned scenario variant")
+    }
+    for (const name of Object.keys(names)) {
+      if (!scenario.checks.some((check) => check.name === name)) throw new Error("unobserved " + key + " names no check \"" + name + "\"")
+    }
+    if (Object.keys(names).length >= scenario.checks.length) throw new Error("unobserved " + key + " would drop every check of the row")
+  }
+}
+
+/** The checks a row leaves out, by name, with the reason (RunOptions.unobserved). */
+function unobservedFor(options: RunOptions, scenario: string, variant?: string): Readonly<Record<string, string>> {
+  return variant === undefined ? {} : (options.unobserved?.[scenario + "|" + variant] ?? {})
+}
+
+/**
  * Runs every scenario the runner covers (a function for it, or an n/a reason), on each of its models, in file order.
  * A function gets the model id and returns the observations; the checks decide pass or fail.
  */
@@ -92,6 +121,7 @@ export async function runAll(
   options: RunOptions = {},
 ): Promise<void> {
   const planned = SCENARIOS.filter((scenario) => scenario.id in functions || scenario.id in (options.na ?? {}))
+  checkUnobserved(options, planned)
   emit({ kind: "plan", scenarios: planned.map((scenario) => scenario.id) })
   for (const scenario of planned) {
     for (const model of scenario.models) {
@@ -106,9 +136,10 @@ export async function runAll(
         let checks: Array<{ name: string; ok: boolean }> = []
         let error: string | null = null
         let observations: Observations = {}
+        const unobserved = unobservedFor(options, scenario.id, variant)
         try {
           observations = await functions[scenario.id]!(model, variant)
-          checks = evaluate(scenario.checks, observations)
+          checks = evaluate(scenario.checks.filter((check) => !(check.name in unobserved)), observations)
         } catch (caught) {
           error = errorText(caught)
         }
@@ -119,6 +150,7 @@ export async function runAll(
           status = "gap"
           note = `${gap.note} (${gap.issue})`
         }
+        if (note === null && Object.keys(unobserved).length > 0) note = Object.entries(unobserved).map(([name, why]) => "not checked, " + name + ": " + why).join("; ")
         emit({ kind: "result", scenario: scenario.id, model, ...tag, status, checks, error, note, observations })
       }
     }

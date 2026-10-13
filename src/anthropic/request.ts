@@ -95,10 +95,17 @@ const toolResultContent = (content: unknown, at: string): { text: string; media:
   return { text: texts.join("\n"), media }
 }
 
-/** Plain content blocks (text, image, document) of a user message, in order. */
-/** A caller's `cache_control` breakpoint on a content block (#275): the default 5-minute one, whatever its `ttl`. */
-const cached = (block: JsonObject): { cache?: true } => (isRecord(block.cache_control) && block.cache_control.type === "ephemeral" ? { cache: true } : {})
+/**
+ * A caller's `cache_control` breakpoint on a content block (#275). `cacheTtl` is `"1h"` only for `ttl: "1h"`; any other ttl or none is
+ * the default 5 minutes. Whether the 1h TTL reaches the model is decided in `src/session/context.ts`.
+ */
+const cached = (block: JsonObject): { cache?: true; cacheTtl?: "1h" } => {
+  const control = block.cache_control
+  if (!isRecord(control) || control.type !== "ephemeral") return {}
+  return control.ttl === "1h" ? { cache: true, cacheTtl: "1h" } : { cache: true }
+}
 
+/** Plain content blocks (text, image, document) of a user message, in order. */
 const userBlock = (block: JsonObject, at: string): PlugPart | undefined | PlugError => {
   switch (block.type) {
     case "text":

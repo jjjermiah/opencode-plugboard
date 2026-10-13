@@ -27,7 +27,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "{\"calories\":180,\"protein_g\":13}",
+                "content": "{\"output\":{\"calories\":180,\"protein_g\":13}}",
                 "refusal": null,
                 "role": "assistant"
               }

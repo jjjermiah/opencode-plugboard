@@ -2,7 +2,7 @@
 
 import { createHash, timingSafeEqual } from "node:crypto"
 import type { CacheConfig } from "./cache.js"
-import { isPlugError, type PlugError } from "./contract.js"
+import { isPlugError, type PlugError, type PlugGeneration } from "./contract.js"
 import { parseTrustProxy } from "./forwarded.js"
 import { allowedBy, parseAliasTarget, parseModelRef, SKILL_PREFIX } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
@@ -186,6 +186,31 @@ export interface AppPolicy {
   readonly promptCache?: PromptCache
   /** Endpoint families this app may call (option `apps.<name>.endpoints`, #268). Absent: every endpoint. Check with `endpointRefusal`. */
   readonly endpoints?: ReadonlyArray<Endpoint>
+  /**
+   * This app's request deadline in ms (option `apps.<name>.requestTimeoutMs`, since 0.32.0, #257). Absent: the global
+   * `requestTimeoutMs`. Look the effective value up with `requestTimeoutFor`.
+   */
+  readonly requestTimeoutMs?: number
+  /**
+   * The most output tokens one answer of this app may have (option `apps.<name>.maxOutputTokens`, since 0.32.0, #263). It lowers the
+   * caller's limit, or sets one when the caller sent none; it is never raised. Applied by `appGeneration` (src/openai/sampling.ts).
+   */
+  readonly maxOutputTokens?: number
+  /**
+   * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.32.0, #264): a field fills the request only where the caller
+   * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
+   */
+  readonly sampling?: PlugGeneration
+  /**
+   * The one model every request of this app runs on (option `apps.<name>.model`, since 0.32.0, #261): a canonical id or an alias.
+   * The caller's `model` is ignored when it is set. Checked at load against the global `models` and the app's `models`.
+   */
+  readonly model?: string
+  /**
+   * A request header that names the end user (option `apps.<name>.userHeader`, since 0.32.0, #272), read instead of the body's
+   * `user` (or `metadata.user_id`) when the request sends it. Lower case. Looked up by `requestUser` (src/user.ts).
+   */
+  readonly userHeader?: string
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -194,6 +219,8 @@ export interface LimitCaps {
   readonly maxConcurrent?: number
   /** Model calls started per minute (a fixed one-minute window). */
   readonly requestsPerMinute?: number
+  /** Largest request body this app may send, in bytes (`limits.apps.<name>` only, since 0.32.0, #258). It can only lower `limits.maxBodyBytes`. */
+  readonly maxBodyBytes?: number
 }
 
 /**
@@ -211,16 +238,23 @@ export interface Limits {
   readonly maxBodyBytesInFlight?: number
   /** Milliseconds a request body may take to arrive in full; a slower one is refused with 408. */
   readonly bodyReadTimeoutMs?: number
+  /**
+   * The largest request body any app may send (since 0.32.0, #258), 1 to 33554432. Absent: 32 MiB. It is the ceiling for
+   * `apps.<name>.maxBodyBytes`-style caps in `limits.apps`, and a body over it is refused with 413 before it is read.
+   */
+  readonly maxBodyBytes?: number
 }
 
 /** The bounds `readJsonBody` applies before it buffers a request body (see `bodyLimits`). */
 export interface BodyLimits {
   readonly maxBytesInFlight: number
   readonly readTimeoutMs: number
+  /** The largest body this request may send: `limits.apps.<name>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB (#258). Absent: 32 MiB. */
+  readonly maxBodyBytes?: number
 }
 
 /** Defaults of `limits.maxBodyBytesInFlight` (128 MiB) and `limits.bodyReadTimeoutMs` (30 s). */
-export const BODY_LIMIT_DEFAULTS: BodyLimits = { maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000 }
+export const BODY_LIMIT_DEFAULTS: BodyLimits & { readonly maxBodyBytes: number } = { maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, maxBodyBytes: 32 * 1024 * 1024 }
 
 /** What a budget counts: HTTP requests on the model routes (refusals by `limits` or budgets left out), tokens, or cost in USD. */
 export type BudgetMetric = "requests" | "tokens" | "costUsd"
@@ -269,7 +303,9 @@ const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
 const MAX_RETENTION_DAYS = 3650
-const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs"])
+const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs", "maxBodyBytes"])
+/** The hard cap of one request body (32 MiB). `limits.maxBodyBytes` and `limits.apps.<name>.maxBodyBytes` cannot go above it. */
+const BODY_HARD_CAP = 32 * 1024 * 1024
 const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
 /** Largest cap accepted: far above any provider's limit, and keeps the error messages short. */
 const MAX_LIMIT = 1_000_000
@@ -411,7 +447,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader"])
 
 /**
  * Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hidden` (since 0.29.0, #337).
@@ -467,10 +503,77 @@ function parseServerTools(value: unknown, at: string): string[] {
 const SYSTEM_MODES: ReadonlySet<string> = new Set(["prepend", "append", "replace"])
 const MODEL_IDS: ReadonlySet<string> = new Set(["canonical", "slugs", "both"])
 
+/** Headers that carry a credential: their value is a key, which must never become an end-user label (the log and the usage counts). */
+const CREDENTIAL_HEADERS: ReadonlySet<string> = new Set(["authorization", "proxy-authorization", "x-api-key", "api-key", "x-goog-api-key", "x-auth-token", "cookie"])
+
+/** Option `apps.<name>.userHeader` (#272): a lower case header name of 1 to 64 letters, digits or hyphens, and not a credential header. */
+function parseUserHeader(raw: unknown, at: string): string {
+  if (typeof raw !== "string" || !/^[a-z0-9-]{1,64}$/.test(raw))
+    throw new Error(`plugboard option \`${at}\` must be a lower case header name of 1 to 64 letters, digits or hyphens, such as \`x-user-id\``)
+  if (CREDENTIAL_HEADERS.has(raw)) throw new Error(`plugboard option \`${at}\` cannot be \`${raw}\`: that header carries a key, and the end user is logged`)
+  return raw
+}
+
+/**
+ * Option `apps.<name>.model` (#261): one canonical id (`provider/model[#variant]`) or an alias name, never a `provider/*` pattern.
+ * A canonical id must pass the global `models` and, when the app has `models`, the app's own list (an alias must be listed there by name).
+ */
+function parsePinnedModel(raw: unknown, at: string, appModels: ReadonlyArray<string> | undefined, context: { aliases: Readonly<Record<string, string>>; models: ReadonlyArray<string> }): string {
+  if (typeof raw !== "string" || raw.includes("*") || !(MODEL_PATTERN.test(raw) || Object.hasOwn(context.aliases, raw)))
+    throw new Error(`plugboard option \`${at}.model\` must be \`provider/model\`, \`provider/model#variant\` or an alias name (a \`provider/*\` pattern cannot pin one model)`)
+  if (Object.hasOwn(context.aliases, raw)) {
+    // Runtime (`inAppScope`, src/models.ts) admits an alias that the app lists by name, or whose target an app `models` pattern matches.
+    const target = parseModelRef(context.aliases[raw]!)
+    if (appModels !== undefined && !appModels.includes(raw) && !(target !== undefined && allowedBy(appModels, target)))
+      throw new Error(`plugboard option \`${at}.model\` alias \`${raw}\` must be listed in \`${at}.models\`, or its target must match one of them`)
+    return raw
+  }
+  const ref = parseModelRef(raw)!
+  if (!allowedBy(context.models, ref)) throw new Error(`plugboard option \`${at}.model\` \`${raw}\` is not allowed by the \`models\` option`)
+  if (appModels !== undefined && !appModels.includes(raw) && !allowedBy(appModels, ref))
+    throw new Error(`plugboard option \`${at}.model\` \`${raw}\` must be listed in \`${at}.models\``)
+  return raw
+}
+
+const SAMPLING_KNOWN = ["temperature", "topP", "maxTokens", "stop", "presencePenalty", "frequencyPenalty"] as const
+
+/**
+ * Option `apps.<name>.sampling` (#264): the sampling defaults of one app. Each field is checked like the same field of a request
+ * (`temperature` 0 to 2, `topP` 0 to 1, the penalties -2 to 2, `maxTokens` a positive integer, `stop` 1 to 4 strings).
+ */
+function parseSampling(raw: unknown, at: string): PlugGeneration {
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.sampling\` must be an object`)
+  for (const key of Object.keys(raw))
+    if (!(SAMPLING_KNOWN as readonly string[]).includes(key)) throw new Error(`Unknown plugboard option \`${at}.sampling.${key}\` (known: ${SAMPLING_KNOWN.join(", ")})`)
+  const number = (key: "temperature" | "topP" | "presencePenalty" | "frequencyPenalty", min: number, max: number): number | undefined => {
+    const value = raw[key]
+    if (value === undefined) return undefined
+    if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max)
+      throw new Error(`plugboard option \`${at}.sampling.${key}\` must be a number from ${min} to ${max}`)
+    return value
+  }
+  const stop = raw.stop === undefined ? undefined : raw.stop
+  if (stop !== undefined && (!Array.isArray(stop) || stop.length === 0 || stop.length > 4 || stop.some((entry) => typeof entry !== "string")))
+    throw new Error(`plugboard option \`${at}.sampling.stop\` must be an array of 1 to 4 strings`)
+  const temperature = number("temperature", 0, 2)
+  const topP = number("topP", 0, 1)
+  const presencePenalty = number("presencePenalty", -2, 2)
+  const frequencyPenalty = number("frequencyPenalty", -2, 2)
+  const maxTokens = raw.maxTokens === undefined ? undefined : positiveInt(raw.maxTokens, `${at}.sampling.maxTokens`, 0, MAX_TIMER_MS)
+  return {
+    ...(temperature === undefined ? {} : { temperature }),
+    ...(topP === undefined ? {} : { topP }),
+    ...(maxTokens === undefined ? {} : { maxTokens }),
+    ...(stop === undefined ? {} : { stop: stop as string[] }),
+    ...(presencePenalty === undefined ? {} : { presencePenalty }),
+    ...(frequencyPenalty === undefined ? {} : { frequencyPenalty }),
+  }
+}
+
 /** Validates `apps` (the `key` field was merged into `keys` already) into per-app policies. */
 function parseApps(
   raw: unknown,
-  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; maxTools: number; maxN: number },
+  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; models: ReadonlyArray<string>; maxTools: number; maxN: number },
 ): Record<string, AppPolicy> {
   const entries: Array<[string, AppPolicy]> = []
   for (const [app, value] of Object.entries(isRecord(raw) ? raw : {})) {
@@ -515,6 +618,12 @@ function parseApps(
     const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
     const endpoints = value.endpoints === undefined ? undefined : parseEndpoints(value.endpoints, at)
     const history = value.history === undefined ? undefined : parseAppHistory(value.history, `apps.${app}`)
+    // A deadline may be longer or shorter than the global one (#257); it is checked against the same ceiling as the global option.
+    const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
+    const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
+    const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
+    const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, value.models as string[] | undefined, context)
+    const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -529,9 +638,14 @@ function parseApps(
       ...(historyUrl === undefined ? {} : { historyUrl }),
       ...(promptCache === undefined ? {} : { promptCache }),
       ...(endpoints === undefined ? {} : { endpoints }),
+      ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+      ...(sampling === undefined ? {} : { sampling }),
+      ...(model === undefined ? {} : { model }),
+      ...(userHeader === undefined ? {} : { userHeader }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -558,13 +672,16 @@ export function parsePromptCache(raw: unknown, at: string): PromptCache | undefi
 }
 
 /** Validates one set of caps (`limits.perApp`, or one `limits.apps` entry): each cap is a positive integer. */
-function parseCaps(raw: unknown, at: string): LimitCaps {
+function parseCaps(raw: unknown, at: string, allowBodyCap = false): LimitCaps {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object`)
+  // `maxBodyBytes` is a cap only for an app (`limits.apps`), never for `limits.perApp`, which would apply it to every app.
+  const known = allowBodyCap ? [...LIMIT_CAP_KNOWN, "maxBodyBytes"] : [...LIMIT_CAP_KNOWN]
   for (const key of Object.keys(raw))
-    if (!LIMIT_CAP_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${[...LIMIT_CAP_KNOWN].join(", ")})`)
+    if (!known.includes(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${known.join(", ")})`)
   return {
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, `${at}.maxConcurrent`, 0, MAX_LIMIT) }),
     ...(raw.requestsPerMinute === undefined ? {} : { requestsPerMinute: positiveInt(raw.requestsPerMinute, `${at}.requestsPerMinute`, 0, MAX_LIMIT) }),
+    ...(raw.maxBodyBytes === undefined ? {} : { maxBodyBytes: positiveInt(raw.maxBodyBytes, `${at}.maxBodyBytes`, 0, BODY_HARD_CAP) }),
   }
 }
 
@@ -581,9 +698,15 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
     const at = `limits.apps.${app}`
     const configured = app === DEFAULT_APP ? Object.keys(keys).length === 0 : Object.hasOwn(keys, app)
     if (!configured) throw new Error(`plugboard option \`${at}\` must name a configured app (a key in \`keys\`; \`${DEFAULT_APP}\` only without keys)`)
-    apps[app] = parseCaps(value, at)
+    apps[app] = parseCaps(value, at, true)
   }
+  const maxBodyBytes = raw.maxBodyBytes === undefined ? undefined : positiveInt(raw.maxBodyBytes, "limits.maxBodyBytes", 0, BODY_HARD_CAP)
+  // An app's body cap only lowers the global one (or the hard cap when there is none), like `maxTools` and `maxN` (#258).
+  for (const [app, caps] of Object.entries(apps))
+    if (caps.maxBodyBytes !== undefined && caps.maxBodyBytes > (maxBodyBytes ?? BODY_HARD_CAP))
+      throw new Error(`plugboard option \`limits.apps.${app}.maxBodyBytes\` cannot be above \`limits.maxBodyBytes\` (or ${BODY_HARD_CAP} when that is unset)`)
   return {
+    ...(maxBodyBytes === undefined ? {} : { maxBodyBytes }),
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, "limits.maxConcurrent", 0, MAX_LIMIT) }),
     ...(raw.perApp === undefined ? {} : { perApp: parseCaps(raw.perApp, "limits.perApp") }),
     ...(appsRaw === undefined ? {} : { apps }),
@@ -594,11 +717,17 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
   }
 }
 
-/** The body limits in force for these options (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`), or the defaults. */
-export function bodyLimits(options: Pick<PlugboardOptions, "limits">): BodyLimits {
+/**
+ * The body limits in force for a request of `app` (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`, and the largest body:
+ * `limits.apps.<app>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB, #258), or the defaults. `app` is absent before a
+ * credential is read; the global cap applies then.
+ */
+export function bodyLimits(options: Pick<PlugboardOptions, "limits">, app?: string): BodyLimits {
+  const own = app !== undefined && options.limits?.apps && Object.hasOwn(options.limits.apps, app) ? options.limits.apps[app] : undefined
   return {
     maxBytesInFlight: options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight,
     readTimeoutMs: options.limits?.bodyReadTimeoutMs ?? BODY_LIMIT_DEFAULTS.readTimeoutMs,
+    maxBodyBytes: own?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes,
   }
 }
 
@@ -633,6 +762,28 @@ export function appHistoryLimits(options: Pick<PlugboardOptions, "apps">): Recor
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
 export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string): AppPolicy | undefined {
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
+}
+
+/**
+ * The request deadline (ms) of a request of `app`: `apps.<name>.requestTimeoutMs` when the app sets one (#257), else the
+ * global `requestTimeoutMs`. `app` is `undefined` when no credential matched yet; the global value applies then.
+ */
+export function requestTimeoutFor(options: Pick<PlugboardOptions, "apps" | "requestTimeoutMs">, app: string | undefined): number {
+  return (app === undefined ? undefined : appPolicy(options, app)?.requestTimeoutMs) ?? options.requestTimeoutMs
+}
+
+/**
+ * The model and effort a request of `app` resolves (#261): the app's pinned `model` with no caller effort (the pin names the variant),
+ * else the caller's `model` and `reasoning_effort`.
+ */
+export function requestedModel(options: Pick<PlugboardOptions, "apps">, app: string, model: string, effort: string | undefined): { model: string; effort: string | undefined } {
+  const pinned = appPolicy(options, app)?.model
+  return pinned === undefined ? { model, effort } : { model: pinned, effort: undefined }
+}
+
+/** The option that set `requestTimeoutFor` for `app`, named in the 504 message (#257): the app's own, else the global one. */
+export function requestTimeoutOption(options: Pick<PlugboardOptions, "apps">, app: string | undefined): string {
+  return app !== undefined && appPolicy(options, app)?.requestTimeoutMs !== undefined ? `apps.${app}.requestTimeoutMs` : "requestTimeoutMs"
 }
 
 function parseUsage(value: unknown): UsageConfig {
@@ -861,7 +1012,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
   const maxN = positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64)
-  const apps = parseApps(input.apps, { keys, aliases, maxTools, maxN })
+  const apps = parseApps(input.apps, { keys, aliases, models: models as string[], maxTools, maxN })
 
   const remoteImages = parseRemoteImages(input.remoteImages)
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")

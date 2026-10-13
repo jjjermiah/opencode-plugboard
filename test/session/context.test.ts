@@ -128,6 +128,185 @@ describe("the context hook", () => {
   })
 })
 
+/** The host's cache TTLs in wire order (system, then messages): 3600 for 1h, 300 for the default 5m. */
+const wireTtls = (after: ContextHookEvent): number[] => {
+  const parts = [...((after.system ?? []) as Array<{ cache?: { ttlSeconds?: number } }>), ...(after.messages ?? []).flatMap((m) => m.content as Array<{ cache?: { ttlSeconds?: number } }>)]
+  return parts.filter((p) => p.cache !== undefined).map((p) => p.cache!.ttlSeconds ?? 300)
+}
+/** Anthropic: every 1h entry comes before every 5m one. */
+const oneHourBeforeFiveMinute = (ttls: number[]) => ttls.lastIndexOf(3600) < (ttls.includes(300) ? ttls.indexOf(300) : Infinity)
+
+describe("#275 the 1h TTL reaches the host only on a request without tools", () => {
+  const hour = { type: "ephemeral", ttlSeconds: 3600 }
+  const five = { type: "ephemeral" }
+
+  test("no tools: the system first and last parts and the caller's 1h block are 1h; the tail after it keeps the 5m default", () => {
+    const { run } = hook(
+      plugRequest({
+        system: ["one", "two", "three"],
+        messages: [
+          { role: "user", content: [{ type: "text", text: "ctx", cache: true, cacheTtl: "1h" }] },
+          { role: "assistant", content: [{ type: "text", text: "ok" }] },
+          { role: "user", content: [{ type: "text", text: "next" }] },
+        ],
+      }),
+    )
+    const after = run(event({ system: ["x", "y", "z"], messages: [{ content: [{ type: "text", text: "t" }] }, { content: [{ type: "text", text: "t" }] }, { content: [{ type: "text", text: "t" }] }] }))
+    expect(after.system).toEqual([
+      { type: "text", text: "one", cache: hour },
+      { type: "text", text: "two" },
+      { type: "text", text: "three", cache: hour },
+    ])
+    expect(after.messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "ctx", cache: hour }] },
+      { role: "assistant", content: [{ type: "text", text: "ok" }] },
+      { role: "user", content: [{ type: "text", text: "next" }] },
+    ])
+    expect(wireTtls(after)).toEqual([3600, 3600, 3600])
+    expect(oneHourBeforeFiveMinute(wireTtls(after))).toBe(true)
+  })
+
+  test("no tools: a 5m caller block before the 1h block is raised to 1h, so no 5m precedes a 1h; a 5m block after it stays 5m", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          { role: "user", content: [{ type: "text", text: "early", cache: true }] },
+          { role: "user", content: [{ type: "text", text: "ctx", cache: true, cacheTtl: "1h" }] },
+          { role: "user", content: [{ type: "text", text: "late", cache: true }] },
+        ],
+      }),
+    )
+    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }] }, { content: [{ type: "text", text: "b" }] }, { content: [{ type: "text", text: "c" }] }] }))
+    expect(after.messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "early", cache: hour }] },
+      { role: "user", content: [{ type: "text", text: "ctx", cache: hour }] },
+      { role: "user", content: [{ type: "text", text: "late", cache: five }] },
+    ])
+    expect(wireTtls(after)).toEqual([3600, 3600, 300])
+    expect(oneHourBeforeFiveMinute(wireTtls(after))).toBe(true)
+  })
+
+  test("no tools: two 1h blocks with a 5m block between them: the 5m block between is raised, the 5m after the last 1h stays", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          { role: "user", content: [{ type: "text", text: "first", cache: true, cacheTtl: "1h" }] },
+          { role: "user", content: [{ type: "text", text: "between", cache: true }] },
+          { role: "user", content: [{ type: "text", text: "second", cache: true, cacheTtl: "1h" }] },
+          { role: "user", content: [{ type: "text", text: "after", cache: true }] },
+        ],
+      }),
+    )
+    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }] }, { content: [{ type: "text", text: "b" }] }, { content: [{ type: "text", text: "c" }] }, { content: [{ type: "text", text: "d" }] }] }))
+    expect(after.messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "first", cache: hour }] },
+      { role: "user", content: [{ type: "text", text: "between", cache: hour }] },
+      { role: "user", content: [{ type: "text", text: "second", cache: hour }] },
+      { role: "user", content: [{ type: "text", text: "after", cache: five }] },
+    ])
+    expect(wireTtls(after)).toEqual([3600, 3600, 3600, 300])
+    expect(oneHourBeforeFiveMinute(wireTtls(after))).toBe(true)
+  })
+
+  test("no tools: a whitespace-only text part with a hint before the 1h block is raised like any other part (the lowering skips it, but it is a hinted part on the host)", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [{ role: "user", content: [{ type: "text", text: "   ", cache: true }, { type: "text", text: "ctx", cache: true, cacheTtl: "1h" }] }],
+      }),
+    )
+    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }] }))
+    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "   ", cache: hour }, { type: "text", text: "ctx", cache: hour }] }])
+    expect(wireTtls(after)).toEqual([3600, 3600])
+  })
+
+  test("no tools: a whitespace-only hinted text part as the tail, after the 1h block, stays 5m and is not pinned", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [{ role: "user", content: [{ type: "text", text: "ctx", cache: true, cacheTtl: "1h" }, { type: "text", text: "  ", cache: true }] }],
+      }),
+    )
+    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }] }))
+    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: hour }, { type: "text", text: "  ", cache: five }] }])
+    expect(wireTtls(after)).toEqual([3600, 300])
+    expect(oneHourBeforeFiveMinute(wireTtls(after))).toBe(true)
+  })
+
+  test("no tools: the tail hint OpenCode would put on the last text part is pinned 1h when a 1h media block follows it", () => {
+    const hostMedia = { type: "media", asset: "A" }
+    const { run } = hook(
+      plugRequest({
+        messages: [{ role: "user", content: [{ type: "text", text: "question" }, { type: "media", url: "data:x", cache: true, cacheTtl: "1h" }] }],
+      }),
+    )
+    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "transcript" }, hostMedia] }] }))
+    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "question", cache: hour }, { ...hostMedia, cache: hour }] }])
+    expect(wireTtls(after)).toEqual([3600, 3600])
+  })
+
+  test("no tools, all 4 slots spent by the caller: no system slot is taken, and the earlier caller hints are raised to 1h", () => {
+    const { run } = hook(
+      plugRequest({
+        system: ["s"],
+        messages: [
+          { role: "user", content: [{ type: "text", text: "a", cache: true }, { type: "text", text: "b", cache: true }] },
+          { role: "user", content: [{ type: "text", text: "c", cache: true }, { type: "text", text: "d", cache: true, cacheTtl: "1h" }] },
+        ],
+      }),
+    )
+    const after = run(event({ system: ["s"], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }, { content: [{ type: "text", text: "c" }, { type: "text", text: "d" }] }] }))
+    expect(after.system).toEqual([{ type: "text", text: "s" }])
+    expect(wireTtls(after)).toEqual([3600, 3600, 3600, 3600])
+  })
+
+  test("no tools, 3 slots spent by the caller: the first system part takes the last free slot and the last system part gets none", () => {
+    const { run } = hook(
+      plugRequest({
+        system: ["s1", "s2"],
+        messages: [{ role: "user", content: [{ type: "text", text: "a", cache: true }, { type: "text", text: "b", cache: true }, { type: "text", text: "c", cache: true, cacheTtl: "1h" }] }],
+      }),
+    )
+    const after = run(event({ system: ["s1", "s2"], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }, { type: "text", text: "c" }] }] }))
+    expect(after.system).toEqual([{ type: "text", text: "s1", cache: hour }, { type: "text", text: "s2" }])
+    expect(wireTtls(after)).toEqual([3600, 3600, 3600, 3600])
+  })
+
+  test("with tools present the 1h block stays the 5m default and the system gets no hint", () => {
+    const { run } = hook(
+      plugRequest({
+        tools: [tool("lookup")],
+        system: ["one", "two"],
+        messages: [{ role: "user", content: [{ type: "text", text: "ctx", cache: true, cacheTtl: "1h" }] }],
+      }),
+    )
+    const after = run(event({ system: ["x", "y"], messages: [{ content: [{ type: "text", text: "t" }] }] }))
+    expect(after.system).toEqual([{ type: "text", text: "one" }, { type: "text", text: "two" }])
+    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: five }] }])
+    expect(Object.keys(after.tools!)).toEqual(["lookup"])
+  })
+
+  test("tool_choice none sends no tools to the model, so the 1h TTL is carried", () => {
+    const { run } = hook(
+      plugRequest({
+        tools: [tool("lookup")],
+        toolChoice: "none",
+        system: ["one", "two"],
+        messages: [{ role: "user", content: [{ type: "text", text: "ctx", cache: true, cacheTtl: "1h" }] }],
+      }),
+    )
+    const after = run(event({ system: ["x", "y"], messages: [{ content: [{ type: "text", text: "t" }] }] }))
+    expect(after.tools).toEqual({})
+    expect(after.system).toEqual([{ type: "text", text: "one", cache: hour }, { type: "text", text: "two", cache: hour }])
+    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: hour }] }])
+  })
+
+  test("no 1h block: the system and tail keep OpenCode's own 5m placement (nothing pinned)", () => {
+    const { run } = hook(plugRequest({ system: ["one", "two"], messages: [{ role: "user", content: [{ type: "text", text: "ctx", cache: true }] }] }))
+    const after = run(event({ system: ["x", "y"], messages: [{ content: [{ type: "text", text: "t" }] }] }))
+    expect(after.system).toEqual([{ type: "text", text: "one" }, { type: "text", text: "two" }])
+    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: five }] }])
+  })
+})
+
 describe("seed tools are re-keyed by descriptor identity", () => {
   test("each caller tool takes a seed descriptor, mutated in place; real tools and spare seeds disappear", () => {
     const { run } = hook(plugRequest({ tools: [tool("lookup"), tool("write")] }))

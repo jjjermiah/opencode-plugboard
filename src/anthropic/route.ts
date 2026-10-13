@@ -12,9 +12,9 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate } from "../config.js"
+import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate, requestedModel } from "../config.js"
 import { liveOptions } from "../runtime.js"
-import { bodyUserId, noteEndUser } from "../user.js"
+import { bodyUserId, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import {
   BodyError,
@@ -37,7 +37,7 @@ import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
-import { dropRejected } from "../openai/sampling.js"
+import { appGeneration, dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
 import { estimateTokens } from "./tokens.js"
@@ -48,6 +48,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MESSAGES = "/v1/messages"
+/** The 400 `parseThinking` gives when the budget is not below `max_tokens` (src/anthropic/request.ts). */
+const BUDGET_REFUSAL = "thinking.budget_tokens: must be less than max_tokens"
 const COUNT_TOKENS = "/v1/messages/count_tokens"
 
 /** Paths this front-end owns, whatever the method. */
@@ -68,7 +70,7 @@ const header = (request: IncomingMessage, name: string): string | undefined => {
 }
 
 /** `Authorization: Bearer` first (Claude Code with ANTHROPIC_AUTH_TOKEN), then `x-api-key` (the Anthropic SDKs). One key store. */
-const authenticateRequest = async (host: RouteHost, request: IncomingMessage) => {
+export const authenticateRequest = async (host: RouteHost, request: IncomingMessage) => {
   const options = liveOptions(host.options)
   const runtime = host.keys ? await host.keys.digests() : []
   const bearer = authenticate(options, request.headers.authorization, runtime)
@@ -111,34 +113,51 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
 
-    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
-    noteEndUser(response, info, bodyUserId(body))
+    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
+    // The end user: the app's `userHeader` when the request sends it (#272), else the body's `metadata.user_id`.
+    const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUserId(sent))
+    const body = withEndUser(sent, user, "metadata")
+    noteEndUser(response, info, user)
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.
-    const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : body
+    // The app's output cap (#263) lowers `max_tokens` before it is parsed, so the thinking-budget rule (budget < max_tokens) refuses a
+    // cap that cannot hold the budget with the existing 400. A count never uses `max_tokens`, so the cap does not apply to it.
+    const cap = path === COUNT_TOKENS ? undefined : appPolicy(host.options, auth.app)?.maxOutputTokens
+    const capped = cap !== undefined && isRecord(body) && typeof body.max_tokens === "number" && body.max_tokens > cap ? { ...body, max_tokens: cap } : body
+    const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : capped
     const parsed = parseMessagesRequest(sized, host.options)
-    if (isPlugError(parsed)) return fail(parsed)
+    // A budget refused because the app's cap lowered `max_tokens` says so: the same 400, with the option named (#263).
+    if (isPlugError(parsed))
+      return fail(
+        capped !== body && parsed.message === BUDGET_REFUSAL
+          ? { ...parsed, message: `${BUDGET_REFUSAL}; apps.${auth.app}.maxOutputTokens (${cap}) lowers max_tokens` }
+          : parsed,
+      )
     const catalog = await scope.race(host.loadCatalog())
-    const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
+    const requested = requestedModel(host.options, auth.app, parsed.request.model, parsed.reasoningEffort)
+    const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
     // The request as the session sends it: the app's policy, persona and server tools are counted too (#201).
     if (path === COUNT_TOKENS) {
-      const counted = await scope.race(sessionRequest(host.session, auth.app, { ...parsed.request, ref }, appPolicy(host.options, auth.app), scope.signal))
+      const counted = await scope.race(sessionRequest(host.session, auth.app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, auth.app), scope.signal))
       if (isPlugError(counted)) return fail(counted)
       return sendJson(response, 200, { input_tokens: estimateTokens(counted) })
     }
     // Sampling parameters the model is known to reject are dropped; `top_k` has no neutral
     // equivalent and is always dropped. Both are reported before any response bytes.
-    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined
+    const generation = appGeneration(appPolicy(host.options, auth.app), parsed.request.generation)
+    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined
     const dropped = [...(sampled?.dropped ?? []), ...(parsed.topKIgnored ? ["top_k"] : [])]
     if (dropped.length > 0) {
       info.dropped = dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
     }
-    const model: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
+    const model: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, model)
     const { exchange } = parsed
+    // The answer names the model it runs on: the app's pin, else the caller's (#261).
+    exchange.model = requested.model
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.
     if (scope.signal.aborted) throw scope.signal.reason
