@@ -72,7 +72,7 @@ export function renderSummaryMd(summary: RunSummary): string {
   }
   const notable = summary.scenarios.filter((row) => row.status === "fail" || row.status === "gap" || (row.status === "pass" && row.note))
   if (notable.length > 0) {
-    lines.push("", "## Failures and gaps", "")
+    lines.push("", "## Failures, gaps and unchecked items", "")
     for (const row of notable) {
       lines.push(`### ${row.variant === undefined ? row.id : `${row.id} (${row.variant})`} on ${row.model}: ${row.status}`, "")
       if (row.note) lines.push(row.note, "")

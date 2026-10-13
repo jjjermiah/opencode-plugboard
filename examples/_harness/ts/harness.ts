@@ -88,6 +88,25 @@ export function emitClient(name: string, version: string): void {
 
 const errorText = (error: unknown): string => (error instanceof Error ? `${error.name}: ${error.message}` : String(error))
 
+/**
+ * Refuses an `unobserved` entry that names no planned scenario, variant or check, or that would drop every check of its row:
+ * a renamed check must not leave a stale entry, and a row with no checks must not pass vacuously.
+ */
+function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>): void {
+  for (const [key, names] of Object.entries(options.unobserved ?? {})) {
+    const [id = "", variant] = key.split("|")
+    const scenario = planned.find((candidate) => candidate.id === id)
+    const variantsOf = options.variants?.[id] ?? []
+    if (!scenario || variant === undefined || !variantsOf.includes(variant)) {
+      throw new Error("unobserved " + key + " names no planned scenario variant")
+    }
+    for (const name of Object.keys(names)) {
+      if (!scenario.checks.some((check) => check.name === name)) throw new Error("unobserved " + key + " names no check \"" + name + "\"")
+    }
+    if (Object.keys(names).length >= scenario.checks.length) throw new Error("unobserved " + key + " would drop every check of the row")
+  }
+}
+
 /** The checks a row leaves out, by name, with the reason (RunOptions.unobserved). */
 function unobservedFor(options: RunOptions, scenario: string, variant?: string): Readonly<Record<string, string>> {
   return variant === undefined ? {} : (options.unobserved?.[scenario + "|" + variant] ?? {})
@@ -102,6 +121,7 @@ export async function runAll(
   options: RunOptions = {},
 ): Promise<void> {
   const planned = SCENARIOS.filter((scenario) => scenario.id in functions || scenario.id in (options.na ?? {}))
+  checkUnobserved(options, planned)
   emit({ kind: "plan", scenarios: planned.map((scenario) => scenario.id) })
   for (const scenario of planned) {
     for (const model of scenario.models) {

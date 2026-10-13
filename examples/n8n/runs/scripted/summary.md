@@ -5,11 +5,11 @@ Verdict: **pass** · n8n 2.42.6 on bun 1 · models: fast, anthropic/claude-haiku
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
 | S1 (chat) | fast | yes | pass | 3/3 |
-| S1 (responses) | fast | yes | pass | 2/2 |
+| S1 (responses) | fast | yes | pass | 1/1 |
 | S1 (chat) | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
-| S1 (responses) | anthropic/claude-haiku-4-5 | yes | pass | 2/2 |
+| S1 (responses) | anthropic/claude-haiku-4-5 | yes | pass | 1/1 |
 | S1 (chat) | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
-| S1 (responses) | openai/gpt-5.6-luna#low | yes | pass | 2/2 |
+| S1 (responses) | openai/gpt-5.6-luna#low | yes | pass | 1/1 |
 | S2 | fast | yes | pass | 6/6 |
 | S2 | anthropic/claude-haiku-4-5 | yes | pass | 6/6 |
 | S2 | openai/gpt-5.6-luna#low | yes | pass | 6/6 |
@@ -25,17 +25,17 @@ Verdict: **pass** · n8n 2.42.6 on bun 1 · models: fast, anthropic/claude-haiku
 | E1 | fast | no | n/a |  |
 | E2 | nope | no | n/a |  |
 
-## Failures and gaps
+## Failures, gaps and unchecked items
 
 ### S1 (responses) on fast: pass
 
-not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)
+not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343); not checked, usage present: n8n's Responses node records only its own estimate (tokenUsageEstimate), not plugboard's usage (#343)
 
 ### S1 (responses) on anthropic/claude-haiku-4-5: pass
 
-not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)
+not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343); not checked, usage present: n8n's Responses node records only its own estimate (tokenUsageEstimate), not plugboard's usage (#343)
 
 ### S1 (responses) on openai/gpt-5.6-luna#low: pass
 
-not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)
+not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343); not checked, usage present: n8n's Responses node records only its own estimate (tokenUsageEstimate), not plugboard's usage (#343)
 

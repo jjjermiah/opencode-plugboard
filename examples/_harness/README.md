@@ -86,7 +86,7 @@ Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `trans
 
 ## Snippet regions
 
-A region is named `snippet` or `snippet-<name>`, and each name appears once per file. The docs import one region with `<<< file#name`, so a duplicate name would make the import ambiguous. `snippet` is the file's main region; a file with more than one names the others after what they show (`snippet-s1`, `snippet-raw`). `check-regions.ts` (the examples CI job) fails on a duplicate name in any tracked file under `examples/`.
+A region is named `snippet` or `snippet-<name>`, with a kebab-case name, and each name appears once per file. The docs import one region with `<<< file#name`, so a duplicate name would make the import ambiguous, and a region that does not close, or nests in another, would include the wrong lines. `snippet` is the file's first region. A file with more than one names the others after what they show (`snippet-s1`, `snippet-raw`). `check-regions.ts` (the examples CI job) fails on any of these in the tracked files under `examples/`, except Markdown, whose prose quotes the markers.
 
 ## When a run is stale
 

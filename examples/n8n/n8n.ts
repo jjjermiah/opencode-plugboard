@@ -116,10 +116,10 @@ export function turns(execution: Record<string, any>): Turn[] {
   const runs = (at(execution, "data", "resultData", "runData", "OpenAI Chat Model") as Array<Record<string, any>> | undefined) ?? []
   return runs.map((run) => {
     const json = at(run, "data", "ai_languageModel", 0, 0, "json")
-    // The Responses path records no finish reason, and only tokenUsageEstimate: n8n's guess, not the provider's usage (#343).
+    // The Responses path records no finish reason, and its tokenUsageEstimate is n8n's guess, not the provider's usage.
     return {
       finish_reason: (at(json, "response", "generations", 0, 0, "generationInfo", "finish_reason") as string | undefined) ?? null,
-      usage: at(json, "tokenUsage") ?? at(json, "tokenUsageEstimate") ?? null,
+      usage: at(json, "tokenUsage") ?? null,
     }
   })
 }

@@ -44,16 +44,12 @@
         {
           "name": "answer contains pong",
           "ok": true
-        },
-        {
-          "name": "usage present",
-          "ok": true
         }
       ],
       "error": null,
       "id": "S1",
       "model": "fast",
-      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)",
+      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343); not checked, usage present: n8n's Responses node records only its own estimate (tokenUsageEstimate), not plugboard's usage (#343)",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S1.responses.fast.json",
@@ -88,16 +84,12 @@
         {
           "name": "answer contains pong",
           "ok": true
-        },
-        {
-          "name": "usage present",
-          "ok": true
         }
       ],
       "error": null,
       "id": "S1",
       "model": "anthropic/claude-haiku-4-5",
-      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)",
+      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343); not checked, usage present: n8n's Responses node records only its own estimate (tokenUsageEstimate), not plugboard's usage (#343)",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S1.responses.anthropic-claude-haiku-4-5.json",
@@ -132,16 +124,12 @@
         {
           "name": "answer contains pong",
           "ok": true
-        },
-        {
-          "name": "usage present",
-          "ok": true
         }
       ],
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)",
+      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343); not checked, usage present: n8n's Responses node records only its own estimate (tokenUsageEstimate), not plugboard's usage (#343)",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S1.responses.openai-gpt-5.6-luna-low.json",
