@@ -4,7 +4,7 @@
  * plus the pure decode and model resolution on their own. Not part of `bun test`.
  *
  *   bun run bench                      # the mitata table
- *   bun run bench -- --json run.json   # also write { name, p50Ns } for .github/scripts/bench-gate.ts
+ *   bun run bench -- --json run.json   # also write { name, p50Ns } for .github/scripts/bench-gate.ts (base vs head)
  *
  * The model is a replay of fixed events. FakeModelCaller is not used here: it keeps every call
  * record, which would grow across mitata's iterations and measure the heap, not the request path.

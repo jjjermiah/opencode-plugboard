@@ -81,12 +81,18 @@ and commit `.github/floors/` with the tests. Lowering a floor is a deliberate ed
 
 `bun run bench` runs `test/bench/request.bench.ts` with mitata (exact-pinned): each front-end over loopback HTTP with a replayed model, a 2,000-delta stream, `n=3` fan-out, the pure decode and model resolution with a 1,000-model allowlist. It is not part of `bun test`. Connections are kept alive, because a new TCP connection per request made the medians swing by two orders of magnitude on loopback.
 
+The gate compares the PR head with its base commit, both run in the same CI job on the same runner (#315). A committed baseline recorded on a laptop never matched a CI runner, so there is none. The `bench` job in `.github/workflows/ci.yml` checks out `github.event.pull_request.base.sha` into `base/`, runs `test/bench/request.bench.ts --json` in both trees, and runs `bun .github/scripts/bench-gate.ts base.json head.json --summary`. It fails when a head median is more than 1.5x its base median, or when a benchmark ran on the base and not on the head (renamed or deleted). A benchmark only on the head is new and never fails. The job is advisory (`continue-on-error`), and it runs on pull requests only. Each bench run takes about 15 seconds, so running both sides costs little.
+
+To compare locally, record both sides on the same machine and do not mix machines:
+
 ```sh
-bun run bench -- --json run.json
-bun .github/scripts/bench-gate.ts run.json --summary
+git worktree add <base-dir> origin/main   # or any base commit
+(cd <base-dir> && bun install --frozen-lockfile && bun test/bench/request.bench.ts --json <base.json>)
+bun run bench -- --json <head.json>
+bun .github/scripts/bench-gate.ts <base.json> <head.json>
 ```
 
-`.github/floors/bench-baseline.json` holds the median per benchmark (ns) from one machine. The gate fails when a median is more than 2x its baseline, or when a baseline entry did not run. Runners differ from that machine, so the CI job is advisory. To move the baseline after an intended change, run the bench on the same kind of machine, `bun .github/scripts/bench-gate.ts run.json --update`, and commit it with the change.
+Single-run medians on a shared machine move by tens of percent, so a 1.5x failure is a prompt to rerun and look, not proof of a regression.
 
 ## Mutation catalogue (#111)
 
