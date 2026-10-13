@@ -65,7 +65,7 @@ export interface PlugboardOptions {
   readonly logRequests: boolean
   /** Serve `GET /plugboard/metrics` (Prometheus text). Off by default; same authentication as the model routes. */
   readonly metrics: boolean
-  /** Option `reasoningOutput` (since 0.34.0): return the model's reasoning on Chat Completions (`reasoning_content` and `reasoning`) and Responses (`reasoning` items). Off by default: reasoning is dropped, as before. */
+  /** Option `reasoningOutput` (since 0.36.0): return the model's reasoning on Chat Completions (`reasoning_content` and `reasoning`) and Responses (`reasoning` items). Off by default: reasoning is dropped, as before. */
   readonly reasoningOutput: boolean
   /** Ids listed by `/v1/models`: canonical, slugs (`provider--model__variant`) or both. See `toSlug` in `src/models.ts`. */
   readonly modelIds: ModelIds
@@ -199,7 +199,7 @@ export interface AppPolicy {
    */
   readonly maxOutputTokens?: number
   /**
-   * Option `apps.<name>.reasoningOutput` (since 0.34.0): this app's reasoning switch. Absent: the global `reasoningOutput`. Look the
+   * Option `apps.<name>.reasoningOutput` (since 0.36.0): this app's reasoning switch. Absent: the global `reasoningOutput`. Look the
    * effective value up with `reasoningOutputFor`.
    */
   readonly reasoningOutput?: boolean
@@ -774,7 +774,7 @@ export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string):
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
 }
 
-/** Whether reasoning is returned for `app` (option `reasoningOutput`, per app or global, since 0.34.0). A per-app `false` beats a global `true`. */
+/** Whether reasoning is returned for `app` (option `reasoningOutput`, per app or global, since 0.36.0). A per-app `false` beats a global `true`. */
 export function reasoningOutputFor(options: Pick<PlugboardOptions, "apps" | "reasoningOutput">, app: string): boolean {
   return appPolicy(options, app)?.reasoningOutput ?? options.reasoningOutput
 }

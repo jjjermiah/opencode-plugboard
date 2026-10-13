@@ -602,7 +602,7 @@ describe("#270 review NIT 8: maxN edge cases", () => {
   })
 })
 
-describe("reasoningOutput (since 0.34.0)", () => {
+describe("reasoningOutput (since 0.36.0)", () => {
   test("defaults to off, so reasoning stays dropped", () => {
     expect(parseOptions({}).reasoningOutput).toBe(false)
   })

@@ -297,7 +297,7 @@ describe("client disconnects", () => {
   })
 })
 
-describe("reasoningOutput (since 0.34.0): reasoning on the wire", () => {
+describe("reasoningOutput (since 0.36.0): reasoning on the wire", () => {
   test("JSON: the message carries reasoning_content and reasoning when the option is on", async () => {
     await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")], { reasoningOutput: true })
     const reply = await server!.send(chat())
@@ -325,7 +325,7 @@ describe("reasoningOutput (since 0.34.0): reasoning on the wire", () => {
   })
 })
 
-describe("reasoningOutput (since 0.34.0): tool calls, stop sequences and per-app overrides on Chat Completions", () => {
+describe("reasoningOutput (since 0.36.0): tool calls, stop sequences and per-app overrides on Chat Completions", () => {
   const contentOf = (frames: any[]) => frames.flatMap((frame) => frame.choices ?? []).map((choice: any) => choice.delta.content ?? "").join("")
   const deltasOf = (frames: any[]) => frames.flatMap((frame) => frame.choices ?? []).map((choice: any) => choice.delta)
 

@@ -229,7 +229,7 @@ describe("#170 a structured answer in the text, over HTTP", () => {
   })
 })
 
-describe("reasoningOutput with n > 1 (since 0.34.0): each choice keeps its own reasoning", () => {
+describe("reasoningOutput with n > 1 (since 0.36.0): each choice keeps its own reasoning", () => {
   const thinking = (_request: unknown, call: number) => [ev.reasoning(`think ${call}`), ev.text(`answer ${call}`), ev.finish("stop")]
 
   test("JSON: each choice carries its own reasoning under both names", async () => {

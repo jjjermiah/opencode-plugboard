@@ -205,7 +205,7 @@ describe("#173 runResponse: a text answer and the 502 for every finish", () => {
   })
 })
 
-describe("reasoningOutput (since 0.34.0): reasoning items on Responses", () => {
+describe("reasoningOutput (since 0.36.0): reasoning items on Responses", () => {
   const on: ResponsesExchange = { ...plain, reasoningOutput: true }
 
   test("a run of reasoning is one reasoning item with a summary_text part, before the message", async () => {

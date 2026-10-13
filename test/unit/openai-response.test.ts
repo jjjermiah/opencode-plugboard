@@ -47,7 +47,7 @@ describe("encodeModelList", () => {
     expect(encodeModelList(listed)).toEqual({
       object: "list",
       data: [
-        { id: "test/echo#high", object: "model", created: 0, owned_by: "test", plugboard: { capabilities: { tools: true }, contextLimit: 8192 } },
+        { id: "test/echo#high", object: "model", created: 0, owned_by: "test", context_length: 8192, plugboard: { capabilities: { tools: true }, contextLimit: 8192 } },
         { id: "test/vision", object: "model", created: 0, owned_by: "test", plugboard: { capabilities: { tools: true, image: true }, contextLimit: undefined } },
       ],
     })
@@ -336,7 +336,7 @@ describe("#170 matchesSchema and textFallback: the schema subset", () => {
   })
 })
 
-describe("reasoningOutput (since 0.34.0): reasoning on Chat Completions", () => {
+describe("reasoningOutput (since 0.36.0): reasoning on Chat Completions", () => {
   const on: OpenAiExchange = { ...plain, reasoningOutput: true }
 
   test("the JSON message carries the reasoning under both names, beside the content", async () => {

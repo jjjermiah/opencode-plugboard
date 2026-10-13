@@ -279,7 +279,7 @@ export function priceCall(costs: ReadonlyArray<CatalogCost> | undefined, tokens:
     .sort((a, b) => b.aboveContext - a.aboveContext)[0]
   const price = tier ?? costs.find((cost) => cost.aboveContext === undefined)
   if (!price) return undefined
-  return (tokens.input * price.input + (tokens.output + tokens.reasoning) * price.output + tokens.cacheRead * price.cacheRead + tokens.cacheWrite * price.cacheWrite) / 1_000_000
+  return (tokens.input * price.input + (tokens.output + tokens.reasoning) * price.output + tokens.cacheRead * (price.cacheRead ?? 0) + tokens.cacheWrite * (price.cacheWrite ?? 0)) / 1_000_000
 }
 
 /** The sum of day records (a new record; the inputs are not changed). */

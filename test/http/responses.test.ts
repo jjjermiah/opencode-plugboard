@@ -204,7 +204,7 @@ describe("#173 POST /v1/responses structured output", () => {
   })
 })
 
-describe("reasoningOutput (since 0.34.0) on Responses", () => {
+describe("reasoningOutput (since 0.36.0) on Responses", () => {
   test("a returned rs_ item can be sent back as item_reference: accepted, and its reasoning is not replayed", async () => {
     const caller = await route([ev.reasoning("think"), ev.text("Hi"), ev.finish("stop")], { reasoningOutput: true })
     const first = await server!.send(responses())

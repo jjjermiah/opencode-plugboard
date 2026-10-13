@@ -29,7 +29,7 @@ export interface ResponsesExchange {
   readonly callerTools?: boolean
   /** The caller's `text.format` schema: a text answer is taken when the model skipped the respond call (`textFallback`, #173). */
   readonly structuredSchema?: Readonly<Record<string, unknown>>
-  /** Option `reasoningOutput` (since 0.34.0): reasoning is returned as a `reasoning` item. Never in structured output. */
+  /** Option `reasoningOutput` (since 0.36.0): reasoning is returned as a `reasoning` item. Never in structured output. */
   readonly reasoningOutput?: boolean
 }
 
