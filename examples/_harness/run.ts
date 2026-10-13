@@ -56,6 +56,7 @@ interface ScenarioSpec {
   readonly required: boolean
   readonly models: ReadonlyArray<string>
   readonly routes: string
+  readonly checks: ReadonlyArray<{ readonly name: string; readonly path: string }>
 }
 interface ScenariosFile {
   readonly routes: Readonly<Record<string, ReadonlyArray<string>>>
