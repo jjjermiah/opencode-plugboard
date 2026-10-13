@@ -27,6 +27,7 @@ import { serveAdmin } from "../admin/route.js"
 import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
+import { PACKAGE_VERSION } from "../version.js"
 import {
   BodyError,
   bodyPlugError,
@@ -85,6 +86,8 @@ export interface RouteHost {
   readonly metrics?: Metrics
   /** Runtime facts for `/plugboard/status` and `/plugboard/metrics`; the process runtime's by default. */
   readonly status?: () => RuntimeStatus
+  /** The host OpenCode version, from the plugin context (`ctx.app.version`); `/plugboard/status` omits it when absent (#347). */
+  readonly opencodeVersion?: string
   /** Per-app usage (`src/usage.ts`): fed from the request log point, and served by `GET /plugboard/usage` when present. */
   readonly usage?: UsageRecorder
   /** Runtime app keys (src/keys.ts, #55): their digests authenticate, and the admin routes (src/admin/route.ts) read them. */
@@ -287,7 +290,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (route === "GET /plugboard/status") {
       const operator = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
       if (!isPlugError(operator) && operator.admin)
-        return sendJson(response, 200, buildStatus({ options: host.options, runtime: runtimeStatus(), catalog: await optionalCatalog(scope) }))
+        return sendJson(response, 200, buildStatus({ options: host.options, runtime: runtimeStatus(), catalog: await optionalCatalog(scope), packageVersion: PACKAGE_VERSION, opencodeVersion: host.opencodeVersion }))
     }
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but the probes and the first-run pages.
@@ -323,7 +326,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     if (route === "GET /plugboard/status") {
       const catalog = await optionalCatalog(scope)
-      return sendJson(response, 200, buildStatus({ options: host.options, app: auth.app, runtime: runtimeStatus(), catalog }))
+      return sendJson(response, 200, buildStatus({ options: host.options, app: auth.app, runtime: runtimeStatus(), catalog, packageVersion: PACKAGE_VERSION, opencodeVersion: host.opencodeVersion }))
     }
 
     if (route === "GET /plugboard/metrics" && metrics) {

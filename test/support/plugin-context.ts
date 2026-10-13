@@ -34,6 +34,8 @@ export interface SpyContextInput {
   readonly options?: unknown
   /** `ctx.location.directory`. */
   readonly directory: string
+  /** `ctx.app`: the host's name, version and channel. Absent: `ctx.app` is undefined, as in a host that passes none. */
+  readonly app?: { readonly name: string; readonly version: string; readonly channel: string }
   /** Answers for specific methods, by `domain.method`. */
   readonly respond?: Readonly<Record<string, (...args: never[]) => unknown>>
 }
@@ -56,7 +58,7 @@ export function spyContext(input: SpyContextInput): SpyContext {
         },
       },
     )
-  const data: Record<string, unknown> = { options: input.options, location: { directory: input.directory } }
+  const data: Record<string, unknown> = { options: input.options, location: { directory: input.directory }, app: input.app }
   const ctx = new Proxy(data, { get: (target, key) => (typeof key !== "string" ? undefined : key in target ? target[key] : (target[key] = domain(key))) })
   return {
     // The spy covers the whole domain surface by construction; the one cast is here.

@@ -66,7 +66,9 @@ Results, from the run:
 | Model type | Requests | Result |
 |---|---|---|
 | `local-completions` | `/v1/completions`, 2 requests | `exact_match` 1.0. Samples: `pong`, `4` |
-| `local-chat-completions` | `/v1/chat/completions`, `--apply_chat_template`, 2 requests | First run `exact_match` 0.5 with one `API returned null content` warning. Rerun with samples logged: 1.0 (`pong`, `4`). See the reasoning gotcha below |
+| `local-chat-completions` | `/v1/chat/completions`, `--apply_chat_template`, 2 requests | First run `exact_match` 0.5 with one `API returned null content` warning (the empty answer is inferred from the warning, since that run did not log samples). Rerun with samples logged: 1.0 (`pong`, `4`). See the reasoning gotcha below |
+
+`--batch_size 1` is there on purpose. Inferred from the code, not run: a larger batch makes the harness send a prompt array, and plugboard counts prompts times `n` against `maxN` (1 by default). A batch of two or more would then get `400 too_many_choices` on a default server. Keep the batch at 1 unless the operator has raised `maxN`.
 
 ## Loglikelihood tasks do not run
 
@@ -83,12 +85,13 @@ Use generate-until tasks (free-text answers scored by `exact_match`, `f1` or a r
 - **`n` is refused on `main`.** The dev server runs with `maxN` 1. A request with `n: 2` gets `400 too_many_choices` (`n=2 is above the limit of 1 (option maxN; each choice is a full model call)`). The runs above sent one choice per request and did not hit it. A task or option that sets `n` above 1 fails until the operator raises `maxN`.
 - **`tokenizer_backend=None` skips the tokenizer.** The default downloads a Hugging Face tokenizer, which needs network. With `None` the harness does not check the context length (`Tokenized requests are disabled`), so a long prompt is the server's problem.
 - **EOS warning is harmless here.** `Cannot determine EOS string to pass to stop sequence` appears because no tokenizer is loaded. The `until` stop sequence still goes to plugboard. Set `eos_string` in `--model_args` if a task relies on an end-of-text marker.
-- **Reasoning model: `null` content.** `fast` is a reasoning model. A request whose reasoning uses the whole token budget can come back with no visible text. The harness then records the placeholder `LMEVAL_MODEL_NONE_ANSWER_PLACEHOLDER` and scores the item wrong. That happened once in two chat requests, and not on the rerun. Keep `max_gen_toks` at 1024 or more, and check `resps` in the samples file when a score looks low. One run proves little on a sampled model: use the samples, not the headline number.
+- **Reasoning model: `null` content.** `fast` is a reasoning model. Probably, a request whose reasoning uses the whole token budget comes back with no visible text (inferred from the warning). The harness then records the placeholder `LMEVAL_MODEL_NONE_ANSWER_PLACEHOLDER` and scores the item wrong. That happened once in two chat requests, and not on the rerun. 1024 was not always enough: the one empty answer came at `max_gen_toks` 1024. Raise it (try 2048 or more) or use a non-reasoning alias, and check `resps` in the samples file when a score looks low. One run proves little on a sampled model: use the samples, not the headline number.
 - **`--limit` is for testing.** The harness warns that metrics from a limited run are not real results. The numbers above are a smoke test of the wire path, not a benchmark score.
 - **`--log_samples` writes the prompts and answers** to `output_path`. Keep that folder out of the repo.
 
 ## Not verified
 
-- Full benchmark tasks, and any task with more than one `n` or prompt per request.
+- Full benchmark tasks.
+- A harness run that sends `n` above 1. Neither run did, so the `n` path through an eval client is not checked live. Doing that needs a server with `maxN` 4 and a setting that gives `n`.
 - Model-graded tasks (they need a grader, see [promptfoo](promptfoo.md) for the same caveat).
 - `lm-eval` newer than 0.4.13.

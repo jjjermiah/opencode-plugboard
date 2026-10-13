@@ -187,6 +187,8 @@ export interface RouteSetup {
   readonly catalog?: ReadonlyArray<CatalogModel> | (() => Promise<ReadonlyArray<CatalogModel>>)
   /** Runtime facts for `/plugboard/status` and `/plugboard/metrics`; `TEST_STATUS` by default, so no process runtime is created. */
   readonly status?: () => RuntimeStatus
+  /** The host OpenCode version `/plugboard/status` reports (`ctx.app.version` in the plugin); absent: the field is omitted. */
+  readonly opencodeVersion?: string
   /** The usage recorder behind `GET /plugboard/usage` (and the request log point). Absent: no usage route. */
   readonly usage?: UsageRecorder
   /** The runtime app key store (src/keys.ts, #55) behind the admin routes and runtime keys. Absent: no runtime keys. */
@@ -209,6 +211,7 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
     loadCatalog: typeof catalog === "function" ? catalog : async () => catalog,
     metrics,
     status: setup.status ?? (() => TEST_STATUS),
+    opencodeVersion: setup.opencodeVersion,
     ...(setup.usage ? { usage: setup.usage } : {}),
     ...(setup.keys ? { keys: setup.keys } : {}),
     ...(setup.session ? { session: setup.session } : {}),
