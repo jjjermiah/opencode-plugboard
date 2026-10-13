@@ -187,7 +187,7 @@ The text between `skill:` and `@` is the skill's `id`, as OpenCode lists it. The
 "agents": [{ "name": "review", "model": "anthropic/claude-sonnet-4-6" }]
 ```
 
-Each entry is listed in `/v1/models` as `agent/review`. A request for it runs a session as that OpenCode agent, on the `model` given in the entry, with the agent's system prompt in place of the caller's. `model` is required and must pass `models`. The agent's own model setting is not read, so the allowlist stays the one rule. An agent the server does not have is a 404 `model_not_found`.
+Each entry is listed in `/v1/models` as `agent/review`. A request for it runs a session as that OpenCode agent, on the `model` given in the entry, with the agent's system prompt in place of the caller's. `model` is required and must pass `models`. The agent's own model setting is not read, so the allowlist stays the one rule. An agent the server does not have is a 404 `model_not_found`. The session's stored prompt starts with the agent's prompt under `## system`, and the caller's system prompts are not in it. Checked live on a dev server, on `/v1/chat/completions`, `/v1/messages` and `/v1/responses`.
 
 ### Permission model
 

@@ -104,6 +104,16 @@ describe("#6 an agent in the session caller", () => {
     expect(run.states[0]!.prelude).toEqual([])
   })
 
+  test("the prompt stored in the session opens with the agent's system prompt, and the caller's system text never reaches it (#6 live proof)", async () => {
+    const run = setup()
+    run.port.agents.set("review", { system: "Always answer in exactly three words, the last being BANANA." })
+    await run.call(plugRequest({ model: "agent/review", ref: echoHigh, system: ["CALLER SYSTEM: reply in German."] }))
+
+    const stored = run.port.prompted[0]!.text
+    expect(stored.startsWith("## system\nAlways answer in exactly three words, the last being BANANA.\n\n## ")).toBe(true)
+    expect(stored).not.toContain("CALLER SYSTEM")
+  })
+
   test("an agent with no system prompt runs with none, not with the caller's", async () => {
     const run = setup()
     run.port.agents.set("plain", {})
