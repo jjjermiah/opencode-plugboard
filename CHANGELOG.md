@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.35.0] - 2026-10-13: Know Every Model
+
+**Full diff:** [v0.34.0...v0.35.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...v0.35.0)
+
 ### Added
 
 - **`/v1/models` carries `context_length`, `max_output_tokens` and `pricing`, and a generator writes OpenCode's `models` block** ([#376](https://github.com/jjjermiah/opencode-plugboard/issues/376), since 0.35.0). Each entry (and `GET /v1/models/{id}`) now has `context_length` and `pricing` under OpenRouter's names, so clients that read OpenRouter's list can read these too: `pricing` holds `prompt` and `completion` as USD-per-token decimal strings, plus `input_cache_read` and `input_cache_write` when the catalog reports them. `max_output_tokens` is plugboard's name for the output cap; OpenRouter puts that cap at `top_provider.max_completion_tokens`, which plugboard does not send. Context tiers are not in `pricing`; they stay in `plugboard.cost`. A fact the catalog does not know is left out, never zero. `bun .github/scripts/opencode-models.ts <hub>` turns a hub's `/v1/models` into an OpenCode client `models` block with `limit` and `cost`, so a custom provider stops getting OpenCode's 200k/32k default and zero cost.
@@ -22,6 +28,65 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - **Unknown cache prices are left out of `/v1/models`, not reported as zero** ([#376](https://github.com/jjjermiah/opencode-plugboard/issues/376), since 0.35.0). A catalog model with no cache price used to list `cache: { read: 0, write: 0 }` under `plugboard.cost`. It now omits the fields it does not know. The usage estimate still prices an unknown cache read or write at zero, as before, so `/plugboard/usage` costs do not change.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Features
+
+**feat(openai): add context_length and pricing to /v1/models, plus the opencode page** ([`1ae7695`](https://github.com/jjjermiah/opencode-plugboard/commit/1ae7695111c7450e826fc4b29808b4e6ae5807b9))
+
+This commit holds all of #376 and the #373 client page. Earlier commits on this branch carried the page only, and the #376 code in the first commit shows up here, so this message describes the whole change.
+
+#376: each /v1/models entry, and GET /v1/models/{id}, carries context_length and pricing under OpenRouter's names, plus max_output_tokens. pricing holds prompt and completion as USD-per-token decimal strings, and input_cache_read and input_cache_write when the catalog reports them. max_output_tokens is plugboard's name for the output cap; OpenRouter puts that cap at top_provider.max_completion_tokens, which plugboard does not send. Context tiers stay in plugboard.cost; pricing is the base entry only.
+
+.github/scripts/opencode-models.ts turns a hub's /v1/models into an OpenCode models block with limit and cost. It skips ids with a #variant suffix, because OpenCode reads provider/model#variant as the base model plus a variant. It keeps limit.input.
+
+Decisions:
+- A fact the catalog does not know is omitted, never zero. Cache prices were coerced to 0 in host.ts; they are optional in CatalogCost now. plugboard.cost.cache omits unknown read and write. The usage estimate still prices an unknown cache at 0, so /plugboard/usage does not move.
+- Prices print as plain decimals with no exponent. Numbers are rounded to 13 significant digits first, because float division leaves noise past the 16th digit (1e-13 came out as 9.9999...e-14).
+- The #373 page writes OpenCode's `providers` key. The first draft wrote `provider`, which OpenCode v2 ignores, and that caused the failed checks.
+- The page states 12 built-in tools, and that maxTools is reached only when a server sets codemode: false (MCP tools go through Code Mode by default).
+
+Validation (branch merged with origin/main, no conflicts):
+- bun run typecheck: clean
+- bun test: 2635 pass, 0 fail
+- coverage floors met, test-count floors raised and committed
+- coverage-manifest: 0 gaps; check-pack and smoke-pack ok
+- bun run docs:build: ok; scripted examples leave no diff
+- Live, OpenCode 2.0.27, scratch HOME, opencode run --standalone, dev server 127.0.0.1:4010: anthropic/fast and plugboard/fast both answered pong; the reviewer's tool prompt, the 72-tool maxTools 400 and the 170-entry generated block were run on the PR worktree (see the page).
+- mutations not run: no mutation entry pins the changed text
+
+Not verified: opencode attach.
+
+Closes #376
+Closes #373
+
+#### Docs
+
+**docs(clients): add the opencode client page** ([`8afc736`](https://github.com/jjjermiah/opencode-plugboard/commit/8afc73630c0e51f48334044a49e70f88ad2d526f))
+
+Adds docs/clients/opencode.md, the page #373 asked for: an openai-compatible block and an Anthropic block for OpenCode's custom and built-in providers, maxTools guidance for MCP-heavy clients, declaring limit and cost per model (with the generator from #376), the promptCache anchor on the hub, the Anthropic dialect for reasoning, and opencode attach as the alternative.
+
+Decision: the blocks follow OpenCode v2.0.27's config schema. The issue body wrote options.baseURL; the schema uses settings.baseURL, so the page uses settings.
+
+Findings from the live run (not passed; the page says so):
+- @ai-sdk/openai-compatible is not in OpenCode v2.0.26's native provider map. A v2.0.26 client fails with "Unsupported package for <model>".
+- The built-in anthropic provider returned "invalid x-api-key" on v2.0.26 with ANTHROPIC_API_KEY set, with and without settings.apiKey, and with ANTHROPIC_BASE_URL. The hub returns 200 pong to the same key sent as x-api-key with curl. The cause is not found.
+- The tool-using prompt and the maxTools 400 check were not run.
+
+Rejected: marking the page verified. The issue asks for a passing run, and none passed.
+
+Validation:
+- bun run docs:build: ok
+- bun test: 2633 pass, 0 fail
+- scratch OpenCode client home deleted after the run
+
+Refs #373
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.34.0] - 2026-10-13: Thinking Carries Over
 
@@ -6568,7 +6633,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.31.0...v0.32.0
