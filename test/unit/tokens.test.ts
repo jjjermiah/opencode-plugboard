@@ -61,6 +61,11 @@ describe("#143 #144 the token estimate", () => {
     expect(estimateTokens(call)).toBe(Math.ceil(("weather".length + JSON.stringify({ city: "Oslo" }).length + "weather".length + "sunny".length) / 4))
   })
 
+  test("#374 replayed reasoning counts its text, signature and redacted data", () => {
+    const reasoning = plugRequest({ messages: [{ role: "assistant", content: [{ type: "reasoning", text: "plan", signature: "sig" }, { type: "reasoning", text: "", redactedData: "opaque" }] }] })
+    expect(estimateTokens(reasoning)).toBe(Math.ceil(("plan".length + "sig".length + "opaque".length) / 4))
+  })
+
   test("each image or file costs MEDIA_TOKENS, whatever its size", () => {
     const media = { type: "media" as const, url: "data:image/png;base64,AAAA", mediaType: "image/png" }
     expect(estimateTokens(plugRequest({ messages: [{ role: "user", content: [media, media] }] }))).toBe(2 * MEDIA_TOKENS)

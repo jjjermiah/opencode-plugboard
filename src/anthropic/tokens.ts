@@ -23,6 +23,8 @@ const partChars = (part: PlugPart): number => {
       return part.name.length + jsonLength(part.input)
     case "tool-result":
       return part.name.length + part.result.length
+    case "reasoning":
+      return part.text.length + (part.signature?.length ?? 0) + (part.redactedData?.length ?? 0)
     case "media":
       return 0
   }

@@ -156,7 +156,7 @@ describe("#4 parseMessagesRequest: content mapping", () => {
     ])
   })
 
-  test("#146 a replayed thinking block is dropped whatever its signature, so the empty signature plugboard sends never reaches a provider", () => {
+  test("#374 an unsigned thinking block is dropped, so the empty signature plugboard sends never reaches a provider; a redacted block is kept as opaque reasoning", () => {
     const { request } = parse(
       body({
         messages: [
@@ -166,7 +166,37 @@ describe("#4 parseMessagesRequest: content mapping", () => {
         ],
       }),
     )
-    expect(request.messages[1]).toEqual({ role: "assistant", content: [{ type: "text", text: "done" }] })
+    expect(request.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "", redactedData: "opaque" },
+        { type: "text", text: "done" },
+      ],
+    })
+  })
+
+  test("#374 a signed thinking block is kept in order with its signature, ahead of the tool calls it preceded", () => {
+    const { request } = parse(
+      body({
+        messages: [
+          user("look"),
+          assistant([{ type: "thinking", thinking: "plan", signature: "sig_1" }, toolUse("t1", "read", { p: 1 })]),
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "data" }] },
+        ],
+      }),
+    )
+    expect(request.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "plan", signature: "sig_1" },
+        { type: "tool-call", id: "t1", name: "read", input: { p: 1 } },
+      ],
+    })
+  })
+
+  test("#374 an assistant turn that is only signed thinking is kept, not dropped as empty", () => {
+    const { request } = parse(body({ messages: [user("a"), assistant([{ type: "thinking", thinking: "", signature: "sig_2" }]), user("b")] }))
+    expect(request.messages[1]).toEqual({ role: "assistant", content: [{ type: "reasoning", text: "", signature: "sig_2" }] })
   })
 
   test("a tool round trip: tool_use becomes a call, each tool_result its own tool message, result images follow as user media", () => {
@@ -185,7 +215,15 @@ describe("#4 parseMessagesRequest: content mapping", () => {
     )
     expect(request.messages).toEqual([
       { role: "user", content: [{ type: "text", text: "look" }] },
-      { role: "assistant", content: [{ type: "text", text: "checking" }, { type: "tool-call", id: "t1", name: "shot", input: { x: 1 } }, { type: "tool-call", id: "t2", name: "read", input: {} }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "hidden", signature: "s" },
+          { type: "text", text: "checking" },
+          { type: "tool-call", id: "t1", name: "shot", input: { x: 1 } },
+          { type: "tool-call", id: "t2", name: "read", input: {} },
+        ],
+      },
       { role: "tool", content: [{ type: "tool-result", id: "t1", name: "shot", result: "took it" }] },
       { role: "tool", content: [{ type: "tool-result", id: "t2", name: "read", result: "boom", isError: true }] },
       {

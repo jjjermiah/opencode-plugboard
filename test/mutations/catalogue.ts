@@ -572,6 +572,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/context.test.ts"],
   },
   {
+    id: "P374-reasoning-replayed-to-other-providers",
+    invariant: "#374",
+    file: "src/session/context.ts",
+    find: "        return replayReasoning ? reasoningOf(item) : undefined",
+    replace: "        return reasoningOf(item)",
+    tests: ["test/session/context.test.ts"],
+  },
+  {
+    id: "P374-unsigned-thinking-replayed",
+    invariant: "#374",
+    file: "src/anthropic/request.ts",
+    find: 'typeof block.signature !== "string" || block.signature.length === 0) return undefined',
+    replace: 'typeof block.signature !== "string") return undefined',
+    tests: ["test/unit/anthropic-request.test.ts"],
+  },
+  {
     id: "I4-context-hook-active-without-confirmation",
     invariant: "I4",
     file: "src/session/context.ts",

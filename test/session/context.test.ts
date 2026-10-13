@@ -111,6 +111,41 @@ describe("the context hook", () => {
     ])
   })
 
+  test("#374 signed reasoning reaches the host as a reasoning part with the Anthropic signature, on an anthropic model only; elsewhere it is dropped, and a turn left empty with it", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          { role: "user", content: [{ type: "text", text: "hi" }] },
+          {
+            role: "assistant",
+            content: [
+              { type: "reasoning", text: "plan", signature: "sig_1" },
+              { type: "reasoning", text: "", redactedData: "opaque" },
+              { type: "text", text: "done" },
+            ],
+          },
+          { role: "assistant", content: [{ type: "reasoning", text: "alone", signature: "sig_2" }] },
+        ],
+      }),
+    )
+    expect(run(event({ model: { providerID: "anthropic" } })).messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "plan", providerMetadata: { anthropic: { signature: "sig_1" } } },
+          { type: "reasoning", text: "", providerMetadata: { anthropic: { redactedData: "opaque" } } },
+          { type: "text", text: "done" },
+        ],
+      },
+      { role: "assistant", content: [{ type: "reasoning", text: "alone", providerMetadata: { anthropic: { signature: "sig_2" } } }] },
+    ])
+    expect(run(event({ model: { providerID: "openai" } })).messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      { role: "assistant", content: [{ type: "text", text: "done" }] },
+    ])
+  })
+
   test("caller images are the host-built media parts of the prompt files, in order", () => {
     const hostMedia = [{ type: "media", asset: "A" }, { type: "media", asset: "B" }]
     const { run } = hook(plugRequest({ messages: [{ role: "user", content: [{ type: "media", url: "data:x" }, { type: "text", text: "and" }, { type: "media", url: "data:y" }] }] }))

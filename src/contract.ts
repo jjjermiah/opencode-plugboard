@@ -90,7 +90,18 @@ export interface ToolResultPart {
   readonly cacheTtl?: "1h"
 }
 
-export type PlugPart = TextPart | MediaPart | ToolCallPart | ToolResultPart
+/**
+ * Replayable reasoning from a caller's history (#374): a signed `thinking` block (`signature`, with its `text`) or a
+ * `redacted_thinking` block (`redactedData`, empty `text`). Unsigned thinking is not a part: the decoder drops it, as before.
+ */
+export interface ReasoningPart {
+  readonly type: "reasoning"
+  readonly text: string
+  readonly signature?: string
+  readonly redactedData?: string
+}
+
+export type PlugPart = TextPart | MediaPart | ToolCallPart | ToolResultPart | ReasoningPart
 
 export interface PlugMessage {
   readonly role: "user" | "assistant" | "tool"
