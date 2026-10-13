@@ -217,7 +217,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
               ? { "access-control-allow-private-network": "true" }
               : {}),
           })
-          return response.end()
+          response.end()
+          return
         }
       }
     }
