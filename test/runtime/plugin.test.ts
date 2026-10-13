@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { Cause, Effect, Exit, Scope, Stream } from "effect"
 import plugin from "../../index.js"
 import { ensureBackend, processStatus, sessionStore } from "../../src/runtime.js"
+import { PACKAGE_VERSION } from "../../src/version.js"
 import { ensureAppDir } from "../../src/session/history.js"
 import type { ContextHookEvent, HostToolDescriptor } from "../../src/session/host.js"
 import { plugRequest, until } from "../support/fixtures.js"
@@ -40,10 +41,11 @@ function setupExit(options: unknown, directory = "/projects/real") {
 }
 
 /** Loads the plugin for one Location the way the host does, and fails if setup suspends. */
-function load(options: unknown, directory = "/projects/real"): Loaded {
+function load(options: unknown, directory = "/projects/real", app?: { name: string; version: string; channel: string }): Loaded {
   const spy = spyContext({
     options,
     directory,
+    app,
     respond: {
       "event.subscribe": () => Stream.never,
       "model.list": () => Effect.succeed({ data: [{ providerID: "test", id: "echo" }] }),
@@ -100,6 +102,23 @@ describe("plugin setup only registers and returns", () => {
     expect(Cause.pretty(exit.cause)).toContain("plugboard option `models` must be an array of strings")
     expect(spy.during("setup")).toEqual([])
     expect(logs.of("options.invalid")[0]).toMatchObject({ level: "error", fields: { error: "plugboard option `models` must be an array of strings" } })
+  })
+
+  test("#347 /plugboard/status names the package version and the host's OpenCode version from ctx.app.version", async () => {
+    const live = await options()
+    load(live, "/projects/real", { name: "opencode", version: "2.0.27", channel: "latest" })
+    await until(async () => (await fetch(`http://127.0.0.1:${live.listen.port}/healthz`).catch(() => undefined))?.status === 200, 1_000, "the listener")
+    const reply = await fetch(`http://127.0.0.1:${live.listen.port}/plugboard/status`)
+    expect(await reply.json()).toMatchObject({ packageVersion: PACKAGE_VERSION, opencodeVersion: "2.0.27" })
+  })
+
+  test("#347 a host that reports the placeholder version 'unknown' gets no opencodeVersion on /plugboard/status", async () => {
+    const live = await options()
+    load(live, "/projects/real", { name: "opencode", version: "unknown", channel: "local" })
+    await until(async () => (await fetch(`http://127.0.0.1:${live.listen.port}/healthz`).catch(() => undefined))?.status === 200, 1_000, "the listener")
+    const body = (await (await fetch(`http://127.0.0.1:${live.listen.port}/plugboard/status`)).json()) as Record<string, unknown>
+    expect(body).toHaveProperty("packageVersion")
+    expect(body).not.toHaveProperty("opencodeVersion")
   })
 
   test("#159 invalid options beside a live good generation show on /plugboard/status and in the runtime status", async () => {

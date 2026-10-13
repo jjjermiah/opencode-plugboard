@@ -1,8 +1,8 @@
 # smolagents
 
-Run 2026-10-12 against the scripted fake plugboard, not the live dev server (nothing listened on `127.0.0.1:4010`): `smolagents` 1.26.0 with the `openai` extra (`openai` 3.29.0), Python 3.12. Via [examples/smolagents/example.py](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/smolagents): `text: pass`, `stream: pass`, `tool call: pass`, `tool round trip: fail` (see Quirks). `OpenAIModel(model_id, api_base, api_key)` matches what ran.
+Verified: run, 2026-10-13. [examples/smolagents](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/smolagents) (smolagents 1.26.0 with the `openai` extra, `openai` 3.29.0, Python 3.12, run with `uv run`) ran live against plugboard with model `fast`: `text`, `stream`, `tool call` and `tool round trip` all passed. Earlier, on the scripted fake, the round trip failed; that was a fake limit, see Quirks. Not in `docs/compatibility.md` yet: there is no scripted test for it.
 
-smolagents is Hugging Face's minimal agent library. `OpenAIModel` calls any OpenAI-compatible base URL, so it reaches plugboard's `POST /v1/chat/completions`.
+smolagents is Hugging Face's minimal agent library. `OpenAIModel` calls any OpenAI-compatible base URL, so it reaches plugboard's `POST /v1/chat/completions`. The config was checked against the smolagents models reference, <https://huggingface.co/docs/smolagents/reference/models>.
 
 ## Plugboard options
 
@@ -29,25 +29,51 @@ model = OpenAIModel(
     model_id="fast",
     api_base="http://127.0.0.1:4010/v1",
     api_key="<your plugboard app key>",
+    max_completion_tokens=1024,
 )
 ```
 
-Keep `/v1` in `api_base`. The `LiteLLMModel` form from the issue (`model_id="openai/fast"`, `api_base=...`) was not run.
+- Keep `/v1` in `api_base`.
+- `api_key` is a plugboard app key. smolagents requires a non-empty value even for a local endpoint.
+- `max_completion_tokens` is passed through to the chat call, so the reasoning model behind `fast` has room to answer.
+
+The `LiteLLMModel` form (`model_id="openai/fast"`) was not run.
+
+## What the example does
+
+`example.py` makes four checks:
+
+1. A text reply through `model.generate`.
+2. A streamed reply through `model.generate_stream`.
+3. A `ToolCallingAgent` with one `@tool` function, `get_weather`. The script checks that the tool was called.
+4. The agent's final answer uses the tool result.
+
+Run it:
+
+```sh
+cd examples/smolagents
+PLUGBOARD_KEY=<app key> uv run example.py
+```
+
+`uv` reads the dependency from the script header (`smolagents[openai]`), so there is no venv to create.
 
 ## Features exercised
 
-- Text: `model.generate(...)`, returns a message whose `content` is the answer.
-- Streaming: `model.generate_stream(...)`, which yielded 2 deltas on the fake.
-- A tool-calling agent: `ToolCallingAgent` with one `@tool`, calling `get_weather` on the fake.
-- Not run: code agents, which need generated Python to execute, and `LiteLLMModel`.
+- Text: `model.generate(...)`, which returns a message whose `content` is the answer.
+- Streaming: `model.generate_stream(...)`. On `fast` it yielded one delta with content.
+- A tool-calling agent: `ToolCallingAgent`, two steps (tool call, then `final_answer`).
+
+Not exercised: code agents, which run generated Python, and `LiteLLMModel`.
 
 ## Quirks
 
 - **`pip install smolagents` alone is not enough for `OpenAIModel`.** It raises `ModuleNotFoundError: Please install 'openai' extra`. Install `smolagents[openai]`.
-- **Tool round trip failed on the fake.** smolagents' default conversion sends the tool result as a `user` message with the observation, not as a `tool`-role message. The fake's scripted reply answers only after a `tool`-role result, so it kept calling the tool until the agent hit `max_steps`. This is a fake limit, not a plugboard fault; a live model that reads the observation should answer. Not verified live.
-- Forcing a `tool` role with `custom_role_conversions={"tool-response": "tool", "tool-call": "assistant"}` fails: smolagents does not send `tool_call_id`, and plugboard returns 400 `Tool messages need a tool_call_id`, the same rule OpenAI enforces. Keep the default conversion for this client.
-- Some reasoning models reject `stop`; smolagents strips it for known ids, which the issue states and this run did not test.
+- **The streamed reply came back as a single delta** on `fast`, not several. The check only needs content, so the script does not count deltas.
+- **Earlier round-trip failure was the fake.** On the scripted fake, the scripted reply only answered after a `tool`-role result, and smolagents sends the observation as a `user` message, so the agent ran until `max_steps`. On the live `fast` model the round trip passes with the default conversion.
+- **Forcing a `tool` role fails.** `custom_role_conversions={"tool-response": "tool", "tool-call": "assistant"}` was tried on the fake: smolagents does not send `tool_call_id`, and plugboard returns 400 `Tool messages need a tool_call_id`, the same rule OpenAI enforces. Keep the default conversion.
+- Some reasoning models reject `stop`; smolagents strips it for known ids. Not tested.
 
 ## Verified
 
-Run against the fake, as above. The live dev server was not up, so the round trip on a real model is still open.
+- Live, 2026-10-13: `text: pass`, `stream: pass`, `tool call: pass`, `tool round trip: pass`, exit 0.
+- Not run: `LiteLLMModel`, code agents, a scripted automated check in `test/compat`.

@@ -34,7 +34,7 @@ export interface RunSummary {
   readonly verdict: "pass" | "partial" | "fail"
   readonly date?: string
   readonly plugboard?: { readonly version: string; readonly commit: string }
-  /** The OpenCode version of the server under test; null when the server does not expose it (#335). */
+  /** The OpenCode version of the server under test (`/plugboard/status`, #347); null when the server did not report one (#335). */
   readonly opencode?: string | null
   readonly scenarios: ReadonlyArray<ScenarioRow>
 }
@@ -62,7 +62,7 @@ export function renderSummaryMd(summary: RunSummary): string {
   lines.push(`Verdict: **${summary.verdict}** · ${client.name} ${client.version} on ${client.runtime.name} ${client.runtime.version} · models: ${summary.models.join(", ")}`)
   if (summary.date)
     lines.push(
-      `Date: ${summary.date}${summary.plugboard ? ` · plugboard ${summary.plugboard.version} (${summary.plugboard.commit})` : ""}${summary.opencode ? ` · OpenCode ${summary.opencode}` : summary.opencode === null ? " · OpenCode version not recorded (the server does not expose it)" : ""}`,
+      `Date: ${summary.date}${summary.plugboard ? ` · plugboard ${summary.plugboard.version} (${summary.plugboard.commit})` : ""}${summary.opencode ? ` · OpenCode ${summary.opencode}` : summary.opencode === null ? " · OpenCode version not recorded (the server did not report it)" : ""}`,
     )
   lines.push("", "| Scenario | Model | Required | Status | Checks |", "| --- | --- | --- | --- | --- |")
   for (const row of summary.scenarios) {
