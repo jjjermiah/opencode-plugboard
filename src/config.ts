@@ -161,6 +161,11 @@ export interface AppPolicy {
   readonly tools: boolean
   /** Lowers the global `maxTools` for this app. */
   readonly maxTools?: number
+  /**
+   * This app's history limits (option `apps.<name>.history`, since 0.26.0, #265): a field replaces the global one for this app,
+   * an unset field falls back to it. Look the effective limits up with `limitsFor` (src/session/prune.ts).
+   */
+  readonly history?: HistoryLimits
   /** Lowers the global `maxN` for this app (option `apps.<name>.maxN`, since 0.26.0, #270). Look the effective cap up with `maxNFor`. */
   readonly maxN?: number
   /**
@@ -406,7 +411,17 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+
+/** Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set. Unset fields fall back to the global `history`. */
+function parseAppHistory(raw: unknown, at: string): HistoryLimits {
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.history\` must be an object: { maxSessions, maxAgeDays }`)
+  for (const key of Object.keys(raw))
+    if (key !== "maxSessions" && key !== "maxAgeDays") throw new Error(`Unknown plugboard option \`${at}.history.${key}\` (known: maxSessions, maxAgeDays)`)
+  const maxSessions = raw.maxSessions === undefined ? undefined : positiveInt(raw.maxSessions, `${at}.history.maxSessions`, 0, 1_000_000)
+  const maxAgeDays = raw.maxAgeDays === undefined ? undefined : positiveInt(raw.maxAgeDays, `${at}.history.maxAgeDays`, 0, MAX_AGE_DAYS)
+  return { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) }
+}
 
 /** Option `apps.<name>.endpoints` (#268): a non-empty list of endpoint names from `ENDPOINTS`. */
 function parseEndpoints(raw: unknown, at: string): Endpoint[] {
@@ -490,6 +505,7 @@ function parseApps(
     const historyUrl = value.historyUrl === false ? false : parseHistoryUrl(value.historyUrl, `plugboard option \`apps.${app}.historyUrl\``)
     const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
     const endpoints = value.endpoints === undefined ? undefined : parseEndpoints(value.endpoints, at)
+    const history = value.history === undefined ? undefined : parseAppHistory(value.history, `apps.${app}`)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -497,6 +513,7 @@ function parseApps(
       tools: value.tools !== false,
       ...(maxTools === undefined ? {} : { maxTools }),
       ...(maxN === undefined ? {} : { maxN }),
+      ...(history === undefined ? {} : { history }),
       ...(serverTools === undefined ? {} : { serverTools }),
       ...(maxServerToolSteps === undefined ? {} : { maxServerToolSteps }),
       ...(maxServerToolCalls === undefined ? {} : { maxServerToolCalls }),
@@ -505,7 +522,7 @@ function parseApps(
       ...(endpoints === undefined ? {} : { endpoints }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -592,6 +609,11 @@ export function endpointRefusal(options: Pick<PlugboardOptions, "apps">, app: st
  */
 export function maxNFor(options: Pick<PlugboardOptions, "apps" | "maxN">, app: string): number {
   return appPolicy(options, app)?.maxN ?? options.maxN
+}
+
+/** Each app's own history limits (`apps.<name>.history`, #265), keyed by app name. Apps without the option are absent. */
+export function appHistoryLimits(options: Pick<PlugboardOptions, "apps">): Record<string, HistoryLimits> {
+  return Object.fromEntries(Object.entries(options.apps).flatMap(([app, policy]) => (policy.history === undefined ? [] : [[app, policy.history] as const])))
 }
 
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */

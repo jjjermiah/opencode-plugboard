@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions } from "../../src/config.js"
+import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -510,5 +510,23 @@ describe("#270 apps.<name>.maxN", () => {
   test("rejects a non-integer and zero", () => {
     expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxN: 0 } } })).toThrow("`apps.chat.maxN`")
     expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxN: 1.5 } } })).toThrow("`apps.chat.maxN`")
+  })
+})
+
+describe("#265 apps.<name>.history", () => {
+  test("parses its own fields and exposes the per-app map", () => {
+    const options = parseOptions({ keys: { bot: "k1", coding: "k2" }, apps: { bot: { history: { maxSessions: 20 } }, coding: { history: { maxSessions: 5000, maxAgeDays: 180 } } } })
+    expect(options.apps.bot).toMatchObject({ history: { maxSessions: 20 } })
+    expect(appHistoryLimits(options)).toEqual({ bot: { maxSessions: 20 }, coding: { maxSessions: 5000, maxAgeDays: 180 } })
+  })
+
+  test("an app without the option is absent from the per-app map", () => {
+    expect(appHistoryLimits(parseOptions({ keys: { bot: "k1" } }))).toEqual({})
+  })
+
+  test("rejects a zero, an out-of-range value, and an unknown field, each naming the app", () => {
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { maxSessions: 0 } } } })).toThrow("`apps.bot.history.maxSessions`")
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { maxAgeDays: 40_000 } } } })).toThrow("`apps.bot.history.maxAgeDays`")
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { keep: 1 } } } })).toThrow("`apps.bot.history.keep`")
   })
 })

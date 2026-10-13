@@ -3,7 +3,7 @@
  * storage. #85: nothing is indexed without limits (tested in test/runtime/generations.test.ts).
  */
 import { describe, expect, test } from "bun:test"
-import { indexKey, recordSession, sweepHistory, type SweepInput } from "../../src/session/prune.js"
+import { indexKey, limitsFor, recordSession, sweepHistory, type SweepInput } from "../../src/session/prune.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { plugRequest } from "../support/fixtures.js"
 import { FakeHistoryPort } from "../support/session.js"
@@ -97,5 +97,41 @@ describe("sweepHistory", () => {
     await port.put("history/app/not-a-time/x", "x")
     await port.put("history/app/000000000000001/", "y")
     expect((await sweep(port, { limits: { maxSessions: 1 } })).scanned).toBe(1)
+  })
+})
+
+/** #265 `apps.<name>.history`: an app's own limits replace the global ones field by field; the other apps keep theirs. */
+describe("#265 per-app history limits", () => {
+  test("limitsFor: an own field replaces the global one, an unset field falls back, and no limit anywhere is {}", () => {
+    const global = { maxSessions: 500, maxAgeDays: 30 }
+    expect(limitsFor(global, { chat: { maxSessions: 20 } }, "chat")).toEqual({ maxSessions: 20, maxAgeDays: 30 })
+    expect(limitsFor(global, { chat: { maxAgeDays: 7 } }, "chat")).toEqual({ maxSessions: 500, maxAgeDays: 7 })
+    expect(limitsFor(global, {}, "other")).toEqual(global)
+    expect(limitsFor({}, { chat: { maxSessions: 5 } }, "chat")).toEqual({ maxSessions: 5 })
+    expect(limitsFor({}, undefined, "chat")).toEqual({})
+    // An app name that is only an inherited property never matches.
+    expect(limitsFor({}, {}, "constructor")).toEqual({})
+  })
+
+  test("the sweep prunes each app by its own limit: a short one loses more, a long one keeps its sessions", async () => {
+    const port = await history({ bot: 5, coding: 5 })
+    const result = await sweep(port, { limits: { maxSessions: 4 }, apps: { bot: { maxSessions: 1 }, coding: { maxSessions: 4 } } })
+    // bot keeps 1 (its own cap); coding is capped by the global 4 and loses only its oldest.
+    expect(result).toMatchObject({ removed: 5 })
+    expect(port.removed).toEqual(["bot-0", "bot-1", "bot-2", "bot-3", "coding-0"])
+    expect([...port.entries.values()].sort()).toEqual(["bot-4", "coding-1", "coding-2", "coding-3", "coding-4"])
+  })
+
+  test("an app with a limit and no global limit is pruned; an app with none is kept forever", async () => {
+    const port = await history({ bot: 4, notes: 4 })
+    expect(await sweep(port, { limits: {}, apps: { bot: { maxSessions: 2 } } })).toMatchObject({ removed: 2 })
+    expect(port.removed).toEqual(["bot-0", "bot-1"])
+    expect([...port.entries.values()].sort()).toEqual(["bot-2", "bot-3", "notes-0", "notes-1", "notes-2", "notes-3"])
+  })
+
+  test("the stricter field wins inside an app, as it does globally", async () => {
+    const port = await history({ bot: 6 })
+    // The sessions are 1 to 6 days old. The app's own age (2 days) is the stricter limit, so the four older than 2 days go, although the global count of 10 would keep them all.
+    expect((await sweep(port, { limits: { maxSessions: 10 }, apps: { bot: { maxAgeDays: 2 } } })).removed).toBe(4)
   })
 })

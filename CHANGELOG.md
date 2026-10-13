@@ -17,6 +17,17 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Added
 
 - **Browser scripts can read the plugboard response headers** ([#314](https://github.com/jjjermiah/opencode-plugboard/issues/314)). With `cors` set, an allowed origin's answers now send `Access-Control-Expose-Headers` with the `x-plugboard-*` headers and `retry-after`. Before, a browser hid them, so `x-plugboard-session` or `x-plugboard-usage` could not be read from a page. Origins off the list still get no CORS headers.
+- **History retention per app** ([#265](https://github.com/jjjermiah/opencode-plugboard/issues/265)). `history` was one pair of numbers for every app. A high-volume bot wants to keep few sessions while a coding assistant keeps many. `apps.<name>.history` sets `maxSessions` and `maxAgeDays` for one app. A field replaces the global one for that app, and an unset field falls back to it. The stricter field still wins inside an app. An app with no limit anywhere keeps its sessions forever, as before. The history index is written only for an app that has a limit, so an unlimited app adds nothing to host storage.
+
+  ```jsonc
+  {
+    "history": { "maxSessions": 500, "maxAgeDays": 30 },
+    "apps": {
+      "discord-bot": { "history": { "maxSessions": 20 } },
+      "coding": { "history": { "maxSessions": 5000, "maxAgeDays": 180 } }
+    }
+  }
+  ```
 - **A per-app cap on `n`** ([#270](https://github.com/jjjermiah/opencode-plugboard/issues/270)). `maxN` was one number for every app, so a batch tool that needed `n: 4` forced the same allowance onto the chat widget. `apps.<name>.maxN` lowers the global cap for one app. A request above it gets the usual 400 `too_many_choices`, and the message names `apps.<name>.maxN`. It cannot be higher than the global `maxN`, the same rule as `maxTools`. Unset, the global cap applies as before.
 
   ```jsonc

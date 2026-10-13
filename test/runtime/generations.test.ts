@@ -182,3 +182,24 @@ describe("#85 history index", () => {
     expect([...history.entries.keys()][0]).toMatch(/^history\/app\/\d{15}\/ses_1$/)
   })
 })
+
+describe("#265 history index per app", () => {
+  const registerSession = (sessionID: string) =>
+    sessionStore().register({ sessionID, app: "app", requestID: "r", request: plugRequest(), collector: { push() {} } })
+
+  test("an app with its own limit and no global limit is indexed", async () => {
+    const history = new FakeHistoryPort()
+    registerGeneration(generation("a", { port: await freePort(), history: { port: history, limits: {}, apps: { app: { maxSessions: 10 } } } }))
+    registerSession("ses_1")
+    await until(() => history.entries.size === 1, 1_000, "the index entry")
+    expect([...history.entries.keys()][0]).toMatch(/^history\/app\/\d{15}\/ses_1$/)
+  })
+
+  test("an app with no limit in either place is not indexed, even when another app has one", async () => {
+    const history = new FakeHistoryPort()
+    registerGeneration(generation("a", { port: await freePort(), history: { port: history, limits: {}, apps: { other: { maxSessions: 10 } } } }))
+    registerSession("ses_1")
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(history.entries.size).toBe(0)
+  })
+})
