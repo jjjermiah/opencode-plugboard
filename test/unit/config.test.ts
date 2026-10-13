@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { authenticate, authenticateUsage, bodyLimits, isLoopbackHost, parseOptions } from "../../src/config.js"
+import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -19,6 +19,8 @@ describe("parseOptions: defaults", () => {
       history: { maxAgeDays: 30 },
       dropUnsupportedParams: true,
       logFormat: "text",
+      logLevel: "info",
+      logRequests: true,
       metrics: false,
       modelIds: "canonical",
       usage: { enabled: true, retentionDays: 90 },
@@ -464,5 +466,85 @@ describe("#82 apps.<name>.serverTools and maxServerToolSteps", () => {
 
   test("the keyless default app cannot run server tools", () => {
     expect(() => parseOptions({ apps: { default: { serverTools: ["websearch"] } } })).toThrow("needs a key")
+  })
+})
+
+describe("#262 logLevel and logRequests", () => {
+  test("default to info and on, so the log is as before", () => {
+    const options = parseOptions({})
+    expect(options.logLevel).toBe("info")
+    expect(options.logRequests).toBe(true)
+  })
+
+  test("accept each level and logRequests false", () => {
+    for (const logLevel of ["debug", "info", "warn", "error"] as const) expect(parseOptions({ logLevel }).logLevel).toBe(logLevel)
+    expect(parseOptions({ logRequests: false }).logRequests).toBe(false)
+  })
+
+  test("an unknown level is rejected at load and the message names the option", () => {
+    expect(() => parseOptions({ logLevel: "verbose" })).toThrow("plugboard option `logLevel` must be `debug`, `info`, `warn` or `error`")
+    expect(() => parseOptions({ logLevel: 3 })).toThrow("`logLevel`")
+  })
+
+  test("logRequests must be a boolean", () => {
+    expect(() => parseOptions({ logRequests: "no" })).toThrow("plugboard option `logRequests` must be a boolean")
+  })
+})
+
+describe("#270 apps.<name>.maxN", () => {
+  test("only lowers: a value above the global maxN is rejected at load and the message names the app option", () => {
+    expect(() => parseOptions({ keys: { chat: "k" }, maxN: 2, apps: { chat: { maxN: 3 } } })).toThrow("`apps.chat.maxN` must be an integer between 1 and 2")
+  })
+
+  test("an in-range value is kept, and an app with only a maxN has a policy", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxN: 4, apps: { chat: { maxN: 1 } } })
+    expect(options.apps.chat).toMatchObject({ maxN: 1 })
+    expect(maxNFor(options, "chat")).toBe(1)
+  })
+
+  test("without it, the app's cap is the global one", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxN: 4 })
+    expect(maxNFor(options, "chat")).toBe(4)
+  })
+
+  test("rejects a non-integer and zero", () => {
+    expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxN: 0 } } })).toThrow("`apps.chat.maxN`")
+    expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxN: 1.5 } } })).toThrow("`apps.chat.maxN`")
+  })
+})
+
+describe("#265 apps.<name>.history", () => {
+  test("parses its own fields and exposes the per-app map", () => {
+    const options = parseOptions({ keys: { bot: "k1", coding: "k2" }, apps: { bot: { history: { maxSessions: 20 } }, coding: { history: { maxSessions: 5000, maxAgeDays: 180 } } } })
+    expect(options.apps.bot).toMatchObject({ history: { maxSessions: 20 } })
+    expect(appHistoryLimits(options)).toEqual({ bot: { maxSessions: 20 }, coding: { maxSessions: 5000, maxAgeDays: 180 } })
+  })
+
+  test("an app without the option is absent from the per-app map", () => {
+    expect(appHistoryLimits(parseOptions({ keys: { bot: "k1" } }))).toEqual({})
+  })
+
+  test("rejects a zero, an out-of-range value, and an unknown field, each naming the app", () => {
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { maxSessions: 0 } } } })).toThrow("`apps.bot.history.maxSessions`")
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { maxAgeDays: 40_000 } } } })).toThrow("`apps.bot.history.maxAgeDays`")
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { keep: 1 } } } })).toThrow("`apps.bot.history.keep`")
+  })
+})
+
+describe("#270 review NIT 8: maxN edge cases", () => {
+  test("an app maxN equal to the global one is accepted, and 4 passes while 5 would not", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxN: 4, apps: { chat: { maxN: 4 } } })
+    expect(maxNFor(options, "chat")).toBe(4)
+  })
+
+  test("apps.default.maxN caps the keyless app (no keys)", () => {
+    const options = parseOptions({ maxN: 3, apps: { default: { maxN: 2 } } })
+    expect(maxNFor(options, "default")).toBe(2)
+  })
+
+  test("an unknown app, and an inherited name such as constructor, get the global cap", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxN: 3, apps: { chat: { maxN: 1 } } })
+    expect(maxNFor(options, "nobody")).toBe(3)
+    expect(maxNFor(options, "constructor")).toBe(3)
   })
 })

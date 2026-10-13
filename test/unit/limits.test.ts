@@ -3,6 +3,7 @@ import type { Limits } from "../../src/config.js"
 import type { CallContext, ModelCaller, PlugEvent, PlugRequest } from "../../src/contract.js"
 import { withFallbacks } from "../../src/fallback.js"
 import { createLimitState, withLimits, type LimitState } from "../../src/limits.js"
+import { setLogFormat } from "../../src/log.js"
 import { collect, CATALOG, ev, gate, plugRequest, testOptions, tick, until } from "../support/fixtures.js"
 import { FakeModelCaller } from "../support/model-caller.js"
 import { captureLogs } from "../support/logs.js"
@@ -204,5 +205,25 @@ describe("#54 no caps that apply: the caller is called as it is", () => {
     const caller = withLimits(fake, () => limits as Limits | undefined, createLimitState())
     const all = await Promise.all([start(caller, "alpha"), start(caller, "alpha"), start(caller, "alpha")])
     expect(all).toEqual([[ev.finish()], [ev.finish()], [ev.finish()]])
+  })
+})
+
+/** Review of #319 (SHOULD 4): a refusal that signals a problem is a warn line, so `logLevel: warn` keeps it. */
+describe("#262 review: request.limited is a warning", () => {
+  test("in json format the refusal line carries level warn", async () => {
+    setLogFormat("json")
+    try {
+      const { fake, open } = holding()
+      const caller = withLimits(fake, () => ({ maxConcurrent: 1 }), createLimitState())
+      const first = start(caller, "alpha")
+      await until(() => fake.calls.length === 1, 1_000, "one call in flight")
+      await start(caller, "alpha")
+      const line = logs.lines.find((candidate) => candidate.raw.includes('"event":"request.limited"'))
+      expect(JSON.parse(line!.raw).level).toBe("warn")
+      open.open()
+      await first
+    } finally {
+      setLogFormat("text")
+    }
   })
 })

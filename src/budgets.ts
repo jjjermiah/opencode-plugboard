@@ -18,7 +18,7 @@
 
 import type { Budget, BudgetMetric, BudgetWindow, Budgets } from "./config.js"
 import type { CallContext, ModelCaller, PlugError, PlugEvent, PlugRequest } from "./contract.js"
-import { errorMessage, log, logError, logWarn } from "./log.js"
+import { errorMessage, logError, logWarn } from "./log.js"
 import { totalTokens, utcDate, type BudgetStatus, type DayRecord, type UsageRecorder } from "./usage.js"
 
 /** What the warnings already logged: `app|metric|window` -> the window's first day. The process-wide state (src/runtime.ts). */
@@ -134,7 +134,7 @@ async function check(budget: Budget, app: string, usage: UsageRecorder, state: B
   }
   if (exceeded.length === 0) return undefined
   const retryAfterSeconds = Math.max(1, Math.ceil((resetsAt - at) / 1000))
-  log("request.budget_exceeded", { app, budgets: exceeded.join(", "), retryAfterSeconds })
+  logWarn("request.budget_exceeded", { app, budgets: exceeded.join(", "), retryAfterSeconds })
   return { status: 429, kind: "rate_limit", code: "budget_exceeded", message: `Budget for ${app} exceeded: ${exceeded.join(", ")}`, retryAfterSeconds }
 }
 

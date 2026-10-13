@@ -158,14 +158,15 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Install uv (the Python example runs with uv run --frozen)
         run: pipx install uv==0.12.18
-      - name: Scripted runs of the curl, openai-python and pydantic-ai examples
+      - name: Scripted runs of the curl, openai-python, langchain-python and pydantic-ai examples
         run: |
           bun examples/_harness/run.ts curl --target scripted
           bun examples/_harness/run.ts openai-python --target scripted
+          bun examples/_harness/run.ts langchain-python --target scripted
           bun examples/_harness/run.ts pydantic-ai --target scripted
       - name: The committed scripted runs match a fresh run
         run: |
-          RUNS=(examples/curl/runs/scripted examples/openai-python/runs/scripted examples/pydantic-ai/runs/scripted)
+          RUNS=(examples/curl/runs/scripted examples/openai-python/runs/scripted examples/langchain-python/runs/scripted examples/pydantic-ai/runs/scripted)
           if [ -n "$(git status --porcelain -- "${RUNS[@]}")" ]; then
             git --no-pager diff -- "${RUNS[@]}" | head -200
             git status --short -- "${RUNS[@]}"
