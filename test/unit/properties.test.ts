@@ -210,6 +210,11 @@ describe("#130 Gemini decoder", () => {
   )
   test("any value is a 400 or a request", () => property(anyValue, decode))
   test("any request-shaped body is a 400 or a request", () => property(body, decode, true))
+  // The shrunk counterexample of a CI run: a role object whose toString is null threw instead of a 400 (String(role) in the message).
+  test("#130 a non-string role is a 400 that names its type, never a throw", () => {
+    const out = decode({ contents: [{ role: { toString: null }, parts: [0] }] })
+    expect(out).toMatchObject({ status: 400, message: 'Unsupported role "object": use "user" or "model"' })
+  })
 })
 
 describe("#130 Gemini schema converter", () => {
