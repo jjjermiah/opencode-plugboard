@@ -27,6 +27,11 @@ export interface HistoryLimits {
   readonly maxSessions?: number
   /** Delete sessions older than this many days. */
   readonly maxAgeDays?: number
+  /**
+   * Option `history.hidden` (since 0.29.0, #337): request sessions are children of the app's parent session. Not a pruning
+   * limit: `limitsFor` does not copy it, and it does not start a sweep.
+   */
+  readonly hidden?: boolean
 }
 
 /**
