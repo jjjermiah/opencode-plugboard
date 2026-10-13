@@ -48,7 +48,7 @@
         { "name": "streamed text contains pong", "path": "text", "containsAny": ["pong"] },
         { "name": "finish_reason is stop", "path": "finish_reason", "equals": "stop" },
         { "name": "usage chunk present when requested", "path": "usage", "present": true },
-        { "name": "stream ended with [DONE]", "path": "done", "equals": true }
+        { "name": "stream ended normally", "path": "done", "equals": true }
       ]
     },
     {

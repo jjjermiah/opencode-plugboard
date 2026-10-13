@@ -27,6 +27,30 @@ const ROOT = resolve(EXAMPLES, "..")
 const LIVE_DEFAULT_URL = "http://127.0.0.1:4010/v1"
 const RUNNER_TIMEOUT_MS = 20 * 60_000
 
+/**
+ * Whether one captured stream ended on the wire the way its API says it does: chat completions with `data: [DONE]`,
+ * Responses with a last `response.completed` event, Messages with a last `message_stop` event, Gemini with a `finishReason`
+ * in its last chunk. A stream cut off mid-answer, or any other route, did not end normally. The runner's own `done`
+ * flag is not used: the wire decides (#370).
+ */
+export function streamEnded(exchange: Pick<Exchange, "path" | "resBody">): boolean {
+  const path = exchange.path.split("?")[0]!
+  const body = exchange.resBody.trimEnd()
+  const lines = body.split("\n")
+  const lastEvent = [...lines].reverse().find((line) => line.startsWith("event:"))?.slice("event:".length).trim()
+  const lastData = [...lines].reverse().find((line) => line.startsWith("data:")) ?? ""
+  if (path.startsWith("/v1/chat/completions")) return /(^|\n)data: \[DONE\]$/.test(body)
+  if (path.startsWith("/v1/responses")) return lastEvent === "response.completed"
+  if (path.startsWith("/v1/messages")) return lastEvent === "message_stop"
+  if (path.startsWith("/v1beta/")) return lastData.includes("finishReason")
+  return false
+}
+
+/** Every captured stream of a row ended normally, and there is at least one. */
+export function streamsEnded(exchanges: ReadonlyArray<Pick<Exchange, "path" | "resBody">>): boolean {
+  return exchanges.length > 0 && exchanges.every(streamEnded)
+}
+
 interface ScenarioSpec {
   readonly id: string
   readonly required: boolean
@@ -286,15 +310,29 @@ async function writeExample(name: string, target: "scripted" | "live", scenarios
     const spec = scenarios.scenarios.find((candidate) => candidate.id === result.scenario)
     const index = markIndexes.get(pairKey(result.scenario, result.model, result.variant))?.shift()
     const transcript = index === undefined || result.status === "n/a" ? null : `transcripts/${fileName(result.scenario, result.model, result.variant)}`
+    // The harness decides a stream's `done` from the wire (streamsEnded), not from the runner's word.
+    const doneCheck = spec?.checks.find((check) => check.path === "done")
+    const streams = index === undefined ? [] : (byMark.get(index) ?? []).filter((exchange) => onRoute(exchange, result.scenario))
+    const decided = doneCheck !== undefined && result.status !== "n/a" && index !== undefined ? streamsEnded(streams) : undefined
+    let checks = result.checks
+    let status: Status = result.status
+    let note = result.note
+    if (doneCheck !== undefined && decided !== undefined) {
+      checks = [...result.checks.filter((check) => check.name !== doneCheck.name), { name: doneCheck.name, ok: decided }]
+      if (!decided && status === "pass") {
+        status = "fail"
+        note = "the stream did not end normally on the wire (no terminal event): the runner's own done flag is not used"
+      }
+    }
     const duration = index === undefined || target === "scripted" ? {} : { duration_ms: durations[index] ?? 0 }
     rows.push({
       id: result.scenario,
       model: result.model,
       ...(result.variant === undefined ? {} : { variant: result.variant }),
       required: spec?.required ?? false,
-      status: result.status,
-      checks: result.checks,
-      note: result.note,
+      status,
+      checks,
+      note,
       error: result.error,
       transcript,
       ...duration,

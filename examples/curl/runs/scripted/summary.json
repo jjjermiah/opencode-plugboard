@@ -714,7 +714,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -742,7 +742,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -770,7 +770,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
