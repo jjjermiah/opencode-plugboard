@@ -231,6 +231,27 @@ describe("#268 apps.<name>.endpoints", () => {
   })
 })
 
+describe("#257 apps.<name>.requestTimeoutMs", () => {
+  test("parses an integer deadline, and is absent when unset", () => {
+    expect(parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { requestTimeoutMs: 30000 } } }).apps.bot).toEqual({ systemMode: "prepend", tools: true, requestTimeoutMs: 30000 })
+    expect(parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { tools: false } } }).apps.bot).not.toHaveProperty("requestTimeoutMs")
+  })
+
+  test("accepts 1 and the timer ceiling 2147483647, and may be higher than the global deadline", () => {
+    expect(parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { requestTimeoutMs: 1 } } }).apps.bot?.requestTimeoutMs).toBe(1)
+    expect(parseOptions({ keys: { bot: "k-bot" }, requestTimeoutMs: 5000, apps: { bot: { requestTimeoutMs: 2147483647 } } }).apps.bot?.requestTimeoutMs).toBe(2147483647)
+  })
+
+  test.each([
+    ["zero", 0],
+    ["a fraction", 1.5],
+    ["a string", "30000"],
+    ["above the timer ceiling", 2147483648],
+  ])("%s is refused at load and names the option", (_name, value) => {
+    expect(() => parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { requestTimeoutMs: value } } })).toThrow(/apps\.bot\.requestTimeoutMs` must be an integer between 1 and 2147483647/)
+  })
+})
+
 describe("#271 requireKeys", () => {
   test("is absent by default, and true when set with keys", () => {
     expect(parseOptions({})).not.toHaveProperty("requireKeys")

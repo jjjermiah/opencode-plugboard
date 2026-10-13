@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P257-app-deadline-ignored",
+    invariant: "#257",
+    file: "src/config.ts",
+    find: "  return (app === undefined ? undefined : appPolicy(options, app)?.requestTimeoutMs) ?? options.requestTimeoutMs",
+    replace: "  return options.requestTimeoutMs",
+    tests: ["test/http/per-app-timeout.test.ts"],
+  },
+  {
     id: "P265-app-maxage-own-field-ignored",
     invariant: "#265",
     file: "src/session/prune.ts",

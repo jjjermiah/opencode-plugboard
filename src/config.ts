@@ -186,6 +186,11 @@ export interface AppPolicy {
   readonly promptCache?: PromptCache
   /** Endpoint families this app may call (option `apps.<name>.endpoints`, #268). Absent: every endpoint. Check with `endpointRefusal`. */
   readonly endpoints?: ReadonlyArray<Endpoint>
+  /**
+   * This app's request deadline in ms (option `apps.<name>.requestTimeoutMs`, since 0.29.0, #257). Absent: the global
+   * `requestTimeoutMs`. Look the effective value up with `requestTimeoutFor`.
+   */
+  readonly requestTimeoutMs?: number
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -411,7 +416,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs"])
 
 /** Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set. Unset fields fall back to the global `history`. */
 function parseAppHistory(raw: unknown, at: string): HistoryLimits {
@@ -506,6 +511,8 @@ function parseApps(
     const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
     const endpoints = value.endpoints === undefined ? undefined : parseEndpoints(value.endpoints, at)
     const history = value.history === undefined ? undefined : parseAppHistory(value.history, `apps.${app}`)
+    // A deadline may be longer or shorter than the global one (#257); it is checked against the same ceiling as the global option.
+    const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -520,9 +527,10 @@ function parseApps(
       ...(historyUrl === undefined ? {} : { historyUrl }),
       ...(promptCache === undefined ? {} : { promptCache }),
       ...(endpoints === undefined ? {} : { endpoints }),
+      ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -627,11 +635,11 @@ export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string):
 }
 
 /**
- * The request deadline (ms) of a request of `app`, `undefined` when no credential matched yet. Only the global
- * `requestTimeoutMs` for now: the app's own value (`apps.<name>.requestTimeoutMs`, #257) is read here next.
+ * The request deadline (ms) of a request of `app`: `apps.<name>.requestTimeoutMs` when the app sets one (#257), else the
+ * global `requestTimeoutMs`. `app` is `undefined` when no credential matched yet; the global value applies then.
  */
-export function requestTimeoutFor(options: Pick<PlugboardOptions, "requestTimeoutMs">, _app: string | undefined): number {
-  return options.requestTimeoutMs
+export function requestTimeoutFor(options: Pick<PlugboardOptions, "apps" | "requestTimeoutMs">, app: string | undefined): number {
+  return (app === undefined ? undefined : appPolicy(options, app)?.requestTimeoutMs) ?? options.requestTimeoutMs
 }
 
 function parseUsage(value: unknown): UsageConfig {

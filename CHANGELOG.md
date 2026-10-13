@@ -16,6 +16,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Added
 
+- **Per-app request deadline** ([#257](https://github.com/jjjermiah/opencode-plugboard/issues/257)). `apps.<name>.requestTimeoutMs` (since 0.29.0) gives one app its own deadline in place of the global `requestTimeoutMs`, higher or lower, so a batch job and a chat widget can differ. The timeout error is the same as today. Unset, the global value applies unchanged.
 - **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
 
 ### Fixed
