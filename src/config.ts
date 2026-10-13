@@ -74,6 +74,8 @@ export interface PlugboardOptions {
    * (`/healthz` and `/readyz` stay open). Absent or `false`: keyless loopback works as before.
    */
   readonly requireKeys?: boolean
+  /** Browser origins that may call plugboard (option `cors`, #256). Absent: no CORS headers and the keyless `Origin` refusal stays. */
+  readonly cors?: CorsConfig
   /** A template for the OpenCode session page of each request: `{id}`, and optional `{directory}` (see src/session/link.ts, #77). */
   readonly historyUrl?: string
 }
@@ -86,6 +88,15 @@ export function historyTemplate(options: Pick<PlugboardOptions, "apps" | "histor
   const own = appPolicy(options, app)?.historyUrl
   if (own === false) return undefined
   return own ?? options.historyUrl
+}
+
+/**
+ * Option `cors` (#256): the browser origins that may call plugboard, and Private Network Access. `origins` holds
+ * canonical `scheme://host[:port]` values, or the single `*`, which needs keys. Absent: no CORS headers, as before.
+ */
+export interface CorsConfig {
+  readonly origins: ReadonlyArray<string>
+  readonly allowPrivateNetwork: boolean
 }
 
 /** Option `usage` after defaults: on, and days of history kept. */
@@ -231,7 +242,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -280,6 +291,49 @@ function positiveInt(value: unknown, name: string, fallback: number, max = Numbe
 
 const REMOTE_IMAGES_ERROR =
   "plugboard option `remoteImages` must be a boolean or `{ allow: [...] }` with host names, IP addresses or CIDR ranges that may be fetched even when they are not public"
+
+const CORS_KNOWN = ["origins", "allowPrivateNetwork"]
+
+/** A browser origin as the `Origin` header spells it: `http` or `https`, host and port, no path, query, credentials or trailing slash. */
+function parseOrigin(text: unknown): string | undefined {
+  if (typeof text !== "string") return undefined
+  let url: URL
+  try {
+    url = new URL(text)
+  } catch {
+    return undefined
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+  // WHATWG URL accepts `*` in a host name, so a wildcard host is refused here rather than by the parse.
+  if (url.hostname.includes("*")) return undefined
+  return text === url.origin ? text : undefined
+}
+
+/** Option `cors` (#256). `*` must stand alone and needs keys, so a wildcard never sits in front of a keyless endpoint. */
+function parseCors(raw: unknown, keyed: boolean): CorsConfig | undefined {
+  if (raw === undefined) return undefined
+  if (!isRecord(raw)) throw new Error("plugboard option `cors` must be an object: { origins, allowPrivateNetwork }")
+  for (const key of Object.keys(raw))
+    if (!CORS_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`cors.${key}\` (known: ${CORS_KNOWN.join(", ")})`)
+  const origins = raw.origins
+  if (!Array.isArray(origins) || origins.length === 0)
+    throw new Error("plugboard option `cors.origins` must be a non-empty array of origins such as `https://chat.example.net`, or [\"*\"]")
+  const list: string[] = []
+  for (const origin of origins) {
+    if (origin === "*") {
+      if (origins.length > 1) throw new Error("plugboard option `cors.origins`: `*` must be the only entry")
+      if (!keyed) throw new Error("plugboard option `cors.origins` `*` needs `keys`: a wildcard origin must not sit in front of a keyless endpoint")
+      list.push("*")
+      continue
+    }
+    const parsed = parseOrigin(origin)
+    if (parsed === undefined)
+      throw new Error(`plugboard option \`cors.origins\` entry \`${String(origin)}\` must be an \`http://\` or \`https://\` origin: scheme, host and port only, no path, query, credentials or wildcard`)
+    list.push(parsed)
+  }
+  if (raw.allowPrivateNetwork !== undefined && typeof raw.allowPrivateNetwork !== "boolean") throw new Error("plugboard option `cors.allowPrivateNetwork` must be a boolean")
+  return { origins: list, allowPrivateNetwork: raw.allowPrivateNetwork === true }
+}
 
 /** Option `remoteImages` (#259): the object fields are optional and tighten the fetch; an unset field keeps today's bound. */
 const REMOTE_IMAGES_KNOWN = ["allow", "schemes", "maxBytes", "maxItems", "maxRedirects", "timeoutMs"]
@@ -773,6 +827,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     throw new Error(`plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`)
   const historyUrl = parseHistoryUrl(input.historyUrl)
   const promptCache = parsePromptCache(input.promptCache, "promptCache")
+  const cors = parseCors(input.cors, keyEntries.length > 0)
 
   return {
     ...(promptCache === undefined ? {} : { promptCache }),
@@ -798,6 +853,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     ...(budgets === undefined ? {} : { budgets }),
     ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
     ...(input.requireKeys === true ? { requireKeys: true } : {}),
+    ...(cors === undefined ? {} : { cors }),
     ...(historyUrl === undefined ? {} : { historyUrl }),
   }
 }

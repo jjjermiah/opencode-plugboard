@@ -22,6 +22,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `history` | `{ maxAgeDays: 30 }` | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app (unset: no count limit). `maxAgeDays` deletes older ones: 30 by default, `0` turns the age limit off (keep forever). With both, the stricter wins. See [History](history.md). |
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
+| `cors` (since 0.26.0) | none | Browser origins that may call plugboard: `{ "origins": ["https://chat.example.net"], "allowPrivateNetwork": false }`. Each origin is `http(s)://host[:port]`; `"*"` alone needs `keys`. See [Browser origins](#browser-origins-since-0-26-0). |
 | `requireKeys` (since 0.26.0) | `false` | Makes a keyless server impossible. With `true`, `keys` must be set (otherwise the plugin refuses to load), and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. Absent or `false`: keyless loopback works as before. Use it on a shared machine, where loopback is not a security boundary.
 | `metrics` | `false` | Serve Prometheus metrics at `GET /plugboard/metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
@@ -32,6 +33,26 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `historyUrl` (since 0.20.0) | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /plugboard/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
+
+### Browser origins (since 0.26.0)
+
+A web page in a browser runs on its own origin and calls plugboard from there. Option `cors` (#256) names the origins that may do that:
+
+```jsonc
+"cors": {
+  "origins": ["https://chat.example.net", "http://localhost:3000"],
+  "allowPrivateNetwork": false
+}
+```
+
+- An allowed origin gets `Access-Control-Allow-Origin` (its own origin, with `Vary: Origin`) on every answer. The rest of each answer is unchanged.
+- Its preflight (`OPTIONS` with `Access-Control-Request-Method`) is answered `204` before authentication, because a preflight carries no credentials. The Host check still runs first. The preflight reveals only which origins are allowed.
+- The actual request still needs its key on a keyed endpoint. On a keyless endpoint, an allowed origin is no longer refused, and every other `Origin` still gets 403 `cross_origin_forbidden`.
+- An origin off the list gets no CORS header, so the browser blocks the response.
+- `allowPrivateNetwork: true` adds `Access-Control-Allow-Private-Network: true` when the preflight asks for it (Private Network Access). Off by default.
+- `"*"` echoes `*` for any origin. It must stand alone and needs `keys`: a wildcard never sits in front of a keyless endpoint.
+
+The responses do not expose the `x-plugboard-*` headers to a browser script, because `Access-Control-Expose-Headers` is not set.
 
 ### Remote image limits (since 0.26.0)
 

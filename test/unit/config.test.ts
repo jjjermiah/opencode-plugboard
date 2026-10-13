@@ -143,6 +143,35 @@ describe("parseOptions: every rejection names the option", () => {
   })
 })
 
+describe("#256 cors option", () => {
+  test("is absent by default, and parses origins and allowPrivateNetwork", () => {
+    expect(parseOptions({})).not.toHaveProperty("cors")
+    expect(parseOptions({ cors: { origins: ["https://chat.example.net", "http://localhost:3000"] } }).cors).toEqual({
+      origins: ["https://chat.example.net", "http://localhost:3000"],
+      allowPrivateNetwork: false,
+    })
+    expect(parseOptions({ keys: { app: "secret" }, cors: { origins: ["*"], allowPrivateNetwork: true } }).cors).toEqual({ origins: ["*"], allowPrivateNetwork: true })
+  })
+
+  test.each([
+    ["a trailing slash", { origins: ["https://a.example/"] }, /entry `https:\/\/a\.example\/` must be an `http:\/\/` or `https:\/\/` origin/],
+    ["a path", { origins: ["https://a.example/app"] }, /must be an `http:\/\/` or `https:\/\/` origin/],
+    ["a wildcard host", { origins: ["https://*.example"] }, /must be an `http:\/\/` or `https:\/\/` origin/],
+    ["credentials", { origins: ["https://user:pw@a.example"] }, /must be an `http:\/\/` or `https:\/\/` origin/],
+    ["another scheme", { origins: ["ftp://a.example"] }, /must be an `http:\/\/` or `https:\/\/` origin/],
+    ["an empty list", { origins: [] }, /`cors.origins` must be a non-empty array/],
+    ["* with another entry", { origins: ["*", "https://a.example"] }, /`\*` must be the only entry/],
+    ["an unknown field", { origins: ["https://a.example"], methods: ["GET"] }, /Unknown plugboard option `cors.methods`/],
+    ["allowPrivateNetwork that is not a boolean", { origins: ["https://a.example"], allowPrivateNetwork: "yes" }, /`cors.allowPrivateNetwork` must be a boolean/],
+  ])("%s is refused at load and names the option", (_name, cors, message) => {
+    expect(() => parseOptions({ keys: { app: "secret" }, cors })).toThrow(message)
+  })
+
+  test("* without keys is refused: a wildcard never sits in front of a keyless endpoint", () => {
+    expect(() => parseOptions({ cors: { origins: ["*"] } })).toThrow("`*` needs `keys`")
+  })
+})
+
 describe("#259 remoteImages object fields", () => {
   test("each field is optional and parses as given; an unset field is absent", () => {
     expect(parseOptions({ remoteImages: { allow: ["images.internal"] } }).remoteImages).toEqual({ allow: ["images.internal"] })

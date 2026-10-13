@@ -28,6 +28,30 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I16-cors-off-list-origin-echoed",
+    invariant: "I16",
+    file: "src/http.ts",
+    find: "  return origins.includes(origin) ? origin : undefined",
+    replace: "  return origin",
+    tests: ["test/http/cors.test.ts"],
+  },
+  {
+    id: "I16-preflight-skips-host-check",
+    invariant: "I16",
+    file: "src/openai/route.ts",
+    find: "          const hostError = checkHost(request, host.options)",
+    replace: "          const hostError = undefined",
+    tests: ["test/http/cors.test.ts"],
+  },
+  {
+    id: "I16-keyless-origin-refusal-ignores-cors",
+    invariant: "I16",
+    file: "src/http.ts",
+    find: "request.headers.origin !== undefined && corsOrigin(request, options) === undefined)",
+    replace: "request.headers.origin !== undefined)",
+    tests: ["test/http/cors.test.ts"],
+  },
+  {
     id: "I17-remote-scheme-check-skipped",
     invariant: "I17",
     file: "src/session/media.ts",

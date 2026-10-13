@@ -450,14 +450,32 @@ function hostAllowed(options: PlugboardOptions, hostHeader: string | undefined):
   return (match[2] ?? "80") === String(options.listen.port)
 }
 
-/**
- * Browser-reachable loopback endpoints: block DNS rebinding (Host header) and, on a keyless
- * endpoint, cross-site calls (any Origin header).
- */
-export function checkOrigin(request: IncomingMessage, options: PlugboardOptions): PlugError | undefined {
+/** The `Host` header check on its own (I16). A preflight runs it too: it carries no credentials, but still must not bypass the DNS rebinding check. */
+export function checkHost(request: IncomingMessage, options: PlugboardOptions): PlugError | undefined {
   if (!hostAllowed(options, request.headers.host))
     return { status: 403, kind: "permission", code: "invalid_host", message: "Host header not allowed" }
-  if (Object.keys(options.keys).length === 0 && request.headers.origin !== undefined)
+}
+
+/**
+ * The origin to echo in `Access-Control-Allow-Origin` (option `cors`, #256): the request's own origin when it is on the
+ * allowlist, `*` when the wildcard is configured (it needs keys), else `undefined`. A request without `Origin` has none.
+ */
+export function corsOrigin(request: IncomingMessage, options: PlugboardOptions): string | undefined {
+  const origins = options.cors?.origins
+  const origin = request.headers.origin
+  if (origins === undefined || origin === undefined) return undefined
+  if (origins.includes("*")) return "*"
+  return origins.includes(origin) ? origin : undefined
+}
+
+/**
+ * Browser-reachable loopback endpoints: block DNS rebinding (Host header) and, on a keyless endpoint, cross-site calls
+ * (any Origin header) unless the origin is on the `cors` allowlist (#256).
+ */
+export function checkOrigin(request: IncomingMessage, options: PlugboardOptions): PlugError | undefined {
+  const hostError = checkHost(request, options)
+  if (hostError) return hostError
+  if (Object.keys(options.keys).length === 0 && request.headers.origin !== undefined && corsOrigin(request, options) === undefined)
     return {
       status: 403,
       kind: "permission",

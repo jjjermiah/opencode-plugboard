@@ -49,6 +49,16 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
     }
   }
   ```
+- **Allow a browser origin to call plugboard** ([#256](https://github.com/jjjermiah/opencode-plugboard/issues/256)). A web UI on another origin could not call plugboard: no CORS header was sent, and a keyless endpoint refused every `Origin`. `cors.origins` names the origins that may call it. An allowed origin gets `Access-Control-Allow-Origin`, and its preflight is answered before authentication (the Host check still runs, and the actual request still needs its key). An origin off the list gets no CORS header, as before. `allowPrivateNetwork: true` answers Private Network Access preflights. `"*"` needs keys.
+
+  ```jsonc
+  {
+    "cors": {
+      "origins": ["https://chat.example.net", "http://localhost:3000"],
+      "allowPrivateNetwork": false
+    }
+  }
+  ```
 
 ## [0.25.1] - 2026-10-12: Front Door, Unlocked
 

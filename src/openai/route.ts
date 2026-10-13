@@ -35,7 +35,9 @@ import {
   beginRequest,
   boundEvents,
   checkJsonContentType,
+  checkHost,
   checkOrigin,
+  corsOrigin,
   finishRequest,
   readJsonBody,
   sendError,
@@ -195,6 +197,28 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const route = gemini?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
     info.route = gemini || modelId !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
+    // CORS (#256). An allowed browser origin gets its headers on every answer. Its preflight (OPTIONS with a requested method)
+    // is answered here, before authentication, because a preflight carries no credentials; the Host check still runs first.
+    if (host.options.cors !== undefined) {
+      response.setHeader("vary", "Origin")
+      const allowed = corsOrigin(request, host.options)
+      if (allowed !== undefined) {
+        response.setHeader("access-control-allow-origin", allowed)
+        if (request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined) {
+          const hostError = checkHost(request, host.options)
+          if (hostError) return fail(response, hostError)
+          response.writeHead(204, {
+            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-headers": "authorization, content-type, x-api-key, x-goog-api-key",
+            ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true"
+              ? { "access-control-allow-private-network": "true" }
+              : {}),
+          })
+          return response.end()
+        }
+      }
+    }
+
     // Anthropic Messages: its own error shape and x-api-key auth, so it takes the request from here.
     if (isMessagesPath(path)) return serveMessages(host, { path, request, response, scope, info })
 

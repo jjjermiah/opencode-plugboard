@@ -515,6 +515,7 @@ Open work is tracked in the [v0.1 milestone](https://github.com/jjjermiah/openco
 
 - **Bind address.** The listener binds `127.0.0.1` by default. A non-loopback `listen.host` refuses to start without `keys`. On a loopback bind, a `Host` header that is not `localhost`, `127.0.0.1` or `[::1]` gets a 403.
 - **Keys cross the network in clear text.** The endpoint speaks plain HTTP. For remote access, allow only known addresses in the firewall, tunnel over SSH, or put a TLS-terminating proxy in front. See [reaching plugboard from another host or container][reach] and [remote access][remote-access].
+- **Browser origins.** `cors.origins` (since 0.26.0) names the web pages allowed to call plugboard. Every other origin gets no CORS header, and `"*"` needs keys. See [browser origins](https://jjjermiah.github.io/opencode-plugboard/configuration#browser-origins-since-0-26-0).
 - **Keep keys out of the config file.** Use `{env:VAR}` and keep the values in the environment or a secret store. Every app needs its own key.
 - **`adminKey` reads usage only.** It cannot call the model routes, and it must differ from every app key.
 - **Keyless mode is loopback only.** Without `keys`, the one app is `default`, and only local callers can reach it. On a shared machine, set `"requireKeys": true` (since 0.26.0) so the server refuses to run keyless and every local request needs a key.
