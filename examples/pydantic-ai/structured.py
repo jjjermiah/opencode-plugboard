@@ -27,10 +27,10 @@ async def run(client, model):
     meal = result.output  # a Meal, or pydantic-ai raises after its retries
     # endregion snippet
     # The raw answer, before validation: the fields the model sent beyond the Meal fields. The model may answer through
-    # the output tool or as text, depending on the provider.
+    # the output tool, as text, or both; the output tool's arguments are the answer pydantic-ai validated.
     last = [message for message in result.all_messages() if isinstance(message, ModelResponse)][-1]
-    part = next(part for part in last.parts if isinstance(part, (ToolCallPart, TextPart)))
-    raw = part.args_as_dict() if isinstance(part, ToolCallPart) else json.loads(part.content)
+    calls = [part for part in last.parts if isinstance(part, ToolCallPart)]
+    raw = calls[0].args_as_dict() if calls else json.loads(next(part.content for part in last.parts if isinstance(part, TextPart)))
     return {
         "calories": meal.calories,
         "protein_g": meal.protein_g,
