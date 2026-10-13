@@ -8,7 +8,7 @@
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
 import type { ChoiceCodec } from "../openai/fanout.js"
 import { args, encodeError, structuredMissing, textFallback, unfence, type CollectedChoice, type StreamChoice, type StreamResult } from "../openai/response.js"
-import { StopHoldback, stripStopTail } from "../stop.js"
+import { StopScan } from "../stop.js"
 
 /** What the encoders need besides the model events; the request decoder produces it, the model call never sees it. */
 export interface CompletionsExchange {
@@ -72,9 +72,16 @@ async function settle(events: AsyncIterable<PlugEvent>, exchange: CompletionsExc
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
+  // Not structured output: a stop sequence in the answer ends it (src/stop.ts).
+  const scan = exchange.structuredTool === undefined ? new StopScan(exchange.stop ?? []) : undefined
   for await (const event of events) {
-    if (event.type === "text-delta") text += event.text
-    else if (event.type === "tool-call") {
+    if (event.type === "text-delta") {
+      text += scan ? scan.push(event.text) : event.text
+      if (scan?.matched !== undefined) {
+        finish = "stop"
+        break
+      }
+    } else if (event.type === "tool-call") {
       if (exchange.structuredTool !== undefined && event.name === exchange.structuredTool) answer ??= args(event.input)
     } else if (event.type === "finish") {
       usage = event.usage ?? usage
@@ -87,13 +94,13 @@ async function settle(events: AsyncIterable<PlugEvent>, exchange: CompletionsExc
   }
   if (!failure && !finish) failure = noFinish()
   if (failure || !finish) return failure ?? noFinish()
+  if (scan) text += scan.finish()
   if (exchange.structuredTool !== undefined) {
     if (answer !== undefined) return { text: answer, reason: finish, usage }
     const fallback = exchange.structuredSchema === undefined ? undefined : textFallback(text, exchange.structuredSchema)
     if (fallback === undefined) return structuredMissing()
     return { text: fallback, reason: finish, usage, fallback: true }
   }
-  if (finish === "stop") text = stripStopTail(text, exchange.stop ?? []).text
   return { text: exchange.jsonObject ? unfence(text) : text, reason: finish, usage }
 }
 
@@ -152,8 +159,8 @@ async function streamText(
     chunk("", FINISH_REASONS[settled.reason])
     return { started, ...(settled.usage ? { usage: settled.usage } : {}) }
   }
-  // A stop sequence is held back until the finish decides it (src/stop.ts).
-  const holdback = new StopHoldback(exchange.stop ?? [])
+  // A stop sequence in the answer ends it; the text is held back until it is ruled out (src/stop.ts).
+  const holdback = new StopScan(exchange.stop ?? [])
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
@@ -170,12 +177,16 @@ async function streamText(
       start()
       const out = holdback.push(event.text)
       if (out.length > 0) chunk(out)
+      if (holdback.matched !== undefined) {
+        finish = "stop"
+        break
+      }
     }
   }
   failure ??= finish ? undefined : noFinish()
   if (failure) return { failure, started }
   start()
-  const rest = holdback.finish(finish === "stop").text
+  const rest = holdback.finish()
   if (rest.length > 0) chunk(rest)
   chunk("", FINISH_REASONS[finish!])
   return { started, ...(usage ? { usage } : {}) }

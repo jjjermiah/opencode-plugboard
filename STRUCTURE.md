@@ -23,7 +23,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `config.ts` | The options type, defaults, `parseOptions`, `authenticate`, `authenticateUsage` (the admin key) and the loopback host check. |
 | `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. |
 | `limits.ts` | Concurrency caps and requests per minute per app (option `limits`): a `ModelCaller` wrapper outside the fallbacks, with its queues on the runtime. |
-| `stop.ts` | Caller stop sequences on the answer text: the tail check of a plain stop and the streamed holdback, shared by every front-end that has `stop` (#145, #149). |
+| `stop.ts` | Caller stop sequences, matched on the answer text as it streams: the first sequence ends the answer, and reasoning is never matched. Shared by every front-end that has `stop` (#145, #149, #390). |
 | `budgets.ts` | Per-app budgets (option `budgets`): requests, tokens and cost per UTC day, week or month, read from the usage records. A `ModelCaller` wrapper outside `limits.ts`, with its warning state on the runtime. |
 | `forwarded.ts` | Reverse-proxy headers (#266): `listen.trustProxy` parsing, the client address for the log, the forwarded host and origin. Read only from a trusted peer, never for authentication. |
 | `http.ts` | Ingress and transport: body limits, Host and Origin checks, disconnect abort, the one deadline, JSON and SSE writers. |

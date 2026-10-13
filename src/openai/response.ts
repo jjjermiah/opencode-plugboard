@@ -7,7 +7,7 @@
  */
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
-import { StopHoldback, stripStopTail } from "../stop.js"
+import { StopScan } from "../stop.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -339,9 +339,16 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
 
+  // Not structured output: a stop sequence in the answer ends it (src/stop.ts).
+  const scan = exchange.structuredTool === undefined ? new StopScan(exchange.stop ?? []) : undefined
   for await (const event of events) {
-    if (event.type === "text-delta") text += event.text
-    else if (event.type === "reasoning-delta") reasoning += event.text
+    if (event.type === "text-delta") {
+      text += scan ? scan.push(event.text) : event.text
+      if (scan?.matched !== undefined) {
+        finish = "stop"
+        break
+      }
+    } else if (event.type === "reasoning-delta") reasoning += event.text
     else if (event.type === "tool-call") calls.push(event)
     else if (event.type === "finish") {
       usage = event.usage ?? usage
@@ -357,7 +364,7 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
     const error = failure ?? noFinish()
     return { status: error.status, body: encodeError(error), retryAfterSeconds: error.retryAfterSeconds }
   }
-  if (finish === "stop" && calls.length === 0 && exchange.structuredTool === undefined) text = stripStopTail(text, exchange.stop ?? []).text
+  if (scan) text += scan.finish()
 
   const answer = calls.find((call) => structured.isAnswer(exchange, call))
   const others = calls.filter((call) => !structured.isAnswer(exchange, call))
@@ -453,8 +460,8 @@ export async function streamCompletion(
     started = true
     chunk({ role: "assistant", content: "" })
   }
-  // A stop sequence is held back until the finish decides it (src/stop.ts). Structured output has none.
-  const holdback = exchange.structuredTool === undefined ? new StopHoldback(exchange.stop ?? []) : undefined
+  // A stop sequence in the answer ends it; the text is held back until it is ruled out (src/stop.ts). Structured output has none.
+  const holdback = exchange.structuredTool === undefined ? new StopScan(exchange.stop ?? []) : undefined
   const send = (text: string) => {
     const out = holdback ? holdback.push(text) : text
     if (out.length > 0) chunk({ content: out })
@@ -473,6 +480,10 @@ export async function streamCompletion(
   }
 
   for await (const event of events) {
+    if (holdback?.matched !== undefined) {
+      finish = "stop"
+      break
+    }
     if (event.type === "error") {
       failure = event.error
       break
@@ -522,12 +533,20 @@ export async function streamCompletion(
     }
     if (event.type !== "text-delta") {
       flush()
+      if (holdback?.matched !== undefined) {
+        finish = "stop"
+        break
+      }
       const rest = holdback?.release() ?? ""
       if (rest.length > 0) chunk({ content: rest })
     }
     start()
     if (event.type === "text-delta") {
       send(event.text)
+      if (holdback?.matched !== undefined) {
+        finish = "stop"
+        break
+      }
     } else {
       // Tool calls arrive whole, so each goes out as one chunk with the next index.
       chunk({ tool_calls: [{ index: calls++, id: event.id, type: "function", function: { name: event.name, arguments: args(event.input) } }] })
@@ -549,7 +568,7 @@ export async function streamCompletion(
   flush()
   start()
   if (holdback) {
-    const rest = holdback.finish(finish === "stop" && calls === 0).text
+    const rest = holdback.finish()
     if (rest.length > 0) chunk({ content: rest })
   }
   if (held && isStructured) chunk({ content: structured.content(held) })

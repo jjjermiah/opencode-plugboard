@@ -28,6 +28,30 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P390-stop-sent-to-model",
+    invariant: "#390",
+    file: "src/openai/sampling.ts",
+    find: "  delete out.stop\n",
+    replace: "",
+    tests: ["test/unit/stop-not-in-reasoning.test.ts", "test/http/per-app-sampling.test.ts"],
+  },
+  {
+    id: "P390-answer-scan-off",
+    invariant: "#390",
+    file: "src/stop.ts",
+    find: "    const hit = stopAt(text, this.stops)\n    if (hit !== undefined) {\n      this.found = hit.stop",
+    replace: "    const hit = undefined\n    if (hit !== undefined) {\n      this.found = hit.stop",
+    tests: ["test/unit/stop-sequences.test.ts", "test/unit/stop-not-in-reasoning.test.ts"],
+  },
+  {
+    id: "P390-app-default-stop-dropped",
+    invariant: "#390",
+    file: "src/openai/sampling.ts",
+    find: "generation.stop ?? policy?.sampling?.stop",
+    replace: "generation.stop",
+    tests: ["test/http/per-app-sampling.test.ts"],
+  },
+  {
     id: "P264-app-sampling-overrides-caller",
     invariant: "#264",
     file: "src/openai/sampling.ts",

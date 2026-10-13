@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Stop sequences apply to the answer text, not the reasoning** ([#390](https://github.com/jjjermiah/opencode-plugboard/issues/390), since 0.37.0). A reasoning model that quoted the prompt in its reasoning could end with no answer: `fast` (glm-5.3-flash) matched `END` inside its reasoning, the provider stopped there, and the client got an empty answer with `finish_reason` `stop` (2 of 8 calls on the dev server, 0 of 8 without the stop). Plugboard no longer sends stop sequences to the model. It matches them on the answer text, on Chat Completions, legacy completions, Messages and Gemini: the answer ends at the first sequence, the text before it is returned, the sequence is removed, and reasoning is never matched. Three behaviours change with it. A sequence anywhere in the answer ends it, not only at the end (before, a sequence in the middle passed through untouched). A sequence ends the answer even when the finish reason is `length`. A tool call after the sequence is not produced, because the model was stopped there. Known gap: Responses has no stop parameter, and an app's `sampling.stop` default used to reach the provider there; it is now neither sent nor matched on Responses, until Responses matches stops too.
 
 ## [0.36.0] - 2026-10-13: Show Your Work
 

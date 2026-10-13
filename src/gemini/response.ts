@@ -9,7 +9,7 @@
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
 import { structuredMissing, textFallback, unfence } from "../openai/response.js"
-import { StopHoldback } from "../stop.js"
+import { StopScan } from "../stop.js"
 import { WRAP_KEY } from "./request.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
@@ -159,8 +159,8 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
     }
     emit(envelope([part]))
   }
-  // A stop sequence is held back until the finish decides it (src/stop.ts). Structured output has none.
-  const holdback = exchange.structuredTool === undefined ? new StopHoldback(exchange.stop ?? []) : undefined
+  // A stop sequence in the answer ends it; the text is held back until it is ruled out (src/stop.ts). Structured output has none.
+  const holdback = exchange.structuredTool === undefined ? new StopScan(exchange.stop ?? []) : undefined
   const text = (delta: string) => {
     const out = holdback ? holdback.push(delta) : delta
     if (out.length > 0) push({ text: out })
@@ -186,6 +186,10 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
   }
 
   for await (const event of events) {
+    if (holdback?.matched !== undefined) {
+      finish = "stop"
+      break
+    }
     if (event.type === "error") {
       failure = event.error
       break
@@ -220,9 +224,20 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
       }
       continue
     }
-    if (event.type !== "text-delta") flush()
-    if (event.type === "text-delta") text(event.text)
-    else toolCall(event)
+    if (event.type !== "text-delta") {
+      flush()
+      if (holdback?.matched !== undefined) {
+        finish = "stop"
+        break
+      }
+    }
+    if (event.type === "text-delta") {
+      text(event.text)
+      if (holdback?.matched !== undefined) {
+        finish = "stop"
+        break
+      }
+    } else toolCall(event)
   }
 
   const passthrough = exchange.callerTools === true && calls > 0
@@ -232,7 +247,7 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
   if (failure) return { failure, started }
   flush()
   if (holdback) {
-    const rest = holdback.finish(finish === "stop" && calls === 0).text
+    const rest = holdback.finish()
     if (rest.length > 0) push({ text: rest })
   }
   if (held && !passthrough) text(structuredText(exchange, held))

@@ -1,14 +1,16 @@
 /**
- * #149 A caller stop sequence that ends a plain stop is removed from the answer on Chat
- * Completions, legacy completions and Gemini, as Anthropic Messages does (#145). The held-back
- * tail keeps a streamed sequence from reaching the client. A tool call, a length finish or
- * structured output keeps its text as it is.
+ * #149 A caller stop sequence in the answer ends it, and is removed from it, on Chat Completions,
+ * legacy completions and Gemini, as Anthropic Messages does (#145). The held-back tail keeps a
+ * streamed sequence from reaching the client. Structured output keeps its text as it is.
+ *
+ * #390 The sequence ends the answer wherever it occurs in the answer text (not only at the end),
+ * whatever the finish reason, and a tool call after it is not read: the model was stopped there.
  */
 import { describe, expect, test } from "bun:test"
 import { completionsCodec } from "../../src/completions/response.js"
 import { runGenerate, type GeminiExchange } from "../../src/gemini/response.js"
 import { collectCompletion, streamCompletion, type OpenAiExchange } from "../../src/openai/response.js"
-import { StopHoldback, stopTail, stripStopTail } from "../../src/stop.js"
+import { StopScan, stopAt } from "../../src/stop.js"
 import { ev, events } from "../support/fixtures.js"
 
 /** The `data:` payloads of a stream, parsed; `[DONE]` is dropped. */
@@ -23,29 +25,45 @@ function frames(chunks: string[]): Array<Record<string, any>> {
 const chatExchange = (stop?: string[], extra: Partial<OpenAiExchange> = {}): OpenAiExchange => ({ model: "test/echo", stream: false, includeUsage: false, ...(stop ? { stop } : {}), ...extra })
 
 describe("#149 the shared stop helper", () => {
-  test("stopTail: the longest sequence the text ends with, if any", () => {
-    expect(stopTail("Answer: 4 ###", ["#", "###"])).toBe("###")
-    expect(stopTail("END of it", ["END"])).toBeUndefined()
-    expect(stripStopTail("Hello END", ["END"])).toEqual({ text: "Hello ", matched: "END" })
+  test("stopAt: the earliest sequence in the text; the longer one where two start together", () => {
+    expect(stopAt("Answer: 4 ###", ["#", "###"])).toEqual({ index: 10, stop: "###" })
+    expect(stopAt("Hello END and END", ["END"])).toEqual({ index: 6, stop: "END" })
+    expect(stopAt("nothing here", ["END"])).toBeUndefined()
   })
 
-  test("StopHoldback: a sequence split across pushes is held back, then removed at the finish", () => {
-    const holdback = new StopHoldback(["END"])
-    const sent = [holdback.push("Hel"), holdback.push("lo EN"), holdback.push("D")]
+  test("StopScan: a sequence split across pushes is held back, then cut", () => {
+    const scan = new StopScan(["END"])
+    const sent = [scan.push("Hel"), scan.push("lo EN"), scan.push("D"), scan.push("ignored")]
     expect(sent.join("")).toBe("Hello ")
-    expect(holdback.finish(true)).toEqual({ text: "", matched: "END" })
+    expect(scan.matched).toBe("END")
+    expect(scan.finish()).toBe("")
   })
 
-  test("StopHoldback: without stop sequences every chunk passes through at once", () => {
-    const holdback = new StopHoldback([])
-    expect(holdback.push("abc")).toBe("abc")
-    expect(holdback.finish(true)).toEqual({ text: "" })
+  test("StopScan: a sequence in the middle of the text ends it there", () => {
+    const scan = new StopScan(["END"])
+    expect(scan.push("END of it")).toBe("")
+    expect(scan.matched).toBe("END")
   })
 
-  test("StopHoldback: a finish that is not a plain stop releases the held text unchanged", () => {
-    const holdback = new StopHoldback(["END"])
-    expect(holdback.push("Hello END")).toBe("Hello ")
-    expect(holdback.finish(false)).toEqual({ text: "END" })
+  test("StopScan: text that only looks like the start of a sequence is sent at the finish", () => {
+    const scan = new StopScan(["END"])
+    expect(scan.push("EN")).toBe("")
+    expect(scan.finish()).toBe("EN")
+    expect(scan.matched).toBeUndefined()
+  })
+
+  test("StopScan: without stop sequences every chunk passes through at once", () => {
+    const scan = new StopScan([])
+    expect(scan.push("abc")).toBe("abc")
+    expect(scan.finish()).toBe("")
+    expect(scan.matched).toBeUndefined()
+  })
+
+  test("StopScan: release sends the held text unchanged (before a tool call or reasoning)", () => {
+    const scan = new StopScan(["END"])
+    expect(scan.push("Hello EN")).toBe("Hello")
+    expect(scan.release()).toBe(" EN")
+    expect(scan.finish()).toBe("")
   })
 })
 
@@ -63,19 +81,20 @@ describe("#149 Chat Completions removes a caller stop sequence", () => {
     expect(frames(chunks).at(-1)!.choices[0].finish_reason).toBe("stop")
   })
 
-  test("a sequence in the middle of the answer is not removed", async () => {
+  test("#390 a sequence in the middle of the answer ends it there: the text before it, finish_reason stop", async () => {
     const { body } = await collectCompletion(events(ev.text("END of it"), ev.finish("stop")), chatExchange(["END"]))
-    expect((body as any).choices[0].message.content).toBe("END of it")
+    expect((body as any).choices[0]).toMatchObject({ message: { content: null }, finish_reason: "stop" })
   })
 
-  test("a length finish that ends on the sequence keeps it", async () => {
+  test("#390 a length finish that ends on the sequence: the sequence still ends the answer", async () => {
     const { body } = await collectCompletion(events(ev.text("Hello END"), ev.finish("length")), chatExchange(["END"]))
-    expect((body as any).choices[0]).toMatchObject({ message: { content: "Hello END" }, finish_reason: "length" })
+    expect((body as any).choices[0]).toMatchObject({ message: { content: "Hello " }, finish_reason: "stop" })
   })
 
-  test("a tool call in the same step keeps the text: the stop was not the end of the answer", async () => {
+  test("#390 a tool call after the sequence is not read: the model was stopped at the sequence", async () => {
     const { body } = await collectCompletion(events(ev.text("Hello END"), ev.call("c1", "lookup", { q: 1 }), ev.finish("stop")), chatExchange(["END"]))
-    expect((body as any).choices[0].message.content).toBe("Hello END")
+    expect((body as any).choices[0].message).toMatchObject({ content: "Hello " })
+    expect((body as any).choices[0].message.tool_calls).toBeUndefined()
   })
 
   test("streamed text before a tool call is released in full, not held", async () => {
@@ -119,8 +138,9 @@ describe("#149 Gemini removes a caller stop sequence", () => {
     expect(streamed).toBe("Hello ")
   })
 
-  test("a length finish keeps the text", async () => {
+  test("#390 a length finish that ends on the sequence: the sequence still ends the answer", async () => {
     const run = await runGenerate(events(ev.text("Hello END"), ev.finish("length")), gemini(["END"]), () => {})
-    expect(textOf(run.response)).toBe("Hello END")
+    expect(textOf(run.response)).toBe("Hello ")
+    expect((run.response as any).candidates[0].finishReason).toBe("STOP")
   })
 })

@@ -7,7 +7,7 @@
  * no-op `emit`. Thinking blocks are produced only when the request asked for thinking.
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
-import { StopHoldback } from "../stop.js"
+import { StopScan } from "../stop.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -132,9 +132,9 @@ export async function runMessage(
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
-  // Text is held back by the longest stop sequence, so a sequence at the end of the answer can be
-  // found and removed before it is sent (src/stop.ts). Without stop sequences nothing is held.
-  const holdback = new StopHoldback(exchange.stop ?? [])
+  // Text is held back by the longest stop sequence, so a sequence in the answer is found and cut before it is sent (src/stop.ts).
+  // Without stop sequences nothing is held.
+  const holdback = new StopScan(exchange.stop ?? [])
 
   const message = (extra: Record<string, unknown>) => ({
     id,
@@ -227,8 +227,13 @@ export async function runMessage(
         delta("thinking", event.text)
         if (event.signature !== undefined) sign(event.signature)
       }
-    } else if (event.type === "text-delta") text(event.text)
-    else toolCall(event)
+    } else if (event.type === "text-delta") {
+      text(event.text)
+      if (holdback.matched !== undefined) {
+        finish = "stop"
+        break
+      }
+    } else toolCall(event)
   }
 
   failure ??= finish ? undefined : noFinish()
@@ -240,8 +245,9 @@ export async function runMessage(
     emit(encodeError(failure))
     return { failure, started }
   }
-  // A plain stop with no tool calls that ends on a stop sequence: the sequence is not part of the answer.
-  const { text: rest, matched } = holdback.finish(finish === "stop" && calls === 0)
+  // A stop sequence in the answer ends it, and is not part of it.
+  const rest = holdback.finish()
+  const matched = holdback.matched
   delta("text", rest)
   start()
   close()

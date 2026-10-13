@@ -18,7 +18,7 @@ import { serveChoices } from "../openai/fanout.js"
 import { encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
 import { appPolicy, maxNFor, maxNOption, requestedModel } from "../config.js"
-import { appGeneration, dropRejected } from "../openai/sampling.js"
+import { appGeneration, dropRejected, stopOf } from "../openai/sampling.js"
 import { parseCompletionsRequest } from "./request.js"
 import { completionsCodec } from "./response.js"
 
@@ -57,5 +57,7 @@ export async function serveCompletions(host: RouteHost, { app, body, response, s
   )
   // The answer names the model it runs on: the app's pin, else the caller's (#261).
   parsed.exchange.model = requested.model
-  return serveChoices(host, { app, calls, response, scope, info, codec: completionsCodec(parsed.exchange) })
+  // The stop sequences the answer is matched on (#390): the caller's, else the app's default. The model never gets them.
+  const stop = stopOf(policy, parsed.requests[0]!.generation) ?? []
+  return serveChoices(host, { app, calls, response, scope, info, codec: completionsCodec({ ...parsed.exchange, stop }) })
 }

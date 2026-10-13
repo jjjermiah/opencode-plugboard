@@ -1,7 +1,7 @@
 /**
  * #145 A stop sequence that ends the answer is reported as `stop_reason: "stop_sequence"` with the
- * matched text, and is not part of the answer. The host reports only `stop`, so the end of the
- * text is checked; the held-back tail keeps a streamed sequence from reaching the client.
+ * matched text, and is not part of the answer. The held-back tail keeps a streamed sequence from
+ * reaching the client. #390: the sequence is found anywhere in the answer text, not only at its end.
  */
 import { describe, expect, test } from "bun:test"
 import { runMessage, type MessagesStreamEvent } from "../../src/anthropic/response.js"
@@ -46,10 +46,11 @@ describe("#145 a stop sequence is reported and removed", () => {
     expect(streamed).toBe("Hello END")
   })
 
-  test("a sequence in the middle of the answer is not a stop: only the tail counts", async () => {
+  test("#390 a sequence in the middle of the answer ends it there", async () => {
     const { message, streamed } = await run([ev.text("END of it"), ev.finish("stop")], ["END"])
-    expect(message.stop_reason).toBe("end_turn")
-    expect(streamed).toBe("END of it")
+    expect(message.stop_reason).toBe("stop_sequence")
+    expect(message.stop_sequence).toBe("END")
+    expect(streamed).toBe("")
   })
 
   test("text shorter than the sequence is sent whole, with end_turn", async () => {
@@ -58,9 +59,9 @@ describe("#145 a stop sequence is reported and removed", () => {
     expect(streamed).toBe("EN")
   })
 
-  test("a length finish that ends on a sequence is max_tokens, not a stop sequence", async () => {
+  test("#390 a length finish whose answer contains a sequence: the sequence still ends it", async () => {
     const { message } = await run([ev.text("Hello END"), ev.finish("length")], ["END"])
-    expect(message.stop_reason).toBe("max_tokens")
-    expect(message.content).toEqual([{ type: "text", text: "Hello END" }])
+    expect(message.stop_reason).toBe("stop_sequence")
+    expect(message.content).toEqual([{ type: "text", text: "Hello " }])
   })
 })

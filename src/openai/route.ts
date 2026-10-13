@@ -74,7 +74,7 @@ import type { SessionPromptDeps } from "../session/caller.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { STRUCTURED_FALLBACK_HEADER, collectCompletion, encodeError, encodeModelList, streamCompletion, type OpenAiExchange } from "./response.js"
-import { appGeneration, dropRejected } from "./sampling.js"
+import { appGeneration, dropRejected, stopOf } from "./sampling.js"
 
 /** What the serving generation supplies per request. */
 export interface RouteHost {
@@ -405,7 +405,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, call)
     // Per app, then global (`reasoningOutputFor`): the decoder does not know the app.
-    const exchange: OpenAiExchange = { ...parsed.exchange, reasoningOutput: reasoningOutputFor(host.options, auth.app) }
+    // The stop sequences the answer is matched on (#390): the caller's, else the app's default. The model never gets them.
+    const stop = stopOf(appPolicy(host.options, auth.app), parsed.request.generation) ?? []
+    const exchange: OpenAiExchange = { ...parsed.exchange, stop, reasoningOutput: reasoningOutputFor(host.options, auth.app) }
     // The answer names the model it runs on: the app's pin, else the caller's (#261).
     exchange.model = requested.model
     // n > 1: one independent call per choice, merged (src/openai/fanout.ts).
