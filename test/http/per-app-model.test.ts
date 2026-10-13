@@ -89,12 +89,72 @@ describe("#261 apps.<name>.model on the wire", () => {
   })
 })
 
+/** A caller that reports the model it served, as the session caller does, so `x-plugboard-model` is set. */
+function servingCaller(inner: FakeModelCaller) {
+  return {
+    stream(request: Parameters<FakeModelCaller["stream"]>[0], context: Parameters<FakeModelCaller["stream"]>[1]) {
+      const { providerID, id, variant } = request.ref
+      context.onServed?.({ model: `${providerID}/${id}${variant ? `#${variant}` : ""}`, fallbacks: 0 })
+      return inner.stream(request, context)
+    },
+  }
+}
+
+describe("#261 the answer names the pinned model on every route", () => {
+  const PINNED = "opencode-go/glm-5.3-flash"
+  async function serving(extra: Record<string, unknown> = {}) {
+    const inner = new FakeModelCaller(() => [ev.text("answer"), ev.finish()])
+    server = await startRoute({ caller: servingCaller(inner), catalog: CATALOG, options: { ...options, ...extra } })
+    return inner
+  }
+
+  test("Chat Completions: x-plugboard-model and the body's model name the pin", async () => {
+    await serving()
+    const reply = await server!.send(chat(KEYS.widget, { model: "test/echo" }))
+    expect(reply.headers["x-plugboard-model"]).toBe(PINNED)
+    expect(reply.json().model).toBe(PINNED)
+  })
+
+  test("Responses: x-plugboard-model and the echoed model name the pin", async () => {
+    const inner = await serving()
+    const reply = await server!.send({ method: "POST", path: "/v1/responses", headers: bearer(KEYS.widget), body: { model: "test/echo", input: "hi" } })
+    expect(reply.headers["x-plugboard-model"]).toBe(PINNED)
+    expect(reply.json().model).toBe(PINNED)
+    expect(inner.call.request.ref).toMatchObject({ id: "glm-5.3-flash" })
+  })
+
+  test("Messages: x-plugboard-model and the echoed model name the pin", async () => {
+    await serving()
+    const reply = await server!.send({ method: "POST", path: "/v1/messages", headers: { "x-api-key": KEYS.widget }, body: { model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: "hi" }] } })
+    expect(reply.headers["x-plugboard-model"]).toBe(PINNED)
+    expect(reply.json().model).toBe(PINNED)
+  })
+
+  test("Gemini: x-plugboard-model names the pin", async () => {
+    await serving()
+    const reply = await server!.send({ method: "POST", path: "/v1beta/models/test%2Fecho:generateContent", headers: bearer(KEYS.widget), body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] } })
+    expect(reply.headers["x-plugboard-model"]).toBe(PINNED)
+  })
+
+  test("a pin the server does not enable: the 404 names the pinned model, not the caller's", async () => {
+    await serving({ models: ["test/*", "other/*", "opencode-go/*", "missing/*"], apps: { widget: { model: "missing/ghost" } } })
+    const reply = await server!.send(chat(KEYS.widget, { model: "test/echo" }))
+    expect(reply.status).toBe(404)
+    expect(reply.json().error.message).toBe("Model missing/ghost is not available")
+  })
+})
+
 /** The pin's load-time rules, checked without a server. */
 const parseApps = (apps: Record<string, unknown>) => parseOptions({ keys: KEYS, models: ["test/*", "other/*"], aliases: { fast: "test/echo" }, apps })
 
 describe("#261 apps.<name>.model at load", () => {
   test("a canonical id that passes the global models is kept on the policy, variant included", () => {
     expect(parseApps({ widget: { model: "test/echo#high" } }).apps.widget).toMatchObject({ model: "test/echo#high" })
+  })
+
+  test("an alias whose target matches one of the app's models patterns is accepted, as the request check admits it", () => {
+    // `fast` targets test/echo, which `test/*` admits; the app does not list `fast` by name.
+    expect(parseApps({ widget: { model: "fast", models: ["test/*"] } }).apps.widget).toMatchObject({ model: "fast" })
   })
 
   test("an alias the app lists by name is accepted, and an app without models is not restricted", () => {

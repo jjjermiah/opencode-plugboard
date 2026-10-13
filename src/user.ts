@@ -43,10 +43,11 @@ export function bodyUserId(body: unknown): unknown {
  * is not trusted more than the body: the same sanitizer decides, and a present but refused header is dropped, not replaced.
  */
 export function requestUser(headers: Readonly<Record<string, string | ReadonlyArray<string> | undefined>>, userHeader: string | undefined, fromBody: unknown): unknown {
-  if (userHeader === undefined) return fromBody
+  if (userHeader === undefined || !Object.hasOwn(headers, userHeader)) return fromBody
   const raw = headers[userHeader]
   const value = Array.isArray(raw) ? raw[0] : raw
-  return value === undefined ? fromBody : value
+  // A blank header is absent, so a proxy that always sets it does not hide the body's user (#272).
+  return value === undefined || value.trim() === "" ? fromBody : value
 }
 
 /**
@@ -56,7 +57,9 @@ export function requestUser(headers: Readonly<Record<string, string | ReadonlyAr
 export function withEndUser(body: unknown, user: unknown, dialect: "user" | "metadata"): unknown {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return body
   if (dialect === "user") return user === bodyUser(body) ? body : { ...body, user }
-  return user === bodyUserId(body) ? body : { ...body, metadata: { ...(typeof (body as { metadata?: unknown }).metadata === "object" ? (body as { metadata: object }).metadata : {}), user_id: user } }
+  const metadata = (body as { metadata?: unknown }).metadata
+  const kept = typeof metadata === "object" && metadata !== null && !Array.isArray(metadata) ? metadata : {}
+  return user === bodyUserId(body) ? body : { ...body, metadata: { ...kept, user_id: user } }
 }
 
 /** The `user` member of a `PlugRequest` (spread into it), empty when no user is kept. */

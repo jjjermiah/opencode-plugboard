@@ -350,7 +350,7 @@ Models plugboard does not know keep every parameter, and the provider's own 400 
 
 Usage is recorded per app and per UTC day: requests, errors, latency, tokens, estimated cost, cache hits, fallbacks and 429 refusals. It is on by default. An admin key reads every app, and an app key reads only its own.
 
-Per end user: an app whose proxy sets a user header can name it with `userHeader`, so usage splits per user without a change to the bot (`"apps": { "discord-bot": { "userHeader": "x-user-id" } }`, since 0.30.0).
+Per end user: an app whose proxy sets a user header can name it with `userHeader`, so usage splits per user without a change to the bot (`"apps": { "discord-bot": { "userHeader": "x-user-id" } }`, since 0.31.0).
 
 ```jsonc
 "adminKey": "{env:PLUGBOARD_ADMIN_KEY}",   // reads every app; not a model key
