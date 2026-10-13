@@ -1,5 +1,7 @@
 # LangChain Python
 
+<ExampleResult example="langchain-python" />
+
 Tested: `langchain-openai` 1.7.0, `langchain-core` 1.6.9, live run [`2026-10-13-c97ac66`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain-python/runs/live/2026-10-13-c97ac66) at plugboard 0.26.0 (`c97ac66`): pass. Every scenario passed on `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. `json_mode` on `fast` returned valid JSON on that run (one sample; see Structured output). The code below is the example's snippet, and the run's report and transcripts are in the example directory.
 
 The client is built once, in [`llm.py`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/langchain-python/llm.py). The function needs `import os` and the module constant `NO_RETRIES = {"max_retries": 0}`:

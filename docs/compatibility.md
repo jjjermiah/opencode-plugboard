@@ -63,7 +63,7 @@ Scenarios:
 
 ## Python clients
 
-The Python checks with no example yet run by hand with `bun run compat:python` (`compat/py/clients/`, a uv project pinned by `compat/py/uv.lock`). They are not in CI: the packages were not timed against the CI budget, and the run needs a Python environment CI does not set up. With no `PLUGBOARD_URL` the run starts the scripted fake (`test/support/fake-server.ts`); with `PLUGBOARD_URL` and `PLUGBOARD_KEY` set it runs against that server. Live results for each client are in its example's `runs/live/` directory, see [examples/](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/README.md).
+The Python clients are examples: each has a runner in `examples/<client>/` (its `pyproject.toml` and `uv.lock` pin the client), and CI runs the scripted plugboard for it on every change. Live results for each client are in its example's `runs/live/` directory, see [examples/](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/README.md).
 
 | Client | Package | Fake (2026-10-12) | Live (isolated dev server, 2026-10-12) |
 |---|---|---|---|

@@ -3,6 +3,8 @@
 import type { Theme } from "vitepress"
 import DefaultTheme from "vitepress/theme"
 import { h } from "vue"
+import ExampleResult from "./ExampleResult.vue"
+import ExamplesIndex from "./ExamplesIndex.vue"
 import "./custom.css"
 
 // Set at build time from package.json (vite.define in config.ts).
@@ -19,6 +21,11 @@ const theme: Theme = {
           ").",
         ]),
     }),
+}
+
+theme.enhanceApp = ({ app }) => {
+  app.component("ExampleResult", ExampleResult)
+  app.component("ExamplesIndex", ExamplesIndex)
 }
 
 export default theme

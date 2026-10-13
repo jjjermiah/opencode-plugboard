@@ -1,46 +1,43 @@
 # Instructor
 
-Tested: `instructor` 1.17.0 (with `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12, against the scripted fake plugboard. Validated extraction in TOOLS and JSON_SCHEMA mode, and partial streaming, passed. The same day, all 3 scenarios also passed on the isolated live dev server (`fast` = `opencode-go/glm-5.3-flash`, extracting "Ada, 36" correctly); see [compatibility](../compatibility.md#python-clients).
+<ExampleResult example="instructor" />
 
-Instructor wraps the OpenAI client and returns a validated Pydantic object instead of a completion.
+Tested: `instructor` 1.17.0 (with `openai` 2.54.0). Live record [2026-10-12 at `a67e176`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/instructor/runs/live/2026-10-12-a67e176/REPORT.md): all 3 scenarios passed on the isolated live dev server (`fast` = `opencode-go/glm-5.3-flash`, extracting "Ada, 36" correctly). The example's scripted run is checked in CI: the three modes pass.
 
-```python
-import os
-import instructor
-from openai import OpenAI
-from pydantic import BaseModel, Field
+Instructor wraps the OpenAI client and returns a validated Pydantic object instead of a completion. The example's client is the OpenAI client for plugboard:
 
-class Person(BaseModel):
-    name: str
-    age: int = Field(ge=0, le=150)
+<<< @/../examples/instructor/structured.py#snippet-client
 
-client = instructor.from_openai(
-    OpenAI(base_url="http://localhost:4010/v1", api_key=os.environ["PLUGBOARD_KEY"]),
-    mode=instructor.Mode.TOOLS,
-)
-person = client.chat.completions.create(
-    model="fast",                                   # an alias from the plugboard `aliases` option
-    response_model=Person,
-    messages=[{"role": "user", "content": "Extract: Ada is 36 years old."}],
-)
-print(person)
-```
-
-`instructor.from_provider("openai/fast", base_url=..., api_key=...)` is the other entry point in the client docs; it was not run here.
+`fast` is an alias from the plugboard `aliases` option.
 
 ## Modes
 
-| Mode | What plugboard receives | Result in the fake run |
+The example runs the same structured-output scenario in three modes. Each snippet builds `client` for its mode and returns the validated Meal.
+
+| Mode | What plugboard receives | Result in the scripted run |
 |---|---|---|
 | `Mode.TOOLS` | a tool built from the model, forced by `tool_choice` | pass |
 | `Mode.JSON_SCHEMA` | `response_format` with `json_schema` (plugboard turns it into a forced tool) | pass |
+| partial stream (`create_partial`) | a streamed tool call; the last partial is the full object | pass |
 
-Partial streaming: `client.chat.completions.create_partial(...)` yields growing objects. The fake sends a tool call's arguments in one delta, so the run gave one partial, the full object. Streams where the arguments arrive in many pieces were not tested.
+The `Mode.TOOLS` snippet:
+
+<<< @/../examples/instructor/structured.py#snippet-tools
+
+The `Mode.JSON_SCHEMA` snippet:
+
+<<< @/../examples/instructor/structured.py#snippet-json-schema
+
+Partial streaming, with `client.chat.completions.create_partial(...)`, which yields growing objects:
+
+<<< @/../examples/instructor/structured.py#snippet-partial
+
+The example's `Meal` model forbids extra keys, so `extra_keys` in the run is always empty. The check is the model's own validation, not a count of keys in the raw answer.
 
 ## Gotchas
 
-- Plugboard does not enforce the schema. A model can return a value that fails validation, and Instructor then retries. Keep `max_retries` above 0 for real use; the harness set it to 0 so that a failure shows.
+- Plugboard does not enforce the schema. A model can return a value that fails validation, and Instructor then retries. Keep `max_retries` above 0 for real use; the example sets it to 0 so that a failure shows.
 - Do not pass both a `tools` list and a `response_model` in one request. Plugboard issue #34 reports that plugboard then returns the caller's tool calls, not the schema answer. Not re-tested here.
-- The fake always returns values that match the schema, so the harness proves the wiring, not that a model fills the fields correctly.
+- The scripted run answers with values that match the schema, so it proves the wiring, not that a model fills the fields correctly.
 
-Harness: `compat/py/clients/instructor_client.py`. Example: [`examples/instructor/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/instructor).
+Example: [`examples/instructor/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/instructor).

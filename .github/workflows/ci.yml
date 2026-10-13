@@ -120,28 +120,14 @@ jobs:
             echo "No test script, skipping."
           fi
 
-  # Only the Python checks that have no example yet (compat/py/clients). The client examples run in `examples`.
-  compat:
-    name: Remaining compat checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Compile remaining compat Python
-        run: git ls-files -z 'compat/py/*.py' | xargs -0 python3 -m py_compile
-      - name: Syntax-check shell scripts
-        run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
-
   # The scripted runs of the client examples take about 5 seconds and are deterministic. A diff, or a new file in the run
   # directories, means a run went stale: regenerate it with `bun examples/_harness/run.ts <example> --target scripted`.
   examples:
     name: Examples (scripted runs are current)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The Python examples (DSPy, LiteLLM, Instructor, OpenAI Agents, Aider) resolve and install their locked envs on first run.
+    # A cold run takes under two minutes, so 15 minutes leaves room for a slow runner and fails a hang sooner.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -176,6 +162,12 @@ jobs:
         run: |
           (cd examples/openai-js && bunx tsc --noEmit)
           (cd examples/tool-bot && bunx tsc --noEmit)
+      # The examples index (examples/README.md) and every <<< snippet import in docs/ must match the tree. The docs build
+      # below reads the same records.
+      - name: Examples index is current and every snippet import resolves
+        run: bun .github/scripts/examples-index.ts --check
+      - name: Shell scripts parse (examples and scripts)
+        run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
       - name: The committed scripted runs match a fresh run
         run: |
           shopt -s nullglob
@@ -205,7 +197,7 @@ jobs:
   ci-passed:
     name: CI passed
     if: always()
-    needs: [package, host-versions, host, compat, examples]
+    needs: [package, host-versions, host, examples]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

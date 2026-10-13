@@ -1,0 +1,133 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "openai/gpt-5.6-luna#low",
+          "stream": true,
+          "tool_choice": {
+            "function": {
+              "name": "PartialMeal"
+            },
+            "type": "function"
+          },
+          "tools": [
+            {
+              "function": {
+                "description": "Correctly extracted `PartialMeal` with all the required parameters with correct types",
+                "name": "PartialMeal",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "calories": {
+                      "title": "Calories",
+                      "type": "number"
+                    },
+                    "protein_g": {
+                      "title": "Protein G",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "calories",
+                    "protein_g"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "",
+                      "role": "assistant"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-1>",
+                "id": "<id-1>",
+                "model": "openai/gpt-5.6-luna#low",
+                "object": "chat.completion.chunk"
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"calories\":180,\"protein_g\":13}",
+                            "name": "PartialMeal"
+                          },
+                          "id": "<id-2>",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-2>",
+                "id": "<id-1>",
+                "model": "openai/gpt-5.6-luna#low",
+                "object": "chat.completion.chunk"
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {},
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-3>",
+                "id": "<id-1>",
+                "model": "openai/gpt-5.6-luna#low",
+                "object": "chat.completion.chunk"
+              }
+            },
+            {
+              "data": "[DONE]"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

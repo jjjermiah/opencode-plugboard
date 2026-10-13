@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # The same jobs CI runs (typecheck, tests, pack check, compat checks), not a copy.
+  # The same jobs CI runs (typecheck, tests, pack check, example checks), not a copy.
   ci:
     name: CI gates
     permissions:

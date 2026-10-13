@@ -45,4 +45,4 @@ A plugin effect that blocked once froze every prompt in the project that loaded 
 
 ## Client checks (`examples/`)
 
-Each client has a runnable example in `examples/<client>/` with its own lockfile. An SDK bump or a wire-format change in `src/` leaves the scripted runs stale until `bun examples/_harness/run.ts all --target scripted` is rerun and the diff is committed (CI fails on a stale run). Live runs are dated records under `examples/<client>/runs/live/`; add a new directory, don't rewrite an old one. `examples/_tools/sessions.py` lists/deletes test history (`--dry-run`). The Python checks with no example yet are in `compat/` (see its README).
+Each client has a runnable example in `examples/<client>/` with its own lockfile. An SDK bump or a wire-format change in `src/` leaves the scripted runs stale until `bun examples/_harness/run.ts all --target scripted` is rerun and the diff is committed (CI fails on a stale run). Live runs are dated records under `examples/<client>/runs/live/`; add a new directory, don't rewrite an old one. `examples/_tools/sessions.py` lists/deletes test history (`--dry-run`).

@@ -1,5 +1,7 @@
 # OpenAI Python SDK
 
+<ExampleResult example="openai-python" />
+
 Tested: `openai` 3.29.0, live run [`2026-10-12-a38860b`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-python/runs/live/2026-10-12-a38860b) at plugboard 0.24.0 (`a38860b`): pass. Scenarios S1 to S7 and the error paths passed; `models.retrieve` is in the Gotchas. The code below is the example's snippet, and the run's summary and transcripts are in the example directory.
 
 ```python

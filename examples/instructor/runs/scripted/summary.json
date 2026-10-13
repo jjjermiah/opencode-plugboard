@@ -1,0 +1,378 @@
+{
+  "client": {
+    "name": "instructor",
+    "runtime": {
+      "name": "python",
+      "version": "3"
+    },
+    "version": "1.17.0"
+  },
+  "example": "instructor",
+  "models": [
+    "fast",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-5.6-luna#low",
+    "nope"
+  ],
+  "scenarios": [
+    {
+      "checks": [],
+      "error": null,
+      "id": "S1",
+      "model": "fast",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "fast",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S3",
+      "model": "fast",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S4",
+      "model": "fast",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "fast",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.tools.fast.json",
+      "variant": "tools"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.json-schema.fast.json",
+      "variant": "json-schema"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.partial.fast.json",
+      "variant": "partial"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.tools.anthropic-claude-haiku-4-5.json",
+      "variant": "tools"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.json-schema.anthropic-claude-haiku-4-5.json",
+      "variant": "json-schema"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.partial.anthropic-claude-haiku-4-5.json",
+      "variant": "partial"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.tools.openai-gpt-5.6-luna-low.json",
+      "variant": "tools"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.json-schema.openai-gpt-5.6-luna-low.json",
+      "variant": "json-schema"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S6",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.partial.openai-gpt-5.6-luna-low.json",
+      "variant": "partial"
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S7",
+      "model": "-",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "E1",
+      "model": "fast",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": false,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "E2",
+      "model": "nope",
+      "note": "Instructor is a structured-output client: this scenario is not part of its record",
+      "required": false,
+      "status": "n/a",
+      "transcript": null
+    }
+  ],
+  "schema": 1,
+  "target": "scripted",
+  "verdict": "pass"
+}

@@ -1,5 +1,7 @@
 # Vercel AI SDK
 
+<ExampleResult example="vercel-ai-sdk" />
+
 Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91. Live run [`2026-10-13-c97ac66`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/vercel-ai-sdk/runs/live/2026-10-13-c97ac66) at plugboard 0.26.0 (`c97ac66`): pass, all 45 rows pass on all three ways in. The code below is the example's snippet, and the run's summary and transcripts are in the example directory.
 
 Use `createOpenAICompatible`. It passed every scenario with `supportsStructuredOutputs: true`. Without that flag structured output failed (see Gotchas).

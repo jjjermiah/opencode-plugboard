@@ -1,53 +1,44 @@
 # LiteLLM (as a client)
 
-Tested: `litellm` 1.105.0 (with `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12, against the scripted fake plugboard. Completion, streaming, a tool round trip and structured output passed. The same day, all 4 scenarios also passed on the isolated live dev server (`fast` = `opencode-go/glm-5.3-flash`); see [compatibility](../compatibility.md#python-clients).
+<ExampleResult example="litellm-client" />
+
+Tested: `litellm` 1.105.0 (with `openai` 2.54.0). Live record [2026-10-12 at `a67e176`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/litellm-client/runs/live/2026-10-12-a67e176/REPORT.md): all 4 scenarios passed on the isolated live dev server (`fast` = `opencode-go/glm-5.3-flash`). The example's scripted run is checked in CI: completion, stream, tool round trip and structured output pass on the three models.
 
 LiteLLM is usually run as a gateway. Used as a client, `litellm.completion` normalises the request and sends it to any OpenAI-compatible `api_base`. This page is about that use; for LiteLLM in front of plugboard, the gateway case is different.
 
-```python
-import litellm
+The example's helper adds the `openai/` prefix, which selects Chat Completions, and reads the base URL and key from the environment:
 
-r = litellm.completion(
-    model="openai/fast",                       # the openai/ prefix selects Chat Completions
-    api_base="http://localhost:4010/v1",
-    api_key=os.environ["PLUGBOARD_KEY"],
-    messages=[{"role": "user", "content": "Reply with exactly: pong"}],
-)
-print(r.choices[0].message.content)
-```
+<<< @/../examples/litellm-client/chat.py#snippet-client
 
-`fast` is an alias from the plugboard `aliases` option. Other ids were not run through LiteLLM; the `openai/` prefix should carry a `provider/model[#variant]` id through unchanged, but that is untested.
+## Completion
+
+<<< @/../examples/litellm-client/chat.py#snippet
+
+`fast` is an alias from the plugboard `aliases` option. The example also runs `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low` through the same path.
 
 ## Streaming
 
-```python
-for chunk in litellm.completion(model="openai/fast", api_base=..., api_key=..., messages=..., stream=True):
-    print(chunk.choices[0].delta.content or "", end="")
-```
+The stream asks for usage in the last chunk, so the run can check it:
+
+<<< @/../examples/litellm-client/chat.py#snippet-stream
 
 ## Tool call
 
 Plugboard returns the call and LiteLLM hands it back as `tool_calls`. Your code runs the tool and sends the result in a `tool` message, as with the OpenAI SDK (see [OpenAI Python](openai-python.md#tool-call)).
 
+<<< @/../examples/litellm-client/tools.py#snippet
+
 ## Structured output
 
-```python
-from pydantic import BaseModel
-
-class Answer(BaseModel):
-    answer: str
-
-r = litellm.completion(model="openai/fast", api_base=..., api_key=..., messages=..., response_format=Answer)
-parsed = Answer.model_validate_json(r.choices[0].message.content)
-```
-
 Plugboard maps `json_schema` to a forced tool and returns its arguments as the content, so the JSON parses without a retry.
+
+<<< @/../examples/litellm-client/structured.py#snippet
 
 ## Gotchas
 
 - Use `api_base` with `/v1` and no path after it. LiteLLM adds `/chat/completions` itself.
 - Every test call used the `openai/` prefix. Calls without it were not tried.
-- LiteLLM reads its price map from GitHub on import. Set `LITELLM_LOCAL_MODEL_COST_MAP=True` to skip that fetch, as the harness does.
-- `litellm.telemetry` is off in the harness; leave it off in scripts that run offline.
+- LiteLLM reads its price map from GitHub on import. Set `LITELLM_LOCAL_MODEL_COST_MAP=True` to skip that fetch, as the example does.
+- `litellm.telemetry` is off in the example; leave it off in scripts that run offline.
 
-Harness: `compat/py/clients/litellm_client.py`. Example: [`examples/litellm-client/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/litellm-client).
+Example: [`examples/litellm-client/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/litellm-client).

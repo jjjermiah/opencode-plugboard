@@ -1,5 +1,7 @@
 # Open WebUI
 
+<ExampleResult example="open-webui" />
+
 Tested: Open WebUI 0.12.0 (Docker). Live run [`2026-10-13-0cf8030`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/open-webui/runs/live/2026-10-13-0cf8030) at plugboard 0.28.0 (`0cf8030`): pass. S1 to S7 were driven over its HTTP API. A browser was not used, so dropdown behaviour with a long model list is unobserved. The run's summary and transcripts are in the example directory.
 
 Add plugboard as an OpenAI connection, in the UI (Admin Panel, Settings, Connections, OpenAI API) or with the example's compose file, which sets the same connection by environment:
