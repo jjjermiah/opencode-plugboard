@@ -93,7 +93,7 @@ const errorText = (error: unknown): string => (error instanceof Error ? `${error
  * Refuses an `unobserved` entry that names no planned scenario, variant or check, or that would drop every check of its row:
  * a renamed check must not leave a stale entry, and a row with no checks must not pass vacuously.
  */
-function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>): void {
+export function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>): void {
   for (const [key, names] of Object.entries(options.unobserved ?? {})) {
     const [id = "", variant] = key.split("|")
     const scenario = planned.find((candidate) => candidate.id === id)
@@ -117,6 +117,27 @@ function unobservedFor(options: RunOptions, scenario: string, variant?: string):
  * Runs every scenario the runner covers (a function for it, or an n/a reason), on each of its models, in file order.
  * A function gets the model id and returns the observations; the checks decide pass or fail.
  */
+/** The status, checks and note of one row: the one rule `runAll` and the relay (ts/relay.ts) both apply (#370). */
+export function scoreRow(
+  scenario: Scenario,
+  model: string,
+  variant: string | undefined,
+  options: RunOptions,
+  outcome: { readonly observations: Observations; readonly error: string | null },
+): { status: "pass" | "fail" | "gap"; checks: Array<{ name: string; ok: boolean }>; note: string | null } {
+  const unobserved = unobservedFor(options, scenario.id, variant)
+  const checks = outcome.error === null ? evaluate(scenario.checks.filter((check) => !(check.name in unobserved)), outcome.observations) : []
+  let status: "pass" | "fail" | "gap" = outcome.error === null && checks.every((check) => check.ok) ? "pass" : "fail"
+  let note: string | null = null
+  const gap = options.gaps?.[`${scenario.id}|${model}`] ?? (variant === undefined ? undefined : options.gaps?.[`${scenario.id}|${variant}`]) ?? options.gaps?.[scenario.id]
+  if (status === "fail" && gap) {
+    status = "gap"
+    note = `${gap.note} (${gap.issue})`
+  }
+  if (note === null && Object.keys(unobserved).length > 0) note = Object.entries(unobserved).map(([name, why]) => "not checked, " + name + ": " + why).join("; ")
+  return { status, checks, note }
+}
+
 export async function runAll(
   functions: Readonly<Record<string, (model: string, variant?: string) => Promise<Observations>>>,
   options: RunOptions = {},
@@ -134,25 +155,15 @@ export async function runAll(
           continue
         }
         await mark(scenario.id, model, variant)
-        let checks: Array<{ name: string; ok: boolean }> = []
         let error: string | null = null
         let observations: Observations = {}
-        const unobserved = unobservedFor(options, scenario.id, variant)
         try {
           observations = await functions[scenario.id]!(model, variant)
-          checks = evaluate(scenario.checks.filter((check) => !(check.name in unobserved)), observations)
         } catch (caught) {
           error = errorText(caught)
         }
-        let status: "pass" | "fail" | "gap" = error === null && checks.every((check) => check.ok) ? "pass" : "fail"
-        let note: string | null = null
-        const gap = options.gaps?.[`${scenario.id}|${model}`] ?? (variant === undefined ? undefined : options.gaps?.[`${scenario.id}|${variant}`]) ?? options.gaps?.[scenario.id]
-        if (status === "fail" && gap) {
-          status = "gap"
-          note = `${gap.note} (${gap.issue})`
-        }
-        if (note === null && Object.keys(unobserved).length > 0) note = Object.entries(unobserved).map(([name, why]) => "not checked, " + name + ": " + why).join("; ")
-        emit({ kind: "result", scenario: scenario.id, model, ...tag, status, checks, error, note, observations })
+        const row = scoreRow(scenario, model, variant, options, { observations, error })
+        emit({ kind: "result", scenario: scenario.id, model, ...tag, status: row.status, checks: row.checks, error, note: row.note, observations })
       }
     }
   }

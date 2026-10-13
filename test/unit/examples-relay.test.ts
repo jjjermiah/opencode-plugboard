@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
+import { relayAll } from "../../examples/_harness/ts/relay.ts"
 
 const relay = fileURLToPath(new URL("../../examples/_harness/ts/relay.ts", import.meta.url))
 
@@ -78,5 +79,41 @@ describe("#362 the relay applies the scenario checks to a runner's observations"
     const { code, out } = await spawnRelay([{ kind: "gap", scenario: "S1" }, { kind: "done" }])
     expect(code).not.toBe(0)
     expect(out).toEqual([])
+  })
+})
+
+describe("#370 the relay scores rows with the same rule as runAll", () => {
+  const obs = (scenario: string, model: string, observations: Record<string, unknown>) => JSON.stringify({ kind: "observation", scenario, model, error: null, observations })
+  const resultsOf = (lines: string[]) => lines.filter((line) => line.includes('"kind":"result"')).map((line) => JSON.parse(line) as Record<string, unknown>)
+
+  test("a declared gap turns a failing row into a gap with its note", () => {
+    const text = [
+      JSON.stringify({ kind: "plan", scenarios: ["S1"], gaps: { S1: { note: "known", issue: "#1" } } }),
+      obs("S1", "fast", { text: "hello", finish_reason: "stop", usage: { total_tokens: 1 } }),
+    ].join("\n")
+    const [row] = resultsOf(relayAll(text))
+    expect(row).toMatchObject({ status: "gap", note: "known (#1)" })
+  })
+
+  test("a declared n/a scenario is emitted as an n/a row for each of its models", () => {
+    const text = [JSON.stringify({ kind: "plan", scenarios: ["S6"], na: { S6: "no structured output" } }), JSON.stringify({ kind: "done" })].join("\n")
+    const rows = resultsOf(relayAll(text))
+    expect(rows.length).toBe(3)
+    expect(rows.every((row) => row.status === "n/a" && row.note === "no structured output")).toBe(true)
+  })
+
+  test("an unobserved check is left out of its row and the note names it", () => {
+    const text = [
+      JSON.stringify({ kind: "plan", scenarios: ["S3"], unobserved: { S3: { "finish_reason is stop": "the client does not return it" } } }),
+      obs("S3", "fast", { text: "pong", finish_reason: null, usage: { input_tokens: 1, output_tokens: 1 }, done: true }),
+    ].join("\n")
+    const [row] = resultsOf(relayAll(text))
+    expect(row).toMatchObject({ status: "pass", note: "not checked, finish_reason is stop: the client does not return it" })
+    expect((row!.checks as Array<{ name: string }>).map((check) => check.name)).not.toContain("finish_reason is stop")
+  })
+
+  test("an unobserved entry that names no check of its scenario is refused before any row is printed", () => {
+    const text = [JSON.stringify({ kind: "plan", scenarios: ["S1"], unobserved: { S1: { "no such check": "why" } } }), obs("S1", "fast", { text: "pong" })].join("\n")
+    expect(() => relayAll(text)).toThrow('names no check "no such check"')
   })
 })
