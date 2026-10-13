@@ -74,3 +74,14 @@ The Python checks with no example yet run by hand with `bun run compat:python` (
 | [Aider](clients/aider.md), one `--message` request (scripted check, not a harness) | `aider-chat` 0.86.2 | 1 pass, 0 fail | 1 pass, 0 fail (`fast`) |
 
 The fake is a scripted model, so a fake pass shows the client and plugboard agree on the wire format. Only a live run shows the model's own answers, and the live column is the model behind plugboard's `fast` alias (`opencode-go/glm-5.3-flash`). Every live run listed here passed; no plugboard bug was found in either run.
+
+## Client examples in CI
+
+Four clients run against the scripted fake in the `examples` CI job, through `bun examples/_harness/run.ts all --target scripted`. Each example's scripted run is committed under `runs/scripted/`, and CI fails when a fresh run differs. Go and .NET build in CI with pinned toolchains (Go 1.27.2, .NET SDK 8.0.423). Their runners print raw observations, and `examples/_harness/ts/relay.ts` applies the same checks the Python and TypeScript runners use. Runtime versions are recorded by major version only.
+
+| Client | Example | Fake (2026-10-13) |
+|---|---|---|
+| [Go (go-openai)](clients/go-openai.md), go-openai 1.43.0 on Go 1 | [examples/go-openai](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/go-openai) | text, stream and tool round trip: 7 pass, 0 fail (text and tool round trip on 3 models, stream on `fast`) |
+| [.NET (openai-dotnet)](clients/openai-dotnet.md), OpenAI 2.14.0 on .NET 8 | [examples/openai-dotnet](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-dotnet) | text, stream and tool round trip: 7 pass, 0 fail (same models as Go) |
+| [Langfuse](clients/langfuse.md), langfuse 4.17.0 with tracing off | [examples/langfuse](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langfuse) | text, stream and tool round trip: 7 pass, 0 fail (same models as Go) |
+| [smolagents](clients/smolagents.md), smolagents 1.26.0 | [examples/smolagents](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/smolagents) | text: 3 pass. Stream: gap, because `generate_stream` does not return `finish_reason`. Tool round trip: gap, because the fake answers the tool turn only after a `tool`-role message and smolagents sends the observation as user text, so the tool call passes and the final answer does not (#362) |
