@@ -1,6 +1,6 @@
 # promptfoo
 
-Run 2026-10-12 against the scripted fake plugboard, not the live dev server (nothing listened on `127.0.0.1:4010`): promptfoo CLI 0.124.1 (npm `promptfoo`), `promptfoo eval --no-cache`. [examples/promptfoo/promptfooconfig.yaml](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/promptfoo) ran green: 2 of 2 passed, one plain-text check (`icontains pong`) and one tool-call check (`is-valid-openai-tools-call` plus a JavaScript assertion). `apiBaseUrl`, `apiKey`, `openai:chat:<model>` and the `tools` option were checked against promptfoo's OpenAI provider docs (promptfoo.dev/docs/providers/openai). The issue's claim that the provider reads `OPENAI_BASE_URL` is not in those docs and was not tested here.
+Verified: run, 2026-10-13 against the live dev server (`127.0.0.1:4010`, `main`, model `fast`, `max_tokens` 1024). promptfoo CLI 0.124.1 (npm `promptfoo`, `npx promptfoo@0.124.1`), `promptfoo eval --no-cache`. [examples/promptfoo/promptfooconfig.yaml](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/promptfoo) ran green: 2 of 2 passed, one plain-text check (`icontains pong`) and one tool-call check (`is-valid-openai-tools-call` plus a JavaScript assertion). `apiBaseUrl`, `apiKey`, `openai:chat:<model>` and the `tools` option were checked against promptfoo's OpenAI provider docs (promptfoo.dev/docs/providers/openai). The issue's claim that the provider reads `OPENAI_BASE_URL` is not in those docs and was not tested here.
 
 promptfoo is an eval and red-team tool. Its `openai:chat:<model>` provider calls any OpenAI-compatible base URL, so each test reaches plugboard's `POST /v1/chat/completions`.
 
@@ -78,4 +78,9 @@ PLUGBOARD_URL=http://127.0.0.1:4010/v1 PLUGBOARD_KEY=<your app key> npx promptfo
 
 ## Verified
 
-Run against the fake, as above. The live dev server was not up, so a live eval is still open.
+Verified: run, 2026-10-13, against the live dev server with the example's two tests. Result: 2 of 2 passed, 0 failed, 0 errors. The text check got `pong`. The tool check got a tool call that passed `is-valid-openai-tools-call` and the JavaScript assertion. The grader output was truncated, so the call's arguments were not inspected. Total tokens 375.
+
+- The run used a scratch copy of the example with `max_tokens: 1024` under `config`, because `fast` is a reasoning model. The example file itself was not changed, so it still has no `max_tokens`. Add it to the example if you want the same budget.
+- Ran with `PROMPTFOO_DISABLE_TELEMETRY=1` and `PROMPTFOO_DISABLE_UPDATE=1`, and without `--share`.
+- The promptfoo run sends no `n`. The dev server's `maxN` is 1, so a config that sets `n` above 1 gets `400 too_many_choices` there.
+- Earlier, on 2026-10-12, the same config ran green against the scripted fake plugboard (the live server was not up then).

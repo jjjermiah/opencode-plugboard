@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Eval harness clients checked against the live server** ([#106](https://github.com/jjjermiah/opencode-plugboard/issues/106)). promptfoo passes its two checks, and lm-evaluation-harness passes a generate-until task with `local-completions` and `local-chat-completions`. Loglikelihood tasks (multiple choice scored by log probability) cannot run here: plugboard does not serve `logprobs`. The client matrix now also covers a legacy prompt array with `n` (two prompts, `n: 2`, four choices), so its fake server allows `maxN` 4.
 
 ## [0.30.0] - 2026-10-13: Out of Sight
 
