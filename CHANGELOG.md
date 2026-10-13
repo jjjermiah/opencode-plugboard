@@ -17,6 +17,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Added
 
 - **Rust (async-openai) client page and example** ([#235](https://github.com/jjjermiah/opencode-plugboard/issues/235)). `docs/clients/async-openai.md` and `examples/async-openai` run a text call, a stream and one tool round trip against plugboard with model `fast`. The issue named the wrong env var: the crate reads `OPENAI_BASE_URL`, so the example sets the base with `with_api_base`.
+- **CrewAI client page and example** ([#231](https://github.com/jjjermiah/opencode-plugboard/issues/231)). `docs/clients/crewai.md` and `examples/crewai` run a text call, a stream and a crew task with one tool call against plugboard with model `fast`.
 
 ### Changed
 
