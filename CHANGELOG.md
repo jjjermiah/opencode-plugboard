@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Signed thinking replays to Copilot Claude** ([#386](https://github.com/jjjermiah/opencode-plugboard/issues/386), since 0.37.0). Replay of a client's signed `thinking` blocks was gated on the provider being `anthropic`, so Copilot's Claude models got the history without their earlier reasoning, even though Copilot serves Claude on the Anthropic messages route with the same `anthropic` metadata key. The gate now also admits `github-copilot` models whose id starts with `claude-`. The hook event carries only the model's provider and id, not its route, so plugboard cannot ask which route a model uses. The other Copilot routes (chat completions, responses) do not read that key, so a signature sent to them is dropped. Other Copilot models stay out.
 
 ## [0.36.0] - 2026-10-13: Show Your Work
 
