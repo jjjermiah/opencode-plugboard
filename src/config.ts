@@ -12,6 +12,10 @@ import { SEED_PREFIX } from "./session/seeds.js"
 /** How `/v1/models` spells a model id: the canonical `provider/model#variant`, a UI-safe slug, or both. Resolution accepts either. */
 export type ModelIds = "canonical" | "slugs" | "both"
 
+/** Option `logLevel` (#262), lowest first. */
+export type LogLevel = "debug" | "info" | "warn" | "error"
+const LOG_LEVELS: ReadonlySet<string> = new Set(["debug", "info", "warn", "error"])
+
 /** Plugin options, after defaults and validation (see `parseOptions`). */
 export interface PlugboardOptions {
   /** `listen.trustProxy` (#266): the proxies whose forwarded headers are read; absent: none (see `src/forwarded.ts`). */
@@ -55,6 +59,10 @@ export interface PlugboardOptions {
   readonly dropUnsupportedParams: boolean
   /** Log line format: `text` (`key=value`, the default) or `json` (one object per line). Process-wide: the live generation's value applies. */
   readonly logFormat: "text" | "json"
+  /** Option `logLevel` (since 0.26.0, #262): the lowest level written. Process-wide, like `logFormat`. Default `info`. */
+  readonly logLevel: LogLevel
+  /** Option `logRequests` (since 0.26.0, #262): `false` drops the per-request access lines (`request`, `request.finished`); warnings and errors stay. */
+  readonly logRequests: boolean
   /** Serve `GET /plugboard/metrics` (Prometheus text). Off by default; same authentication as the model routes. */
   readonly metrics: boolean
   /** Ids listed by `/v1/models`: canonical, slugs (`provider--model__variant`) or both. See `toSlug` in `src/models.ts`. */
@@ -249,7 +257,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -811,6 +819,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   if (input.logFormat !== undefined && input.logFormat !== "text" && input.logFormat !== "json")
     throw new Error("plugboard option `logFormat` must be `text` or `json`")
+  if (input.logLevel !== undefined && (typeof input.logLevel !== "string" || !LOG_LEVELS.has(input.logLevel)))
+    throw new Error("plugboard option `logLevel` must be `debug`, `info`, `warn` or `error`")
+  if (input.logRequests !== undefined && typeof input.logRequests !== "boolean") throw new Error("plugboard option `logRequests` must be a boolean")
   if (input.metrics !== undefined && typeof input.metrics !== "boolean") throw new Error("plugboard option `metrics` must be a boolean")
   if (input.modelIds !== undefined && (typeof input.modelIds !== "string" || !MODEL_IDS.has(input.modelIds)))
     throw new Error("plugboard option `modelIds` must be `canonical`, `slugs` or `both`")
@@ -854,6 +865,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) },
     dropUnsupportedParams: input.dropUnsupportedParams !== false,
     logFormat: input.logFormat === "json" ? "json" : "text",
+    logLevel: (input.logLevel as LogLevel | undefined) ?? "info",
+    logRequests: input.logRequests !== false,
     metrics: input.metrics === true,
     modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
     ...(limits === undefined ? {} : { limits }),

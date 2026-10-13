@@ -19,6 +19,8 @@ describe("parseOptions: defaults", () => {
       history: { maxAgeDays: 30 },
       dropUnsupportedParams: true,
       logFormat: "text",
+      logLevel: "info",
+      logRequests: true,
       metrics: false,
       modelIds: "canonical",
       usage: { enabled: true, retentionDays: 90 },
@@ -464,5 +466,27 @@ describe("#82 apps.<name>.serverTools and maxServerToolSteps", () => {
 
   test("the keyless default app cannot run server tools", () => {
     expect(() => parseOptions({ apps: { default: { serverTools: ["websearch"] } } })).toThrow("needs a key")
+  })
+})
+
+describe("#262 logLevel and logRequests", () => {
+  test("default to info and on, so the log is as before", () => {
+    const options = parseOptions({})
+    expect(options.logLevel).toBe("info")
+    expect(options.logRequests).toBe(true)
+  })
+
+  test("accept each level and logRequests false", () => {
+    for (const logLevel of ["debug", "info", "warn", "error"] as const) expect(parseOptions({ logLevel }).logLevel).toBe(logLevel)
+    expect(parseOptions({ logRequests: false }).logRequests).toBe(false)
+  })
+
+  test("an unknown level is rejected at load and the message names the option", () => {
+    expect(() => parseOptions({ logLevel: "verbose" })).toThrow("plugboard option `logLevel` must be `debug`, `info`, `warn` or `error`")
+    expect(() => parseOptions({ logLevel: 3 })).toThrow("`logLevel`")
+  })
+
+  test("logRequests must be a boolean", () => {
+    expect(() => parseOptions({ logRequests: "no" })).toThrow("plugboard option `logRequests` must be a boolean")
   })
 })

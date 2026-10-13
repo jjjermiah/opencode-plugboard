@@ -39,6 +39,7 @@ import pino, { type Logger } from "pino"
 
 export type LogFields = Readonly<Record<string, string | number | boolean | undefined>>
 export type LogFormat = "text" | "json"
+export type LogLevel = "debug" | "info" | "warn" | "error"
 
 const PREFIX = "[opencode-plugboard]"
 const SERVICE = "opencode-plugboard"
@@ -55,6 +56,8 @@ const REDACT_PATHS = REDACTED.flatMap((name) => {
 
 interface LogState {
   format: LogFormat
+  /** Option `logRequests` (#262): `false` drops the access lines, see `logRequest`. */
+  accessLog: boolean
   readonly requests: AsyncLocalStorage<{ readonly id: string } | undefined>
   readonly logger: Logger
 }
@@ -83,7 +86,7 @@ function formatValue(value: unknown): string {
 
 function createState(): LogState {
   const requests = new AsyncLocalStorage<{ readonly id: string } | undefined>()
-  const state = { format: "text" as LogFormat, requests } as { format: LogFormat; requests: typeof requests; logger: Logger }
+  const state = { format: "text" as LogFormat, accessLog: true, requests } as { format: LogFormat; accessLog: boolean; requests: typeof requests; logger: Logger }
   // `console` is read at write time, not captured, so spies and host patches of it keep working.
   const destination = (channel: "log" | "error") => ({
     write(line: string) {
@@ -106,6 +109,8 @@ function createState(): LogState {
     // dedupe: a record goes to the highest-level destination it reaches, so errors only to stderr.
     pino.multistream(
       [
+        // `debug` has its own entry so a debug record (logLevel `debug`, #262) reaches stdout; dedupe keeps one copy per line.
+        { level: "debug", stream: destination("log") },
         { level: "info", stream: destination("log") },
         { level: "error", stream: destination("error") },
       ],
@@ -125,6 +130,16 @@ export function setLogFormat(format: LogFormat): void {
   state().format = format
 }
 
+/** Set the lowest level written, for the whole process (option `logLevel`, #262). Lines below it are dropped. */
+export function setLogLevel(level: LogLevel): void {
+  state().logger.level = level
+}
+
+/** Whether the per-request access lines are written (option `logRequests`, #262). Warnings and errors are never affected. */
+export function setLogRequests(on: boolean): void {
+  state().accessLog = on
+}
+
 /** Run `fn` so that every log line emitted from its async chain carries `id`. */
 export const withRequestId = <T>(id: string, fn: () => T): T => state().requests.run({ id }, fn)
 
@@ -139,6 +154,11 @@ function record(event: string, fields: LogFields | undefined): Record<string, un
 }
 
 export const log = (event: string, fields?: LogFields): void => state().logger.info(record(event, fields))
+
+/** The per-request access line (`request`, `request.finished`): an info line that `logRequests: false` drops (#262). */
+export const logRequest = (event: string, fields?: LogFields): void => {
+  if (state().accessLog) log(event, fields)
+}
 
 /** A line for diagnosis only. The logger's level is `info`, so these are dropped unless the level is lowered (the keep-alive, #310). */
 export const logDebug = (event: string, fields?: LogFields): void => state().logger.debug(record(event, fields))

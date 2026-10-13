@@ -51,7 +51,7 @@ import { reportServed, type ServedInfo } from "../fallback.js"
 import { clientAddress, forwardedOrigin } from "../forwarded.js"
 import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
-import { errorMessage, log, logError, withRequestId } from "../log.js"
+import { errorMessage, logError, logRequest, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { filterByCapability, listAvailableModels, parseCapability, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
@@ -510,7 +510,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       if (!probe) {
         const fields = { id, route: info.route, app: info.app, user: info.user, client: info.client, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
-        else log("request", fields)
+        else logRequest("request", fields)
       }
     }
   }

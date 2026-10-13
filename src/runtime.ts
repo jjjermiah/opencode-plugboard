@@ -56,7 +56,7 @@ import { cachedCaller, createCacheStore, type CacheStore } from "./cache.js"
 import { personaOf } from "./models.js"
 import type { PlugboardOptions } from "./config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError } from "./contract.js"
-import { errorMessage, log, logError, outsideRequest, setLogFormat } from "./log.js"
+import { errorMessage, log, logError, outsideRequest, setLogFormat, setLogLevel, setLogRequests } from "./log.js"
 import { createLimitState, type LimitState } from "./limits.js"
 import { createMetrics, type Metrics, type RuntimeSnapshot } from "./metrics.js"
 import { ensureAppDir } from "./session/history.js"
@@ -595,8 +595,10 @@ export function registerGeneration(input: GenerationInput): Registration {
   }
   rt.generations.push(generation)
   // Accepted generations share the live options, so this is the live `logFormat` (log lines are process-wide).
-  const options = input.options as { readonly logFormat?: unknown } | null
+  const options = input.options as { readonly logFormat?: unknown; readonly logLevel?: unknown; readonly logRequests?: unknown } | null
   setLogFormat(options?.logFormat === "json" ? "json" : "text")
+  setLogLevel(options?.logLevel === "debug" || options?.logLevel === "warn" || options?.logLevel === "error" ? options.logLevel : "info")
+  setLogRequests(options?.logRequests !== false)
   return {
     accepted: true,
     confirmed: () => rt.confirmed.has(directory),
