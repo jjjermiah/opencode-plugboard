@@ -203,3 +203,18 @@ describe("#265 history index per app", () => {
     expect(history.entries.size).toBe(0)
   })
 })
+
+/** Review of #319 (SHOULD 2): with only app limits, the sweep must still run and prune. */
+describe("#265 review: the sweep runs when only per-app limits exist", () => {
+  test("a new session arrives, the app's own maxSessions of 1 removes the two older sessions", async () => {
+    const history = new FakeHistoryPort()
+    for (const [at, id] of [[1, "old-1"], [2, "old-2"]] as const) {
+      history.sessions.add(id)
+      await history.put(`history/app/${String(at).padStart(15, "0")}/${id}`, id)
+    }
+    registerGeneration(generation("a", { port: await freePort(), history: { port: history, limits: {}, apps: { app: { maxSessions: 1 } } } }))
+    sessionStore().register({ sessionID: "ses_new", app: "app", requestID: "r", request: plugRequest(), collector: { push() {} } })
+    await until(() => history.removed.length === 2, 1_000, "the sweep to remove the two older sessions")
+    expect(history.removed).toEqual(["old-1", "old-2"])
+  })
+})

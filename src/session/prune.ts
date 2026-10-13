@@ -159,6 +159,8 @@ export async function sweepHistory(input: SweepInput): Promise<SweepResult> {
       break
     }
     const limits = limitsFor(input.limits, input.apps, app)
+    // An app with no limit today is not read: a scan over it would report `more` and re-sweep every minute for nothing (#319).
+    if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) continue
     const cutoff = limits.maxAgeDays === undefined ? undefined : input.now - limits.maxAgeDays * DAY_MS
     const { entries, capped } = await readApp(port, app, maxScan, signal)
     scanned += entries.length

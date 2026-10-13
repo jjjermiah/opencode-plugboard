@@ -36,7 +36,8 @@ describe("the history index", () => {
 describe("sweepHistory", () => {
   test("no limits: nothing is removed", async () => {
     const port = await history({ app: 3 })
-    expect(await sweep(port)).toEqual({ apps: 1, scanned: 3, removed: 0, missing: 0, failed: 0, active: 0, more: false })
+    // An app with no limit is not read at all (#319): nothing scanned, so nothing left for a later sweep.
+    expect(await sweep(port)).toEqual({ apps: 1, scanned: 0, removed: 0, missing: 0, failed: 0, active: 0, more: false })
   })
 
   test("maxSessions keeps the newest per app, each app on its own", async () => {
@@ -133,5 +134,30 @@ describe("#265 per-app history limits", () => {
     const port = await history({ bot: 6 })
     // The sessions are 1 to 6 days old. The app's own age (2 days) is the stricter limit, so the four older than 2 days go, although the global count of 10 would keep them all.
     expect((await sweep(port, { limits: { maxSessions: 10 }, apps: { bot: { maxAgeDays: 2 } } })).removed).toBe(4)
+  })
+})
+
+/** Review of #319 (SHOULD 1, 3): an app limit looser than the global one must win, not be clamped to it. */
+describe("#265 review: a looser app limit replaces the global one, in both directions", () => {
+  test("the sweep keeps more sessions for an app whose own count is higher than the global one", async () => {
+    const port = await history({ bot: 5, coding: 5 })
+    const result = await sweep(port, { limits: { maxSessions: 2 }, apps: { coding: { maxSessions: 5000 } } })
+    expect(result).toMatchObject({ removed: 3 })
+    expect(port.removed).toEqual(["bot-0", "bot-1", "bot-2"])
+    expect([...port.entries.values()].sort()).toEqual(["bot-3", "bot-4", "coding-0", "coding-1", "coding-2", "coding-3", "coding-4"])
+  })
+
+  test("the sweep keeps sessions for an app whose own age is longer than the global one", async () => {
+    const port = await history({ bot: 6 })
+    expect((await sweep(port, { limits: { maxAgeDays: 3 }, apps: { bot: { maxAgeDays: 10 } } })).removed).toBe(0)
+  })
+
+  test("limitsFor: a looser own maxAgeDays replaces the global one", () => {
+    expect(limitsFor({ maxAgeDays: 3 }, { chat: { maxAgeDays: 10 } }, "chat")).toEqual({ maxAgeDays: 10 })
+  })
+
+  test("an app with no effective limit is not even read: no scan, no 'more', so no re-sweep", async () => {
+    const port = await history({ old: 3 })
+    expect(await sweep(port, { limits: {}, maxScan: 2 })).toEqual({ apps: 1, scanned: 0, removed: 0, missing: 0, failed: 0, active: 0, more: false })
   })
 })
