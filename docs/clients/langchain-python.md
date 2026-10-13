@@ -1,6 +1,6 @@
 # LangChain Python
 
-Tested: `langchain-openai` 1.7.0, `langchain-core` 1.6.9, 2026-10-11, at an earlier commit. Every scenario passed, but `json_mode` on `fast` passed on one sample only (see Structured output).
+Tested: `langchain-openai` 1.7.0, `langchain-core` 1.6.9, live run 2026-10-13 against plugboard `c97ac66` (0.26.0). Every scenario passed on `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The run and its report are in [`examples/langchain-python/runs/live/2026-10-13-c97ac66`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain-python/runs/live/2026-10-13-c97ac66). `json_mode` on `fast` returned valid JSON on that run (one sample; see Structured output).
 
 ```python
 import os
@@ -49,4 +49,4 @@ print(bound.invoke(history).content)
 
 - Set `use_responses_api=False`. Left unset, an id that starts with `gpt-5.6` can switch the client to the Responses API. Plugboard serves that API (see [Responses API](../responses.md)), but this page's runs used Chat Completions. A `provider/` prefix avoids it, but set the flag anyway.
 - LangChain has no list-models call. Use the wrapped OpenAI client (`llm.root_client.models.list()`).
-- A wrong key raises `OpenAIAuthenticationError` (401). An unknown model raises `OpenAIModelNotFoundError` (404).
+- A wrong key raises `openai.AuthenticationError` (401, `invalid_api_key`). An unknown model raises `openai.NotFoundError` (404, `model_not_found`).

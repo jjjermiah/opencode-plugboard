@@ -1,0 +1,254 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "response_format": {
+            "json_schema": {
+              "name": "Meal",
+              "schema": {
+                "additionalProperties": false,
+                "description": "Meal nutrition estimate.",
+                "properties": {
+                  "calories": {
+                    "title": "Calories",
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "title": "Protein G",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "title": "Meal",
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "json_schema"
+          },
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "{\"protein_g\":15,\"calories\":220}",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-2>",
+          "model": "fast",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 162,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 236,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 398
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=236; output=162; cache_read=0; cache_write=0; cost_usd=0.000116"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "parallel_tool_calls": false,
+          "stream": false,
+          "tool_choice": {
+            "function": {
+              "name": "Meal"
+            },
+            "type": "function"
+          },
+          "tools": [
+            {
+              "function": {
+                "description": "Meal nutrition estimate.",
+                "name": "Meal",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "calories": {
+                      "type": "number"
+                    },
+                    "protein_g": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "calories",
+                    "protein_g"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": null,
+                "refusal": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{\"calories\":220,\"protein_g\":15}",
+                      "name": "Meal"
+                    },
+                    "id": "<id-4>",
+                    "type": "function"
+                  }
+                ]
+              }
+            }
+          ],
+          "created": "<time-2>",
+          "id": "<id-5>",
+          "model": "fast",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 57,
+            "completion_tokens_details": {
+              "reasoning_tokens": 38
+            },
+            "prompt_tokens": 197,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 254
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-parallel-tools": "limited",
+          "x-plugboard-session": "<id-3>",
+          "x-plugboard-usage": "input=197; output=57; cache_read=0; cache_write=0; cost_usd=0.000058"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast. Respond as JSON with keys calories and protein_g (numbers).",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "response_format": {
+            "type": "json_object"
+          },
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "{\"calories\": 230, \"protein_g\": 15}",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-3>",
+          "id": "<id-7>",
+          "model": "fast",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 120,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 47,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 167
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-6>",
+          "x-plugboard-usage": "input=47; output=120; cache_read=0; cache_write=0; cost_usd=0.000067"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
