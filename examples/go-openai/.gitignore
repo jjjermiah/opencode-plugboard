@@ -1,0 +1,2 @@
+# `go build` output (the compiled binary is ~10 MB; never commit it)
+/go-openai
