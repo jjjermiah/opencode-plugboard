@@ -48,6 +48,21 @@ describe("option history.hidden (since 0.29.0, #337)", () => {
     expect(options.promptCache).toEqual({ affinity: "anchor", scope: "app" })
   })
 
+  test("with keys, the keyless `default` app is not checked: a global hidden + user-scope pair does not refuse when every real app opts out", () => {
+    const options = parseOptions({
+      keys: { a: KEY, b: "sk-plug-b-test-key-0123456789" },
+      history: { hidden: true },
+      promptCache: { affinity: "anchor", scope: "user" },
+      apps: { a: { history: { hidden: false } }, b: { history: { hidden: false } } },
+    })
+    expect(options.apps.a?.history?.hidden).toBe(false)
+    expect(options.apps.b?.history?.hidden).toBe(false)
+  })
+
+  test("without keys, the keyless `default` app is the one checked", () => {
+    expect(() => parseOptions({ history: { hidden: true }, promptCache: { affinity: "anchor", scope: "user" } })).toThrow(/app `default` sets `history.hidden`/)
+  })
+
   test("a per-user promptCache is fine when hidden is off for that app", () => {
     const options = parseOptions({ keys: { bot: KEY }, history: { hidden: true }, apps: { bot: { history: { hidden: false }, promptCache: { affinity: "anchor", scope: "user" } } } })
     expect(options.apps.bot?.promptCache).toEqual({ affinity: "anchor", scope: "user" })

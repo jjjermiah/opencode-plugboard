@@ -255,6 +255,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const affinity = deps.affinity
   const apps = deps.apps ?? {}
   const remoteImages = deps.remoteImages ?? false
+  // Apps whose hidden parent could not be made (the cap), so the warning is logged once per app and process.
+  const unparentedWarned = new Set<string>()
 
   return {
     async *stream(called: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
@@ -378,7 +380,6 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         let parentID: string | undefined
         const maxAnchors = maxAnchorsOf(cache)
         if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, keyScope, scope, maxAnchors, makeAnchor), context.signal)
-        if (hidden && parentID === undefined && scope !== undefined) logWarn("history.hidden_parent_unavailable", { requestID, app })
         if (context.signal.aborted) return
 
         const makeChild = (parent: string | undefined) => {
@@ -408,9 +409,13 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           // The anchor was deleted in OpenCode: forget its record, make one anchor and retry the child once (never more).
           if (!(error instanceof MissingParentError) || affinity === undefined || scope === undefined || parentID === undefined) throw error
           logWarn("affinity.anchor_recreated", { requestID, app, previous: parentID })
-          await affinity.forget(app, keyScope, scope)
-          parentID = await raceAbort(affinity.anchor(app, keyScope, scope, maxAnchors, makeAnchor), context.signal)
+          parentID = await raceAbort(affinity.replace(app, keyScope, scope, parentID, maxAnchors, makeAnchor), context.signal)
           created = await makeChild(parentID)
+        }
+        // A hidden app without its parent (at the cap) runs top-level, visible in the lists. Warned once per app, not per request.
+        if (hidden && parentID === undefined && scope !== undefined && !unparentedWarned.has(app)) {
+          unparentedWarned.add(app)
+          logWarn("history.hidden_parent_unavailable", { requestID, app })
         }
         sessionID = String(created.id)
         sessions.register({ sessionID, app, requestID, request, collector, prelude })

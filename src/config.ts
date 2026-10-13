@@ -900,7 +900,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const historyUrl = parseHistoryUrl(input.historyUrl)
   const promptCache = parsePromptCache(input.promptCache, "promptCache")
   // `history.hidden` parents an app's request sessions under one app-scope parent (#337). A per-user anchor cannot be that parent too.
-  for (const app of [DEFAULT_APP, ...Object.keys(keys)]) {
+  // With keys, `default` is not a usable app (line ~582): only the named apps are checked.
+  const checkedApps = Object.keys(keys).length === 0 ? [DEFAULT_APP] : Object.keys(keys)
+  for (const app of checkedApps) {
     const hiddenHere = (apps[app]?.history?.hidden ?? hidden) === true
     const cacheHere = apps[app]?.promptCache ?? promptCache
     if (hiddenHere && cacheHere?.affinity === "anchor" && cacheHere.scope === "user")

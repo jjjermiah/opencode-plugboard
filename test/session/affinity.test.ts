@@ -212,3 +212,47 @@ describe("mode anchor on the session caller", () => {
     expect(run.port.created[2]!.parentID).toBeUndefined()
   })
 })
+
+describe("replace: a stored anchor reported missing is replaced once, never another request's fresh record (#337 review)", () => {
+  test("the stored record is dropped only when it is still the one reported missing", async () => {
+    const storage = new FakeStorage()
+    await storage.put("affinity/bot/anchor/app/", JSON.stringify({ sessionID: "ses_fresh" }))
+    const affinity = createAffinity({ storage })
+    let made = 0
+    const id = await affinity.replace("bot", "app", "", "ses_stale", CAP, async () => `ses_made_${++made}`)
+    expect(id).toBe("ses_fresh")
+    expect(made).toBe(0)
+    expect(storage.drops).toEqual([])
+  })
+
+  test("the stale record is replaced by one new anchor", async () => {
+    const storage = new FakeStorage()
+    await storage.put("affinity/bot/anchor/app/", JSON.stringify({ sessionID: "ses_stale" }))
+    const affinity = createAffinity({ storage })
+    let made = 0
+    expect(await affinity.replace("bot", "app", "", "ses_stale", CAP, async () => `ses_made_${++made}`)).toBe("ses_made_1")
+    expect(made).toBe(1)
+    expect(await affinity.anchor("bot", "app", "", CAP, async () => "ses_never")).toBe("ses_made_1")
+  })
+
+  test("concurrent replacements on one key share one new anchor", async () => {
+    const storage = new FakeStorage()
+    await storage.put("affinity/bot/anchor/app/", JSON.stringify({ sessionID: "ses_stale" }))
+    const affinity = createAffinity({ storage })
+    let made = 0
+    const results = await Promise.all(
+      [1, 2, 3].map(() => affinity.replace("bot", "app", "", "ses_stale", CAP, async () => `ses_made_${++made}`)),
+    )
+    expect(made).toBe(1)
+    expect(new Set(results)).toEqual(new Set(["ses_made_1"]))
+  })
+
+  test("a replacement at the cap resolves undefined: the stale record is dropped and the cap counts the app's other anchors", async () => {
+    const storage = new FakeStorage()
+    await storage.put("affinity/bot/anchor/app/", JSON.stringify({ sessionID: "ses_stale" }))
+    await storage.put("affinity/bot/anchor/user/alice", JSON.stringify({ sessionID: "ses_other" }))
+    const affinity = createAffinity({ storage })
+    expect(await affinity.replace("bot", "app", "", "ses_stale", 1, async () => "ses_never")).toBeUndefined()
+    expect(storage.values.has("affinity/bot/anchor/app/")).toBe(false)
+  })
+})

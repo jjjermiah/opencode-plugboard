@@ -398,13 +398,15 @@ What it hides and what it does not:
 - **Not hidden:** the settings workspace view, which lists sessions by directory and does not filter children. The iOS app is not verified (it is not in this repo).
 - **Still works:** history pruning, session links, usage and budgets all read the child sessions as before.
 
-**Deleting the parent deletes every session under it.** OpenCode removes the children with the parent, so deleting `plugboard: <app>` removes that app's whole request history. Plugboard recreates the parent on the next request, once, the same way it recreates a deleted anchor (`affinity.anchor_recreated` is logged), so a deleted parent costs its history and nothing else.
+**Deleting the parent deletes every session under it.** OpenCode removes the children with the parent, so deleting `plugboard: <app>` removes that app's whole request history. It removes them one at a time, each with an interrupt and a wait, so a parent with thousands of children can take a while to delete. Plugboard recreates the parent on the next request, once, the same way it recreates a deleted anchor (`affinity.anchor_recreated` is logged). Concurrent requests that find the parent gone share that one new parent. A deleted parent costs its history and nothing else.
 
 **Existing sessions are not moved.** OpenCode cannot reparent a session, so the request sessions made before the option was turned on stay top-level. Turning it off again does not move the children back either.
 
 With `promptCache` mode `anchor` and scope `app` on the same app, one parent serves both: the parent is the prompt-cache anchor, so the cache key does not change. Scope `user` is refused at load, because the hidden parent is one per app and cannot also be the per-user anchor. Turn one of the two off for that app.
 
-The parent counts toward `maxAnchors`, as one anchor of the app. If the app is at its cap, a request runs as a top-level session, shown in the lists, and the log line `history.hidden_parent_unavailable` is written.
+Which title the parent gets depends on which option made it first. With `history.hidden` on from the start, it is `plugboard: <app>`. If a `promptCache` app-scope anchor already existed (titled `plugboard anchor: <app>`) when `history.hidden` was turned on, that parent keeps its old title: plugboard does not rename it. Its children are still hidden, and the session is the same one.
+
+**The cap (`promptCache.maxAnchors`, default 1000) also caps a hidden app**, even with `promptCache` off, because the parent is one stored anchor of the app. If the app is at its cap, a request runs as a top-level session, shown in the lists, and the log line `history.hidden_parent_unavailable` is written once per app for each run of the plugin, not once per request. The usual way to reach the cap is a stored `scope: user` record left from an earlier config: those records are not dropped by changing the config (see the anchor section below), so raise `maxAnchors` or remove the records.
 
 ## Usage statistics
 
