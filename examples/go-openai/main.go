@@ -74,7 +74,7 @@ func main() {
 		Function: &openai.FunctionDefinition{
 			Name:        "get_weather",
 			Description: "Current weather for a city.",
-			Parameters: json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`),
+			Parameters:  json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`),
 		},
 	}}
 	messages := []openai.ChatCompletionMessage{
