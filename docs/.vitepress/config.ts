@@ -107,6 +107,7 @@ export default defineConfig({
           { text: "Langflow", link: "/self-hosted/langflow" },
           { text: "SparkyFitness", link: "/self-hosted/sparkyfitness" },
           { text: "PR-Agent", link: "/self-hosted/pr-agent" },
+          { text: "SiYuan", link: "/self-hosted/siyuan" },
         ],
       },
       {
