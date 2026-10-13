@@ -317,6 +317,13 @@ With `true` or an `allow` list, the server fetches only public addresses by defa
 
 Above the cap the request gets a 400 `too_many_choices`. `n` works on Chat Completions and on `/v1/completions`.
 
+Since 0.26.0 one app can have a lower cap (#270). It only lowers the global one:
+
+```jsonc
+"maxN": 4,
+"apps": { "chat-widget": { "maxN": 1 } }   // this app's n above 1 gets the same 400
+```
+
 #### Token counting
 
 Clients that budget context before they send, such as Claude Code and the Anthropic and Gemini SDKs, can count tokens first. The count is an estimate, because plugboard has no tokenizer.
