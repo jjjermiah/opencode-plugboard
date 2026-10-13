@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, historyTemplate, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -90,6 +90,13 @@ const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
 const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status"]
+/** The endpoint family of each OpenAI route (`apps.<name>.endpoints`, #268). Gemini and `/v1/models/{id}` are classified where they are matched. */
+const ENDPOINT_BY_ROUTE: Readonly<Record<string, Endpoint>> = {
+  "POST /v1/chat/completions": "chat",
+  "POST /v1/completions": "completions",
+  "POST /v1/responses": "responses",
+  "GET /v1/models": "models",
+}
 /** Plugboard's own routes: the namespace whose errors are problem+json. */
 const PLUGBOARD_PREFIX = "/plugboard"
 /** The liveness and readiness probes: at the root (kept for probes) and under `/plugboard/`. */
@@ -263,6 +270,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         message: `No route for ${request.method} ${path}`,
       })
     }
+
+    // An app may be limited to some endpoints (#268). Checked after authentication and route existence (I15): a refusal is a 403, never a 404.
+    const endpoint: Endpoint | undefined = gemini ? "gemini" : modelId !== undefined ? "models" : ENDPOINT_BY_ROUTE[route]
+    const refusal = endpoint === undefined ? undefined : endpointRefusal(host.options, auth.app, endpoint)
+    if (refusal) return fail(response, refusal)
 
     if (gemini) return serveGemini(host, { match: gemini, request, url, app: auth.app, response, scope, info })
 

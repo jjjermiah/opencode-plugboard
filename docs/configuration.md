@@ -157,6 +157,7 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 | `serverTools` (since 0.21.0) | Off by default. A list of exact OpenCode tool ids (for example `websearch`) that this app's sessions may run themselves, 1 to 32 entries. See the warning below. |
 | `maxServerToolSteps` (since 0.21.0) | How many model steps of one request may run a server tool, `8` by default, 1 to 100. It counts steps, not calls. Needs `serverTools`. |
 | `maxServerToolCalls` (since 0.24.0) | How many server tool calls one request may run in all its steps together, `16` by default, 1 to 1000. The call past it fails the request. Needs `serverTools`. |
+| `endpoints` (since 0.26.0) | The endpoint families this app may call: a non-empty list of `chat`, `completions`, `responses`, `messages`, `gemini` and `models`. Absent: every endpoint. A call outside the list is a 403 `endpoint_forbidden`, in the route's own error shape. See [Endpoint names](#endpoint-names). |
 | `historyUrl` (since 0.23.0) | The session link template for this app: a string with `{id}` (see [Session links](#session-links)), or `false` for no link, no `x-plugboard-session-url` and no `session_url=` log field. Absent: the global `historyUrl`. Set `false` for an app you do not trust with the OpenCode server address. |
 
 > **Security: `serverTools` lets an app's key run OpenCode tools on the server.** Anyone holding that app's key can make the model call each listed tool, and the tool runs with the server's own OpenCode credentials and permissions. The prompt steers which arguments the model passes. A tool that reads files or runs commands can reach what the server's OpenCode process can reach, within whatever limits that tool enforces itself. Give such a key only to a caller you would trust with those tools, list the fewest tools the app needs, and never list tools on the keyless `default` app or on a key shared with others. Plugboard checks that each listed tool is a direct tool of the server's OpenCode right now and denies every other tool, but it cannot limit what a listed tool does.
@@ -177,6 +178,29 @@ Rules:
 `/v1/models`, `/v1/models/{id}` and the Gemini `/v1beta/models` routes list only what the calling app may use, and the model counts and example on the setup page and `/plugboard/status` follow the same scope.
 
 Without `keys` the only app is `default`, and `apps.default` configures it. Once any key exists `default` is never used, so `apps.default` is rejected. Every other app in `apps` must have a key. `system` is applied by the context hook that already rewrites a request session, so it shows up in the model request but not in the stored session transcript.
+
+### Endpoint names (since 0.26.0)
+
+`apps.<name>.endpoints` (#268) limits a key to the routes its app needs. Each name is one endpoint family:
+
+| Name | Routes |
+|---|---|
+| `chat` | `POST /v1/chat/completions` |
+| `completions` | `POST /v1/completions` |
+| `responses` | `POST /v1/responses` |
+| `messages` | `POST /v1/messages` and `POST /v1/messages/count_tokens` |
+| `gemini` | the `/v1beta/models/...` routes (and `/v1/models/{model}:generateContent`) |
+| `models` | `GET /v1/models` and `GET /v1/models/{id}` |
+
+```jsonc
+"apps": {
+  "discord-bot": { "endpoints": ["chat"] },   // Chat Completions only
+  "claude-code": { "endpoints": ["messages"] }, // Anthropic Messages only
+  "ui-picker": { "endpoints": ["models"] }      // lists models, cannot call one
+}
+```
+
+The check runs after authentication, so an unauthenticated caller still gets a 401. A refused call is a 403 `endpoint_forbidden` whose message names `apps.<name>.endpoints`; the model is never called. Usage, status, metrics, the dashboard and the probes are not affected by this list. Any other name, or an empty list, fails at load.
 
 ## Concurrency and rate limits
 

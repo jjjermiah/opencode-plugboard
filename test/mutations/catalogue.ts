@@ -28,6 +28,22 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "I15-endpoint-check-skipped",
+    invariant: "I15",
+    file: "src/openai/route.ts",
+    find: "    const refusal = endpoint === undefined ? undefined : endpointRefusal(host.options, auth.app, endpoint)",
+    replace: "    const refusal = undefined",
+    tests: ["test/http/endpoints.test.ts"],
+  },
+  {
+    id: "I15-messages-endpoint-check-skipped",
+    invariant: "I15",
+    file: "src/anthropic/route.ts",
+    find: '    const refused = endpointRefusal(host.options, auth.app, "messages")',
+    replace: "    const refused = undefined",
+    tests: ["test/http/endpoints.test.ts"],
+  },
+  {
     id: "I16-require-keys-refuses-keyless",
     invariant: "I16",
     file: "src/config.ts",

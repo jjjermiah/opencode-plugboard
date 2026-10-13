@@ -143,6 +143,22 @@ describe("parseOptions: every rejection names the option", () => {
   })
 })
 
+describe("#268 apps.<name>.endpoints", () => {
+  test("parses a non-empty list of endpoint names, and is absent when unset", () => {
+    const options = parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { endpoints: ["chat", "models"] } } })
+    expect(options.apps.bot).toEqual({ systemMode: "prepend", tools: true, endpoints: ["chat", "models"] })
+    expect(parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { tools: false } } }).apps.bot).not.toHaveProperty("endpoints")
+  })
+
+  test.each([
+    ["an unknown name", { endpoints: ["images"] }, /endpoints entry `images` must be one of: chat, completions, responses, messages, gemini, models/],
+    ["an empty list", { endpoints: [] }, /endpoints must be a non-empty array/],
+    ["a string instead of a list", { endpoints: "chat" }, /endpoints must be a non-empty array/],
+  ])("%s is refused at load and names the option", (_name, policy, message) => {
+    expect(() => parseOptions({ keys: { bot: "k-bot" }, apps: { bot: policy } })).toThrow(message)
+  })
+})
+
 describe("#271 requireKeys", () => {
   test("is absent by default, and true when set with keys", () => {
     expect(parseOptions({})).not.toHaveProperty("requireKeys")

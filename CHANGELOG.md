@@ -24,6 +24,17 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
     "requireKeys": true
   }
   ```
+- **Limit an app to some endpoints** ([#268](https://github.com/jjjermiah/opencode-plugboard/issues/268)). Every key could reach every model route, so a key given to a polling bot could also call Messages or Responses. `apps.<name>.endpoints` names the endpoint families an app may call. A call outside the list is a 403 `endpoint_forbidden` in the route's own error shape, and the model is not called. The check runs after authentication. Unset means every endpoint, as before.
+
+  ```jsonc
+  {
+    "keys": { "discord-bot": "{env:PLUGBOARD_KEY_BOT}", "claude-code": "{env:PLUGBOARD_KEY_CLAUDE}" },
+    "apps": {
+      "discord-bot": { "endpoints": ["chat"] },
+      "claude-code": { "endpoints": ["messages"] }
+    }
+  }
+  ```
 
 ## [0.25.1] - 2026-10-12: Front Door, Unlocked
 

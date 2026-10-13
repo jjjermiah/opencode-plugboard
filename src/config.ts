@@ -115,6 +115,14 @@ export interface PromptCache {
 export const DEFAULT_MAX_ANCHORS = 1000
 
 /**
+ * The endpoint families an app may be limited to (`apps.<name>.endpoints`, #268): `chat` (`/v1/chat/completions`),
+ * `completions` (`/v1/completions`), `responses`, `messages` (`/v1/messages` and its `count_tokens`), `gemini` (the
+ * `/v1beta` routes) and `models` (`/v1/models`, `/v1/models/{id}`).
+ */
+export const ENDPOINTS = ["chat", "completions", "responses", "messages", "gemini", "models"] as const
+export type Endpoint = (typeof ENDPOINTS)[number]
+
+/**
  * What the operator fixes for one app, whatever the caller sends (option `apps`). `models` only narrows the
  * global allowlist: entries are `provider/model[#variant]`, `provider/*` or alias names.
  */
@@ -143,6 +151,8 @@ export interface AppPolicy {
   readonly historyUrl?: string | false
   /** This app's prompt-cache affinity (option `apps.<name>.promptCache`). Absent: the global `promptCache`. */
   readonly promptCache?: PromptCache
+  /** Endpoint families this app may call (option `apps.<name>.endpoints`, #268). Absent: every endpoint. Check with `endpointRefusal`. */
+  readonly endpoints?: ReadonlyArray<Endpoint>
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -301,7 +311,16 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+
+/** Option `apps.<name>.endpoints` (#268): a non-empty list of endpoint names from `ENDPOINTS`. */
+function parseEndpoints(raw: unknown, at: string): Endpoint[] {
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error(`${at}.endpoints must be a non-empty array of: ${ENDPOINTS.join(", ")} (omit it to allow every endpoint)`)
+  for (const entry of raw)
+    if (typeof entry !== "string" || !(ENDPOINTS as readonly string[]).includes(entry))
+      throw new Error(`${at}.endpoints entry \`${String(entry)}\` must be one of: ${ENDPOINTS.join(", ")}`)
+  return raw as Endpoint[]
+}
 const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
 const MAX_SERVER_TOOLS = 32
 const MAX_SERVER_TOOL_STEPS = 100
@@ -373,6 +392,7 @@ function parseApps(
     // `false` turns the link off for this app; a string is its own template (validated like the global one).
     const historyUrl = value.historyUrl === false ? false : parseHistoryUrl(value.historyUrl, `plugboard option \`apps.${app}.historyUrl\``)
     const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
+    const endpoints = value.endpoints === undefined ? undefined : parseEndpoints(value.endpoints, at)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -384,9 +404,10 @@ function parseApps(
       ...(maxServerToolCalls === undefined ? {} : { maxServerToolCalls }),
       ...(historyUrl === undefined ? {} : { historyUrl }),
       ...(promptCache === undefined ? {} : { promptCache }),
+      ...(endpoints === undefined ? {} : { endpoints }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -455,6 +476,16 @@ export function bodyLimits(options: Pick<PlugboardOptions, "limits">): BodyLimit
     maxBytesInFlight: options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight,
     readTimeoutMs: options.limits?.bodyReadTimeoutMs ?? BODY_LIMIT_DEFAULTS.readTimeoutMs,
   }
+}
+
+/**
+ * The refusal for `app` calling `endpoint` (#268): 403 `endpoint_forbidden` when `apps.<app>.endpoints` is set and does not
+ * list it; `undefined` when the app may call it. Callers run this after authentication (I15).
+ */
+export function endpointRefusal(options: Pick<PlugboardOptions, "apps">, app: string, endpoint: Endpoint): PlugError | undefined {
+  const allowed = appPolicy(options, app)?.endpoints
+  if (allowed === undefined || allowed.includes(endpoint)) return undefined
+  return { status: 403, kind: "permission", code: "endpoint_forbidden", message: `This app may not call the ${endpoint} endpoint: \`apps.${app}.endpoints\` does not list it` }
 }
 
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
