@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Go, .NET, Langfuse and smolagents examples run in CI against the scripted fake** ([#362](https://github.com/jjjermiah/opencode-plugboard/issues/362)). Until now these four clients were checked only by hand against the dev server. Each example now has a runner, so `run.ts all --target scripted` covers it and CI fails on a stale or non-deterministic run. The Go and .NET runners print raw observations, and a shared relay applies the same checks as the Python and TypeScript runners. The `examples` job installs Go 1.27.2 and the .NET SDK 8.0.423 for them. go-openai and openai-dotnet pass text, stream and a tool round trip. Langfuse passes the same three. smolagents passes text. Its stream and tool round trip are recorded as gaps, not passes: smolagents' stream does not return the finish reason, and the scripted fake answers a tool turn only after a `tool`-role message.
 
 ## [0.33.0] - 2026-10-13: Stays Awake
 

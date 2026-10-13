@@ -64,7 +64,7 @@ The run exits 1 when a required scenario fails. A verdict is `fail` on a require
 
 1. `run.ts` starts the target and a capture proxy (`capture.ts`) on an ephemeral port.
 2. It starts the example's runner (`uv run --frozen run.py` with a `pyproject.toml`, `bun run.ts`, or `bash run.sh`) with `PLUGBOARD_BASE_URL` (the proxy, ending in `/v1`), `PLUGBOARD_KEY` and `PLUGBOARD_CAPTURE_URL`.
-3. The runner's helpers (`py/harness.py`, `ts/harness.ts`) mark each scenario with `POST $PLUGBOARD_CAPTURE_URL/__mark`, call the scenario function, apply the checks in `_shared/scenarios.json`, and print one JSON line per result. They print nothing else on stdout and write no files.
+3. The runner's helpers (`py/harness.py`, `ts/harness.ts`) mark each scenario with `POST $PLUGBOARD_CAPTURE_URL/__mark`, call the scenario function, apply the checks in `_shared/scenarios.json`, and print one JSON line per result. They print nothing else on stdout and write no files. A runner in another language (Go and .NET) marks scenarios itself and prints one `observation` line per scenario and model; its `run.sh` pipes that output through `ts/relay.ts`, which applies the same checks and prints the `result` lines.
 4. `run.ts` slices the exchanges by mark, normalises them (`normalise.ts`), validates `summary.json` against `run.schema.json`, refuses to write any file that contains the app key, renders `summary.md` and writes (`render.ts`).
 
 Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `transcripts/_background.json`. That file is written but not compared in CI.
