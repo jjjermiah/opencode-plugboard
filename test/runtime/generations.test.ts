@@ -4,7 +4,8 @@
  * are adopted on reload, and the listener's lifetime across generations.
  */
 import { describe, expect, jest, test } from "bun:test"
-import { ensureBackend, loadServingCatalog, registerGeneration, sessionStore } from "../../src/runtime.js"
+import { readiness } from "../../src/discovery.js"
+import { ensureBackend, loadServingCatalog, processStatus, registerGeneration, sessionStore } from "../../src/runtime.js"
 import { ensureAppDir } from "../../src/session/history.js"
 import { CATALOG, model, plugRequest, until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
@@ -102,6 +103,23 @@ describe("who serves", () => {
     await listening(port)
     a.dispose()
     expect(await whoServes(port)).toBe("503 plugboard is reloading")
+  })
+
+  test("#350 readiness is process-wide: an app directory evicted after idle does not make /readyz fail", async () => {
+    const port = await freePort()
+    const directory = (await ensureAppDir("app")) as string
+    const app = registerGeneration(generation("app-dir", { port, directory }))
+    app.ready()
+    await ensureBackend("app", new AbortController().signal, async () => {})
+    // The plugin's own Location, which the keep-alive keeps warm, stays unconfirmed (no request reaches it).
+    registerGeneration(generation("keep", { port })).ready()
+    const ready = () => readiness({ ...processStatus(), pumpRunning: true, catalogLoaded: true })
+    expect(processStatus().servingConfirmed).toBe(true)
+    expect(ready()).toEqual({ ready: true })
+    // OpenCode evicts the app directory: its generation goes, the unconfirmed one serves.
+    app.dispose()
+    expect(processStatus().generations).toBe(1)
+    expect(ready()).toEqual({ ready: true })
   })
 
   test("a handler that throws is a 503, and the listener keeps serving", async () => {

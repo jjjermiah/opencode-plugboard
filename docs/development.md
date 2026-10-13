@@ -73,7 +73,7 @@ If a request hangs, stop the dev server (`pkill -f "serve --service"` also match
 
 ## Test knob: the keep-alive interval
 
-`PLUGBOARD_KEEPALIVE_INTERVAL_MS` replaces the keep-alive's 30-minute interval (src/keepalive.ts). Only a positive integer counts; anything else keeps 30 minutes. The unit tests set it, and the dev server can set it to watch the keep-alive sessions change (one created and one removed per tick) without waiting half an hour. Nothing in production sets it.
+`PLUGBOARD_KEEPALIVE_INTERVAL_MS` replaces the keep-alive's 30-minute interval (src/keepalive.ts). Only a positive integer counts; anything else keeps 30 minutes. The unit tests set it, and the dev server can set it to watch the keep-alive children change (one created and one removed per tick) without waiting half an hour. Nothing in production sets it.
 
 ## Rules for the dev server
 

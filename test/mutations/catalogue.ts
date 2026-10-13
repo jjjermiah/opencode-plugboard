@@ -671,8 +671,16 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I30-keepalive-tick-reuses-session",
     invariant: "I30",
     file: "src/keepalive.ts",
-    find: "  const id = await host.create(KEEP_ALIVE_TITLE)",
-    replace: "  const id = previous ?? (await host.create(KEEP_ALIVE_TITLE))",
+    find: "  let child = await host.createChild(KEEP_ALIVE_TITLE, parent)",
+    replace: "  let child = parent",
+    tests: ["test/runtime/keepalive.test.ts"],
+  },
+  {
+    id: "I30-keepalive-children-never-removed",
+    invariant: "I30",
+    file: "src/keepalive.ts",
+    find: "  for (const id of stale) {",
+    replace: "  for (const id of [] as string[]) {",
     tests: ["test/runtime/keepalive.test.ts"],
   },
 ]
