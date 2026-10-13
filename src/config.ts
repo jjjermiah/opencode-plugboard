@@ -3,6 +3,7 @@
 import { createHash, timingSafeEqual } from "node:crypto"
 import type { CacheConfig } from "./cache.js"
 import { isPlugError, type PlugError } from "./contract.js"
+import { parseTrustProxy } from "./forwarded.js"
 import { allowedBy, parseAliasTarget, parseModelRef, SKILL_PREFIX } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
 import type { HistoryLimits } from "./session/prune.js"
@@ -13,7 +14,8 @@ export type ModelIds = "canonical" | "slugs" | "both"
 
 /** Plugin options, after defaults and validation (see `parseOptions`). */
 export interface PlugboardOptions {
-  readonly listen: { readonly host: string; readonly port: number }
+  /** `listen.trustProxy` (#266): the proxies whose forwarded headers are read; absent: none (see `src/forwarded.ts`). */
+  readonly listen: { readonly host: string; readonly port: number; readonly trustProxy?: ReadonlyArray<string> }
   /** App name -> API key, from `keys` and `apps.<name>.key` merged. App names match APP_NAME_PATTERN; "default" is reserved. */
   readonly keys: Readonly<Record<string, string>>
   /** Per-app policy (`apps`); only apps that set a policy field appear. Look one up with `appPolicy`. */
@@ -69,6 +71,13 @@ export interface PlugboardOptions {
   readonly usage: UsageConfig
   /** A key that may read every app's usage on `GET /plugboard/usage`. Compared like app keys; must differ from every one of them. */
   readonly adminKey?: string
+  /**
+   * Option `requireKeys` (#271). `true`: `keys` must be set and every request needs a key, loopback included
+   * (`/healthz` and `/readyz` stay open). Absent or `false`: keyless loopback works as before.
+   */
+  readonly requireKeys?: boolean
+  /** Browser origins that may call plugboard (option `cors`, #256). Absent: no CORS headers and the keyless `Origin` refusal stays. */
+  readonly cors?: CorsConfig
   /** A template for the OpenCode session page of each request: `{id}`, and optional `{directory}` (see src/session/link.ts, #77). */
   readonly historyUrl?: string
 }
@@ -81,6 +90,15 @@ export function historyTemplate(options: Pick<PlugboardOptions, "apps" | "histor
   const own = appPolicy(options, app)?.historyUrl
   if (own === false) return undefined
   return own ?? options.historyUrl
+}
+
+/**
+ * Option `cors` (#256): the browser origins that may call plugboard, and Private Network Access. `origins` holds
+ * canonical `scheme://host[:port]` values, or the single `*`, which needs keys. Absent: no CORS headers, as before.
+ */
+export interface CorsConfig {
+  readonly origins: ReadonlyArray<string>
+  readonly allowPrivateNetwork: boolean
 }
 
 /** Option `usage` after defaults: on, and days of history kept. */
@@ -108,6 +126,14 @@ export interface PromptCache {
 
 /** `promptCache.maxAnchors` when absent. */
 export const DEFAULT_MAX_ANCHORS = 1000
+
+/**
+ * The endpoint families an app may be limited to (`apps.<name>.endpoints`, #268): `chat` (`/v1/chat/completions`),
+ * `completions` (`/v1/completions`), `responses`, `messages` (`/v1/messages` and its `count_tokens`), `gemini` (the
+ * `/v1beta` routes) and `models` (`/v1/models`, `/v1/models/{id}`).
+ */
+export const ENDPOINTS = ["chat", "completions", "responses", "messages", "gemini", "models"] as const
+export type Endpoint = (typeof ENDPOINTS)[number]
 
 /**
  * What the operator fixes for one app, whatever the caller sends (option `apps`). `models` only narrows the
@@ -138,6 +164,8 @@ export interface AppPolicy {
   readonly historyUrl?: string | false
   /** This app's prompt-cache affinity (option `apps.<name>.promptCache`). Absent: the global `promptCache`. */
   readonly promptCache?: PromptCache
+  /** Endpoint families this app may call (option `apps.<name>.endpoints`, #268). Absent: every endpoint. Check with `endpointRefusal`. */
+  readonly endpoints?: ReadonlyArray<Endpoint>
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -216,7 +244,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -266,18 +294,85 @@ function positiveInt(value: unknown, name: string, fallback: number, max = Numbe
 const REMOTE_IMAGES_ERROR =
   "plugboard option `remoteImages` must be a boolean or `{ allow: [...] }` with host names, IP addresses or CIDR ranges that may be fetched even when they are not public"
 
+const CORS_KNOWN = ["origins", "allowPrivateNetwork"]
+
+/** A browser origin as the `Origin` header spells it: `http` or `https`, host and port, no path, query, credentials or trailing slash. */
+function parseOrigin(text: unknown): string | undefined {
+  if (typeof text !== "string") return undefined
+  let url: URL
+  try {
+    url = new URL(text)
+  } catch {
+    return undefined
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+  // WHATWG URL accepts `*` in a host name, so a wildcard host is refused here rather than by the parse.
+  if (url.hostname.includes("*")) return undefined
+  return text === url.origin ? text : undefined
+}
+
+/** Option `cors` (#256). `*` must stand alone and needs keys, so a wildcard never sits in front of a keyless endpoint. */
+function parseCors(raw: unknown, keyed: boolean): CorsConfig | undefined {
+  if (raw === undefined) return undefined
+  if (!isRecord(raw)) throw new Error("plugboard option `cors` must be an object: { origins, allowPrivateNetwork }")
+  for (const key of Object.keys(raw))
+    if (!CORS_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`cors.${key}\` (known: ${CORS_KNOWN.join(", ")})`)
+  const origins = raw.origins
+  if (!Array.isArray(origins) || origins.length === 0)
+    throw new Error("plugboard option `cors.origins` must be a non-empty array of origins such as `https://chat.example.net`, or [\"*\"]")
+  const list: string[] = []
+  for (const origin of origins) {
+    if (origin === "*") {
+      if (origins.length > 1) throw new Error("plugboard option `cors.origins`: `*` must be the only entry")
+      if (!keyed) throw new Error("plugboard option `cors.origins` `*` needs `keys`: a wildcard origin must not sit in front of a keyless endpoint")
+      list.push("*")
+      continue
+    }
+    const parsed = parseOrigin(origin)
+    if (parsed === undefined)
+      throw new Error(`plugboard option \`cors.origins\` entry \`${String(origin)}\` must be an \`http://\` or \`https://\` origin: scheme, host and port only, no path, query, credentials or wildcard`)
+    list.push(parsed)
+  }
+  if (raw.allowPrivateNetwork !== undefined && typeof raw.allowPrivateNetwork !== "boolean") throw new Error("plugboard option `cors.allowPrivateNetwork` must be a boolean")
+  return { origins: list, allowPrivateNetwork: raw.allowPrivateNetwork === true }
+}
+
+/** Option `remoteImages` (#259): the object fields are optional and tighten the fetch; an unset field keeps today's bound. */
+const REMOTE_IMAGES_KNOWN = ["allow", "schemes", "maxBytes", "maxItems", "maxRedirects", "timeoutMs"]
+
+function remoteImagesInt(value: unknown, name: string, min: number, max: number): number | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max)
+    throw new Error(`plugboard option \`remoteImages.${name}\` must be an integer between ${min} and ${max}`)
+  return value
+}
+
 function parseRemoteImages(value: unknown): RemoteImages {
   if (value === undefined) return false
   if (typeof value === "boolean") return value
   if (!isRecord(value)) throw new Error(REMOTE_IMAGES_ERROR)
   for (const key of Object.keys(value))
-    if (key !== "allow") throw new Error(`Unknown plugboard option \`remoteImages.${key}\` (known: allow)`)
+    if (!REMOTE_IMAGES_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`remoteImages.${key}\` (known: ${REMOTE_IMAGES_KNOWN.join(", ")})`)
   const allow = value.allow ?? []
   if (!Array.isArray(allow)) throw new Error(REMOTE_IMAGES_ERROR)
   for (const entry of allow)
     if (typeof entry !== "string" || parseAllowEntry(entry) === undefined)
       throw new Error(`plugboard \`remoteImages.allow\` entry \`${String(entry)}\` must be a host name (\`images.internal\`, \`*.internal\`), an IP address or a CIDR range`)
-  return { allow: allow as string[] }
+  const schemes = value.schemes
+  if (schemes !== undefined && (!Array.isArray(schemes) || schemes.length === 0 || schemes.some((scheme) => scheme !== "http" && scheme !== "https")))
+    throw new Error("plugboard option `remoteImages.schemes` must be a non-empty list of `http` and `https`")
+  const maxBytes = remoteImagesInt(value.maxBytes, "maxBytes", 1, 104_857_600)
+  const maxItems = remoteImagesInt(value.maxItems, "maxItems", 1, 1000)
+  const maxRedirects = remoteImagesInt(value.maxRedirects, "maxRedirects", 0, 10)
+  const timeoutMs = remoteImagesInt(value.timeoutMs, "timeoutMs", 1, 600_000)
+  return {
+    allow: allow as string[],
+    ...(schemes === undefined ? {} : { schemes: schemes as string[] }),
+    ...(maxBytes === undefined ? {} : { maxBytes }),
+    ...(maxItems === undefined ? {} : { maxItems }),
+    ...(maxRedirects === undefined ? {} : { maxRedirects }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  }
 }
 
 /**
@@ -296,7 +391,16 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+
+/** Option `apps.<name>.endpoints` (#268): a non-empty list of endpoint names from `ENDPOINTS`. */
+function parseEndpoints(raw: unknown, at: string): Endpoint[] {
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error(`${at}.endpoints must be a non-empty array of: ${ENDPOINTS.join(", ")} (omit it to allow every endpoint)`)
+  for (const entry of raw)
+    if (typeof entry !== "string" || !(ENDPOINTS as readonly string[]).includes(entry))
+      throw new Error(`${at}.endpoints entry \`${String(entry)}\` must be one of: ${ENDPOINTS.join(", ")}`)
+  return raw as Endpoint[]
+}
 const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
 const MAX_SERVER_TOOLS = 32
 const MAX_SERVER_TOOL_STEPS = 100
@@ -368,6 +472,7 @@ function parseApps(
     // `false` turns the link off for this app; a string is its own template (validated like the global one).
     const historyUrl = value.historyUrl === false ? false : parseHistoryUrl(value.historyUrl, `plugboard option \`apps.${app}.historyUrl\``)
     const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
+    const endpoints = value.endpoints === undefined ? undefined : parseEndpoints(value.endpoints, at)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -379,9 +484,10 @@ function parseApps(
       ...(maxServerToolCalls === undefined ? {} : { maxServerToolCalls }),
       ...(historyUrl === undefined ? {} : { historyUrl }),
       ...(promptCache === undefined ? {} : { promptCache }),
+      ...(endpoints === undefined ? {} : { endpoints }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -450,6 +556,16 @@ export function bodyLimits(options: Pick<PlugboardOptions, "limits">): BodyLimit
     maxBytesInFlight: options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight,
     readTimeoutMs: options.limits?.bodyReadTimeoutMs ?? BODY_LIMIT_DEFAULTS.readTimeoutMs,
   }
+}
+
+/**
+ * The refusal for `app` calling `endpoint` (#268): 403 `endpoint_forbidden` when `apps.<app>.endpoints` is set and does not
+ * list it; `undefined` when the app may call it. Callers run this after authentication (I15).
+ */
+export function endpointRefusal(options: Pick<PlugboardOptions, "apps">, app: string, endpoint: Endpoint): PlugError | undefined {
+  const allowed = appPolicy(options, app)?.endpoints
+  if (allowed === undefined || allowed.includes(endpoint)) return undefined
+  return { status: 403, kind: "permission", code: "endpoint_forbidden", message: `This app may not call the ${endpoint} endpoint: \`apps.${app}.endpoints\` does not list it` }
 }
 
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
@@ -611,6 +727,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const port = listenInput?.port
   if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535))
     throw new Error("plugboard option `listen.port` must be an integer between 1 and 65535")
+  const trustProxy = parseTrustProxy(listenInput?.trustProxy)
 
   const keyEntries: Array<[string, string]> = []
   if (input.keys !== undefined && !isRecord(input.keys)) throw new Error("plugboard option `keys` must be an object of app name -> key")
@@ -632,6 +749,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   digestsOf(keys)
   if (keyEntries.length === 0 && !isLoopbackHost(host))
     throw new Error(`plugboard refuses to listen on non-loopback host \`${host}\` without \`keys\``)
+  if (input.requireKeys !== undefined && typeof input.requireKeys !== "boolean") throw new Error("plugboard option `requireKeys` must be a boolean")
+  if (input.requireKeys === true && keyEntries.length === 0)
+    throw new Error("plugboard option `requireKeys` needs `keys`: without them every local caller would be served as the keyless app; add `keys` or remove `requireKeys`")
   if (input.adminKey !== undefined) {
     if (typeof input.adminKey !== "string" || input.adminKey.length === 0) throw new Error("plugboard option `adminKey` must be a non-empty string (is its {env:VAR} set?)")
     if (keyEntries.some(([, key]) => key === input.adminKey)) throw new Error("plugboard option `adminKey` must differ from every app key")
@@ -710,10 +830,11 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     throw new Error(`plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`)
   const historyUrl = parseHistoryUrl(input.historyUrl)
   const promptCache = parsePromptCache(input.promptCache, "promptCache")
+  const cors = parseCors(input.cors, keyEntries.length > 0)
 
   return {
     ...(promptCache === undefined ? {} : { promptCache }),
-    listen: { host, port: port ?? DEFAULTS.port },
+    listen: { host, port: port ?? DEFAULTS.port, ...(trustProxy === undefined ? {} : { trustProxy }) },
     keys,
     apps,
     models: models as string[],
@@ -734,6 +855,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     usage,
     ...(budgets === undefined ? {} : { budgets }),
     ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
+    ...(input.requireKeys === true ? { requireKeys: true } : {}),
+    ...(cors === undefined ? {} : { cors }),
     ...(historyUrl === undefined ? {} : { historyUrl }),
   }
 }

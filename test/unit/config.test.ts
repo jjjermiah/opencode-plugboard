@@ -143,6 +143,109 @@ describe("parseOptions: every rejection names the option", () => {
   })
 })
 
+describe("#266 listen.trustProxy in parseOptions", () => {
+  test("is absent from listen by default, and carries the list when set", () => {
+    expect(parseOptions({}).listen).not.toHaveProperty("trustProxy")
+    expect(parseOptions({ keys: { app: "secret" }, listen: { trustProxy: ["127.0.0.1", "10.0.0.0/8"] } }).listen.trustProxy).toEqual(["127.0.0.1", "10.0.0.0/8"])
+    expect(parseOptions({ keys: { app: "secret" }, listen: { trustProxy: true } }).listen.trustProxy).toEqual(["127.0.0.0/8", "::1/128"])
+  })
+
+  test("an invalid entry is refused at load and names the option", () => {
+    expect(() => parseOptions({ listen: { trustProxy: ["proxy.internal"] } })).toThrow("`listen.trustProxy`")
+  })
+})
+
+describe("#256 cors option", () => {
+  test("is absent by default, and parses origins and allowPrivateNetwork", () => {
+    expect(parseOptions({})).not.toHaveProperty("cors")
+    expect(parseOptions({ cors: { origins: ["https://chat.example.net", "http://localhost:3000"] } }).cors).toEqual({
+      origins: ["https://chat.example.net", "http://localhost:3000"],
+      allowPrivateNetwork: false,
+    })
+    expect(parseOptions({ keys: { app: "secret" }, cors: { origins: ["*"], allowPrivateNetwork: true } }).cors).toEqual({ origins: ["*"], allowPrivateNetwork: true })
+  })
+
+  test.each([
+    ["a trailing slash", { origins: ["https://a.example/"] }, /entry `https:\/\/a\.example\/` must be an `http:\/\/` or `https:\/\/` origin/],
+    ["a path", { origins: ["https://a.example/app"] }, /must be an `http:\/\/` or `https:\/\/` origin/],
+    ["a wildcard host", { origins: ["https://*.example"] }, /must be an `http:\/\/` or `https:\/\/` origin/],
+    ["credentials", { origins: ["https://user:pw@a.example"] }, /must be an `http:\/\/` or `https:\/\/` origin/],
+    ["another scheme", { origins: ["ftp://a.example"] }, /must be an `http:\/\/` or `https:\/\/` origin/],
+    ["an empty list", { origins: [] }, /`cors.origins` must be a non-empty array/],
+    ["* with another entry", { origins: ["*", "https://a.example"] }, /`\*` must be the only entry/],
+    ["an unknown field", { origins: ["https://a.example"], methods: ["GET"] }, /Unknown plugboard option `cors.methods`/],
+    ["allowPrivateNetwork that is not a boolean", { origins: ["https://a.example"], allowPrivateNetwork: "yes" }, /`cors.allowPrivateNetwork` must be a boolean/],
+  ])("%s is refused at load and names the option", (_name, cors, message) => {
+    expect(() => parseOptions({ keys: { app: "secret" }, cors })).toThrow(message)
+  })
+
+  test("* without keys is refused: a wildcard never sits in front of a keyless endpoint", () => {
+    expect(() => parseOptions({ cors: { origins: ["*"] } })).toThrow("`*` needs `keys`")
+  })
+})
+
+describe("#259 remoteImages object fields", () => {
+  test("each field is optional and parses as given; an unset field is absent", () => {
+    expect(parseOptions({ remoteImages: { allow: ["images.internal"] } }).remoteImages).toEqual({ allow: ["images.internal"] })
+    expect(parseOptions({ remoteImages: { allow: [], schemes: ["https"], maxBytes: 5242880, maxItems: 4, maxRedirects: 0, timeoutMs: 10000 } }).remoteImages).toEqual({
+      allow: [],
+      schemes: ["https"],
+      maxBytes: 5242880,
+      maxItems: 4,
+      maxRedirects: 0,
+      timeoutMs: 10000,
+    })
+    expect(parseOptions({ remoteImages: true }).remoteImages).toBe(true)
+  })
+
+  test.each([
+    ["schemes with a scheme other than http or https", { schemes: ["ftp"] }, /`remoteImages.schemes` must be a non-empty list of `http` and `https`/],
+    ["schemes empty", { schemes: [] }, /`remoteImages.schemes` must be a non-empty list/],
+    ["maxBytes of zero", { maxBytes: 0 }, /`remoteImages.maxBytes` must be an integer between 1 and 104857600/],
+    ["maxBytes above 100 MiB", { maxBytes: 104857601 }, /`remoteImages.maxBytes` must be an integer between 1 and 104857600/],
+    ["maxItems of zero", { maxItems: 0 }, /`remoteImages.maxItems` must be an integer between 1 and 1000/],
+    ["maxRedirects above 10", { maxRedirects: 11 }, /`remoteImages.maxRedirects` must be an integer between 0 and 10/],
+    ["maxRedirects that is not an integer", { maxRedirects: 1.5 }, /`remoteImages.maxRedirects` must be an integer between 0 and 10/],
+    ["timeoutMs of zero", { timeoutMs: 0 }, /`remoteImages.timeoutMs` must be an integer between 1 and 600000/],
+    ["an unknown field", { cache: true }, /Unknown plugboard option `remoteImages.cache` \(known: allow, schemes, maxBytes, maxItems, maxRedirects, timeoutMs\)/],
+  ])("%s is refused at load and names the option", (_name, remoteImages, message) => {
+    expect(() => parseOptions({ remoteImages })).toThrow(message)
+  })
+})
+
+describe("#268 apps.<name>.endpoints", () => {
+  test("parses a non-empty list of endpoint names, and is absent when unset", () => {
+    const options = parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { endpoints: ["chat", "models"] } } })
+    expect(options.apps.bot).toEqual({ systemMode: "prepend", tools: true, endpoints: ["chat", "models"] })
+    expect(parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { tools: false } } }).apps.bot).not.toHaveProperty("endpoints")
+  })
+
+  test.each([
+    ["an unknown name", { endpoints: ["images"] }, /endpoints entry `images` must be one of: chat, completions, responses, messages, gemini, models/],
+    ["an empty list", { endpoints: [] }, /endpoints must be a non-empty array/],
+    ["a string instead of a list", { endpoints: "chat" }, /endpoints must be a non-empty array/],
+  ])("%s is refused at load and names the option", (_name, policy, message) => {
+    expect(() => parseOptions({ keys: { bot: "k-bot" }, apps: { bot: policy } })).toThrow(message)
+  })
+})
+
+describe("#271 requireKeys", () => {
+  test("is absent by default, and true when set with keys", () => {
+    expect(parseOptions({})).not.toHaveProperty("requireKeys")
+    expect(parseOptions({ keys: { app: "secret" }, requireKeys: false })).not.toHaveProperty("requireKeys")
+    expect(parseOptions({ keys: { app: "secret" }, requireKeys: true }).requireKeys).toBe(true)
+  })
+
+  test("a keyless server with requireKeys refuses to load, so it never runs keyless by drift (I16)", () => {
+    expect(() => parseOptions({ requireKeys: true })).toThrow("`requireKeys` needs `keys`")
+    expect(() => parseOptions({ apps: { bot: { key: "k-bot" } }, requireKeys: true })).not.toThrow()
+  })
+
+  test("must be a boolean", () => {
+    expect(() => parseOptions({ keys: { app: "secret" }, requireKeys: "yes" })).toThrow("`requireKeys` must be a boolean")
+  })
+})
+
 describe("parseOptions: modelIds", () => {
   test.each(["canonical", "slugs", "both"] as const)("accepts %p", (modelIds) => {
     expect(parseOptions({ modelIds }).modelIds).toBe(modelIds)

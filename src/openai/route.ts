@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, historyTemplate, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -35,7 +35,9 @@ import {
   beginRequest,
   boundEvents,
   checkJsonContentType,
+  checkHost,
   checkOrigin,
+  corsOrigin,
   finishRequest,
   readJsonBody,
   sendError,
@@ -45,6 +47,7 @@ import {
   type RequestScope,
 } from "../http.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
+import { clientAddress, forwardedOrigin } from "../forwarded.js"
 import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, log, logError, withRequestId } from "../log.js"
@@ -90,6 +93,13 @@ const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
 const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status"]
+/** The endpoint family of each OpenAI route (`apps.<name>.endpoints`, #268). Gemini and `/v1/models/{id}` are classified where they are matched. */
+const ENDPOINT_BY_ROUTE: Readonly<Record<string, Endpoint>> = {
+  "POST /v1/chat/completions": "chat",
+  "POST /v1/completions": "completions",
+  "POST /v1/responses": "responses",
+  "GET /v1/models": "models",
+}
 /** Plugboard's own routes: the namespace whose errors are problem+json. */
 const PLUGBOARD_PREFIX = "/plugboard"
 /** The liveness and readiness probes: at the root (kept for probes) and under `/plugboard/`. */
@@ -134,6 +144,8 @@ interface RequestInfo extends ServedInfo {
   dropped?: string
   /** The end user the body named, when kept (src/user.ts). */
   user?: string
+  /** The client address behind a trusted proxy (`listen.trustProxy`, #266); set only when that option is on. */
+  client?: string
 }
 
 export function createOpenAiRoute(routeHost: RouteHost) {
@@ -188,6 +200,29 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const route = gemini?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
     info.route = gemini || modelId !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
+    // CORS (#256). An allowed browser origin gets its headers on every answer. Its preflight (OPTIONS with a requested method)
+    // is answered here, before authentication, because a preflight carries no credentials; the Host check still runs first.
+    if (host.options.cors !== undefined) {
+      response.setHeader("vary", "Origin")
+      const allowed = corsOrigin(request, host.options)
+      if (allowed !== undefined) {
+        response.setHeader("access-control-allow-origin", allowed)
+        if (request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined) {
+          const hostError = checkHost(request, host.options)
+          if (hostError) return fail(response, hostError)
+          response.writeHead(204, {
+            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-headers": "authorization, content-type, x-api-key, x-goog-api-key",
+            ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true"
+              ? { "access-control-allow-private-network": "true" }
+              : {}),
+          })
+          response.end()
+          return
+        }
+      }
+    }
+
     // Anthropic Messages: its own error shape and x-api-key auth, so it takes the request from here.
     if (isMessagesPath(path)) return serveMessages(host, { path, request, response, scope, info })
 
@@ -216,7 +251,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         app = auth.app
       }
       info.app = app
-      const doc = buildDiscovery({ options: host.options, app, catalog: app === undefined ? undefined : await optionalCatalog(scope) })
+      // Behind a trusted proxy on a keyed endpoint, the base URL is the public origin the proxy names (#266).
+      const publicOrigin = keyed ? forwardedOrigin(request, host.options.listen.trustProxy) : undefined
+      const doc = buildDiscovery({ options: host.options, app, catalog: app === undefined ? undefined : await optionalCatalog(scope), publicOrigin })
       if (route === "GET /v1") return sendJson(response, 200, doc)
       return sendText(response, 200, "text/html; charset=utf-8", renderDiscoveryHtml(doc), PAGE_HEADERS)
     }
@@ -263,6 +300,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         message: `No route for ${request.method} ${path}`,
       })
     }
+
+    // An app may be limited to some endpoints (#268). Checked after authentication and route existence (I15): a refusal is a 403, never a 404.
+    const endpoint: Endpoint | undefined = gemini ? "gemini" : modelId !== undefined ? "models" : ENDPOINT_BY_ROUTE[route]
+    const refusal = endpoint === undefined ? undefined : endpointRefusal(host.options, auth.app, endpoint)
+    if (refusal) return fail(response, refusal)
 
     if (gemini) return serveGemini(host, { match: gemini, request, url, app: auth.app, response, scope, info })
 
@@ -409,6 +451,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   async function run(request: IncomingMessage, response: ServerResponse, id: string): Promise<void> {
     const started = Date.now()
     const info: RequestInfo = { route: "unparsed" }
+    if (host.options.listen.trustProxy !== undefined) info.client = clientAddress(request, host.options.listen.trustProxy)
     metrics?.requestStarted()
     const scope = beginRequest(request, response, host.options.requestTimeoutMs)
     let outcome = "ok"
@@ -455,7 +498,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       // Probes and scrapes that succeed are not worth a line each. A readiness probe is never logged: it repeats until the backend is ready.
       const probe = READY_ROUTES.includes(info.route) || ((HEALTH_ROUTES.includes(info.route) || info.route === "GET /plugboard/metrics") && outcome === "ok")
       if (!probe) {
-        const fields = { id, route: info.route, app: info.app, user: info.user, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
+        const fields = { id, route: info.route, app: info.app, user: info.user, client: info.client, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
         else log("request", fields)
       }

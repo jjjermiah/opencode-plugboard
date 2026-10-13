@@ -22,6 +22,9 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `history` | `{ maxAgeDays: 30 }` | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app (unset: no count limit). `maxAgeDays` deletes older ones: 30 by default, `0` turns the age limit off (keep forever). With both, the stricter wins. See [History](history.md). |
 | `dropUnsupportedParams` | `true` | Drop `temperature`, `top_p` and penalties the target model is known to reject, and list them in the `x-plugboard-dropped-params` response header. `false` forwards them as sent. |
 | `logFormat` | `text` | `text` writes `key=value` lines; `json` writes one JSON object per line for log pipelines. Ids and outcomes only, never keys or bodies. |
+| `listen.trustProxy` (since 0.26.0) | none | The reverse proxies whose forwarded headers are read: `true` (loopback only), or a list of IP addresses and CIDR ranges such as `["127.0.0.1", "10.0.0.0/8"]`. Headers from any other peer are ignored. See [Reverse proxies](#reverse-proxies-since-0-26-0). |
+| `cors` (since 0.26.0) | none | Browser origins that may call plugboard: `{ "origins": ["https://chat.example.net"], "allowPrivateNetwork": false }`. Each origin is `http(s)://host[:port]`; `"*"` alone needs `keys`. See [Browser origins](#browser-origins-since-0-26-0). |
+| `requireKeys` (since 0.26.0) | `false` | Makes a keyless server impossible. With `true`, `keys` must be set (otherwise the plugin refuses to load), and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. Absent or `false`: keyless loopback works as before. Use it on a shared machine, where loopback is not a security boundary.
 | `metrics` | `false` | Serve Prometheus metrics at `GET /plugboard/metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` (since 0.21.0) bound request bodies, see [Request bodies](#request-bodies). |
@@ -31,6 +34,69 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `historyUrl` (since 0.20.0) | none | A link to an OpenCode session page: a template with `{id}` (the session id) and optional `{directory}` (the app's directory, URL-encoded). Must be `http(s)`. Responses that carry `x-plugboard-session` also carry `x-plugboard-session-url` with the filled link, and the request log line gains `session_url=`. See [Session links](#session-links). |
 | `usage` | `{ enabled: true, retentionDays: 90 }` | Per-app usage by UTC day (requests, errors, latency, tokens, cost, cache, fallbacks, 429s), served at `GET /plugboard/usage` and by the usage RPC. `enabled: false` records nothing and serves no route. `retentionDays` is 1 to 3650. See [Usage statistics](#usage-statistics). |
 | `remoteImages` | `false` | Let the server fetch `http(s)` image URLs from requests (20 MB cap, no redirects, `image/*` only). When on, only public addresses are fetched: loopback, private, link-local, CGNAT and unique-local ranges are refused, and the checked address is the one connected to. Allow internal hosts with `{ "allow": ["images.internal", "*.corp", "10.1.0.0/16"] }`. Fetched images reach the model, so only allow hosts you are happy to have described back to callers. Callers can always send `data:` URLs. |
+
+### Reverse proxies (since 0.26.0)
+
+Behind Traefik, nginx or Caddy, plugboard sees the proxy's address, and the proxy's own `Host` (the public name) fails the loopback Host check. Option `listen.trustProxy` (#266) names the proxies whose forwarded headers are read:
+
+```jsonc
+"listen": {
+  "host": "127.0.0.1",
+  "port": 4010,
+  "trustProxy": ["127.0.0.1", "10.0.0.0/8"]
+}
+```
+
+- Headers are read only when the request's immediate peer (the socket address, never a header) is on the list. From any other peer, `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` are ignored.
+- `X-Forwarded-For` gives the client: the rightmost address that is not a trusted proxy. The request log line gets a `client=` field, and only when this option is set.
+- On a keyed endpoint, a trusted proxy's `X-Forwarded-Host` passes the Host check, and the discovery page's base URL uses `X-Forwarded-Proto` with that host. The proxy must send `X-Forwarded-Host`; without it the Host check reads the `Host` header as before.
+- On a keyless endpoint, forwarded headers are never used for the Host check: a page that rebinds its name to the listener could send the same header. Keyless plus a proxy is refused by the Host check, so set `keys`.
+- Forwarded headers never authenticate: a key is still required on a keyed endpoint.
+
+Read [SECURITY](https://github.com/jjjermiah/opencode-plugboard/blob/main/SECURITY.md) before you trust a loopback address: a browser on the same machine can reach a loopback listener through DNS rebinding.
+
+### Browser origins (since 0.26.0)
+
+A web page in a browser runs on its own origin and calls plugboard from there. Option `cors` (#256) names the origins that may do that:
+
+```jsonc
+"cors": {
+  "origins": ["https://chat.example.net", "http://localhost:3000"],
+  "allowPrivateNetwork": false
+}
+```
+
+- An allowed origin gets `Access-Control-Allow-Origin` (its own origin, with `Vary: Origin`) on every answer. The rest of each answer is unchanged.
+- Its preflight (`OPTIONS` with `Access-Control-Request-Method`) is answered `204` before authentication, because a preflight carries no credentials. The Host check still runs first. The preflight reveals only which origins are allowed.
+- The actual request still needs its key on a keyed endpoint. On a keyless endpoint, an allowed origin is no longer refused, and every other `Origin` still gets 403 `cross_origin_forbidden`.
+- An origin off the list gets no CORS header, so the browser blocks the response.
+- `allowPrivateNetwork: true` adds `Access-Control-Allow-Private-Network: true` when the preflight asks for it (Private Network Access). Off by default.
+- `"*"` echoes `*` for any origin. It must stand alone and needs `keys`: a wildcard never sits in front of a keyless endpoint.
+
+The responses do not expose the `x-plugboard-*` headers to a browser script, because `Access-Control-Expose-Headers` is not set.
+
+### Remote image limits (since 0.26.0)
+
+`remoteImages` (#259) takes the same `true` and `{ "allow": [...] }` forms as before. Each field below is optional and only tightens the fetch: the SSRF filter (I17), the address pinning and the 50 MB total per request stay in force.
+
+| Field | Default (today's behaviour) | Meaning |
+|---|---|---|
+| `schemes` | `["http", "https"]` | URL schemes that may be fetched. `["https"]` makes an `http` URL fail with `image_fetch_failed`. Redirect targets are checked too. |
+| `maxBytes` | `20971520` (20 MB) | Size cap for one fetched image, 1 to 104857600. The 50 MB total per request still applies. |
+| `maxItems` | none | Most remote URLs one request may fetch, 1 to 1000. The next one fails with `too_many_remote_images`; data URLs are not counted. |
+| `maxRedirects` | `0` | Redirects the fetcher follows, 0 to 10. Each target goes through the address check again. |
+| `timeoutMs` | `20000` | Time allowed for one fetch, 1 to 600000. |
+
+```jsonc
+"remoteImages": {
+  "allow": ["images.internal"],
+  "schemes": ["https"],
+  "maxBytes": 5242880,
+  "maxItems": 4,
+  "maxRedirects": 0,
+  "timeoutMs": 10000
+}
+```
 
 ### Reloads and restarts
 
@@ -156,6 +222,7 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 | `serverTools` (since 0.21.0) | Off by default. A list of exact OpenCode tool ids (for example `websearch`) that this app's sessions may run themselves, 1 to 32 entries. See the warning below. |
 | `maxServerToolSteps` (since 0.21.0) | How many model steps of one request may run a server tool, `8` by default, 1 to 100. It counts steps, not calls. Needs `serverTools`. |
 | `maxServerToolCalls` (since 0.24.0) | How many server tool calls one request may run in all its steps together, `16` by default, 1 to 1000. The call past it fails the request. Needs `serverTools`. |
+| `endpoints` (since 0.26.0) | The endpoint families this app may call: a non-empty list of `chat`, `completions`, `responses`, `messages`, `gemini` and `models`. Absent: every endpoint. A call outside the list is a 403 `endpoint_forbidden`, in the route's own error shape. See [Endpoint names](#endpoint-names-since-0-26-0). |
 | `historyUrl` (since 0.23.0) | The session link template for this app: a string with `{id}` (see [Session links](#session-links)), or `false` for no link, no `x-plugboard-session-url` and no `session_url=` log field. Absent: the global `historyUrl`. Set `false` for an app you do not trust with the OpenCode server address. |
 
 > **Security: `serverTools` lets an app's key run OpenCode tools on the server.** Anyone holding that app's key can make the model call each listed tool, and the tool runs with the server's own OpenCode credentials and permissions. The prompt steers which arguments the model passes. A tool that reads files or runs commands can reach what the server's OpenCode process can reach, within whatever limits that tool enforces itself. Give such a key only to a caller you would trust with those tools, list the fewest tools the app needs, and never list tools on the keyless `default` app or on a key shared with others. Plugboard checks that each listed tool is a direct tool of the server's OpenCode right now and denies every other tool, but it cannot limit what a listed tool does.
@@ -176,6 +243,29 @@ Rules:
 `/v1/models`, `/v1/models/{id}` and the Gemini `/v1beta/models` routes list only what the calling app may use, and the model counts and example on the setup page and `/plugboard/status` follow the same scope.
 
 Without `keys` the only app is `default`, and `apps.default` configures it. Once any key exists `default` is never used, so `apps.default` is rejected. Every other app in `apps` must have a key. `system` is applied by the context hook that already rewrites a request session, so it shows up in the model request but not in the stored session transcript.
+
+### Endpoint names (since 0.26.0)
+
+`apps.<name>.endpoints` (#268) limits a key to the routes its app needs. Each name is one endpoint family:
+
+| Name | Routes |
+|---|---|
+| `chat` | `POST /v1/chat/completions` |
+| `completions` | `POST /v1/completions` |
+| `responses` | `POST /v1/responses` |
+| `messages` | `POST /v1/messages` and `POST /v1/messages/count_tokens` |
+| `gemini` | the `/v1beta/models/...` routes (and `/v1/models/{model}:generateContent`) |
+| `models` | `GET /v1/models` and `GET /v1/models/{id}` |
+
+```jsonc
+"apps": {
+  "discord-bot": { "endpoints": ["chat"] },   // Chat Completions only
+  "claude-code": { "endpoints": ["messages"] }, // Anthropic Messages only
+  "ui-picker": { "endpoints": ["models"] }      // lists models, cannot call one
+}
+```
+
+The check runs after authentication, so an unauthenticated caller still gets a 401. A refused call is a 403 `endpoint_forbidden` whose message names `apps.<name>.endpoints`; the model is never called. Usage, status, metrics, the dashboard and the probes are not affected by this list. Any other name, or an empty list, fails at load.
 
 ## Concurrency and rate limits
 

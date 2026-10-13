@@ -108,6 +108,14 @@ describe("Host and Origin checks on a loopback listener", () => {
   })
 })
 
+describe("#271 requireKeys: every request needs a key, loopback included", () => {
+  test("a loopback request without a key is a 401, and the liveness probe stays open", async () => {
+    await route({ keys: { app: "secret" }, requireKeys: true })
+    await expectError(chat(), wireError(401, "authentication_error", "invalid_api_key"))
+    expect((await server!.send({ path: "/healthz" })).status).toBe(200)
+  })
+})
+
 describe("authentication", () => {
   test.each([
     ["no Authorization header", {}],

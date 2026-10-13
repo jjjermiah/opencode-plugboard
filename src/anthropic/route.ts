@@ -12,7 +12,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { appPolicy, authenticate, bodyLimits, historyTemplate } from "../config.js"
+import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate } from "../config.js"
 import { liveOptions } from "../runtime.js"
 import { bodyUserId, noteEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
@@ -105,6 +105,9 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     info.app = auth.app
     if (request.method !== "POST")
       return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}; use POST` })
+    // An app may be limited to some endpoints (#268): refused after authentication and the method check, in this shape.
+    const refused = endpointRefusal(host.options, auth.app, "messages")
+    if (refused) return fail(refused)
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
 

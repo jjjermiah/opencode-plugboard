@@ -14,7 +14,58 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`requireKeys` makes a keyless server impossible** ([#271](https://github.com/jjjermiah/opencode-plugboard/issues/271)). On a shared machine, loopback is not a boundary, so a keyless server should be something you can rule out in config. With `requireKeys: true`, the plugin refuses to load without `keys`, and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. The default is `false`, so keyless loopback works as before.
+
+  ```jsonc
+  {
+    "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
+    "requireKeys": true
+  }
+  ```
+- **Limit an app to some endpoints** ([#268](https://github.com/jjjermiah/opencode-plugboard/issues/268)). Every key could reach every model route, so a key given to a polling bot could also call Messages or Responses. `apps.<name>.endpoints` names the endpoint families an app may call. A call outside the list is a 403 `endpoint_forbidden` in the route's own error shape, and the model is not called. The check runs after authentication. Unset means every endpoint, as before.
+
+  ```jsonc
+  {
+    "keys": { "discord-bot": "{env:PLUGBOARD_KEY_BOT}", "claude-code": "{env:PLUGBOARD_KEY_CLAUDE}" },
+    "apps": {
+      "discord-bot": { "endpoints": ["chat"] },
+      "claude-code": { "endpoints": ["messages"] }
+    }
+  }
+  ```
+- **Set the limits on remote image fetches** ([#259](https://github.com/jjjermiah/opencode-plugboard/issues/259)). `remoteImages` was on or off, and its bounds were fixed in the code: 20 MB per image, a 20 second timeout, no redirects, any `http` or `https` URL. An operator who allows one internal image host could not tighten the rest. The object form now takes `schemes`, `maxBytes`, `maxItems`, `maxRedirects` and `timeoutMs`. Each is optional and only tightens the fetch: the SSRF filter, the address pinning and the 50 MB total per request are unchanged. `true` and `{ "allow": [...] }` keep working, with the same defaults.
+
+  ```jsonc
+  {
+    "remoteImages": {
+      "allow": ["images.internal"],
+      "schemes": ["https"],
+      "maxBytes": 5242880,
+      "maxItems": 4,
+      "maxRedirects": 0,
+      "timeoutMs": 10000
+    }
+  }
+  ```
+- **Allow a browser origin to call plugboard** ([#256](https://github.com/jjjermiah/opencode-plugboard/issues/256)). A web UI on another origin could not call plugboard: no CORS header was sent, and a keyless endpoint refused every `Origin`. `cors.origins` names the origins that may call it. An allowed origin gets `Access-Control-Allow-Origin`, and its preflight is answered before authentication (the Host check still runs, and the actual request still needs its key). An origin off the list gets no CORS header, as before. `allowPrivateNetwork: true` answers Private Network Access preflights. `"*"` needs keys.
+
+  ```jsonc
+  {
+    "cors": {
+      "origins": ["https://chat.example.net", "http://localhost:3000"],
+      "allowPrivateNetwork": false
+    }
+  }
+  ```
+- **Read the real client and the public host behind a reverse proxy** ([#266](https://github.com/jjjermiah/opencode-plugboard/issues/266)). Behind Traefik, nginx or Caddy, every request logged the proxy's address, and the loopback Host check refused the proxy's public name. `listen.trustProxy` names the proxies whose `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Proto` are read, and only from those peers. The log gets a `client=` field, and on a keyed endpoint the forwarded host passes the Host check. Forwarded headers never authenticate. Unset means the headers are ignored, as before.
+
+  ```jsonc
+  {
+    "listen": { "host": "127.0.0.1", "port": 4010, "trustProxy": ["127.0.0.1", "10.0.0.0/8"] }
+  }
+  ```
 
 ## [0.25.1] - 2026-10-12: Front Door, Unlocked
 
