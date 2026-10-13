@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "examples/**"
       - "README.md"
       - "package.json"
       - "bun.lock"

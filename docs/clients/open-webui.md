@@ -1,20 +1,14 @@
 # Open WebUI
 
-Tested: Open WebUI 0.12.0 (Docker), 2026-10-11, at an earlier commit. S1 to S7 passed, driven over its HTTP API. A browser was not used, so dropdown behaviour with a long model list is unobserved. S6 was a direct API call, and on `fast` the S5 image answer was "Crimson" rather than "red".
+Tested: Open WebUI 0.12.0 (Docker). Live run [`2026-10-13-0cf8030`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/open-webui/runs/live/2026-10-13-0cf8030) at plugboard 0.28.0 (`0cf8030`): pass. S1 to S7 were driven over its HTTP API. A browser was not used, so dropdown behaviour with a long model list is unobserved. The run's summary and transcripts are in the example directory.
 
-Add plugboard as an OpenAI connection, in the UI (Admin Panel, Settings, Connections, OpenAI API) or by environment:
+Add plugboard as an OpenAI connection, in the UI (Admin Panel, Settings, Connections, OpenAI API) or with the example's compose file, which sets the same connection by environment:
 
-```sh
-docker run -d --name open-webui -p 127.0.0.1:3000:8080 \
-  --add-host host.docker.internal:host-gateway \
-  -e OPENAI_API_BASE_URL=http://host.docker.internal:4010/v1 \
-  -e OPENAI_API_KEY="$PLUGBOARD_KEY" \
-  -e ENABLE_OLLAMA_API=false \
-  -v open-webui:/app/backend/data \
-  ghcr.io/open-webui/open-webui:0.12.0
-```
+<<< @/../examples/open-webui/docker-compose.yml#snippet
 
-The container example needs plugboard bound to a non-loopback address with `keys` set. A loopback bind is not reachable from a container, and its `Host` check would reject `host.docker.internal` anyway. See [reaching plugboard from another host or container](any-app.md#reaching-plugboard-from-another-host-or-container). Outside Docker use `http://localhost:4010/v1`. The test setup is in [compat/docker/README.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/docker/README.md).
+Save it as `docker-compose.yml`, export `PLUGBOARD_KEY_OPEN_WEBUI` with the open-webui key, and run `docker compose up -d`.
+
+The container example needs plugboard bound to a non-loopback address with `keys` set. A loopback bind is not reachable from a container, and its `Host` check would reject `host.docker.internal` anyway. See [reaching plugboard from another host or container](any-app.md#reaching-plugboard-from-another-host-or-container). Outside Docker use `http://localhost:4010/v1`. The example's README is [`examples/open-webui/README.md`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/open-webui/README.md).
 
 ## Chat
 

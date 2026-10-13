@@ -62,4 +62,4 @@ None in the scripted run. The live run of 2026-10-13 (`runs/live/2026-10-13-c97a
 
 ## Historical record
 
-`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied from `compat/results/langchain.md` without change. It covers both LangChain clients (Python and JS) and predates the `json_object` change and the usage fix it names.
+`runs/live/2026-10-11-3fcedc7/REPORT.md` is the 2026-10-11 run at commit `3fcedc7`, copied without change from the kit's record before the old kit was removed. It covers both LangChain clients (Python and JS) and predates the `json_object` change and the usage fix it names.

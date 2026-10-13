@@ -95,3 +95,13 @@ A scripted run is stale when its scenarios, the checks, or the client's pinned v
 ## Tests
 
 `test/unit/examples-normalise.test.ts` covers the placeholder, URL, header, key and SSE rules and the writer's refusal. `test/unit/examples-harness.test.ts` covers the summary schema.
+
+## Record-keeping
+
+These rules come from the old `compat/README.md`, which the examples replace.
+
+- Results are dated evidence. Keep old observations and add a new dated record when you retest. A per-client record starts from [`examples/_release/_template.md`](../_release/_template.md): client and exact versions, the plugboard commit, a scenario table, exact error text for each failure, and the raw request and response for any suspected plugboard bug, with your reasoning on whether it is a plugboard bug, a client quirk or model behaviour.
+- When later code makes an old conclusion wrong, put a note at the top of that record that marks it superseded and says what changed. Do not rewrite the observation.
+- Keep session chatter out of a record: who ran it, or what was or was not committed.
+- Captures are sensitive. Quote synthetic excerpts in a record, never a raw capture. Transcripts under `runs/` are the normalised, redacted output of the writer (see Normalising above), not raw traffic.
+- Clean up test history with `examples/_tools/sessions.py`. Every request leaves a history session filed under `<data root>/compat`. The tool deletes only sessions whose app matches `--app` (default `compat`), so use `--older-than` or explicit ids while another run shares the app.

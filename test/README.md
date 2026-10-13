@@ -16,7 +16,7 @@ The layers follow docs/architecture.md, from pure code out to the host.
 | `types/` | No tests: the SDK-typed wire goldens checked by `bun run typecheck` (#132) | none |
 | `live/` | Opt-in suite against an isolated server, and the provider x endpoint matrix (#99, #108). Skipped unless `PLUGBOARD_LIVE=1` | none: real models |
 
-The top-level `compat/` directory is a different thing: the manual kit run against a real server.
+The top-level `compat/` directory is a different thing: the Python client checks that have no example yet, run against a real server.
 
 ## Conventions
 

@@ -526,7 +526,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Aider | [aider][client-aider] | pass: one scripted `--message` run |
 | Anything else | [any-app][client-any-app] | base URL, key, model id |
 
-Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass is not a clean sweep, and the notes say where it was not. The latest full run is in [compat/results/release-candidate.md][release-candidate].
+Each run drove the client's own SDK or API against a dev server at an earlier commit: a plain chat, a tool round trip, streaming, an image and structured output on `fast`, a Claude model and a ChatGPT model. A pass is not a clean sweep, and the notes say where it was not. The latest full run is in [examples/_release/release-candidate.md][release-candidate].
 
 The protocol-level results are in the [compatibility matrix][compatibility]. It runs in CI against a scripted model, so it checks wire formats, not a provider's behaviour.
 
@@ -593,7 +593,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [architecture]: https://jjjermiah.github.io/opencode-plugboard/architecture
 [development]: https://jjjermiah.github.io/opencode-plugboard/development
 [compatibility]: https://jjjermiah.github.io/opencode-plugboard/compatibility
-[release-candidate]: https://github.com/jjjermiah/opencode-plugboard/blob/main/compat/results/release-candidate.md
+[release-candidate]: https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/_release/release-candidate.md
 [reach]: https://jjjermiah.github.io/opencode-plugboard/clients/any-app#reaching-plugboard-from-another-host-or-container
 [remote-access]: https://jjjermiah.github.io/opencode-plugboard/remote-access
 [client-openai-python]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-python
