@@ -273,7 +273,7 @@ const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesIn
 const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
 /** Largest cap accepted: far above any provider's limit, and keeps the error messages short. */
 const MAX_LIMIT = 1_000_000
-const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays"])
+const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays", "hidden"])
 const CACHE_KNOWN = new Set(["ttlSeconds", "maxEntries", "maxBytes", "apps"])
 const CACHE_DEFAULTS = { maxEntries: 1000, maxBytes: 64 * 1024 * 1024 } as const
 /** One year: a longer TTL is a typo, and keeps the millisecond conversion a safe integer. */
@@ -413,14 +413,23 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
 
 const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
 
-/** Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set. Unset fields fall back to the global `history`. */
+/**
+ * Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hidden` (since 0.29.0, #337).
+ * Unset fields fall back to the global `history`.
+ */
 function parseAppHistory(raw: unknown, at: string): HistoryLimits {
-  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.history\` must be an object: { maxSessions, maxAgeDays }`)
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.history\` must be an object: { maxSessions, maxAgeDays, hidden }`)
   for (const key of Object.keys(raw))
-    if (key !== "maxSessions" && key !== "maxAgeDays") throw new Error(`Unknown plugboard option \`${at}.history.${key}\` (known: maxSessions, maxAgeDays)`)
+    if (key !== "maxSessions" && key !== "maxAgeDays" && key !== "hidden") throw new Error(`Unknown plugboard option \`${at}.history.${key}\` (known: maxSessions, maxAgeDays, hidden)`)
   const maxSessions = raw.maxSessions === undefined ? undefined : positiveInt(raw.maxSessions, `${at}.history.maxSessions`, 0, 1_000_000)
   const maxAgeDays = raw.maxAgeDays === undefined ? undefined : positiveInt(raw.maxAgeDays, `${at}.history.maxAgeDays`, 0, MAX_AGE_DAYS)
-  return { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) }
+  if (raw.hidden !== undefined && typeof raw.hidden !== "boolean") throw new Error(`plugboard option \`${at}.history.hidden\` must be a boolean`)
+  const hidden = raw.hidden as boolean | undefined
+  return {
+    ...(maxSessions === undefined ? {} : { maxSessions }),
+    ...(maxAgeDays === undefined ? {} : { maxAgeDays }),
+    ...(hidden === undefined ? {} : { hidden }),
+  }
 }
 
 /** Option `apps.<name>.endpoints` (#268): a non-empty list of endpoint names from `ENDPOINTS`. */
@@ -878,6 +887,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     throw new Error(`plugboard option \`history.maxAgeDays\` must be an integer between 0 and ${MAX_AGE_DAYS} (0 keeps sessions of any age)`)
   const ageDays = rawAge ?? DEFAULT_HISTORY_DAYS
   const maxAgeDays = ageDays === 0 ? undefined : ageDays
+  if (historyInput?.hidden !== undefined && typeof historyInput.hidden !== "boolean") throw new Error("plugboard option `history.hidden` must be a boolean")
+  const hidden = historyInput?.hidden as boolean | undefined
 
   const limits = parseLimits(input.limits, keys)
   const cache = parseCache(input.cache, keys)
@@ -888,6 +899,15 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     throw new Error(`plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`)
   const historyUrl = parseHistoryUrl(input.historyUrl)
   const promptCache = parsePromptCache(input.promptCache, "promptCache")
+  // `history.hidden` parents an app's request sessions under one app-scope parent (#337). A per-user anchor cannot be that parent too.
+  // With keys, `default` is not a usable app (line ~582): only the named apps are checked.
+  const checkedApps = Object.keys(keys).length === 0 ? [DEFAULT_APP] : Object.keys(keys)
+  for (const app of checkedApps) {
+    const hiddenHere = (apps[app]?.history?.hidden ?? hidden) === true
+    const cacheHere = apps[app]?.promptCache ?? promptCache
+    if (hiddenHere && cacheHere?.affinity === "anchor" && cacheHere.scope === "user")
+      throw new Error(`plugboard app \`${app}\` sets \`history.hidden\` with \`promptCache\` scope \`user\`: the hidden parent is one per app, so it cannot also be the per-user anchor. Use scope \`app\`, or turn one of them off`)
+  }
   const cors = parseCors(input.cors, keyEntries.length > 0)
 
   return {
@@ -903,7 +923,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     maxN,
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
     remoteImages,
-    history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) },
+    history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }), ...(hidden === undefined ? {} : { hidden }) },
     dropUnsupportedParams: input.dropUnsupportedParams !== false,
     logFormat: input.logFormat === "json" ? "json" : "text",
     logLevel: (input.logLevel as LogLevel | undefined) ?? "info",

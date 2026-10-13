@@ -73,6 +73,7 @@ export default Plugin.define({
         remoteImages: options.remoteImages,
         promptCache: options.promptCache,
         affinity: createAffinity({ storage: createStoragePort(ctx) }),
+        historyHidden: options.history.hidden,
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
       }
