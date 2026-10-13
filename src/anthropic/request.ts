@@ -71,8 +71,18 @@ const mediaPart = (block: JsonObject, at: string, what: "image" | "document"): P
   return bad(`${at}.source.type: "${String(source.type)}" is not supported for ${what} blocks (use base64 or url)`)
 }
 
-/** Blocks that carry nothing plugboard can replay or act on. */
-const IGNORED = new Set(["thinking", "redacted_thinking"])
+/**
+ * A `thinking` block with a signature, or a `redacted_thinking` block: the reasoning a provider can verify on replay (#374). An
+ * unsigned `thinking` block is dropped (undefined): it has no signature to replay. Malformed blocks are dropped too,
+ * as they were before this change, so a request that used to pass still passes.
+ */
+const reasoningPart = (block: JsonObject): PlugPart | undefined => {
+  if (block.type === "redacted_thinking") {
+    return typeof block.data === "string" && block.data.length > 0 ? { type: "reasoning", text: "", redactedData: block.data } : undefined
+  }
+  if (typeof block.thinking !== "string" || typeof block.signature !== "string" || block.signature.length === 0) return undefined
+  return { type: "reasoning", text: block.thinking, signature: block.signature }
+}
 
 /** Text of a tool_result `content`: a string, or text blocks; image blocks are returned separately. */
 const toolResultContent = (content: unknown, at: string): { text: string; media: PlugPart[] } | PlugError => {
@@ -141,8 +151,10 @@ const parseMessages = (raw: unknown): PlugMessage[] | PlugError => {
       for (const [i, block] of blocks.entries()) {
         const here = `${at}.content.${i}`
         if (!isRecord(block)) return bad(`${here}: must be an object`)
-        if (typeof block.type === "string" && IGNORED.has(block.type)) continue
-        if (block.type === "text") {
+        if (block.type === "thinking" || block.type === "redacted_thinking") {
+          const part = reasoningPart(block)
+          if (part) parts.push(part)
+        } else if (block.type === "text") {
           if (typeof block.text !== "string") return bad(`${here}.text: must be a string`)
           if (block.text.length > 0) parts.push({ type: "text", text: block.text, ...cached(block) })
         } else if (block.type === "tool_use") {
@@ -151,7 +163,7 @@ const parseMessages = (raw: unknown): PlugMessage[] | PlugError => {
           if (block.input != null && !isRecord(block.input)) return bad(`${here}.input: must be an object`)
           toolNames.set(block.id, block.name)
           parts.push({ type: "tool-call", id: block.id, name: block.name, input: block.input ?? {} })
-        } else return bad(`${here}.type: "${String(block.type)}" is not supported in assistant messages (use text or tool_use)`)
+        } else return bad(`${here}.type: "${String(block.type)}" is not supported in assistant messages (use text, thinking, redacted_thinking or tool_use)`)
       }
       if (parts.length > 0) messages.push({ role: "assistant", content: parts })
       continue
