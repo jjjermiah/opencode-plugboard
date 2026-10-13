@@ -271,8 +271,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I16-keyless-origin-allowed",
     invariant: "I16",
     file: "src/http.ts",
-    find: "  if (Object.keys(options.keys).length === 0 && request.headers.origin !== undefined)",
-    replace: "  if (false && Object.keys(options.keys).length === 0 && request.headers.origin !== undefined)",
+    find: "  if (Object.keys(options.keys).length === 0 && request.headers.origin !== undefined && corsOrigin(request, options) === undefined)",
+    replace: "  if (false && Object.keys(options.keys).length === 0 && request.headers.origin !== undefined && corsOrigin(request, options) === undefined)",
     tests: ["test/http/ingress.test.ts"],
   },
   {
