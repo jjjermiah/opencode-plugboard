@@ -34,7 +34,13 @@ function say(answer: string): PlugEvent[] {
 
 /** The events of one model call for `request`. */
 export function answer(request: PlugRequest): PlugEvent[] {
-  const forced = typeof request.toolChoice === "object" ? request.toolChoice.name : undefined
+  // A named tool is forced. `required` with exactly one tool is the same thing: pydantic-ai's tool-mode output sends it that way.
+  const forced =
+    typeof request.toolChoice === "object"
+      ? request.toolChoice.name
+      : request.toolChoice === "required" && request.tools.length === 1
+        ? request.tools[0]?.name
+        : undefined
   if (forced) {
     const properties = (request.tools.find((tool) => tool.name === forced)?.parameters as { properties?: object } | undefined)?.properties ?? {}
     const input = "calories" in properties ? MEAL : {}
