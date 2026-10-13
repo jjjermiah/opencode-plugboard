@@ -22,6 +22,7 @@ import { verdictOf, writeRun, type RunSummary, type ScenarioRow, type Status } f
 import { startScriptedServer } from "./scripted-server.ts"
 
 const EXAMPLES = resolve(import.meta.dir, "..")
+/** The repo this harness lives in: the default plugboard checkout for a live run. */
 const ROOT = resolve(EXAMPLES, "..")
 const LIVE_DEFAULT_URL = "http://127.0.0.1:4010/v1"
 const RUNNER_TIMEOUT_MS = 20 * 60_000
@@ -101,13 +102,46 @@ function parseRunnerOutput(text: string) {
   return { plan, results, client, done }
 }
 
+/**
+ * The plugboard checkout a live run reads commits from: PLUGBOARD_CHECKOUT, else the harness's own repo (ROOT). `fromEnv` says which,
+ * so an error can name it without printing a path.
+ */
+const checkout = (): { dir: string; fromEnv: boolean } =>
+  process.env.PLUGBOARD_CHECKOUT ? { dir: process.env.PLUGBOARD_CHECKOUT, fromEnv: true } : { dir: ROOT, fromEnv: false }
+
 /** The plugboard commit a live run is recorded against: PLUGBOARD_COMMIT, else the checkout's HEAD. */
-async function plugboardCommit(): Promise<string> {
-  if (process.env.PLUGBOARD_COMMIT) return process.env.PLUGBOARD_COMMIT
-  const checkout = process.env.PLUGBOARD_CHECKOUT ?? join(process.env.HOME ?? "", "projects/repos/open-source/opencode-plugboard")
-  const proc = Bun.spawn(["git", "-C", checkout, "rev-parse", "--short=7", "HEAD"], { stdout: "pipe", stderr: "ignore" })
+export async function plugboardCommit(): Promise<string> {
+  const named = process.env.PLUGBOARD_COMMIT
+  // An option-looking name would be read by git as a flag (`git show -x:package.json`), so it is refused here.
+  if (named?.startsWith("-")) throw new Error("PLUGBOARD_COMMIT is a commit name, and must not start with `-`")
+  if (named) return named
+  const proc = Bun.spawn(["git", "-C", checkout().dir, "rev-parse", "--short=7", "HEAD"], { stdout: "pipe", stderr: "ignore" })
   const sha = (await new Response(proc.stdout).text()).trim()
   return (await proc.exited) === 0 && sha ? sha : "unknown"
+}
+
+/**
+ * The plugboard version of a commit: its package.json at that commit (`git show <commit>:package.json`), not the checkout's
+ * working tree, which may be another branch (#335). The server exposes no package version (`/plugboard/status` has the plugin's
+ * runtime version only), so the commit is the source. A commit the checkout does not know is an error, raised before the runner starts.
+ */
+export async function plugboardVersion(commit: string): Promise<string> {
+  const { dir, fromEnv } = checkout()
+  const proc = Bun.spawn(["git", "-C", dir, "show", `${commit}:package.json`], { stdout: "pipe", stderr: "pipe" })
+  const [text, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+  if ((await proc.exited) !== 0) {
+    const where = fromEnv ? "PLUGBOARD_CHECKOUT" : "the default checkout (the harness's own repo, PLUGBOARD_CHECKOUT is unset)"
+    throw new Error(`cannot read package.json at commit ${commit} in ${where}; git said: ${stderr.trim()}`)
+  }
+  const version = (JSON.parse(text) as { version?: unknown }).version
+  if (typeof version !== "string") throw new Error(`package.json at commit ${commit} has no version`)
+  return version
+}
+
+/** What a live run records about plugboard: the commit it names and that commit's version (#335). */
+export async function livePlugboard(): Promise<{ version: string; commit: string }> {
+  const commit = await plugboardCommit()
+  return { version: await plugboardVersion(commit), commit }
 }
 
 /** `<date>-<shortsha>`, `-2` on a collision. Live directories are never rewritten. */
@@ -122,6 +156,8 @@ function liveDirectory(base: string, date: string, sha: string): string {
 
 async function runExample(name: string, target: "scripted" | "live", docker: boolean): Promise<ScenarioRow[]> {
   const dir = exampleDir(name)
+  // Resolved before anything runs: a commit the checkout does not have fails here, not after the runner has spent its time.
+  const plugboard = target === "live" ? await livePlugboard() : undefined
   const scenarios = (await Bun.file(join(EXAMPLES, "_shared/scenarios.json")).json()) as ScenariosFile
   if (existsSync(join(dir, "package.json")) && !existsSync(join(dir, "node_modules"))) {
     const install = Bun.spawn(["bun", "install", "--frozen-lockfile"], { cwd: dir, stdout: "inherit", stderr: "inherit" })
@@ -172,7 +208,7 @@ async function runExample(name: string, target: "scripted" | "live", docker: boo
     const { plan, results, client, done } = parseRunnerOutput(output)
     // A runner that exits before its last line writes a partial run: refuse it rather than record a gap as a pass.
     if (!done) throw new Error(`${name}: the runner did not finish (exit ${exit}); nothing was written`)
-    return await writeExample(name, target, scenarios, { plan, results, client, capture, key, endedAt, started })
+    return await writeExample(name, target, scenarios, { plan, results, client, capture, key, endedAt, started, plugboard })
   } finally {
     await capture.close()
     await stopServer?.()
@@ -187,6 +223,8 @@ interface Collected {
   readonly key: string
   readonly endedAt: number
   readonly started: number
+  /** Live runs only: the commit the run names and its version (`livePlugboard`). */
+  readonly plugboard: { readonly version: string; readonly commit: string } | undefined
 }
 
 async function writeExample(name: string, target: "scripted" | "live", scenarios: ScenariosFile, got: Collected): Promise<ScenarioRow[]> {
@@ -252,10 +290,12 @@ async function writeExample(name: string, target: "scripted" | "live", scenarios
     models,
     verdict: verdictOf(rows),
     scenarios: rows,
-    ...(target === "live"
+    ...(target === "live" && got.plugboard
       ? {
           date: new Date(got.started).toISOString().slice(0, 10),
-          plugboard: { version: JSON.parse(await Bun.file(join(ROOT, "package.json")).text()).version as string, commit: await plugboardCommit() },
+          plugboard: got.plugboard,
+          // The server exposes no OpenCode version, so it is recorded as null (render.ts names that in the markdown).
+          opencode: null,
         }
       : {}),
   }
