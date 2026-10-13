@@ -3,6 +3,7 @@
  * and `/metrics`, #76 the request id header, and #91 authentication before route lookup.
  */
 import { afterEach, describe, expect, test } from "bun:test"
+import { PACKAGE_VERSION } from "../../src/version.js"
 import { ev } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { startRoute, TEST_STATUS, type RouteServer, type SendInit } from "../support/loopback.js"
@@ -119,6 +120,18 @@ describe("#56 GET /plugboard/status", () => {
     expect(reply.status).toBe(200)
     expect(reply.json()).toMatchObject({ ok: true, app: "alpha", runtimeVersion: TEST_STATUS.runtimeVersion, generations: 1, models: { catalog: 3, available: 4 } })
     expect(reply.text).not.toMatch(/beta|secret/)
+  })
+
+  test("#347 names the package version from package.json and the host OpenCode version, for an app key", async () => {
+    server = await startRoute({ caller: new FakeModelCaller([]), options: { keys: KEYS }, opencodeVersion: "2.0.27" })
+    const reply = await server.send({ path: "/plugboard/status", headers: bearer(KEYS.alpha) })
+    expect(reply.json()).toMatchObject({ packageVersion: PACKAGE_VERSION, opencodeVersion: "2.0.27" })
+  })
+
+  test("#347 omits opencodeVersion when the host does not expose one; the auth stays on the route", async () => {
+    await route({ keys: KEYS })
+    expect(Object.keys((await server!.send({ path: "/plugboard/status", headers: bearer(KEYS.alpha) })).json())).not.toContain("opencodeVersion")
+    expect((await server!.send({ path: "/plugboard/status" })).status).toBe(401)
   })
 })
 
