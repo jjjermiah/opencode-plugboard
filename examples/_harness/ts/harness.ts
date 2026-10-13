@@ -40,8 +40,9 @@ export interface RunOptions {
   /** Scenarios run once per API, by id, e.g. `{ S1: ["chat", "messages"] }`. The function gets the variant as its second argument. */
   readonly variants?: Readonly<Record<string, ReadonlyArray<string>>>
   /**
-   * Checks the client cannot observe, by `id|variant`: check name to the reason. Such a check is left out of its row, and
-   * the note names it, so the row passes on what the client does expose. For a permanent client limitation, not a bug.
+   * Checks the client cannot observe, by `id` (every model and variant of the scenario) or `id|variant`: check name to the
+   * reason. Such a check is left out of its row, and the note names it, so the row passes on what the client does expose.
+   * For a permanent client limitation, not a bug (#370).
    */
   readonly unobserved?: Readonly<Record<string, Readonly<Record<string, string>>>>
 }
@@ -92,16 +93,21 @@ const errorText = (error: unknown): string => (error instanceof Error ? `${error
  * Refuses an `unobserved` entry that names no planned scenario, variant or check, or that would drop every check of its row:
  * a renamed check must not leave a stale entry, and a row with no checks must not pass vacuously.
  */
-function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>): void {
+export function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>): void {
   for (const [key, names] of Object.entries(options.unobserved ?? {})) {
-    const [id = "", variant] = key.split("|")
+    const parts = key.split("|")
+    if (parts.length > 2) throw new Error("unobserved " + key + " has more than one | (use id or id|variant)")
+    const [id = "", variant] = parts
     const scenario = planned.find((candidate) => candidate.id === id)
     const variantsOf = options.variants?.[id] ?? []
-    if (!scenario || variant === undefined || !variantsOf.includes(variant)) {
+    if (!scenario || (variant !== undefined && !variantsOf.includes(variant))) {
       throw new Error("unobserved " + key + " names no planned scenario variant")
     }
     for (const name of Object.keys(names)) {
-      if (!scenario.checks.some((check) => check.name === name)) throw new Error("unobserved " + key + " names no check \"" + name + "\"")
+      const check = scenario.checks.find((candidate) => candidate.name === name)
+      if (!check) throw new Error("unobserved " + key + " names no check \"" + name + "\"")
+      // The stream check is decided from the captured wire (run.ts), so a runner cannot leave it out (#379).
+      if (check.path === "done") throw new Error("unobserved " + key + " names \"" + name + "\", which the wire decides and cannot be left out")
     }
     if (Object.keys(names).length >= scenario.checks.length) throw new Error("unobserved " + key + " would drop every check of the row")
   }
@@ -109,13 +115,34 @@ function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>):
 
 /** The checks a row leaves out, by name, with the reason (RunOptions.unobserved). */
 function unobservedFor(options: RunOptions, scenario: string, variant?: string): Readonly<Record<string, string>> {
-  return variant === undefined ? {} : (options.unobserved?.[scenario + "|" + variant] ?? {})
+  return (variant === undefined ? undefined : options.unobserved?.[scenario + "|" + variant]) ?? options.unobserved?.[scenario] ?? {}
 }
 
 /**
  * Runs every scenario the runner covers (a function for it, or an n/a reason), on each of its models, in file order.
  * A function gets the model id and returns the observations; the checks decide pass or fail.
  */
+/** The status, checks and note of one row: the one rule `runAll` and the relay (ts/relay.ts) both apply (#370). */
+export function scoreRow(
+  scenario: Scenario,
+  model: string,
+  variant: string | undefined,
+  options: RunOptions,
+  outcome: { readonly observations: Observations; readonly error: string | null },
+): { status: "pass" | "fail" | "gap"; checks: Array<{ name: string; ok: boolean }>; note: string | null } {
+  const unobserved = unobservedFor(options, scenario.id, variant)
+  const checks = outcome.error === null ? evaluate(scenario.checks.filter((check) => !(check.name in unobserved)), outcome.observations) : []
+  let status: "pass" | "fail" | "gap" = outcome.error === null && checks.every((check) => check.ok) ? "pass" : "fail"
+  let note: string | null = null
+  const gap = options.gaps?.[`${scenario.id}|${model}`] ?? (variant === undefined ? undefined : options.gaps?.[`${scenario.id}|${variant}`]) ?? options.gaps?.[scenario.id]
+  if (status === "fail" && gap) {
+    status = "gap"
+    note = `${gap.note} (${gap.issue})`
+  }
+  if (note === null && Object.keys(unobserved).length > 0) note = Object.entries(unobserved).map(([name, why]) => "not checked, " + name + ": " + why).join("; ")
+  return { status, checks, note }
+}
+
 export async function runAll(
   functions: Readonly<Record<string, (model: string, variant?: string) => Promise<Observations>>>,
   options: RunOptions = {},
@@ -133,25 +160,15 @@ export async function runAll(
           continue
         }
         await mark(scenario.id, model, variant)
-        let checks: Array<{ name: string; ok: boolean }> = []
         let error: string | null = null
         let observations: Observations = {}
-        const unobserved = unobservedFor(options, scenario.id, variant)
         try {
           observations = await functions[scenario.id]!(model, variant)
-          checks = evaluate(scenario.checks.filter((check) => !(check.name in unobserved)), observations)
         } catch (caught) {
           error = errorText(caught)
         }
-        let status: "pass" | "fail" | "gap" = error === null && checks.every((check) => check.ok) ? "pass" : "fail"
-        let note: string | null = null
-        const gap = options.gaps?.[`${scenario.id}|${model}`] ?? (variant === undefined ? undefined : options.gaps?.[`${scenario.id}|${variant}`]) ?? options.gaps?.[scenario.id]
-        if (status === "fail" && gap) {
-          status = "gap"
-          note = `${gap.note} (${gap.issue})`
-        }
-        if (note === null && Object.keys(unobserved).length > 0) note = Object.entries(unobserved).map(([name, why]) => "not checked, " + name + ": " + why).join("; ")
-        emit({ kind: "result", scenario: scenario.id, model, ...tag, status, checks, error, note, observations })
+        const row = scoreRow(scenario, model, variant, options, { observations, error })
+        emit({ kind: "result", scenario: scenario.id, model, ...tag, status: row.status, checks: row.checks, error, note: row.note, observations })
       }
     }
   }

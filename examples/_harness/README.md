@@ -69,6 +69,14 @@ The run exits 1 when a required scenario fails. A verdict is `fail` on a require
 
 Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `transcripts/_background.json`. That file is written but not compared in CI.
 
+## Gaps, unobserved checks and the stream check
+
+- **gap**: a row that fails and is listed in `gaps` (by `id`, `id|model` or `id|variant`) is reported as `gap` with its note. Use it for a known incompatibility, with an issue. The row's checks are still recorded.
+- **unobserved**: a check the client cannot observe, listed by `id` (every model and variant) or `id|variant`, is left out of its row, and the note names it with the reason. Use it for a permanent client limitation, not a bug. An entry must name a planned check, and may not drop every check of its row. The runners' `TS` and `Python` helpers and the relay all refuse a bad entry before anything runs.
+- **n/a**: a scenario the client does not have, with the reason. Nothing is sent.
+- **The stream check** (`stream ended normally`) is decided by the harness from the captured wire, not from the runner's `done` flag. A chat completions stream must end with `data: [DONE]`, a Responses stream with a `response.completed` event, a Messages stream with `message_stop`, and a Gemini stream with a `finishReason`. A stream that did not end that way downgrades its row from pass to fail (#370).
+- **Runners that cannot import the helpers** (Go, .NET) print `plan`, `client`, `observation` and `done` lines through `ts/relay.ts`. The plan line may carry `gaps`, `na`, `unobserved` and `variants`, with the meanings above, and those limits are trusted with the same reach as in the TypeScript and Python helpers. A runner may not print a `result` line. A chat or legacy completions stream with an error frame before `[DONE]` did not end normally, and neither did one that ends with `response.incomplete` (Responses). The stream check cannot be left out with `unobserved`.
+
 ## Redaction
 
 - Request headers: only `accept`, `anthropic-version`, `content-type` and `openai-beta`. Response headers: `content-type` and `x-plugboard-*` except `x-plugboard-request-id`. `authorization`, `x-api-key`, `x-goog-api-key`, `date`, `host`, `user-agent`, `x-stainless-*` and `content-length` are never written.
