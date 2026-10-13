@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Release script: a `git fetch` that loses a ref-lock race with a parallel worktree (`cannot lock ref`) is retried, 4 attempts with a short backoff, instead of stopping the release ([#352](https://github.com/jjjermiah/opencode-plugboard/issues/352)). `--resume` now handles a release pull request that is already merged: it waits for CI on the merge commit and tags that commit only when the run succeeded. If the tag is already on origin, it says so and watches the release. Before, a fetch that failed after the merge left the tag to a hand push. Tooling only, not in the package.
 
 ## [0.31.0] - 2026-10-13: Know Your Versions
 
