@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are driven by `CHANGELOG.md` and by the commit messages since the last tag. One script (`.github/scripts/release.ts`, run as `bun run release`) does the version bump, the changelog heading and the release commit, opens the release pull request, and tags the merge commit once it lands. GitHub Actions does the rest.
+Releases are driven by `CHANGELOG.md` and by the commit messages since the last tag. One script (`.github/scripts/release.ts`, run as `bun run release`) does the version bump, the changelog heading and the release commit, opens the release pull request, waits for every check on it, merges it, and tags the merge commit. GitHub Actions does the rest.
 
 ## Two layers of notes
 
@@ -14,9 +14,15 @@ The release script writes the full story into `CHANGELOG.md` as a collapsed `<de
 1. Keep `[Unreleased]` in `CHANGELOG.md` current. The release notes are that text, so write it for users. Fill in `compat/results/release-candidate.md` (see [development.md](development.md)). Update the pinned version (`opencode-plugboard@x.y.z`) in `README.md` and `docs/clients/any-app.md`; the release script does not touch them.
 2. Pick a title: short and creative, 2 to 5 words, at most 40 characters, no trailing period ("No Awkward Silences", "Claude Code, Any Brain"). Every release has one.
 3. From a clean `main` that equals `origin/main`: `bun run release 0.3.0 --title "Your Title" --push`. Add `--dry-run` first to see the diff and the plan; it changes nothing and only warns about git state.
-4. The script opens a pull request for the release and enables auto-merge. When the required checks pass, the pull request merges, and the script tags the merge commit and pushes the tag. The tag starts the "Publish" run, which checks the gates, publishes to npm, attests the tarball and creates the GitHub release. The script then watches the release for you (see below); add `--no-watch` to skip that.
+4. The script opens a pull request for the release, watches every check on it, and merges it once they all pass. It tags the merge commit and pushes the tag. The tag starts the "Publish" run, which checks the gates, publishes to npm, attests the tarball and creates the GitHub release. The script then watches the release for you (see below); add `--no-watch` to skip that. If a check fails, the script stops with the pull request open and nothing merged or tagged.
 
 The script refuses when the working tree is dirty, the branch is not `main`, local `main` differs from `origin/main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, the tag or the branch `release/v0.3.0` already exists, or `--title` is missing or invalid. It moves the `[Unreleased]` text under `## [0.3.0] - <today>: Your Title`, appends the commit-level detail block, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json` and commits `chore(release): 0.3.0` on `release/v0.3.0`. The annotated tag `v0.3.0` is made on the merge commit, not on the release branch. Without `--push` the script refuses, because a release now always goes through a pull request; use `--dry-run` to preview.
+
+### The release rule
+
+- A release is cut only from a fully green `main`. `--push` refuses before it commits anything unless the newest CI run on `origin/main`'s commit has completed and passed.
+- The release pull request merges only when every check on it is green. `--push` watches all of them (the advisory benchmark aside) and merges nothing while one fails or is still pending.
+- The GitHub release appears only after npm has the version. The `release` job of the Publish run needs the `publish` and `attest` jobs, so a publish that fails leaves no release.
 
 ### The release pull request
 
@@ -24,21 +30,21 @@ The script refuses when the working tree is dirty, the branch is not `main`, loc
 
 1. `release/v0.3.0` is created from `main` and pushed.
 2. A pull request into `main` is opened, with the release notes as its body.
-3. Auto-merge is enabled, with a merge commit. The pull request merges when the required checks pass, and its branch is deleted.
-4. The script waits up to 60 minutes for the merge, then tags the merge commit (it is on `main`, and its `package.json` has the new version) and pushes the tag. Tags are not part of a branch ruleset, so the tag push is not blocked by it. Check that on the first release.
+3. The script watches every check on the pull request. If one fails, the script stops, leaves the pull request open for a fix, prints the failing checks and exits non-zero. Nothing is merged or tagged. Auto-merge is not used: it would merge on the required checks alone, and a red job outside them would still ship.
+4. When every check has passed, the script merges that exact commit with a merge commit, and the branch is deleted.
+5. It tags the merge commit (it is on `main`, and its `package.json` has the new version) and pushes the tag. Tags are not part of a branch ruleset, so the tag push is not blocked by it. Check that on the first release.
 
-If the merge does not happen within 60 minutes, the script stops and prints how to tag the merge commit by hand.
+If the checks do not all pass within 60 minutes, the script stops the same way.
 
-The required status checks are the job names GitHub shows on a pull request:
+The required status checks are the names GitHub shows on a pull request:
 
-- `Typecheck, test and pack` (`ci.yml`)
-- `Compat kit checks` (`ci.yml`)
-- `Host versions` (`ci.yml`)
+- `CI passed` (`ci.yml`): one aggregate job. It needs every gating CI job (typecheck, tests and pack, host versions, the OpenCode host matrix, compat kit checks, examples) and passes only when each one succeeded. A new gating job goes into its `needs:`, not into the ruleset.
 - `Lint commit messages` (`commits.yml`)
+- `Analyze (javascript-typescript)` (`codeql.yml`), which is outside `ci.yml`, so it stays a required check of its own.
 
-Not required: `OpenCode host <version>` (one job per host version, so the names change), `Request-path benchmarks (advisory)`, the nightly and flake-hunt jobs, and `Analyze (javascript-typescript)` until CodeQL has run on `main`. `Build the site` is not a pull request check: the docs build is a step of `Typecheck, test and pack`.
+Not required: `Request-path benchmarks (advisory)` (it never blocks), the individual CI jobs (`CI passed` reports them), the nightly and flake-hunt jobs, and Scorecard. `Build the site` is not a pull request check: the docs build is a step of `Typecheck, test and pack`.
 
-The repository needs two settings for this: "Allow auto-merge" (General), and a ruleset that requires no approving review. A solo maintainer cannot approve their own pull request, so a required approval would block every release.
+The repository needs two settings for this: "Allow auto-merge" (General), which `host-bump.yml` uses for its pull requests, and a ruleset that requires no approving review. A solo maintainer cannot approve their own pull request, so a required approval would block every release.
 
 ### Watching a release
 
@@ -52,7 +58,7 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 
 `.github/workflows/publish.yml` runs on a `v*` tag push, with one run per ref and no cancelling. In order:
 
-1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, compat checks) run through `workflow_call`, so a release has exactly the same gates as CI.
+1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, compat checks, examples) run through `workflow_call`, so a release has exactly the same gates as CI. The `CI passed` job must succeed for `publish` to run.
 2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
 3. It builds the release notes from the changelog section and the git history with `.github/scripts/release-notes.ts`. A missing or empty section, a heading without a title, or a previous tag missing from the clone fails here, before anything is published. The checkout uses `fetch-depth: 0` so the tag range is available.
 4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.
@@ -61,6 +67,14 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 Both writes are safe to retry: re-run the failed run, or "Run workflow" on the tag with `dry_run` unticked.
 
 Provenance: npm cannot generate provenance attestations for a private repository, so the workflow passes `--provenance` only when the repository is public. Trusted publishing itself works from a private repository. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) and [provenance](https://docs.npmjs.com/generating-provenance-statements).
+
+## If a release fails
+
+The pull request already passed every check on the exact commit that gets tagged, so a Publish failure is rare, and it is usually a runner or npm problem. Either way, never move a pushed tag. Recovery depends on where the run stopped:
+
+- **Before `npm publish`** (the gates, the release notes or the ref checks failed): nothing is on npm and no GitHub release exists. If the cause was outside the code (a runner or registry outage), re-run the failed run; the same tag and commit publish. If the code is wrong, fix it on `main` through a pull request and cut the next patch. The broken tag stays where it is.
+- **After `npm publish`** (the attestation or the GitHub release failed): npm may already serve the version, and a version on npm cannot be published again. If npm serves the tarball, re-run the failed jobs: the `release` job creates the release, or attaches the files to it if it exists. If the tarball is wrong, fix it on `main` and cut the next patch.
+- The GitHub release exists only after npm has the version. If a tag's Publish run is red and no release is listed on the Releases page, the release has not been made; do not make one by hand.
 
 ## Release files and how to verify them
 
@@ -92,7 +106,7 @@ Two daily jobs watch for a new OpenCode, so a host release reaches a pull reques
 
 What happens:
 
-- **All gates green.** The pull request is labelled `dependencies` and set to auto-merge. A pull request opened with `GITHUB_TOKEN` starts no workflow, so `host-bump.yml` starts `ci.yml` and `commits.yml` on its branch. Those are the required checks, so the merge waits for them and lands on its own.
+- **All gates green.** The pull request is labelled `dependencies` and set to auto-merge. A pull request opened with `GITHUB_TOKEN` starts no workflow, so `host-bump.yml` starts `ci.yml` and `commits.yml` on its branch. `CI passed` and `Lint commit messages` are the required checks, so the merge waits for them and lands on its own.
 - **A gate red.** The pull request is a draft with the failing log tails, and the issue `OpenCode <v> breaks plugboard` links the run. A host type change usually shows in `src/session/host.ts` (`HostContextMatches`). Fix it on the branch, or close the pull request and keep the issue.
 - **The load check red** (`opencode-release.yml`). No pull request, only the issue. Plugboard does not load in that host: reproduce with the command above.
 - **A new major of `@opencode/plugin`.** `host-bump.ts` stops, because the peer range for a new major is a decision. The run fails and the issue is filed.

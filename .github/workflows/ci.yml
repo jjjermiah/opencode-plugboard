@@ -172,6 +172,28 @@ jobs:
             exit 1
           fi
 
+  # The one check the ruleset requires for "all of CI" (see docs/releasing.md). It runs even when a job failed, and passes
+  # only when every job in `needs` succeeded: a failed, cancelled or skipped job all count as not passed. A new gating job
+  # goes in `needs` here. The advisory benchmark stays out. publish.yml calls this workflow, so a release is gated on it too.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [package, host-versions, host, compat, examples]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every gating job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          not_passed=$(echo "$NEEDS" | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"')
+          if [ -n "$not_passed" ]; then
+            echo "::error::these CI jobs did not succeed:"
+            echo "$not_passed"
+            exit 1
+          fi
+          echo "All gating CI jobs succeeded."
+
   # #118, #315: request-path medians of the PR head against its base commit, both run in this job on the same
   # runner, so the comparison is like with like. Advisory: a shared runner is noisy, so a failure here never
   # blocks a merge. Only pull requests have a base to compare with.
