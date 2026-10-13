@@ -70,6 +70,7 @@ export default defineConfig({
           { text: ".NET (openai-dotnet)", link: "/clients/openai-dotnet" },
           { text: "Rust (async-openai)", link: "/clients/async-openai" },
           { text: "CrewAI", link: "/clients/crewai" },
+          { text: "AutoGen / AG2", link: "/clients/autogen" },
           { text: "LiteLLM (as a client)", link: "/clients/litellm-client" },
           { text: "Instructor", link: "/clients/instructor" },
           { text: "DSPy", link: "/clients/dspy" },
