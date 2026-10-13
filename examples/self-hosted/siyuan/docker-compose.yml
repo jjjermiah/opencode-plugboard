@@ -1,0 +1,15 @@
+# SiYuan, pointed at plugboard on the host. Copy .env.example to .env first.
+services:
+  siyuan:
+    image: b3log/siyuan
+    command: ['serve', '--workspace=/siyuan/workspace/']
+    env_file:
+      - .env
+    restart: unless-stopped
+    # Loopback only. Put a reverse proxy in front for remote access (see the page).
+    ports:
+      - "127.0.0.1:6806:6806"
+    volumes:
+      - ./workspace:/siyuan/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
