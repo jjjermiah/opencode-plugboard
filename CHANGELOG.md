@@ -16,6 +16,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Added
 
+- **Hidden app sessions, opt-in** ([#337](https://github.com/jjjermiah/opencode-plugboard/issues/337), since 0.29.0). `history.hidden` (global, or `apps.<name>.history.hidden` per app, default off) makes each app's request sessions children of one parent session titled `plugboard: <app>`. OpenCode's session lists show root sessions only, so the requests leave the TUI and app lists and the parent shows instead. The parent reuses the prompt-cache anchor machinery: it is made once, recreated once if deleted, and shared with an app-scope `promptCache`. Deleting the parent deletes its requests, and existing sessions are not moved. Not hidden: the settings workspace view. A `promptCache` scope of `user` with `history.hidden` is refused at load.
 - **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
 
 ### Fixed

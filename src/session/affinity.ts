@@ -15,6 +15,9 @@
  * 9, no clear gain) and dropped.
  *
  * The anchor id is stored in the plugin's host storage (`affinity/...`), so it survives a restart.
+ *
+ * Option `history.hidden` (since 0.29.0, #337) reuses this store: the app-scope record (`affinity/<app>/anchor/app/`) is the
+ * app's parent, which OpenCode's top-level lists do not show, so its request sessions are hidden with it. Same recovery.
  */
 
 import { DEFAULT_MAX_ANCHORS, type AffinityScope, type PromptCache } from "../config.js"

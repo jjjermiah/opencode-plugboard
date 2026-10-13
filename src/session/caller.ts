@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions, type PromptCache } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { log, logError, logRequest, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
@@ -55,6 +55,8 @@ export interface SessionCallerDeps {
   readonly promptCache?: PromptCache
   /** The store of anchor sessions (src/session/affinity.ts). Absent: no affinity, whatever the policy says. */
   readonly affinity?: Affinity
+  /** Global `history.hidden` (since 0.29.0, #337); an app's `apps.<name>.history.hidden` overrides it. Absent: off. */
+  readonly historyHidden?: boolean
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
@@ -67,6 +69,8 @@ const failure = (status: number, message: string, code: string): PlugEvent => ({
 
 /** The anchor session's title (`plugboard anchor: <app>[/<key>]`); it is never prompted. */
 const anchorTitle = (app: string, key: string): string => (key === "" ? `plugboard anchor: ${app}` : `plugboard anchor: ${app}/${key}`)
+/** The parent of an app with `history.hidden` (#337): one per app, titled `plugboard: <app>`. Never prompted, never indexed. */
+const hiddenParentTitle = (app: string): string => `plugboard: ${app}`
 
 const notFound = (message: string): PlugError => ({ status: 404, kind: "not_found", message, code: "model_not_found", param: "model" })
 
@@ -308,7 +312,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const invalid = checkPreparation(request, images.length, maxTools)
         if (invalid) return yield note({ type: "error", error: invalid })
 
-        // 2. The app directory under the data root; one top-level session per request.
+        // 2. The app directory under the data root; one session per request (top-level, or under the app's parent: step 3c).
         if (context.signal.aborted) return
         const directory = await ensureAppDir(app)
         if (isPlugError(directory)) return yield note({ type: "error", error: directory })
@@ -355,15 +359,26 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         })
 
         // 3c. Prompt-cache affinity (#80): under an anchor the request session is its child, so the provider cache key
-        // stays the anchor's id across requests (src/session/affinity.ts).
+        // stays the anchor's id across requests (src/session/affinity.ts). `history.hidden` (#337) uses the same parent
+        // machinery: the app-scope anchor, which an app's promptCache app-scope anchor shares.
         const cache = appPolicy({ apps }, app)?.promptCache ?? deps.promptCache ?? PROMPT_CACHE_OFF
-        const scope = affinity && cache.affinity === "anchor" ? scopeKey(cache, called) : undefined
+        const hidden = (appPolicy({ apps }, app)?.history?.hidden ?? deps.historyHidden) === true
+        const anchored = cache.affinity === "anchor" || hidden
+        const keyScope: AffinityScope = hidden ? "app" : cache.scope
+        const scope = affinity && anchored ? (hidden ? "" : scopeKey(cache, called)) : undefined
         const modelRef = { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) }
         const makeAnchor = (): Promise<string> =>
-          port.create({ directory, model: modelRef, title: anchorTitle(app, scope ?? ""), metadata: { plugboard: { app, anchor: true } }, permissions: requestPermissions([]) }).then((made) => String(made.id))
+          port.create({
+            directory,
+            model: modelRef,
+            title: hidden ? hiddenParentTitle(app) : anchorTitle(app, scope ?? ""),
+            metadata: { plugboard: { app, anchor: true } },
+            permissions: requestPermissions([]),
+          }).then((made) => String(made.id))
         let parentID: string | undefined
         const maxAnchors = maxAnchorsOf(cache)
-        if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, maxAnchors, makeAnchor), context.signal)
+        if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, keyScope, scope, maxAnchors, makeAnchor), context.signal)
+        if (hidden && parentID === undefined && scope !== undefined) logWarn("history.hidden_parent_unavailable", { requestID, app })
         if (context.signal.aborted) return
 
         const makeChild = (parent: string | undefined) => {
@@ -393,8 +408,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           // The anchor was deleted in OpenCode: forget its record, make one anchor and retry the child once (never more).
           if (!(error instanceof MissingParentError) || affinity === undefined || scope === undefined || parentID === undefined) throw error
           logWarn("affinity.anchor_recreated", { requestID, app, previous: parentID })
-          await affinity.forget(app, cache.scope, scope)
-          parentID = await raceAbort(affinity.anchor(app, cache.scope, scope, maxAnchors, makeAnchor), context.signal)
+          await affinity.forget(app, keyScope, scope)
+          parentID = await raceAbort(affinity.anchor(app, keyScope, scope, maxAnchors, makeAnchor), context.signal)
           created = await makeChild(parentID)
         }
         sessionID = String(created.id)
