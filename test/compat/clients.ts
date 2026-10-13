@@ -151,11 +151,21 @@ const openaiChat: Client = {
         [0, TEXT],
         [1, TEXT],
       ])
+      // Usage is summed over the choices: each one is a full model call.
+      expect(completion.usage).toMatchObject({ prompt_tokens: 2 * USAGE.inputTokens, completion_tokens: 2 * USAGE.outputTokens, total_tokens: 2 * (USAGE.inputTokens + USAGE.outputTokens) })
       // Streamed: the chunks of each choice carry its own index, so the client reassembles per choice.
-      const stream = await openai(target).chat.completions.create({ model: MODEL, n: 2, stream: true, messages })
+      const stream = await openai(target).chat.completions.create({ model: MODEL, n: 2, stream: true, stream_options: { include_usage: true }, messages })
       const text: Record<number, string> = {}
-      for await (const chunk of stream) for (const choice of chunk.choices) text[choice.index] = (text[choice.index] ?? "") + (choice.delta.content ?? "")
+      const chunks: OpenAI.Chat.Completions.ChatCompletionChunk[] = []
+      for await (const chunk of stream) {
+        chunks.push(chunk)
+        for (const choice of chunk.choices) text[choice.index] = (text[choice.index] ?? "") + (choice.delta.content ?? "")
+      }
       expect([text[0], text[1]]).toEqual([TEXT, TEXT])
+      // The usage chunk comes last, has no choices, and carries the sum over both.
+      const last = chunks.at(-1)!
+      expect(last.choices).toEqual([])
+      expect(last.usage).toMatchObject({ prompt_tokens: 2 * USAGE.inputTokens, completion_tokens: 2 * USAGE.outputTokens })
     },
     "stream-usage": async (target) => {
       const stream = await openai(target).chat.completions.create({ model: MODEL, stream: true, stream_options: { include_usage: true }, messages: [{ role: "user", content: tag("stream-usage") }] })
@@ -322,6 +332,20 @@ const openaiCompletions: Client = {
         [0, TEXT],
         [1, TEXT],
       ])
+      // Usage is summed over the choices: each one is a full model call.
+      expect(completion.usage).toMatchObject({ prompt_tokens: 2 * USAGE.inputTokens, completion_tokens: 2 * USAGE.outputTokens, total_tokens: 2 * (USAGE.inputTokens + USAGE.outputTokens) })
+      // Streamed: each choice's chunks carry its own index, and the usage chunk has no choices and the sum.
+      const stream = await openai(target).completions.create({ model: MODEL, prompt: tag("n"), n: 2, stream: true, stream_options: { include_usage: true } })
+      const text: Record<number, string> = {}
+      const chunks: OpenAI.Completions.Completion[] = []
+      for await (const chunk of stream) {
+        chunks.push(chunk)
+        for (const choice of chunk.choices) text[choice.index] = (text[choice.index] ?? "") + choice.text
+      }
+      expect([text[0], text[1]]).toEqual([TEXT, TEXT])
+      const last = chunks.at(-1)!
+      expect(last.choices).toEqual([])
+      expect(last.usage).toMatchObject({ prompt_tokens: 2 * USAGE.inputTokens, completion_tokens: 2 * USAGE.outputTokens })
     },
     "stream-usage": async (target) => {
       const stream = await openai(target).completions.create({ model: MODEL, prompt: tag("stream-usage"), stream: true, stream_options: { include_usage: true } })
