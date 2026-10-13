@@ -21,7 +21,8 @@
 //   5. waits for the ci.yml push run on the merge commit (a new commit, tested only by that run) and tags
 //      it only if the run succeeded, then pushes the tag. The tag starts the Publish workflow. A failed or
 //      cancelled run stops here with nothing tagged. --resume re-enters step 3 for the open pull request,
-//      after a fix is pushed to the release branch.
+//      after a fix is pushed to the release branch. If that pull request is already merged, --resume starts
+//      at step 5 on its merge commit; if the tag is already on origin, it only watches the release.
 //   6. follows the release to the end (unless --no-watch): it finds the Publish run for the tag,
 //      waits for it, then polls npm until the version is visible and the dist-tag points at it.
 //      It exits with that result. --watch-only does only that part for an existing tag.
@@ -111,6 +112,30 @@ function npmView(spec: string, field: string): string {
 function tryGit(...gitArgs: string[]): string {
   const run = Bun.spawnSync(["git", ...gitArgs], { stderr: "pipe" })
   return run.exitCode === 0 ? run.stdout.toString().trim() : ""
+}
+
+// Parallel worktrees share one .git, so a fetch can lose a ref-lock race ("cannot lock ref"). Retry it.
+const FETCH_ATTEMPTS = 4
+const FETCH_BACKOFF_MS = 2_000
+
+// Runs git fetch with retries and returns the last error when every attempt failed.
+function fetchOrigin(...fetchArgs: string[]): { ok: boolean; err: string } {
+  let err = ""
+  for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
+    const run = Bun.spawnSync(["git", "fetch", ...fetchArgs], { stderr: "pipe" })
+    if (run.exitCode === 0) return { ok: true, err: "" }
+    err = run.stderr.toString().trim()
+    if (attempt < FETCH_ATTEMPTS) {
+      console.log(`git fetch ${fetchArgs.join(" ")} failed (attempt ${attempt} of ${FETCH_ATTEMPTS}), retrying: ${err}`)
+      Bun.sleepSync(FETCH_BACKOFF_MS * attempt)
+    }
+  }
+  return { ok: false, err }
+}
+
+function fetchOrFail(...fetchArgs: string[]): void {
+  const fetched = fetchOrigin(...fetchArgs)
+  if (!fetched.ok) fail(`git fetch ${fetchArgs.join(" ")} failed after ${FETCH_ATTEMPTS} attempts: ${fetched.err}. Nothing is tagged.`)
 }
 
 type CiRun = { databaseId: number; status: string; conclusion: string; url: string }
@@ -223,6 +248,23 @@ async function waitForMergeCi(sha: string): Promise<CiRun> {
   }
 }
 
+// The tag goes only on the commit whose own CI run passed. The checks before the merge ran on the pull request
+// head, and a merge commit is a new commit: nobody has tested it until its ci.yml push run finishes. Each push to
+// main has its own concurrency group in ci.yml (keyed by its SHA), so a later push cannot cancel this run.
+async function tagAfterMergeCi(mergeSha: string): Promise<void> {
+  const short = mergeSha.slice(0, 7)
+  const mergeRun = await waitForMergeCi(mergeSha)
+  if (mergeRun.conclusion === "cancelled") {
+    fail(`CI on the merge commit ${short} was cancelled (${mergeRun.url}). Nothing is tagged and npm has nothing. Re-run it with gh run rerun ${mergeRun.databaseId}. Once it concludes success, tag ${short} by hand: git tag -a ${tag} ${mergeSha} -m "Release ${version}" && git push origin ${tag}. If it fails, fix forward on main and cut the next patch.`)
+  }
+  if (mergeRun.conclusion !== "success") {
+    fail(`CI on the merge commit ${short} concluded ${mergeRun.conclusion} (${mergeRun.url}). Nothing is tagged and npm has nothing. main now carries the release commit: fix forward through a pull request and cut the next patch. Do not tag ${short}.`)
+  }
+  git("tag", "-a", tag, mergeSha, "-m", `Release ${version}`)
+  git("push", "origin", tag)
+  console.log(`CI passed on ${short}, tagged ${tag} and pushed the tag`)
+}
+
 // Follows the Publish run for the tag, then the npm registry, and returns the exit code:
 // 0 only when the run succeeded and npm serves the version under the expected dist-tag.
 async function watchRelease(): Promise<number> {
@@ -301,6 +343,28 @@ const words = title.split(/\s+/).filter(Boolean)
 if (words.length < 2 || words.length > 5) fail(`title "${title}" has ${words.length} word(s), it needs 2 to 5`)
 if (title.replace(/^v/i, "") === version) fail("title must be more than the version number")
 
+// --resume on a release whose pull request is already merged (the merge deleted its branch). Nothing is cut again:
+// the merge commit's CI is waited for, and that commit is tagged, as the normal run does. This runs before the version
+// and changelog checks below, which a merged release has already moved past.
+if (resume && push) {
+  const view = gh("pr", "view", releaseBranch, "--json", "state,mergeCommit,url")
+  const pr = view.ok ? (JSON.parse(view.out) as { state: string; mergeCommit: { oid: string } | null; url: string }) : undefined
+  if (pr?.state === "MERGED" && pr.mergeCommit) {
+    const mergeSha = pr.mergeCommit.oid
+    console.log(`${pr.url} is already merged at ${mergeSha.slice(0, 7)}`)
+    fetchOrFail("origin", "main")
+    if (tryGit("ls-remote", "--tags", "origin", `refs/tags/${tag}`)) {
+      fetchOrFail("origin", `refs/tags/${tag}:refs/tags/${tag}`)
+      const tagAt = git("rev-list", "-n1", tag)
+      if (tagAt !== mergeSha) fail(`${tag} already exists on origin at ${tagAt.slice(0, 7)}, not at the merge commit ${mergeSha.slice(0, 7)}. Nothing is tagged. Check the tag by hand.`)
+      console.log(`${tag} already exists on origin at ${mergeSha.slice(0, 7)}, so nothing is tagged again. Watching the release.`)
+      process.exit(await watchRelease())
+    }
+    await tagAfterMergeCi(mergeSha)
+    process.exit(watch ? await watchRelease() : 0)
+  }
+}
+
 const problems: string[] = []
 if (!validVersion(version)) fail(`"${version}" is not a valid semver version (expected x.y.z)`)
 
@@ -375,7 +439,7 @@ if (dryRun) {
     rmSync(dir, { recursive: true, force: true })
   }
   // The remote-tracking ref only: the working tree and the remote are untouched. Without it the CI line can be stale.
-  tryGit("fetch", "-q", "origin", "main")
+  fetchOrigin("-q", "origin", "main")
   const mainSha = tryGit("rev-parse", "--verify", "-q", "origin/main")
   const ci = mainSha ? ciProblemOn(mainSha) : "origin/main is not known locally (git fetch origin main)."
   console.log(ci ? `warning (would refuse with --push): ${ci}` : `CI on origin/main ${mainSha.slice(0, 7)} is green`)
@@ -394,7 +458,7 @@ if (!existsSync(".git")) fail("run this from the repository root")
 
 // main is the base of the release pull request. A local main that differs from origin/main would
 // ride along in it, so refuse until the two agree.
-git("fetch", "origin", "main")
+fetchOrFail("origin", "main")
 if (git("rev-parse", "main") !== git("rev-parse", "origin/main")) fail("local main differs from origin/main. Pull or push it first, so the release pull request carries only the release.")
 // A release is cut only from a green main: the newest CI run on origin/main's commit must have passed.
 const mainCiProblem = ciProblemOn(git("rev-parse", "origin/main"))
@@ -405,7 +469,7 @@ let headSha: string
 if (resume) {
   // A check failed earlier and its fix is pushed to the release branch: watch that same pull request again.
   if (!tryGit("ls-remote", "--heads", "origin", releaseBranch)) fail(`${releaseBranch} is not on origin, so there is nothing to resume. Run it without --resume.`)
-  git("fetch", "origin", releaseBranch)
+  fetchOrFail("origin", releaseBranch)
   headSha = git("rev-parse", `origin/${releaseBranch}`)
   console.log(`resuming ${releaseBranch} at ${headSha.slice(0, 7)}`)
 } else {
@@ -447,26 +511,17 @@ git("switch", "main")
 const merged = gh("pr", "merge", releaseBranch, "--merge", "--delete-branch", "--match-head-commit", headSha)
 if (!merged.ok) fail(`could not merge ${prUrl}: ${merged.err}. Every check passed, nothing is tagged. Merge it by hand, then tag its merge commit.`)
 const mergeSha = await mergedCommit(releaseBranch)
-git("fetch", "origin", "main")
+const short = mergeSha.slice(0, 7)
+const fetched = fetchOrigin("origin", "main")
+if (!fetched.ok) {
+  fail(`merged to main at ${short}, but git fetch origin main failed after ${FETCH_ATTEMPTS} attempts: ${fetched.err}. Nothing is tagged. Once the fetch works, run bun run release ${version} --title "..." --push --resume: it finds the merged pull request and tags its merge commit after that commit's CI passes.`)
+}
 // Back on main, fast-forwarded to the merge, and the local release branch removed (it is merged).
 git("merge", "--ff-only", "origin/main")
 Bun.spawnSync(["git", "branch", "-d", releaseBranch], { stderr: "pipe" })
-const short = mergeSha.slice(0, 7)
 console.log(`merged to main at ${short}`)
 
-// The tag goes only on the commit whose own CI run passed. The checks above ran on the pull request head, and a
-// merge commit is a new commit: nobody has tested it until its ci.yml push run finishes. each push to main has its
-// own concurrency group in ci.yml (keyed by its SHA), so a later push cannot cancel this run.
-const mergeRun = await waitForMergeCi(mergeSha)
-if (mergeRun.conclusion === "cancelled") {
-  fail(`CI on the merge commit ${short} was cancelled (${mergeRun.url}). Nothing is tagged and npm has nothing. Re-run it with gh run rerun ${mergeRun.databaseId}. Once it concludes success, tag ${short} by hand: git tag -a ${tag} ${mergeSha} -m "Release ${version}" && git push origin ${tag}. If it fails, fix forward on main and cut the next patch.`)
-}
-if (mergeRun.conclusion !== "success") {
-  fail(`CI on the merge commit ${short} concluded ${mergeRun.conclusion} (${mergeRun.url}). Nothing is tagged and npm has nothing. main now carries the release commit: fix forward through a pull request and cut the next patch. Do not tag ${short}.`)
-}
-git("tag", "-a", tag, mergeSha, "-m", `Release ${version}`)
-git("push", "origin", tag)
-console.log(`CI passed on ${short}, tagged ${tag} and pushed the tag`)
+await tagAfterMergeCi(mergeSha)
 
 if (watch) process.exit(await watchRelease())
 console.log(`next: bun run release ${version} --watch-only`)
