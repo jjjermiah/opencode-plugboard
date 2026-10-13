@@ -13,7 +13,6 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "_harness" / "py"))
 
 import chat  # noqa: E402
-import errors  # noqa: E402
 import harness  # noqa: E402
 import image  # noqa: E402
 import models  # noqa: E402
@@ -21,6 +20,8 @@ import stream  # noqa: E402
 import stream_tools  # noqa: E402
 import structured  # noqa: E402
 import tools  # noqa: E402
+import unknown_model  # noqa: E402
+import wrong_key  # noqa: E402
 from openai import AsyncOpenAI  # noqa: E402
 
 
@@ -51,8 +52,8 @@ def main() -> None:
             "S5": scenario(image.run),
             "S6": scenario(structured.run),
             "S7": scenario(models.run),
-            "E1": scenario(errors.run_wrong_key),
-            "E2": scenario(errors.run_unknown_model),
+            "E1": scenario(wrong_key.run),
+            "E2": scenario(unknown_model.run),
         }
     )
 

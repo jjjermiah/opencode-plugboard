@@ -32,18 +32,25 @@ function say(answer: string): PlugEvent[] {
   return [ev.text(answer.slice(0, half)), ev.text(answer.slice(half)), ev.finish("stop", USAGE)]
 }
 
+const propertiesOf = (schema: unknown): object => (schema as { properties?: object } | undefined)?.properties ?? {}
+
+/**
+ * The tool a request forces, if any. A named choice always forces its tool. `required` forces only when there is exactly
+ * one tool the scripted model can fill (a `calories` property, the meal), and only before any tool result, so a forced
+ * answer cannot loop. Any other `required` request takes the same paths as `auto`.
+ */
+function forcedTool(request: PlugRequest): string | undefined {
+  if (typeof request.toolChoice === "object") return request.toolChoice.name
+  if (request.toolChoice !== "required" || answered(request)) return undefined
+  const [tool] = request.tools
+  return tool && "calories" in propertiesOf(tool.parameters) ? tool.name : undefined
+}
+
 /** The events of one model call for `request`. */
 export function answer(request: PlugRequest): PlugEvent[] {
-  // A named tool is forced. `required` with exactly one tool is the same thing: pydantic-ai's tool-mode output sends it that way.
-  const forced =
-    typeof request.toolChoice === "object"
-      ? request.toolChoice.name
-      : request.toolChoice === "required" && request.tools.length === 1
-        ? request.tools[0]?.name
-        : undefined
+  const forced = forcedTool(request)
   if (forced) {
-    const properties = (request.tools.find((tool) => tool.name === forced)?.parameters as { properties?: object } | undefined)?.properties ?? {}
-    const input = "calories" in properties ? MEAL : {}
+    const input = "calories" in propertiesOf(request.tools.find((tool) => tool.name === forced)?.parameters) ? MEAL : {}
     return [ev.call(CALL_ID, forced, input), ev.finish("tool-calls", USAGE)]
   }
   const text = userText(request)

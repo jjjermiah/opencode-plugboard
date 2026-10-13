@@ -13,7 +13,8 @@ pydantic-ai (`OpenAIChatModel`, the Chat Completions API) against plugboard: pla
 | `image.py` | S5 | a red PNG as a `BinaryContent` part (sent as a data URL) |
 | `structured.py` | S6 | `output_type=Meal`, a Pydantic model, validated by pydantic-ai |
 | `models.py` | S7 | the model list, through the OpenAI client under the provider |
-| `errors.py` | E1, E2 | a wrong key (401) and an unknown model (404), as `ModelHTTPError` |
+| `wrong_key.py` | E1 | a wrong key (401), as `ModelHTTPError` |
+| `unknown_model.py` | E2 | an unknown model (404), as `ModelHTTPError` |
 
 Each file has a `__main__` block, so it runs on its own. `run.py` is the runner the harness starts; it prints results and writes nothing.
 
@@ -56,7 +57,7 @@ bun examples/_harness/run.ts pydantic-ai --target live       # the isolated serv
 - **Each scenario needs its own client.** pydantic-ai runs each call on its own event loop, and a pooled connection cannot cross loops. `run.py` opens and closes one client per scenario inside that loop.
 - **Finish reasons are pydantic-ai's names.** A tool-call turn reports `tool_call`; the wire value is `tool_calls`. The example maps it back, so the observation matches the other clients.
 - **Streaming usage needs no setup.** pydantic-ai always sends `stream_options.include_usage`. It reads the stream to its end; the SDK consumes the `[DONE]` frame, which the transcript keeps.
-- **Structured output in tool mode sends `tool_choice: "required"`** with the single `final_result` tool. The scripted run answers S6 as text, so the forced-tool path is only exercised by the live run.
+- **Structured output in tool mode sends `tool_choice: "required"`** with the single `final_result` tool. The scripted model forces that tool when it gets `required` with one tool, so both runs take the tool path. Claude may answer with text and a `final_result` call in one message; the observation reads the tool call.
 - **`PromptedOutput` once returned numbers as strings** on `fast` (2026-10-11 record). pydantic's lax mode coerced them, so the scenario passed. Prefer the default tool mode or `NativeOutput`.
 - **Image answers are not always stable.** On `fast`, one identical `BinaryContent` request in the 2026-10-11 record answered "I don't see an image", then passed on a rerun. The check reads for `red`, so a bad answer fails it.
 - **pydantic-ai has no list-models call.** S7 uses `provider.client.models.list()`. Each entry carries the extra `plugboard` object, which the SDK keeps as an extra field.
@@ -68,7 +69,7 @@ None in the scripted run: every scenario passes on all three models.
 
 ## Live runs
 
-No live run is recorded yet. The isolated dev server was not reachable when this example was written, so `runs/live/` has only the historical record below. A live run goes under `runs/live/<date>-<shortsha>/` once the server is up.
+The latest live run is `runs/live/2026-10-13-c97ac66-2`: all 16 rows pass on the three models. `runs/live/2026-10-13-c97ac66` is the first attempt, which failed on a bug in `structured.py` (a text part read before the tool call) and is kept as the record. Both were run against the isolated server at plugboard `c97ac66`, and `REPORT.md` in the first directory says what went wrong.
 
 ## Historical record
 

@@ -7,3 +7,7 @@ Cause: a bug in `structured.py`, not in plugboard. Claude answered with a text p
 Fix: the observation now reads the output tool's arguments first. The passing run is `2026-10-13-c97ac66-2`. This directory stays as the record of the failed attempt.
 
 No gap was needed: the rerun passed everything. Plugboard answered every request with `200` (or the expected `401`/`404`) on this run.
+
+## Version correction (hand edit)
+
+`summary.json` and `summary.md` first said `plugboard 0.25.1`. The harness read the version from the example's checkout (this branch's base, `3e6960a`), not from the commit it names. `c97ac66` is the 0.26.0 release merge (`git show c97ac66:package.json`). The two summaries were corrected by hand to `0.26.0`; nothing else in this directory changed. The passing rerun, `2026-10-13-c97ac66-2`, got the same correction. Follow-up: the harness should read the version from the named commit.
