@@ -80,9 +80,9 @@ def _unobserved_for(unobserved: Mapping[str, Mapping[str, str]], scenario_id: st
 def _check_unobserved(unobserved: Mapping[str, Mapping[str, str]], planned: list[dict[str, Any]], variants: Mapping[str, list[str]]) -> None:
     """Refuses an entry that names no planned scenario or variant, a check the scenario does not have, or every check."""
     for key, names in unobserved.items():
-        scenario_id, _, variant = key.partition("|")
+        scenario_id, has_variant, variant = key.partition("|")
         scenario = next((candidate for candidate in planned if candidate["id"] == scenario_id), None)
-        if scenario is None or (variant and variant not in variants.get(scenario_id, [])):
+        if scenario is None or (has_variant and variant not in variants.get(scenario_id, [])):
             raise ValueError(f"unobserved {key} names no planned scenario variant")
         for name in names:
             if not any(check["name"] == name for check in scenario["checks"]):

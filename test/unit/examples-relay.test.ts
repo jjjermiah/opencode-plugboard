@@ -112,6 +112,18 @@ describe("#370 the relay scores rows with the same rule as runAll", () => {
     expect((row!.checks as Array<{ name: string }>).map((check) => check.name)).not.toContain("finish_reason is stop")
   })
 
+  test("an observation for a scenario the plan does not run, or runs as n/a, is refused", () => {
+    const notPlanned = [JSON.stringify({ kind: "plan", scenarios: ["S1"] }), obs("S2", "fast", {})].join("\n")
+    expect(() => relayAll(notPlanned)).toThrow("the plan does not run S2")
+    const naScenario = [JSON.stringify({ kind: "plan", scenarios: ["S6"], na: { S6: "no structured output" } }), obs("S6", "fast", {})].join("\n")
+    expect(() => relayAll(naScenario)).toThrow("the plan does not run S6")
+  })
+
+  test("an error that is not text is refused, not scored as a success", () => {
+    const text = [JSON.stringify({ kind: "observation", scenario: "S1", model: "fast", error: { message: "boom" }, observations: { text: "pong" } })].join("\n")
+    expect(() => relayAll(text)).toThrow("is not text")
+  })
+
   test("an unobserved entry that names no check of its scenario is refused before any row is printed", () => {
     const text = [JSON.stringify({ kind: "plan", scenarios: ["S1"], unobserved: { S1: { "no such check": "why" } } }), obs("S1", "fast", { text: "pong" })].join("\n")
     expect(() => relayAll(text)).toThrow('names no check "no such check"')

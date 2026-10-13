@@ -43,4 +43,14 @@ describe("#370 a stream ended normally on the wire", () => {
     expect(streamsEnded([{ path: chat, resBody: "data: [DONE]\n\n" }, { path: chat, resBody: "data: {}\n\n" }])).toBe(false)
     expect(streamsEnded([{ path: chat, resBody: "data: [DONE]\n\n" }])).toBe(true)
   })
+
+  test("a capture cut inside the terminal event did not end, even when its text is complete", () => {
+    expect(streamEnded({ path: chat, resBody: 'data: {"id":"1"}\n\ndata: [DONE]' })).toBe(false)
+    expect(streamEnded({ path: "/v1/messages", resBody: "event: message_stop\ndata: {}" })).toBe(false)
+  })
+
+  test("Gemini reads the candidate's finishReason, not the word in the text", () => {
+    const spelledInText = 'data: {"candidates":[{"content":{"parts":[{"text":"finishReason"}]}}]}\n\n'
+    expect(streamEnded({ path: "/v1beta/models/fast:streamGenerateContent", resBody: spelledInText })).toBe(false)
+  })
 })

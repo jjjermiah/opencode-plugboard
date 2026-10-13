@@ -34,15 +34,25 @@ const RUNNER_TIMEOUT_MS = 20 * 60_000
  * flag is not used: the wire decides (#370).
  */
 export function streamEnded(exchange: Pick<Exchange, "path" | "resBody">): boolean {
+  // An SSE event is dispatched only when its blank line arrives: a capture cut inside the last event did not end (WHATWG SSE).
+  if (!/\r?\n\r?\n$/.test(exchange.resBody)) return false
   const path = exchange.path.split("?")[0]!
   const body = exchange.resBody.trimEnd()
   const lines = body.split("\n")
   const lastEvent = [...lines].reverse().find((line) => line.startsWith("event:"))?.slice("event:".length).trim()
-  const lastData = [...lines].reverse().find((line) => line.startsWith("data:")) ?? ""
+  const lastData = [...lines].reverse().find((line) => line.startsWith("data:"))?.slice("data:".length).trim() ?? ""
   if (path.startsWith("/v1/chat/completions")) return /(^|\n)data: \[DONE\]$/.test(body)
   if (path.startsWith("/v1/responses")) return lastEvent === "response.completed"
   if (path.startsWith("/v1/messages")) return lastEvent === "message_stop"
-  if (path.startsWith("/v1beta/")) return lastData.includes("finishReason")
+  if (path.startsWith("/v1beta/")) {
+    // Gemini's finishReason is a candidate field, so the last chunk is parsed, not searched.
+    try {
+      const chunk = JSON.parse(lastData) as { candidates?: Array<{ finishReason?: unknown }> }
+      return typeof chunk.candidates?.[0]?.finishReason === "string"
+    } catch {
+      return false
+    }
+  }
   return false
 }
 
@@ -319,8 +329,13 @@ async function writeExample(name: string, target: "scripted" | "live", scenarios
     let status: Status = result.status
     let note = result.note
     if (doneCheck !== undefined && decided !== undefined) {
-      checks = [...result.checks.filter((check) => check.name !== doneCheck.name), { name: doneCheck.name, ok: decided }]
-      if (!decided && status === "pass") {
+      const others = result.checks.filter((check) => check.name !== doneCheck.name)
+      checks = [...others, { name: doneCheck.name, ok: decided }]
+      if (decided && result.error === null && status !== "pass" && status !== "n/a" && others.every((check) => check.ok)) {
+        // The runner failed only on its own done flag, and the wire shows a complete stream: the wire decides.
+        status = "pass"
+        note = null
+      } else if (!decided && status === "pass") {
         status = "fail"
         note = "the stream did not end normally on the wire (no terminal event): the runner's own done flag is not used"
       }

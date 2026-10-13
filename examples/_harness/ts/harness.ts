@@ -95,7 +95,9 @@ const errorText = (error: unknown): string => (error instanceof Error ? `${error
  */
 export function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scenario>): void {
   for (const [key, names] of Object.entries(options.unobserved ?? {})) {
-    const [id = "", variant] = key.split("|")
+    const parts = key.split("|")
+    if (parts.length > 2) throw new Error("unobserved " + key + " has more than one | (use id or id|variant)")
+    const [id = "", variant] = parts
     const scenario = planned.find((candidate) => candidate.id === id)
     const variantsOf = options.variants?.[id] ?? []
     if (!scenario || (variant !== undefined && !variantsOf.includes(variant))) {

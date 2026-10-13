@@ -56,6 +56,11 @@ describe("#370 unobserved checks without a variant", () => {
     expect(lines).toEqual([])
   })
 
+  test("a key with more than one | is refused, so no exclusion is silently dropped", async () => {
+    await expect(runAll({ S1: async () => S1_OBSERVATIONS }, { unobserved: { "S1|chat|typo": { "usage present": "x" } } })).rejects.toThrow("more than one |")
+    expect(lines).toEqual([])
+  })
+
   test("an entry for a scenario that is not planned is refused", async () => {
     await expect(runAll({ S1: async () => S1_OBSERVATIONS }, { unobserved: { S6: { "calories is a number": "x" } } })).rejects.toThrow("names no planned scenario variant")
   })

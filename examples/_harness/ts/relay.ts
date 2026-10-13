@@ -61,8 +61,16 @@ function relayAll(text: string): string[] {
     if (data.kind === "observation") {
       const scenario = SCENARIOS.find((candidate) => candidate.id === data.scenario)
       if (!scenario) throw new Error(`relay: no scenario ${String(data.scenario)} in scenarios.json`)
+      // With a plan, an observation must be a scenario the plan runs: not an n/a one, and not one it leaves out (#370).
+      if (plan && (!plan.scenarios?.includes(scenario.id) || options.na?.[scenario.id] !== undefined)) {
+        throw new Error(`relay: the plan does not run ${scenario.id}, so an observation for it is refused`)
+      }
       const variant = typeof data.variant === "string" ? data.variant : undefined
       const observations = (data.observations ?? {}) as Observations
+      // A runner's error is text or absent. Anything else is malformed, and is refused rather than scored as a success.
+      if (data.error !== undefined && data.error !== null && typeof data.error !== "string") {
+        throw new Error(`relay: the error of ${scenario.id} is not text`)
+      }
       const error = typeof data.error === "string" ? data.error : null
       const row = scoreRow(scenario, String(data.model), variant, options, { observations, error })
       out.push(JSON.stringify(resultLine(scenario.id, String(data.model), variant, { status: row.status, checks: row.checks, error, note: row.note, observations })))
