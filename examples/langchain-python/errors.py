@@ -9,22 +9,22 @@ PROMPT = "Reply with exactly: pong"
 
 
 def run_wrong_key(client, model):
-    # region snippet
+    # region snippet-wrong-key
     try:
         client(model, api_key=FAKE_KEY).invoke(PROMPT)
     except openai.AuthenticationError as error:
         return {"status": error.status_code, "code": error.code}
-    # endregion snippet
+    # endregion snippet-wrong-key
     raise AssertionError("a wrong key was accepted")
 
 
 def run_unknown_model(client, _model):
-    # region snippet
+    # region snippet-unknown-model
     try:
         client("nope").invoke(PROMPT)
     except openai.NotFoundError as error:
         return {"status": error.status_code, "code": error.code}
-    # endregion snippet
+    # endregion snippet-unknown-model
     raise AssertionError("an unknown model was accepted")
 
 

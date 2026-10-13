@@ -10,25 +10,25 @@ TOOL_RESULT = (Path(__file__).resolve().parents[1] / "_shared" / "get_weather.re
 PROMPT = "What is the weather in Paris? Use the tool."
 
 
-# region snippet
+# region snippet-tool
 @tool
 def get_weather(city: str) -> str:
     """Current weather for a city."""
     return TOOL_RESULT
 
 
-# endregion snippet
+# endregion snippet-tool
 
 
 def run(client, model):
     messages = [HumanMessage(PROMPT)]
-    # region snippet
+    # region snippet-round-trip
     llm = client(model).bind_tools([get_weather])
     first = llm.invoke(messages)
     call = first.tool_calls[0]  # {"name", "args", "id"}; the id goes back on the ToolMessage
     messages += [first, ToolMessage(content=get_weather.invoke(call["args"]), tool_call_id=call["id"])]
     second = llm.invoke(messages)
-    # endregion snippet
+    # endregion snippet-round-trip
     return {
         "finish_reason": first.response_metadata.get("finish_reason"),
         "tool_name": call["name"],

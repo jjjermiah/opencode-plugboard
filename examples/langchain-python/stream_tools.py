@@ -3,22 +3,21 @@
 import json
 import operator
 from functools import reduce
-
-from langchain_core.tools import tool
 from pathlib import Path
 
 PROMPT = "What is the weather in Paris? Use the tool."
 TOOL_RESULT = (Path(__file__).resolve().parents[1] / "_shared" / "get_weather.result.json").read_text().strip()
 
 
-@tool
-def get_weather(city: str) -> str:
-    """Current weather for a city."""
-    return TOOL_RESULT
-
-
 def run(client, model):
     # region snippet
+    from langchain_core.tools import tool
+
+    @tool
+    def get_weather(city: str) -> str:
+        """Current weather for a city."""
+        return TOOL_RESULT
+
     llm = client(model, stream_usage=True).bind_tools([get_weather])
     chunks = list(llm.stream(PROMPT))
     full = reduce(operator.add, chunks)

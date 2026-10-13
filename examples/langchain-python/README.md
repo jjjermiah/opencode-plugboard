@@ -58,7 +58,7 @@ bun examples/_harness/run.ts langchain-python --target live       # the isolated
 
 ## Known gaps
 
-None in the scripted run. Live results are in `runs/live/`; see each directory's `REPORT.md` for what a human saw.
+None in the scripted run. The live run of 2026-10-13 (`runs/live/2026-10-13-c97ac66`, plugboard `c97ac66`, 0.26.0) passed every scenario on every model, including `openai/gpt-5.6-luna#low`; its `REPORT.md` has the notes.
 
 ## Historical record
 

@@ -21,7 +21,6 @@ Copyable starting points. They are not part of the npm package (`files` in `pack
 | [promptfoo/](promptfoo/promptfooconfig.yaml) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check |
 | [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider |
 | [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
-| [langchain-python/](langchain-python/README.md) | LangChain Python (`ChatOpenAI`): chat, a tool round trip, streaming, an image, structured output, the model list and the two error paths. Pinned with uv, one file per scenario |
 | [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |
 | [go-openai/](go-openai/main.go) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard |
 | [openai-dotnet/](openai-dotnet/Program.cs) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard |

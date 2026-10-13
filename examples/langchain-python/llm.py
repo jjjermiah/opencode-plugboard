@@ -2,6 +2,9 @@
 
 import os
 
+# The harness counts requests: a client never retries, so a retry cannot show up as a second request.
+NO_RETRIES = {"max_retries": 0}
+
 
 def chat_model(model, **overrides):
     # region snippet
@@ -12,7 +15,7 @@ def chat_model(model, **overrides):
         "api_key": os.environ["PLUGBOARD_KEY"],
         "model": model,
         "use_responses_api": False,  # Chat Completions. Left unset, a gpt-5.6 id can switch to /v1/responses
-        "max_retries": 0,  # the harness counts requests, so a retry must not show up as a second one
+        **NO_RETRIES,
     }
     if model == "fast":
         settings["max_tokens"] = 1024  # fast is a reasoning model: leave room for the answer after its thinking
