@@ -226,3 +226,38 @@ describe("#170 the text_completion codec takes a text answer that matches the sc
     expect(await completionsCodec(exchange).collect(events(ev.text('{"b":7}'), ev.finish("stop")), 0)).toMatchObject({ status: 502 })
   })
 })
+
+describe("legacy completions top-level checks: exact PlugError, first failure wins", () => {
+  const fail = (raw: unknown) => parseCompletionsRequest(raw, options)
+
+  test("each check's message, param and code are unchanged", () => {
+    expect(fail(body({ model: "" }))).toEqual({ status: 400, kind: "invalid_request", message: "model is required", param: "model" })
+    expect(fail({ model: "test/echo" })).toEqual({ status: 400, kind: "invalid_request", message: "prompt is required", param: "prompt" })
+    expect(fail(body({ prompt: null }))).toEqual({ status: 400, kind: "invalid_request", message: "prompt is required", param: "prompt" })
+    expect(fail(body({ stream: "y" }))).toEqual({ status: 400, kind: "invalid_request", message: "stream must be a boolean", param: "stream" })
+    expect(fail(body({ logprobs: 1 }))).toEqual({
+      status: 400,
+      kind: "invalid_request",
+      message: "logprobs is not supported",
+      code: "unsupported_parameter",
+      param: "logprobs",
+    })
+    expect(fail(body({ best_of: 1.5 }))).toEqual({ status: 400, kind: "invalid_request", message: "best_of must be a positive integer", param: "best_of" })
+    expect(fail(body({ best_of: 2 }))).toEqual({
+      status: 400,
+      kind: "invalid_request",
+      message: "best_of is not supported",
+      code: "unsupported_parameter",
+      param: "best_of",
+    })
+    expect(fail(body({ echo: "x" }))).toEqual({ status: 400, kind: "invalid_request", message: "echo must be a boolean", param: "echo" })
+    expect(fail(body({ suffix: 1 }))).toEqual({ status: 400, kind: "invalid_request", message: "suffix must be a string", param: "suffix" })
+  })
+
+  test("the first failing check in the old order wins", () => {
+    expect(fail(body({ model: "", echo: "x" }))).toMatchObject({ param: "model" })
+    expect(fail(body({ logprobs: 1, best_of: 2 }))).toMatchObject({ param: "logprobs" })
+    expect(fail(body({ best_of: 2, echo: "x" }))).toMatchObject({ param: "best_of", message: "best_of is not supported" })
+    expect(fail(body({ stream: "y", suffix: 1 }))).toMatchObject({ param: "stream" })
+  })
+})

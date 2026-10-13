@@ -8,6 +8,7 @@
  * `maxN`). The route resolves `model` to a `ModelRef` afterwards, which is why the requests omit
  * `ref`.
  */
+import { Schema, SchemaIssue } from "effect"
 import type { PlugboardOptions } from "../config.js"
 import { isPlugError, type PlugError, type PlugRequest, type PlugToolChoice } from "../contract.js"
 import { bodyUser, userField } from "../user.js"
@@ -35,6 +36,42 @@ const bad = (message: string, param?: string, code?: string): PlugError => ({
 
 const unsupported = (message: string, param: string) => bad(message, param, "unsupported_parameter")
 
+/** One top-level check, failing with its PlugError `message` and `code`. The param is the field it sits on. */
+const field = (message: string, valid: (value: unknown) => boolean, code?: string) =>
+  Schema.Unknown.check(Schema.makeFilter<unknown>(valid, { message, ...(code ? { code } : {}) }))
+
+/**
+ * The top-level checks of the legacy body, in the order they run: the first failure wins, as it did
+ * when they were hand-written. `prompt`'s shape (string or list) is checked after this, by `parsePrompts`.
+ */
+const LegacyBody = Schema.Struct({
+  model: field("model is required", (value) => typeof value === "string" && value.length > 0),
+  prompt: field("prompt is required", (value) => value != null),
+  stream: Schema.optionalKey(field("stream must be a boolean", (value) => value == null || typeof value === "boolean")),
+  logprobs: Schema.optionalKey(field("logprobs is not supported", (value) => value == null, "unsupported_parameter")),
+  best_of: Schema.optionalKey(
+    Schema.Unknown.check(
+      Schema.makeFilter<unknown>((value) => value == null || (typeof value === "number" && Number.isInteger(value) && value >= 1), {
+        message: "best_of must be a positive integer",
+      }),
+      Schema.makeFilter<unknown>((value) => value == null || (value as number) <= 1, { message: "best_of is not supported", code: "unsupported_parameter" }),
+    ),
+  ),
+  echo: Schema.optionalKey(field("echo must be a boolean", (value) => value == null || typeof value === "boolean")),
+  suffix: Schema.optionalKey(field("suffix must be a string", (value) => value == null || typeof value === "string")),
+})
+
+/** The failing check of `LegacyBody` as the PlugError it fails with (`param` is the field, from the pointer). */
+const failureOf = (issue: SchemaIssue.Issue, param?: string): PlugError => {
+  if (issue._tag === "Composite") return failureOf(issue.issues[0], param)
+  if (issue._tag === "Pointer") return failureOf(issue.issue, String(issue.path[0]))
+  // A required field that is absent: `model` and `prompt` are the only required keys.
+  if (issue._tag === "MissingKey") return bad(`${param} is required`, param)
+  if (issue._tag !== "Filter") throw new Error(`LegacyBody: unexpected issue ${issue._tag}`)
+  const { message, code } = issue.filter.annotations as { message: string; code?: string }
+  return bad(message, param, code)
+}
+
 /**
  * `suffix` is the text that should follow the completion (insert mode). Chat models have no
  * insert mode, so it is passed as an instruction: a best-effort mapping whose quality depends on
@@ -57,17 +94,8 @@ const parsePrompts = (raw: unknown): string[] | PlugError => {
 
 export function parseCompletionsRequest(body: unknown, options: PlugboardOptions, capOption = "maxN"): ParsedCompletions | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
-  if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
-  if (body.prompt == null) return bad("prompt is required", "prompt")
-  if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
-
-  if (body.logprobs != null) return unsupported("logprobs is not supported", "logprobs")
-  if (body.best_of != null) {
-    if (typeof body.best_of !== "number" || !Number.isInteger(body.best_of) || body.best_of < 1) return bad("best_of must be a positive integer", "best_of")
-    if (body.best_of > 1) return unsupported("best_of is not supported", "best_of")
-  }
-  if (body.echo != null && typeof body.echo !== "boolean") return bad("echo must be a boolean", "echo")
-  if (body.suffix != null && typeof body.suffix !== "string") return bad("suffix must be a string", "suffix")
+  const checked = Schema.decodeUnknownResult(LegacyBody)(body)
+  if (checked._tag === "Failure") return failureOf(checked.failure.issue)
 
   const prompts = parsePrompts(body.prompt)
   if (isPlugError(prompts)) return prompts
@@ -103,7 +131,7 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
     })),
     n,
     exchange: {
-      model: body.model,
+      model: body.model as string,
       stream: body.stream === true,
       includeUsage: streamOptions.include_usage === true,
       perPrompt: n,
