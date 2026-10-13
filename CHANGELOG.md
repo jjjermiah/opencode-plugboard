@@ -18,6 +18,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
 
+### Fixed
+
+- **`count_tokens` and Gemini `countTokens` count what the session sends** ([#201](https://github.com/jjjermiah/opencode-plugboard/issues/201)). The count left out an agent's prompt, a skill's content and the schemas of `serverTools`, so Claude Code could budget against a number that was too small. The count now runs the same builders as the session caller, so it cannot drift from the request: it counts only the caller tools the request offers (none for `tool_choice: none`, one for a named choice), and it refuses what the request would refuse. An app with `tools: false` is also counted without the caller's tools that the request drops. The tool schemas are an estimate: they are converted without OpenCode's draft-07 step.
+
 ## [0.27.0] - 2026-10-12: Every App Its Own Rules
 
 **Full diff:** [v0.26.0...v0.27.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.26.0...v0.27.0)

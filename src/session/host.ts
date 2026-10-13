@@ -11,7 +11,7 @@
 
 import type { Plugin } from "@opencode/plugin/effect"
 import type { SessionContext } from "@opencode/plugin/effect/session"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import type { CatalogCost, CatalogModel } from "../contract.js"
 import type { KeepAliveHost } from "../keepalive.js"
 import type { OperatorRule } from "./seeds.js"
@@ -61,11 +61,23 @@ export interface SessionPort {
    */
   directTools(): Promise<ReadonlyArray<string>>
   /**
+   * The direct tools of `directTools` with their descriptions and model-facing JSON schemas: what a request session offers
+   * for a server tool. `count_tokens` counts them (#201).
+   */
+  directToolSchemas(): Promise<ReadonlyArray<DirectToolSchema>>
+  /**
    * The permission rules of the agent a request session runs as: `agent`, or the host's selected default when absent
    * (the first selectable agent of the list). Undefined when there is no such agent. Read per request for an app with
    * `serverTools` (#194), never at setup.
    */
   agentRules(directory: string, agent: string | undefined): Promise<ReadonlyArray<OperatorRule> | undefined>
+}
+
+/** A direct tool as a request session offers it: its id (the name the model calls it by), description and JSON schema. */
+export interface DirectToolSchema {
+  readonly id: string
+  readonly description: string
+  readonly input: Readonly<Record<string, unknown>>
 }
 
 type HostSession = HostContext["session"]
@@ -159,11 +171,29 @@ export function createSessionPort(ctx: HostContext): SessionPort {
       const agent = id === undefined ? listed.data.find((item) => item.mode !== "subagent" && !item.hidden) : listed.data.find((item) => item.id === id)
       return agent?.permissions.map((rule) => ({ action: rule.action, resource: rule.resource, effect: rule.effect }))
     },
-    directTools: () =>
+    directTools: () => run(ctx.tool.list()).then((tools) => tools.filter(isDirect).map((tool) => tool.id)),
+    directToolSchemas: () =>
       run(ctx.tool.list()).then((tools) =>
-        tools.filter((tool) => tool.options?.codemode === false && (tool.options?.permission ?? tool.id) === tool.id).map((tool) => tool.id),
+        tools.filter(isDirect).map((tool) => ({ id: tool.id, description: tool.description, input: modelSchema(tool.input) })),
       ),
   }
+}
+
+/** A tool a request session can call by name: direct (`codemode: false`), with a permission name equal to its id. */
+const isDirect = (tool: { readonly id: string; readonly options?: { readonly codemode?: boolean; readonly permission?: string } }): boolean =>
+  tool.options?.codemode === false && (tool.options?.permission ?? tool.id) === tool.id
+
+/**
+ * A tool input as the model reads it. Mirrors `inputJsonSchema` in OpenCode core (packages/core/src/tool/runtime.ts): a standard
+ * JSON Schema converts through its own `jsonSchema`, an Effect schema through `Schema.toJsonSchemaDocument`, and a plain object
+ * is already JSON Schema. Core's draft-07 normalisation is not repeated, so the count can differ from the host's document.
+ */
+function modelSchema(input: unknown): Readonly<Record<string, unknown>> {
+  if (input === undefined || input === null) return {}
+  const standard = (input as { readonly "~standard"?: { readonly jsonSchema?: { readonly input?: (options: { readonly target: string }) => unknown } } })["~standard"]
+  if (standard?.jsonSchema?.input) return standard.jsonSchema.input({ target: "draft-2020-12" }) as Readonly<Record<string, unknown>>
+  if (Schema.isSchema(input)) return Schema.toJsonSchemaDocument(input).schema as Readonly<Record<string, unknown>>
+  return input as Readonly<Record<string, unknown>>
 }
 
 /**

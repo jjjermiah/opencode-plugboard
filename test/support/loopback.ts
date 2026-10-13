@@ -16,6 +16,7 @@ import { createMetrics, type Metrics } from "../../src/metrics.js"
 import { createOpenAiRoute } from "../../src/openai/route.js"
 import type { UsageRecorder } from "../../src/usage.js"
 import type { KeyStore } from "../../src/keys.js"
+import type { SessionPromptDeps } from "../../src/session/caller.js"
 import type { RuntimeStatus } from "../../src/runtime.js"
 import { CATALOG, testOptions } from "./fixtures.js"
 
@@ -190,6 +191,8 @@ export interface RouteSetup {
   readonly usage?: UsageRecorder
   /** The runtime app key store (src/keys.ts, #55) behind the admin routes and runtime keys. Absent: no runtime keys. */
   readonly keys?: KeyStore
+  /** The session port behind the count routes' prompt (#201). Absent: the count covers the caller's request alone. */
+  readonly session?: SessionPromptDeps
 }
 
 /** The real OpenAI route behind a loopback listener, with a fake model caller and a fixed catalog. */
@@ -208,6 +211,7 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
     status: setup.status ?? (() => TEST_STATUS),
     ...(setup.usage ? { usage: setup.usage } : {}),
     ...(setup.keys ? { keys: setup.keys } : {}),
+    ...(setup.session ? { session: setup.session } : {}),
   })
   return { ...server, options, metrics }
 }

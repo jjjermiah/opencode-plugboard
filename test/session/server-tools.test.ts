@@ -7,7 +7,7 @@
  * step cap, and the `server_tool.call` log lines, which never carry arguments.
  */
 import { describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import type { AppPolicy, PlugboardOptions } from "../../src/config.js"
 import type { CallContext, ModelCaller, PlugEvent, PlugRequest } from "../../src/contract.js"
 import { cachedCaller, createCacheStore } from "../../src/cache.js"
@@ -488,5 +488,27 @@ describe("the host port lists the direct tools (#82)", () => {
       },
     })
     await expect(createSessionPort(spy.ctx).directTools()).resolves.toEqual(["websearch"])
+  })
+})
+
+describe("the host port offers the direct tools' schemas (#201)", () => {
+  test("a plain JSON schema, a standard JSON schema and an Effect schema are read as the model reads them; non-direct tools are left out", async () => {
+    const spy = spyContext({
+      directory: "/data/app",
+      respond: {
+        "tool.list": () =>
+          Effect.succeed([
+            { id: "websearch", description: "Search", input: { type: "object" }, options: { codemode: false } },
+            { id: "standard", description: "Std", input: { "~standard": { jsonSchema: { input: () => ({ type: "object", required: ["q"] }) } } }, options: { codemode: false } },
+            { id: "effect", description: "Eff", input: Schema.Struct({ q: Schema.String }), options: { codemode: false } },
+            { id: "grep", description: "Grep", input: {}, options: { codemode: true } },
+          ]),
+      },
+    })
+    const schemas = await createSessionPort(spy.ctx).directToolSchemas()
+    expect(schemas.map((tool) => tool.id)).toEqual(["websearch", "standard", "effect"])
+    expect(schemas[0]).toEqual({ id: "websearch", description: "Search", input: { type: "object" } })
+    expect(schemas[1]).toEqual({ id: "standard", description: "Std", input: { type: "object", required: ["q"] } })
+    expect(schemas[2]!.input).toMatchObject({ type: "object", properties: { q: { type: "string" } } })
   })
 })
