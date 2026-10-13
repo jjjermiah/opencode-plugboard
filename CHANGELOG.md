@@ -14,9 +14,81 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.36.0] - 2026-10-13: Show Your Work
+
+**Full diff:** [v0.35.0...v0.36.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...v0.36.0)
+
 ### Added
 
 - **Reasoning output, opt-in** ([#375](https://github.com/jjjermiah/opencode-plugboard/issues/375), since 0.36.0). Plugboard dropped the model's reasoning on Chat Completions and Responses. Option `reasoningOutput: true` returns it: `reasoning_content` and `reasoning` on Chat Completions deltas and messages (both, because clients split between the two names), and a `reasoning` output item with a `summary_text` part on Responses. Off by default, so existing clients see the same bytes. Per app, `apps.<name>.reasoningOutput` overrides the global switch in either direction. Structured output never carries reasoning, because its content is the answer. Checked with the option on against a scripted plugboard: openai-node and openai-python both read Chat Completions and Responses bodies and streams without error. Sending both chat names doubles the reasoning bytes, and a client that concatenates both shows the text twice; the docs say so.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Features
+
+**feat(openai): return reasoning on Chat Completions and Responses, opt-in** ([`af38b1a`](https://github.com/jjjermiah/opencode-plugboard/commit/af38b1aacc77f53bb5783fe35e51203226a7da0f))
+
+Plugboard dropped the model's reasoning on Chat Completions and Responses, so a client that shows thinking got nothing. This adds the option `reasoningOutput` (default false, since 0.34.0) that returns it.
+
+What it does when on:
+- Chat Completions: `reasoning_content` and `reasoning` on each stream delta and on the final message, both with the same text. Clients split between the two names (DeepSeek and LiteLLM read `reasoning_content`; vLLM and OpenRouter read `reasoning`), and vLLM's docs warn that a client reading the wrong name silently gets nothing.
+- Responses: one `reasoning` output item per run of reasoning, with one `summary_text` part, placed before the message or tool call. Streamed as `response.reasoning_summary_part.*` and `response.reasoning_summary_text.*` events, the shape the OpenAI spec and openai-agents use.
+- Structured output (json_schema) never carries reasoning: its content is the answer's arguments.
+
+Why opt-in and not on by default:
+- The field name is not settled across clients, so a default-on change would add fields existing clients do not expect, for every app at once.
+- Off keeps the bytes identical, so the scripted example transcripts did not change (`git diff --exit-code examples/` is clean; the scripted model emits no reasoning, so the transcripts could not change either way).
+
+Checked against the official SDKs with the option on, against a scripted plugboard: openai-node (chat JSON and stream, responses JSON and stream) and openai-python (same paths) both read the responses without error. The extra fields land in the SDK's extra data, not in a typed field.
+
+Rejected:
+- Emitting reasoning_details (OpenRouter's structured form): only some models have it, and it needs replay rules not in scope here.
+- Accepting reasoning items as replay input: already done (they were accepted and dropped). Chat assistant reasoning_content is ignored too.
+
+Validation: typecheck clean; bun test 2650 pass, 0 fail, 126 skipped (live); coverage floors ratcheted (test-count-floors.json); manifest, pack smoke and docs build pass; examples scripted run exits 0 with no transcript diff; mutations 83 of 83 killed (new entry reasoning-output-off-still-returned).
+
+Not verified: the live dev server runs main, so the option is checked only against the scripted fake and the loopback tests until this merges.
+
+Refs #375
+
+**feat(openai): per-app reasoningOutput and the review fixes for reasoning output** ([`d078de7`](https://github.com/jjjermiah/opencode-plugboard/commit/d078de76f01349f49433fb0e2475b9b4863fb11a))
+
+Review of #384 asked for five changes and a few corrections. This commit makes them.
+
+Per app: `apps.<name>.reasoningOutput` overrides the global switch. The app's value wins when set, in both directions, so an app can turn reasoning off while the global switch is on, or on while it is off (the same rule as history.hidden). The route resolves it with `reasoningOutputFor`, because the request decoders do not know the app. Covered by config tests and by HTTP tests on Chat Completions and Responses.
+
+Tests added:
+- n: 2 with reasoning, JSON and SSE: each choice keeps its own reasoning.
+- Responses: a returned rs_ item sent back as item_reference is accepted, and its reasoning is not replayed to the model.
+- Chat SSE: reasoning then a tool call (reasoning first, tool_calls finish); reasoning then a stop sequence (cut only where the text ends with it); held back text is flushed before reasoning arrives.
+- Mutation entry reasoning-output-off-still-returned-responses for the Responses guard (the Chat entry already covered the JSON guard).
+
+Behaviour: a Responses reasoning item cut short by a failure closes with status `incomplete`, not `completed`.
+
+Docs: the Reasoning output section moved below the apps.<name>.model paragraph, so it no longer splits Models. It now says that sending both chat names doubles the reasoning bytes, that a client concatenating both fields shows the text twice, and that the Responses text is the provider's reasoning rather than a generated summary, with the item present whether or not reasoning.summary was set. The config row says Chat Completions and Responses.
+
+CHANGELOG: the SDK line now says what was run. openai-node and openai-python were run with the option on against a scripted plugboard (chat JSON and stream, Responses JSON and stream); both read the bodies and streams without error. The earlier wording said the SDKs were not tested.
+
+Validation: typecheck clean; bun test 2786 tests, 0 fail, 126 skipped (live); coverage ratchet passes (floors raised in .github/floors/test-count-floors.json); manifest, pack smoke and docs build pass; examples scripted run exits 0 with no transcript diff; mutations 84 of 84 killed.
+
+Not verified: the live dev server runs main and has the option off, so the live check happens after merge, with reasoningOutput set in a config.
+
+Refs #375
+
+#### Docs
+
+**docs(configuration): date the /v1/models fields to 0.35.0** ([`8cdd218`](https://github.com/jjjermiah/opencode-plugboard/commit/8cdd218a5aa96d403cf60969c3cd5eb96dbff8bc))
+
+The configuration page said the context_length and pricing fields on /v1/models arrived in 0.34.0. They were merged after the 0.34.0 release was cut and shipped in 0.35.0, as the 0.35.0 changelog section says.
+
+Refs #376
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.35.0] - 2026-10-13: Know Every Model
 
@@ -6636,7 +6708,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.32.0...v0.33.0
