@@ -16,6 +16,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Added
 
+- **`examples/openai-js` runs the OpenAI JS SDK against plugboard** ([#178](https://github.com/jjjermiah/opencode-plugboard/issues/178)). Every scenario (chat, tools, streaming with and without usage, streamed tool calls, images, structured output, models, errors) is one copyable file, and the scripted run is checked in CI. `examples/tool-bot` gets a runner too; its tool-call checks are a gap until [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
 - **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
 
 ### Fixed
