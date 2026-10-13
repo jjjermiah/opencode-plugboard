@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **paperless-ai self-hosted page and example** ([#243](https://github.com/jjjermiah/opencode-plugboard/issues/243)). `docs/self-hosted/paperless-ai.md` says what works through plugboard: text suggestions and chat, with no vision and no embeddings, because the RAG index runs locally. `examples/self-hosted/paperless-ai` is a compose file and `.env.example` for the custom provider. Docs-verified against the upstream source, not run.
 
 ## [0.28.0] - 2026-10-13: Counts That Add Up
 

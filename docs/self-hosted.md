@@ -24,7 +24,7 @@ Checked 2026-10-11. Statuses come from each app's docs or source, not from a liv
 | Open Notebook (about 40.1k) | Notebook chat and transformations | Chat | Chat only: embeddings need another provider | [page](self-hosted/open-notebook.md) |
 | Langflow (about 155.5k) | Language model components in flows | Chat | Chat only: the SSRF allowlist must include the host | [page](self-hosted/langflow.md) |
 | SparkyFitness (owner's deployment) | AI assistant, with tools | Chat, tools | Works | [page](self-hosted/sparkyfitness.md) |
-| paperless-ai (about 6.0k) | Classification, tags, RAG chat | Chat | Not checked: upstream is mid-rewrite | [#243](https://github.com/jjjermiah/opencode-plugboard/issues/243) |
+| paperless-ai (about 6.0k) | Titles, tags, correspondents, RAG chat | Chat | Chat only: text, no vision, no embeddings (RAG index is local) | [page](self-hosted/paperless-ai.md) |
 | Vane, formerly Perplexica (about 37.3k) | Answering engine | Chat | Not chat only: chat and search need an embedding provider beside plugboard | [page](self-hosted/vane.md) |
 | Onyx (about 32.4k) | RAG search and chat | Chat | Chat only expected: indexing needs embeddings | [#245](https://github.com/jjjermiah/opencode-plugboard/issues/245) |
 | Tandoor Recipes (about 8.7k) | Recipe import, step sorting, nutrition | Chat, vision | Works for text import. Photo import needs a vision alias. JSON mode not checked | [page](self-hosted/tandoor.md) |

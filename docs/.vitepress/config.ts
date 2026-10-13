@@ -112,6 +112,7 @@ export default defineConfig({
           { text: "SiYuan", link: "/self-hosted/siyuan" },
           { text: "Tandoor Recipes", link: "/self-hosted/tandoor" },
           { text: "Vane", link: "/self-hosted/vane" },
+          { text: "paperless-ai", link: "/self-hosted/paperless-ai" },
         ],
       },
       {
