@@ -28,6 +28,38 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P265-app-maxage-own-field-ignored",
+    invariant: "#265",
+    file: "src/session/prune.ts",
+    find: "  const maxAgeDays = own?.maxAgeDays ?? global.maxAgeDays",
+    replace: "  const maxAgeDays = global.maxAgeDays",
+    tests: ["test/session/prune.test.ts"],
+  },
+  {
+    id: "P265-app-only-limits-do-not-start-sweep",
+    invariant: "#265",
+    file: "src/runtime.ts",
+    find: "  if (limits.maxSessions === undefined && limits.maxAgeDays === undefined && Object.keys(apps ?? {}).length === 0) return",
+    replace: "  if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) return",
+    tests: ["test/runtime/generations.test.ts"],
+  },
+  {
+    id: "P265-unlimited-app-is-read",
+    invariant: "#265",
+    file: "src/session/prune.ts",
+    find: "    if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) continue",
+    replace: "    if (false) continue",
+    tests: ["test/session/prune.test.ts"],
+  },
+  {
+    id: "P262-audit-line-follows-log-level",
+    invariant: "#262",
+    file: "src/log.ts",
+    find: "export const logAudit = (event: string, fields?: LogFields): void => state().audit.info(record(event, fields))",
+    replace: "export const logAudit = (event: string, fields?: LogFields): void => state().logger.info(record(event, fields))",
+    tests: ["test/unit/log.test.ts"],
+  },
+  {
     id: "P270-app-maxn-ignored",
     invariant: "#270",
     file: "src/config.ts",
