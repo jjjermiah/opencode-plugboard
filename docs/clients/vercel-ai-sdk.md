@@ -1,6 +1,6 @@
 # Vercel AI SDK
 
-Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91. Live on 2026-10-13 at plugboard 0.26.0 (`c97ac66`): all 45 rows pass on all three ways in, [record](../../examples/vercel-ai-sdk/runs/live/2026-10-13-c97ac66/summary.md). The 2026-10-11 record at `3fcedc7` predates the Responses route.
+Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91. Live on 2026-10-13 at plugboard 0.26.0 (`c97ac66`): all 45 rows pass on all three ways in (`examples/vercel-ai-sdk/runs/live/2026-10-13-c97ac66/summary.md`). The 2026-10-11 record at `3fcedc7` predates the Responses route.
 
 Use `createOpenAICompatible`. It passed every scenario with `supportsStructuredOutputs: true`. Without that flag structured output failed (see Gotchas).
 
