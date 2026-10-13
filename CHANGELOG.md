@@ -16,11 +16,11 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 Nothing yet.
 
-## [0.26.0] - 2026-10-12: Locks and a Heartbeat
+## [0.27.0] - 2026-10-12: Every App Its Own Rules
 
-**Full diff:** [v0.25.1...v0.26.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...v0.26.0)
+**Full diff:** [v0.26.0...v0.27.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.26.0...v0.27.0)
 
-Five options for locking down who and what can reach plugboard, and a fix for a listener that went silent after an idle hour. Nothing changes until you set an option, except the keep-alive, which is on by default.
+Each app can now carry its own history limits and `n` cap, the log level is yours to set, and browser apps can read plugboard's response headers.
 
 ### Added
 
@@ -36,7 +36,7 @@ Five options for locking down who and what can reach plugboard, and a fix for a 
     }
   }
   ```
-- **A per-app cap on `n`** ([#270](https://github.com/jjjermiah/opencode-plugboard/issues/270)). `maxN` was one number for every app, so a batch tool that needed `n: 4` forced the same allowance onto the chat widget. `apps.<name>.maxN` lowers the global cap for one app. A request above it gets the usual 400 `too_many_choices`, and the message names `apps.<name>.maxN`. It cannot be higher than the global `maxN`, the same rule as `maxTools`. Unset, the global cap applies as before. The 400 `too_many_choices` message now names the option that applied (`apps.<name>.maxN` for an app with its own cap, else `maxN`). Before, it always named `apps.<name>.maxN`, so the text changes for a request refused under the global cap.
+- **A per-app cap on `n`** ([#270](https://github.com/jjjermiah/opencode-plugboard/issues/270)). `maxN` was one number for every app, so a batch tool that needed `n: 4` forced the same allowance onto the chat widget. `apps.<name>.maxN` lowers the global cap for one app. A request above it gets the usual 400 `too_many_choices`. It cannot be higher than the global `maxN`, the same rule as `maxTools`. Unset, the global cap applies as before. The 400 `too_many_choices` message now names the option that applied (`apps.<name>.maxN` for an app with its own cap, else `maxN`). Before, it always named `apps.<name>.maxN`, so the text changes for a request refused under the global cap.
 
   ```jsonc
   {
@@ -52,6 +52,264 @@ Five options for locking down who and what can reach plugboard, and a fix for a 
     "logRequests": false
   }
   ```
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (21 commits)</summary>
+
+#### Features
+
+**feat(http): expose the x-plugboard-* response headers to browser apps** ([`46baf49`](https://github.com/jjjermiah/opencode-plugboard/commit/46baf49de36a94ddb3f3a0ab4eb6dba55fcfe834))
+
+With `cors.origins` set, browser scripts could not read the plugboard headers (x-plugboard-session, x-plugboard-model, x-plugboard-usage and the rest). A browser only exposes the CORS-safelisted response headers unless the response says otherwise, and no answer sent Access-Control-Expose-Headers.
+
+What: an allowed origin's answer now carries Access-Control-Expose-Headers with the documented plugboard header list plus retry-after. The list is one constant (CORS_EXPOSED_HEADERS in src/http.ts). It is set in the same place as Access-Control-Allow-Origin, so every route the CORS block reaches (chat, messages, responses, gemini) gets it. An origin off the list gets no CORS headers, as before.
+
+Why: the header list is fixed and documented, so one constant beats per request computation. The header is set on the preflight too; browsers ignore it there, and it keeps the two responses symmetric.
+
+Rejected: sending the list only on routes that set plugboard headers (more branches for no gain); Access-Control-Expose-Headers: * (it does not expose headers when credentials are used, and it leaks the whole set).
+
+Validation: test/http/cors.test.ts (#314 block: expose list on an allowed answer, none for an off-list origin, none without cors); tsc --noEmit clean.
+
+Fixes #314
+
+**feat(config): logLevel and logRequests volume switches** ([`3c38d39`](https://github.com/jjjermiah/opencode-plugboard/commit/3c38d39da224848e99cbc50f6e5b752b23e122ed))
+
+Plugboard wrote one access line per request at info, and no switch changed how much it logged. Only the format was adjustable. An operator with a log pipeline paid for the access lines, and one who wanted only the alerts had no way to get them.
+
+What: two process-wide options, validated at load.
+- logLevel: debug | info | warn | error, default info. Lines below it are dropped. debug gets its own pino stream so debug records reach stdout; the existing logDebug lines (keep-alive, #310) are the only debug lines today.
+- logRequests: false drops the per-request access lines (`request` from the route, `request.finished` from the caller) through a new logRequest helper. Warnings and errors are never affected. Both are set in runtime.ts with logFormat, when a generation is accepted.
+
+Why: the level is the usual pino knob, and logRequests is a separate switch so an operator can keep warnings without the access lines. Neither changes a line's content, so the I14 redaction and the envelope keys are unchanged.
+
+Rejected: a per-line sampler (more code, and it hides which requests ran); per-app logging (logging is process-wide like logFormat, see the issue).
+
+Tests: test/unit/log.test.ts (#262 block: error and warn drop info, debug written at debug, logRequests off, redaction at debug); test/unit/config.test.ts (#262 block; the defaults test now lists the two new defaults). Full bun test: 2321 pass, 0 fail, 126 skipped (live).
+
+Refs #262. The per-step debug lines the issue lists are not added yet, so the issue stays open.
+
+**feat(config): apps.<name>.maxN caps the choices one app may ask for** ([`ad4d8b9`](https://github.com/jjjermiah/opencode-plugboard/commit/ad4d8b95cbd82c2084939b0027e0e847b653c5ff))
+
+maxN was one number for every app. A batch tool that needs n: 4 forced the same allowance onto a chat widget that should never fan out, and each choice is a full model call and a kept session.
+
+What: apps.<name>.maxN lowers the global cap for one app, validated at load the same way as apps.<name>.maxTools: a positive integer no higher than the global maxN. The routes that decode n (chat completions and legacy completions) check the request against maxNFor(options, app), which is the app's value or the global one. The 400 too_many_choices message names the app option. Responses and Messages have no n, so they are unchanged.
+
+Why: the shape already exists for maxTools, so parsing and error style are settled. Passing the effective cap as a copy of the options keeps the decoders unchanged apart from the message.
+
+Rejected: a route-level check after decoding (the decoder already owns the n check and its error param); an app maxN above the global one (it would be a second, unchecked global).
+
+Tests: test/http/per-app-maxn.test.ts (two apps on one server: the capped app gets 400 with no model call, the other app gets 200; n: 1 passes; legacy completions obey the cap; without it the global cap holds). test/unit/config.test.ts (#270 block: only lowers, in-range kept, global when unset, zero and non-integer rejected). bun test on the touched files: 314 pass.
+
+Fixes #270
+
+**feat(config): apps.<name>.history sets history retention per app** ([`56d1598`](https://github.com/jjjermiah/opencode-plugboard/commit/56d1598d5f476288b41b24e0f643ea891bcbf457))
+
+history was one pair of limits for every app. A high-volume bot wants to keep very few sessions while a coding assistant keeps thousands, and the operator had to pick one pair for both or turn pruning off.
+
+What: apps.<name>.history takes maxSessions and maxAgeDays, validated at load (1 or more, maxAgeDays up to 36500, unknown fields rejected). A field replaces the global one for that app and an unset field falls back to it, field by field (limitsFor in src/session/prune.ts). The stricter field still wins inside an app. The sweep takes each app's effective limits, and trackSession writes the index only when the app's effective limits have a field set (invariant I21). An app with no limit in either place is kept forever.
+
+Why: the merge is per field, so setting only maxSessions for a bot keeps the global age limit, the same way apps.<name>.maxTools and the budgets override work. The index check uses the same merge, so the index and the sweep cannot disagree about whether an app is pruned.
+
+Rejected: a separate sweep timer per app (I1 and I7 keep the sweep on request handling, and one bounded sweep already loops over every app); copying the global limits into each app's entry at load (a global change would not reach the app).
+
+Tests: test/session/prune.test.ts (#265 block: limitsFor merge, per-app sweep, app with no global limit, the stricter field inside an app); test/runtime/generations.test.ts (#265: indexed with its own limit and no global one; not indexed with no limit in either place); test/unit/config.test.ts (#265 block: parsing, the per-app map, rejected values name the app).
+
+Fixes #265
+
+#### Fixes
+
+**fix(session): an app with no history limit is not read by the sweep** ([`c2e0bda`](https://github.com/jjjermiah/opencode-plugboard/commit/c2e0bda0f99b40831e80169f417d5dfea962a4b7))
+
+Review of #319 (SHOULD 1-3). Before this change, sweepHistory read every indexed app even when limitsFor gave it no limit. Before per-app history (#265) that could not happen: a global limit gave every app one. Now an app that was indexed under a limit that has since been removed still gets scanned, and a scan over 20,000 entries reports more=true, so the runtime re-sweeps every SWEEP_BACKLOG_MS (1 minute) and deletes nothing.
+
+What: sweepHistory skips an app whose effective limits are both unset, before reading its index. The "no limits: nothing is removed" expectation changes from scanned 3 to scanned 0: that is the change, the app is not read at all.
+
+Also covered by new tests (these pass against the fixed code and pin the behaviour the reviewer asked for):
+- a per-app limit looser than the global one wins in the sweep (maxSessions 5000 over 2 keeps all 5 sessions; maxAgeDays 10 over 3 removes nothing), with the limitsFor unit case. The clamping mutation (min of own and global) now fails.
+- the sweep starts when only per-app limits exist: a new session under apps.app.maxSessions 1 removes the two older sessions (runtime test).
+
+Tests that failed before the fix: "an app with no effective limit is not even read" (scanned 2, more true, against scanned 0, more false). The other new cases pass before and after; they are coverage the review asked for.
+
+Mutations for these are in the catalogue commit.
+
+Refs #265
+
+**fix(log): operational problems are warn lines; admin key audit lines ignore logLevel** ([`494d475`](https://github.com/jjjermiah/opencode-plugboard/commit/494d475f86a4d14c0d45a53cd56c5bbd15d435ed))
+
+Review of #319 (SHOULD 4). `logLevel: warn` is the setting an operator uses to "keep the alerts", but several lines that signal a problem were written at info, so warn and error silenced them: request.limited (a 429), request.budget_exceeded (a refusal by budget), model.fallback_exhausted (every target failed) and history.swept with deletions that failed. The admin key audit lines (admin.key_created, admin.key_revoked) were info too, so an operator at `error` lost the record of who changed a key.
+
+What:
+- request.limited, request.budget_exceeded and model.fallback_exhausted are logWarn. history.swept is logWarn only when failed > 0; a clean sweep stays info. model.fallback (a normal retry) stays info.
+- logAudit writes admin.key_created and admin.key_revoked on a second pino instance fixed at info. setLogLevel changes only the main logger, so the audit line is written at every logLevel, including error. Redaction and the envelope are the same.
+
+Why a second instance and not a bypass: pino checks the level per logger, and the main logger's level is the operator's setting. A separate instance keeps the same destinations and redaction and removes only the level dependency.
+
+Tests that failed before the fix:
+- test/unit/limits.test.ts: "request.limited is a warning" (the JSON line's level was info).
+- test/unit/log.test.ts: the audit line was missing at error (the export did not exist, so the file failed to load). Passes now at every level.
+
+The level each event shows is documented in configuration.md with logLevel.
+
+Refs #262
+
+**fix(openai): the choice-cap 400 names the option that applied** ([`0e5977c`](https://github.com/jjjermiah/opencode-plugboard/commit/0e5977c46b3a5d109d8161a3e20587096c0dda4d))
+
+Review of #319 (NIT 7, NIT 8, SHOULD 5). The too_many_choices message named `apps.<name>.maxN` even for an app with no cap of its own, which pointed the operator at a setting that did not apply. Under a global cap the message now names `maxN`; under an app cap it names `apps.<app>.maxN`. The message text of this error changes for every user; the CHANGELOG says so.
+
+What: maxNOption(options, app) gives the option that set the cap. Chat and legacy completions receive it as an optional argument and put it in the 400 message. Both routes pass it.
+
+Tests (NIT 7, failed before the fix): per-app-maxn.test.ts now asserts the applied option for chat and completions, and that a global-cap refusal does not mention apps.
+
+NIT 8 (no code change, tests pin the edges): an app maxN equal to the global one is accepted; apps.default.maxN caps the keyless app; an unknown app and an inherited name such as constructor get the global cap.
+
+SHOULD 5 (no code change, tests pin the behaviour): the expose-headers list is on an allowed origin's 204 preflight and on its 401 answer, and the list equals the set of x-plugboard-* names the source sets, plus retry-after. A new header that is not in the list now fails the test.
+
+Refs #270, #314
+
+#### Refactors
+
+**style(docs): gofmt the go-openai example** ([`af006bc`](https://github.com/jjjermiah/opencode-plugboard/commit/af006bc5ee8b880ef92200a63e1f17a3e03782ed))
+
+Aligns the Parameters field in the tool definition, the one line gofmt -l flagged. No behaviour change.
+
+Refs #234
+
+#### Tests
+
+**test(tests): one mutation per enforced per-app cap of the config epic** ([`427b2c3`](https://github.com/jjjermiah/opencode-plugboard/commit/427b2c3353f63c4d52b0e9b29ac76c3d4b2c2448))
+
+The mutation catalogue (#111) gates the guards that must never silently break. The per-app options added in this branch enforce caps and switches that a refactor could break without a test failing, so each gets one entry: the per-app maxN (#270), the per-app history limit and the index write rule (#265), the access-line switch (#262) and the CORS expose-headers list (#314).
+
+Each entry is one exact find/replace and names the test files that must fail. All five are killed by their test files (mutation-check.ts --only, one at a time). The ids use a P<issue> prefix because these options have no numbered invariant; the catalogue's invariant field carries the issue instead.
+
+Fixes nothing by itself; it is part of #270, #265, #262 and #314.
+
+**test(tests): raise the test-count floors for the per-app options** ([`e06bd90`](https://github.com/jjjermiah/opencode-plugboard/commit/e06bd903408121a223accc5e087d7ee58dd93268))
+
+The new tests for #262, #265, #270 and #314 raised the per-layer counts (http 522 to 529, runtime 81 to 83, session 300 to 304, unit 1167 to 1186). The ratchet only moves floors up, so these are the counts the branch now has. Coverage floors are unchanged: the total is at its floor (98.6% lines, 94.5% functions).
+
+**test(tests): cover n > 1 usage and streamed legacy completions in the compat matrix** ([`51e0d66`](https://github.com/jjjermiah/opencode-plugboard/commit/51e0d669f7dbd4ed4dde9993f7aedd26ebb17223))
+
+The compat matrix's `n` case now checks what clients see for several choices. Chat Completions and legacy completions both assert summed usage on the non-streamed answer and, when streamed with include_usage, that the final chunk has no choices and carries the summed usage. The legacy completions streamed case reassembles text per choice index. LangChain's legacy LLM class and ChatOpenAI assert summed tokenUsage on generate. The scenario legend in docs/compatibility.md is regenerated to match.
+
+Issue #106 lists streamed and non-streamed n, index interleaving and summed usage. The matrix had a streamed n only for Chat Completions, and no client checked usage across choices.
+
+Decisions:
+- Extended the existing `n` scenario instead of adding one, so the table keeps its shape. The docs change is the single legend line.
+- Expected usage is twice the scripted per-call usage, because fan-out sums usage per choice (src/openai/fanout.ts). The assertions reuse USAGE.
+- Not added: an eval-harness client (lm-eval-harness, promptfoo). The matrix has no path for them: the Python harnesses run by hand (compat/py), and promptfoo is not a TypeScript SDK. Left open on #106.
+- Not added: prompt-array with n. Two prompts with n=2 make four calls, above the matrix's maxN of 2.
+
+Validation:
+- bun test test/compat: 236 pass, 0 fail.
+- bun run typecheck: pass (root, tui, test, examples harness).
+- bun test: 2306 pass, 126 skip, 0 fail.
+- Coverage and test-gates --ratchet: all floors met, none changed (assertions only, no new tests).
+- coverage-manifest, check-pack, smoke-pack, docs:build and the scripted examples pass; examples/ diff is clean.
+- The new assertions pass on current behaviour. They guard existing behaviour; I did not check that they fail on a broken fan-out.
+
+Refs #106
+
+**test(tests): mutations for the review fixes of the per-app options** ([`8d95d9d`](https://github.com/jjjermiah/opencode-plugboard/commit/8d95d9d89e4bc868176fad7d10d7223bef5ec9a3))
+
+Review of #319. Each guard the review fixes is now in the mutation catalogue (#111), so a refactor that reverts it fails a test: the maxAgeDays merge (own field ignored), the sweep started by app-only limits, the unlimited app that is read, and the audit line that follows logLevel. Each was killed by its test file, one at a time (mutation-check.ts --only).
+
+The ids keep the P<issue> prefix used for the other per-app entries, since these options have no numbered invariant.
+
+Refs #262, #265
+
+**test(tests): raise the test-count floors for the review tests** ([`04609a6`](https://github.com/jjjermiah/opencode-plugboard/commit/04609a6cc63310349c165ec63bd612d6175b84a6))
+
+The review tests added to http (cors, per-app maxN), runtime (history sweep with app-only limits), session (looser app limits, unlimited app not read) and unit (log audit, limits warning, config edges) raise the per-layer counts: http 529 to 534, runtime 83 to 84, session 304 to 308, unit 1186 to 1195. The ratchet only moves floors up. Coverage floors are unchanged.
+
+#### Docs
+
+**docs(docs): list the x-plugboard headers exposed on CORS answers** ([`62f4478`](https://github.com/jjjermiah/opencode-plugboard/commit/62f44785772d3da7582718bb8fa305bd5f780215))
+
+The CORS section of configuration.md said nothing about which headers a browser can read, so an operator could not tell that x-plugboard-session or x-plugboard-usage are readable from an allowed origin (#314). The section now names the exposed headers and says they come from one list.
+
+Refs #314
+
+**docs(docs): per-app history and maxN in README and architecture** ([`db05b2d`](https://github.com/jjjermiah/opencode-plugboard/commit/db05b2d2415c3d889bde3b4e03e52a347908ba9e))
+
+The per-app history limits (#265) and the per-app choice cap (#270) were documented only in configuration.md. architecture.md is where a reader looks for how the history index and sweep decide what to prune, so it now says the index and sweep both use an app's effective limits. The README's multiple choices section names the per-app cap next to the global one.
+
+Refs #265, #270
+
+**docs: add Go (go-openai) client page and example** ([`bf0f345`](https://github.com/jjjermiah/opencode-plugboard/commit/bf0f3459fb091d0d0ea456e05340991f658240b3))
+
+Adds docs/clients/go-openai.md, examples/go-openai (a Go program with a text call, a stream and one tool round trip), a Clients sidebar row, a README client-table row and an examples/README row.
+
+Epic #206 lists go-openai under language SDKs. It is the most-used community OpenAI client for Go and exposes ClientConfig.BaseURL, so the page is a config snippet plus a runnable example.
+
+The example uses Chat Completions, because that is the path it checks. The Responses API is named on the page but not exercised. Reasoning-model caps use max_completion_tokens (MaxCompletionTokens: 1024). BaseURL replaces the default whole, so the page says to include /v1.
+
+A Go test in the scripted suite was not added. The lane is docs and an example, and the harness does not run Go.
+
+Validation: go build and go vet in examples/go-openai against go-openai v1.43.0 both pass. A live run against the dev server was not done: 127.0.0.1:4010 refused connections on 2026-10-12, and the lane forbids restarting it.
+
+Refs #234
+
+**docs: add .NET (openai-dotnet) client page and example** ([`9b33345`](https://github.com/jjjermiah/opencode-plugboard/commit/9b33345bcb99c57cd8cfeecb40096c1413369a5f))
+
+Adds docs/clients/openai-dotnet.md, examples/openai-dotnet (a console app with a text call, a stream and one tool round trip), a Clients sidebar row, a README client-table row and an examples/README row.
+
+Epic #206 lists the .NET library under language SDKs. The official OpenAI .NET library exposes OpenAIClientOptions.Endpoint, so the page is the construction snippet plus a runnable app.
+
+The example uses Chat Completions, which is the path it checks. The Responses API and structured output are named on the page but not exercised. The output cap uses MaxOutputTokenCount (1024) for the reasoning model.
+
+Validation: dotnet build of examples/openai-dotnet against OpenAI 2.14.0 on .NET SDK 8.0.423 passes with 0 warnings and 0 errors. A live run was not done: 127.0.0.1:4010 refused connections on 2026-10-12, and the lane forbids restarting it. The example folder ignores its bin and obj output.
+
+Refs #236
+
+**docs: per-app options, the log levels and the 0.27.0 markers** ([`cbdb430`](https://github.com/jjjermiah/opencode-plugboard/commit/cbdb43024adaa2884e4c315a2ffea69897b01c4f))
+
+Review of #319 (SHOULD 4 docs, SHOULD 6, NIT 9, NIT 12). The options of this branch shipped in the docs unevenly: the #262 log level was not in the README or the architecture, the history docs still read as global, and the CHANGELOG claimed a louder mode and gave an example with an empty app entry.
+
+What:
+- README: History shows apps.<name>.history with the gotcha (the 30-day global default applies to an app that sets only maxSessions) and that an app cannot set maxAgeDays 0. Metrics and logs names logLevel, logRequests and what the warn level keeps. The maxN section says raise the global cap first.
+- docs/history.md: the per-app history and the same two gotchas.
+- docs/architecture.md: I21 now says the index is written while the app has an effective limit; the history option bullet says so too; a new log level bullet lists which events are warn and that the audit lines use logAudit.
+- docs/configuration.md: the logLevel row lists what each level shows; the history and maxN rows state the new rules; the CORS sentence about reading the headers now uses response.headers.get.
+- CHANGELOG: the #262 entry says debug adds only the keep-alive line today and that #262 stays open; the #270 example uses "batch": { "maxN": 4 }; the 400 message text change is noted.
+- Every "since" marker this branch added reads 0.27.0, because 0.26.0 is released from main without these options. Markers already on main (keepAlive, cors, requireKeys, trustProxy, endpoints) are unchanged.
+
+Refs #262, #265, #270, #314
+
+**docs(docs): record the live go and .net runs and fix the max token note** ([`f03c1fe`](https://github.com/jjjermiah/opencode-plugboard/commit/f03c1fe131bc029ba2c54a0402eafa9e8cbe0a2b))
+
+The reviewer ran both examples twice against the dev server on 2026-10-13 with model fast: text, stream and a tool round trip passed for go-openai v1.43.0 and the OpenAI NuGet 2.14.0. The pages, the README client table and the examples index said "build only, dev server down"; they now record the pass and say the clients are not in compatibility.md yet.
+
+The Go page implied go-openai would refuse max_tokens for fast. Its client-side check only matches real OpenAI reasoning model ids, so the note now says that, and the code comments no longer call fast a reasoning model by name.
+
+Refs #234
+Refs #236
+
+**docs(docs): link the logLevel section by absolute URL** ([`c3473de`](https://github.com/jjjermiah/opencode-plugboard/commit/c3473deea14dc2ce4d3b70a567774b3b586e6340))
+
+The docs site builds README.md as its home page, so a relative link to docs/configuration.md is a dead link and fails docs:build. The README uses absolute GitHub URLs for its other documents; this link does the same.
+
+Refs #262
+
+**docs(changelog): move the per-app notes out of the 0.26.0 section** ([`20ba1e6`](https://github.com/jjjermiah/opencode-plugboard/commit/20ba1e6d54ca2fd411253398d51de938e7a357d8))
+
+The per-app config pull request branched before 0.26.0 was cut. Its bullets sat under Unreleased on the branch, and merging main into it put them under the new 0.26.0 heading instead, so main's changelog credited 0.26.0 with the CORS headers, per-app history, the per-app n cap and log levels, and left Unreleased empty. The published 0.26.0 release and its GitHub notes are correct, since they were cut before the merge; only the file on main was wrong.
+
+The four bullets move back under Unreleased with a one-line summary, so the release script can cut 0.27.0. The text is unchanged apart from one duplicated clause in the n cap bullet.
+
+Refs #265, #270, #314, #262
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.26.0] - 2026-10-12: Locks and a Heartbeat
+
+**Full diff:** [v0.25.1...v0.26.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...v0.26.0)
+
+Five options for locking down who and what can reach plugboard, and a fix for a listener that went silent after an idle hour. Nothing changes until you set an option, except the keep-alive, which is on by default.
+
+### Added
 - **`requireKeys` makes a keyless server impossible** ([#271](https://github.com/jjjermiah/opencode-plugboard/issues/271)). On a shared machine, loopback is not a boundary, so a keyless server should be something you can rule out in config. With `requireKeys: true`, the plugin refuses to load without `keys`, and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. The default is `false`, so keyless loopback works as before.
 
   ```jsonc
@@ -4300,7 +4558,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.24.0...v0.25.0
