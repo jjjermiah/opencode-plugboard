@@ -508,6 +508,12 @@ One page per client, with the config, a chat, a tool call, structured output and
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
 | Go (go-openai) | [go-openai][client-go-openai] | pass: text, stream and a tool round trip on `fast` (go-openai v1.43.0) |
 | .NET (openai-dotnet) | [openai-dotnet][client-openai-dotnet] | pass: text, stream and a tool round trip on `fast` (OpenAI NuGet 2.14.0) |
+| Rust (async-openai) | [async-openai][client-async-openai] | pass: text, stream and a tool round trip on `fast` (async-openai 0.42.2) |
+| CrewAI | [crewai][client-crewai] | pass: text, stream and a crew task with one tool call on `fast` (crewai 1.15.27) |
+| AutoGen / AG2 | [autogen][client-autogen] | partial: text, stream and a two-agent tool round on `fast` (autogen 0.14.1, OpenAI route); Anthropic route not run |
+| Semantic Kernel | [semantic-kernel][client-semantic-kernel] | pass on Python: text, stream and a plugin call on `fast` (semantic-kernel 1.45.0); .NET route not run |
+| Spring AI | [spring-ai][client-spring-ai] | docs-verified, not run: config checked against the reference; no Java build or run yet |
+| LangChain4j | [langchain4j][client-langchain4j] | docs-verified, not run: builder checked against the OpenAI-compatible page; no Java build or run yet |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
 | DSPy | [dspy][client-dspy] | pass: Predict, ChainOfThought, typed output |
@@ -613,6 +619,12 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-go-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/go-openai
 [client-openai-dotnet]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-dotnet
+[client-async-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/async-openai
+[client-crewai]: https://jjjermiah.github.io/opencode-plugboard/clients/crewai
+[client-autogen]: https://jjjermiah.github.io/opencode-plugboard/clients/autogen
+[client-semantic-kernel]: https://jjjermiah.github.io/opencode-plugboard/clients/semantic-kernel
+[client-spring-ai]: https://jjjermiah.github.io/opencode-plugboard/clients/spring-ai
+[client-langchain4j]: https://jjjermiah.github.io/opencode-plugboard/clients/langchain4j
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
 [client-dspy]: https://jjjermiah.github.io/opencode-plugboard/clients/dspy

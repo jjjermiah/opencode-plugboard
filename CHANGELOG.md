@@ -14,7 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Rust (async-openai) client page and example** ([#235](https://github.com/jjjermiah/opencode-plugboard/issues/235)). `docs/clients/async-openai.md` and `examples/async-openai` run a text call, a stream and one tool round trip against plugboard with model `fast`. The crate reads `OPENAI_BASE_URL`; the example sets the base with `with_api_base`.
+- **CrewAI client page and example** ([#231](https://github.com/jjjermiah/opencode-plugboard/issues/231)). `docs/clients/crewai.md` and `examples/crewai` run a text call, a stream and a crew task with one tool call against plugboard with model `fast`.
+- **AutoGen client page and example** ([#230](https://github.com/jjjermiah/opencode-plugboard/issues/230)). `docs/clients/autogen.md` and `examples/autogen` use the classic `autogen` 0.14.1 `config_list` API. A text call, a stream and a two-agent tool round pass on the OpenAI route with model `fast`. The Anthropic route is not run yet.
+- **Semantic Kernel client page and example** ([#229](https://github.com/jjjermiah/opencode-plugboard/issues/229)). `docs/clients/semantic-kernel.md` and `examples/semantic-kernel` run a text call, a stream and a plugin function call against plugboard with model `fast`, on the Python route.
 
 ## [0.29.0] - 2026-10-13: Every Step on the Record
 
