@@ -16,6 +16,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Added
 
+- **Onyx self-hosted page** ([#245](https://github.com/jjjermiah/opencode-plugboard/issues/245)). `docs/self-hosted/onyx.md` sets the OpenAI-Compatible LLM through plugboard. Indexing needs an embedding model, which plugboard does not serve, so the page names the local default and the cloud and LiteLLM options. Docs-verified against the upstream source, not run.
 - **LLM Vision self-hosted page** ([#247](https://github.com/jjjermiah/opencode-plugboard/issues/247)). `docs/self-hosted/llm-vision.md` gives the Custom OpenAI provider fields and the vision alias. Images go as base64 JPEG data URLs, so `remoteImages` can stay off. The page warns against LocalAI, which sends no key. Docs-verified against the upstream source, not run.
 - **paperless-ai self-hosted page and example** ([#243](https://github.com/jjjermiah/opencode-plugboard/issues/243)). `docs/self-hosted/paperless-ai.md` says what works through plugboard: text suggestions and chat, with no vision and no embeddings, because the RAG index runs locally. `examples/self-hosted/paperless-ai` is a compose file and `.env.example` for the custom provider. Docs-verified against the upstream source, not run.
 

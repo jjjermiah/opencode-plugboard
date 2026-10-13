@@ -26,7 +26,7 @@ Checked 2026-10-11. Statuses come from each app's docs or source, not from a liv
 | SparkyFitness (owner's deployment) | AI assistant, with tools | Chat, tools | Works | [page](self-hosted/sparkyfitness.md) |
 | paperless-ai (about 6.0k) | Titles, tags, correspondents, RAG chat | Chat | Chat only: text, no vision, no embeddings (RAG index is local) | [page](self-hosted/paperless-ai.md) |
 | Vane, formerly Perplexica (about 37.3k) | Answering engine | Chat | Not chat only: chat and search need an embedding provider beside plugboard | [page](self-hosted/vane.md) |
-| Onyx (about 32.4k) | RAG search and chat | Chat | Chat only expected: indexing needs embeddings | [#245](https://github.com/jjjermiah/opencode-plugboard/issues/245) |
+| Onyx (about 32.4k) | RAG search and chat | Chat | Chat only: indexing and search need an embedding model (default is Onyx's local model) | [page](self-hosted/onyx.md) |
 | Tandoor Recipes (about 8.7k) | Recipe import, step sorting, nutrition | Chat, vision | Works for text import. Photo import needs a vision alias. JSON mode not checked | [page](self-hosted/tandoor.md) |
 | LLM Vision for Home Assistant (about 1.5k) | Image and video analysis | Chat, vision | Vision works through the Custom OpenAI provider, per source, not run. Do not use LocalAI (no key sent) | [page](self-hosted/llm-vision.md) |
 | SiYuan (about 46.7k) | AI writing and Q/A | Chat | Works for writing and chat. Embeddings need another provider | [page](self-hosted/siyuan.md) |
