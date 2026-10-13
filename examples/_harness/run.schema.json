@@ -40,7 +40,7 @@
         "commit": { "type": "string" }
       }
     },
-    "opencode": { "type": "string" },
+    "opencode": { "type": ["string", "null"] },
     "scenarios": {
       "type": "array",
       "items": {

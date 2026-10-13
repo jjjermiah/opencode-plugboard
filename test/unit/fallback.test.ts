@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test"
+import type { ServerResponse } from "node:http"
+import { afterEach, describe, expect, test } from "bun:test"
 import { parseOptions } from "../../src/config.js"
 import type { CallContext, ModelCaller, PlugEvent, PlugRequest, ServedModel } from "../../src/contract.js"
-import { withFallbacks } from "../../src/fallback.js"
+import { reportServed, withFallbacks } from "../../src/fallback.js"
+import { setLogLevel } from "../../src/log.js"
 import { resolveModel } from "../../src/models.js"
 import { collect, ev, model, plugRequest } from "../support/fixtures.js"
+import { captureLogs } from "../support/logs.js"
 
 const CATALOG = [model("a", "x"), model("b", "y", { variants: ["low"] }), model("c", "z")]
 const options = parseOptions({
@@ -11,6 +14,25 @@ const options = parseOptions({
   aliases: { chain: ["a/x", "b/y#low", "c/z"], one: ["a/x"], plain: "a/x" },
 })
 const rateLimited = ev.error({ status: 429, kind: "rate_limit", code: "rate_limited" })
+
+/** #262: the `model.resolved` debug line names the target that answered; at info it is not written. */
+describe("#262 the model.resolved debug line", () => {
+  const logs = captureLogs()
+  afterEach(() => setLogLevel("info"))
+  const response = { headersSent: false, destroyed: false, setHeader() {} } as unknown as ServerResponse
+
+  test("at debug, the answering target, its fallbacks and whether it was a list alias are one line", () => {
+    setLogLevel("debug")
+    reportServed(response, {})({ model: "b/y#low", fallbacks: 1, chain: true })
+    expect(logs.of("model.resolved")).toHaveLength(1)
+    expect(logs.of("model.resolved")[0]!.fields).toEqual({ served: "b/y#low", fallbacks: "1", chain: "true" })
+  })
+
+  test("at info, no model.resolved line is written", () => {
+    reportServed(response, {})({ model: "a/x", fallbacks: 0 })
+    expect(logs.of("model.resolved")).toEqual([])
+  })
+})
 
 /** One script per attempt: events to yield, or an Error to throw. */
 type Script = PlugEvent[] | Error

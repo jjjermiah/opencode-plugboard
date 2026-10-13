@@ -14,9 +14,17 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- **Per-step debug lines** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). At `logLevel: debug`, each model request writes one line per step: `request.received` (app and model asked), `model.resolved` (the target that answered, its failed fallbacks, whether it was a list alias), `session.created`, `model.first_event` and `model.finished` (finish reason, input and output tokens, duration). They hold ids, counts and enums only, never a prompt, body or key. Each is checked against the level before its fields are built, so at `info` none of them is built. The `logLevel` row in [configuration](docs/configuration.md) lists them.
+
 ### Changed
 
 - **Releases wait for every check, and the tag is made only on a tested commit.** The release script used to enable auto-merge, which waits only for the required checks, and it tagged the merge commit without checking CI on it. Two gaps let a red commit ship: the host matrix was not a required check, and the merge commit was never tested (v0.25.0 failed on Examples and needed 0.25.1). Now the release pull request merges only after every check on it passes (the advisory benchmark aside), the tag is pushed only after CI passes on the merge commit, and `main` requires one aggregate check, `CI passed`, that needs every CI job. The GitHub release still appears only after npm has the version. See [docs/releasing.md](docs/releasing.md).
+
+### Fixed
+
+- **Live example runs record the version of the commit they name** ([#335](https://github.com/jjjermiah/opencode-plugboard/issues/335)). The harness wrote the checkout's `package.json` version next to a commit from `PLUGBOARD_COMMIT`, so a run of an older commit named the wrong version. It now reads that commit's `package.json`, and refuses a commit the checkout does not have before the runner starts. The server exposes no OpenCode version, so new live runs record `opencode` as `null` with a note in `summary.md`. Existing live records are not rewritten.
 
 ## [0.28.0] - 2026-10-13: Counts That Add Up
 
