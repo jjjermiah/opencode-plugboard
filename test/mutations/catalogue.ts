@@ -28,6 +28,22 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P263-app-output-cap-raises",
+    invariant: "#263",
+    file: "src/openai/sampling.ts",
+    find: "  return { ...generation, maxTokens: generation.maxTokens === undefined ? cap : Math.min(generation.maxTokens, cap) }",
+    replace: "  return { ...generation, maxTokens: cap }",
+    tests: ["test/http/per-app-output-cap.test.ts"],
+  },
+  {
+    id: "P263-messages-cap-after-parse",
+    invariant: "#263",
+    file: "src/anthropic/route.ts",
+    find: "    const capped = cap !== undefined && isRecord(body) && typeof body.max_tokens === \"number\" && body.max_tokens > cap ? { ...body, max_tokens: cap } : body",
+    replace: "    const capped = body",
+    tests: ["test/http/per-app-output-cap.test.ts"],
+  },
+  {
     id: "P257-app-deadline-ignored",
     invariant: "#257",
     file: "src/config.ts",

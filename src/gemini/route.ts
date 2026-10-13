@@ -28,7 +28,7 @@ import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
 import type { RouteHost } from "../openai/route.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
-import { dropRejected } from "../openai/sampling.js"
+import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
 import { parseGeminiRequest } from "./request.js"
 import { encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk } from "./response.js"
@@ -150,12 +150,13 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
   // Sampling parameters the model is known to reject are dropped and reported, before any response bytes.
-  const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined
+  const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
+  const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined
   if (sampled && sampled.dropped.length > 0) {
     info.dropped = sampled.dropped.join(",")
     response.setHeader(DROPPED_HEADER, info.dropped)
   }
-  const call: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
+  const call: PlugRequest = { ...parsed.request, generation: sampled?.generation ?? generation, ref }
   const { exchange } = parsed
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.

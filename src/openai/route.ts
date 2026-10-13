@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, type Endpoint, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -73,7 +73,7 @@ import type { SessionPromptDeps } from "../session/caller.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { STRUCTURED_FALLBACK_HEADER, collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
-import { dropRejected } from "./sampling.js"
+import { appGeneration, dropRejected } from "./sampling.js"
 
 /** What the serving generation supplies per request. */
 export interface RouteHost {
@@ -388,13 +388,14 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (isPlugError(ref)) return fail(response, ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
     // Sampling parameters the model is known to reject are dropped and reported (header and log), before any response bytes.
-    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined
+    const generation = appGeneration(appPolicy(host.options, auth.app), parsed.request.generation)
+    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined
     if (sampled && sampled.dropped.length > 0) {
       info.dropped = sampled.dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
       metrics?.dropped(sampled.dropped)
     }
-    const call: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
+    const call: PlugRequest = { ...parsed.request, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, call)
     const { exchange } = parsed
     // n > 1: one independent call per choice, merged (src/openai/fanout.ts).

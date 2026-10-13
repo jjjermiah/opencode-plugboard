@@ -191,6 +191,11 @@ export interface AppPolicy {
    * `requestTimeoutMs`. Look the effective value up with `requestTimeoutFor`.
    */
   readonly requestTimeoutMs?: number
+  /**
+   * The most output tokens one answer of this app may have (option `apps.<name>.maxOutputTokens`, since 0.29.0, #263). It lowers the
+   * caller's limit, or sets one when the caller sent none; it is never raised. Applied by `appGeneration` (src/openai/sampling.ts).
+   */
+  readonly maxOutputTokens?: number
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -427,7 +432,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens"])
 
 /** Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set. Unset fields fall back to the global `history`. */
 function parseAppHistory(raw: unknown, at: string): HistoryLimits {
@@ -524,6 +529,7 @@ function parseApps(
     const history = value.history === undefined ? undefined : parseAppHistory(value.history, `apps.${app}`)
     // A deadline may be longer or shorter than the global one (#257); it is checked against the same ceiling as the global option.
     const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
+    const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -539,9 +545,10 @@ function parseApps(
       ...(promptCache === undefined ? {} : { promptCache }),
       ...(endpoints === undefined ? {} : { endpoints }),
       ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)

@@ -115,7 +115,11 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     noteEndUser(response, info, bodyUserId(body))
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.
-    const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : body
+    // The app's output cap (#263) lowers `max_tokens` before it is parsed, so the thinking-budget rule (budget < max_tokens) refuses a
+    // cap that cannot hold the budget with the existing 400, and no other part of the request changes.
+    const cap = appPolicy(host.options, auth.app)?.maxOutputTokens
+    const capped = cap !== undefined && isRecord(body) && typeof body.max_tokens === "number" && body.max_tokens > cap ? { ...body, max_tokens: cap } : body
+    const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : capped
     const parsed = parseMessagesRequest(sized, host.options)
     if (isPlugError(parsed)) return fail(parsed)
     const catalog = await scope.race(host.loadCatalog())

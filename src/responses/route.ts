@@ -10,7 +10,7 @@
 
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
-import { historyTemplate } from "../config.js"
+import { appPolicy, historyTemplate } from "../config.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
@@ -20,6 +20,7 @@ import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
 import { STRUCTURED_FALLBACK_HEADER, encodeError } from "../openai/response.js"
+import { appGeneration } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
 import { runResponse, sseFrame } from "./response.js"
@@ -45,7 +46,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-  const call: PlugRequest = { ...parsed.request, ref }
+  const call: PlugRequest = { ...parsed.request, generation: appGeneration(appPolicy(host.options, app), parsed.request.generation), ref }
   reportParallelTools(response, call)
   const { exchange } = parsed
 
