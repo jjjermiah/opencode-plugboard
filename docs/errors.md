@@ -107,6 +107,10 @@ The backend cannot serve yet. The `detail` names the first missing piece: no gen
 
 The request body did not arrive within `limits.bodyReadTimeoutMs`. Send the body without a pause.
 
+### request_body_too_large {#request-body-too-large}
+
+The request body is over the body cap: `limits.maxBodyBytes` (32 MiB by default), or the app's `limits.apps.<name>.maxBodyBytes`. Send a smaller body, or ask the operator to raise the cap. Before 0.32.0 this 413 had no code.
+
 ### server_busy {#server-busy}
 
 Too many request bodies are being read at once (`limits.maxBodyBytesInFlight`). Retry after the `Retry-After` delay.

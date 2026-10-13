@@ -17,8 +17,8 @@ import { resolveModel } from "../models.js"
 import { serveChoices } from "../openai/fanout.js"
 import { encodeError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
-import { maxNFor, maxNOption } from "../config.js"
-import { dropRejected } from "../openai/sampling.js"
+import { appPolicy, maxNFor, maxNOption, requestedModel } from "../config.js"
+import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { parseCompletionsRequest } from "./request.js"
 import { completionsCodec } from "./response.js"
 
@@ -40,18 +40,22 @@ export async function serveCompletions(host: RouteHost, { app, body, response, s
   const parsed = parseCompletionsRequest(body, { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())
-  const ref = resolveModel(host.options, parsed.requests[0]!.model, catalog, parsed.reasoningEffort)
+  const requested = requestedModel(host.options, app, parsed.requests[0]!.model, parsed.reasoningEffort)
+  const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
   // Same sampling drop as Chat Completions: every prompt carries the same parameters.
-  const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.requests[0]!.generation) : undefined
+  const policy = appPolicy(host.options, app)
+  const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, appGeneration(policy, parsed.requests[0]!.generation)) : undefined
   if (sampled && sampled.dropped.length > 0) {
     info.dropped = sampled.dropped.join(",")
     response.setHeader(DROPPED_HEADER, info.dropped)
   }
   // Choice `i` answers prompt `floor(i / n)`.
   const calls: PlugRequest[] = parsed.requests.flatMap((request) =>
-    Array.from({ length: parsed.n }, (): PlugRequest => ({ ...request, ...(sampled ? { generation: sampled.generation } : {}), ref })),
+    Array.from({ length: parsed.n }, (): PlugRequest => ({ ...request, model: requested.model, generation: sampled ? sampled.generation : appGeneration(policy, request.generation), ref })),
   )
+  // The answer names the model it runs on: the app's pin, else the caller's (#261).
+  parsed.exchange.model = requested.model
   return serveChoices(host, { app, calls, response, scope, info, codec: completionsCodec(parsed.exchange) })
 }

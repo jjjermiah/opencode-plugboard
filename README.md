@@ -134,16 +134,16 @@ A model outside the list gets a 404:
 
 #### Per-app policy
 
-`apps` fixes an app's behaviour on the server, so the app does not have to be trusted with it. Each policy can narrow the model list, add or replace the system prompt, drop tools, or lower the tool cap.
+`apps` fixes an app's behaviour on the server, so the app does not have to be trusted with it. Each policy can narrow the model list, add or replace the system prompt, drop tools, lower the tool cap, cap the output tokens of one answer, or set sampling defaults for requests that do not send them.
 
 ```jsonc
 "apps": {
-  "discord-bot": { "models": ["fast"], "system": "Answer in two sentences.", "tools": false },
+  "discord-bot": { "models": ["fast"], "model": "fast", "system": "Answer in two sentences.", "tools": false, "maxOutputTokens": 400, "sampling": { "temperature": 0.2 } },
   "coding": { "models": ["anthropic/*"], "maxTools": 16 }
 }
 ```
 
-The `discord-bot` app can only use `fast`, gets the system prompt added, and has its tools removed. The request still succeeds, and the response says what changed:
+The `discord-bot` app always runs on `fast`, whatever model the bot sends (`model` pins it), gets the system prompt added, and has its tools removed. Its answers stop at 400 output tokens, and a request that sends no `temperature` gets `0.2`. The request still succeeds, and the response says what changed:
 
 ```
 x-plugboard-policy: tools-stripped
@@ -349,6 +349,8 @@ Models plugboard does not know keep every parameter, and the provider's own 400 
 #### Usage statistics
 
 Usage is recorded per app and per UTC day: requests, errors, latency, tokens, estimated cost, cache hits, fallbacks and 429 refusals. It is on by default. An admin key reads every app, and an app key reads only its own.
+
+Per end user: an app whose proxy sets a user header can name it with `userHeader`, so usage splits per user without a change to the bot (`"apps": { "discord-bot": { "userHeader": "x-user-id" } }`, since 0.32.0).
 
 ```jsonc
 "adminKey": "{env:PLUGBOARD_ADMIN_KEY}",   // reads every app; not a model key

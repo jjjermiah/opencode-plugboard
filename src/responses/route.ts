@@ -10,7 +10,7 @@
 
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
-import { historyTemplate } from "../config.js"
+import { appPolicy, historyTemplate, requestedModel } from "../config.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
@@ -20,6 +20,8 @@ import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
 import { STRUCTURED_FALLBACK_HEADER, encodeError } from "../openai/response.js"
+import type { ResponsesExchange } from "./response.js"
+import { appGeneration } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
 import { runResponse, sseFrame } from "./response.js"
@@ -42,12 +44,24 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const parsed = parseResponsesRequest(body, host.options, (itemId) => findItem(app, itemId))
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())
-  const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
+  const requested = requestedModel(host.options, app, parsed.request.model, parsed.reasoningEffort)
+  const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-  const call: PlugRequest = { ...parsed.request, ref }
+  const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
+  const call: PlugRequest = { ...parsed.request, model: requested.model, generation, ref }
   reportParallelTools(response, call)
-  const { exchange } = parsed
+  // The echoed object shows what the model gets: the app's cap and sampling defaults, not only the caller's values (#263, #264).
+  const exchange: ResponsesExchange = {
+    ...parsed.exchange,
+    model: requested.model,
+    envelope: {
+      ...parsed.exchange.envelope,
+      max_output_tokens: generation.maxTokens ?? null,
+      temperature: generation.temperature ?? null,
+      top_p: generation.topP ?? null,
+    },
+  }
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason

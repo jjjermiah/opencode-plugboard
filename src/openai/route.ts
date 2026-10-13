@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, type Endpoint, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, requestTimeoutOption, requestedModel, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import { PACKAGE_VERSION } from "../version.js"
@@ -58,7 +58,7 @@ import { filterByCapability, listAvailableModels, parseCapability, resolveModel 
 import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
-import { isMessagesPath, serveMessages } from "../anthropic/route.js"
+import { authenticateRequest, isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
@@ -67,14 +67,14 @@ import type { KeyStore } from "../keys.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
-import { bodyUser, noteEndUser } from "../user.js"
+import { bodyUser, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
 import type { SessionPromptDeps } from "../session/caller.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { STRUCTURED_FALLBACK_HEADER, collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
-import { dropRejected } from "./sampling.js"
+import { appGeneration, dropRejected } from "./sampling.js"
 
 /** What the serving generation supplies per request. */
 export interface RouteHost {
@@ -185,6 +185,27 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     } catch (caught) {
       if (caught instanceof RequestAborted) throw caught
       logError("catalog.failed", { error: errorMessage(caught) })
+      return undefined
+    }
+  }
+
+  /**
+   * The app the request authenticates as, read before its deadline is armed (#257). It applies the same credential rules as
+   * `serve` and answers nothing: any refusal is `serve`'s to give (I15), so `undefined` only means the global deadline applies.
+   */
+  async function requestApp(request: IncomingMessage): Promise<string | undefined> {
+    try {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1")
+      const path = url.pathname
+      const auth = isMessagesPath(path)
+        ? await authenticateRequest(host, request)
+        : authenticate(
+            liveOptions(host.options),
+            path === "/v1beta" || path.startsWith("/v1beta/") ? geminiAuthorization(request, url) : request.headers.authorization,
+            await runtimeDigests(),
+          )
+      return isPlugError(auth) ? undefined : auth.app
+    } catch {
       return undefined
     }
   }
@@ -358,27 +379,34 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(response, unsupported)
 
-    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
-    noteEndUser(response, info, bodyUser(body))
+    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
+    // The end user: the app's `userHeader` when the request sends it (#272), else the body's `user`.
+    const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUser(sent))
+    const body = withEndUser(sent, user, "user")
+    noteEndUser(response, info, user)
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
     // The app's own `maxN` (#270) is the cap for this request; the decoder checks against `options.maxN`.
     const parsed = parseChatRequest(body, { ...host.options, maxN: maxNFor(host.options, auth.app) }, maxNOption(host.options, auth.app))
     if (isPlugError(parsed)) return fail(response, parsed)
     const catalog = await scope.race(host.loadCatalog())
-    const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
+    const requested = requestedModel(host.options, auth.app, parsed.request.model, parsed.reasoningEffort)
+    const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(response, ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
     // Sampling parameters the model is known to reject are dropped and reported (header and log), before any response bytes.
-    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined
+    const generation = appGeneration(appPolicy(host.options, auth.app), parsed.request.generation)
+    const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined
     if (sampled && sampled.dropped.length > 0) {
       info.dropped = sampled.dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
       metrics?.dropped(sampled.dropped)
     }
-    const call: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
+    const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, call)
     const { exchange } = parsed
+    // The answer names the model it runs on: the app's pin, else the caller's (#261).
+    exchange.model = requested.model
     // n > 1: one independent call per choice, merged (src/openai/fanout.ts).
     if (parsed.n > 1)
       return serveChoices(host, { app: auth.app, calls: Array.from({ length: parsed.n }, () => call), response, scope, info, codec: chatCodec(exchange) })
@@ -470,7 +498,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const info: RequestInfo = { route: "unparsed" }
     if (host.options.listen.trustProxy !== undefined) info.client = clientAddress(request, host.options.listen.trustProxy)
     metrics?.requestStarted()
-    const scope = beginRequest(request, response, host.options.requestTimeoutMs)
+    // The deadline is armed after the app is known, so an app's own `requestTimeoutMs` (#257) applies from the first await.
+    const app = await requestApp(request)
+    const scope = beginRequest(request, response, requestTimeoutFor(host.options, app), undefined, requestTimeoutOption(host.options, app))
     let outcome = "ok"
     let error: string | undefined
     try {

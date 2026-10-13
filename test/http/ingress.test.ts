@@ -175,6 +175,7 @@ describe("request bodies", () => {
     const reply = await server!.send(chat({ headers: { "content-length": 32 * 1024 * 1024 + 1 }, body: "{}" }))
     expect(reply.status).toBe(413)
     expect(reply.headers.connection).toBe("close")
+    expect(reply.json().error).toMatchObject({ code: "request_body_too_large", message: "Request body too large" })
     expect(logs.of("request")[0]!.fields.outcome).toBe("body_413")
   })
 
