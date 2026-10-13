@@ -511,6 +511,7 @@ One page per client, with the config, a chat, a tool call, structured output and
 | Rust (async-openai) | [async-openai][client-async-openai] | pass: text, stream and a tool round trip on `fast` (async-openai 0.42.2) |
 | CrewAI | [crewai][client-crewai] | pass: text, stream and a crew task with one tool call on `fast` (crewai 1.15.27) |
 | AutoGen / AG2 | [autogen][client-autogen] | partial: text, stream and a two-agent tool round on `fast` (autogen 0.14.1, OpenAI route); Anthropic route not run |
+| Semantic Kernel | [semantic-kernel][client-semantic-kernel] | pass on Python: text, stream and a plugin call on `fast` (semantic-kernel 1.45.0); .NET route not run |
 | LiteLLM (as a client) | [litellm-client][client-litellm] | pass: text, stream, tools |
 | Instructor | [instructor][client-instructor] | pass: TOOLS, JSON_SCHEMA and partial streaming modes |
 | DSPy | [dspy][client-dspy] | pass: Predict, ChainOfThought, typed output |
@@ -619,6 +620,7 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-async-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/async-openai
 [client-crewai]: https://jjjermiah.github.io/opencode-plugboard/clients/crewai
 [client-autogen]: https://jjjermiah.github.io/opencode-plugboard/clients/autogen
+[client-semantic-kernel]: https://jjjermiah.github.io/opencode-plugboard/clients/semantic-kernel
 [client-litellm]: https://jjjermiah.github.io/opencode-plugboard/clients/litellm-client
 [client-instructor]: https://jjjermiah.github.io/opencode-plugboard/clients/instructor
 [client-dspy]: https://jjjermiah.github.io/opencode-plugboard/clients/dspy
