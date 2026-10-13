@@ -59,9 +59,9 @@ export interface PlugboardOptions {
   readonly dropUnsupportedParams: boolean
   /** Log line format: `text` (`key=value`, the default) or `json` (one object per line). Process-wide: the live generation's value applies. */
   readonly logFormat: "text" | "json"
-  /** Option `logLevel` (since 0.26.0, #262): the lowest level written. Process-wide, like `logFormat`. Default `info`. */
+  /** Option `logLevel` (since 0.27.0, #262): the lowest level written. Process-wide, like `logFormat`. Default `info`. */
   readonly logLevel: LogLevel
-  /** Option `logRequests` (since 0.26.0, #262): `false` drops the per-request access lines (`request`, `request.finished`); warnings and errors stay. */
+  /** Option `logRequests` (since 0.27.0, #262): `false` drops the per-request access lines (`request`, `request.finished`); warnings and errors stay. */
   readonly logRequests: boolean
   /** Serve `GET /plugboard/metrics` (Prometheus text). Off by default; same authentication as the model routes. */
   readonly metrics: boolean
@@ -162,11 +162,11 @@ export interface AppPolicy {
   /** Lowers the global `maxTools` for this app. */
   readonly maxTools?: number
   /**
-   * This app's history limits (option `apps.<name>.history`, since 0.26.0, #265): a field replaces the global one for this app,
+   * This app's history limits (option `apps.<name>.history`, since 0.27.0, #265): a field replaces the global one for this app,
    * an unset field falls back to it. Look the effective limits up with `limitsFor` (src/session/prune.ts).
    */
   readonly history?: HistoryLimits
-  /** Lowers the global `maxN` for this app (option `apps.<name>.maxN`, since 0.26.0, #270). Look the effective cap up with `maxNFor`. */
+  /** Lowers the global `maxN` for this app (option `apps.<name>.maxN`, since 0.27.0, #270). Look the effective cap up with `maxNFor`. */
   readonly maxN?: number
   /**
    * Exact OpenCode tool ids this app's sessions may run themselves (option `apps.<name>.serverTools`).

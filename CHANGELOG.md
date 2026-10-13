@@ -30,15 +30,15 @@ Five options for locking down who and what can reach plugboard, and a fix for a 
     }
   }
   ```
-- **A per-app cap on `n`** ([#270](https://github.com/jjjermiah/opencode-plugboard/issues/270)). `maxN` was one number for every app, so a batch tool that needed `n: 4` forced the same allowance onto the chat widget. `apps.<name>.maxN` lowers the global cap for one app. A request above it gets the usual 400 `too_many_choices`, and the message names `apps.<name>.maxN`. It cannot be higher than the global `maxN`, the same rule as `maxTools`. Unset, the global cap applies as before.
+- **A per-app cap on `n`** ([#270](https://github.com/jjjermiah/opencode-plugboard/issues/270)). `maxN` was one number for every app, so a batch tool that needed `n: 4` forced the same allowance onto the chat widget. `apps.<name>.maxN` lowers the global cap for one app. A request above it gets the usual 400 `too_many_choices`, and the message names `apps.<name>.maxN`. It cannot be higher than the global `maxN`, the same rule as `maxTools`. Unset, the global cap applies as before. The 400 `too_many_choices` message now names the option that applied (`apps.<name>.maxN` for an app with its own cap, else `maxN`). Before, it always named `apps.<name>.maxN`, so the text changes for a request refused under the global cap.
 
   ```jsonc
   {
     "maxN": 4,
-    "apps": { "chat-widget": { "maxN": 1 }, "batch": {} }
+    "apps": { "chat-widget": { "maxN": 1 }, "batch": { "maxN": 4 } }
   }
   ```
-- **Quieter or louder logs** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). Plugboard wrote one access line per request and had no way to change how much it logged. `logLevel` sets the lowest level written (`debug`, `info`, `warn` or `error`). `logRequests: false` drops the per-request access lines and keeps warnings and errors, so an operator can keep the alerts without the traffic. Neither option changes what a line holds: keys and bodies are still never logged. The defaults are `info` and `true`, as before.
+- **Log levels and an access log switch** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). Plugboard wrote one access line per request and had no way to change how much it logged. `logLevel` sets the lowest level written (`debug`, `info`, `warn` or `error`). `logRequests: false` drops the per-request access lines and keeps warnings and errors, so an operator can keep the alerts without the traffic. Neither option changes what a line holds: keys and bodies are still never logged. The defaults are `info` and `true`, as before. What each level shows is listed in [configuration](docs/configuration.md): `warn` keeps the rate limit, budget, failed fallback and failed history deletion lines, and the admin key audit lines (`admin.key_created`, `admin.key_revoked`) are written at every level. `debug` adds only the keep-alive line for now; the per-step debug lines the issue lists are not written yet, so #262 stays open.
 
   ```jsonc
   {
