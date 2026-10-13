@@ -147,12 +147,13 @@ export async function runResponse(
     reasoning.text += delta
     send("response.reasoning_summary_text.delta", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, delta })
   }
-  const closeReasoning = () => {
+  /** `incomplete` when a failure cut the run short, else `completed` (the item's own status, as OpenAI sends it). */
+  const closeReasoning = (status: "completed" | "incomplete" = "completed") => {
     if (!reasoning) return
     const part = { type: "summary_text", text: reasoning.text }
     send("response.reasoning_summary_text.done", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, text: reasoning.text })
     send("response.reasoning_summary_part.done", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, part })
-    const item = { id: reasoning.id, type: "reasoning", status: "completed", summary: [part] }
+    const item = { id: reasoning.id, type: "reasoning", status, summary: [part] }
     send("response.output_item.done", { output_index: reasoning.index, item })
     items.push(item)
     reasoning = undefined
@@ -244,7 +245,7 @@ export async function runResponse(
   if (failure) {
     if (!started && !committed()) return { failure, started }
     start()
-    closeReasoning()
+    closeReasoning("incomplete")
     closeMessage()
     const response = envelope("failed", items, {
       error: { code: failure.code ?? failure.kind, message: failure.message },

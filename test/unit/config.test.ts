@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions } from "../../src/config.js"
+import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions, reasoningOutputFor } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -614,5 +614,23 @@ describe("reasoningOutput (since 0.34.0)", () => {
 
   test("must be a boolean, and the message names the option", () => {
     expect(() => parseOptions({ reasoningOutput: "yes" })).toThrow("plugboard option `reasoningOutput` must be a boolean")
+  })
+
+  test("per app: apps.<name>.reasoningOutput is kept, and must be a boolean", () => {
+    expect(parseOptions({ keys: { a: "k" }, apps: { a: { reasoningOutput: false } } }).apps.a).toMatchObject({ reasoningOutput: false })
+    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { reasoningOutput: 1 } } })).toThrow("plugboard option `apps.a.reasoningOutput` must be a boolean")
+  })
+
+  test("the effective value: the app's own value wins over the global one, both ways, and the global one applies when the app has none", () => {
+    const options = parseOptions({
+      keys: { off: "k1", on: "k2", none: "k3" },
+      reasoningOutput: true,
+      apps: { off: { reasoningOutput: false }, on: { reasoningOutput: true } },
+    })
+    expect(reasoningOutputFor(options, "off")).toBe(false)
+    expect(reasoningOutputFor(options, "none")).toBe(true)
+    expect(reasoningOutputFor(parseOptions({ keys: { on: "k2" }, apps: { on: { reasoningOutput: true } } }), "on")).toBe(true)
+    expect(reasoningOutputFor(parseOptions({ keys: { none: "k3" } }), "none")).toBe(false)
+    expect(reasoningOutputFor(options, "on")).toBe(true)
   })
 })

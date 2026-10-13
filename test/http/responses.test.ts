@@ -203,3 +203,28 @@ describe("#173 POST /v1/responses structured output", () => {
     expect(frames.at(-1)).toMatchObject({ event: "response.failed", data: { response: { error: { code: "structured_output_missing" } } } })
   })
 })
+
+describe("reasoningOutput (since 0.34.0) on Responses", () => {
+  test("a returned rs_ item can be sent back as item_reference: accepted, and its reasoning is not replayed", async () => {
+    const caller = await route([ev.reasoning("think"), ev.text("Hi"), ev.finish("stop")], { reasoningOutput: true })
+    const first = await server!.send(responses())
+    expect(first.status).toBe(200)
+    const reasoning = first.json().output.find((item: any) => item.type === "reasoning")
+    expect(reasoning.id).toMatch(/^rs_/)
+    const second = await server!.send(responses({ input: [{ type: "item_reference", id: reasoning.id }, { role: "user", content: "again" }] }))
+    expect(second.status).toBe(200)
+    expect(caller.calls).toHaveLength(2)
+    expect(caller.calls[1]!.request.messages).toEqual([{ role: "user", content: [{ type: "text", text: "again" }] }])
+  })
+
+  test("apps.<name>.reasoningOutput false drops the reasoning item while the global switch is on", async () => {
+    await route([ev.reasoning("think"), ev.text("Hi"), ev.finish("stop")], {
+      reasoningOutput: true,
+      keys: { quiet: "k-quiet" },
+      apps: { quiet: { reasoningOutput: false } },
+    })
+    const reply = await server!.send({ ...responses(), headers: { authorization: "Bearer k-quiet" } })
+    expect(reply.status).toBe(200)
+    expect(reply.json().output.map((item: any) => item.type)).toEqual(["message"])
+  })
+})

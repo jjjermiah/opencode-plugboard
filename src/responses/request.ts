@@ -402,7 +402,6 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
         user: typeof body.user === "string" ? body.user : null,
       },
       ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
-      ...(options.reasoningOutput ? { reasoningOutput: true } : {}),
     },
     ...(reasoningEffort ? { reasoningEffort } : {}),
   }

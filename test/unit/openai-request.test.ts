@@ -251,12 +251,7 @@ describe("parseChatRequest: generation and exchange", () => {
   })
 })
 
-describe("reasoningOutput (since 0.34.0): the decoder hands the option to the encoder", () => {
-  test("the exchange carries reasoningOutput only when the option is on", () => {
-    expect(parseChatRequest(body(), testOptions({ reasoningOutput: true }))).toMatchObject({ exchange: { reasoningOutput: true } })
-    expect(parse(body()).exchange).not.toHaveProperty("reasoningOutput")
-  })
-
+describe("reasoningOutput (since 0.34.0): reasoning in a replayed history", () => {
   test("an assistant message's reasoning_content and reasoning (a client replaying a reply) are ignored, not rejected", () => {
     const parsed = parse(body({ messages: [user(), { role: "assistant", content: "A", reasoning_content: "r", reasoning: "r" }, user("again")] }))
     expect(JSON.stringify(parsed.request.messages)).not.toContain('"r"')

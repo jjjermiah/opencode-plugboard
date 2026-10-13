@@ -264,10 +264,3 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
     expect(parse(body({ temperature: 1, top_p: 0.2, max_output_tokens: 7 })).request.generation).toEqual({ temperature: 1, topP: 0.2, maxTokens: 7 })
   })
 })
-
-describe("reasoningOutput (since 0.34.0): the decoder hands the option to the encoder", () => {
-  test("the exchange carries reasoningOutput only when the option is on", () => {
-    expect(parseResponsesRequest(body(), testOptions({ reasoningOutput: true }))).toMatchObject({ exchange: { reasoningOutput: true } })
-    expect(parse(body()).exchange).not.toHaveProperty("reasoningOutput")
-  })
-})

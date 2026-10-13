@@ -228,3 +228,36 @@ describe("#170 a structured answer in the text, over HTTP", () => {
     expect(reply.json().error.code).toBe("structured_output_missing")
   })
 })
+
+describe("reasoningOutput with n > 1 (since 0.34.0): each choice keeps its own reasoning", () => {
+  const thinking = (_request: unknown, call: number) => [ev.reasoning(`think ${call}`), ev.text(`answer ${call}`), ev.finish("stop")]
+
+  test("JSON: each choice carries its own reasoning under both names", async () => {
+    await route(thinking, { reasoningOutput: true })
+    const reply = await server!.send(chat({ n: 2 }))
+    expect(reply.status).toBe(200)
+    expect(reply.json().choices.map((choice: any) => [choice.index, choice.message.reasoning_content, choice.message.reasoning, choice.message.content])).toEqual([
+      [0, "think 0", "think 0", "answer 0"],
+      [1, "think 1", "think 1", "answer 1"],
+    ])
+  })
+
+  test("SSE: reasoning deltas carry the choice index they belong to", async () => {
+    await route(thinking, { reasoningOutput: true })
+    const reply = await server!.send(chat({ n: 2, stream: true }))
+    const deltasOf = (index: number) => sseData(reply.text).flatMap((frame) => frame.choices ?? []).filter((choice: any) => choice.index === index).map((choice: any) => choice.delta)
+    for (const index of [0, 1]) {
+      const reasoning = deltasOf(index)
+        .filter((delta: any) => delta.reasoning_content !== undefined)
+        .map((delta: any) => [delta.reasoning_content, delta.reasoning])
+      expect(reasoning).toEqual([[`think ${index}`, `think ${index}`]])
+    }
+    expect(reply.text.endsWith("data: [DONE]\n\n")).toBe(true)
+  })
+
+  test("off (the default): no choice carries reasoning", async () => {
+    await route(thinking)
+    const reply = await server!.send(chat({ n: 2 }))
+    expect(JSON.stringify(reply.json())).not.toContain("think")
+  })
+})

@@ -644,6 +644,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/unit/openai-response.test.ts", "test/http/chat.test.ts"],
   },
   {
+    id: "reasoning-output-off-still-returned-responses",
+    invariant: "reasoningOutput",
+    file: "src/responses/response.ts",
+    find: "if (exchange.reasoningOutput && exchange.structuredTool === undefined) reasoningDelta(event.text)",
+    replace: "if (exchange.structuredTool === undefined) reasoningDelta(event.text)",
+    tests: ["test/unit/responses-response.test.ts", "test/http/responses.test.ts"],
+  },
+  {
     id: "anthropic-duplicate-tool-names-allowed",
     invariant: "I20",
     file: "src/anthropic/request.ts",

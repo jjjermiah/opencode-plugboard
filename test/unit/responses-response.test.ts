@@ -257,9 +257,10 @@ describe("reasoningOutput (since 0.34.0): reasoning items on Responses", () => {
   })
 
   test("a failure after reasoning closes the reasoning item before response.failed", async () => {
-    const { types, failure } = await run(on, ev.reasoning("x"), ev.error({ status: 500, kind: "server", message: "boom" }))
+    const { types, failure, response } = await run(on, ev.reasoning("x"), ev.error({ status: 500, kind: "server", message: "boom" }))
     expect(failure).toBeDefined()
     expect(types.slice(-3)).toEqual(["response.reasoning_summary_part.done", "response.output_item.done", "response.failed"])
+    expect(response.output[0]).toMatchObject({ type: "reasoning", status: "incomplete", summary: [{ type: "summary_text", text: "x" }] })
   })
 
   test("off (the default): no reasoning item", async () => {

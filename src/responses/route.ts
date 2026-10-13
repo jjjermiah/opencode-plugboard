@@ -10,7 +10,7 @@
 
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
-import { appPolicy, historyTemplate, requestedModel } from "../config.js"
+import { appPolicy, historyTemplate, reasoningOutputFor, requestedModel } from "../config.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
@@ -55,6 +55,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const exchange: ResponsesExchange = {
     ...parsed.exchange,
     model: requested.model,
+    reasoningOutput: reasoningOutputFor(host.options, app),
     envelope: {
       ...parsed.exchange.envelope,
       max_output_tokens: generation.maxTokens ?? null,

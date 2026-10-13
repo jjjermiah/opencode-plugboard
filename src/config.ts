@@ -199,6 +199,11 @@ export interface AppPolicy {
    */
   readonly maxOutputTokens?: number
   /**
+   * Option `apps.<name>.reasoningOutput` (since 0.34.0): this app's reasoning switch. Absent: the global `reasoningOutput`. Look the
+   * effective value up with `reasoningOutputFor`.
+   */
+  readonly reasoningOutput?: boolean
+  /**
    * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.32.0, #264): a field fills the request only where the caller
    * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
    */
@@ -449,7 +454,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader", "reasoningOutput"])
 
 /**
  * Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hidden` (since 0.29.0, #337).
@@ -626,6 +631,8 @@ function parseApps(
     const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
     const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, value.models as string[] | undefined, context)
     const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
+    if (value.reasoningOutput !== undefined && typeof value.reasoningOutput !== "boolean") throw new Error(`plugboard option \`apps.${app}.reasoningOutput\` must be a boolean`)
+    const reasoningOutput = value.reasoningOutput as boolean | undefined
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -645,9 +652,10 @@ function parseApps(
       ...(sampling === undefined ? {} : { sampling }),
       ...(model === undefined ? {} : { model }),
       ...(userHeader === undefined ? {} : { userHeader }),
+      ...(reasoningOutput === undefined ? {} : { reasoningOutput }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined || reasoningOutput !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -764,6 +772,11 @@ export function appHistoryLimits(options: Pick<PlugboardOptions, "apps">): Recor
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
 export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string): AppPolicy | undefined {
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
+}
+
+/** Whether reasoning is returned for `app` (option `reasoningOutput`, per app or global, since 0.34.0). A per-app `false` beats a global `true`. */
+export function reasoningOutputFor(options: Pick<PlugboardOptions, "apps" | "reasoningOutput">, app: string): boolean {
+  return appPolicy(options, app)?.reasoningOutput ?? options.reasoningOutput
 }
 
 /**
