@@ -45,18 +45,19 @@ bun examples/_harness/run.ts openai-js --target live       # the isolated server
 
 ## Gotchas
 
+- **Every model call sends `max_tokens: 1024`.** `fast` is a reasoning model, so a small budget can end a reply before its text. One value on every call keeps the scripted and live transcripts comparable.
 - **Streaming usage needs `stream_options: { include_usage: true }`.** Without it the last chunk has no usage. A streamed tool call can arrive as one delta with the whole arguments string; `stream_tools.ts` still accumulates, because a client has to handle both.
 - **The `.stream()` helper assembles the single-delta tool call correctly.** The 2026-10-11 record checked this with `finalChatCompletion()`; S3 checks the text part of it on every run.
 - **`client.chat.completions.runTools` also works** (2026-10-11 record: the tool ran in the client and the second request carried the result). It is not a scenario here.
 - **Structured output is a forced tool.** Plugboard asks the model to answer through a `respond` tool, and the provider does not enforce the schema. The checks read the numbers, not the form. `zodResponseFormat` sends `strict: true` and `additionalProperties: false`; every model tested accepts it.
 - **Tool call ids differ by model.** The 2026-10-11 record saw a bare UUID on `fast`, `toolu_...` on Claude and `call_...` on the ChatGPT id. Don't parse them; send them back as they came.
-- **`models.retrieve` was a 404 in the 2026-10-11 record.** It is implemented now and passes on the scripted target (S7). The live run is the first live check of it with this SDK; see `runs/live/`.
+- **`models.retrieve` was a 404 in the 2026-10-11 record.** It is implemented now and passes on both targets (S7); see `runs/live/2026-10-13-c97ac66/`.
 - **Each model entry carries a `plugboard` object.** The SDK keeps it as an extra field on the model, not an error.
 - **A wrong key throws `AuthenticationError`** (401 `invalid_api_key`); an unknown model throws `NotFoundError` (404 `model_not_found`). The runner sets `maxRetries: 0`, so a retry never shows up as a second request. The 2026-10-11 record also saw the 404 on `stream: true` (the SDK raised before any chunk); `errors.ts` covers the non-stream form only.
 
 ## Known gaps
 
-None on the scripted target. Both targets pass every scenario in the run that matters for this client.
+None. On both targets all 17 checks pass for `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The live run is `runs/live/2026-10-13-c97ac66/`, on the isolated server at the main checkout's commit `c97ac66`. It ran the ChatGPT model without a quota error, and `models.retrieve` passes there, so the 2026-10-11 gotcha above is resolved.
 
 The tool-bot runner (`examples/tool-bot/run.ts`, the same SDK) has S2 as a gap: the bot prints only its final answer, so the tool-call checks cannot be read from its output. See [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
 

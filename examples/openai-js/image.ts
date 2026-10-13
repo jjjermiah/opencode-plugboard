@@ -8,6 +8,7 @@ export async function run(client: OpenAI, model: string) {
   // #region snippet
   const response = await client.chat.completions.create({
     model,
+    max_tokens: 1024,
     messages: [
       {
         role: "user",

@@ -8,7 +8,7 @@ const PROMPT = "What is the weather in Paris? Use the tool."
 export async function run(client: OpenAI, model: string) {
   const messages: OpenAI.ChatCompletionMessageParam[] = [{ role: "user", content: PROMPT }]
   // #region snippet
-  const stream = await client.chat.completions.create({ model, messages, tools: [TOOL], stream: true, stream_options: { include_usage: true } })
+  const stream = await client.chat.completions.create({ model, messages, tools: [TOOL], stream: true, stream_options: { include_usage: true }, max_tokens: 1024 })
   let id = ""
   let name = ""
   let args = ""

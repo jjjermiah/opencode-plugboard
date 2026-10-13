@@ -8,7 +8,7 @@ export async function runWrongKey(client: OpenAI, model: string) {
   // #region snippet
   const wrong = new OpenAI({ baseURL: client.baseURL, apiKey: FAKE_KEY, maxRetries: 0 })
   try {
-    await wrong.chat.completions.create({ model, messages: [{ role: "user", content: PROMPT }] })
+    await wrong.chat.completions.create({ model, messages: [{ role: "user", content: PROMPT }], max_tokens: 1024 })
   } catch (error) {
     if (error instanceof OpenAI.AuthenticationError) return { status: error.status ?? null, code: error.code ?? null }
     throw error
@@ -20,7 +20,7 @@ export async function runWrongKey(client: OpenAI, model: string) {
 export async function runUnknownModel(client: OpenAI, model: string) {
   // #region snippet
   try {
-    await client.chat.completions.create({ model, messages: [{ role: "user", content: PROMPT }] })
+    await client.chat.completions.create({ model, messages: [{ role: "user", content: PROMPT }], max_tokens: 1024 })
   } catch (error) {
     if (error instanceof OpenAI.NotFoundError) return { status: error.status ?? null, code: error.code ?? null }
     throw error

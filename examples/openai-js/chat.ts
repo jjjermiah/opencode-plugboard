@@ -3,7 +3,7 @@ import OpenAI from "openai"
 
 export async function run(client: OpenAI, model: string) {
   // #region snippet
-  const response = await client.chat.completions.create({ model, messages: [{ role: "user", content: "Reply with exactly: pong" }] })
+  const response = await client.chat.completions.create({ model, messages: [{ role: "user", content: "Reply with exactly: pong" }], max_tokens: 1024 })
   // #endregion snippet
   const choice = response.choices[0]
   return { text: choice?.message.content ?? "", finish_reason: choice?.finish_reason ?? null, usage: response.usage ?? null }

@@ -1,0 +1,134 @@
+{
+  "client": {
+    "name": "openai",
+    "runtime": {
+      "name": "bun",
+      "version": "1.4"
+    },
+    "version": "7.32.0"
+  },
+  "date": "2026-10-13",
+  "example": "tool-bot",
+  "models": [
+    "fast",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-5.6-luna#low"
+  ],
+  "plugboard": {
+    "commit": "c97ac66",
+    "version": "0.25.1"
+  },
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": false
+        },
+        {
+          "name": "one get_weather call",
+          "ok": false
+        },
+        {
+          "name": "city is Paris",
+          "ok": false
+        },
+        {
+          "name": "call id present",
+          "ok": false
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": false
+        }
+      ],
+      "duration_ms": 3513,
+      "error": null,
+      "id": "S2",
+      "model": "fast",
+      "note": "the bot prints only its final answer, so the tool-call checks cannot be read from its output (#320)",
+      "required": true,
+      "status": "gap",
+      "transcript": "transcripts/S2.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": false
+        },
+        {
+          "name": "one get_weather call",
+          "ok": false
+        },
+        {
+          "name": "city is Paris",
+          "ok": false
+        },
+        {
+          "name": "call id present",
+          "ok": false
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": false
+        }
+      ],
+      "duration_ms": 1894,
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "the bot prints only its final answer, so the tool-call checks cannot be read from its output (#320)",
+      "required": true,
+      "status": "gap",
+      "transcript": "transcripts/S2.anthropic-claude-haiku-4-5.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": false
+        },
+        {
+          "name": "one get_weather call",
+          "ok": false
+        },
+        {
+          "name": "city is Paris",
+          "ok": false
+        },
+        {
+          "name": "call id present",
+          "ok": false
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": false
+        }
+      ],
+      "duration_ms": 3451,
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "the bot prints only its final answer, so the tool-call checks cannot be read from its output (#320)",
+      "required": true,
+      "status": "gap",
+      "transcript": "transcripts/S2.openai-gpt-5.6-luna-low.json"
+    }
+  ],
+  "schema": 1,
+  "target": "live",
+  "verdict": "partial"
+}

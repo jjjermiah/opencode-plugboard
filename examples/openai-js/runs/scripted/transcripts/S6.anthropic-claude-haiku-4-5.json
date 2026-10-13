@@ -3,6 +3,7 @@
     {
       "request": {
         "body": {
+          "max_tokens": 1024,
           "messages": [
             {
               "content": "Estimate: 2 boiled eggs and a slice of toast.",
@@ -81,6 +82,7 @@
     {
       "request": {
         "body": {
+          "max_tokens": 1024,
           "messages": [
             {
               "content": "Estimate: 2 boiled eggs and a slice of toast.",

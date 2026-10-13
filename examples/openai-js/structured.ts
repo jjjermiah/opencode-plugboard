@@ -12,12 +12,12 @@ const Meal = z.object({ calories: z.number(), protein_g: z.number() })
 export async function run(client: OpenAI, model: string) {
   const messages: OpenAI.ChatCompletionMessageParam[] = [{ role: "user", content: PROMPT }]
   // #region snippet
-  const parsed = await client.chat.completions.parse({ model, messages, response_format: zodResponseFormat(Meal, "meal_estimate") })
+  const parsed = await client.chat.completions.parse({ model, messages, response_format: zodResponseFormat(Meal, "meal_estimate"), max_tokens: 1024 })
   const meal = parsed.choices[0]?.message.parsed // a typed Meal, or undefined when the content did not parse
   // #endregion snippet
   if (!meal) throw new Error(`parse did not give a Meal: ${JSON.stringify(parsed.choices[0]?.message.content)}`)
   // #region snippet
-  const raw = await client.chat.completions.create({ model, messages, response_format: { type: "json_schema", json_schema: SCHEMA } })
+  const raw = await client.chat.completions.create({ model, messages, response_format: { type: "json_schema", json_schema: SCHEMA }, max_tokens: 1024 })
   // #endregion snippet
   const data = JSON.parse(raw.choices[0]?.message.content ?? "") as Record<string, unknown>
   return {
