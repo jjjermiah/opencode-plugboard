@@ -73,6 +73,7 @@ A web page in a browser runs on its own origin and calls plugboard from there. O
 - Its preflight (`OPTIONS` with `Access-Control-Request-Method`) is answered `204` before authentication, because a preflight carries no credentials. The Host check still runs first. The preflight reveals only which origins are allowed.
 - The actual request still needs its key on a keyed endpoint. On a keyless endpoint, an allowed origin is no longer refused, and every other `Origin` still gets 403 `cross_origin_forbidden`.
 - An origin off the list gets no CORS header, so the browser blocks the response.
+- An allowed origin's answer also carries `Access-Control-Expose-Headers` (since 0.26.0, #314): the `x-plugboard-*` response headers (`x-plugboard-request-id`, `x-plugboard-session`, `x-plugboard-session-url`, `x-plugboard-model`, `x-plugboard-fallbacks`, `x-plugboard-usage`, `x-plugboard-policy`, `x-plugboard-server-tools`, `x-plugboard-parallel-tools`, `x-plugboard-dropped-params`, `x-plugboard-cache`, `x-plugboard-affinity`, `x-plugboard-user-dropped`, `x-plugboard-structured-fallback`) and `retry-after`. A page can read them without any header being listed here by hand.
 - `allowPrivateNetwork: true` adds `Access-Control-Allow-Private-Network: true` when the preflight asks for it (Private Network Access). Off by default.
 - `"*"` echoes `*` for any origin. It must stand alone and needs `keys`: a wildcard never sits in front of a keyless endpoint.
 
