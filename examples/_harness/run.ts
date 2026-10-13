@@ -156,6 +156,7 @@ async function runExample(name: string, target: "scripted" | "live", docker: boo
         PLUGBOARD_BASE_URL: `${capture.url}/v1`,
         PLUGBOARD_KEY: key,
         PLUGBOARD_CAPTURE_URL: capture.url,
+        PLUGBOARD_TARGET: target,
         ...(docker ? { PLUGBOARD_CONTAINER_URL: `http://host.docker.internal:${capture.port}` } : {}),
         PYTHONUNBUFFERED: "1",
       },
