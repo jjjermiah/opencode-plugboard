@@ -97,3 +97,23 @@ describe("scripted model tool choices", () => {
     expect(calls(events)).toEqual([])
   })
 })
+
+describe("scripted model smolagents final answer (#370)", () => {
+  const FINAL_TOOL: PlugTool = {
+    name: "final_answer",
+    description: "Give the final answer",
+    parameters: { type: "object", properties: { answer: { type: "string" } } },
+  }
+  const observation = user(`New task:\n${prompt("S2")}\nObservation:\n{"temp_c": 18, "sky": "cloudy"}`)
+
+  test("an Observation: turn with a final_answer tool is answered with a final_answer call", () => {
+    const events = answer(plugRequest({ messages: [observation], tools: [WEATHER_TOOL, FINAL_TOOL] }))
+    expect(calls(events)).toEqual([ev.call("call_scripted_1", "final_answer", { answer: "18 C and cloudy" })])
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "tool-calls" })
+  })
+
+  test("without a final_answer tool the Observation turn keeps the old path (the get_weather loop)", () => {
+    const events = answer(plugRequest({ messages: [observation], tools: [WEATHER_TOOL] }))
+    expect(calls(events)).toEqual([ev.call("call_scripted_1", "get_weather", { city: "Paris" })])
+  })
+})

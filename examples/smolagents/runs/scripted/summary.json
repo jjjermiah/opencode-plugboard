@@ -103,7 +103,7 @@
         },
         {
           "name": "turn 2 mentions 18 or cloudy",
-          "ok": false
+          "ok": true
         },
         {
           "name": "turn 2 finish_reason is stop",
@@ -113,7 +113,7 @@
       "error": null,
       "id": "S2",
       "model": "fast",
-      "note": "the scripted fake answers the tool turn only after a `tool`-role message, and smolagents sends the observation as user text, so the agent runs to max_steps; the tool call itself is observed (#362)",
+      "note": "smolagents ends a run with a final_answer tool call, so its last model turn finishes with tool_calls, and the check expects stop; the tool call and the final answer are observed and pass (#362)",
       "required": true,
       "status": "gap",
       "transcript": "transcripts/S2.fast.json"
@@ -138,7 +138,7 @@
         },
         {
           "name": "turn 2 mentions 18 or cloudy",
-          "ok": false
+          "ok": true
         },
         {
           "name": "turn 2 finish_reason is stop",
@@ -148,7 +148,7 @@
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
-      "note": "the scripted fake answers the tool turn only after a `tool`-role message, and smolagents sends the observation as user text, so the agent runs to max_steps; the tool call itself is observed (#362)",
+      "note": "smolagents ends a run with a final_answer tool call, so its last model turn finishes with tool_calls, and the check expects stop; the tool call and the final answer are observed and pass (#362)",
       "required": true,
       "status": "gap",
       "transcript": "transcripts/S2.anthropic-claude-haiku-4-5.json"
@@ -173,7 +173,7 @@
         },
         {
           "name": "turn 2 mentions 18 or cloudy",
-          "ok": false
+          "ok": true
         },
         {
           "name": "turn 2 finish_reason is stop",
@@ -183,7 +183,7 @@
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "the scripted fake answers the tool turn only after a `tool`-role message, and smolagents sends the observation as user text, so the agent runs to max_steps; the tool call itself is observed (#362)",
+      "note": "smolagents ends a run with a final_answer tool call, so its last model turn finishes with tool_calls, and the check expects stop; the tool call and the final answer are observed and pass (#362)",
       "required": true,
       "status": "gap",
       "transcript": "transcripts/S2.openai-gpt-5.6-luna-low.json"

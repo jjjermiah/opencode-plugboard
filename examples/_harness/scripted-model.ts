@@ -65,6 +65,10 @@ export function answer(request: PlugRequest): PlugEvent[] {
   }
   if (text.includes(prompt("S1"))) return say("pong")
   if (text.includes(prompt("S2"))) {
+    // smolagents sends the tool result as user text ("Observation:") and ends a run only with a final_answer call (#370).
+    if (text.includes("Observation:") && request.tools.some((tool) => tool.name === "final_answer")) {
+      return [ev.call(CALL_ID, "final_answer", { answer: "18 C and cloudy" }), ev.finish("tool-calls", USAGE)]
+    }
     if (answered(request)) return say("18 C and cloudy")
     if (request.tools.some((tool) => tool.name === "get_weather") && request.toolChoice !== "none") {
       return [ev.call(CALL_ID, "get_weather", { city: "Paris" }), ev.finish("tool-calls", USAGE)]

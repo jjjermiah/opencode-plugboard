@@ -27,7 +27,7 @@ TOOL_PROMPT = "What is the weather in Paris? Use the tool."
 # API, not plugboard faults. Each row's checks are still recorded, so the row shows which checks held.
 GAPS = {
     "S2": {
-        "note": "the scripted fake answers the tool turn only after a `tool`-role message, and smolagents sends the observation as user text, so the agent runs to max_steps; the tool call itself is observed",
+        "note": "smolagents ends a run with a final_answer tool call, so its last model turn finishes with tool_calls, and the check expects stop; the tool call and the final answer are observed and pass",
         "issue": "#362",
     },
     "S3": {
