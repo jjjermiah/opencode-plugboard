@@ -310,10 +310,13 @@ export function readiness(facts: ReadinessFacts): { ready: true } | { ready: fal
   return { ready: true }
 }
 
-/** `GET /plugboard/status`: authenticated runtime facts. `models` is absent when the catalog could not be loaded. */
+/**
+ * `GET /plugboard/status`: authenticated runtime facts. `models` is absent when the catalog could not be loaded. `app` is absent
+ * for the admin key, which names no app (#311).
+ */
 export function buildStatus(input: {
   readonly options: PlugboardOptions
-  readonly app: string
+  readonly app?: string
   readonly runtime: RuntimeSnapshot & {
     readonly runtimeVersion: number
     readonly listener?: { readonly host: string; readonly port: number; readonly bound: boolean }

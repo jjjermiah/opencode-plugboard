@@ -25,6 +25,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.trustProxy` (since 0.26.0) | none | The reverse proxies whose forwarded headers are read: `true` (loopback only), or a list of IP addresses and CIDR ranges such as `["127.0.0.1", "10.0.0.0/8"]`. Headers from any other peer are ignored. See [Reverse proxies](#reverse-proxies-since-0-26-0). |
 | `cors` (since 0.26.0) | none | Browser origins that may call plugboard: `{ "origins": ["https://chat.example.net"], "allowPrivateNetwork": false }`. Each origin is `http(s)://host[:port]`; `"*"` alone needs `keys`. See [Browser origins](#browser-origins-since-0-26-0). |
 | `requireKeys` (since 0.26.0) | `false` | Makes a keyless server impossible. With `true`, `keys` must be set (otherwise the plugin refuses to load), and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. Absent or `false`: keyless loopback works as before. Use it on a shared machine, where loopback is not a security boundary.
+| `keepAlive` (since 0.26.0) | `true` | Keeps OpenCode's Location for this plugin warm, so the server's 60-minute idle eviction does not close plugboard's listener. Every 30 minutes the plugin renames one dedicated session, `plugboard keep-alive`, which it creates once and never prompts; that rename is a durable session event, which is what the eviction timer counts. `false` turns the loop off, and then an idle server stops serving until something touches it again (see [Operating](#operating) and `docs/warm-up.md`). Only the process's one loop runs. |
 | `metrics` | `false` | Serve Prometheus metrics at `GET /plugboard/metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` (since 0.21.0) bound request bodies, see [Request bodies](#request-bodies). |
@@ -469,6 +470,21 @@ Rules:
 - A runtime key is stored under the plugin's host storage as the SHA-256 of the key, not as the key. Its `id` is the first 8 hex characters of that digest. Runtime keys survive a config reload and a server restart.
 - A runtime key names its app on every request that presents it. It does not make a keyless server require a key: with no config keys, a request without a key stays the app `default`. Deleting the last runtime key therefore never opens or closes access by itself.
 - Runtime apps have no `apps` policy. An `apps` entry needs a key in `keys`, so a runtime app gets the global settings only.
+
+### Which key opens which route
+
+Every `/plugboard/` route, and the key it takes. A row with no key is a probe or a page; its data routes take a key. A key that the rule does not name gets 401 (no credentials or a wrong one) or 403 (a valid key the rule refuses). On a keyless loopback server a request without credentials is the `default` app, so the 401 column applies once `keys` is set. Pinned by `test/http/plugboard-key-rule.test.ts` (#311).
+
+| Route | No key | App key | Admin key (`adminKey`) |
+|-------|--------|---------|------------------------|
+| `GET /plugboard/health`, `GET /plugboard/ready` | 200 (probe) | 200 | 200 |
+| `GET /plugboard/dashboard` and its files | 200 (page) | 200 | 200 (the page asks for a key; its data is `/plugboard/usage`) |
+| `GET /plugboard/status` | 401 | its own app's view (200) | the operator view, no app (200) |
+| `GET /plugboard/usage` | 401 | its own app only; another `app` is 403 | every app; `app` may name any (200) |
+| `GET /plugboard/metrics` (`metrics: true`) | 401 | with `adminKey` set: 403 `admin_key_required`; without it: 200, and every app's series | 200 |
+| `GET /plugboard/admin/keys`, `POST /plugboard/admin/keys`, `DELETE /plugboard/admin/keys/{keyId}` | 401 | 401 | 200 (404 without `adminKey`) |
+
+The admin key is not an app key: on the model routes (`/v1/...`, `/v1beta/...`) it is a 401.
 
 ## End users
 

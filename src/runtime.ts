@@ -82,6 +82,11 @@ export interface Registration {
   confirmed(): boolean
   /** Setup has finished installing the app-directory registrations (the context hook is in place). */
   ready(): void
+  /**
+   * Whether this generation runs the process's keep-alive loop (#310). One generation holds it at a time: the
+   * holder keeps it until it leaves the generation list, then the next caller that asks takes it. False when rejected.
+   */
+  keepAliveOwner(): boolean
 }
 
 export interface GenerationInput {
@@ -118,8 +123,8 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 15: the last options error (`configError`, #159) and `catalogLoaded` for `/readyz` (#160). 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 15
+/** 16: the keep-alive owner (`keepAlive`, #310) lives here, so one loop runs per process across generations. 15: the last options error (`configError`, #159) and `catalogLoaded` for `/readyz` (#160). 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 16
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -193,6 +198,8 @@ interface Runtime {
   readonly budgets: BudgetState
   /** The runtime app keys (src/keys.ts), loaded from storage on the first authentication. */
   readonly runtimeKeys: KeyState
+  /** The generation running the keep-alive loop (`Registration.keepAliveOwner`, #310), if any. */
+  keepAlive?: Generation
   /** The last plugin options error (`index.ts`), cleared by the next Location whose options parse (#159). */
   configError?: ConfigError
   /** Set once the serving catalog has loaded successfully (`loadServingCatalog`); `/readyz` reads it (#160). */
@@ -202,7 +209,7 @@ interface Runtime {
   pump?: Pump
 }
 
-const REJECTED: Registration = { accepted: false, dispose() {}, confirmed: () => false, ready() {} }
+const REJECTED: Registration = { accepted: false, dispose() {}, confirmed: () => false, ready() {}, keepAliveOwner: () => false }
 
 /** Used when a foreign-version runtime owns the process: never registered into, never dispatched to. */
 const detachedSessions = createSessionStore()
@@ -514,6 +521,7 @@ export function registerGeneration(input: GenerationInput): Registration {
       accepted: false,
       confirmed: () => false,
       ready() {},
+      keepAliveOwner: () => false,
       dispose() {
         if (disposed) return
         disposed = true
@@ -594,6 +602,11 @@ export function registerGeneration(input: GenerationInput): Registration {
     confirmed: () => rt.confirmed.has(directory),
     ready() {
       generation.hooked = true
+    },
+    keepAliveOwner() {
+      if (!rt.generations.includes(generation)) return false
+      if (rt.keepAlive === undefined || !rt.generations.includes(rt.keepAlive)) rt.keepAlive = generation
+      return rt.keepAlive === generation
     },
     dispose() {
       const index = rt.generations.indexOf(generation)

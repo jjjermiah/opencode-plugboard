@@ -13,6 +13,7 @@ import type { Plugin } from "@opencode/plugin/effect"
 import type { SessionContext } from "@opencode/plugin/effect/session"
 import { Effect } from "effect"
 import type { CatalogCost, CatalogModel } from "../contract.js"
+import type { KeepAliveHost } from "../keepalive.js"
 import type { OperatorRule } from "./seeds.js"
 
 export type HostContext = Plugin.Context
@@ -240,6 +241,33 @@ export function createStoragePort(ctx: HostContext): StoragePort {
         keys: result.entries.map((entry) => entry.key),
         ...(result.next === undefined ? {} : { next: result.next }),
       })),
+  }
+}
+
+/**
+ * The keep-alive's host calls (src/keepalive.ts): plugin storage for the session id, `session.update` (a rename, which is a
+ * durable session event carrying this Location) and `session.create`. A deleted session answers `missing`, so the caller creates
+ * a new one. The session is never registered with the session store, so it is never indexed, pruned or counted in usage.
+ */
+export function createKeepAliveHost(ctx: HostContext, storage: StoragePort): KeepAliveHost {
+  return {
+    get: storage.get,
+    put: storage.put,
+    rename: (sessionID, title) =>
+      Effect.runPromise(
+        ctx.session.update({ sessionID: hostSessionID(sessionID), title }).pipe(
+          Effect.map(() => "renamed" as const),
+          Effect.catch((error) => (failureTag(error) === "Session.NotFoundError" ? Effect.succeed("missing" as const) : Effect.fail(error))),
+        ),
+      ),
+    create: (title) =>
+      Effect.runPromise(
+        ctx.session.create({
+          title,
+          metadata: { plugboard: "keep-alive" },
+          permissions: [{ action: "*", resource: "*", effect: "deny" }],
+        }),
+      ).then((created) => String(created.id)),
   }
 }
 

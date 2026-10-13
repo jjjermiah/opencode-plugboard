@@ -76,6 +76,11 @@ export interface PlugboardOptions {
    * (`/healthz` and `/readyz` stay open). Absent or `false`: keyless loopback works as before.
    */
   readonly requireKeys?: boolean
+  /**
+   * Option `keepAlive` (since 0.26.0, #310). Default on: the process keeps its OpenCode Location warm with a cheap durable
+   * change every 30 minutes, so OpenCode's 60-minute idle eviction does not close the listener. `false` turns it off.
+   */
+  readonly keepAlive?: boolean
   /** Browser origins that may call plugboard (option `cors`, #256). Absent: no CORS headers and the keyless `Origin` refusal stays. */
   readonly cors?: CorsConfig
   /** A template for the OpenCode session page of each request: `{id}`, and optional `{directory}` (see src/session/link.ts, #77). */
@@ -244,7 +249,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -752,6 +757,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (input.requireKeys !== undefined && typeof input.requireKeys !== "boolean") throw new Error("plugboard option `requireKeys` must be a boolean")
   if (input.requireKeys === true && keyEntries.length === 0)
     throw new Error("plugboard option `requireKeys` needs `keys`: without them every local caller would be served as the keyless app; add `keys` or remove `requireKeys`")
+  if (input.keepAlive !== undefined && typeof input.keepAlive !== "boolean") throw new Error("plugboard option `keepAlive` must be a boolean")
   if (input.adminKey !== undefined) {
     if (typeof input.adminKey !== "string" || input.adminKey.length === 0) throw new Error("plugboard option `adminKey` must be a non-empty string (is its {env:VAR} set?)")
     if (keyEntries.some(([, key]) => key === input.adminKey)) throw new Error("plugboard option `adminKey` must differ from every app key")
@@ -856,6 +862,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     ...(budgets === undefined ? {} : { budgets }),
     ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
     ...(input.requireKeys === true ? { requireKeys: true } : {}),
+    ...(input.keepAlive === false ? { keepAlive: false } : {}),
     ...(cors === undefined ? {} : { cors }),
     ...(historyUrl === undefined ? {} : { historyUrl }),
   }

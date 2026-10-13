@@ -443,4 +443,12 @@ export const MUTATIONS: readonly Mutation[] = [
     replace: '      void ctx.storage.scan("history")\n      // ---- every Location: join the shared listener (sync registration only).',
     tests: ["test/runtime/plugin.test.ts"],
   },
+  {
+    id: "I1-keepalive-setup-waits",
+    invariant: "I1",
+    file: "index.ts",
+    find: "        yield* Effect.forkScoped(\n          keepAliveLoop({",
+    replace: "        yield* Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 1)))\n        yield* Effect.forkScoped(\n          keepAliveLoop({",
+    tests: ["test/runtime/keepalive.test.ts"],
+  },
 ]
