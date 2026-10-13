@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Anthropic `cache_control` TTL: why 1h is still not carried** ([#275](https://github.com/jjjermiah/opencode-plugboard/issues/275)). Caller breakpoints on message blocks still reach the model as 5-minute breakpoints, and a `ttl` of `1h` is still dropped. Forwarding it would make Anthropic reject requests: OpenCode adds its own 5-minute breakpoints on the last tool and the system block, and Anthropic needs 1-hour breakpoints before 5-minute ones. The reason and the two changes that would lift the limit (OpenCode ordering the breakpoints, or the hook setting the cache policy) are now in [messages](docs/messages.md). `cache_control` on `tools` stays ignored, because the context hook cannot set a tool's cache hint.
 
 ## [0.30.0] - 2026-10-13: Out of Sight
 
