@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Package and OpenCode versions on `/plugboard/status`** ([#347](https://github.com/jjjermiah/opencode-plugboard/issues/347), since 0.31.0). The route now names `packageVersion`, the plugboard package version from `package.json` (read once when the plugin loads), and `opencodeVersion`, the host OpenCode version from the plugin context (`ctx.app.version`). `opencodeVersion` is left out when the host gives none, or reports `unknown` or `local` (an unreleased build). `packageVersion` is left out if `package.json` cannot be read, and the plugin still loads. The route keeps its auth. The examples harness reads both from the server when its key can read the route, and falls back to git otherwise, and within 5 seconds.
 
 ## [0.30.0] - 2026-10-13: Out of Sight
 
