@@ -17,11 +17,18 @@ import { FAILURE_EVENT, type SessionStore } from "./state.js"
 
 const text = (value: string): HostPart => ({ type: "text", text: value })
 
-/** The host's cache breakpoint: the default 5-minute one, the only kind plugboard carries (#275). */
-const EPHEMERAL = { type: "ephemeral" } as const
+/** The host's cache hint, `ttlSeconds` in seconds. 3600 is the host's 1h bucket (`ttlBucket`), anything less is 5 minutes. */
+type Hint = { type: "ephemeral"; ttlSeconds?: number }
+const ONE_HOUR = 3600
+
+/** A fresh hint object per call, so no host part shares one. */
+const hint = (ttlSeconds?: number): Hint => (ttlSeconds === undefined ? { type: "ephemeral" } : { type: "ephemeral", ttlSeconds })
+
+/** The caller's breakpoint: 1h when the caller asked for it, else the default 5 minutes (#275). */
+const hintOf = (cacheTtl: "1h" | undefined): Hint => (cacheTtl === "1h" ? hint(ONE_HOUR) : hint())
 
 /** Placeholder for a caller image; swapped for the host-built media part in `applyContext`. */
-const mediaPlaceholder = (index: number, cache: boolean | undefined): HostPart => ({ type: "media", __attachment: index, ...(cache ? { cache: EPHEMERAL } : {}) })
+const mediaPlaceholder = (index: number, cache: boolean | undefined, cacheTtl: "1h" | undefined): HostPart => ({ type: "media", __attachment: index, ...(cache ? { cache: hintOf(cacheTtl) } : {}) })
 
 /** Caller messages as host `Message` objects. Media placeholders are swapped in `applyContext`. */
 function toHostMessages(messages: ReadonlyArray<PlugMessage>): Array<{ role: string; content: HostPart[] }> {
@@ -29,13 +36,13 @@ function toHostMessages(messages: ReadonlyArray<PlugMessage>): Array<{ role: str
   const part = (item: PlugMessage["content"][number]): HostPart => {
     switch (item.type) {
       case "text":
-        return item.cache ? { ...text(item.text), cache: EPHEMERAL } : text(item.text)
+        return item.cache ? { ...text(item.text), cache: hintOf(item.cacheTtl) } : text(item.text)
       case "media":
-        return mediaPlaceholder(image++, item.cache)
+        return mediaPlaceholder(image++, item.cache, item.cacheTtl)
       case "tool-call":
         return { type: "tool-call", id: item.id, name: item.name, input: item.input }
       case "tool-result":
-        return { type: "tool-result", id: item.id, name: item.name, result: { type: "text", value: item.result }, ...(item.cache ? { cache: EPHEMERAL } : {}) }
+        return { type: "tool-result", id: item.id, name: item.name, result: { type: "text", value: item.result }, ...(item.cache ? { cache: hintOf(item.cacheTtl) } : {}) }
     }
   }
   return messages.map((message) => ({ role: message.role, content: message.content.map(part) }))
@@ -126,6 +133,74 @@ export function requestSystem(request: Pick<PlugRequest, "system" | "toolChoice"
   return system
 }
 
+/** Anthropic's breakpoint budget per request (OpenCode's `BREAKPOINT_CAP`, shared by its automatic placement). */
+const BREAKPOINTS = 4
+
+/**
+ * Keeps every 1-hour breakpoint before every 5-minute one, on a request without tools (#275).
+ *
+ * Anthropic requires a 1h cache entry to come before any 5m entry. OpenCode adds 5m breakpoints by itself (its `AUTO` policy,
+ * which runs because plugboard sends no cache policy): the first and last system part and the last text part of the last message.
+ * The last-tool breakpoint is absent here, so the only ones this pass has to account for are those. Given a caller 1h block, the
+ * pass gives 1h to every hinted part before the last 1h block (a 5m caller block there is raised too), and to the system first/last
+ * and the tail part where those would otherwise take 5m before it, as far as the budget allows. Parts after the last 1h block keep
+ * their 5m hint. With tools present every 1h hint is set back to the 5m default: OpenCode's last-tool 5m breakpoint comes before
+ * every message, so a 1h block could not follow it (see docs/messages.md).
+ *
+ * Parts are replaced, never mutated: a host media object may be shared with the host's own prompt.
+ */
+function orderOneHourHints(session: ContextHookEvent): void {
+  const system = (session.system ?? []) as HostPart[]
+  const messages = (session.messages ?? []).map((message) => (Array.isArray(message.content) ? (message.content as HostPart[]) : []))
+  // The wire order of the hinted positions: system, then messages (the tools slot is empty here).
+  const slots: Array<{ list: HostPart[]; index: number }> = []
+  for (const list of [system, ...messages]) list.forEach((_, index) => slots.push({ list, index }))
+  const cacheOf = (index: number): { ttlSeconds?: number } | undefined => {
+    const slot = slots[index]!
+    return slot.list[slot.index]!.cache as { ttlSeconds?: number } | undefined
+  }
+  if (Object.keys(session.tools ?? {}).length > 0) {
+    // Tools present: OpenCode's last-tool 5m breakpoint comes first, so every 1h hint is the 5m default.
+    slots.forEach((_, index) => {
+      if (cacheOf(index)?.ttlSeconds === ONE_HOUR) {
+        const slot = slots[index]!
+        slot.list[slot.index] = { ...slot.list[slot.index]!, cache: hint() }
+      }
+    })
+    return
+  }
+  const last = slots.findLastIndex((_, index) => cacheOf(index)?.ttlSeconds === ONE_HOUR)
+  if (last < 0) return
+  const pin = (index: number) => {
+    const slot = slots[index]!
+    slot.list[slot.index] = { ...slot.list[slot.index]!, cache: hint(ONE_HOUR) }
+  }
+  const hinted = (index: number) => {
+    const slot = slots[index]!
+    return slot.list[slot.index]!.cache !== undefined
+  }
+  let budget = Math.max(0, BREAKPOINTS - slots.filter((_, index) => hinted(index)).length)
+  for (let index = 0; index < last; index++) if (hinted(index)) pin(index)
+  // OpenCode's own 5m candidates that come before `last`: the system first and last part, then the tail part. Each is a
+  // slot index: system parts come first in `slots`, and the tail is the last text part of the last message (or its last part).
+  // Known gap (not handled): the host can swap a part after this pass. The host's `replaceMedia` (OpenCode, packages/core/src/session/model-request.ts) replaces
+  // media it cannot send, on a text-only model or above the image byte budget, with a hint-less text part. If that part is the
+  // tail, AUTO hints it 5m after this pass, so a `[text, image A (replaced), image B (1h)]` tail gives 1h, 5m, 1h and Anthropic
+  // rejects the order. It needs an Anthropic-protocol route with a text-only model or images over the budget. The request then
+  // fails with Anthropic's order error. Covering it means pinning every part after the last text part before `last`.
+  const lastContent = messages.at(-1) ?? []
+  const tailOffset = lastContent.findLastIndex((part) => part.type === "text")
+  const candidates: number[] = []
+  if (system.length > 0) candidates.push(0)
+  if (system.length > 1) candidates.push(system.length - 1)
+  if (lastContent.length > 0) candidates.push(slots.length - lastContent.length + (tailOffset >= 0 ? tailOffset : lastContent.length - 1))
+  for (const index of candidates) {
+    if (index >= last || hinted(index) || budget === 0) continue
+    pin(index)
+    budget -= 1
+  }
+}
+
 /** The one 500 message for a request plugboard could not prepare. What was missing is logged, never sent: it names host internals (#288). */
 const preparationFailed = (): PlugError => ({ status: 500, kind: "server", code: "backend_preparation_failed", message: "Could not prepare the model request" })
 
@@ -149,7 +224,7 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   const swap = (part: HostPart) => {
     if (typeof part.__attachment !== "number") return part
     const media = hostMedia[part.__attachment]
-    if (media) return part.cache ? { ...media, cache: EPHEMERAL } : media
+    if (media) return part.cache ? { ...media, cache: part.cache } : media
     missingMedia++
     return text("[image unavailable]")
   }
@@ -159,6 +234,7 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 
   const missingTools = remapSeedTools(session, request, policy?.serverTools ?? [])
+  orderOneHourHints(session)
 
   // The caller validates both before dispatch; this only fires if the host disagrees. The request is
   // already rewritten (no real tool can run); fail it instead of answering from a truncated prompt.

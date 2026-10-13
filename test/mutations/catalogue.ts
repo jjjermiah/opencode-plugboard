@@ -556,6 +556,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/runtime/key-revocation.test.ts"],
   },
   {
+    id: "P275-one-hour-ttl-kept-with-tools",
+    invariant: "#275",
+    file: "src/session/context.ts",
+    find: "  if (Object.keys(session.tools ?? {}).length > 0) {",
+    replace: "  if (false) {",
+    tests: ["test/session/context.test.ts"],
+  },
+  {
+    id: "P275-earlier-five-minute-hint-not-raised",
+    invariant: "#275",
+    file: "src/session/context.ts",
+    find: "  for (let index = 0; index < last; index++) if (hinted(index)) pin(index)",
+    replace: "  for (let index = 0; index < 0; index++) if (hinted(index)) pin(index)",
+    tests: ["test/session/context.test.ts"],
+  },
+  {
     id: "I4-context-hook-active-without-confirmation",
     invariant: "I4",
     file: "src/session/context.ts",

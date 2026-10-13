@@ -368,6 +368,8 @@ The cache lives in memory. A server restart, or a change to `cache`, `apps`, `mo
 
 ## Prompt-cache affinity
 
+This section is about the session key. The breakpoints a caller places on Anthropic blocks (`cache_control`, including the 1-hour TTL) are described in [Prompt caching](messages.md#prompt-caching).
+
 Providers cache a prompt by its prefix. Some also route by a session key: OpenAI takes `prompt_cache_key`, and the ChatGPT subscription takes a `session-id` header. OpenCode derives that key from the session's affinity, which is the session's parent when it has one, else the session itself. Each plugboard request is a new session, so with the default the key changes on every request and the provider cannot route to the cache it wrote.
 
 ```jsonc

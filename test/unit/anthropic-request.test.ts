@@ -12,7 +12,7 @@ const toolUse = (id: string, name: string, input: unknown = {}) => ({ type: "too
 const image = (source: unknown) => ({ type: "image", source })
 
 describe("#275 cache_control on content blocks", () => {
-  test("an ephemeral breakpoint on a text, image or tool_result block is carried as a caller breakpoint; its ttl is not", () => {
+  test("an ephemeral breakpoint on a text, image or tool_result block is carried as a caller breakpoint; ttl 1h is carried as cacheTtl, any other ttl is the 5-minute default", () => {
     const cache = { type: "ephemeral", ttl: "1h" }
     const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
     const { request } = parse(
@@ -24,9 +24,24 @@ describe("#275 cache_control on content blocks", () => {
         ],
       }),
     )
-    expect(request.messages[0]!.content).toEqual([{ type: "text", text: "big context", cache: true }, { type: "media", url: `data:image/png;base64,${png}`, mediaType: "image/png", cache: true }])
-    expect(request.messages[1]!.content[0]).toEqual({ type: "text", text: "ok", cache: true })
+    expect(request.messages[0]!.content).toEqual([
+      { type: "text", text: "big context", cache: true, cacheTtl: "1h" },
+      { type: "media", url: `data:image/png;base64,${png}`, mediaType: "image/png", cache: true },
+    ])
+    expect(request.messages[1]!.content[0]).toEqual({ type: "text", text: "ok", cache: true, cacheTtl: "1h" })
     expect(request.messages[2]!.content).toEqual([{ type: "tool-result", id: "t1", name: "read", result: "data", cache: true }])
+  })
+
+  test("ttl values other than 1h, and a missing ttl, are the 5-minute default (no cacheTtl)", () => {
+    const { request } = parse(
+      body({
+        messages: [{ role: "user", content: [{ type: "text", text: "a", cache_control: { type: "ephemeral", ttl: "5m" } }, { type: "text", text: "b", cache_control: { type: "ephemeral" } }] }],
+      }),
+    )
+    expect(request.messages[0]!.content).toEqual([
+      { type: "text", text: "a", cache: true },
+      { type: "text", text: "b", cache: true },
+    ])
   })
 
   test("a block without cache_control carries no cache field", () => {

@@ -26,6 +26,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - **An over-size request body is `request_body_too_large` (breaking for clients that match on the old 413).** The 413 on the OpenAI-shaped routes and on `/plugboard/` routes now carries the code `request_body_too_large` where it had none. Clients that matched the codeless 413 must match the code instead. Messages (`request_too_large`) and Gemini (`code: 413`) keep their own shapes, which did not change. The body cap is `limits.maxBodyBytes` (32 MiB by default) or the app's `limits.apps.<name>.maxBodyBytes`.
+- **Anthropic `cache_control` `ttl: "1h"` is carried on requests without tools** ([#275](https://github.com/jjjermiah/opencode-plugboard/issues/275), since 0.32.0). A caller's 1-hour breakpoint now reaches the model as a 1-hour breakpoint when the request has no tools (no caller tools and no server tools, or `tool_choice` `none`). Plugboard then gives 1h to every breakpoint before it, so no 5-minute breakpoint comes before a 1-hour one, which Anthropic requires. Earlier 5-minute caller blocks are raised to 1h; that adds no cost, because the caller's 1h block already bills everything before it as a 1-hour write. With tools the block stays 5 minutes, because OpenCode's last-tool breakpoint comes first and is always 5 minutes. The rules are in [Prompt caching](docs/messages.md#prompt-caching). `cache_control` on `tools` stays ignored, because the context hook cannot set a tool's cache hint.
 
 ### Fixed
 
