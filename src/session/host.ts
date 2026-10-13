@@ -275,22 +275,17 @@ export function createStoragePort(ctx: HostContext): StoragePort {
 }
 
 /**
- * The keep-alive's host calls (src/keepalive.ts): plugin storage for the session id, `session.update` (a rename, which is a
- * durable session event carrying this Location) and `session.create`. A deleted session answers `missing`, so the caller creates
- * a new one. The session is never registered with the session store, so it is never indexed, pruned or counted in usage.
+ * The keep-alive's host calls (src/keepalive.ts): plugin storage for the ids, and `session.create` and `session.remove`.
+ * A create without a parent takes no `location`, so it is this plugin's Location, which is what restarts the eviction timer
+ * (#350). A child create takes its parent's Location. A missing parent (create) or a session already gone (remove) is the
+ * host's `Session.NotFoundError`, which the keep-alive treats as absent. The sessions are never registered with the session
+ * store, so they are never indexed, pruned or counted in usage.
  */
 export function createKeepAliveHost(ctx: HostContext, storage: StoragePort): KeepAliveHost {
   return {
     get: storage.get,
     put: storage.put,
-    rename: (sessionID, title) =>
-      Effect.runPromise(
-        ctx.session.update({ sessionID: hostSessionID(sessionID), title }).pipe(
-          Effect.map(() => "renamed" as const),
-          Effect.catch((error) => (failureTag(error) === "Session.NotFoundError" ? Effect.succeed("missing" as const) : Effect.fail(error))),
-        ),
-      ),
-    create: (title) =>
+    createRoot: (title) =>
       Effect.runPromise(
         ctx.session.create({
           title,
@@ -298,6 +293,19 @@ export function createKeepAliveHost(ctx: HostContext, storage: StoragePort): Kee
           permissions: [{ action: "*", resource: "*", effect: "deny" }],
         }),
       ).then((created) => String(created.id)),
+    createChild: (title, parentID) =>
+      Effect.runPromise(
+        ctx.session.create({ title, parentID: hostSessionID(parentID) as NonNullable<HostCreate["parentID"]> }).pipe(
+          Effect.map((created): string | undefined => String(created.id)),
+          Effect.catch((error) => (failureTag(error) === "Session.NotFoundError" ? Effect.succeed(undefined) : Effect.fail(error))),
+        ),
+      ),
+    remove: (sessionID) =>
+      Effect.runPromise(
+        ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0]).pipe(
+          Effect.catch((error) => (failureTag(error) === "Session.NotFoundError" ? Effect.void : Effect.fail(error))),
+        ),
+      ),
   }
 }
 

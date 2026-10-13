@@ -1,8 +1,9 @@
 /**
- * The location keep-alive (#310, src/keepalive.ts) against the spy context: the loop starts after setup
- * returns, touches the keep-alive session on each interval, creates it once, renames a stored one,
- * recreates a deleted one, stops with its generation, never runs with `keepAlive: false`, keeps one
- * generation as the owner, and leaves the session out of the history index and usage.
+ * The location keep-alive (#310, #350, src/keepalive.ts) against the spy context: the loop starts after setup returns;
+ * each tick creates a child under one long-lived parent (the create is the touch; a rename is not) and removes the
+ * children the earlier ticks left. It reuses a parent from storage, creates a new one when the parent is gone, keeps a
+ * failed create or remove for a later tick instead of leaking it, stops with its generation, never runs with
+ * `keepAlive: false`, keeps one generation as the owner, and leaves the sessions out of the history index and usage.
  *
  * The interval is shortened with `PLUGBOARD_KEEPALIVE_INTERVAL_MS` (read at setup): the real one is 30 minutes.
  */
@@ -10,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Effect, Exit, Scope, Stream } from "effect"
 import plugin from "../../index.js"
 import { parseOptions } from "../../src/config.js"
-import { KEEP_ALIVE_INTERVAL_MS, KEEP_ALIVE_KEY, KEEP_ALIVE_TITLE, keepAliveIntervalMs } from "../../src/keepalive.js"
+import { KEEP_ALIVE_CHILDREN, KEEP_ALIVE_INTERVAL_MS, KEEP_ALIVE_KEY, KEEP_ALIVE_TITLE, keepAliveIntervalMs } from "../../src/keepalive.js"
 import { sessionStore } from "../../src/runtime.js"
 import { until } from "../support/fixtures.js"
 import { spyContext, type SpyCall, type SpyContext } from "../support/plugin-context.js"
@@ -30,22 +31,36 @@ afterEach(() => {
 const options = async (extra: Record<string, unknown> = {}) => ({ listen: { port: await freePort() }, models: ["test/*"], maxTools: 2, ...extra })
 
 /**
- * A fake host for the keep-alive calls: plugin storage, session create and update. A session in `deleted` answers an
- * update with the host's `Session.NotFoundError`, as a deleted session does.
+ * A fake host for the keep-alive calls. `deleted` ids are gone: a remove of one answers the host's `Session.NotFoundError`,
+ * and a child create under one answers the same (a missing parent). `failing.create` makes every create fail, and
+ * `failing.remove` ids answer a remove with an error that is not NotFound.
  */
-function fakeHost(input: { stored?: Record<string, string>; deleted?: string[] } = {}) {
+function fakeHost(input: { stored?: Record<string, string>; deleted?: string[]; orphanRoots?: boolean } = {}) {
   const storage = new Map(Object.entries(input.stored ?? {}))
   const deleted = new Set(input.deleted ?? [])
+  const failing = { create: false, put: false, remove: new Set<string>() }
   let created = 0
   return {
     storage,
+    failing,
     respond: {
       "event.subscribe": () => Stream.never,
       "model.list": () => Effect.succeed({ data: [] }),
       "storage.get": (key: string) => Effect.succeed(storage.get(key)),
-      "storage.set": (key: string, value: string) => Effect.sync(() => void storage.set(key, value)),
-      "session.create": () => Effect.sync(() => ({ id: `ses_keep_${++created}` })),
-      "session.update": (input: { sessionID: string }) => (deleted.has(input.sessionID) ? Effect.fail({ _tag: "Session.NotFoundError" }) : Effect.void),
+      "storage.set": (key: string, value: string) =>
+        failing.put && key === KEEP_ALIVE_CHILDREN ? Effect.fail({ _tag: "Storage.Unavailable" }) : Effect.sync(() => void storage.set(key, value)),
+      "session.create": (args: { parentID?: string }) => {
+        if (failing.create) return Effect.fail({ _tag: "Session.Unavailable" })
+        if (args.parentID !== undefined && deleted.has(args.parentID)) return Effect.fail({ _tag: "Session.NotFoundError" })
+        const id = `ses_keep_${++created}`
+        // A root the host deletes as soon as it is made (`orphanRoots`): a child under it is then a missing parent.
+        if (args.parentID === undefined && input.orphanRoots) deleted.add(id)
+        return Effect.succeed({ id })
+      },
+      "session.remove": (input: { sessionID: string }) => {
+        if (failing.remove.has(input.sessionID)) return Effect.fail({ _tag: "Session.Unavailable" })
+        return deleted.has(input.sessionID) ? Effect.fail({ _tag: "Session.NotFoundError" }) : Effect.void
+      },
     },
   }
 }
@@ -70,13 +85,19 @@ function load(opts: unknown, directory: string, respond: Record<string, (...args
 }
 
 /** The host methods the keep-alive uses (setup registers the context hook, which is not one of them). */
-const KEEP_ALIVE_METHODS = new Set("storage.get storage.set session.create session.update session.remove session.prompt".split(" "))
+const KEEP_ALIVE_METHODS = new Set("storage.get storage.set session.create session.remove session.prompt session.update".split(" "))
 
 const callsOf = (spy: SpyContext, path: string): SpyCall[] => spy.calls.filter((call) => call.path === path)
-const updates = (spy: SpyContext) => callsOf(spy, "session.update")
+const creates = (spy: SpyContext) => callsOf(spy, "session.create")
+/** The parent creates (no `parentID`) and the child creates (under a `parentID`). */
+const parentCreates = (spy: SpyContext) => creates(spy).filter((call) => (call.args[0] as { parentID?: string }).parentID === undefined)
+const childCreates = (spy: SpyContext) => creates(spy).filter((call) => (call.args[0] as { parentID?: string }).parentID !== undefined)
+const removes = (spy: SpyContext) => callsOf(spy, "session.remove")
+const removedIDs = (spy: SpyContext) => removes(spy).map((call) => (call.args[0] as { sessionID: string }).sessionID)
 /** The storage and session calls the keep-alive makes (not the setup registrations or the event pump). */
 const keepAliveCalls = (spy: SpyContext) => spy.calls.filter((call) => KEEP_ALIVE_METHODS.has(call.path))
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const trackedIDs = (host: { storage: Map<string, string> }) => JSON.parse(host.storage.get(KEEP_ALIVE_CHILDREN) ?? "[]") as string[]
 
 describe("#310 the keep-alive runs after setup, on the interval", () => {
   test("setup returns before the first keep-alive call, and the loop starts after it", async () => {
@@ -87,53 +108,111 @@ describe("#310 the keep-alive runs after setup, on the interval", () => {
     expect(keepAliveCalls(spy)[0]!.phase).toBe("after-setup")
   })
 
-  test("the loop touches the keep-alive session on each interval (a rename keeps its time.updated moving)", async () => {
+  test("each interval creates a child under the one parent and removes the child the previous tick left; no rename", async () => {
     const host = fakeHost()
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => updates(spy).length >= 2, 2_000, "two renames")
-    expect(updates(spy).every((call) => (call.args[0] as { sessionID: string; title: string }).title === KEEP_ALIVE_TITLE)).toBe(true)
-    expect(new Set(updates(spy).map((call) => (call.args[0] as { sessionID: string }).sessionID))).toEqual(new Set(["ses_keep_1"]))
+    await until(async () => removes(spy).length >= 2, 2_000, "two removes")
+    expect(parentCreates(spy)).toHaveLength(1)
+    expect(new Set(childCreates(spy).map((call) => (call.args[0] as { parentID: string }).parentID))).toEqual(new Set(["ses_keep_1"]))
+    expect(childCreates(spy).every((call) => (call.args[0] as { title: string }).title === KEEP_ALIVE_TITLE)).toBe(true)
+    // Parent is ses_keep_1, the first child ses_keep_2, the second ses_keep_3: each tick removes the child before it.
+    expect(removedIDs(spy).slice(0, 2)).toEqual(["ses_keep_2", "ses_keep_3"])
+    expect(callsOf(spy, "session.update")).toEqual([])
   })
 
-  test("the first tick creates one session, denies it every permission, and stores its id under keepalive/session", async () => {
+  test("the first tick creates the parent with no location argument (so it is this Location), denies it every permission, and stores its id", async () => {
     const host = fakeHost()
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => callsOf(spy, "storage.set").length > 0, 2_000, "the stored session id")
-    expect(callsOf(spy, "session.create")[0]!.args[0]).toMatchObject({
+    await until(async () => callsOf(spy, "storage.set").length > 0, 2_000, "the stored parent id")
+    expect(parentCreates(spy)[0]!.args[0]).toMatchObject({
       title: KEEP_ALIVE_TITLE,
       metadata: { plugboard: "keep-alive" },
       permissions: [{ action: "*", resource: "*", effect: "deny" }],
     })
+    expect(parentCreates(spy)[0]!.args[0]).not.toHaveProperty("location")
     expect(callsOf(spy, "storage.set")[0]!.args).toEqual([KEEP_ALIVE_KEY, "ses_keep_1"])
-    expect(host.storage.get(KEEP_ALIVE_KEY)).toBe("ses_keep_1")
+    await until(async () => childCreates(spy).length >= 1, 2_000, "a child")
+    expect(childCreates(spy)[0]!.args[0]).toEqual({ title: KEEP_ALIVE_TITLE, parentID: "ses_keep_1" })
   })
 
-  test("a stored session is renamed on each tick and never created again", async () => {
+  test("a parent stored by an earlier plugboard is reused as the parent; only children are created", async () => {
     const host = fakeHost({ stored: { [KEEP_ALIVE_KEY]: "ses_old" } })
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => updates(spy).length >= 1, 2_000, "a rename of the stored session")
-    expect((updates(spy)[0]!.args[0] as { sessionID: string }).sessionID).toBe("ses_old")
-    expect(callsOf(spy, "session.create")).toEqual([])
+    await until(async () => childCreates(spy).length >= 1, 2_000, "a child under the stored parent")
+    expect(parentCreates(spy)).toEqual([])
+    expect((childCreates(spy)[0]!.args[0] as { parentID: string }).parentID).toBe("ses_old")
   })
 
-  test("a deleted keep-alive session is recreated and its new id stored", async () => {
+  test("a parent that is gone is created again, and the children follow it", async () => {
     const host = fakeHost({ stored: { [KEEP_ALIVE_KEY]: "ses_gone" }, deleted: ["ses_gone"] })
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => callsOf(spy, "storage.set").length > 0, 2_000, "the recreated session id")
-    expect(callsOf(spy, "session.create")).toHaveLength(1)
+    await until(async () => childCreates(spy).some((call) => (call.args[0] as { parentID: string }).parentID === "ses_keep_1"), 2_000, "a child under the new parent")
+    expect(parentCreates(spy)).toHaveLength(1)
     expect(host.storage.get(KEEP_ALIVE_KEY)).toBe("ses_keep_1")
-    // The next tick renames the new session.
-    await until(async () => updates(spy).some((call) => (call.args[0] as { sessionID: string }).sessionID === "ses_keep_1"), 2_000, "a rename of the new session")
+  })
+
+  test("a new parent that is gone at once throws out of the tick, tracks nothing, and is tried again on the next tick", async () => {
+    const host = fakeHost({ stored: { [KEEP_ALIVE_KEY]: "ses_gone" }, deleted: ["ses_gone"], orphanRoots: true })
+    const loaded = load(await options(), "/projects/a", host.respond)
+    await until(async () => parentCreates(loaded.spy).length >= 2, 2_000, "a second parent attempt")
+    expect(host.storage.get(KEEP_ALIVE_CHILDREN)).toBeUndefined()
+    // The loop would keep failing and logging; stop it so the next test's log capture stays clean.
+    loaded.unload()
+  })
+
+  test("a failed create writes nothing, throws out of that tick only, and the loop recovers", async () => {
+    const host = fakeHost()
+    const { spy } = load(await options(), "/projects/a", host.respond)
+    await until(async () => trackedIDs(host).length === 1, 2_000, "steady state: one tracked child")
+    host.failing.create = true
+    await pause(15)
+    const snapshot = JSON.stringify(trackedIDs(host))
+    const failedBefore = creates(spy).length
+    await pause(25)
+    expect(creates(spy).length).toBeGreaterThan(failedBefore)
+    expect(JSON.stringify(trackedIDs(host))).toBe(snapshot)
+    host.failing.create = false
+    await until(async () => trackedIDs(host).length === 1 && JSON.stringify(trackedIDs(host)) !== snapshot, 2_000, "the loop to recover")
+  })
+
+  test("a failed write of the children list removes the child it just created, so nothing leaks", async () => {
+    const host = fakeHost()
+    host.failing.put = true
+    const loaded = load(await options(), "/projects/a", host.respond)
+    await until(async () => removedIDs(loaded.spy).includes("ses_keep_2"), 2_000, "the child removed after the failed write")
+    host.failing.put = false
+    expect(host.storage.get(KEEP_ALIVE_CHILDREN)).toBeUndefined()
+    loaded.unload()
+  })
+
+  test("a children list that is not JSON counts as empty: the tick goes on and tracks the new child", async () => {
+    const host = fakeHost({ stored: { [KEEP_ALIVE_KEY]: "ses_old", [KEEP_ALIVE_CHILDREN]: "{not json" } })
+    const { spy } = load(await options(), "/projects/a", host.respond)
+    await until(async () => childCreates(spy).length >= 1, 2_000, "a child")
+    await until(async () => trackedIDs(host).length === 1, 2_000, "the new child tracked")
+    expect(removedIDs(spy)).not.toContain("ses_old")
+  })
+
+  test("a failed remove is kept tracked and retried on a later tick, so nothing leaks", async () => {
+    const host = fakeHost()
+    // The first child is ses_keep_2 (the parent is ses_keep_1). Its removal fails on the tick that would remove it.
+    host.failing.remove.add("ses_keep_2")
+    const { spy } = load(await options(), "/projects/a", host.respond)
+    await until(async () => removedIDs(spy).includes("ses_keep_2"), 2_000, "the failing removal")
+    await until(async () => trackedIDs(host).includes("ses_keep_2"), 2_000, "ses_keep_2 kept tracked")
+    host.failing.remove.clear()
+    await until(async () => removedIDs(spy).filter((id) => id === "ses_keep_2").length >= 2 && trackedIDs(host).length === 1, 2_000, "the retried removal")
+    expect(trackedIDs(host).includes("ses_keep_2")).toBe(false)
   })
 
   test("the loop stops when its generation is disposed", async () => {
     const host = fakeHost()
     const loaded = load(await options(), "/projects/a", host.respond)
-    await until(async () => updates(loaded.spy).length >= 1, 2_000, "a rename")
+    await until(async () => creates(loaded.spy).length >= 1, 2_000, "a create")
     loaded.unload()
-    const stopped = updates(loaded.spy).length
+    const stopped = creates(loaded.spy).length
     await pause(25)
-    expect(updates(loaded.spy).length).toBe(stopped)
+    expect(creates(loaded.spy).length).toBe(stopped)
   })
 
   test("with `keepAlive: false` no keep-alive call is ever made", async () => {
@@ -148,19 +227,18 @@ describe("#310 the keep-alive runs after setup, on the interval", () => {
     const shared = await options()
     const first = load(shared, "/projects/a", host.respond)
     const second = load(shared, "/projects/b", host.respond)
-    await until(async () => updates(first.spy).length >= 2, 2_000, "the first generation's renames")
+    await until(async () => creates(first.spy).length >= 2, 2_000, "the first generation's creates")
     await pause(10)
     expect(keepAliveCalls(second.spy)).toEqual([])
     first.unload()
-    await until(async () => updates(second.spy).length >= 1, 2_000, "the second generation takes the lease")
+    await until(async () => creates(second.spy).length >= 1, 2_000, "the second generation takes the lease")
   })
 
-  test("the keep-alive session is not a request session: no history index, no usage, no session store entry", async () => {
+  test("the keep-alive sessions are not request sessions: no history index, no usage, no session store entry", async () => {
     const host = fakeHost()
     const { spy } = load(await options(), "/projects/a", host.respond)
-    await until(async () => updates(spy).length >= 1, 2_000, "a rename")
-    expect(callsOf(spy, "storage.set").map((call) => call.args[0])).toEqual([KEEP_ALIVE_KEY])
-    expect(callsOf(spy, "session.remove")).toEqual([])
+    await until(async () => removes(spy).length >= 1, 2_000, "a remove")
+    expect(new Set(callsOf(spy, "storage.set").map((call) => call.args[0]))).toEqual(new Set([KEEP_ALIVE_KEY, KEEP_ALIVE_CHILDREN]))
     expect(callsOf(spy, "session.prompt")).toEqual([])
     expect(sessionStore().size()).toBe(0)
   })

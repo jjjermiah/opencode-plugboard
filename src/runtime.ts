@@ -378,7 +378,10 @@ export interface RuntimeStatus extends RuntimeSnapshot {
   readonly runtimeVersion: number
   /** The shared listener's address, and whether it is bound; absent before the first generation registered. */
   readonly listener?: { readonly host: string; readonly port: number; readonly bound: boolean }
-  /** The serving generation's Location is a confirmed app directory (else the newest generation serves). */
+  /**
+   * An app directory has been confirmed in this process (a request reached one). Process-wide and never reset by a
+   * generation's disposal, so an app directory evicted after idle does not make `/readyz` fail (#350).
+   */
   readonly servingConfirmed: boolean
   /** The last plugin options error, when its Location was the latest to load the plugin (#159). */
   readonly configError?: ConfigError
@@ -390,14 +393,13 @@ export interface RuntimeStatus extends RuntimeSnapshot {
 export function processStatus(): RuntimeStatus {
   const rt = runtime()
   if (!rt) return { runtimeVersion: VERSION, generations: 0, pumpRunning: false, guards: detachedSessions.size(), startedAt: detachedStartedAt, servingConfirmed: false, catalogLoaded: false }
-  const serving = preferred(rt)
   return {
     runtimeVersion: rt.version,
     generations: rt.generations.length,
     pumpRunning: rt.pump !== undefined,
     guards: rt.sessions.size(),
     startedAt: rt.startedAt,
-    servingConfirmed: serving !== undefined && rt.confirmed.has(serving.directory),
+    servingConfirmed: rt.confirmed.size > 0,
     catalogLoaded: rt.catalogLoaded === true,
     ...(rt.listener ? { listener: { host: rt.listener.listen.host, port: rt.listener.listen.port, bound: rt.listener.bound } } : {}),
     ...(rt.configError ? { configError: rt.configError } : {}),

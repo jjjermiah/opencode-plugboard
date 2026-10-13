@@ -14,7 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The keep-alive now holds the location** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.33.0). Since 0.26.0 the keep-alive renamed one session every 30 minutes, but a rename does not restart OpenCode's 60-minute idle timer. Plugin calls publish their events without the Location, and the timer only counts events that carry one. The keep-alive now creates one child session every 30 minutes under a long-lived parent in its own Location, and removes the children the earlier ticks left. A child create carries the Location, so the timer restarts, and the lists show one stable parent row. The parent is reused from 0.26.0 to 0.32.0. A removal that fails is kept and retried on a later tick, and a failed write removes the child it just created, so nothing is left behind. Versions 0.26.0 to 0.32.0 still need the external timer in `docs/warm-up.md`.
+- **`/readyz` stays ready after an idle app directory is evicted** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.33.0). Readiness used to follow the newest generation, so when OpenCode evicted the idle app directory after an hour, `/readyz` went to 503 until the next request. It now counts a confirmed app directory for the whole process.
 
 ## [0.32.0] - 2026-10-13: Every App Its Own Dials
 

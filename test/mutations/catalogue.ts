@@ -667,4 +667,20 @@ export const MUTATIONS: readonly Mutation[] = [
     replace: "        yield* Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 1)))\n        yield* Effect.forkScoped(\n          keepAliveLoop({",
     tests: ["test/runtime/keepalive.test.ts"],
   },
+  {
+    id: "I30-keepalive-tick-reuses-session",
+    invariant: "I30",
+    file: "src/keepalive.ts",
+    find: "  let child = await host.createChild(KEEP_ALIVE_TITLE, parent)",
+    replace: "  let child = parent",
+    tests: ["test/runtime/keepalive.test.ts"],
+  },
+  {
+    id: "I30-keepalive-children-never-removed",
+    invariant: "I30",
+    file: "src/keepalive.ts",
+    find: "  for (const id of stale) {",
+    replace: "  for (const id of [] as string[]) {",
+    tests: ["test/runtime/keepalive.test.ts"],
+  },
 ]
