@@ -1,6 +1,6 @@
 # Vercel AI SDK
 
-Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91, 2026-10-11, at an earlier commit.
+Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91. Live on 2026-10-13 at plugboard 0.26.0 (`c97ac66`): all 45 rows pass on all three ways in, [record](../../examples/vercel-ai-sdk/runs/live/2026-10-13-c97ac66/summary.md). The 2026-10-11 record at `3fcedc7` predates the Responses route.
 
 Use `createOpenAICompatible`. It passed every scenario with `supportsStructuredOutputs: true`. Without that flag structured output failed (see Gotchas).
 
@@ -60,5 +60,5 @@ const { output } = await generateText({ model, output: Output.object({ schema: z
 ## Gotchas
 
 - Set `supportsStructuredOutputs: true`. Without it the SDK sends `response_format: json_object` with no schema anywhere, the model guesses the keys, and `Output.object` throws `NoObjectGeneratedError`.
-- `@ai-sdk/openai`: the default `openai(id)` calls `/v1/responses`, which plugboard now serves (see [Responses API](../responses.md)). All 17 scenarios passed this way on 2026-10-11, the same set as `openai.chat(id)`. Multi-turn chats work with the default `store: true`: plugboard keeps the output items of recent answers and resolves the `item_reference`s the SDK sends back (#147). `providerOptions: { openai: { store: false } }` also works and sends the earlier turns in full. `openai.chat(id)` still works if you prefer Chat Completions.
+- `@ai-sdk/openai`: the default `openai(id)` calls `/v1/responses`, which plugboard serves (see [Responses API](../responses.md)). The 2026-10-11 record failed every scenario on it with a 404 (`No route for POST /v1/responses`), because the route did not exist yet. The 2026-10-13 live run passes all 45 rows on it, the same as on `openai.chat(id)` and `createOpenAICompatible`. Multi-turn chats work with the default `store: true`: plugboard keeps the output items of recent answers and resolves the `item_reference`s the SDK sends back (#147). `providerOptions: { openai: { store: false } }` also works and sends the earlier turns in full. `openai.chat(id)` still works if you prefer Chat Completions.
 - The SDK has no model list call. `GET /v1/models` with `fetch` works.

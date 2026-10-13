@@ -14,7 +14,8 @@ The Vercel AI SDK (`ai` 7) against plugboard, through its three ways in: `create
 | `image.ts` | S5 | a red PNG as a `file` part in a multi-part message |
 | `structured.ts` | S6 | `Output.object` with a zod schema, sent as `json_schema` |
 | `models.ts` | S7 | `GET /v1/models` with `fetch` (the SDK has no model-list call) |
-| `errors.ts` | E1, E2 | a wrong key (401) and an unknown model (404), as `APICallError` |
+| `wrong_key.ts` | E1 | a wrong key (401 `invalid_api_key`), as `APICallError` |
+| `unknown_model.ts` | E2 | an unknown model (404 `model_not_found`), as `APICallError` |
 
 Each file has a `run` function that takes a client (a function from a model id to a model) and returns the observations the checks read. `run.ts` is the runner the harness starts; it prints results and writes nothing. Every scenario runs on each of the three ways in (the `variant` in the run is `compat`, `openai-chat` or `responses`), except S7, E1 and E2, which use `compat`.
 
@@ -62,12 +63,12 @@ bunx tsc --noEmit
 - **Use `Output.object`, not `generateObject`.** `generateObject` is deprecated in `ai` v7 and sends the same request.
 - **Use a `file` part for an image, not an `image` part.** The `image` content part is deprecated in `ai` v7.
 - **Tool call ids differ by model** (`call_...`, `toolu_...`, bare UUIDs). Don't parse them; send them back as they came.
-- **A wrong key raises `APICallError` with status 401** (`invalid_api_key`). An unknown model raises 404 (`model_not_found`). `maxRetries: 0` keeps a retry out of the run.
+- **A wrong key raises `APICallError` with status 401** (`invalid_api_key`, `wrong_key.ts`). An unknown model raises 404 (`model_not_found`, `unknown_model.ts`). `maxRetries: 0` keeps a retry out of the run.
 - **The SDK has no model-list call.** `GET /v1/models` with `fetch` works (S7).
 
 ## Known gaps
 
-Scripted and live (`runs/live/2026-10-13-c97ac66`, plugboard 0.25.1): none. All scenarios pass on all three ways in, including `openai(id)` on `/v1/responses`.
+Scripted and live (`runs/live/2026-10-13-c97ac66`, plugboard 0.26.0): none. All scenarios pass on all three ways in, including `openai(id)` on `/v1/responses`.
 
 The 2026-10-11 record under `runs/live/2026-10-11-3fcedc7/REPORT.md` predates this example and shows the old `openai-default` failure. Per the contract it is kept unchanged.
 
