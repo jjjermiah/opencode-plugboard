@@ -71,6 +71,10 @@ The reply must contain `pong`. Run it again after a change that could affect rel
 
 If a request hangs, stop the dev server (`pkill -f "serve --service"` also matches your real service, so kill by the PID in `$D/home/.local/state/opencode/service.json` instead), delete `$D` and start again. That costs nothing, which is the point.
 
+## Test knob: the keep-alive interval
+
+`PLUGBOARD_KEEPALIVE_INTERVAL_MS` replaces the keep-alive's 30-minute interval (src/keepalive.ts). Only a positive integer counts; anything else keeps 30 minutes. The unit tests set it, and the dev server can set it to watch the keep-alive session advance without waiting half an hour. Nothing in production sets it.
+
 ## Rules for the dev server
 
 - One person or agent changes the plugin at a time, and only that one uses the dev server. Parallel client runs are fine, edits are not.

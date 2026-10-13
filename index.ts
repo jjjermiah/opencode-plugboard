@@ -31,7 +31,8 @@ import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processK
 import { createSessionCaller } from "./src/session/caller.js"
 import { createAffinity } from "./src/session/affinity.js"
 import { installSessionHooks } from "./src/session/context.js"
-import { createHistoryPort, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
+import { createHistoryPort, createKeepAliveHost, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
+import { keepAliveIntervalMs, keepAliveLoop } from "./src/keepalive.js"
 import { createKeyStore } from "./src/keys.js"
 import { usageHandlers, UsageRpc } from "./src/rpc.js"
 import { createUsageRecorder, withUsage } from "./src/usage.js"
@@ -158,6 +159,16 @@ export default Plugin.define({
 
       // ---- a rejected generation (different options or `listen`, foreign runtime) serves nothing and installs nothing.
       if (!registration.accepted) return
+
+      // ---- the keep-alive (#310): forked into the plugin scope, never awaited. Only the generation holding the lease ticks (src/keepalive.ts).
+      if (options.keepAlive !== false)
+        yield* Effect.forkScoped(
+          keepAliveLoop({
+            host: createKeepAliveHost(ctx, createStoragePort(ctx)),
+            intervalMs: keepAliveIntervalMs(),
+            isOwner: registration.keepAliveOwner,
+          }),
+        )
 
       // ---- the usage RPC (src/rpc.ts): a synchronous registration; its handler reads the store from request time only.
       // Its error channel is `unknown` in the host, so a failed registration is logged and the plugin keeps loading.

@@ -140,6 +140,9 @@ function record(event: string, fields: LogFields | undefined): Record<string, un
 
 export const log = (event: string, fields?: LogFields): void => state().logger.info(record(event, fields))
 
+/** A line for diagnosis only. The logger's level is `info`, so these are dropped unless the level is lowered (the keep-alive, #310). */
+export const logDebug = (event: string, fields?: LogFields): void => state().logger.debug(record(event, fields))
+
 export const logError = (event: string, fields?: LogFields): void => state().logger.error(record(event, fields))
 
 /** A line for something that needs attention but did not fail a request (a budget at 80%). Info-level destination, `warn` in the level field. */
