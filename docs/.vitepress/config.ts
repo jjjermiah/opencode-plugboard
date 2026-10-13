@@ -108,6 +108,7 @@ export default defineConfig({
           { text: "SparkyFitness", link: "/self-hosted/sparkyfitness" },
           { text: "PR-Agent", link: "/self-hosted/pr-agent" },
           { text: "SiYuan", link: "/self-hosted/siyuan" },
+          { text: "Tandoor Recipes", link: "/self-hosted/tandoor" },
         ],
       },
       {
