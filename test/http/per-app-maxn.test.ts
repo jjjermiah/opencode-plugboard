@@ -42,12 +42,20 @@ describe("#270 apps.<name>.maxN: a per-app cap on n", () => {
     const refused = await server!.send(chat(KEYS.chat, { n: 2 }))
     expect(refused.status).toBe(400)
     expect(refused.json().error).toMatchObject({ code: "too_many_choices", param: "n" })
-    expect(refused.json().error.message).toContain("apps.<name>.maxN")
+    expect(refused.json().error.message).toContain("`apps.chat.maxN`")
     expect(caller.calls).toEqual([])
 
     const allowed = await server!.send(chat(KEYS.batch, { n: 2 }))
     expect(allowed.status).toBe(200)
     expect(allowed.json().choices).toHaveLength(2)
+  })
+
+  test("review NIT 7: an app with no cap of its own gets the global option named, not apps.<name>.maxN", async () => {
+    await route()
+    const reply = await server!.send(chat(KEYS.batch, { n: 5 }))
+    expect(reply.status).toBe(400)
+    expect(reply.json().error.message).toContain("option `maxN`")
+    expect(reply.json().error.message).not.toContain("apps.")
   })
 
   test("the app's cap lets n: 1 through", async () => {
@@ -61,6 +69,14 @@ describe("#270 apps.<name>.maxN: a per-app cap on n", () => {
     expect(reply.status).toBe(400)
     expect(reply.json().error).toMatchObject({ code: "too_many_choices" })
     expect(caller.calls).toEqual([])
+  })
+
+  test("review NIT 7: completions name the applied option the same way", async () => {
+    await route()
+    expect((await server!.send(completions(KEYS.chat, { n: 2 }))).json().error.message).toContain("`apps.chat.maxN`")
+    const global = await server!.send(completions(KEYS.batch, { n: 5 }))
+    expect(global.json().error.message).toContain("option `maxN`")
+    expect(global.json().error.message).not.toContain("apps.")
   })
 
   test("without an app maxN, the global cap still applies unchanged", async () => {

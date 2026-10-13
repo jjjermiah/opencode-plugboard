@@ -140,3 +140,34 @@ describe("#256 cors: Private Network Access", () => {
     expect((await server!.send(preflight(APP))).headers["access-control-allow-private-network"]).toBeUndefined()
   })
 })
+
+/** Review of #319 (SHOULD 5): the preflight and an error answer carry the list too, and the list is the whole set of names. */
+describe("#314 review: Access-Control-Expose-Headers on every allowed answer, the whole list", () => {
+  const exposed = (headers: Record<string, string | string[] | undefined>) => (String(headers["access-control-expose-headers"] ?? "")).split(", ")
+
+  test("an allowed origin's 204 preflight carries the list", async () => {
+    await route({ cors })
+    const reply = await server!.send(preflight(APP))
+    expect(reply.status).toBe(204)
+    expect(exposed(reply.headers).length).toBeGreaterThan(0)
+  })
+
+  test("an allowed origin's 401 answer (a wrong key) carries the list, so the page can read the refusal headers", async () => {
+    await route({ keys: { app: "secret" }, cors })
+    const reply = await server!.send(chat({ origin: APP, authorization: "Bearer wrong" }))
+    expect(reply.status).toBe(401)
+    expect(exposed(reply.headers)).toContain("x-plugboard-request-id")
+    expect(exposed(reply.headers)).toContain("retry-after")
+  })
+
+  test("the list is exactly the x-plugboard-* names the source sets, plus retry-after", async () => {
+    await route({ cors })
+    const reply = await server!.send(chat({ origin: APP }))
+    const names = new Set<string>()
+    for (const path of new Bun.Glob("src/**/*.ts").scanSync({ cwd: `${import.meta.dir}/../..` })) {
+      const text = await Bun.file(`${import.meta.dir}/../../${path}`).text()
+      for (const match of text.matchAll(/"(x-plugboard-[a-z-]+)"/g)) names.add(match[1]!)
+    }
+    expect(exposed(reply.headers).sort()).toEqual([...names, "retry-after"].sort())
+  })
+})

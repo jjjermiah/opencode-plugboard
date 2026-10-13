@@ -55,7 +55,7 @@ const parsePrompts = (raw: unknown): string[] | PlugError => {
   return raw as string[]
 }
 
-export function parseCompletionsRequest(body: unknown, options: PlugboardOptions): ParsedCompletions | PlugError {
+export function parseCompletionsRequest(body: unknown, options: PlugboardOptions, capOption = "maxN"): ParsedCompletions | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (body.prompt == null) return bad("prompt is required", "prompt")
@@ -71,11 +71,11 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
 
   const prompts = parsePrompts(body.prompt)
   if (isPlugError(prompts)) return prompts
-  const n = parseChoiceCount(body, options)
+  const n = parseChoiceCount(body, options, capOption)
   if (isPlugError(n)) return n
   if (prompts.length * n > options.maxN)
     return bad(
-      `${prompts.length} prompt${prompts.length === 1 ? "" : "s"} with n=${n} make ${prompts.length * n} model calls, above the limit of ${options.maxN} (option \`maxN\`, or \`apps.<name>.maxN\` for this app)`,
+      `${prompts.length} prompt${prompts.length === 1 ? "" : "s"} with n=${n} make ${prompts.length * n} model calls, above the limit of ${options.maxN} (option \`${capOption}\`)`,
       prompts.length > 1 ? "prompt" : "n",
       "too_many_choices",
     )

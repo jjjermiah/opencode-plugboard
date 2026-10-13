@@ -611,6 +611,11 @@ export function maxNFor(options: Pick<PlugboardOptions, "apps" | "maxN">, app: s
   return appPolicy(options, app)?.maxN ?? options.maxN
 }
 
+/** The option that set the cap of `app` (#319): `apps.<app>.maxN` when the app has its own, else `maxN`. Named in the 400 message. */
+export function maxNOption(options: Pick<PlugboardOptions, "apps">, app: string): string {
+  return appPolicy(options, app)?.maxN === undefined ? "maxN" : `apps.${app}.maxN`
+}
+
 /** Each app's own history limits (`apps.<name>.history`, #265), keyed by app name. Apps without the option are absent. */
 export function appHistoryLimits(options: Pick<PlugboardOptions, "apps">): Record<string, HistoryLimits> {
   return Object.fromEntries(Object.entries(options.apps).flatMap(([app, policy]) => (policy.history === undefined ? [] : [[app, policy.history] as const])))

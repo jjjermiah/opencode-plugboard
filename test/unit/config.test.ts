@@ -530,3 +530,21 @@ describe("#265 apps.<name>.history", () => {
     expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { keep: 1 } } } })).toThrow("`apps.bot.history.keep`")
   })
 })
+
+describe("#270 review NIT 8: maxN edge cases", () => {
+  test("an app maxN equal to the global one is accepted, and 4 passes while 5 would not", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxN: 4, apps: { chat: { maxN: 4 } } })
+    expect(maxNFor(options, "chat")).toBe(4)
+  })
+
+  test("apps.default.maxN caps the keyless app (no keys)", () => {
+    const options = parseOptions({ maxN: 3, apps: { default: { maxN: 2 } } })
+    expect(maxNFor(options, "default")).toBe(2)
+  })
+
+  test("an unknown app, and an inherited name such as constructor, get the global cap", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxN: 3, apps: { chat: { maxN: 1 } } })
+    expect(maxNFor(options, "nobody")).toBe(3)
+    expect(maxNFor(options, "constructor")).toBe(3)
+  })
+})
