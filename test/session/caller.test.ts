@@ -4,8 +4,9 @@
  * the backend gate comes before `session.create` (#35), and the response and the host execution
  * end separately (#33): the guard is retired, not dropped, when the response ends first.
  */
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import type { CallContext, PlugEvent, PlugRequest } from "../../src/contract.js"
+import { setLogLevel } from "../../src/log.js"
 import { createSessionCaller, type SessionCallerDeps } from "../../src/session/caller.js"
 import { ensureAppDir } from "../../src/session/history.js"
 import { REQUEST_PERMISSIONS } from "../../src/session/seeds.js"
@@ -46,6 +47,62 @@ describe("#77 the session link gets the session and its app directory", () => {
     const context: CallContext = { app: "app", signal: new AbortController().signal, onRecord: (id, directory) => void seen.push([id, directory]) }
     await drain(run.caller.stream(plugRequest(), context))
     expect(seen).toEqual([["ses_1", (await ensureAppDir("app")) as string]])
+  })
+})
+
+/** #262 the per-step debug lines: ids, counts and enums only, never prompt text, and none of them is built at `info`. */
+describe("#262 the per-step debug lines", () => {
+  afterEach(() => setLogLevel("info"))
+  const STEP_EVENTS = ["request.received", "session.created", "model.first_event", "model.finished"]
+  const stepLines = () => logs.lines.filter((line) => STEP_EVENTS.includes(line.event))
+
+  test("at info, none of the step lines is written", async () => {
+    const run = setup()
+    run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop"), bus(id).executionSucceeded()])
+    await drain(run.caller.stream(plugRequest({ model: "fast" }), run.context))
+    expect(stepLines()).toEqual([])
+  })
+
+  test("at debug, the request, its session, the first model event and the finish are each one line", async () => {
+    setLogLevel("debug")
+    const run = setup()
+    run.answer((id) => [bus(id).usage({ input: 12, output: 5 }), bus(id).textDelta("Hi"), bus(id).textDelta("!"), bus(id).stepEnded("stop"), bus(id).executionSucceeded()])
+    await drain(run.caller.stream(plugRequest({ model: "fast" }), run.context))
+    expect(logs.of("request.received")).toHaveLength(1)
+    expect(logs.of("request.received")[0]!.fields).toMatchObject({ app: "app", model: "fast" })
+    expect(logs.of("session.created")[0]!.fields).toMatchObject({ app: "app", sessionID: "ses_1" })
+    expect(logs.of("model.first_event")).toHaveLength(1)
+    expect(logs.of("model.first_event")[0]!.fields).toMatchObject({ type: "text-delta" })
+    expect(logs.of("model.finished")[0]!.fields).toMatchObject({ finish: "stop", inputTokens: "12", outputTokens: "5" })
+    expect(logs.of("model.finished")[0]!.fields.durationMs).toMatch(/^\d+$/)
+    const raw = stepLines().map((line) => line.raw).join("\n")
+    expect(raw).not.toContain("hello")
+    expect(raw).not.toContain("Hi")
+    expect(raw).not.toContain("!")
+  })
+
+  test("at debug, model.finished fires when the prompt cannot start: the outcome is the error, there is no finish reason", async () => {
+    setLogLevel("debug")
+    const run = setup()
+    run.port.script.prompt = () => Promise.reject(new Error("host refused"))
+    await drain(run.caller.stream(plugRequest({ model: "fast" }), run.context))
+    expect(logs.of("model.finished")).toHaveLength(1)
+    expect(logs.of("model.finished")[0]!.fields.outcome).toMatch(/^error:502:prompt_failed$/)
+    expect(logs.of("model.finished")[0]!.fields.finish).toBeUndefined()
+    expect(logs.of("model.finished")[0]!.fields.durationMs).toMatch(/^\d+$/)
+  })
+
+  test("at debug, model.finished fires on a cancelled request with outcome cancelled and no finish reason", async () => {
+    setLogLevel("debug")
+    const run = setup()
+    run.port.script.prompt = () => new Promise<void>(() => {})
+    const pending = drain(run.caller.stream(plugRequest({ model: "fast" }), run.context))
+    await until(() => run.port.created.length === 1)
+    run.controller.abort()
+    await pending
+    expect(logs.of("model.finished")).toHaveLength(1)
+    expect(logs.of("model.finished")[0]!.fields.outcome).toBe("cancelled")
+    expect(logs.of("model.finished")[0]!.fields.finish).toBeUndefined()
   })
 })
 
