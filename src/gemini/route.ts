@@ -17,7 +17,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { appPolicy, bodyLimits, historyTemplate } from "../config.js"
+import { appPolicy, bodyLimits, historyTemplate, requestedModel } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { listAvailableModels, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
@@ -119,11 +119,12 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app))), host.options)
     if (isPlugError(parsed)) return fail(parsed)
     const catalog = await scope.race(host.loadCatalog())
-    const ref = resolveModel(host.options, match.model, catalog, parsed.reasoningEffort)
+    const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
+    const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
     // An estimate, not the provider's count (see src/anthropic/tokens.ts). The request as the session sends it: the app's policy, persona and server tools count too (#201).
-    const counted = await scope.race(sessionRequest(host.session, app, { ...parsed.request, ref }, appPolicy(host.options, app), scope.signal))
+    const counted = await scope.race(sessionRequest(host.session, app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, app), scope.signal))
     if (isPlugError(counted)) return fail(counted)
     return sendJson(response, 200, { totalTokens: estimateTokens(counted) })
   }
@@ -146,7 +147,8 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const parsed = parseGeminiRequest(match.model, match.stream, body, host.options)
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())
-  const ref = resolveModel(host.options, match.model, catalog, parsed.reasoningEffort)
+  const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
+  const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
   // Sampling parameters the model is known to reject are dropped and reported, before any response bytes.
@@ -156,8 +158,10 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     info.dropped = sampled.dropped.join(",")
     response.setHeader(DROPPED_HEADER, info.dropped)
   }
-  const call: PlugRequest = { ...parsed.request, generation: sampled?.generation ?? generation, ref }
+  const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
   const { exchange } = parsed
+  // The answer names the model it runs on: the app's pin, else the caller's (#261).
+  exchange.model = requested.model
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason

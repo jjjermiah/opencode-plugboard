@@ -138,12 +138,12 @@ A model outside the list gets a 404:
 
 ```jsonc
 "apps": {
-  "discord-bot": { "models": ["fast"], "system": "Answer in two sentences.", "tools": false, "maxOutputTokens": 400, "sampling": { "temperature": 0.2 } },
+  "discord-bot": { "models": ["fast"], "model": "fast", "system": "Answer in two sentences.", "tools": false, "maxOutputTokens": 400, "sampling": { "temperature": 0.2 } },
   "coding": { "models": ["anthropic/*"], "maxTools": 16 }
 }
 ```
 
-The `discord-bot` app can only use `fast`, gets the system prompt added, and has its tools removed. Its answers stop at 400 output tokens, and a request that sends no `temperature` gets `0.2`. The request still succeeds, and the response says what changed:
+The `discord-bot` app always runs on `fast`, whatever model the bot sends (`model` pins it), gets the system prompt added, and has its tools removed. Its answers stop at 400 output tokens, and a request that sends no `temperature` gets `0.2`. The request still succeeds, and the response says what changed:
 
 ```
 x-plugboard-policy: tools-stripped

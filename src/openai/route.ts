@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, requestTimeoutOption, type Endpoint, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, requestTimeoutOption, requestedModel, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import {
@@ -384,7 +384,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const parsed = parseChatRequest(body, { ...host.options, maxN: maxNFor(host.options, auth.app) }, maxNOption(host.options, auth.app))
     if (isPlugError(parsed)) return fail(response, parsed)
     const catalog = await scope.race(host.loadCatalog())
-    const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
+    const requested = requestedModel(host.options, auth.app, parsed.request.model, parsed.reasoningEffort)
+    const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(response, ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
     // Sampling parameters the model is known to reject are dropped and reported (header and log), before any response bytes.
@@ -395,9 +396,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       response.setHeader(DROPPED_HEADER, info.dropped)
       metrics?.dropped(sampled.dropped)
     }
-    const call: PlugRequest = { ...parsed.request, generation: sampled?.generation ?? generation, ref }
+    const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, call)
     const { exchange } = parsed
+    // The answer names the model it runs on: the app's pin, else the caller's (#261).
+    exchange.model = requested.model
     // n > 1: one independent call per choice, merged (src/openai/fanout.ts).
     if (parsed.n > 1)
       return serveChoices(host, { app: auth.app, calls: Array.from({ length: parsed.n }, () => call), response, scope, info, codec: chatCodec(exchange) })

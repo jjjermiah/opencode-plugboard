@@ -36,6 +36,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/http/per-app-sampling.test.ts"],
   },
   {
+    id: "P261-app-pin-ignored",
+    invariant: "#261",
+    file: "src/config.ts",
+    find: "  return pinned === undefined ? { model, effort } : { model: pinned, effort: undefined }",
+    replace: "  return { model, effort }",
+    tests: ["test/http/per-app-model.test.ts"],
+  },
+  {
+    id: "P261-pin-outside-global-models-allowed",
+    invariant: "#261",
+    file: "src/config.ts",
+    find: "  if (!allowedBy(context.models, ref)) throw",
+    replace: "  if (false) throw",
+    tests: ["test/http/per-app-model.test.ts"],
+  },
+  {
     id: "P263-count-tokens-capped",
     invariant: "#263",
     file: "src/anthropic/route.ts",

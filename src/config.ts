@@ -201,6 +201,11 @@ export interface AppPolicy {
    * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
    */
   readonly sampling?: PlugGeneration
+  /**
+   * The one model every request of this app runs on (option `apps.<name>.model`, since 0.29.0, #261): a canonical id or an alias.
+   * The caller's `model` is ignored when it is set. Checked at load against the global `models` and the app's `models`.
+   */
+  readonly model?: string
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -437,7 +442,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model"])
 
 /** Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set. Unset fields fall back to the global `history`. */
 function parseAppHistory(raw: unknown, at: string): HistoryLimits {
@@ -484,6 +489,24 @@ function parseServerTools(value: unknown, at: string): string[] {
 const SYSTEM_MODES: ReadonlySet<string> = new Set(["prepend", "append", "replace"])
 const MODEL_IDS: ReadonlySet<string> = new Set(["canonical", "slugs", "both"])
 
+/**
+ * Option `apps.<name>.model` (#261): one canonical id (`provider/model[#variant]`) or an alias name, never a `provider/*` pattern.
+ * A canonical id must pass the global `models` and, when the app has `models`, the app's own list (an alias must be listed there by name).
+ */
+function parsePinnedModel(raw: unknown, at: string, appModels: ReadonlyArray<string> | undefined, context: { aliases: Readonly<Record<string, string>>; models: ReadonlyArray<string> }): string {
+  if (typeof raw !== "string" || raw.includes("*") || !(MODEL_PATTERN.test(raw) || Object.hasOwn(context.aliases, raw)))
+    throw new Error(`plugboard option \`${at}.model\` must be \`provider/model\`, \`provider/model#variant\` or an alias name (a \`provider/*\` pattern cannot pin one model)`)
+  if (Object.hasOwn(context.aliases, raw)) {
+    if (appModels !== undefined && !appModels.includes(raw)) throw new Error(`plugboard option \`${at}.model\` alias \`${raw}\` must be listed in \`${at}.models\``)
+    return raw
+  }
+  const ref = parseModelRef(raw)!
+  if (!allowedBy(context.models, ref)) throw new Error(`plugboard option \`${at}.model\` \`${raw}\` is not allowed by the \`models\` option`)
+  if (appModels !== undefined && !appModels.includes(raw) && !allowedBy(appModels, ref))
+    throw new Error(`plugboard option \`${at}.model\` \`${raw}\` must be listed in \`${at}.models\``)
+  return raw
+}
+
 const SAMPLING_KNOWN = ["temperature", "topP", "maxTokens", "stop", "presencePenalty", "frequencyPenalty"] as const
 
 /**
@@ -522,7 +545,7 @@ function parseSampling(raw: unknown, at: string): PlugGeneration {
 /** Validates `apps` (the `key` field was merged into `keys` already) into per-app policies. */
 function parseApps(
   raw: unknown,
-  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; maxTools: number; maxN: number },
+  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; models: ReadonlyArray<string>; maxTools: number; maxN: number },
 ): Record<string, AppPolicy> {
   const entries: Array<[string, AppPolicy]> = []
   for (const [app, value] of Object.entries(isRecord(raw) ? raw : {})) {
@@ -571,6 +594,7 @@ function parseApps(
     const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
     const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
     const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
+    const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, value.models as string[] | undefined, context)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -588,9 +612,10 @@ function parseApps(
       ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
       ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
       ...(sampling === undefined ? {} : { sampling }),
+      ...(model === undefined ? {} : { model }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -715,6 +740,15 @@ export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string):
  */
 export function requestTimeoutFor(options: Pick<PlugboardOptions, "apps" | "requestTimeoutMs">, app: string | undefined): number {
   return (app === undefined ? undefined : appPolicy(options, app)?.requestTimeoutMs) ?? options.requestTimeoutMs
+}
+
+/**
+ * The model and effort a request of `app` resolves (#261): the app's pinned `model` with no caller effort (the pin names the variant),
+ * else the caller's `model` and `reasoning_effort`.
+ */
+export function requestedModel(options: Pick<PlugboardOptions, "apps">, app: string, model: string, effort: string | undefined): { model: string; effort: string | undefined } {
+  const pinned = appPolicy(options, app)?.model
+  return pinned === undefined ? { model, effort } : { model: pinned, effort: undefined }
 }
 
 /** The option that set `requestTimeoutFor` for `app`, named in the 504 message (#257): the app's own, else the global one. */
@@ -948,7 +982,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
   const maxN = positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64)
-  const apps = parseApps(input.apps, { keys, aliases, maxTools, maxN })
+  const apps = parseApps(input.apps, { keys, aliases, models: models as string[], maxTools, maxN })
 
   const remoteImages = parseRemoteImages(input.remoteImages)
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")

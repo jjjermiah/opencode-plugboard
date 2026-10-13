@@ -12,7 +12,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate } from "../config.js"
+import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate, requestedModel } from "../config.js"
 import { liveOptions } from "../runtime.js"
 import { bodyUserId, noteEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
@@ -131,12 +131,13 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
           : parsed,
       )
     const catalog = await scope.race(host.loadCatalog())
-    const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
+    const requested = requestedModel(host.options, auth.app, parsed.request.model, parsed.reasoningEffort)
+    const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
     // The request as the session sends it: the app's policy, persona and server tools are counted too (#201).
     if (path === COUNT_TOKENS) {
-      const counted = await scope.race(sessionRequest(host.session, auth.app, { ...parsed.request, ref }, appPolicy(host.options, auth.app), scope.signal))
+      const counted = await scope.race(sessionRequest(host.session, auth.app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, auth.app), scope.signal))
       if (isPlugError(counted)) return fail(counted)
       return sendJson(response, 200, { input_tokens: estimateTokens(counted) })
     }
@@ -149,9 +150,11 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
       info.dropped = dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
     }
-    const model: PlugRequest = { ...parsed.request, generation: sampled?.generation ?? generation, ref }
+    const model: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, model)
     const { exchange } = parsed
+    // The answer names the model it runs on: the app's pin, else the caller's (#261).
+    exchange.model = requested.model
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.
     if (scope.signal.aborted) throw scope.signal.reason
