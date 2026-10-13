@@ -162,6 +162,10 @@ jobs:
       # stop conflicting on this list).
       - name: Scripted runs of every example
         run: bun examples/_harness/run.ts all --target scripted
+      - name: Type check the OpenAI JS example and the tool bot
+        run: |
+          (cd examples/openai-js && bunx tsc --noEmit)
+          (cd examples/tool-bot && bunx tsc --noEmit)
       - name: The committed scripted runs match a fresh run
         run: |
           shopt -s nullglob
