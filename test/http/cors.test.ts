@@ -105,6 +105,30 @@ describe("#256 cors: an allowed origin's actual answer", () => {
   })
 })
 
+describe("#314 cors: the plugboard response headers are exposed to the browser", () => {
+  test("an allowed origin's actual answer lists the x-plugboard-* headers and retry-after in Access-Control-Expose-Headers", async () => {
+    await route({ cors })
+    const reply = await server!.send(chat({ origin: APP }))
+    const exposed = (reply.headers["access-control-expose-headers"] ?? "").split(", ")
+    for (const name of ["x-plugboard-request-id", "x-plugboard-model", "x-plugboard-session", "x-plugboard-usage", "retry-after"])
+      expect(exposed).toContain(name)
+    // The header the answer really carries is one of the exposed ones.
+    expect(reply.headers["x-plugboard-request-id"]).toBeDefined()
+  })
+
+  test("an origin off the list gets no Access-Control-Expose-Headers either", async () => {
+    await route({ cors })
+    const reply = await server!.send(preflight("https://evil.example"))
+    expect(reply.headers["access-control-expose-headers"]).toBeUndefined()
+  })
+
+  test("with cors absent, no CORS header is sent (the answer is unchanged)", async () => {
+    await route({})
+    const reply = await server!.send(chat({}))
+    expect(reply.headers["access-control-expose-headers"]).toBeUndefined()
+  })
+})
+
 describe("#256 cors: Private Network Access", () => {
   test("the header is sent only when allowPrivateNetwork is on and the preflight asks for it", async () => {
     const asks = { "access-control-request-private-network": "true" }

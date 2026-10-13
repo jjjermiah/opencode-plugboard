@@ -37,6 +37,7 @@ import {
   checkJsonContentType,
   checkHost,
   checkOrigin,
+  CORS_EXPOSED_HEADERS,
   corsOrigin,
   finishRequest,
   readJsonBody,
@@ -207,6 +208,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const allowed = corsOrigin(request, host.options)
       if (allowed !== undefined) {
         response.setHeader("access-control-allow-origin", allowed)
+        response.setHeader("access-control-expose-headers", CORS_EXPOSED_HEADERS)
         if (request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined) {
           const hostError = checkHost(request, host.options)
           if (hostError) return fail(response, hostError)
