@@ -65,6 +65,8 @@ export interface PlugboardOptions {
   readonly logRequests: boolean
   /** Serve `GET /plugboard/metrics` (Prometheus text). Off by default; same authentication as the model routes. */
   readonly metrics: boolean
+  /** Option `reasoningOutput` (since 0.36.0): return the model's reasoning on Chat Completions (`reasoning_content` and `reasoning`) and Responses (`reasoning` items). Off by default: reasoning is dropped, as before. */
+  readonly reasoningOutput: boolean
   /** Ids listed by `/v1/models`: canonical, slugs (`provider--model__variant`) or both. See `toSlug` in `src/models.ts`. */
   readonly modelIds: ModelIds
   /** Concurrency caps and requests per minute per app (see `src/limits.ts`). Absent: unlimited. */
@@ -197,6 +199,11 @@ export interface AppPolicy {
    */
   readonly maxOutputTokens?: number
   /**
+   * Option `apps.<name>.reasoningOutput` (since 0.36.0): this app's reasoning switch. Absent: the global `reasoningOutput`. Look the
+   * effective value up with `reasoningOutputFor`.
+   */
+  readonly reasoningOutput?: boolean
+  /**
    * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.32.0, #264): a field fills the request only where the caller
    * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
    */
@@ -298,7 +305,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests", "reasoningOutput"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -447,7 +454,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader", "reasoningOutput"])
 
 /**
  * Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hidden` (since 0.29.0, #337).
@@ -624,6 +631,8 @@ function parseApps(
     const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
     const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, value.models as string[] | undefined, context)
     const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
+    if (value.reasoningOutput !== undefined && typeof value.reasoningOutput !== "boolean") throw new Error(`plugboard option \`apps.${app}.reasoningOutput\` must be a boolean`)
+    const reasoningOutput = value.reasoningOutput as boolean | undefined
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -643,9 +652,10 @@ function parseApps(
       ...(sampling === undefined ? {} : { sampling }),
       ...(model === undefined ? {} : { model }),
       ...(userHeader === undefined ? {} : { userHeader }),
+      ...(reasoningOutput === undefined ? {} : { reasoningOutput }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined || reasoningOutput !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -762,6 +772,11 @@ export function appHistoryLimits(options: Pick<PlugboardOptions, "apps">): Recor
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
 export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string): AppPolicy | undefined {
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
+}
+
+/** Whether reasoning is returned for `app` (option `reasoningOutput`, per app or global, since 0.36.0). A per-app `false` beats a global `true`. */
+export function reasoningOutputFor(options: Pick<PlugboardOptions, "apps" | "reasoningOutput">, app: string): boolean {
+  return appPolicy(options, app)?.reasoningOutput ?? options.reasoningOutput
 }
 
 /**
@@ -1024,6 +1039,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     throw new Error("plugboard option `logLevel` must be `debug`, `info`, `warn` or `error`")
   if (input.logRequests !== undefined && typeof input.logRequests !== "boolean") throw new Error("plugboard option `logRequests` must be a boolean")
   if (input.metrics !== undefined && typeof input.metrics !== "boolean") throw new Error("plugboard option `metrics` must be a boolean")
+  if (input.reasoningOutput !== undefined && typeof input.reasoningOutput !== "boolean") throw new Error("plugboard option `reasoningOutput` must be a boolean")
   if (input.modelIds !== undefined && (typeof input.modelIds !== "string" || !MODEL_IDS.has(input.modelIds)))
     throw new Error("plugboard option `modelIds` must be `canonical`, `slugs` or `both`")
 
@@ -1080,6 +1096,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     logLevel: (input.logLevel as LogLevel | undefined) ?? "info",
     logRequests: input.logRequests !== false,
     metrics: input.metrics === true,
+    reasoningOutput: input.reasoningOutput === true,
     modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
     ...(limits === undefined ? {} : { limits }),
     ...(cache ? { cache } : {}),

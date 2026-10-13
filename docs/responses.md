@@ -19,7 +19,7 @@ console.log(r.output_text)
 | Request field | How it is handled |
 | --- | --- |
 | `model` | Same as Chat Completions: an alias or `provider/model[#variant]`. |
-| `input` | A string, or a list of items: messages (`user`, `assistant`, `system`, `developer`) with `input_text`, `output_text` and `input_image` content; `input_file` with `file_data` or `file_url`; `function_call` and `function_call_output` for tool round trips. `reasoning` items are accepted and dropped. |
+| `input` | A string, or a list of items: messages (`user`, `assistant`, `system`, `developer`) with `input_text`, `output_text` and `input_image` content; `input_file` with `file_data` or `file_url`; `function_call` and `function_call_output` for tool round trips. `reasoning` input items are accepted and dropped. |
 | `instructions` | The system prompt, ahead of any `system` or `developer` items. |
 | `tools` | `function` tools. `parameters: null` means no arguments. `strict` is accepted and ignored. |
 | `tool_choice` | `auto`, `none`, `required`, or `{"type":"function","name":"..."}`. |
@@ -45,7 +45,7 @@ Other invalid input gets a plain 400 `invalid_request_error`, for example a `fun
 
 ## Output
 
-A response object with `output` items in order: a `message` item (`msg_...`, one `output_text` part) when the model wrote text, and one `function_call` item (`fc_...`, with `call_id`, `name`, `arguments`) per tool call. `status` is `completed`, or `incomplete` with `incomplete_details.reason` `max_output_tokens` or `content_filter`. `usage` has `input_tokens` (including cache reads), `output_tokens` (including reasoning), `total_tokens` and the `*_details` objects. The `x-plugboard-session` header works as on Chat Completions. Reasoning text is not returned.
+A response object with `output` items in order: a `message` item (`msg_...`, one `output_text` part) when the model wrote text, and one `function_call` item (`fc_...`, with `call_id`, `name`, `arguments`) per tool call. `status` is `completed`, or `incomplete` with `incomplete_details.reason` `max_output_tokens` or `content_filter`. `usage` has `input_tokens` (including cache reads), `output_tokens` (including reasoning), `total_tokens` and the `*_details` objects. The `x-plugboard-session` header works as on Chat Completions. Reasoning text comes back only when the server sets `reasoningOutput` (since 0.36.0, per app or global): then a `reasoning` item comes before the message, with one `summary_text` part holding the provider's reasoning text itself, not a generated summary. The item appears whether or not the request set `reasoning.summary`. See [Reasoning output](configuration.md#reasoning-output).
 
 Errors use the same body as Chat Completions: `{"error": {"message", "type", "param", "code"}}` with the same status codes. In a stream, nothing is sent until there is output, so a failure before the first token is a real HTTP error. A failure after that ends the stream with a `response.failed` event carrying `error.code` and `error.message`.
 

@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Reasoning output, opt-in** ([#375](https://github.com/jjjermiah/opencode-plugboard/issues/375), since 0.36.0). Plugboard dropped the model's reasoning on Chat Completions and Responses. Option `reasoningOutput: true` returns it: `reasoning_content` and `reasoning` on Chat Completions deltas and messages (both, because clients split between the two names), and a `reasoning` output item with a `summary_text` part on Responses. Off by default, so existing clients see the same bytes. Per app, `apps.<name>.reasoningOutput` overrides the global switch in either direction. Structured output never carries reasoning, because its content is the answer. Checked with the option on against a scripted plugboard: openai-node and openai-python both read Chat Completions and Responses bodies and streams without error. Sending both chat names doubles the reasoning bytes, and a client that concatenates both shows the text twice; the docs say so.
 
 ## [0.35.0] - 2026-10-13: Know Every Model
 
@@ -95,6 +97,7 @@ Refs #373
 ### Added
 
 - **Go, .NET, Langfuse and smolagents examples run in CI against the scripted fake** ([#362](https://github.com/jjjermiah/opencode-plugboard/issues/362)). Until now these four clients were checked only by hand against the dev server. Each example now has a runner, so `run.ts all --target scripted` covers it and CI fails on a stale or non-deterministic run. The Go and .NET runners print raw observations, and a shared relay applies the same checks as the Python and TypeScript runners. The `examples` job installs Go 1.27.2 and the .NET SDK 8.0.423 for them. go-openai and openai-dotnet pass text, stream and a tool round trip. Langfuse passes the same three. smolagents passes text. Its stream and tool round trip are recorded as gaps, not passes: smolagents' stream does not return the finish reason, and the scripted fake answers a tool turn only after a `tool`-role message.
+
 - **Signed reasoning replays to Anthropic models across turns** ([#374](https://github.com/jjjermiah/opencode-plugboard/issues/374), since 0.34.0). A client's `thinking` block with its `signature`, and each `redacted_thinking` block, now reach an `anthropic` model in the history. Until now plugboard dropped every thinking block, so the model lost its earlier reasoning on the next turn. Why: with the reasoning in context, the model keeps thinking across turns. Measured on `claude-opus-4-5`: turn 2 thought again only when the replayed block was sent. Dropping the block does not make Anthropic reject the request, since plugboard's host sends the interleaved-thinking beta. A forged signature gets a provider 400, so the provider checks it. Unsigned thinking is still dropped, and every other model still gets the history without reasoning, because a signature is only valid for the provider that issued it. Plugboard does not return `redacted_thinking` yet, so only a block the client got from elsewhere replays.
 
 ### Changed

@@ -24,7 +24,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, requestTimeoutFor, requestTimeoutOption, requestedModel, type Endpoint, type PlugboardOptions } from "../config.js"
+import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, reasoningOutputFor, requestTimeoutFor, requestTimeoutOption, requestedModel, type Endpoint, type PlugboardOptions } from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import { PACKAGE_VERSION } from "../version.js"
@@ -73,7 +73,7 @@ import { reportAffinity } from "../session/affinity.js"
 import type { SessionPromptDeps } from "../session/caller.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
-import { STRUCTURED_FALLBACK_HEADER, collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
+import { STRUCTURED_FALLBACK_HEADER, collectCompletion, encodeError, encodeModelList, streamCompletion, type OpenAiExchange } from "./response.js"
 import { appGeneration, dropRejected } from "./sampling.js"
 
 /** What the serving generation supplies per request. */
@@ -404,7 +404,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
     const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, call)
-    const { exchange } = parsed
+    // Per app, then global (`reasoningOutputFor`): the decoder does not know the app.
+    const exchange: OpenAiExchange = { ...parsed.exchange, reasoningOutput: reasoningOutputFor(host.options, auth.app) }
     // The answer names the model it runs on: the app's pin, else the caller's (#261).
     exchange.model = requested.model
     // n > 1: one independent call per choice, merged (src/openai/fanout.ts).

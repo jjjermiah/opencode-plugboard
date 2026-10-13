@@ -2,7 +2,8 @@
  * Neutral results -> OpenAI wire objects: Chat Completions as one JSON body or SSE chunks, the
  * `/v1/models` list, and error bodies.
  *
- * Reasoning deltas are dropped: Chat Completions has no standard field for them.
+ * Reasoning deltas are dropped unless the exchange asks for them (option `reasoningOutput`): Chat
+ * Completions has no standard field, so they go out as `reasoning_content` and `reasoning` (`reasoningFields`).
  */
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
@@ -38,6 +39,8 @@ export interface OpenAiExchange {
   readonly stop?: ReadonlyArray<string>
   /** The caller's `json_schema`, checked against a text answer when the model skipped the respond call (`textFallback`). */
   readonly structuredSchema?: Readonly<Record<string, unknown>>
+  /** Option `reasoningOutput` (since 0.36.0): reasoning text is returned, not dropped. Never in structured output. */
+  readonly reasoningOutput?: boolean
 }
 
 /** Set on a complete answer that came from the final text, not the respond call (`textFallback`). */
@@ -318,11 +321,19 @@ export function unfence(text: string): string {
   }
 }
 
+/**
+ * The reasoning text of a delta or message under both names in use: `reasoning_content` (DeepSeek's original, read by
+ * LiteLLM and the Vercel AI SDK) and `reasoning` (vLLM, OpenRouter). vLLM's own docs warn that a client reading one
+ * name silently gets nothing, so both carry the same text.
+ */
+const reasoningFields = (text: string) => ({ reasoning_content: text, reasoning: text })
+
 const newId = () => `chatcmpl-${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`
 const now = () => Math.floor(Date.now() / 1000)
 
 export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchange: OpenAiExchange): Promise<CollectedChoice> {
   let text = ""
+  let reasoning = ""
   const calls: ToolCall[] = []
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
@@ -330,6 +341,7 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
 
   for await (const event of events) {
     if (event.type === "text-delta") text += event.text
+    else if (event.type === "reasoning-delta") reasoning += event.text
     else if (event.type === "tool-call") calls.push(event)
     else if (event.type === "finish") {
       usage = event.usage ?? usage
@@ -369,6 +381,7 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
         : null,
     refusal: null,
   }
+  if (exchange.reasoningOutput && exchange.structuredTool === undefined && reasoning.length > 0) Object.assign(message, reasoningFields(reasoning))
   if (toolCalls.length > 0)
     message.tool_calls = toolCalls.map((call) => ({
       id: call.id,
@@ -470,7 +483,17 @@ export async function streamCompletion(
       else finish = event.reason
       continue
     }
-    if (event.type === "reasoning-delta") continue
+    if (event.type === "reasoning-delta") {
+      // Not in structured output: its content is the answer's arguments. Like a tool call, reasoning cannot be a stop sequence.
+      if (exchange.reasoningOutput && exchange.structuredTool === undefined && event.text.length > 0) {
+        flush()
+        const rest = holdback?.release() ?? ""
+        start()
+        if (rest.length > 0) chunk({ content: rest })
+        chunk(reasoningFields(event.text))
+      }
+      continue
+    }
     if (exchange.structuredTool !== undefined) {
       // Structured mode: only the first answer is content; prose and other tool calls are
       // suppressed, except the caller's own tools when they are offered.

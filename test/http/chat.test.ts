@@ -296,3 +296,91 @@ describe("client disconnects", () => {
     expect(logs.of("request")[0]!.fields.outcome).toBe("disconnected")
   })
 })
+
+describe("reasoningOutput (since 0.36.0): reasoning on the wire", () => {
+  test("JSON: the message carries reasoning_content and reasoning when the option is on", async () => {
+    await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")], { reasoningOutput: true })
+    const reply = await server!.send(chat())
+    expect(reply.json().choices[0].message).toMatchObject({ content: "Hi", reasoning_content: "hm", reasoning: "hm" })
+  })
+
+  test("JSON: the default drops reasoning, the message has no reasoning field", async () => {
+    await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")])
+    const reply = await server!.send(chat())
+    expect(reply.json().choices[0].message).not.toHaveProperty("reasoning_content")
+    expect(reply.json().choices[0].message).not.toHaveProperty("reasoning")
+  })
+
+  test("SSE: reasoning comes as deltas under both names before the content", async () => {
+    await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")], { reasoningOutput: true })
+    const stream = await server!.open(streamed())
+    const text = await stream.ended
+    expect(sseData(text).flatMap((frame) => frame.choices?.map((choice: any) => choice.delta) ?? [])).toEqual([
+      { role: "assistant", content: "" },
+      { reasoning_content: "hm", reasoning: "hm" },
+      { content: "Hi" },
+      {},
+    ])
+    expect(text.endsWith("data: [DONE]\n\n")).toBe(true)
+  })
+})
+
+describe("reasoningOutput (since 0.36.0): tool calls, stop sequences and per-app overrides on Chat Completions", () => {
+  const contentOf = (frames: any[]) => frames.flatMap((frame) => frame.choices ?? []).map((choice: any) => choice.delta.content ?? "").join("")
+  const deltasOf = (frames: any[]) => frames.flatMap((frame) => frame.choices ?? []).map((choice: any) => choice.delta)
+
+  test("SSE: reasoning then a tool call: the reasoning deltas come first, the call and tool_calls finish follow", async () => {
+    await route([ev.reasoning("need the file"), ev.call("c1", "read", { path: "a" }), ev.finish("tool-calls")], { reasoningOutput: true })
+    const stream = await server!.open(streamed())
+    const text = await stream.ended
+    const deltas = deltasOf(sseData(text))
+    const reasoning = deltas.findIndex((delta: any) => delta.reasoning_content === "need the file")
+    const call = deltas.findIndex((delta: any) => delta.tool_calls !== undefined)
+    expect(deltas[reasoning]).toEqual({ reasoning_content: "need the file", reasoning: "need the file" })
+    expect(reasoning).toBeLessThan(call)
+    expect(deltas[call].tool_calls[0]).toMatchObject({ id: "c1", function: { name: "read", arguments: '{"path":"a"}' } })
+    expect(sseData(text).flatMap((frame) => frame.choices ?? []).at(-1).finish_reason).toBe("tool_calls")
+  })
+
+  test("SSE: reasoning then a stop sequence in the text: the sequence is cut, the reasoning stays", async () => {
+    // A stop sequence is cut only where the text ends with it (src/stop.ts).
+    await route([ev.reasoning("r"), ev.text("done END"), ev.finish("stop")], { reasoningOutput: true })
+    const text = await (await server!.open(streamed({ stop: ["END"] }))).ended
+    expect(contentOf(sseData(text))).toBe("done ")
+    expect(deltasOf(sseData(text))).toContainEqual({ reasoning_content: "r", reasoning: "r" })
+  })
+
+  test("SSE: text held back for a possible stop sequence is released before reasoning arrives", async () => {
+    await route([ev.text("ab E"), ev.reasoning("r"), ev.finish("stop")], { reasoningOutput: true })
+    const text = await (await server!.open(streamed({ stop: ["END"] }))).ended
+    const deltas = deltasOf(sseData(text))
+    expect(contentOf(sseData(text))).toBe("ab E")
+    const reasoning = deltas.findIndex((delta: any) => delta.reasoning_content === "r")
+    expect(reasoning).toBeGreaterThan(-1)
+    // The held-back tail is flushed before the reasoning delta, so the content before it is all of the text so far.
+    expect(deltas.slice(0, reasoning).map((delta: any) => delta.content ?? "").join("")).toBe("ab E")
+  })
+
+  test("per app: apps.<name>.reasoningOutput false drops reasoning while the global switch is on", async () => {
+    await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")], {
+      reasoningOutput: true,
+      keys: { quiet: "k-quiet", loud: "k-loud" },
+      apps: { quiet: { reasoningOutput: false } },
+    })
+    const quiet = await server!.send({ ...chat(), headers: { authorization: "Bearer k-quiet" } })
+    expect(quiet.json().choices[0].message).not.toHaveProperty("reasoning_content")
+    const loud = await server!.send({ ...chat(), headers: { authorization: "Bearer k-loud" } })
+    expect(loud.json().choices[0].message).toMatchObject({ reasoning_content: "hm", reasoning: "hm" })
+  })
+
+  test("per app: apps.<name>.reasoningOutput true returns reasoning while the global switch is off", async () => {
+    await route([ev.reasoning("hm"), ev.text("Hi"), ev.finish("stop")], {
+      keys: { quiet: "k-quiet", loud: "k-loud" },
+      apps: { loud: { reasoningOutput: true } },
+    })
+    const quiet = await server!.send({ ...chat(), headers: { authorization: "Bearer k-quiet" } })
+    expect(quiet.json().choices[0].message).not.toHaveProperty("reasoning_content")
+    const loud = await server!.send({ ...chat(), headers: { authorization: "Bearer k-loud" } })
+    expect(loud.json().choices[0].message).toMatchObject({ reasoning_content: "hm", reasoning: "hm" })
+  })
+})
