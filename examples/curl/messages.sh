@@ -17,9 +17,9 @@ post() { # $1 = JSON body
 
 s1() { # plain chat, non-stream
   local out
-  # region snippet
+  # region snippet-s1
   out=$(post "$(jq -cn --arg m "$1" '{model: $m, max_tokens: 1024, messages: [{role: "user", content: "Reply with exactly: pong"}]}')")
-  # endregion snippet
+  # endregion snippet-s1
   jq -c '{text: ([.content[] | select(.type == "text") | .text] | join("")), finish_reason: (if .stop_reason == "end_turn" then "stop" else .stop_reason end), usage: .usage}' <<<"$out"
 }
 
@@ -27,7 +27,7 @@ s2() { # tool use, then the tool_result turn
   local model=$1 tools out1 out2 use_id args
   # Anthropic takes the same tool as name, description and input_schema.
   tools=$(jq -c '[{name: .function.name, description: .function.description, input_schema: .function.parameters}]' "$SHARED/get_weather.tool.json")
-  # region snippet
+  # region snippet-s2
   out1=$(post "$(jq -cn --arg m "$model" --argjson tools "$tools" \
     '{model: $m, max_tokens: 1024, tools: $tools, messages: [{role: "user", content: "What is the weather in Paris? Use the tool."}]}')")
   use_id=$(jq -r '[.content[] | select(.type == "tool_use") | .id][0] // ""' <<<"$out1")
@@ -38,7 +38,7 @@ s2() { # tool use, then the tool_result turn
       {role: "user", content: "What is the weather in Paris? Use the tool."},
       {role: "assistant", content: $turn1},
       {role: "user", content: [{type: "tool_result", tool_use_id: $id, content: $result}]}]}')")
-  # endregion snippet
+  # endregion snippet-s2
   jq -cn --argjson one "$out1" --argjson two "$out2" --argjson args "$args" --arg id "$use_id" '{
     finish_reason: (if $one.stop_reason == "tool_use" then "tool_calls" else $one.stop_reason end),
     tool_name: ([$one.content[] | select(.type == "tool_use") | .name][0] // ""),
@@ -51,10 +51,10 @@ s2() { # tool use, then the tool_result turn
 
 s3() { # streaming text: content_block_delta frames, usage on message_delta
   local out events
-  # region snippet
+  # region snippet-s3
   out=$(curl -sS -N "$PLUGBOARD_BASE_URL/messages" -H "x-api-key: $PLUGBOARD_KEY" -H "anthropic-version: 2023-06-01" -H "Content-Type: application/json" \
     -d "$(jq -cn --arg m "$1" '{model: $m, max_tokens: 1024, stream: true, messages: [{role: "user", content: "Reply with exactly: pong"}]}')")
-  # endregion snippet
+  # endregion snippet-s3
   events=$(grep '^data: ' <<<"$out" | sed 's/^data: //' || true)
   jq -cn --arg text "$(jq -rs '[.[] | select(.type == "content_block_delta" and .delta.type == "text_delta") | .delta.text] | join("")' <<<"$events")" \
     --arg finish "$(jq -rs '[.[] | select(.type == "message_delta") | .delta.stop_reason] | last // ""' <<<"$events" | sed 's/^end_turn$/stop/')" \

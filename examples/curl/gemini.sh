@@ -19,16 +19,16 @@ post() { # $1 = model id, $2 = JSON body; the model goes in the path, percent-en
 
 s1() { # plain chat
   local out
-  # region snippet
+  # region snippet-s1
   out=$(post "$1" '{"contents": [{"parts": [{"text": "Reply with exactly: pong"}]}]}')
-  # endregion snippet
+  # endregion snippet-s1
   jq -c '{text: ([.candidates[0].content.parts[]?.text] | join("")), finish_reason: (if .candidates[0].finishReason == "STOP" then "stop" else (.candidates[0].finishReason // "") end), usage: .usageMetadata}' <<<"$out"
 }
 
 s2() { # function call, then the functionResponse turn
   local model=$1 decls out1 out2 call args
   decls=$(jq -c '{functionDeclarations: [{name: .function.name, description: .function.description, parameters: .function.parameters}]}' "$SHARED/get_weather.tool.json")
-  # region snippet
+  # region snippet-s2
   out1=$(post "$model" "$(jq -cn --argjson tools "[$decls]" '{tools: $tools, contents: [{role: "user", parts: [{text: "What is the weather in Paris? Use the tool."}]}]}')")
   call=$(jq -c '[.candidates[0].content.parts[]? | select(.functionCall) | .functionCall][0] // {}' <<<"$out1")
   out2=$(post "$model" "$(jq -cn --argjson tools "[$decls]" --argjson turn1 "$(jq -c '.candidates[0].content' <<<"$out1")" \
@@ -37,7 +37,7 @@ s2() { # function call, then the functionResponse turn
       {role: "user", parts: [{text: "What is the weather in Paris? Use the tool."}]},
       $turn1,
       {role: "user", parts: [{functionResponse: {name: $name, response: $result}}]}]}')")
-  # endregion snippet
+  # endregion snippet-s2
   jq -cn --argjson one "$out1" --argjson two "$out2" --argjson call "$call" '{
     finish_reason: (if ($call | has("name")) then "tool_calls" else ($one.candidates[0].finishReason // "") end),
     tool_name: ($call.name // ""),
@@ -50,11 +50,11 @@ s2() { # function call, then the functionResponse turn
 
 s3() { # streamed text: each SSE frame is a GenerateContentResponse
   local out frames
-  # region snippet
+  # region snippet-s3
   out=$(curl -sS -N "$ORIGIN/v1beta/models/$(jq -rn --arg m "$1" '$m | @uri'):streamGenerateContent?alt=sse" \
     -H "x-goog-api-key: $PLUGBOARD_KEY" -H "Content-Type: application/json" \
     -d '{"contents": [{"parts": [{"text": "Reply with exactly: pong"}]}]}')
-  # endregion snippet
+  # endregion snippet-s3
   frames=$(grep '^data: ' <<<"$out" | sed 's/^data: //' || true)
   jq -cn --arg text "$(jq -rs '[.[] | .candidates[0].content.parts[]?.text] | join("")' <<<"$frames")" \
     --arg finish "$(jq -rs '[.[] | .candidates[0].finishReason // empty] | last // ""' <<<"$frames" | sed 's/^STOP$/stop/')" \

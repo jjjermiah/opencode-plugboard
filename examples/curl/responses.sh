@@ -13,9 +13,9 @@ post() { # $1 = JSON body
 
 s1() { # plain chat
   local out
-  # region snippet
+  # region snippet-s1
   out=$(post "$(jq -cn --arg m "$1" '{model: $m, input: "Reply with exactly: pong"}')")
-  # endregion snippet
+  # endregion snippet-s1
   jq -c '{text: ([.output[]? | select(.type == "message") | .content[]? | select(.type == "output_text") | .text] | join("")), finish_reason: (if .status == "completed" then "stop" else (.status // "") end), usage: .usage}' <<<"$out"
 }
 

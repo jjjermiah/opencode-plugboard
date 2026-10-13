@@ -80,9 +80,13 @@ Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `trans
 ## Adding an example
 
 1. Create `examples/<client>/` with its own dependencies pinned (`pyproject.toml` + `uv.lock`, or `package.json` + `bun.lock`).
-2. Write one scenario file per scenario the client supports, `run(client, model)` returning the observations the checks name (see `scenarios.json` for the names). Put the copyable part between `# region snippet` / `# endregion snippet` (Python, shell) or `// #region snippet` / `// #endregion snippet` (TypeScript). Give the file a `__main__` / `import.meta.main` block so it runs alone.
+2. Write one scenario file per scenario the client supports, `run(client, model)` returning the observations the checks name (see `scenarios.json` for the names). Put the copyable part between `# region snippet-<name>` / `# endregion snippet-<name>` (Python, shell) or `// #region snippet-<name>` / `// #endregion snippet-<name>` (TypeScript); see Snippet regions below. Give the file a `__main__` / `import.meta.main` block so it runs alone.
 3. Write the runner: `run.py` (import `harness` from `examples/_harness/py`), `run.ts` (import from `examples/_harness/ts/harness.ts`), or `run.sh`. Call `emit_client` / `emitClient` once, then `run_all` / `runAll` with one function per scenario id, and `na` (or `gaps`) for what the client cannot do. Gap keys are `id`, `id|model` or `id|variant`; a gap covers the whole row, so its note names the known check.
 4. Run `bun examples/_harness/run.ts <client> --target scripted` and run it again: `git diff --exit-code` must pass.
+
+## Snippet regions
+
+A region is named `snippet` or `snippet-<name>`, and each name appears once per file. The docs import one region with `<<< file#name`, so a duplicate name would make the import ambiguous. `snippet` is the file's main region; a file with more than one names the others after what they show (`snippet-s1`, `snippet-raw`). `check-regions.ts` (the examples CI job) fails on a duplicate name in any tracked file under `examples/`.
 
 ## When a run is stale
 

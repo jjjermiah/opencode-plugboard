@@ -161,6 +161,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Install uv (the Python example runs with uv run --frozen)
         run: pipx install uv==0.12.18
+      - name: Snippet region names are unique per file
+        run: bun examples/_harness/check-regions.ts
       # `all` runs every example that has a runner, so a new example needs no edit here (and parallel example PRs
       # stop conflicting on this list).
       - name: Scripted runs of every example
