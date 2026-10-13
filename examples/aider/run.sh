@@ -13,6 +13,10 @@ set -euo pipefail
 # Aider picks its edit format and prompts from model metadata, which the host can change (a fetched price map differs
 # between machines). Pin both so the prompts in the transcripts are the same on every host.
 export LITELLM_LOCAL_MODEL_COST_MAP=True
+# Every run uses a fresh environment, so Aider treats it as a first run and offers to open its release notes in a browser;
+# --yes-always accepts that offer. --no-show-release-notes stops the offer, and BROWSER=true makes any other
+# webbrowser.open a no-op, so a run never opens a page on the machine running it.
+export BROWSER=true
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 : "${PLUGBOARD_BASE_URL:?run through examples/_harness/run.ts}"
@@ -42,7 +46,7 @@ for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
   set +e
   OUT="$(cd "$DIR" && OPENAI_API_BASE="$PLUGBOARD_BASE_URL" OPENAI_API_KEY="$PLUGBOARD_KEY" uv run --frozen --project "$HERE" aider \
     --model "openai/$MODEL" --weak-model "openai/$MODEL" --edit-format whole --yes-always --no-auto-commits --no-analytics \
-    --no-check-update --no-show-model-warnings --message 'Reply with exactly: pong' hello.py 2>&1)"
+    --no-check-update --no-show-model-warnings --no-show-release-notes --message 'Reply with exactly: pong' hello.py 2>&1)"
   RC=$?
   set -e
   rm -rf "$DIR"
