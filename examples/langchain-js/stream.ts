@@ -3,10 +3,9 @@
 import type { AIMessageChunk } from "@langchain/core/messages"
 import { ChatOpenAI } from "@langchain/openai"
 
-const PROMPT = "Reply with exactly: pong"
-
 export async function run(client: { baseURL: string; apiKey: string }, model: string) {
   // #region snippet
+  const PROMPT = "Reply with exactly: pong"
   const llm = new ChatOpenAI({
     model,
     apiKey: client.apiKey,
@@ -21,13 +20,14 @@ export async function run(client: { baseURL: string; apiKey: string }, model: st
   // Without usage the stream must still finish with the same text.
   const plain = new ChatOpenAI({ model, apiKey: client.apiKey, configuration: { baseURL: client.baseURL }, maxTokens: 1024, maxRetries: 0, streamUsage: false })
   let plainText = ""
-  for await (const chunk of await plain.stream(PROMPT)) plainText += typeof chunk.content === "string" ? chunk.content : ""
+  for await (const chunk of await plain.stream("Reply with exactly: pong")) plainText += typeof chunk.content === "string" ? chunk.content : ""
   if (!plainText.toLowerCase().includes("pong")) throw new Error(`stream without usage gave ${JSON.stringify(plainText)}`)
   return {
     text: typeof message?.content === "string" ? message.content : JSON.stringify(message?.content),
     finish_reason: (message?.response_metadata.finish_reason as string | undefined) ?? null,
     usage: message?.usage_metadata ?? null,
-    done: true,
+    // True only when the stream produced a message. LangChain does not expose the [DONE] frame itself.
+    done: message !== undefined,
   }
 }
 

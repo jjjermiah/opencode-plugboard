@@ -4,12 +4,18 @@ Verdict: **partial** · @langchain/openai 1.6.2 on bun 1.4 · models: fast, anth
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
-| S1 | fast | yes | pass | 3/3 |
-| S1 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
-| S1 | openai/gpt-5.6-luna#low | yes | gap | 2/3 |
-| S2 | fast | yes | pass | 6/6 |
-| S2 | anthropic/claude-haiku-4-5 | yes | pass | 6/6 |
-| S2 | openai/gpt-5.6-luna#low | yes | gap | 4/6 |
+| S1 (chat) | fast | yes | pass | 3/3 |
+| S1 (auto) | fast | yes | pass | 3/3 |
+| S1 (chat) | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
+| S1 (auto) | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
+| S1 (chat) | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
+| S1 (auto) | openai/gpt-5.6-luna#low | yes | gap | 2/3 |
+| S2 (chat) | fast | yes | pass | 6/6 |
+| S2 (auto) | fast | yes | pass | 6/6 |
+| S2 (chat) | anthropic/claude-haiku-4-5 | yes | pass | 6/6 |
+| S2 (auto) | anthropic/claude-haiku-4-5 | yes | pass | 6/6 |
+| S2 (chat) | openai/gpt-5.6-luna#low | yes | pass | 6/6 |
+| S2 (auto) | openai/gpt-5.6-luna#low | yes | gap | 4/6 |
 | S3 | fast | yes | pass | 4/4 |
 | S4 | fast | yes | pass | 4/4 |
 | S5 | fast | yes | pass | 1/1 |
@@ -24,15 +30,15 @@ Verdict: **partial** · @langchain/openai 1.6.2 on bun 1.4 · models: fast, anth
 
 ## Failures and gaps
 
-### S1 on openai/gpt-5.6-luna#low: gap
+### S1 (auto) on openai/gpt-5.6-luna#low: gap
 
-LangChain's Responses path sets no finish_reason; status is completed (#104)
+auto variant: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed) (#104)
 
 Failed checks: finish_reason is stop
 
-### S2 on openai/gpt-5.6-luna#low: gap
+### S2 (auto) on openai/gpt-5.6-luna#low: gap
 
-LangChain's Responses path sets no finish_reason; status is completed (#104)
+auto variant: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed) (#104)
 
 Failed checks: turn 1 finish_reason is tool_calls; turn 2 finish_reason is stop
 

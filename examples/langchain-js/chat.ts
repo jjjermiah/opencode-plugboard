@@ -1,15 +1,12 @@
 // S1, plain chat, non-stream: the smallest LangChain call. Copy this shape for any chat request.
-import { ChatOpenAI } from "@langchain/openai"
+// Two variants: "chat" uses ChatOpenAICompletions, which always calls /v1/chat/completions. "auto" uses ChatOpenAI, which
+// picks the route itself and sends gpt-5.6* ids to /v1/responses.
+import { ChatOpenAI, ChatOpenAICompletions } from "@langchain/openai"
 
-export async function run(client: { baseURL: string; apiKey: string }, model: string) {
+export async function run(client: { baseURL: string; apiKey: string }, model: string, variant = "auto") {
   // #region snippet
-  const llm = new ChatOpenAI({
-    model,
-    apiKey: client.apiKey,
-    configuration: { baseURL: client.baseURL },
-    maxTokens: 1024,
-    maxRetries: 0,
-  })
+  const options = { model, apiKey: client.apiKey, configuration: { baseURL: client.baseURL }, maxTokens: 1024, maxRetries: 0 }
+  const llm = variant === "chat" ? new ChatOpenAICompletions(options) : new ChatOpenAI(options)
   const reply = await llm.invoke("Reply with exactly: pong")
   // #endregion snippet
   return {

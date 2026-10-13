@@ -1,27 +1,22 @@
 // S2, tool call and tool-result turn. The model asks for get_weather, the app answers, the model finishes.
+// Two variants, as in chat.ts: "chat" (ChatOpenAICompletions) and "auto" (ChatOpenAI).
 import { readFileSync } from "node:fs"
 import { HumanMessage, ToolMessage } from "@langchain/core/messages"
 import { tool } from "@langchain/core/tools"
-import { ChatOpenAI } from "@langchain/openai"
+import { ChatOpenAI, ChatOpenAICompletions } from "@langchain/openai"
 import { z } from "zod"
 
-const TOOL_RESULT = readFileSync(new URL("../_shared/get_weather.result.json", import.meta.url), "utf8").trim()
-const PROMPT = "What is the weather in Paris? Use the tool."
-
-export async function run(client: { baseURL: string; apiKey: string }, model: string) {
+export async function run(client: { baseURL: string; apiKey: string }, model: string, variant = "auto") {
   // #region snippet
+  const PROMPT = "What is the weather in Paris? Use the tool."
+  const TOOL_RESULT = readFileSync(new URL("../_shared/get_weather.result.json", import.meta.url), "utf8").trim()
   const getWeather = tool(async () => TOOL_RESULT, {
     name: "get_weather",
     description: "Current weather for a city",
     schema: z.object({ city: z.string() }),
   })
-  const llm = new ChatOpenAI({
-    model,
-    apiKey: client.apiKey,
-    configuration: { baseURL: client.baseURL },
-    maxTokens: 1024,
-    maxRetries: 0,
-  }).bindTools([getWeather])
+  const options = { model, apiKey: client.apiKey, configuration: { baseURL: client.baseURL }, maxTokens: 1024, maxRetries: 0 }
+  const llm = (variant === "chat" ? new ChatOpenAICompletions(options) : new ChatOpenAI(options)).bindTools([getWeather])
   const first = await llm.invoke([new HumanMessage(PROMPT)])
   const call = first.tool_calls![0]!
   // Send the assistant turn back as LangChain built it, then the result under the same call id.

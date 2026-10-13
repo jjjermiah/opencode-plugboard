@@ -50,7 +50,7 @@ Scenarios:
 - **multi-turn**: A second turn: the client resends the conversation with the model's answer, and the model answers from it (#103, #104).
 - **thinking**: Extended thinking on: the reasoning comes back as thinking content, then the answer (#102).
 - **stop-sequence**: A stop sequence ends the answer, and the stop reason says so (#102).
-- **n**: Several choices from one request (n > 1), each with its own index (#106).
+- **n**: Several choices from one request (n > 1), each with its own index, streamed or not, with usage summed over the choices (#106).
 - **stream-usage**: Usage arrives in the stream when the client asks for it (#106, #7).
 - **developer**: A developer-role message (OpenAI's name for a system prompt) is accepted (#7).
 - **echo-suffix**: Legacy completions options: echo the prompt and take a suffix (#106).

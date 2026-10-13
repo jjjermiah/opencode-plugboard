@@ -13,7 +13,7 @@ import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, authenticateUsage, type Plugb
 import { isPlugError, type PlugError } from "../contract.js"
 import { checkJsonContentType, readJsonBody, sendJson, sendProblem, type RequestScope } from "../http.js"
 import type { KeyStore } from "../keys.js"
-import { log } from "../log.js"
+import { logAudit } from "../log.js"
 
 export interface AdminHost {
   /** The live options (`liveOptions`): the config keys, and `adminKey`. */
@@ -63,7 +63,7 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
     if (Object.hasOwn(host.options.keys, app))
       return fail({ status: 409, kind: "invalid_request", code: "app_has_config_key", param: "app", message: `App ${app} already has a key in the plugboard config; edit \`keys\` to change it` })
     const created = await keys.create(app, host.options.keys)
-    log("admin.key_created", { id: created.id, app })
+    logAudit("admin.key_created", { id: created.id, app })
     // The key value is shown once: a cache or a log of this response must not keep it.
     response.setHeader("cache-control", "no-store")
     return sendJson(response, 201, created)
@@ -74,7 +74,7 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
     if (result === "config")
       return fail({ status: 409, kind: "invalid_request", code: "config_key", message: "This key is set in the plugboard config (`keys`). Remove it there and reload OpenCode." })
     if (result === "not_found") return fail({ status: 404, kind: "not_found", code: "key_not_found", message: `No runtime key ${id}` })
-    log("admin.key_revoked", { id })
+    logAudit("admin.key_revoked", { id })
     return sendJson(response, 200, { id, revoked: true })
   }
   if (path === KEYS || id !== undefined)

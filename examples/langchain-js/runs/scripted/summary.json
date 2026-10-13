@@ -36,7 +36,32 @@
       "note": null,
       "required": true,
       "status": "pass",
-      "transcript": "transcripts/S1.fast.json"
+      "transcript": "transcripts/S1.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.auto.fast.json",
+      "variant": "auto"
     },
     {
       "checks": [
@@ -59,7 +84,56 @@
       "note": null,
       "required": true,
       "status": "pass",
-      "transcript": "transcripts/S1.anthropic-claude-haiku-4-5.json"
+      "transcript": "transcripts/S1.chat.anthropic-claude-haiku-4-5.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.auto.anthropic-claude-haiku-4-5.json",
+      "variant": "auto"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.chat.openai-gpt-5.6-luna-low.json",
+      "variant": "chat"
     },
     {
       "checks": [
@@ -79,10 +153,11 @@
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "LangChain's Responses path sets no finish_reason; status is completed (#104)",
+      "note": "auto variant: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed) (#104)",
       "required": true,
       "status": "gap",
-      "transcript": "transcripts/S1.openai-gpt-5.6-luna-low.json"
+      "transcript": "transcripts/S1.auto.openai-gpt-5.6-luna-low.json",
+      "variant": "auto"
     },
     {
       "checks": [
@@ -117,7 +192,44 @@
       "note": null,
       "required": true,
       "status": "pass",
-      "transcript": "transcripts/S2.fast.json"
+      "transcript": "transcripts/S2.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.auto.fast.json",
+      "variant": "auto"
     },
     {
       "checks": [
@@ -152,7 +264,80 @@
       "note": null,
       "required": true,
       "status": "pass",
-      "transcript": "transcripts/S2.anthropic-claude-haiku-4-5.json"
+      "transcript": "transcripts/S2.chat.anthropic-claude-haiku-4-5.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.auto.anthropic-claude-haiku-4-5.json",
+      "variant": "auto"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.chat.openai-gpt-5.6-luna-low.json",
+      "variant": "chat"
     },
     {
       "checks": [
@@ -184,10 +369,11 @@
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "LangChain's Responses path sets no finish_reason; status is completed (#104)",
+      "note": "auto variant: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed) (#104)",
       "required": true,
       "status": "gap",
-      "transcript": "transcripts/S2.openai-gpt-5.6-luna-low.json"
+      "transcript": "transcripts/S2.auto.openai-gpt-5.6-luna-low.json",
+      "variant": "auto"
     },
     {
       "checks": [

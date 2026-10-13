@@ -12,6 +12,10 @@ import { SEED_PREFIX } from "./session/seeds.js"
 /** How `/v1/models` spells a model id: the canonical `provider/model#variant`, a UI-safe slug, or both. Resolution accepts either. */
 export type ModelIds = "canonical" | "slugs" | "both"
 
+/** Option `logLevel` (#262), lowest first. */
+export type LogLevel = "debug" | "info" | "warn" | "error"
+const LOG_LEVELS: ReadonlySet<string> = new Set(["debug", "info", "warn", "error"])
+
 /** Plugin options, after defaults and validation (see `parseOptions`). */
 export interface PlugboardOptions {
   /** `listen.trustProxy` (#266): the proxies whose forwarded headers are read; absent: none (see `src/forwarded.ts`). */
@@ -55,6 +59,10 @@ export interface PlugboardOptions {
   readonly dropUnsupportedParams: boolean
   /** Log line format: `text` (`key=value`, the default) or `json` (one object per line). Process-wide: the live generation's value applies. */
   readonly logFormat: "text" | "json"
+  /** Option `logLevel` (since 0.27.0, #262): the lowest level written. Process-wide, like `logFormat`. Default `info`. */
+  readonly logLevel: LogLevel
+  /** Option `logRequests` (since 0.27.0, #262): `false` drops the per-request access lines (`request`, `request.finished`); warnings and errors stay. */
+  readonly logRequests: boolean
   /** Serve `GET /plugboard/metrics` (Prometheus text). Off by default; same authentication as the model routes. */
   readonly metrics: boolean
   /** Ids listed by `/v1/models`: canonical, slugs (`provider--model__variant`) or both. See `toSlug` in `src/models.ts`. */
@@ -154,6 +162,13 @@ export interface AppPolicy {
   /** Lowers the global `maxTools` for this app. */
   readonly maxTools?: number
   /**
+   * This app's history limits (option `apps.<name>.history`, since 0.27.0, #265): a field replaces the global one for this app,
+   * an unset field falls back to it. Look the effective limits up with `limitsFor` (src/session/prune.ts).
+   */
+  readonly history?: HistoryLimits
+  /** Lowers the global `maxN` for this app (option `apps.<name>.maxN`, since 0.27.0, #270). Look the effective cap up with `maxNFor`. */
+  readonly maxN?: number
+  /**
    * Exact OpenCode tool ids this app's sessions may run themselves (option `apps.<name>.serverTools`).
    * Absent: none, the session denies every real tool. Trusted apps only, see docs/configuration.md.
    */
@@ -249,7 +264,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -396,7 +411,17 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints"])
+
+/** Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set. Unset fields fall back to the global `history`. */
+function parseAppHistory(raw: unknown, at: string): HistoryLimits {
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.history\` must be an object: { maxSessions, maxAgeDays }`)
+  for (const key of Object.keys(raw))
+    if (key !== "maxSessions" && key !== "maxAgeDays") throw new Error(`Unknown plugboard option \`${at}.history.${key}\` (known: maxSessions, maxAgeDays)`)
+  const maxSessions = raw.maxSessions === undefined ? undefined : positiveInt(raw.maxSessions, `${at}.history.maxSessions`, 0, 1_000_000)
+  const maxAgeDays = raw.maxAgeDays === undefined ? undefined : positiveInt(raw.maxAgeDays, `${at}.history.maxAgeDays`, 0, MAX_AGE_DAYS)
+  return { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) }
+}
 
 /** Option `apps.<name>.endpoints` (#268): a non-empty list of endpoint names from `ENDPOINTS`. */
 function parseEndpoints(raw: unknown, at: string): Endpoint[] {
@@ -436,7 +461,7 @@ const MODEL_IDS: ReadonlySet<string> = new Set(["canonical", "slugs", "both"])
 /** Validates `apps` (the `key` field was merged into `keys` already) into per-app policies. */
 function parseApps(
   raw: unknown,
-  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; maxTools: number },
+  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; maxTools: number; maxN: number },
 ): Record<string, AppPolicy> {
   const entries: Array<[string, AppPolicy]> = []
   for (const [app, value] of Object.entries(isRecord(raw) ? raw : {})) {
@@ -464,6 +489,8 @@ function parseApps(
     if (value.systemMode !== undefined && value.system === undefined) throw new Error(`${at}.systemMode needs \`system\``)
     if (value.tools !== undefined && typeof value.tools !== "boolean") throw new Error(`${at}.tools must be a boolean`)
     const maxTools = value.maxTools === undefined ? undefined : positiveInt(value.maxTools, `apps.${app}.maxTools`, 0, context.maxTools)
+    // Only lowers the global `maxN` (#270), like `maxTools`: a higher value would be a second, unchecked global.
+    const maxN = value.maxN === undefined ? undefined : positiveInt(value.maxN, `apps.${app}.maxN`, 0, context.maxN)
     if (value.serverTools !== undefined && app === DEFAULT_APP)
       throw new Error(`${at}.serverTools needs a key: the keyless app cannot run OpenCode tools; name the app and give it a key`)
     const serverTools = value.serverTools === undefined ? undefined : parseServerTools(value.serverTools, at)
@@ -478,12 +505,15 @@ function parseApps(
     const historyUrl = value.historyUrl === false ? false : parseHistoryUrl(value.historyUrl, `plugboard option \`apps.${app}.historyUrl\``)
     const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
     const endpoints = value.endpoints === undefined ? undefined : parseEndpoints(value.endpoints, at)
+    const history = value.history === undefined ? undefined : parseAppHistory(value.history, `apps.${app}`)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
       systemMode: (value.systemMode as SystemMode | undefined) ?? "prepend",
       tools: value.tools !== false,
       ...(maxTools === undefined ? {} : { maxTools }),
+      ...(maxN === undefined ? {} : { maxN }),
+      ...(history === undefined ? {} : { history }),
       ...(serverTools === undefined ? {} : { serverTools }),
       ...(maxServerToolSteps === undefined ? {} : { maxServerToolSteps }),
       ...(maxServerToolCalls === undefined ? {} : { maxServerToolCalls }),
@@ -492,7 +522,7 @@ function parseApps(
       ...(endpoints === undefined ? {} : { endpoints }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -571,6 +601,24 @@ export function endpointRefusal(options: Pick<PlugboardOptions, "apps">, app: st
   const allowed = appPolicy(options, app)?.endpoints
   if (allowed === undefined || allowed.includes(endpoint)) return undefined
   return { status: 403, kind: "permission", code: "endpoint_forbidden", message: `This app may not call the ${endpoint} endpoint: \`apps.${app}.endpoints\` does not list it` }
+}
+
+/**
+ * The most choices (`n`) one request of `app` may ask for (#270): its `apps.<name>.maxN` when set, else the global `maxN`. The app's
+ * value only lowers the global one (checked at load), so this is never more than `options.maxN`.
+ */
+export function maxNFor(options: Pick<PlugboardOptions, "apps" | "maxN">, app: string): number {
+  return appPolicy(options, app)?.maxN ?? options.maxN
+}
+
+/** The option that set the cap of `app` (#319): `apps.<app>.maxN` when the app has its own, else `maxN`. Named in the 400 message. */
+export function maxNOption(options: Pick<PlugboardOptions, "apps">, app: string): string {
+  return appPolicy(options, app)?.maxN === undefined ? "maxN" : `apps.${app}.maxN`
+}
+
+/** Each app's own history limits (`apps.<name>.history`, #265), keyed by app name. Apps without the option are absent. */
+export function appHistoryLimits(options: Pick<PlugboardOptions, "apps">): Record<string, HistoryLimits> {
+  return Object.fromEntries(Object.entries(options.apps).flatMap(([app, policy]) => (policy.history === undefined ? [] : [[app, policy.history] as const])))
 }
 
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
@@ -803,7 +851,8 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const agents = parseAgents(input.agents, models as string[])
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
-  const apps = parseApps(input.apps, { keys, aliases, maxTools })
+  const maxN = positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64)
+  const apps = parseApps(input.apps, { keys, aliases, maxTools, maxN })
 
   const remoteImages = parseRemoteImages(input.remoteImages)
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")
@@ -811,6 +860,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   if (input.logFormat !== undefined && input.logFormat !== "text" && input.logFormat !== "json")
     throw new Error("plugboard option `logFormat` must be `text` or `json`")
+  if (input.logLevel !== undefined && (typeof input.logLevel !== "string" || !LOG_LEVELS.has(input.logLevel)))
+    throw new Error("plugboard option `logLevel` must be `debug`, `info`, `warn` or `error`")
+  if (input.logRequests !== undefined && typeof input.logRequests !== "boolean") throw new Error("plugboard option `logRequests` must be a boolean")
   if (input.metrics !== undefined && typeof input.metrics !== "boolean") throw new Error("plugboard option `metrics` must be a boolean")
   if (input.modelIds !== undefined && (typeof input.modelIds !== "string" || !MODEL_IDS.has(input.modelIds)))
     throw new Error("plugboard option `modelIds` must be `canonical`, `slugs` or `both`")
@@ -848,12 +900,14 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     agents,
     fallbacks,
     maxTools,
-    maxN: positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64),
+    maxN,
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
     remoteImages,
     history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }) },
     dropUnsupportedParams: input.dropUnsupportedParams !== false,
     logFormat: input.logFormat === "json" ? "json" : "text",
+    logLevel: (input.logLevel as LogLevel | undefined) ?? "info",
+    logRequests: input.logRequests !== false,
     metrics: input.metrics === true,
     modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
     ...(limits === undefined ? {} : { limits }),

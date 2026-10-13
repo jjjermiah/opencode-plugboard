@@ -3,10 +3,9 @@ import { readFileSync } from "node:fs"
 import { HumanMessage } from "@langchain/core/messages"
 import { ChatOpenAI } from "@langchain/openai"
 
-const RED = readFileSync(new URL("../_shared/red32.dataurl.txt", import.meta.url), "utf8").trim()
-
 export async function run(client: { baseURL: string; apiKey: string }, model: string) {
   // #region snippet
+  const RED = readFileSync(new URL("../_shared/red32.dataurl.txt", import.meta.url), "utf8").trim() // a 32-pixel red PNG
   const llm = new ChatOpenAI({
     model,
     apiKey: client.apiKey,

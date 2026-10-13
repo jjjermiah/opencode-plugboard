@@ -182,3 +182,39 @@ describe("#85 history index", () => {
     expect([...history.entries.keys()][0]).toMatch(/^history\/app\/\d{15}\/ses_1$/)
   })
 })
+
+describe("#265 history index per app", () => {
+  const registerSession = (sessionID: string) =>
+    sessionStore().register({ sessionID, app: "app", requestID: "r", request: plugRequest(), collector: { push() {} } })
+
+  test("an app with its own limit and no global limit is indexed", async () => {
+    const history = new FakeHistoryPort()
+    registerGeneration(generation("a", { port: await freePort(), history: { port: history, limits: {}, apps: { app: { maxSessions: 10 } } } }))
+    registerSession("ses_1")
+    await until(() => history.entries.size === 1, 1_000, "the index entry")
+    expect([...history.entries.keys()][0]).toMatch(/^history\/app\/\d{15}\/ses_1$/)
+  })
+
+  test("an app with no limit in either place is not indexed, even when another app has one", async () => {
+    const history = new FakeHistoryPort()
+    registerGeneration(generation("a", { port: await freePort(), history: { port: history, limits: {}, apps: { other: { maxSessions: 10 } } } }))
+    registerSession("ses_1")
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(history.entries.size).toBe(0)
+  })
+})
+
+/** Review of #319 (SHOULD 2): with only app limits, the sweep must still run and prune. */
+describe("#265 review: the sweep runs when only per-app limits exist", () => {
+  test("a new session arrives, the app's own maxSessions of 1 removes the two older sessions", async () => {
+    const history = new FakeHistoryPort()
+    for (const [at, id] of [[1, "old-1"], [2, "old-2"]] as const) {
+      history.sessions.add(id)
+      await history.put(`history/app/${String(at).padStart(15, "0")}/${id}`, id)
+    }
+    registerGeneration(generation("a", { port: await freePort(), history: { port: history, limits: {}, apps: { app: { maxSessions: 1 } } } }))
+    sessionStore().register({ sessionID: "ses_new", app: "app", requestID: "r", request: plugRequest(), collector: { push() {} } })
+    await until(() => history.removed.length === 2, 1_000, "the sweep to remove the two older sessions")
+    expect(history.removed).toEqual(["old-1", "old-2"])
+  })
+})
