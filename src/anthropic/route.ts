@@ -111,7 +111,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
 
-    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
+    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
     noteEndUser(response, info, bodyUserId(body))
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.

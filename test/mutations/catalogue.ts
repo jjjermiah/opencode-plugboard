@@ -36,6 +36,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/http/per-app-timeout.test.ts"],
   },
   {
+    id: "P258-app-body-cap-ignored",
+    invariant: "#258",
+    file: "src/config.ts",
+    find: "    maxBodyBytes: own?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes,",
+    replace: "    maxBodyBytes: options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes,",
+    tests: ["test/http/per-app-body.test.ts", "test/unit/config.test.ts"],
+  },
+  {
+    id: "P258-body-read-ignores-cap",
+    invariant: "#258",
+    file: "src/http.ts",
+    find: "    if (declared > maxBodyBytes) {",
+    replace: "    if (declared > BODY_LIMIT_DEFAULTS.maxBodyBytes) {",
+    tests: ["test/http/per-app-body.test.ts"],
+  },
+  {
     id: "P265-app-maxage-own-field-ignored",
     invariant: "#265",
     file: "src/session/prune.ts",

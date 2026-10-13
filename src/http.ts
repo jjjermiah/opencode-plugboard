@@ -10,7 +10,6 @@ import { BODY_LIMIT_DEFAULTS, type BodyLimits, isLoopbackHost, type PlugboardOpt
 import type { PlugError, PlugEvent } from "./contract.js"
 import { forwardedHost } from "./forwarded.js"
 
-const MAX_BODY_BYTES = 32 * 1024 * 1024
 /** Largest delay `setTimeout` accepts; anything larger fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1
 /** After answering a request whose body was not fully read, keep discarding it this long before cutting the socket. */
@@ -145,8 +144,9 @@ export function beginRequest(request: IncomingMessage, response: ServerResponse,
  */
 export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<unknown> {
   return new Promise((resolve, reject) => {
+    const maxBodyBytes = limits.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
     const declared = Math.max(0, Number(request.headers["content-length"]) || 0)
-    if (declared > MAX_BODY_BYTES) {
+    if (declared > maxBodyBytes) {
       request.resume()
       return reject(new BodyError(413, "Request body too large"))
     }
@@ -181,7 +181,7 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     }
     const onData = (chunk: Buffer) => {
       size += chunk.length
-      if (size > MAX_BODY_BYTES) return stop(new BodyError(413, "Request body too large"))
+      if (size > maxBodyBytes) return stop(new BodyError(413, "Request body too large"))
       if (size > held && !charge(size - held)) return stop(busy())
       chunks.push(chunk)
     }

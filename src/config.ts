@@ -199,6 +199,8 @@ export interface LimitCaps {
   readonly maxConcurrent?: number
   /** Model calls started per minute (a fixed one-minute window). */
   readonly requestsPerMinute?: number
+  /** Largest request body this app may send, in bytes (`limits.apps.<name>` only, since 0.29.0, #258). It can only lower `limits.maxBodyBytes`. */
+  readonly maxBodyBytes?: number
 }
 
 /**
@@ -216,16 +218,23 @@ export interface Limits {
   readonly maxBodyBytesInFlight?: number
   /** Milliseconds a request body may take to arrive in full; a slower one is refused with 408. */
   readonly bodyReadTimeoutMs?: number
+  /**
+   * The largest request body any app may send (since 0.29.0, #258), 1 to 33554432. Absent: 32 MiB. It is the ceiling for
+   * `apps.<name>.maxBodyBytes`-style caps in `limits.apps`, and a body over it is refused with 413 before it is read.
+   */
+  readonly maxBodyBytes?: number
 }
 
 /** The bounds `readJsonBody` applies before it buffers a request body (see `bodyLimits`). */
 export interface BodyLimits {
   readonly maxBytesInFlight: number
   readonly readTimeoutMs: number
+  /** The largest body this request may send: `limits.apps.<name>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB (#258). Absent: 32 MiB. */
+  readonly maxBodyBytes?: number
 }
 
 /** Defaults of `limits.maxBodyBytesInFlight` (128 MiB) and `limits.bodyReadTimeoutMs` (30 s). */
-export const BODY_LIMIT_DEFAULTS: BodyLimits = { maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000 }
+export const BODY_LIMIT_DEFAULTS: BodyLimits & { readonly maxBodyBytes: number } = { maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, maxBodyBytes: 32 * 1024 * 1024 }
 
 /** What a budget counts: HTTP requests on the model routes (refusals by `limits` or budgets left out), tokens, or cost in USD. */
 export type BudgetMetric = "requests" | "tokens" | "costUsd"
@@ -274,7 +283,9 @@ const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
 const MAX_RETENTION_DAYS = 3650
-const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs"])
+const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs", "maxBodyBytes"])
+/** The hard cap of one request body (32 MiB). `limits.maxBodyBytes` and `limits.apps.<name>.maxBodyBytes` cannot go above it. */
+const BODY_HARD_CAP = 32 * 1024 * 1024
 const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
 /** Largest cap accepted: far above any provider's limit, and keeps the error messages short. */
 const MAX_LIMIT = 1_000_000
@@ -557,13 +568,16 @@ export function parsePromptCache(raw: unknown, at: string): PromptCache | undefi
 }
 
 /** Validates one set of caps (`limits.perApp`, or one `limits.apps` entry): each cap is a positive integer. */
-function parseCaps(raw: unknown, at: string): LimitCaps {
+function parseCaps(raw: unknown, at: string, perAppBody = false): LimitCaps {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object`)
+  // `maxBodyBytes` is a cap only for an app (`limits.apps`), never for `limits.perApp`, which would apply it to every app.
+  const known = perAppBody ? [...LIMIT_CAP_KNOWN, "maxBodyBytes"] : [...LIMIT_CAP_KNOWN]
   for (const key of Object.keys(raw))
-    if (!LIMIT_CAP_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${[...LIMIT_CAP_KNOWN].join(", ")})`)
+    if (!known.includes(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${known.join(", ")})`)
   return {
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, `${at}.maxConcurrent`, 0, MAX_LIMIT) }),
     ...(raw.requestsPerMinute === undefined ? {} : { requestsPerMinute: positiveInt(raw.requestsPerMinute, `${at}.requestsPerMinute`, 0, MAX_LIMIT) }),
+    ...(raw.maxBodyBytes === undefined ? {} : { maxBodyBytes: positiveInt(raw.maxBodyBytes, `${at}.maxBodyBytes`, 0, BODY_HARD_CAP) }),
   }
 }
 
@@ -580,9 +594,15 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
     const at = `limits.apps.${app}`
     const configured = app === DEFAULT_APP ? Object.keys(keys).length === 0 : Object.hasOwn(keys, app)
     if (!configured) throw new Error(`plugboard option \`${at}\` must name a configured app (a key in \`keys\`; \`${DEFAULT_APP}\` only without keys)`)
-    apps[app] = parseCaps(value, at)
+    apps[app] = parseCaps(value, at, true)
   }
+  const maxBodyBytes = raw.maxBodyBytes === undefined ? undefined : positiveInt(raw.maxBodyBytes, "limits.maxBodyBytes", 0, BODY_HARD_CAP)
+  // An app's body cap only lowers the global one (or the hard cap when there is none), like `maxTools` and `maxN` (#258).
+  for (const [app, caps] of Object.entries(apps))
+    if (caps.maxBodyBytes !== undefined && caps.maxBodyBytes > (maxBodyBytes ?? BODY_HARD_CAP))
+      throw new Error(`plugboard option \`limits.apps.${app}.maxBodyBytes\` cannot be above \`limits.maxBodyBytes\` (or ${BODY_HARD_CAP} when that is unset)`)
   return {
+    ...(maxBodyBytes === undefined ? {} : { maxBodyBytes }),
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, "limits.maxConcurrent", 0, MAX_LIMIT) }),
     ...(raw.perApp === undefined ? {} : { perApp: parseCaps(raw.perApp, "limits.perApp") }),
     ...(appsRaw === undefined ? {} : { apps }),
@@ -593,11 +613,17 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
   }
 }
 
-/** The body limits in force for these options (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`), or the defaults. */
-export function bodyLimits(options: Pick<PlugboardOptions, "limits">): BodyLimits {
+/**
+ * The body limits in force for a request of `app` (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`, and the largest body:
+ * `limits.apps.<app>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB, #258), or the defaults. `app` is absent before a
+ * credential is read; the global cap applies then.
+ */
+export function bodyLimits(options: Pick<PlugboardOptions, "limits">, app?: string): BodyLimits {
+  const own = app !== undefined && options.limits?.apps && Object.hasOwn(options.limits.apps, app) ? options.limits.apps[app] : undefined
   return {
     maxBytesInFlight: options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight,
     readTimeoutMs: options.limits?.bodyReadTimeoutMs ?? BODY_LIMIT_DEFAULTS.readTimeoutMs,
+    maxBodyBytes: own?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes,
   }
 }
 

@@ -17,6 +17,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Added
 
 - **Per-app request deadline** ([#257](https://github.com/jjjermiah/opencode-plugboard/issues/257)). `apps.<name>.requestTimeoutMs` (since 0.29.0) gives one app its own deadline in place of the global `requestTimeoutMs`, higher or lower, so a batch job and a chat widget can differ. The timeout error is the same as today. Unset, the global value applies unchanged.
+- **Per-app request body cap** ([#258](https://github.com/jjjermiah/opencode-plugboard/issues/258)). `limits.maxBodyBytes` (since 0.29.0) sets the largest body for every app, at most 32 MiB, and `limits.apps.<name>.maxBodyBytes` lowers it for one app. A body over the app's cap gets 413 before it is read, so a chat widget can be held to a few hundred kilobytes while a bot keeps a larger one. Unset, the 32 MiB cap applies as before.
 - **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
 
 ### Fixed

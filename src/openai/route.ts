@@ -376,7 +376,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(response, unsupported)
 
-    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
+    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
     noteEndUser(response, info, bodyUser(body))
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })

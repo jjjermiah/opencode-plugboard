@@ -63,9 +63,10 @@ describe("parseOptions: defaults", () => {
 
   test("#156 the body limits are kept when set, and default to 128 MiB in flight and 30 s when not", () => {
     expect(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }).limits).toEqual({ maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 })
-    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({ maxBytesInFlight: 1024, readTimeoutMs: 500 })
-    expect(bodyLimits(parseOptions({ limits: { maxConcurrent: 2 } }))).toEqual({ maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000 })
-    expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000 })
+    // `maxBodyBytes` (#258) is the largest body, 32 MiB unless `limits.maxBodyBytes` or the app's own cap lowers it.
+    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({ maxBytesInFlight: 1024, readTimeoutMs: 500, maxBodyBytes: 33_554_432 })
+    expect(bodyLimits(parseOptions({ limits: { maxConcurrent: 2 } }))).toEqual({ maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, maxBodyBytes: 33_554_432 })
+    expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000, maxBodyBytes: 33_554_432 })
   })
 
   test("#158 history keeps 30 days by default; maxAgeDays 0 is the explicit opt-out to no age limit", () => {
@@ -249,6 +250,36 @@ describe("#257 apps.<name>.requestTimeoutMs", () => {
     ["above the timer ceiling", 2147483648],
   ])("%s is refused at load and names the option", (_name, value) => {
     expect(() => parseOptions({ keys: { bot: "k-bot" }, apps: { bot: { requestTimeoutMs: value } } })).toThrow(/apps\.bot\.requestTimeoutMs` must be an integer between 1 and 2147483647/)
+  })
+})
+
+describe("#258 limits.maxBodyBytes and limits.apps.<name>.maxBodyBytes", () => {
+  const MIB = 1024 * 1024
+
+  test("bodyLimits resolves the app's cap, else the global one, else 32 MiB", () => {
+    const options = parseOptions({ keys: { widget: "k-widget", bot: "k-bot" }, limits: { maxBodyBytes: 4096, apps: { widget: { maxBodyBytes: 256 } } } })
+    expect(bodyLimits(options, "widget").maxBodyBytes).toBe(256)
+    expect(bodyLimits(options, "bot").maxBodyBytes).toBe(4096)
+    expect(bodyLimits(options).maxBodyBytes).toBe(4096)
+    expect(bodyLimits(parseOptions({ keys: { bot: "k-bot" } }), "bot").maxBodyBytes).toBe(32 * MIB)
+  })
+
+  test("the app cap is kept in limits.apps and does not change the other app limits", () => {
+    const limits = bodyLimits(parseOptions({ keys: { widget: "k-widget" }, limits: { apps: { widget: { maxBodyBytes: 1000, maxConcurrent: 2 } } } }), "widget")
+    expect(limits).toEqual({ maxBytesInFlight: 128 * MIB, readTimeoutMs: 30_000, maxBodyBytes: 1000 })
+  })
+
+  test.each([
+    ["an app cap above the global cap", { maxBodyBytes: 1000, apps: { widget: { maxBodyBytes: 2000 } } }, /limits\.apps\.widget\.maxBodyBytes` cannot be above `limits\.maxBodyBytes`/],
+    ["an app cap above the hard cap when no global one is set", { apps: { widget: { maxBodyBytes: 33 * MIB } } }, /`limits\.apps\.widget\.maxBodyBytes` must be an integer between 1 and 33554432/],
+    ["a global cap above the hard cap", { maxBodyBytes: 33 * MIB }, /`limits\.maxBodyBytes` must be an integer between 1 and 33554432/],
+    ["a zero app cap", { apps: { widget: { maxBodyBytes: 0 } } }, /`limits\.apps\.widget\.maxBodyBytes` must be an integer between 1 and 33554432/],
+  ])("%s is refused at load", (_name, limits, message) => {
+    expect(() => parseOptions({ keys: { widget: "k-widget" }, limits })).toThrow(message)
+  })
+
+  test("maxBodyBytes under limits.perApp is an unknown option, since it is a per-app cap only", () => {
+    expect(() => parseOptions({ keys: { widget: "k-widget" }, limits: { perApp: { maxBodyBytes: 1000 } } })).toThrow(/Unknown plugboard option `limits\.perApp\.maxBodyBytes`/)
   })
 })
 
