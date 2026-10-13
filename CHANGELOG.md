@@ -18,6 +18,128 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **The keep-alive now holds the location** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.31.0). Since 0.26.0 the keep-alive renamed one session every 30 minutes, but a rename does not restart OpenCode's 60-minute idle timer. Plugin calls publish their events without the Location, and the timer only counts events that carry one. The keep-alive now creates a new session in its own Location every 30 minutes and removes the previous one. The create carries the Location, so the timer restarts. A session left by an older version is removed on the first tick. Servers on 0.26.0 to 0.30.0 still need the external timer in `docs/warm-up.md`.
 
+### Added
+
+- **Eval harness clients checked against the live server** ([#106](https://github.com/jjjermiah/opencode-plugboard/issues/106)). promptfoo passes its two checks, and lm-evaluation-harness passes a generate-until task with `local-completions` and `local-chat-completions` (the chat type was flaky once, 0.5 then 1.0 on rerun). Loglikelihood tasks (multiple choice scored by log probability) cannot run here: plugboard does not serve `logprobs`. The client matrix now also covers a legacy prompt array with `n` (two prompts, `n: 2`, four choices, each checked against the prompt it answers), so its fake server allows `maxN` 4.
+- **Per-app request deadline** ([#257](https://github.com/jjjermiah/opencode-plugboard/issues/257)). `apps.<name>.requestTimeoutMs` (since 0.32.0) gives one app its own deadline in place of the global `requestTimeoutMs`, higher or lower, so a batch job and a chat widget can differ. The timeout error names the option that set the deadline. Unset, the global value applies unchanged.
+- **Per-app request body cap** ([#258](https://github.com/jjjermiah/opencode-plugboard/issues/258)). `limits.maxBodyBytes` (since 0.32.0) sets the largest body for every app, at most 32 MiB, and `limits.apps.<name>.maxBodyBytes` lowers it for one app. A body over the app's cap gets 413 before it is read, so a chat widget can be held to a few hundred kilobytes while a bot keeps a larger one. Unset, the 32 MiB cap applies as before.
+- **Per-app output token cap** ([#263](https://github.com/jjjermiah/opencode-plugboard/issues/263)). `apps.<name>.maxOutputTokens` (since 0.32.0) bounds one answer of an app. A caller with no limit gets the cap, a higher limit is lowered to it, and a lower one is kept, on Chat Completions, Responses, legacy completions, Messages and Gemini. On Messages a thinking budget the cap cannot hold gets the existing 400, not a silent change to thinking.
+- **Per-app model pin** ([#261](https://github.com/jjjermiah/opencode-plugboard/issues/261)). `apps.<name>.model` (since 0.32.0) runs every request of one app on one model, so a widget with a model name baked in can move to a cheaper model without a change on its side. The caller's `model` and `reasoning_effort` are ignored. The pin must pass the global `models` and the app's own `models`, so it never widens access, and a pin the server does not have is the usual 404.
+- **Per-app end user header** ([#272](https://github.com/jjjermiah/opencode-plugboard/issues/272)). `apps.<name>.userHeader` (since 0.32.0) reads the end user from a request header, such as one a reverse proxy sets, so a bot that never sends `user` still gets per-user history and usage. The body's `user` is the fallback when the header is absent or empty. A credential header (`authorization`, `x-api-key`, `x-goog-api-key`, `cookie`, `proxy-authorization`) is refused at load, since its value would be logged as the user. Gemini is not covered, as it has no end user today.
+- **Per-app sampling defaults** ([#264](https://github.com/jjjermiah/opencode-plugboard/issues/264)). `apps.<name>.sampling` (since 0.32.0) sets `temperature`, `topP`, `maxTokens`, `stop` and the penalties for one app. A default fills a request only where the caller sent none, so an app's answers stay stable when the model changes. A default a model rejects is dropped and reported like a caller's value.
+
+### Changed
+
+- **An over-size request body is `request_body_too_large` (breaking for clients that match on the old 413).** The 413 on the OpenAI-shaped routes and on `/plugboard/` routes now carries the code `request_body_too_large` where it had none. Clients that matched the codeless 413 must match the code instead. Messages (`request_too_large`) and Gemini (`code: 413`) keep their own shapes, which did not change. The body cap is `limits.maxBodyBytes` (32 MiB by default) or the app's `limits.apps.<name>.maxBodyBytes`.
+- **Anthropic `cache_control` `ttl: "1h"` is carried on requests without tools** ([#275](https://github.com/jjjermiah/opencode-plugboard/issues/275), since 0.32.0). A caller's 1-hour breakpoint now reaches the model as a 1-hour breakpoint when the request has no tools (no caller tools and no server tools, or `tool_choice` `none`). Plugboard then gives 1h to every breakpoint before it, so no 5-minute breakpoint comes before a 1-hour one, which Anthropic requires. Earlier 5-minute caller blocks are raised to 1h; that adds no cost, because the caller's 1h block already bills everything before it as a 1-hour write. With tools the block stays 5 minutes, because OpenCode's last-tool breakpoint comes first and is always 5 minutes. The rules are in [Prompt caching](docs/messages.md#prompt-caching). `cache_control` on `tools` stays ignored, because the context hook cannot set a tool's cache hint.
+
+### Fixed
+
+- Release script: a `git fetch` that loses a ref-lock race with a parallel worktree (`cannot lock ref`) is retried, 4 attempts with a short backoff, instead of stopping the release ([#352](https://github.com/jjjermiah/opencode-plugboard/issues/352)). `--resume` now handles a release pull request that is already merged: it waits for CI on the merge commit and tags that commit only when the run succeeded. If the tag is already on origin, it says so and watches the release. Before, a fetch that failed after the merge left the tag to a hand push. Tooling only, not in the package.
+
+## [0.31.0] - 2026-10-13: Know Your Versions
+
+**Full diff:** [v0.30.0...v0.31.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...v0.31.0)
+
+### Added
+
+- **Package and OpenCode versions on `/plugboard/status`** ([#347](https://github.com/jjjermiah/opencode-plugboard/issues/347), since 0.31.0). The route now names `packageVersion`, the plugboard package version from `package.json` (read once when the plugin loads), and `opencodeVersion`, the host OpenCode version from the plugin context (`ctx.app.version`). `opencodeVersion` is left out when the host gives none, or reports `unknown` or `local` (an unreleased build). `packageVersion` is left out if `package.json` cannot be read, and the plugin still loads. The route keeps its auth. The examples harness reads both from the server when its key can read the route, and falls back to git otherwise, and within 5 seconds.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (6 commits)</summary>
+
+#### Features
+
+**feat(discovery): add package and OpenCode versions to /plugboard/status** ([`da4dc91`](https://github.com/jjjermiah/opencode-plugboard/commit/da4dc9190280b5163267bcc5f3db504c5a9f813d))
+
+The examples harness records which plugboard and OpenCode a live run hit, but the server could not say. It took the version from the checkout's package.json at a commit, and recorded OpenCode as null.
+
+/plugboard/status now names packageVersion, the package.json version read once when src/version.ts loads. It works from a checkout and from an npm install, since src/ sits one level below the package root in both. It also names opencodeVersion, which is ctx.app.version from the plugin context. The host exposes it on Context.app, so no other source is needed. opencodeVersion is left out when the host gives none. The route keeps its auth, and the admin key path answers the same fields.
+
+The harness reads both versions from /plugboard/status when PLUGBOARD_KEY can read it. Otherwise it falls back to git as before. The commit is still checked against the checkout first, so a commit the checkout lacks still stops the run.
+
+Validated: bun run typecheck, bun test (2433 pass, 126 live skips), coverage ratchet, check-pack and smoke-pack, docs:build, and the scripted harness with no examples/ output drift. Against the dev server on main, the new route returns no packageVersion and the harness falls back to git.
+
+Closes #347
+
+#### Fixes
+
+**fix(discovery): drop placeholder host versions and guard the package.json read** ([`7dedbc8`](https://github.com/jjjermiah/opencode-plugboard/commit/7dedbc88f425f3558541b27b0f012038e5935734))
+
+Review of #354 found four gaps in the status versions change.
+
+A dev or unbundled OpenCode host reports the version "unknown" or "local". Those were shown as opencodeVersion, and the harness would record them in a committed live run. They are now omitted, the same as a host that gives no version (hostVersion in src/version.ts).
+
+The package.json read ran at import time with no fallback. A bundled or vendored install would fail to load the plugin to lose one field. The read now returns undefined on any failure, and packageVersion is omitted.
+
+The harness status fetch had no timeout, so a server that accepted and never answered stalled the run before any scenario started. It now aborts after 5 seconds (the timeoutMs argument of servedVersions) and falls back to git.
+
+Tests added: the admin-key branch of /plugboard/status, the index.ts wiring from ctx.app.version (through the spy context, with a placeholder case), the placeholder and unreadable-file cases, and the harness timeout. The duplicate PACKAGE_VERSION check in observability.test.ts is dropped, and the stale #335 test title now says no OpenCode version was reported. Fields stay visible to app keys, as the route already shows uptime.
+
+Merged origin/main (0.30.0). The CHANGELOG bullet moved from the 0.30.0 section back under [Unreleased], marked since 0.31.0.
+
+Validated: bun run typecheck, bun test (2441 pass, 126 live skips), coverage ratchet (floors committed), mutation check (64 of 64 killed), coverage manifest, check-pack and smoke-pack, docs:build, and the scripted harness with no examples/ run output drift.
+
+Refs #347
+
+#### Docs
+
+**docs(docs): add Dify client page (OpenAI-API-compatible provider)** ([`5b25b67`](https://github.com/jjjermiah/opencode-plugboard/commit/5b25b674fbfcd5874bfc6195c9d20e6271101820))
+
+Adds docs/clients/dify.md for Dify's OpenAI-API-compatible model provider, with a row in the README client table and a Clients sidebar entry. The page gives the Add Model fields, the plugboard options (own app key, models and aliases), and what the plugin sends through plugboard.
+
+Decisions: Dify's default Function Call Type is Not Support, so the page says to set Tool Call for agents and tool nodes, and says why. Video, audio and document support stay off because plugboard refuses non-image data URLs as image_url (invalid_image) and accepts a file part only as a PDF data URL (invalid_file). The examples/dify/ compose note from the issue is not added: the page needs no config file, and a compose note would not be run here.
+
+Verified against Dify's docs (read 2026-10-13) and the plugin source at dify-official-plugins 24d1b81 (plugin 0.0.68): provider/openai_api_compatible.yaml for the fields and defaults, models/llm/llm.py for the chat/completions path, the save-time ping (max_tokens 5, a thinking field), and the image and json_schema handling. Not run: no Dify instance was pointed at plugboard, so no chat, stream, agent or structured-output call is confirmed. Dify's own key storage and the behaviour of plugboard on the thinking field were not checked.
+
+Refs #238
+
+**docs(docs): add Home Assistant Extended OpenAI Conversation client page** ([`5df9b8a`](https://github.com/jjjermiah/opencode-plugboard/commit/5df9b8af12398926345e30ee53fc63e49f3cc82a))
+
+Adds docs/clients/home-assistant-extended-openai.md for the Extended OpenAI Conversation custom component, with a README client row and a Clients sidebar entry. The page gives the plugboard options, the setup fields (API Key, Base Url with /v1, Skip Authentication), the Chat model field, and the change_config service for moving an existing entry to plugboard.
+
+Decisions: the issue's "maxTools default 32" is stale. The plugboard default is 64 (configuration.md; 32 was before 0.25.0, per claude-code.md), so the page says that. The default function list is one tool, so maxTools matters only with many custom Functions. The page also says that setup checks GET /v1/models but not the chat model, so a wrong chat model fails on the first turn. The examples/home-assistant/ snippet from the issue is not added: it would only repeat the change_config call in the page, and it could not be run here.
+
+Verified against the component at extended_openai_conversation 66aafab (manifest 3.0.0): config_flow.py and strings.json for the setup fields, helpers.py for the models.list check, services.py for change_config (the entry is updated only after the check passes, and a base URL equal to https://api.openai.com/v1 is removed), const.py and entity.py for the default model parameters, the reasoning-model pattern, the one default function and the stream options. Not run: no Home Assistant instance called plugboard, so no voice or text turn and no service call is confirmed.
+
+Refs #237
+
+**docs(docs): correct Dify structured output, save check and image claims** ([`3c4da72`](https://github.com/jjjermiah/opencode-plugboard/commit/3c4da72f7e0c4c6eeb9f8d2f294c9cdb7ad13ed9))
+
+Fixes docs/clients/dify.md after review of #355. Four claims were wrong or unchecked; the page now states what the pinned sources do.
+
+Structured output: with Structured Output set to Support, the SDK sends response_format {"type": "json_schema", "json_schema": <schema as typed>} with no name or strict wrapper of its own (dify-plugin-sdks 86e81e7, openai_compatible/llm.py, lines 524 to 549). Plugboard requires json_schema.schema to be an object (src/openai/request.ts, parseResponseFormat), so a bare schema gets 400. The Add Model table now lists the field, and the section says the wrapper form is what passes. Whether Dify's schema editor adds the wrapper is not checked.
+
+Save-time check: the first check is the SDK's {model, max_tokens: 5, messages} (SDK lines 236 to 241). The thinking field is added only on a retry after an error that mentions thinking or budget_tokens (plugin llm.py, lines 145 to 149). The max_completion_tokens branch matches the pattern at plugin lines 48 to 50, which allows a dotted prefix. Plugboard ignores unknown body fields (src/openai/request.ts), so thinking and similar fields are not rejected.
+
+Images: Dify sends base64 data URLs by default (MULTIMODAL_SEND_FORMAT=base64, Dify enterprise environment docs), so remoteImages is not needed. url mode sends an http(s) URL from FILES_URL, which plugboard fetches only with remoteImages on.
+
+Also: Model Name and endpoint name wording no longer says "only if" for an empty field, the Stream function calling, Compatibility mode and Thinking Mode rows are in the table, and the URL join is cited to the SDK (lines 562 to 568).
+
+Not run: no Dify instance was pointed at plugboard, so none of these shapes is confirmed on the wire.
+
+Refs #238
+
+**docs(docs): correct Home Assistant functions, AI Task and sampling claims** ([`054b20c`](https://github.com/jjjermiah/opencode-plugboard/commit/054b20c2b4ca0f73a2ebc53f072fb7ad6847ab36))
+
+Fixes docs/clients/home-assistant-extended-openai.md after review of #355.
+
+Functions: a non-empty Functions value replaces the default execute_services tool (conversation.py, lines 225 to 247), so the old "each entry adds one tool" line was wrong. The page now says to copy execute_services in to keep it.
+
+AI Task: with a structure, the component sends response_format json_schema with name (slugified), strict true and schema (entity.py, lines 315 to 323). That is the wrapper plugboard accepts. Marked not run. The conversation agent does not send it.
+
+Reasoning names: gpt-5 and o1 to o4 names also get reasoning_effort (default low) and service_tier (default flex) (entity.py, lines 285 to 294; const.py, lines 241 to 248). Plugboard reads reasoning_effort and not service_tier.
+
+Sampling: with the sample alias claude-sonnet-4-6, HA sends temperature 0.5 and top_p 1. Claude 4.6 and older refuse both together, so plugboard drops top_p and reports it in x-plugboard-dropped-params (src/openai/sampling.ts). Claude 4.7 and newer, and 5.x, drop both. Rules key on the resolved model, not the alias name.
+
+Not run: no Home Assistant instance called plugboard, so none of these shapes is confirmed on the wire.
+
+Refs #237
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.30.0] - 2026-10-13: Out of Sight
 
 **Full diff:** [v0.29.0...v0.30.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.29.0...v0.30.0)
@@ -5494,7 +5616,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.27.0...v0.28.0

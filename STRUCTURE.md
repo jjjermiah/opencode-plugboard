@@ -30,6 +30,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `keepalive.ts` | The location keep-alive (#310, #350): the loop that creates and removes one dedicated session every 30 minutes so OpenCode's idle eviction does not close the listener. Forked from setup by `index.ts`; the host calls are in `session/host.ts`. |
 | `runtime.ts` | The process-wide runtime on `globalThis`: generations, confirmed app directories, `ensureBackend`, the listener, the event pump, the session store, history sweep state, the metrics registry. |
 | `discovery.ts` | Pure builders for `GET /`, `GET /v1` and `GET /plugboard/status`, and `sendText`. |
+| `version.ts` | `PACKAGE_VERSION`, the package.json version, read once at load. |
 | `dashboard/` | The usage dashboard (`GET /plugboard/dashboard`, #141): `page.ts` is the static page, its CSP headers and route names; `assets.ts` serves the page and its files (`app.js`, `app.css`, uPlot from `node_modules`); `app.js` and `app.css` are the browser script and stylesheet, with no build step. |
 | `user.ts` | The end user of a request (#57): the sanitizer for `user` and `metadata.user_id`, the dropped header, pure (no node imports). |
 | `keys.ts` | Runtime app keys (#55): the store on the host storage (SHA-256 digests under `keys/`), the cache on the runtime, create, list and revoke. |

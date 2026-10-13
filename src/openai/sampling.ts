@@ -10,6 +10,7 @@
  * when it was probed (OpenCode 2.0.26, October 2026). A model no rule matches keeps every
  * parameter, so a new model that rejects one still fails with the provider's own 400.
  */
+import type { AppPolicy } from "../config.js"
 import type { ModelRef, PlugGeneration } from "../contract.js"
 
 type Param = "temperature" | "topP" | "frequencyPenalty" | "presencePenalty"
@@ -74,6 +75,22 @@ export interface Sampled {
   readonly generation: PlugGeneration
   /** Wire names of the dropped parameters, in header order (`temperature`, `top_p`, `frequency_penalty`, `presence_penalty`). */
   readonly dropped: ReadonlyArray<string>
+}
+
+/**
+ * The request's generation as the app allows it. Sampling defaults (`apps.<name>.sampling`, #264) fill only the fields the caller
+ * left unset. `apps.<name>.maxOutputTokens` (#263) lowers the caller's `maxTokens` or sets it when none is left, and never raises it.
+ * Routes apply this before `dropRejected`, so the drop sees the values the model would get.
+ */
+export function appGeneration(policy: AppPolicy | undefined, generation: PlugGeneration): PlugGeneration {
+  const defaults = policy?.sampling
+  const cap = policy?.maxOutputTokens
+  if (defaults === undefined && cap === undefined) return generation
+  const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = { ...generation }
+  if (defaults)
+    for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined) out[key] = defaults[key] as never
+  if (cap !== undefined) out.maxTokens = out.maxTokens === undefined ? cap : Math.min(out.maxTokens, cap)
+  return out
 }
 
 /** `generation` without the parameters the model is known to reject, and which ones those were. */

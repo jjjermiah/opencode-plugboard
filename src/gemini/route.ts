@@ -17,7 +17,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { appPolicy, bodyLimits, historyTemplate } from "../config.js"
+import { appPolicy, bodyLimits, historyTemplate, requestedModel } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { listAvailableModels, resolveModel } from "../models.js"
 import { reportCache } from "../cache.js"
@@ -28,7 +28,7 @@ import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
 import type { RouteHost } from "../openai/route.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
-import { dropRejected } from "../openai/sampling.js"
+import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
 import { parseGeminiRequest } from "./request.js"
 import { encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk } from "./response.js"
@@ -116,14 +116,15 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   if (match.op === "count") {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
-    const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options))), host.options)
+    const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app))), host.options)
     if (isPlugError(parsed)) return fail(parsed)
     const catalog = await scope.race(host.loadCatalog())
-    const ref = resolveModel(host.options, match.model, catalog, parsed.reasoningEffort)
+    const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
+    const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
     // An estimate, not the provider's count (see src/anthropic/tokens.ts). The request as the session sends it: the app's policy, persona and server tools count too (#201).
-    const counted = await scope.race(sessionRequest(host.session, app, { ...parsed.request, ref }, appPolicy(host.options, app), scope.signal))
+    const counted = await scope.race(sessionRequest(host.session, app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, app), scope.signal))
     if (isPlugError(counted)) return fail(counted)
     return sendJson(response, 200, { totalTokens: estimateTokens(counted) })
   }
@@ -141,22 +142,26 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     return fail({ status: 400, kind: "invalid_request", code: "unsupported_parameter", param: "alt", message: "streamGenerateContent needs the query parameter alt=sse" })
   const unsupported = checkJsonContentType(request)
   if (unsupported) return fail(unsupported)
-  const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
+  const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, app))
 
   const parsed = parseGeminiRequest(match.model, match.stream, body, host.options)
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())
-  const ref = resolveModel(host.options, match.model, catalog, parsed.reasoningEffort)
+  const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
+  const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
   // Sampling parameters the model is known to reject are dropped and reported, before any response bytes.
-  const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined
+  const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
+  const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined
   if (sampled && sampled.dropped.length > 0) {
     info.dropped = sampled.dropped.join(",")
     response.setHeader(DROPPED_HEADER, info.dropped)
   }
-  const call: PlugRequest = { ...parsed.request, ...(sampled ? { generation: sampled.generation } : {}), ref }
+  const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
   const { exchange } = parsed
+  // The answer names the model it runs on: the app's pin, else the caller's (#261).
+  exchange.model = requested.model
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason

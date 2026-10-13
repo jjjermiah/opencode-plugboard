@@ -4,7 +4,12 @@
  * started. Requests start after a mark and finish before the next one, so a slice by mark is one scenario.
  *
  * The runner marks a scenario with `POST <capture>/__mark` `{scenario, model}`. The mark waits until nothing is in
- * flight, so a late answer from the previous scenario cannot land in the next slice. Ported from compat/tools/logproxy.py
+ * flight, so a late answer from the previous scenario cannot land in the next slice.
+ *
+ * The control routes, `POST /__mark` and `GET /__exchanges`, answer only a loopback caller (the runner, on the host). The
+ * proxied routes take any caller, since a container reaches them through host.docker.internal. `GET /__exchanges` returns
+ * the current mark's exchanges once they have finished, as seq, path, status and response body with the caller's
+ * credentials removed (no headers, no request body): a runner reads its own round trip there, as tool-bot does. Ported from compat/tools/logproxy.py
  * (which stays until the cleanup issue deletes it).
  */
 
@@ -47,6 +52,38 @@ export interface Capture {
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "proxy-connection", "host", "content-length", "accept-encoding"])
 const RESPONSE_DROP = new Set([...HOP, "content-encoding"])
 
+/** The request headers that carry a credential. Their values are removed from anything the control route returns. */
+const SECRET_HEADERS = ["authorization", "x-api-key", "x-goog-api-key"]
+
+/** What the control route returns for an exchange: enough to read a round trip, and no credential. */
+export interface ReadableExchange {
+  readonly seq: number
+  /** The path without its query: Gemini's key travels in the query. */
+  readonly path: string
+  readonly status: number
+  readonly resBody: string
+}
+
+/** True for the loopback addresses only. The control routes answer nobody else. */
+export function isLoopback(address: string | undefined): boolean {
+  return address !== undefined && (address === "::1" || /^(::ffff:)?127\./.test(address))
+}
+
+/** The current mark's exchanges, with every value the caller sent as a credential replaced by `<redacted>`. */
+export function readableExchanges(exchanges: ReadonlyArray<Exchange>, mark: number): ReadableExchange[] {
+  return exchanges
+    .filter((exchange) => exchange.mark === mark)
+    .map((exchange) => {
+      let body = exchange.resBody
+      for (const name of SECRET_HEADERS) {
+        const value = exchange.reqHeaders[name]
+        if (!value) continue
+        for (const secret of [value, value.replace(/^Bearer\s+/i, "")]) if (secret) body = body.split(secret).join("<redacted>")
+      }
+      return { seq: exchange.seq, path: exchange.path.split("?")[0]!, status: exchange.status, resBody: body }
+    })
+}
+
 /**
  * `bind` is the address the proxy listens on. Loopback by default; a Docker example passes `0.0.0.0` so its container
  * can reach the proxy through host.docker.internal. The proxy never holds the app key: it forwards the caller's.
@@ -71,6 +108,10 @@ export async function startCapture(upstream: string, bind = "127.0.0.1"): Promis
     idleTimeout: 255,
     async fetch(request) {
       const url = new URL(request.url)
+      const control = url.pathname === "/__mark" || url.pathname === "/__exchanges"
+      if (control && !isLoopback(server.requestIP(request)?.address)) {
+        return new Response("the capture's control routes are local to the runner", { status: 403 })
+      }
       if (url.pathname === "/__mark" && request.method === "POST") {
         const body = (await request.json()) as { scenario?: unknown; model?: unknown; variant?: unknown }
         if (typeof body.scenario !== "string" || typeof body.model !== "string") return new Response("mark needs scenario and model", { status: 400 })
@@ -78,6 +119,12 @@ export async function startCapture(upstream: string, bind = "127.0.0.1"): Promis
         const variant = typeof body.variant === "string" ? body.variant : undefined
         marks.push({ scenario: body.scenario, model: body.model, ...(variant === undefined ? {} : { variant }), at: Date.now() })
         return new Response(null, { status: 204 })
+      }
+      // The exchanges of the current mark, once they have all finished. A runner reads its own round trip here, since the
+      // transcript file is written only after the runner exits.
+      if (url.pathname === "/__exchanges" && request.method === "GET") {
+        await settle()
+        return Response.json(readableExchanges(exchanges, marks.length - 1))
       }
       inFlight++
       const start = Date.now()

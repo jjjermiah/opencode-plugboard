@@ -40,7 +40,7 @@ Partial streaming: `client.chat.completions.create_partial(...)` yields growing 
 ## Gotchas
 
 - Plugboard does not enforce the schema. A model can return a value that fails validation, and Instructor then retries. Keep `max_retries` above 0 for real use; the harness set it to 0 so that a failure shows.
-- Do not pass both a `tools` list and a `response_model` in one request. The client issue for this (#225) reports that plugboard then returns the caller's tool calls, not the schema answer. Not re-tested here.
+- Do not pass both a `tools` list and a `response_model` in one request. Plugboard issue #34 reports that plugboard then returns the caller's tool calls, not the schema answer. Not re-tested here.
 - The fake always returns values that match the schema, so the harness proves the wiring, not that a model fills the fields correctly.
 
 Harness: `compat/py/clients/instructor_client.py`. Example: [`examples/instructor/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/instructor).

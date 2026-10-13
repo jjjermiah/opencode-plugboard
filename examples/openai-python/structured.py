@@ -27,13 +27,13 @@ def run(client, model):
     top = client.chat.completions.parse(model=model, messages=messages, response_format=Meal)
     if not isinstance(top.choices[0].message.parsed, Meal):
         raise AssertionError("top-level parse did not give a Meal")
-    # region snippet
+    # region snippet-raw
     raw = client.chat.completions.create(
         model=model,
         messages=messages,
         response_format={"type": "json_schema", "json_schema": SCHEMA},
     )
-    # endregion snippet
+    # endregion snippet-raw
     data = json.loads(raw.choices[0].message.content or "")
     return {
         "calories": data.get("calories"),

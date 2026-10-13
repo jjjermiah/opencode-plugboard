@@ -13,9 +13,9 @@ post() { # $1 = JSON body
 
 s1() { # plain prompt
   local out
-  # region snippet
+  # region snippet-s1
   out=$(post "$(jq -cn --arg m "$1" '{model: $m, prompt: "Reply with exactly: pong", max_tokens: 16}')")
-  # endregion snippet
+  # endregion snippet-s1
   jq -c '{text: (.choices[0].text // ""), finish_reason: .choices[0].finish_reason, usage: .usage}' <<<"$out"
 }
 

@@ -98,6 +98,10 @@ export default defineConfig({
           { text: "Mastra", link: "/clients/mastra" },
           { text: "smolagents", link: "/clients/smolagents" },
           { text: "promptfoo", link: "/clients/promptfoo" },
+          { text: "lm-evaluation-harness", link: "/clients/lm-eval" },
+          { text: "Langfuse", link: "/clients/langfuse" },
+          { text: "Dify", link: "/clients/dify" },
+          { text: "Home Assistant (Extended OpenAI)", link: "/clients/home-assistant-extended-openai" },
         ],
       },
       {

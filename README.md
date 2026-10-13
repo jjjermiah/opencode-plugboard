@@ -134,16 +134,16 @@ A model outside the list gets a 404:
 
 #### Per-app policy
 
-`apps` fixes an app's behaviour on the server, so the app does not have to be trusted with it. Each policy can narrow the model list, add or replace the system prompt, drop tools, or lower the tool cap.
+`apps` fixes an app's behaviour on the server, so the app does not have to be trusted with it. Each policy can narrow the model list, add or replace the system prompt, drop tools, lower the tool cap, cap the output tokens of one answer, or set sampling defaults for requests that do not send them.
 
 ```jsonc
 "apps": {
-  "discord-bot": { "models": ["fast"], "system": "Answer in two sentences.", "tools": false },
+  "discord-bot": { "models": ["fast"], "model": "fast", "system": "Answer in two sentences.", "tools": false, "maxOutputTokens": 400, "sampling": { "temperature": 0.2 } },
   "coding": { "models": ["anthropic/*"], "maxTools": 16 }
 }
 ```
 
-The `discord-bot` app can only use `fast`, gets the system prompt added, and has its tools removed. The request still succeeds, and the response says what changed:
+The `discord-bot` app always runs on `fast`, whatever model the bot sends (`model` pins it), gets the system prompt added, and has its tools removed. Its answers stop at 400 output tokens, and a request that sends no `temperature` gets `0.2`. The request still succeeds, and the response says what changed:
 
 ```
 x-plugboard-policy: tools-stripped
@@ -350,6 +350,8 @@ Models plugboard does not know keep every parameter, and the provider's own 400 
 
 Usage is recorded per app and per UTC day: requests, errors, latency, tokens, estimated cost, cache hits, fallbacks and 429 refusals. It is on by default. An admin key reads every app, and an app key reads only its own.
 
+Per end user: an app whose proxy sets a user header can name it with `userHeader`, so usage splits per user without a change to the bot (`"apps": { "discord-bot": { "userHeader": "x-user-id" } }`, since 0.32.0).
+
 ```jsonc
 "adminKey": "{env:PLUGBOARD_ADMIN_KEY}",   // reads every app; not a model key
 "usage": { "retentionDays": 90 }           // the default; { "enabled": false } turns it off
@@ -500,9 +502,13 @@ One page per client, with the config, a chat, a tool call, structured output and
 | SillyTavern | [sillytavern][client-sillytavern] | docs only, not run yet (web app); Custom (OpenAI-compatible) source |
 | Cline | [cline][client-cline] | docs only, not run yet (VS Code extension); OpenAI Compatible provider |
 | Roo Code | [roo-code][client-roo-code] | docs only, not run yet (VS Code extension); needs native tool calling |
-| promptfoo | [promptfoo][client-promptfoo] | pass against the scripted fake: `promptfoo eval` 2/2 (text, tool call); model-graded assertions need a plugboard grader |
-| smolagents | [smolagents][client-smolagents] | partial against the scripted fake: text, stream, tool call pass; tool round trip fails on the fake (scripted reply); needs `smolagents[openai]` |
+| promptfoo | [promptfoo][client-promptfoo] | pass against the live dev server (2026-10-13): `promptfoo eval` 2/2 (text, tool call); model-graded assertions need a plugboard grader |
+| lm-evaluation-harness | [lm-eval][client-lm-eval] | pass against the live dev server (2026-10-13): `local-completions` and `local-chat-completions` on a generate-until task (the chat type was flaky once: 0.5, then 1.0); loglikelihood tasks need logprobs, which plugboard refuses |
+| smolagents | [smolagents][client-smolagents] | pass: text, stream, tool call and tool round trip on `fast` (smolagents 1.26.0); needs `smolagents[openai]` |
+| Langfuse | [langfuse][client-langfuse] | pass: text, stream and one tool round trip on `fast` through the OpenAI wrapper (langfuse 4.17.0), tracing off; traces to a Langfuse server not run |
 | Mastra | [mastra][client-mastra] | pass against the scripted fake: text, stream, tool call, tool round trip; needs `plugboard/fast`, not bare `fast` |
+| Dify | [dify][client-dify] | docs only, not run yet (self-hosted web app); OpenAI-API-compatible provider, Chat mode, Tool Call off by default |
+| Home Assistant (Extended OpenAI Conversation) | [home-assistant-extended-openai][client-home-assistant-extended-openai] | docs only, not run yet (custom component); Base Url field, one default tool |
 | Haystack | [haystack][client-haystack] | pass against the scripted fake: pipeline text, stream, tool call, tool round trip |
 | LlamaIndex | [llamaindex][client-llamaindex] | pass against the scripted fake: text, stream, tool call, tool round trip; `OpenAILike` (the `OpenAI` class rejects `fast`) |
 | OpenAI Agents SDK (Python) | [openai-agents][client-openai-agents] | pass on Responses and Chat Completions: text, stream, tools, structured output |
@@ -615,7 +621,11 @@ Not affiliated with or endorsed by OpenAI, Anthropic, Google, GitHub or Microsof
 [client-haystack]: https://jjjermiah.github.io/opencode-plugboard/clients/haystack
 [client-mastra]: https://jjjermiah.github.io/opencode-plugboard/clients/mastra
 [client-smolagents]: https://jjjermiah.github.io/opencode-plugboard/clients/smolagents
+[client-langfuse]: https://jjjermiah.github.io/opencode-plugboard/clients/langfuse
 [client-promptfoo]: https://jjjermiah.github.io/opencode-plugboard/clients/promptfoo
+[client-lm-eval]: https://jjjermiah.github.io/opencode-plugboard/clients/lm-eval
+[client-dify]: https://jjjermiah.github.io/opencode-plugboard/clients/dify
+[client-home-assistant-extended-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/home-assistant-extended-openai
 [client-openai-agents]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-agents
 [client-go-openai]: https://jjjermiah.github.io/opencode-plugboard/clients/go-openai
 [client-openai-dotnet]: https://jjjermiah.github.io/opencode-plugboard/clients/openai-dotnet

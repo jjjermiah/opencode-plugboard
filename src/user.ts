@@ -38,6 +38,30 @@ export function bodyUserId(body: unknown): unknown {
   return typeof metadata === "object" && metadata !== null ? (metadata as { user_id?: unknown }).user_id : undefined
 }
 
+/**
+ * The end user a request names (#272): the app's `userHeader` value when the request sends that header, else `fromBody`. The header
+ * is not trusted more than the body: the same sanitizer decides, and a present but refused header is dropped, not replaced.
+ */
+export function requestUser(headers: Readonly<Record<string, string | ReadonlyArray<string> | undefined>>, userHeader: string | undefined, fromBody: unknown): unknown {
+  if (userHeader === undefined || !Object.hasOwn(headers, userHeader)) return fromBody
+  const raw = headers[userHeader]
+  const value = Array.isArray(raw) ? raw[0] : raw
+  // A blank header is absent, so a proxy that always sets it does not hide the body's user (#272).
+  return value === undefined || value.trim() === "" ? fromBody : value
+}
+
+/**
+ * `body` with its end user set to `user`: the `user` member (Chat Completions, Responses, legacy completions) or `metadata.user_id`
+ * (Messages). Returns `body` itself when `user` is already its end user, so a request without `userHeader` is not changed.
+ */
+export function withEndUser(body: unknown, user: unknown, dialect: "user" | "metadata"): unknown {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return body
+  if (dialect === "user") return user === bodyUser(body) ? body : { ...body, user }
+  const metadata = (body as { metadata?: unknown }).metadata
+  const kept = typeof metadata === "object" && metadata !== null && !Array.isArray(metadata) ? metadata : {}
+  return user === bodyUserId(body) ? body : { ...body, metadata: { ...kept, user_id: user } }
+}
+
 /** The `user` member of a `PlugRequest` (spread into it), empty when no user is kept. */
 export const userField = (raw: unknown): { user?: string } => {
   const user = sanitizeEndUser(raw)
