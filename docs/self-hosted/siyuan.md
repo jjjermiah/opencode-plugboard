@@ -7,7 +7,7 @@ SiYuan is a block-based personal knowledge base. Its AI features are writing hel
 | Upstream | [siyuan-note/siyuan](https://github.com/siyuan-note/siyuan) (about 46.7k stars) |
 | Config source | `kernel/conf/ai.go` at [fb3355f](https://github.com/siyuan-note/siyuan/blob/fb3355f07d22bff36f1d785999fd5ded6a90d468/kernel/conf/ai.go), and the Docker section of its README |
 | Plugboard API | `/v1/chat/completions` (SiYuan's default protocol for an OpenAI provider) |
-| Status | Works for writing and chat through plugboard. The Q/A search and any embedding feature need a second provider. docs-verified, not run (checked 2026-10-12) |
+| Status | Works for writing, chat and the agent through plugboard. The Q/A search and any embedding feature need a second provider. docs-verified, not run (checked 2026-10-12) |
 
 ## Plugboard options
 
@@ -42,6 +42,8 @@ A runnable compose file and env file are in [`examples/self-hosted/siyuan/`](htt
 ## What works and what does not
 
 - **Writing and chat**: through the `writing` alias.
+- **Agent and editing models**: the same env provider also feeds the agent and editing models. `ReconcileModelIDs` in `kernel/conf/ai.go` points them at it. The agent uses tool calls, which plugboard supports, so the agent is expected to work through the same alias. Not run. Its timeouts and limits come from `SIYUAN_OPENAI_AGENT_TIMEOUT`, `SIYUAN_OPENAI_AGENT_STREAM_IDLE_TIMEOUT`, `SIYUAN_OPENAI_AGENT_CONFIRM_TIMEOUT`, `SIYUAN_OPENAI_AGENT_MAX_RETRIES`, `SIYUAN_OPENAI_AGENT_TEMPERATURE`, `SIYUAN_OPENAI_AGENT_MAX_COMPLETION_TOKENS` and `SIYUAN_OPENAI_AGENT_MAX_TOOL_CALL_ROUNDS`.
+- **Decision model**: a separate default points at `https://api.typesafe.ai/v1/systemone`, an external service. It is disabled by default (`kernel/conf/ai.go`). Leave it disabled unless you want that service.
 - **Q/A search and embeddings**: SiYuan has a separate embedding setting, `SIYUAN_OPENAI_EMBEDDING_API_KEY`, `SIYUAN_OPENAI_EMBEDDING_BASE_URL` and `SIYUAN_OPENAI_EMBEDDING_MODEL`. Plugboard serves no embeddings, so point that one at another provider. Whether Q/A needs it was not checked.
 - **Image generation and speech**: not checked against plugboard, and the plugboard API has no image generation.
 
