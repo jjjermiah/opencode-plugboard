@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are driven by `CHANGELOG.md` and by the commit messages since the last tag. One script (`.github/scripts/release.ts`, run as `bun run release`) does the version bump, the changelog heading and the release commit, opens the release pull request, and tags the merge commit once it lands. GitHub Actions does the rest.
+Releases are driven by `CHANGELOG.md` and by the commit messages since the last tag. One script (`.github/scripts/release.ts`, run as `bun run release`) does the version bump, the changelog heading and the release commit, opens the release pull request, waits for every check on it, merges it, and tags the merge commit. GitHub Actions does the rest.
 
 ## Two layers of notes
 
@@ -14,31 +14,55 @@ The release script writes the full story into `CHANGELOG.md` as a collapsed `<de
 1. Keep `[Unreleased]` in `CHANGELOG.md` current. The release notes are that text, so write it for users. Fill in `compat/results/release-candidate.md` (see [development.md](development.md)). Update the pinned version (`opencode-plugboard@x.y.z`) in `README.md` and `docs/clients/any-app.md`; the release script does not touch them.
 2. Pick a title: short and creative, 2 to 5 words, at most 40 characters, no trailing period ("No Awkward Silences", "Claude Code, Any Brain"). Every release has one.
 3. From a clean `main` that equals `origin/main`: `bun run release 0.3.0 --title "Your Title" --push`. Add `--dry-run` first to see the diff and the plan; it changes nothing and only warns about git state.
-4. The script opens a pull request for the release and enables auto-merge. When the required checks pass, the pull request merges, and the script tags the merge commit and pushes the tag. The tag starts the "Publish" run, which checks the gates, publishes to npm, attests the tarball and creates the GitHub release. The script then watches the release for you (see below); add `--no-watch` to skip that.
+4. The script opens a pull request for the release, watches every check on it, and merges it once they all pass. It waits for CI on the merge commit and tags it only when that CI passes. The tag starts the "Publish" run, which checks the gates, publishes to npm, attests the tarball and creates the GitHub release. The script then watches the release for you (see below); add `--no-watch` to skip that. If a check fails, the script stops with the pull request open and nothing merged or tagged.
 
 The script refuses when the working tree is dirty, the branch is not `main`, local `main` differs from `origin/main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, the tag or the branch `release/v0.3.0` already exists, or `--title` is missing or invalid. It moves the `[Unreleased]` text under `## [0.3.0] - <today>: Your Title`, appends the commit-level detail block, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json` and commits `chore(release): 0.3.0` on `release/v0.3.0`. The annotated tag `v0.3.0` is made on the merge commit, not on the release branch. Without `--push` the script refuses, because a release now always goes through a pull request; use `--dry-run` to preview.
+
+### The release rule
+
+- A release is cut only from a fully green `main`. `--push` refuses before it commits anything unless the newest CI run on `origin/main`'s commit has completed and passed.
+- The release pull request merges only when every check on it is green. `--push` watches all of them (the advisory benchmark aside) and merges nothing while one fails, is pending, or has not reported.
+- The tag goes only on a commit whose own CI run passed. The checks on the pull request ran on the pull request head. The merge commit is a new commit, so the script waits for the `ci.yml` push run on it and tags only when that run succeeds.
+- The GitHub release appears only after npm has the version. The `release` job of the Publish run needs the `publish` and `attest` jobs, so a publish that fails leaves no release.
 
 ### The release pull request
 
 `main` is protected by a repository ruleset: a change lands only through a pull request whose required checks pass. A release follows the same rule:
 
 1. `release/v0.3.0` is created from `main` and pushed.
-2. A pull request into `main` is opened, with the release notes as its body.
-3. Auto-merge is enabled, with a merge commit. The pull request merges when the required checks pass, and its branch is deleted.
-4. The script waits up to 60 minutes for the merge, then tags the merge commit (it is on `main`, and its `package.json` has the new version) and pushes the tag. Tags are not part of a branch ruleset, so the tag push is not blocked by it. Check that on the first release.
+2. A pull request into `main` is opened, with the release notes as its body. Auto-merge is not used: it would merge on the required checks alone, and a red job outside them would still ship.
+3. The script watches every check on the pull request. A failing, cancelled or skipped check stops it (see [When a check fails](#when-a-check-fails)). It keeps waiting while checks are pending, while no check has reported, and while `gh` returns nothing usable (a transient error). A required check that has not reported after 10 minutes fails the release, because its name changed or its workflow does not run on pull requests. The whole wait is capped at 60 minutes.
+4. When every check has passed, the script merges that exact commit (`--match-head-commit`) with a merge commit, and the branch is deleted.
+5. It waits for the `ci.yml` push run on the merge commit (up to 45 minutes). It tags the merge commit and pushes the tag only when that run concluded `success`. Tags are not part of a branch ruleset, so the tag push is not blocked by it. Check that on the first release.
 
-If the merge does not happen within 60 minutes, the script stops and prints how to tag the merge commit by hand.
+**Which checks gate.** Every check on the pull request gates, except `Request-path benchmarks (advisory)`. That includes CodeQL (`Analyze (javascript-typescript)`) and external checks such as CodeRabbit. A skipped check counts as not passed. A future path-filtered workflow that skips on some pull requests would therefore block releases. If a check must never block, add it to `ADVISORY_CHECKS` in `.github/scripts/release.ts` in a reviewed change.
 
-The required status checks are the job names GitHub shows on a pull request:
+The required status checks are the names GitHub shows on a pull request:
 
-- `Typecheck, test and pack` (`ci.yml`)
-- `Compat kit checks` (`ci.yml`)
-- `Host versions` (`ci.yml`)
-- `Lint commit messages` (`commits.yml`)
+- `CI passed` (`ci.yml`): one aggregate job. It needs every gating CI job (typecheck, tests and pack, host versions, the OpenCode host matrix, compat kit checks, examples) and passes only when each one succeeded. A new gating job goes into its `needs:`, not into the ruleset.
+- `Lint commit messages` (`commits.yml`).
+- `Analyze (javascript-typescript)` (`codeql.yml`). CodeQL is not in `ci.yml`, so `CI passed` cannot stand in for it.
 
-Not required: `OpenCode host <version>` (one job per host version, so the names change), `Request-path benchmarks (advisory)`, the nightly and flake-hunt jobs, and `Analyze (javascript-typescript)` until CodeQL has run on `main`. `Build the site` is not a pull request check: the docs build is a step of `Typecheck, test and pack`.
+Not required: `Request-path benchmarks (advisory)` (it never blocks), the individual CI jobs (`CI passed` reports them), the nightly and flake-hunt jobs, and Scorecard. `Build the site` is not a pull request check: the docs build is a step of `Typecheck, test and pack`.
 
-The repository needs two settings for this: "Allow auto-merge" (General), and a ruleset that requires no approving review. A solo maintainer cannot approve their own pull request, so a required approval would block every release.
+The repository needs two settings for this: "Allow auto-merge" (General), which `host-bump.yml` uses for its pull requests, and a ruleset that requires no approving review. A solo maintainer cannot approve their own pull request, so a required approval would block every release.
+
+### Changing the ruleset
+
+The `main` ruleset is changed by hand, in the repository settings, and only after the change that adds `CI passed` is on `main`. Until then the check does not exist on `main`'s workflows. Replace the six required checks (`Typecheck, test and pack`, `Compat kit checks`, `Host versions`, `Examples (scripted runs are current)`, `Lint commit messages` and `Analyze (javascript-typescript)`, the last two of which stay) with exactly: `CI passed`, `Lint commit messages`, `Analyze (javascript-typescript)`.
+
+A pull request opened before the change ran the old `ci.yml`, so it has no `CI passed` check. After the ruleset change it shows that check as expected and cannot merge until its workflows run again on the new file. Push an empty commit to it (`git commit --allow-empty -m "ci: rerun checks"`), or close and reopen it.
+
+### When a check fails
+
+The script exits non-zero with the pull request open. Nothing is merged or tagged, and that stays true until you act.
+
+1. Open the failing check (its link is printed). Decide whether it is a real failure or a flake.
+2. A real failure: check out `release/v0.3.0`, commit the fix (a Conventional Commit) and push it. The pull request takes the new head.
+3. A flake: re-run the failed jobs (`gh run rerun <run-id> --failed`, the run id is in the check link). Nothing else changes.
+4. Then, from a clean `main` that equals `origin/main`, run the same command with `--resume`: `bun run release 0.3.0 --title "Your Title" --push --resume`. It waits until the pull request's head is the commit the release branch points at (GitHub can still show the previous head for a moment after a push), then watches the checks for that commit, merges that exact head and tags the merge commit only after its CI run succeeds. Running it without `--resume` fails, because the release branch exists.
+
+Do not merge the pull request, tag, or push a tag by hand. The gate is the point: a merge made by hand skips the CI run on the merge commit.
 
 ### Watching a release
 
@@ -52,7 +76,7 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 
 `.github/workflows/publish.yml` runs on a `v*` tag push, with one run per ref and no cancelling. In order:
 
-1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, compat checks) run through `workflow_call`, so a release has exactly the same gates as CI.
+1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, compat checks, examples) run through `workflow_call`, so a release has exactly the same gates as CI. The `CI passed` job must succeed for `publish` to run.
 2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
 3. It builds the release notes from the changelog section and the git history with `.github/scripts/release-notes.ts`. A missing or empty section, a heading without a title, or a previous tag missing from the clone fails here, before anything is published. The checkout uses `fetch-depth: 0` so the tag range is available.
 4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.
@@ -61,6 +85,17 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 Both writes are safe to retry: re-run the failed run, or "Run workflow" on the tag with `dry_run` unticked.
 
 Provenance: npm cannot generate provenance attestations for a private repository, so the workflow passes `--provenance` only when the repository is public. Trusted publishing itself works from a private repository. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) and [provenance](https://docs.npmjs.com/generating-provenance-statements).
+
+## If a release fails
+
+Every check on the release pull request passed before the merge, and the merge commit's own `ci.yml` run passed before the tag. A failure after that is rare, and it is usually a runner or npm problem. Either way, never move a pushed tag. Recovery depends on where the run stopped:
+
+- **Merge commit CI failed** (the tag was not pushed): nothing is tagged and npm has nothing. `main` now carries the release commit. Fix forward through a pull request, and cut the next patch. Do not tag that commit.
+- **Merge commit CI cancelled** (the tag was not pushed): someone cancelled that run by hand. Each push to `main` has its own concurrency group, keyed by its commit SHA, so a later push never cancels it. Re-run it with `gh run rerun <run-id>`. Once it concludes `success`, tag that commit by hand (`git tag -a v0.3.0 <merge-sha> -m "Release 0.3.0"`, `git push origin v0.3.0`), then `bun run release 0.3.0 --watch-only`. This is the only hand-made tag the flow allows, and only on a commit whose CI passed. If the re-run fails, fix forward and cut the next patch.
+
+- **Before `npm publish`** (the gates, the release notes or the ref checks failed): nothing is on npm and no GitHub release exists. If the cause was outside the code (a runner or registry outage), re-run the failed run; the same tag and commit publish. If the code is wrong, fix it on `main` through a pull request and cut the next patch. The broken tag stays where it is.
+- **After `npm publish`** (the attestation or the GitHub release failed): npm may already serve the version, and a version on npm cannot be published again. If npm serves the tarball, re-run the failed jobs: the `release` job creates the release, or attaches the files to it if it exists. If the tarball is wrong, fix it on `main` and cut the next patch.
+- The GitHub release exists only after npm has the version. If a tag's Publish run is red and no release is listed on the Releases page, the release has not been made; do not make one by hand.
 
 ## Release files and how to verify them
 
@@ -92,7 +127,7 @@ Two daily jobs watch for a new OpenCode, so a host release reaches a pull reques
 
 What happens:
 
-- **All gates green.** The pull request is labelled `dependencies` and set to auto-merge. A pull request opened with `GITHUB_TOKEN` starts no workflow, so `host-bump.yml` starts `ci.yml` and `commits.yml` on its branch. Those are the required checks, so the merge waits for them and lands on its own.
+- **All gates green.** The pull request is labelled `dependencies` and set to auto-merge. A pull request opened with `GITHUB_TOKEN` starts no workflow, so `host-bump.yml` starts `ci.yml`, `commits.yml` and `codeql.yml` on its branch. `CI passed`, `Lint commit messages` and `Analyze (javascript-typescript)` are the required checks. `host-bump.yml` starts `ci.yml`, `commits.yml` and `codeql.yml` on its branch, so all three report, and the merge waits for them and lands on its own.
 - **A gate red.** The pull request is a draft with the failing log tails, and the issue `OpenCode <v> breaks plugboard` links the run. A host type change usually shows in `src/session/host.ts` (`HostContextMatches`). Fix it on the branch, or close the pull request and keep the issue.
 - **The load check red** (`opencode-release.yml`). No pull request, only the issue. Plugboard does not load in that host: reproduce with the command above.
 - **A new major of `@opencode/plugin`.** `host-bump.ts` stops, because the peer range for a new major is a decision. The run fails and the issue is filed.

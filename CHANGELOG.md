@@ -18,6 +18,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **Hidden app sessions, opt-in** ([#337](https://github.com/jjjermiah/opencode-plugboard/issues/337), since 0.29.0). `history.hidden` (global, or `apps.<name>.history.hidden` per app, default off) makes each app's request sessions children of one parent session titled `plugboard: <app>`. OpenCode's session lists show root sessions only, so the requests leave the TUI and app lists and the parent shows instead. The parent reuses the prompt-cache anchor machinery: it is made once, recreated once if deleted, and shared with an app-scope `promptCache`. Deleting the parent deletes its requests, and existing sessions are not moved. Not hidden: the settings workspace view. A `promptCache` scope of `user` with `history.hidden` is refused at load.
 
+### Changed
+
+- **Releases wait for every check, and the tag is made only on a tested commit.** The release script used to enable auto-merge, which waits only for the required checks, and it tagged the merge commit without checking CI on it. Two gaps let a red commit ship: the host matrix was not a required check, and the merge commit was never tested (v0.25.0 failed on Examples and needed 0.25.1). Now the release pull request merges only after every check on it passes (the advisory benchmark aside), the tag is pushed only after CI passes on the merge commit, and `main` requires one aggregate check, `CI passed`, that needs every CI job. The GitHub release still appears only after npm has the version. See [docs/releasing.md](docs/releasing.md).
+
 ## [0.28.0] - 2026-10-13: Counts That Add Up
 
 **Full diff:** [v0.27.0...v0.28.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.27.0...v0.28.0)

@@ -72,10 +72,10 @@ export function emit(line: Record<string, unknown>): void {
   console.log(JSON.stringify(line))
 }
 
-/** Reports the client and runtime the summary records. Runtime is major.minor only. */
+/** Reports the client and runtime the summary records. Runtime is the major version only: a scripted run must not depend on the machine's minor. */
 export function emitClient(name: string, version: string): void {
-  const [major = "0", minor = "0"] = Bun.version.split(".")
-  emit({ kind: "client", name, version, runtime: { name: "bun", version: `${major}.${minor}` } })
+  const [major = "0"] = Bun.version.split(".")
+  emit({ kind: "client", name, version, runtime: { name: "bun", version: major } })
 }
 
 const errorText = (error: unknown): string => (error instanceof Error ? `${error.name}: ${error.message}` : String(error))
