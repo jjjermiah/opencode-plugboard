@@ -16,7 +16,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model, since 0.20.0). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
 | `agents` (since 0.20.0) | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
-| `maxTools` | `64` | Most tools one request may carry. Fixed when the plugin loads. Each slot is a registered placeholder tool (a few KiB per Location), so the default covers coding agents with MCP servers (Claude Code sends 36). A request over the cap gets a 400 that names this option. |
+| `maxTools` | `64` | Most tools one request may carry. Fixed when the plugin loads. Each slot is a registered placeholder tool in every app Location: about 70 KiB per Location at 256 (see [Cost of the seed pool](#cost-of-the-seed-pool)). The default covers coding agents with MCP servers (Claude Code sends 36). A request over the cap gets a 400 that names this option. |
 | `maxN` | `1` | Most model calls one request may fan out to: `n` on Chat Completions and `/v1/completions`, or prompts times `n` for a prompt array. Each is a full call and a kept session, so `n: 4` costs four times. Above the cap, 400 `too_many_choices`. See [completions](completions.md). |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
 | `history` | `{ maxAgeDays: 30 }` | `{ maxSessions, maxAgeDays }`. `maxSessions` keeps the newest N sessions per app (unset: no count limit). `maxAgeDays` deletes older ones: 30 by default, `0` turns the age limit off (keep forever). With both, the stricter wins. `hidden` (since 0.30.0) keeps request sessions out of OpenCode's top-level lists, see [Hidden app sessions](#hidden-app-sessions-since-0-30-0). `apps.<name>.history` overrides these per app (since 0.27.0). Gotcha: the 30-day default applies to an app that sets only `maxSessions`. See [History](history.md). |
@@ -101,6 +101,24 @@ The responses do not expose the `x-plugboard-*` headers to a browser script, bec
   "timeoutMs": 10000
 }
 ```
+
+### Cost of the seed pool
+
+Each `maxTools` slot is a placeholder tool registered in every app Location. The model still receives only the request's own tools at any cap.
+
+Method: the real `installSessionHooks` with the spy plugin context and a fake host transform editor, on Bun. One Location per registration. Each hook call handles a 36-tool request. Four runs agreed within a few microseconds. Retained heap is measured as a heap delta around the Locations kept alive, and includes about 2.6 KiB of harness baseline (the `maxTools: 0` row); per slot it is about 0.28 KiB.
+
+| maxTools | Register (us per Location) | Retained heap (KiB per Location) | Context hook (us per request) | Tools sent to host | Seed descriptors handed to the hook (bytes) |
+| --- | --- | --- | --- | --- | --- |
+| 64 | 3 to 4 | 20 | 6 to 7 | 36 (9,773 B) | 8,695 |
+| 128 | 4 to 6 | 38 | 7 | 36 (9,773 B) | 17,427 |
+| 256 | 8 to 13 | 72 | 10 to 13 | 36 (9,773 B) | 34,963 |
+| 512 | 16 to 19 | 146 | 16 to 17 | 36 (9,773 B) | 70,035 |
+| 1024 | 25 to 29 | 285 | 30 to 37 | 36 (9,773 B) | 140,203 |
+
+Not included: the host's own cost per registered tool, and the seed descriptors the host hands the hook (the last column, about 35 KB at 256 and 140 KB at 1024). Those are real costs in the host, outside this measurement.
+
+Lazy registration was considered and not built: at 256 the cost is small enough that rebuilding the host's tool transform on demand is not worth the risk.
 
 ### Reloads and restarts
 
