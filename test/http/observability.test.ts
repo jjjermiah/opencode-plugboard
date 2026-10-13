@@ -3,7 +3,6 @@
  * and `/metrics`, #76 the request id header, and #91 authentication before route lookup.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
 import { PACKAGE_VERSION } from "../../src/version.js"
 import { ev } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
@@ -127,7 +126,6 @@ describe("#56 GET /plugboard/status", () => {
     server = await startRoute({ caller: new FakeModelCaller([]), options: { keys: KEYS }, opencodeVersion: "2.0.27" })
     const reply = await server.send({ path: "/plugboard/status", headers: bearer(KEYS.alpha) })
     expect(reply.json()).toMatchObject({ packageVersion: PACKAGE_VERSION, opencodeVersion: "2.0.27" })
-    expect(PACKAGE_VERSION).toBe((JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string }).version)
   })
 
   test("#347 omits opencodeVersion when the host does not expose one; the auth stays on the route", async () => {

@@ -5,6 +5,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { createKeyState, createKeyStore } from "../../src/keys.js"
+import { PACKAGE_VERSION } from "../../src/version.js"
 import { createUsageRecorder, createUsageState } from "../../src/usage.js"
 import { startRoute, TEST_STATUS, type RouteServer } from "../support/loopback.js"
 import { FakeModelCaller } from "../support/model-caller.js"
@@ -70,6 +71,14 @@ describe("#311 every /plugboard/ route answers the key its rule names", () => {
     expect(reply.status).toBe(200)
     expect(reply.json()).toMatchObject({ ok: true, eventPump: { running: true } })
     expect(reply.json().app).toBeUndefined()
+  })
+
+  test("#347 /plugboard/status with the admin key names the package and OpenCode versions too", async () => {
+    server = await startRoute({ caller: new FakeModelCaller([]), options: { keys: KEYS, adminKey: ADMIN }, status: () => READY, opencodeVersion: "2.0.27" })
+    const reply = await server.send({ path: "/plugboard/status", headers: bearer(ADMIN) })
+    expect(reply.status).toBe(200)
+    expect(reply.json()).toMatchObject({ packageVersion: PACKAGE_VERSION, opencodeVersion: "2.0.27" })
+    expect(reply.json()).not.toHaveProperty("app")
   })
 
   test("#311 /plugboard/status with an app key still names the app", async () => {

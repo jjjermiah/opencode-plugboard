@@ -39,7 +39,7 @@ describe("examples summary schema", () => {
     expect(check(golden)).toBe(false)
   })
 
-  test("#335 a live summary may record opencode as null (the server exposes no version)", async () => {
+  test("#335 a live summary may record opencode as null (no OpenCode version reported)", async () => {
     const check = await validate
     const golden = await Bun.file(harness("golden/summary.json")).json()
     expect(check({ ...golden, date: "2026-10-13", plugboard: { version: "0.26.0", commit: "abc1234" }, opencode: null }), "null opencode").toBe(true)
@@ -157,6 +157,11 @@ describe("#347 a live run reads the versions from the server's /plugboard/status
   test("a server that does not report packageVersion (an older plugboard) falls back to git; a missing opencodeVersion is null", async () => {
     expect((await livePlugboard({ url: serve({ ok: true }), key: "k-good" })).version).toBe(own)
     expect(await livePlugboard({ url: serve({ ok: true, packageVersion: "9.9.9" }), key: "k-good" })).toMatchObject({ version: "9.9.9", opencode: null })
+  })
+
+  test("a server that never answers is given up after the timeout, so the run falls back to git", async () => {
+    server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Promise<Response>(() => {}) })
+    expect(await servedVersions(`http://127.0.0.1:${server.port}/v1`, "k-good", 100)).toBeUndefined()
   })
 
   test("a commit the checkout does not have still stops the run, even when the server answers", async () => {

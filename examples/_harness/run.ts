@@ -140,12 +140,15 @@ export async function plugboardVersion(commit: string): Promise<string> {
 
 /**
  * The versions `GET /plugboard/status` reports on the live server, when the key can read it (#347). Anything else (no key, the
- * server unreachable, a refusal, a server without `packageVersion`) is undefined, and the caller falls back to git.
+ * server unreachable or silent past `timeoutMs`, a refusal, a server without `packageVersion`) is undefined, and the caller falls back to git.
  */
-export async function servedVersions(url: string, key: string | undefined): Promise<{ packageVersion: string; opencodeVersion: string | null } | undefined> {
+export async function servedVersions(url: string, key: string | undefined, timeoutMs = 5000): Promise<{ packageVersion: string; opencodeVersion: string | null } | undefined> {
   if (!key) return undefined
   try {
-    const reply = await fetch(new URL("/plugboard/status", new URL(url).origin), { headers: { authorization: `Bearer ${key}` } })
+    const reply = await fetch(new URL("/plugboard/status", new URL(url).origin), {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    })
     if (!reply.ok) return undefined
     const body = (await reply.json()) as { packageVersion?: unknown; opencodeVersion?: unknown }
     if (typeof body.packageVersion !== "string") return undefined
