@@ -39,8 +39,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "P263-app-output-cap-raises",
     invariant: "#263",
     file: "src/openai/sampling.ts",
-    find: "  return { ...generation, maxTokens: generation.maxTokens === undefined ? cap : Math.min(generation.maxTokens, cap) }",
-    replace: "  return { ...generation, maxTokens: cap }",
+    find: "  if (cap !== undefined) out.maxTokens = out.maxTokens === undefined ? cap : Math.min(out.maxTokens, cap)",
+    replace: "  if (cap !== undefined) out.maxTokens = cap",
     tests: ["test/http/per-app-output-cap.test.ts"],
   },
   {
