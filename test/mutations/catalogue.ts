@@ -28,6 +28,46 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P270-app-maxn-ignored",
+    invariant: "#270",
+    file: "src/config.ts",
+    find: "  return appPolicy(options, app)?.maxN ?? options.maxN",
+    replace: "  return options.maxN",
+    tests: ["test/http/per-app-maxn.test.ts"],
+  },
+  {
+    id: "P265-app-history-own-field-ignored",
+    invariant: "#265",
+    file: "src/session/prune.ts",
+    find: "  const maxSessions = own?.maxSessions ?? global.maxSessions",
+    replace: "  const maxSessions = global.maxSessions",
+    tests: ["test/session/prune.test.ts"],
+  },
+  {
+    id: "P265-index-written-without-app-limit",
+    invariant: "#265",
+    file: "src/runtime.ts",
+    find: "  if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) return",
+    replace: "  if (false) return",
+    tests: ["test/runtime/generations.test.ts"],
+  },
+  {
+    id: "P262-access-line-written-when-disabled",
+    invariant: "#262",
+    file: "src/log.ts",
+    find: "  if (state().accessLog) log(event, fields)",
+    replace: "  log(event, fields)",
+    tests: ["test/unit/log.test.ts"],
+  },
+  {
+    id: "P314-expose-headers-dropped",
+    invariant: "#314",
+    file: "src/openai/route.ts",
+    find: "        response.setHeader(\"access-control-expose-headers\", CORS_EXPOSED_HEADERS)",
+    replace: "",
+    tests: ["test/http/cors.test.ts"],
+  },
+  {
     id: "I16-forwarded-host-from-untrusted-peer",
     invariant: "I16",
     file: "src/forwarded.ts",
