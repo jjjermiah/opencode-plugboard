@@ -136,6 +136,26 @@ function ciProblemOn(sha: string): string | undefined {
   return undefined
 }
 
+// Returns the pull request URL once its head is `sha`, the commit this run fetched or pushed. Right after a push
+// GitHub can still report the previous head, and the checks for that head are not the ones this release needs.
+// A pull request that is no longer open stops the release.
+async function waitForHead(branch: string, sha: string): Promise<string> {
+  const start = Date.now()
+  for (;;) {
+    const view = gh("pr", "view", branch, "--json", "state,headRefOid,url")
+    if (view.ok) {
+      const pr = JSON.parse(view.out) as { state: string; headRefOid: string; url: string }
+      if (pr.state !== "OPEN") fail(`${pr.url} is ${pr.state}, not open. Nothing is merged or tagged.`)
+      if (pr.headRefOid === sha) return pr.url
+      console.log(`waiting: ${pr.url} is at ${pr.headRefOid.slice(0, 7)}, expected ${sha.slice(0, 7)}`)
+    } else {
+      console.log(`waiting: gh pr view ${branch} failed (${view.err || "no output"})`)
+    }
+    if (Date.now() - start > CHECKS_TIMEOUT_MS) fail(`${branch}'s pull request did not reach ${sha.slice(0, 7)} within 60 minutes. Nothing is merged or tagged.`)
+    await Bun.sleep(CHECKS_POLL_MS)
+  }
+}
+
 // Watches every check on the release pull request until all of them have passed. The advisory benchmark is
 // ignored. A failing, cancelled or skipped check stops at once: the pull request stays open, nothing is merged
 // or tagged, and the script exits non-zero. Only a parsed check list is judged. Empty output, "no checks
@@ -387,12 +407,7 @@ if (resume) {
   if (!tryGit("ls-remote", "--heads", "origin", releaseBranch)) fail(`${releaseBranch} is not on origin, so there is nothing to resume. Run it without --resume.`)
   git("fetch", "origin", releaseBranch)
   headSha = git("rev-parse", `origin/${releaseBranch}`)
-  const view = gh("pr", "view", releaseBranch, "--json", "state,url")
-  if (!view.ok) fail(`gh pr view ${releaseBranch} failed: ${view.err}`)
-  const pr = JSON.parse(view.out) as { state: string; url: string }
-  if (pr.state !== "OPEN") fail(`${pr.url} is ${pr.state}, not open, so there is nothing to resume.`)
-  prUrl = pr.url
-  console.log(`resuming ${prUrl} at ${headSha.slice(0, 7)}`)
+  console.log(`resuming ${releaseBranch} at ${headSha.slice(0, 7)}`)
 } else {
   if (git("branch", "--list", releaseBranch)) fail(`branch ${releaseBranch} already exists locally; delete it first`)
   if (tryGit("ls-remote", "--heads", "origin", releaseBranch)) fail(`branch ${releaseBranch} already exists on origin. If its pull request is open and failed a check, fix it there and run with --resume.`)
@@ -422,6 +437,8 @@ if (resume) {
 
 // Nothing merges unless every check passes. Auto-merge is not used: it would merge on the required
 // checks alone, and a red job outside them would still ship.
+// The checks judged below are the ones for headSha: waitForHead returns only once the pull request is at that commit.
+prUrl = await waitForHead(releaseBranch, headSha)
 await waitForChecks(releaseBranch, prUrl)
 
 // Merge only the commit that passed. The switch to main is needed because --delete-branch removes the
@@ -438,8 +455,8 @@ const short = mergeSha.slice(0, 7)
 console.log(`merged to main at ${short}`)
 
 // The tag goes only on the commit whose own CI run passed. The checks above ran on the pull request head, and a
-// merge commit is a new commit: nobody has tested it until its ci.yml push run finishes. main is not in the
-// concurrency cancel (ci.yml), so a later push cannot cancel this run.
+// merge commit is a new commit: nobody has tested it until its ci.yml push run finishes. each push to main has its
+// own concurrency group in ci.yml (keyed by its SHA), so a later push cannot cancel this run.
 const mergeRun = await waitForMergeCi(mergeSha)
 if (mergeRun.conclusion === "cancelled") {
   fail(`CI on the merge commit ${short} was cancelled (${mergeRun.url}). Nothing is tagged and npm has nothing. Re-run it with gh run rerun ${mergeRun.databaseId}. Once it concludes success, tag ${short} by hand: git tag -a ${tag} ${mergeSha} -m "Release ${version}" && git push origin ${tag}. If it fails, fix forward on main and cut the next patch.`)

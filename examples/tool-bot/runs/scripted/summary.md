@@ -1,6 +1,6 @@
 # tool-bot · scripted
 
-Verdict: **partial** · openai 7.32.0 on bun 1.4 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low
+Verdict: **partial** · openai 7.32.0 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |

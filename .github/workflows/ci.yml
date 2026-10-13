@@ -11,10 +11,11 @@ on:
 
 permissions: {}
 
-# A newer run on the same branch cancels the older one, but never on main: the release script tags a merge commit
-# only after that commit's own run on main passed (.github/scripts/release.ts), so a later push must not cancel it.
+# Pull request and branch runs: a newer run on the same ref cancels the older one. A push to main gets a group
+# keyed by its commit SHA, so no later push can cancel or replace an earlier one. The release script tags a merge
+# commit only after that commit's own run passed (.github/scripts/release.ts), and that run must stay its own.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
