@@ -8,6 +8,7 @@ dist/
 *.tgz
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+docs/.vitepress/examples.json
 .venv/
 __pycache__/
 examples/**/.capture/

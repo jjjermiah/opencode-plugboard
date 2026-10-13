@@ -1,46 +1,34 @@
 # DSPy
 
-Tested: `dspy` 3.4.0 (with `litellm` 1.105.0 and `openai` 2.54.0, from `compat/py-litellm`), 2026-10-12. Live on the isolated dev server (`fast` = `opencode-go/glm-5.3-flash`): all 3 scenarios passed. `predict` and `chain-of-thought` answered `pong`, and the typed output returned `answer='42'`. Streaming was not run. The same 3 scenarios pass on the scripted fake. See [compatibility](../compatibility.md#python-clients).
+<ExampleResult example="dspy" />
 
-DSPy routes its models through LiteLLM. The `openai/` prefix sends them to Chat Completions.
+Tested: `dspy` 3.4.0 (with `litellm` 1.105.0 and `openai` 2.54.0). Live record [2026-10-12 at `a67e176`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/dspy/runs/live/2026-10-12-a67e176/REPORT.md): all 3 scenarios passed on the isolated live dev server. `predict` and `chain-of-thought` answered `pong`, and the typed output returned `answer='42'`. The example's scripted run is checked in CI: 9 rows pass, and the rows it does not run are `n/a` with a reason. Streaming was not run.
 
-```python
-import os
-import dspy
+DSPy routes its models through LiteLLM, and the `openai/` prefix sends them to Chat Completions. The `lm` below is the `dspy.LM` the example builds:
 
-lm = dspy.LM("openai/fast", api_base="http://localhost:4010/v1", api_key=os.environ["PLUGBOARD_KEY"])
-dspy.configure(lm=lm)
-
-qa = dspy.Predict("question -> answer")
-print(qa(question="Reply with exactly: pong").answer)
-```
+<<< @/../examples/dspy/chat.py#snippet-lm
 
 `fast` is an alias from the plugboard `aliases` option. The `api_base` goes on `dspy.LM`, not in the model string.
 
+## Chat
+
+The snippet uses `lm` (above) and `dspy.configure(lm=lm)` must have run. It runs a `Predict` or a `ChainOfThought` depending on the variant.
+
+<<< @/../examples/dspy/chat.py#snippet
+
 ## Typed output
 
-```python
-from pydantic import BaseModel
+The snippet defines its own `Signature` (an `answer` typed with a pydantic `Meal`), so it needs `dspy.configure(lm=...)` as above.
 
-class Answer(BaseModel):
-    answer: str
+<<< @/../examples/dspy/typed.py#snippet
 
-class QA(dspy.Signature):
-    """Answer the question."""
-    question: str = dspy.InputField()
-    answer: Answer = dspy.OutputField()
-
-out = dspy.ChainOfThought(QA)(question="What is 6 times 7?")
-print(out.answer)  # an Answer
-```
-
-DSPy asks for the output in its own text format first, then falls back to a JSON schema when the text does not parse. The typed run passed on the fake, which answers the JSON form, and live, where the model returned `answer='42'`. The live run did not record which of DSPy's two formats the model used, so whether the live model took the JSON fallback is not shown.
+DSPy asks for the output in its own text format first, then falls back to a JSON schema when the text does not parse. The live record did not say which of DSPy's two formats the model used. The scripted run answers DSPy's own text format.
 
 ## Gotchas
 
 - Pass `api_base` to each `dspy.LM`. A second model needs its own `dspy.LM`.
 - Every test call used the `openai/` prefix.
-- LiteLLM (under DSPy) reads its price map from GitHub on import. Set `LITELLM_LOCAL_MODEL_COST_MAP=True` to skip that, as the harness and example do.
+- LiteLLM (under DSPy) reads its price map from GitHub on import. Set `LITELLM_LOCAL_MODEL_COST_MAP=True` to skip that, as the example does.
 - The streaming and `dspy.streamify` paths were not tested.
 
-Harness: `compat/py/clients/dspy_client.py`. Example: [`examples/dspy/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/dspy).
+Example: [`examples/dspy/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/dspy). The Python check it runs through is `examples/_harness/py`, the same helpers as the other Python examples.

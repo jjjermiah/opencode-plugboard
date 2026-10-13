@@ -9,11 +9,34 @@ updates:
         patterns: ["@opencode/*", "effect"]
     open-pull-requests-limit: 5
 
-  # Entries for the example projects a contributor edits and for the remaining Python checks (compat/py). Not covered:
-  # the examples/_harness smoke projects (harness test fixtures), examples/async-openai (Cargo) and compat/py-litellm
-  # (pinned with compat/py/clients). Add one if a dependency there needs automatic bumps.
+  # One entry per example project with a lockfile. Not listed: the examples/_harness smoke projects (harness test fixtures)
+  # and examples/async-openai (Cargo). Add one there if its dependencies need automatic bumps.
   - package-ecosystem: uv
-    directory: /compat/py
+    directory: /examples/instructor
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /examples/litellm-client
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /examples/dspy
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /examples/openai-agents
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: uv
+    directory: /examples/aider
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

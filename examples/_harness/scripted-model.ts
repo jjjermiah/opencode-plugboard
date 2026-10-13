@@ -56,6 +56,13 @@ export function answer(request: PlugRequest): PlugEvent[] {
     return [ev.call(CALL_ID, forced, input), ev.finish("tool-calls", USAGE)]
   }
   const text = userText(request)
+  // DSPy's chat adapter wraps the question and wants the answer in a `[[ ## answer ## ]]` field, after `reasoning` when the
+  // signature asks for it. Other clients never send these markers, so their answers are unchanged.
+  if (text.includes("[[ ## ")) {
+    const reasoning = text.includes("`[[ ## reasoning ## ]]`") ? "[[ ## reasoning ## ]]\nThe answer is requested.\n\n" : ""
+    if (text.includes(prompt("S1"))) return say(`${reasoning}[[ ## answer ## ]]\npong\n\n[[ ## completed ## ]]`)
+    if (text.includes(prompt("S6"))) return say(`${reasoning}[[ ## answer ## ]]\n${JSON.stringify(MEAL)}\n\n[[ ## completed ## ]]`)
+  }
   if (text.includes(prompt("S1"))) return say("pong")
   if (text.includes(prompt("S2"))) {
     if (answered(request)) return say("18 C and cloudy")

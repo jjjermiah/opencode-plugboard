@@ -58,6 +58,7 @@ export default defineConfig({
       {
         text: "Clients",
         items: [
+          { text: "Examples overview", link: "/examples" },
           { text: "Any app", link: "/clients/any-app" },
           { text: "OpenAI Python SDK", link: "/clients/openai-python" },
           { text: "OpenAI JS SDK", link: "/clients/openai-js" },

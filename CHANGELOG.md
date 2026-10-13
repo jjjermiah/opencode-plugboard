@@ -16,7 +16,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Changed
 
-- The client checks moved from `compat/` into `examples/`: each client has a runnable example with a scripted run that CI keeps current, and its dated live runs. The client pages now import their code and results from there. The Python checks with no example yet stay in `compat/` for now. Why: the old kit's code and results could drift apart, and the results were prose nobody could diff. ([#174](https://github.com/jjjermiah/opencode-plugboard/issues/174), [#186](https://github.com/jjjermiah/opencode-plugboard/issues/186), [#187](https://github.com/jjjermiah/opencode-plugboard/issues/187))
+- The client checks moved from `compat/` into `examples/`: each client has a runnable example with a scripted run that CI keeps current, and its dated live runs. The client pages now import their code and results from there. `compat/` is gone: its Python checks are examples too (`examples/aider`, `dspy`, `instructor`, `litellm-client` and `openai-agents`), each with a runner, a lockfile and a scripted run that CI keeps current. Why: the old kit's code and results could drift apart, and the results were prose nobody could diff. ([#174](https://github.com/jjjermiah/opencode-plugboard/issues/174), [#186](https://github.com/jjjermiah/opencode-plugboard/issues/186), [#187](https://github.com/jjjermiah/opencode-plugboard/issues/187))
 
 ## [0.33.0] - 2026-10-13: Stays Awake
 

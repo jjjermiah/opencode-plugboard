@@ -1,5 +1,7 @@
 # OpenAI JS SDK
 
+<ExampleResult example="openai-js" />
+
 Tested: `openai` 7.32.0 with `zod` 4.6.6, live run [`2026-10-13-50219b1`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-js/runs/live/2026-10-13-50219b1) at plugboard 0.27.0 (`50219b1`): pass. The code below is the example's snippet, and the run's summary and transcripts are in the example directory.
 
 ```ts

@@ -1,5 +1,7 @@
 # pydantic-ai
 
+<ExampleResult example="pydantic-ai" />
+
 Tested: `pydantic-ai-slim[openai]` 2.55.0 (Chat Completions API), `openai` 3.29.0. Live run [`2026-10-13-c97ac66-2`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/pydantic-ai/runs/live/2026-10-13-c97ac66-2) at plugboard 0.26.0 (`c97ac66`): pass. One `ImageUrl` data URL answer on `fast` failed in run `2026-10-13-c97ac66` (verdict fail) and passed on the rerun with an identical request in `2026-10-13-c97ac66-2`, which is the run above. The code below is the example's snippet, and the run's summary and transcripts are in the example directory.
 
 The snippets are the body of an `async` function that takes `client` (an `AsyncOpenAI` pointed at plugboard) and `model`. Set up the client and the imports like this, and run the function with `asyncio.run`:
