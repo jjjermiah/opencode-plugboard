@@ -16,6 +16,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Added
 
+- **Per-step debug lines** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). At `logLevel: debug`, each model request writes one line per step: `request.received` (app and model asked), `model.resolved` (the target that answered, its failed fallbacks, whether it was a list alias), `session.created`, `model.first_event` and `model.finished` (finish reason, input and output tokens, duration). They hold ids, counts and enums only, never a prompt, body or key. Each is checked against the level before its fields are built, so `info` pays nothing. The `logLevel` row in [configuration](docs/configuration.md) lists them.
 - **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
 
 ### Fixed

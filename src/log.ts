@@ -174,6 +174,9 @@ export const logRequest = (event: string, fields?: LogFields): void => {
 /** A line for diagnosis only. The logger's level is `info`, so these are dropped unless the level is lowered (the keep-alive, #310). */
 export const logDebug = (event: string, fields?: LogFields): void => state().logger.debug(record(event, fields))
 
+/** Whether `logDebug` writes. Check it before building the fields, so a debug line costs nothing at `info` (#262). */
+export const debugEnabled = (): boolean => state().logger.isLevelEnabled("debug")
+
 export const logError = (event: string, fields?: LogFields): void => state().logger.error(record(event, fields))
 
 /** A line for something that needs attention but did not fail a request (a budget at 80%). Info-level destination, `warn` in the level field. */

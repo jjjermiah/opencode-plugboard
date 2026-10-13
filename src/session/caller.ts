@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
 import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
-import { log, logError, logRequest, logWarn } from "../log.js"
+import { debugEnabled, log, logDebug, logError, logRequest, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
 import { requestSystem } from "./context.js"
@@ -260,12 +260,18 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
 
       const requestID = randomUUID()
       const startedAt = Date.now()
+      if (debugEnabled()) logDebug("request.received", { requestID, app, model: called.model })
       let outcome = "cancelled"
       // Whether the model produced anything at all (text, reasoning or a tool call), for `answer.empty` (#172).
       let produced = false
+      // The model's finish event, for the `model.finished` debug line (#262).
+      let finish: Extract<PlugEvent, { type: "finish" }> | undefined
+      let firstEvent = true
       const note = (event: PlugEvent): PlugEvent => {
-        if (event.type === "finish") outcome = `finish:${event.reason}`
-        else if (event.type === "error") outcome = `error:${event.error.status}${event.error.code ? `:${event.error.code}` : ""}`
+        if (event.type === "finish") {
+          outcome = `finish:${event.reason}`
+          finish = event
+        } else if (event.type === "error") outcome = `error:${event.error.status}${event.error.code ? `:${event.error.code}` : ""}`
         else produced = true
         return event
       }
@@ -399,6 +405,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
         sessionID = String(created.id)
         sessions.register({ sessionID, app, requestID, request, collector, prelude })
+        if (debugEnabled()) logDebug("session.created", { requestID, app, sessionID })
 
         context.signal.addEventListener("abort", onAbort, { once: true })
         if (context.signal.aborted) return onAbort()
@@ -427,7 +434,13 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           owned.push({ type: "session.execution.failed", error: { type: "prompt_failed", message: "Could not start the model session" } })
         })
 
-        for await (const event of collector.events()) yield note(event)
+        for await (const event of collector.events()) {
+          if (firstEvent) {
+            firstEvent = false
+            if (debugEnabled()) logDebug("model.first_event", { requestID, app, type: event.type })
+          }
+          yield note(event)
+        }
       } catch (error) {
         if (error instanceof ImageError) yield note(failure(400, error.message, error.code))
         else if (!context.signal.aborted) {
@@ -457,6 +470,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
         // A turn that stopped with nothing in it is kept as a session for inspection: the session id finds it.
         if (outcome === "finish:stop" && !produced) logWarn("answer.empty", { requestID, app, model: request.model, sessionID, tools: request.tools.length })
+        if (debugEnabled())
+          logDebug("model.finished", { requestID, app, finish: finish?.reason, inputTokens: finish?.usage?.inputTokens, outputTokens: finish?.usage?.outputTokens, durationMs: Date.now() - startedAt })
         logRequest("request.finished", { requestID, app, model: request.model, durationMs: Date.now() - startedAt, outcome })
       }
     },
