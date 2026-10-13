@@ -1,6 +1,6 @@
 # OpenAI JS SDK
 
-The OpenAI JS SDK against plugboard: plain chat, a tool round trip, streaming (raw and through the SDK's helper), streaming tool calls, an image, structured output, the model list, and the two error paths. Each scenario is one file you can copy, and the copyable part sits between `// #region snippet` markers. Part of the runnable-examples epic [#174](https://github.com/jjjermiah/opencode-plugboard/issues/174).
+The OpenAI JS SDK against plugboard: plain chat, a tool round trip, streaming (raw and through the SDK's helper), streaming tool calls, an image, structured output, the model list, and the two error paths. Each scenario is one file you can copy, and the copyable part sits between `// #region` markers. A file with two parts names them: `errors.ts` has `wrong-key` and `unknown-model`, `structured.ts` has `parse` and `raw`. Each snippet declares its own constants, except the image data URL in `image.ts`, which it reads from `_shared/`. Part of the runnable-examples epic [#174](https://github.com/jjjermiah/opencode-plugboard/issues/174).
 
 ## What it shows
 
@@ -8,7 +8,7 @@ The OpenAI JS SDK against plugboard: plain chat, a tool round trip, streaming (r
 | --- | --- | --- |
 | `chat.ts` | S1 | one non-streamed chat call |
 | `tools.ts` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id |
-| `stream.ts` | S3 | raw stream with `include_usage`, and the stream helper that must agree with it |
+| `stream.ts` | S3 | raw stream without usage, then with `include_usage`, and the stream helper that must agree with the second |
 | `stream_tools.ts` | S4 | streamed tool call, arguments accumulated across deltas |
 | `image.ts` | S5 | a red PNG as a data URL in a multi-part message |
 | `structured.ts` | S6 | `chat.completions.parse` with a zod schema through `zodResponseFormat`, and the raw `json_schema` form |
@@ -51,13 +51,13 @@ bun examples/_harness/run.ts openai-js --target live       # the isolated server
 - **`client.chat.completions.runTools` also works** (2026-10-11 record: the tool ran in the client and the second request carried the result). It is not a scenario here.
 - **Structured output is a forced tool.** Plugboard asks the model to answer through a `respond` tool, and the provider does not enforce the schema. The checks read the numbers, not the form. `zodResponseFormat` sends `strict: true` and `additionalProperties: false`; every model tested accepts it.
 - **Tool call ids differ by model.** The 2026-10-11 record saw a bare UUID on `fast`, `toolu_...` on Claude and `call_...` on the ChatGPT id. Don't parse them; send them back as they came.
-- **`models.retrieve` was a 404 in the 2026-10-11 record.** It is implemented now and passes on both targets (S7); see `runs/live/2026-10-13-c97ac66/`.
+- **`models.retrieve` was a 404 in the 2026-10-11 record.** It is implemented now and passes on both targets (S7); see `runs/live/2026-10-13-50219b1/`.
 - **Each model entry carries a `plugboard` object.** The SDK keeps it as an extra field on the model, not an error.
 - **A wrong key throws `AuthenticationError`** (401 `invalid_api_key`); an unknown model throws `NotFoundError` (404 `model_not_found`). The runner sets `maxRetries: 0`, so a retry never shows up as a second request. The 2026-10-11 record also saw the 404 on `stream: true` (the SDK raised before any chunk); `errors.ts` covers the non-stream form only.
 
 ## Known gaps
 
-None. On both targets all 17 checks pass for `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The live run is `runs/live/2026-10-13-c97ac66/`, on the isolated server at the main checkout's commit `c97ac66`. It ran the ChatGPT model without a quota error, and `models.retrieve` passes there, so the 2026-10-11 gotcha above is resolved.
+None. On both targets all 17 checks pass for `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The live run is `runs/live/2026-10-13-50219b1/`, on the isolated server at the main checkout's commit `50219b1` (plugboard 0.27.0). It ran the ChatGPT model without a quota error, and `models.retrieve` passes there, so the 2026-10-11 gotcha above is resolved. `runs/live/2026-10-13-c97ac66/` is an earlier run at `c97ac66` (0.26.0), before S3 gained its without-usage call; it is kept as recorded.
 
 The tool-bot runner (`examples/tool-bot/run.ts`, the same SDK) has S2 as a gap: the bot prints only its final answer, so the tool-call checks cannot be read from its output. See [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
 

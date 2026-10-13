@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`examples/openai-js` runs the OpenAI JS SDK against plugboard** ([#178](https://github.com/jjjermiah/opencode-plugboard/issues/178)). Every scenario (chat, tools, streaming with and without usage, streamed tool calls, images, structured output, models, errors) is one copyable file, and the scripted run is checked in CI. `examples/tool-bot` gets a runner too; its tool-call checks are a gap until [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
 
 ## [0.27.0] - 2026-10-12: Every App Its Own Rules
 

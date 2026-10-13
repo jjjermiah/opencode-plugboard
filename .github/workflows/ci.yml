@@ -164,8 +164,10 @@ jobs:
           bun examples/_harness/run.ts openai-python --target scripted
           bun examples/_harness/run.ts openai-js --target scripted
           bun examples/_harness/run.ts tool-bot --target scripted
-      - name: Type check the OpenAI JS example
-        run: cd examples/openai-js && bunx tsc --noEmit
+      - name: Type check the OpenAI JS example and the tool bot
+        run: |
+          (cd examples/openai-js && bunx tsc --noEmit)
+          (cd examples/tool-bot && bunx tsc --noEmit)
       - name: The committed scripted runs match a fresh run
         run: |
           RUNS=(examples/curl/runs/scripted examples/openai-python/runs/scripted examples/openai-js/runs/scripted examples/tool-bot/runs/scripted)

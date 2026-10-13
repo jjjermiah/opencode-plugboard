@@ -1,7 +1,7 @@
 # openai-js · live
 
 Verdict: **pass** · openai 7.32.0 on bun 1.4 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
-Date: 2026-10-13 · plugboard 0.25.1 (c97ac66)
+Date: 2026-10-13 · plugboard 0.26.0 (c97ac66)
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
