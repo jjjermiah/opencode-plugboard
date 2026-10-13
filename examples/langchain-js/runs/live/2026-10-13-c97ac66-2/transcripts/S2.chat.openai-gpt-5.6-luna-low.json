@@ -1,0 +1,195 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            }
+          ],
+          "model": "openai/gpt-5.6-luna#low",
+          "stream": false,
+          "tools": [
+            {
+              "function": {
+                "description": "Current weather for a city",
+                "name": "get_weather",
+                "parameters": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": null,
+                "refusal": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{\"city\":\"Paris\"}",
+                      "name": "get_weather"
+                    },
+                    "id": "<id-2>",
+                    "type": "function"
+                  }
+                ]
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-3>",
+          "model": "openai/gpt-5.6-luna#low",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 18,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 53,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 71
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=53; output=18; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            },
+            {
+              "content": "",
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"city\":\"Paris\"}",
+                    "name": "get_weather"
+                  },
+                  "id": "<id-2>",
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "content": "{\"temp_c\": 18, \"sky\": \"cloudy\"}",
+              "role": "tool",
+              "tool_call_id": "<id-2>"
+            }
+          ],
+          "model": "openai/gpt-5.6-luna#low",
+          "stream": false,
+          "tools": [
+            {
+              "function": {
+                "description": "Current weather for a city",
+                "name": "get_weather",
+                "parameters": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "Paris: 18°C and cloudy.",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-2>",
+          "id": "<id-5>",
+          "model": "openai/gpt-5.6-luna#low",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 12,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 96,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 108
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-4>",
+          "x-plugboard-usage": "input=96; output=12; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

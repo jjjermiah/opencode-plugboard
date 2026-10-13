@@ -14,9 +14,13 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
+
 ### Changed
 
-- **Releases wait for every check.** The release script used to enable auto-merge, which waits only for the required checks. A red Examples or CodeQL job could still ship: 0.25.0 failed that way and needed 0.25.1. Now the release pull request merges only after every check on it passes (the advisory benchmark aside), and `--push` refuses to start unless CI passed on the newest commit of `main`. `main` requires one aggregate check, `CI passed`, that needs every CI job. The GitHub release still appears only after npm has the version. See [docs/releasing.md](docs/releasing.md).
+- **Releases wait for every check, and the tag is made only on a tested commit.** The release script used to enable auto-merge, which waits only for the required checks, and it tagged the merge commit without checking CI on it. Two gaps let a red commit ship: the host matrix was not a required check, and the merge commit was never tested (v0.25.0 failed on Examples and needed 0.25.1). Now the release pull request merges only after every check on it passes (the advisory benchmark aside), the tag is pushed only after CI passes on the merge commit, and `main` requires one aggregate check, `CI passed`, that needs every CI job. The GitHub release still appears only after npm has the version. See [docs/releasing.md](docs/releasing.md).
 
 ## [0.27.0] - 2026-10-12: Every App Its Own Rules
 
