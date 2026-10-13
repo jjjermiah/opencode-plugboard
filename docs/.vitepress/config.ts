@@ -72,6 +72,7 @@ export default defineConfig({
           { text: "CrewAI", link: "/clients/crewai" },
           { text: "AutoGen / AG2", link: "/clients/autogen" },
           { text: "Semantic Kernel", link: "/clients/semantic-kernel" },
+          { text: "Spring AI", link: "/clients/spring-ai" },
           { text: "LiteLLM (as a client)", link: "/clients/litellm-client" },
           { text: "Instructor", link: "/clients/instructor" },
           { text: "DSPy", link: "/clients/dspy" },
