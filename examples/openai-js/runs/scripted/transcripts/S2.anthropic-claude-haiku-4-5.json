@@ -19,7 +19,6 @@
                 "parameters": {
                   "properties": {
                     "city": {
-                      "description": "City name",
                       "type": "string"
                     }
                   },
@@ -111,7 +110,7 @@
               ]
             },
             {
-              "content": "{\"temp_c\": 18, \"sky\": \"cloudy\"}",
+              "content": "{\"temp_c\":18,\"sky\":\"cloudy\"}",
               "role": "tool",
               "tool_call_id": "<id-1>"
             }
@@ -125,7 +124,6 @@
                 "parameters": {
                   "properties": {
                     "city": {
-                      "description": "City name",
                       "type": "string"
                     }
                   },

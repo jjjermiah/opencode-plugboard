@@ -23,7 +23,6 @@
                 "parameters": {
                   "properties": {
                     "city": {
-                      "description": "City name",
                       "type": "string"
                     }
                   },

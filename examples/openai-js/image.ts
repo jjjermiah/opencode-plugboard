@@ -2,22 +2,22 @@
 import OpenAI from "openai"
 import { readFileSync } from "node:fs"
 
-const RED = readFileSync(new URL("../_shared/red32.dataurl.txt", import.meta.url), "utf8").trim()
-
 export async function run(client: OpenAI, model: string) {
   // #region snippet
+  // Any data:image/png;base64 URL works. This is a 32px red PNG (examples/_shared/red32.dataurl.txt).
+  const red = readFileSync(new URL("../_shared/red32.dataurl.txt", import.meta.url), "utf8").trim()
   const response = await client.chat.completions.create({
     model,
-    max_tokens: 1024,
     messages: [
       {
         role: "user",
         content: [
           { type: "text", text: "What color is this image? One word." },
-          { type: "image_url", image_url: { url: RED } },
+          { type: "image_url", image_url: { url: red } },
         ],
       },
     ],
+    max_tokens: 1024,
   })
   // #endregion snippet
   return { text: response.choices[0]?.message.content ?? "" }

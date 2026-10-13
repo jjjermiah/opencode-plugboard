@@ -1,21 +1,23 @@
 // S2, tool call and tool-result turn. The model asks for get_weather, the app answers, the model finishes.
 import OpenAI from "openai"
-import { readFileSync } from "node:fs"
-
-const SHARED = new URL("../_shared/", import.meta.url)
-const TOOL = JSON.parse(readFileSync(new URL("get_weather.tool.json", SHARED), "utf8")) as OpenAI.ChatCompletionTool
-const TOOL_RESULT = readFileSync(new URL("get_weather.result.json", SHARED), "utf8").trim()
-const PROMPT = "What is the weather in Paris? Use the tool."
 
 export async function run(client: OpenAI, model: string) {
-  const messages: OpenAI.ChatCompletionMessageParam[] = [{ role: "user", content: PROMPT }]
   // #region snippet
-  const first = await client.chat.completions.create({ model, messages, tools: [TOOL], max_tokens: 1024 })
+  const tool: OpenAI.ChatCompletionTool = {
+    type: "function",
+    function: {
+      name: "get_weather",
+      description: "Current weather for a city",
+      parameters: { type: "object", properties: { city: { type: "string" } }, required: ["city"] },
+    },
+  }
+  const messages: OpenAI.ChatCompletionMessageParam[] = [{ role: "user", content: "What is the weather in Paris? Use the tool." }]
+  const first = await client.chat.completions.create({ model, messages, tools: [tool], max_tokens: 1024 })
   const message = first.choices[0]!.message
   const call = message.tool_calls![0]!
   // Send the assistant turn back as the SDK typed it, then the result under the same call id.
-  messages.push(message, { role: "tool", tool_call_id: call.id, content: TOOL_RESULT })
-  const second = await client.chat.completions.create({ model, messages, tools: [TOOL], max_tokens: 1024 })
+  messages.push(message, { role: "tool", tool_call_id: call.id, content: JSON.stringify({ temp_c: 18, sky: "cloudy" }) })
+  const second = await client.chat.completions.create({ model, messages, tools: [tool], max_tokens: 1024 })
   // #endregion snippet
   const city = call.type === "function" ? (JSON.parse(call.function.arguments) as { city?: string }).city ?? "" : ""
   return {
