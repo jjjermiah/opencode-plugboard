@@ -158,13 +158,14 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Install uv (the Python example runs with uv run --frozen)
         run: pipx install uv==0.12.18
-      - name: Scripted runs of the curl and openai-python examples
+      - name: Scripted runs of the curl, openai-python and langchain-js examples
         run: |
           bun examples/_harness/run.ts curl --target scripted
           bun examples/_harness/run.ts openai-python --target scripted
+          bun examples/_harness/run.ts langchain-js --target scripted
       - name: The committed scripted runs match a fresh run
         run: |
-          RUNS=(examples/curl/runs/scripted examples/openai-python/runs/scripted)
+          RUNS=(examples/curl/runs/scripted examples/openai-python/runs/scripted examples/langchain-js/runs/scripted)
           if [ -n "$(git status --porcelain -- "${RUNS[@]}")" ]; then
             git --no-pager diff -- "${RUNS[@]}" | head -200
             git status --short -- "${RUNS[@]}"

@@ -18,6 +18,7 @@ Five options for locking down who and what can reach plugboard, and a fix for a 
 
 ### Added
 
+- **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. The two `gpt-5.6-luna#low` chat scenarios are recorded as gaps: LangChain's Responses path reports no `finish_reason`.
 - **`requireKeys` makes a keyless server impossible** ([#271](https://github.com/jjjermiah/opencode-plugboard/issues/271)). On a shared machine, loopback is not a boundary, so a keyless server should be something you can rule out in config. With `requireKeys: true`, the plugin refuses to load without `keys`, and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. The default is `false`, so keyless loopback works as before.
 
   ```jsonc
