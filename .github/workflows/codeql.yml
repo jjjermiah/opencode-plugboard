@@ -9,6 +9,8 @@ on:
   pull_request:
   schedule:
     - cron: "41 4 * * 1"
+  # host-bump.yml starts it on its branch: a pull request opened with GITHUB_TOKEN starts no workflow, and the required Analyze check would never report.
+  workflow_dispatch:
 
 permissions: {}
 

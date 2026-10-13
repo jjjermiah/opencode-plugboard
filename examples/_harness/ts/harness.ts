@@ -30,7 +30,10 @@ export interface Gap {
   readonly issue: string
 }
 export interface RunOptions {
-  /** Known incompatibilities, by scenario id or `id|model`: a failure becomes `gap` with the note and issue. */
+  /**
+   * Known incompatibilities, by scenario id, `id|model` or `id|variant`: a failure becomes `gap` with the note and
+   * issue. Pass a different set per target when a gap differs (the runner knows the target from PLUGBOARD_TARGET).
+   */
   readonly gaps?: Readonly<Record<string, Gap>>
   /** Scenarios the client does not have, by id, with the reason: reported as `n/a`, nothing is sent. */
   readonly na?: Readonly<Record<string, string>>
@@ -72,10 +75,10 @@ export function emit(line: Record<string, unknown>): void {
   console.log(JSON.stringify(line))
 }
 
-/** Reports the client and runtime the summary records. Runtime is major.minor only. */
+/** Reports the client and runtime the summary records. Runtime is the major version only: a scripted run must not depend on the machine's minor. */
 export function emitClient(name: string, version: string): void {
-  const [major = "0", minor = "0"] = Bun.version.split(".")
-  emit({ kind: "client", name, version, runtime: { name: "bun", version: `${major}.${minor}` } })
+  const [major = "0"] = Bun.version.split(".")
+  emit({ kind: "client", name, version, runtime: { name: "bun", version: major } })
 }
 
 const errorText = (error: unknown): string => (error instanceof Error ? `${error.name}: ${error.message}` : String(error))
@@ -111,7 +114,7 @@ export async function runAll(
         }
         let status: "pass" | "fail" | "gap" = error === null && checks.every((check) => check.ok) ? "pass" : "fail"
         let note: string | null = null
-        const gap = options.gaps?.[`${scenario.id}|${model}`] ?? options.gaps?.[scenario.id]
+        const gap = options.gaps?.[`${scenario.id}|${model}`] ?? (variant === undefined ? undefined : options.gaps?.[`${scenario.id}|${variant}`]) ?? options.gaps?.[scenario.id]
         if (status === "fail" && gap) {
           status = "gap"
           note = `${gap.note} (${gap.issue})`

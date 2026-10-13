@@ -1,0 +1,20 @@
+# n8n 2.42.6, the version the runner pins. The runner starts its own container from this image (it reads the
+# image line below); this file is for running n8n yourself against plugboard, see README.md.
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.42.6
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: UTC
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+    volumes:
+      - n8n:/home/node/.n8n
+
+volumes:
+  n8n:

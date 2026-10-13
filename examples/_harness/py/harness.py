@@ -61,9 +61,9 @@ def emit(line: dict[str, Any]) -> None:
 
 
 def emit_client(package: str) -> None:
-    """Reports the client (its installed version, which `uv run --frozen` pins to the lockfile) and the Python runtime, major.minor."""
-    major, minor = sys.version_info[:2]
-    emit({"kind": "client", "name": package, "version": metadata.version(package), "runtime": {"name": "python", "version": f"{major}.{minor}"}})
+    """Reports the client (its installed version, which `uv run --frozen` pins to the lockfile) and the Python runtime's major version only: the runner's minor differs between hosts, and a scripted run must not depend on the machine."""
+    major = sys.version_info[0]
+    emit({"kind": "client", "name": package, "version": metadata.version(package), "runtime": {"name": "python", "version": str(major)}})
 
 
 def _error_text(error: BaseException) -> str:
@@ -81,7 +81,8 @@ def run_all(
 
     A function gets the model, and the variant as a second argument when the scenario has variants (`variants` maps an id
     to the APIs it runs on, e.g. {"S1": ["chat", "messages"]}).
-    `gaps` maps `id` or `id|model` to {"note", "issue"}: a failure there is reported as `gap`.
+    `gaps` maps `id`, `id|model` or `id|variant` to {"note", "issue"}: a failure there is reported as `gap`. A gap
+    covers the whole row, so its note should name the known check.
     `na` maps an id to the reason the client does not have it: reported as `n/a`, nothing is sent.
     """
     na = dict(na or {})
@@ -108,7 +109,11 @@ def run_all(
                     error = _error_text(caught)
                 status = "pass" if error is None and all(check["ok"] for check in checks) else "fail"
                 note: Optional[str] = None
-                gap = (gaps or {}).get(f"{scenario['id']}|{model}") or (gaps or {}).get(scenario["id"])
+                gap = (
+                    (gaps or {}).get(f"{scenario['id']}|{model}")
+                    or ((gaps or {}).get(f"{scenario['id']}|{variant}") if variant is not None else None)
+                    or (gaps or {}).get(scenario["id"])
+                )
                 if status == "fail" and gap:
                     status = "gap"
                     note = f"{gap['note']} ({gap['issue']})"

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/jjjermiah/opencode-plugboard/examples/_harness/run.schema.json",
   "title": "Example run summary (summary.json)",
-  "description": "Written by examples/_harness/run.ts. Scripted runs carry no dates, commits, durations or runtime patch versions; live runs add date, plugboard, opencode and duration_ms.",
+  "description": "Written by examples/_harness/run.ts. Scripted runs carry no dates, commits, durations, or runtime and tool versions beyond the major (the runner's minor differs between hosts); live runs add date, plugboard, opencode and duration_ms.",
   "type": "object",
   "required": ["schema", "example", "target", "client", "models", "verdict", "scenarios"],
   "additionalProperties": false,
@@ -40,7 +40,7 @@
         "commit": { "type": "string" }
       }
     },
-    "opencode": { "type": "string" },
+    "opencode": { "type": ["string", "null"] },
     "scenarios": {
       "type": "array",
       "items": {

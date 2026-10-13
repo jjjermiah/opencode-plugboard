@@ -1,6 +1,6 @@
 # langchain-js · scripted
 
-Verdict: **partial** · @langchain/openai 1.6.2 on bun 1.4 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
+Verdict: **partial** · @langchain/openai 1.6.2 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |

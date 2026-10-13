@@ -3,7 +3,7 @@
     "name": "openai",
     "runtime": {
       "name": "python",
-      "version": "3.13"
+      "version": "3"
     },
     "version": "3.29.0"
   },
