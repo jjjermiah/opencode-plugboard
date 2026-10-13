@@ -6,7 +6,7 @@
  * Field names follow what `RequestCollector` reads (src/session/events.ts); when the host's event
  * shapes change, change them here once.
  */
-import type { HistoryPort, Json, SessionPort } from "../../src/session/host.js"
+import type { DirectToolSchema, HistoryPort, Json, SessionPort } from "../../src/session/host.js"
 import type { OperatorRule } from "../../src/session/seeds.js"
 
 type CreateInput = Parameters<SessionPort["create"]>[0]
@@ -23,6 +23,8 @@ export class FakeSessionPort implements SessionPort {
   readonly agents = new Map<string, { readonly system?: string }>()
   /** The OpenCode tool ids `directTools()` reports (the location's direct tools). Empty by default. */
   readonly toolIDs: string[] = []
+  /** The description and JSON schema `directToolSchemas()` reports for a tool id (empty description, `{ type: "object" }` by default). */
+  readonly toolSchemas = new Map<string, { readonly description: string; readonly input: Record<string, unknown> }>()
   /** Answers per method; default: create returns `ses_<n>`, prompt and interrupt resolve. */
   readonly script: {
     create?: (input: CreateInput) => Promise<{ id: string }>
@@ -62,6 +64,10 @@ export class FakeSessionPort implements SessionPort {
 
   directTools(): Promise<ReadonlyArray<string>> {
     return Promise.resolve([...this.toolIDs])
+  }
+
+  directToolSchemas(): Promise<ReadonlyArray<DirectToolSchema>> {
+    return Promise.resolve(this.toolIDs.map((id) => ({ id, description: this.toolSchemas.get(id)?.description ?? "", input: this.toolSchemas.get(id)?.input ?? { type: "object" } })))
   }
 
   /** The operator's rules for the agent the request sessions run as (`agentRules`). Default: every tool allowed. */

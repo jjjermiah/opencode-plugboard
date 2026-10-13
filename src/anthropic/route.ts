@@ -35,7 +35,7 @@ import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
-import { requestSystem } from "../session/context.js"
+import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
 import { dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
@@ -122,8 +122,12 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const ref = resolveModel(host.options, parsed.request.model, catalog, parsed.reasoningEffort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-    // The system prompt the session will send: the app's policy and the tool-choice steering are added before the model reads it (#201).
-    if (path === COUNT_TOKENS) return sendJson(response, 200, { input_tokens: estimateTokens({ ...parsed.request, system: requestSystem(parsed.request, [], appPolicy({ apps: host.options.apps }, auth.app)) }) })
+    // The request as the session sends it: the app's policy, persona and server tools are counted too (#201).
+    if (path === COUNT_TOKENS) {
+      const counted = await scope.race(sessionRequest(host.session, auth.app, { ...parsed.request, ref }, appPolicy(host.options, auth.app), scope.signal))
+      if (isPlugError(counted)) return fail(counted)
+      return sendJson(response, 200, { input_tokens: estimateTokens(counted) })
+    }
     // Sampling parameters the model is known to reject are dropped; `top_k` has no neutral
     // equivalent and is always dropped. Both are reported before any response bytes.
     const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, parsed.request.generation) : undefined

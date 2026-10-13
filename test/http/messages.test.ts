@@ -7,6 +7,9 @@ import { CATALOG, ev, gate } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { parseSse, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
+import { FakeSessionPort } from "../support/session.js"
+import { personaOf } from "../../src/models.js"
+import type { PlugError } from "../../src/contract.js"
 
 const logs = captureLogs()
 let server: RouteServer | undefined
@@ -223,5 +226,83 @@ describe("#4 answers", () => {
     const reply = await server!.send(messages())
     expect(reply.status).toBe(500)
     expect(reply.json()).toEqual({ type: "error", error: { type: "api_error", message: "Internal server error" } })
+  })
+})
+
+describe("#201 count_tokens counts the persona, skill and server tools the session sends", () => {
+  /** Starts the route with a session port; the persona lookup reads the options the server parsed. */
+  async function countServerWith(options: Record<string, unknown>, port: FakeSessionPort, ensureBackend?: () => Promise<PlugError | undefined>) {
+    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options, session: { port, persona: (model) => personaOf(server!.options, model), ensureBackend } })
+  }
+  const countOf = async (model: string, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) => {
+    const reply = await server!.send({ ...messages({ model, ...extra }, headers), path: "/v1/messages/count_tokens" })
+    return { status: reply.status, body: reply.json() }
+  }
+
+  test("a skill alias counts the skill's content, which leads the system prompt", async () => {
+    const port = new FakeSessionPort()
+    port.skills.set("invoice-parser", "S".repeat(400))
+    await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, port)
+    // ceil((400 skill characters + 2 for "hi") / 4)
+    expect((await countOf("invoice-parser")).body).toEqual({ input_tokens: 101 })
+    expect((await countOf("test/echo")).body).toEqual({ input_tokens: 1 })
+  })
+
+  test("an agent's prompt replaces the caller's system prompt in the count", async () => {
+    const port = new FakeSessionPort()
+    port.agents.set("review", { system: "A".repeat(400) })
+    await countServerWith({ models: ["test/*"], agents: [{ name: "review", model: "test/echo" }] }, port)
+    const system = "C".repeat(800)
+    expect((await countOf("agent/review", { system })).body).toEqual({ input_tokens: 101 })
+    expect((await countOf("test/echo", { system })).body).toEqual({ input_tokens: 201 })
+  })
+
+  test("a skill missing from the app directory is the 404 the request would get", async () => {
+    await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, new FakeSessionPort())
+    const reply = await countOf("invoice-parser")
+    expect(reply.status).toBe(404)
+    expect(reply.body).toMatchObject({ error: { message: "Skill invoice-parser is not available" } })
+  })
+
+  test("the app's server tools count with their schemas; tool_choice none leaves them out", async () => {
+    const port = new FakeSessionPort()
+    port.toolIDs.push("websearch")
+    const input = { type: "object", properties: { q: { type: "string" } } }
+    port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
+    await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
+    const headers = { "x-api-key": "secret" }
+    // ceil((2 for "hi" + name + description + JSON schema characters) / 4)
+    expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil((2 + "websearch".length + 200 + JSON.stringify(input).length) / 4) })
+    // tool_choice is kept only with a caller tool (src/anthropic/request.ts). `none` offers no caller tool and no server tool.
+    const caller = { name: "lookup", description: "Looks up", input_schema: { type: "object" } }
+    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({ input_tokens: 1 })
+  })
+
+  test("a named tool choice counts only that caller tool, its steering sentence, and the server tools", async () => {
+    const port = new FakeSessionPort()
+    port.toolIDs.push("websearch")
+    const input = { type: "object", properties: { q: { type: "string" } } }
+    port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
+    await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
+    const lookup = { name: "lookup", description: "Looks up", input_schema: { type: "object" } }
+    const fetch = { name: "fetch", description: "Fetches", input_schema: { type: "object" } }
+    const steering = "You must respond by calling the `fetch` tool."
+    const chars = 2 + steering.length + "fetch".length + "Fetches".length + JSON.stringify(fetch.input_schema).length + "websearch".length + 200 + JSON.stringify(input).length
+    expect((await countOf("test/echo", { tools: [lookup, fetch], tool_choice: { type: "tool", name: "fetch" } }, { "x-api-key": "secret" })).body).toEqual({
+      input_tokens: Math.ceil(chars / 4),
+    })
+  })
+
+  test("a server tool the location does not offer is the 400 the request would get", async () => {
+    await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, new FakeSessionPort())
+    const reply = await countOf("test/echo", {}, { "x-api-key": "secret" })
+    expect(reply.status).toBe(400)
+    expect(reply.body).toMatchObject({ error: { message: expect.stringContaining("websearch") } })
+  })
+
+  test("a backend that cannot run the session answers the count with the same refusal as the request", async () => {
+    const refused: PlugError = { status: 503, kind: "server", code: "backend_unavailable", message: "Not ready" }
+    await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, new FakeSessionPort(), async () => refused)
+    expect((await countOf("invoice-parser")).status).toBe(503)
   })
 })

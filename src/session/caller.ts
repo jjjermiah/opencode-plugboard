@@ -23,8 +23,9 @@ import { isPlugError, type CallContext, type ModelCaller, type PlugError, type P
 import { log, logError, logRequest, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
+import { requestSystem } from "./context.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
-import { describeError, MissingParentError, type SessionPort } from "./host.js"
+import { describeError, MissingParentError, type DirectToolSchema, type SessionPort } from "./host.js"
 import { ImageError, prepareImages, type RemoteImages } from "./media.js"
 import { requestPermissions, seedToolsFor, ungrantedServerTool, type OperatorRule } from "./seeds.js"
 import { maxAnchorsOf, PROMPT_CACHE_OFF, scopeKey, type Affinity } from "./affinity.js"
@@ -160,6 +161,91 @@ async function checkServerToolsAvailable(port: SessionPort, policy: AppPolicy | 
   }
 }
 
+/** The prompt a persona adds to a request session (#79): a skill's content leads the system prompt, an agent's prompt replaces the caller's. */
+export interface PersonaPrompt {
+  /** Goes before the caller's system prompts (a skill's content). */
+  readonly prelude: ReadonlyArray<string>
+  /** Replaces the caller's system prompts (an agent's prompt). Absent when the persona keeps them. */
+  readonly system?: ReadonlyArray<string>
+}
+
+/** Reads a persona's prompt in the app directory `directory`. A skill or agent that is not there is a 404, as the request answers it. */
+export async function personaPrompt(port: SessionPort, directory: string, persona: Persona | undefined): Promise<PersonaPrompt | PlugError> {
+  if (persona?.kind === "skill") {
+    const content = await port.skill(directory, persona.skill)
+    return content === undefined ? notFound(`Skill ${persona.skill} is not available`) : { prelude: [content] }
+  }
+  if (persona?.kind === "agent") {
+    const agent = await port.agent(directory, persona.agent)
+    return agent === undefined ? notFound(`Agent ${persona.agent} is not available`) : { prelude: [], system: agent.system ? [agent.system] : [] }
+  }
+  return { prelude: [] }
+}
+
+/** What a count route needs from the session: the port, the persona lookup and the backend readiness (see `SessionCallerDeps`). */
+export type SessionPromptDeps = Pick<SessionCallerDeps, "port" | "persona" | "ensureBackend">
+
+/**
+ * The request as the session sends it, for `count_tokens` and `countTokens` (#201): the same refusals as `stream` (model scope,
+ * tool count, server-tool name clash, the app's server tools' existence and operator grant), the app's tool policy, the persona's
+ * prompt, the system prompt with the app's policy and steering, and the tools the session offers: the caller's tools that get a
+ * seed (`seedToolsFor`) and the app's server-tool schemas, unless the tool choice is `none`. Returns the request with `system` and
+ * `tools` as the model reads them, or the error the request would stop with. The persona and server tools are read from the
+ * session only when there are some and `deps` is given. Side effects, as the request has them: the app directory is created and
+ * the Location may boot (`ensureAppDir`, `ensureBackend`), and a backend that is not ready answers 503. Image preparation (remote
+ * fetches) is not run. `app` is the authenticated app name, validated by config, so the caller's name check is not repeated.
+ */
+export async function sessionRequest(
+  deps: SessionPromptDeps | undefined,
+  app: string,
+  called: PlugRequest,
+  policy: AppPolicy | undefined,
+  signal: AbortSignal,
+): Promise<PlugRequest | PlugError> {
+  // The pure refusals first, in the order `stream` makes them: a count never sizes a request that would be refused.
+  const outOfScope = checkAppModel(policy, called.model, called.ref)
+  if (outOfScope) return outOfScope
+  let { request } = applyToolPolicy(called, policy)
+  const tooMany = checkAppTools(request, app, policy)
+  if (tooMany) return tooMany
+  const clash = checkServerToolNames(request, policy)
+  if (clash) return clash
+
+  const persona = deps?.persona?.(called.model)
+  const serverTools = policy?.serverTools
+  let prelude: ReadonlyArray<string> = []
+  let serverSchemas: ReadonlyArray<DirectToolSchema> = []
+  if (deps && (persona !== undefined || serverTools !== undefined)) {
+    const directory = await ensureAppDir(app)
+    if (isPlugError(directory)) return directory
+    const unavailable = await deps.ensureBackend?.(app, signal)
+    if (unavailable) return unavailable
+    const missing = await checkServerToolsAvailable(deps.port, policy, signal)
+    if (missing) return missing
+    const parts = await personaPrompt(deps.port, directory, persona)
+    if (isPlugError(parts)) return parts
+    prelude = parts.prelude
+    if (parts.system !== undefined) request = { ...request, system: [...parts.system] }
+    if (serverTools !== undefined) {
+      // The operator's grant for the agent the session runs as (#194): an ungranted tool is refused before any session exists.
+      const rules = (await raceAbort(deps.port.agentRules(directory, persona?.kind === "agent" ? persona.agent : undefined), signal)) ?? []
+      const ungranted = ungrantedServerTool(serverTools, rules)
+      if (ungranted) return deniedByOperator(ungranted)
+      // Offered only when the tool choice allows tools, as the context hook does (src/session/context.ts).
+      if (request.toolChoice !== "none") {
+        const offered = await raceAbort(deps.port.directToolSchemas(), signal)
+        serverSchemas = offered.filter((tool) => serverTools.includes(tool.id))
+      }
+    }
+  }
+  return {
+    ...request,
+    system: requestSystem(request, prelude, policy),
+    tools: [...seedToolsFor(request), ...serverSchemas.map((tool) => ({ name: tool.id, description: tool.description, parameters: tool.input }))],
+  }
+}
+
+
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port, sessions, maxTools, ensureBackend } = deps
   const affinity = deps.affinity
@@ -239,16 +325,10 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         // 3b. A persona (see `Persona`). A skill's content leads the system prompt; an agent's prompt replaces the
         // caller's, and the session runs as that agent. Its permissions are still REQUEST_PERMISSIONS (deny all, then seeds).
         const persona = deps.persona?.(called.model)
-        let prelude: ReadonlyArray<string> = []
-        if (persona?.kind === "skill") {
-          const content = await port.skill(directory, persona.skill)
-          if (content === undefined) return yield note({ type: "error", error: notFound(`Skill ${persona.skill} is not available`) })
-          prelude = [content]
-        } else if (persona?.kind === "agent") {
-          const agent = await port.agent(directory, persona.agent)
-          if (agent === undefined) return yield note({ type: "error", error: notFound(`Agent ${persona.agent} is not available`) })
-          request = { ...request, system: agent.system ? [agent.system] : [] }
-        }
+        const parts = await personaPrompt(port, directory, persona)
+        if (isPlugError(parts)) return yield note({ type: "error", error: parts })
+        const { prelude } = parts
+        if (parts.system !== undefined) request = { ...request, system: [...parts.system] }
         if (context.signal.aborted) return
 
         // 3c. An app with server tools runs them under the agent's own rules (#194): read them now, for the agent this session runs as.

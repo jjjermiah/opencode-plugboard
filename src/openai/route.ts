@@ -69,6 +69,7 @@ import { serveDashboard } from "../dashboard/assets.js"
 import { bodyUser, noteEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
+import type { SessionPromptDeps } from "../session/caller.js"
 import { chatCodec, serveChoices } from "./fanout.js"
 import { parseChatRequest } from "./request.js"
 import { STRUCTURED_FALLBACK_HEADER, collectCompletion, encodeError, encodeModelList, streamCompletion } from "./response.js"
@@ -88,6 +89,8 @@ export interface RouteHost {
   readonly usage?: UsageRecorder
   /** Runtime app keys (src/keys.ts, #55): their digests authenticate, and the admin routes (src/admin/route.ts) read them. */
   readonly keys?: KeyStore
+  /** The session port, persona lookup and backend gate that `count_tokens` and `countTokens` read the prompt through (#201). Absent: the count covers the caller's request and the app's policy. */
+  readonly session?: SessionPromptDeps
 }
 
 const SESSION_HEADER = "x-plugboard-session"
