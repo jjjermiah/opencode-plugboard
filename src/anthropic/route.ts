@@ -14,7 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate, requestedModel } from "../config.js"
 import { liveOptions } from "../runtime.js"
-import { bodyUserId, noteEndUser } from "../user.js"
+import { bodyUserId, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import {
   BodyError,
@@ -113,8 +113,11 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
 
-    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
-    noteEndUser(response, info, bodyUserId(body))
+    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
+    // The end user: the app's `userHeader` when the request sends it (#272), else the body's `metadata.user_id`.
+    const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUserId(sent))
+    const body = withEndUser(sent, user, "metadata")
+    noteEndUser(response, info, user)
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.
     // The app's output cap (#263) lowers `max_tokens` before it is parsed, so the thinking-budget rule (budget < max_tokens) refuses a

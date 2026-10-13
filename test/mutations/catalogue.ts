@@ -52,6 +52,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/http/per-app-model.test.ts"],
   },
   {
+    id: "P272-user-header-ignored",
+    invariant: "#272",
+    file: "src/user.ts",
+    find: "  const value = Array.isArray(raw) ? raw[0] : raw\n  return value === undefined ? fromBody : value",
+    replace: "  const value = undefined\n  return value === undefined ? fromBody : value",
+    tests: ["test/http/per-app-user-header.test.ts"],
+  },
+  {
+    id: "P272-credential-header-allowed",
+    invariant: "#272",
+    file: "src/config.ts",
+    find: "  if (CREDENTIAL_HEADERS.has(raw)) throw",
+    replace: "  if (false) throw",
+    tests: ["test/http/per-app-user-header.test.ts"],
+  },
+  {
     id: "P263-count-tokens-capped",
     invariant: "#263",
     file: "src/anthropic/route.ts",

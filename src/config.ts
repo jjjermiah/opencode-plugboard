@@ -206,6 +206,11 @@ export interface AppPolicy {
    * The caller's `model` is ignored when it is set. Checked at load against the global `models` and the app's `models`.
    */
   readonly model?: string
+  /**
+   * A request header that names the end user (option `apps.<name>.userHeader`, since 0.29.0, #272), read instead of the body's
+   * `user` (or `metadata.user_id`) when the request sends it. Lower case. Looked up by `requestUser` (src/user.ts).
+   */
+  readonly userHeader?: string
 }
 
 /** One set of caps. A field that is not set is unlimited. */
@@ -442,7 +447,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader"])
 
 /** Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set. Unset fields fall back to the global `history`. */
 function parseAppHistory(raw: unknown, at: string): HistoryLimits {
@@ -488,6 +493,17 @@ function parseServerTools(value: unknown, at: string): string[] {
 }
 const SYSTEM_MODES: ReadonlySet<string> = new Set(["prepend", "append", "replace"])
 const MODEL_IDS: ReadonlySet<string> = new Set(["canonical", "slugs", "both"])
+
+/** Headers that carry a credential: their value is a key, which must never become an end-user label (the log and the usage counts). */
+const CREDENTIAL_HEADERS: ReadonlySet<string> = new Set(["authorization", "x-api-key", "x-goog-api-key", "cookie"])
+
+/** Option `apps.<name>.userHeader` (#272): a lower case header name of 1 to 64 letters, digits or hyphens, and not a credential header. */
+function parseUserHeader(raw: unknown, at: string): string {
+  if (typeof raw !== "string" || !/^[a-z0-9-]{1,64}$/.test(raw))
+    throw new Error(`plugboard option \`${at}\` must be a lower case header name of 1 to 64 letters, digits or hyphens, such as \`x-user-id\``)
+  if (CREDENTIAL_HEADERS.has(raw)) throw new Error(`plugboard option \`${at}\` cannot be \`${raw}\`: that header carries a key, and the end user is logged`)
+  return raw
+}
 
 /**
  * Option `apps.<name>.model` (#261): one canonical id (`provider/model[#variant]`) or an alias name, never a `provider/*` pattern.
@@ -595,6 +611,7 @@ function parseApps(
     const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
     const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
     const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, value.models as string[] | undefined, context)
+    const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
     const policy: AppPolicy = {
       ...(value.models === undefined ? {} : { models: value.models as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -613,9 +630,10 @@ function parseApps(
       ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
       ...(sampling === undefined ? {} : { sampling }),
       ...(model === undefined ? {} : { model }),
+      ...(userHeader === undefined ? {} : { userHeader }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)

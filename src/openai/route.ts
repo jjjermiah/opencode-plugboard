@@ -66,7 +66,7 @@ import type { KeyStore } from "../keys.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
-import { bodyUser, noteEndUser } from "../user.js"
+import { bodyUser, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
 import type { SessionPromptDeps } from "../session/caller.js"
@@ -376,8 +376,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(response, unsupported)
 
-    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
-    noteEndUser(response, info, bodyUser(body))
+    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
+    // The end user: the app's `userHeader` when the request sends it (#272), else the body's `user`.
+    const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUser(sent))
+    const body = withEndUser(sent, user, "user")
+    noteEndUser(response, info, user)
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
     // The app's own `maxN` (#270) is the cap for this request; the decoder checks against `options.maxN`.
