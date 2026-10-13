@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.34.0] - 2026-10-13: Thinking Carries Over
+
+**Full diff:** [v0.33.0...v0.34.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...v0.34.0)
+
 ### Added
 
 - **Go, .NET, Langfuse and smolagents examples run in CI against the scripted fake** ([#362](https://github.com/jjjermiah/opencode-plugboard/issues/362)). Until now these four clients were checked only by hand against the dev server. Each example now has a runner, so `run.ts all --target scripted` covers it and CI fails on a stale or non-deterministic run. The Go and .NET runners print raw observations, and a shared relay applies the same checks as the Python and TypeScript runners. The `examples` job installs Go 1.27.2 and the .NET SDK 8.0.423 for them. go-openai and openai-dotnet pass text, stream and a tool round trip. Langfuse passes the same three. smolagents passes text. Its stream and tool round trip are recorded as gaps, not passes: smolagents' stream does not return the finish reason, and the scripted fake answers a tool turn only after a `tool`-role message.
@@ -24,6 +30,477 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **Prompt-cache reads by provider, measured again** ([#277](https://github.com/jjjermiah/opencode-plugboard/issues/277)). The [prompt-cache affinity](docs/configuration.md#prompt-cache-affinity) section has a table for ChatGPT, GLM and Copilot Gemini: what OpenCode sends, what each provider documents, and cached tokens with and without `anchor`. `anchor` helped ChatGPT in both runs. GLM and Copilot Gemini showed no cache reads with `anchor` in this run. Their causes are not established.
 - The client checks moved from `compat/` into `examples/`: each client has a runnable example with a scripted run that CI keeps current, and its dated live runs. The client pages now import their code and results from there. `compat/` is gone: its Python checks are examples too (`examples/aider`, `dspy`, `instructor`, `litellm-client` and `openai-agents`), each with a runner, a lockfile and a scripted run that CI keeps current. Why: the old kit's code and results could drift apart, and the results were prose nobody could diff. ([#174](https://github.com/jjjermiah/opencode-plugboard/issues/174), [#186](https://github.com/jjjermiah/opencode-plugboard/issues/186), [#187](https://github.com/jjjermiah/opencode-plugboard/issues/187), [#366](https://github.com/jjjermiah/opencode-plugboard/issues/366))
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (31 commits)</summary>
+
+#### Features
+
+**feat(examples): finish the examples docs and retire compat/ (#186, #187, #366)** ([`27f71e6`](https://github.com/jjjermiah/opencode-plugboard/commit/27f71e666c51e8dea6b3ef8070433499eae42e8a))
+
+What changed
+- The five remaining Python client checks are harness examples: aider, dspy, instructor, litellm-client and openai-agents. Each has a pyproject.toml with exact pins, a uv.lock, a runner (run.py, or run.sh for aider), scenario files with snippet regions, and a committed runs/scripted/ that run.ts writes and CI keeps current. Their 2026-10-12 live records were already migrated byte-identical in #367.
+- The scripted plugboard answers DSPy's [[ ## answer ## ]] field format (only requests with those markers take this path, so the other examples' transcripts are unchanged).
+- The five client pages (dspy, instructor, litellm-client, openai-agents, aider) are snippet includes. Their Tested lines point at the live record.
+- compat/ is deleted, with test/support/fake-server.ts (its only caller was the compat runner). package.json loses compat:python. CI loses the compat job, and ci-passed no longer needs it. The shell syntax check moved into the examples job. Dependabot: /compat/py is replaced by one uv entry for each new example.
+- docs: the examples overview (docs/examples.md) and an ExampleResult component on each client page. Both read docs/.vitepress/examples.json, which `bun .github/scripts/examples-index.ts --json` writes before every docs build (docs:build and docs:dev). A VitePress data loader was tried first; it put node:fs into the browser bundle, so the build writes plain JSON instead. The reader (docs/.vitepress/examples-model.ts) is shared with the generator, so the README table and the site show the same verdicts. The sidebar has an Examples overview entry.
+- examples/README.md: the status tables are generated between examples-index markers. examples/_harness/index.json holds the Shows text per example. examples-index.ts --check fails when the table is stale, when an example has no Shows text, or when a <<< import in docs/ names a missing file or region. CI runs --check in the examples job.
+- Docs and root files no longer name compat/ (AGENTS.md, STRUCTURE.md, docs/compatibility.md, test/README.md, bunfig.toml comment, CHANGELOG).
+
+Decisions
+- Scenario mapping. Each runner covers the scenarios its record covered, with the same prompts as scenarios.json. Structured output (S6) uses the scenario prompt and a Meal model, so the scripted answers match; the old "What is 6 times 7?" prompts are gone. Scenarios outside the record are n/a with a reason, not silently dropped.
+- finish_reason and usage. DSPy 3.4 and the Agents SDK do not expose the wire finish_reason. DSPy reads its normalised response; the Agents SDK maps a function call in the last output to tool_calls and otherwise to stop, and the example says so. Aider sees only its answer, so its one check is "answer contains pong"; the transcript keeps the wire fields.
+- Aider's message is the S1 prompt, not the old edit request, because the scripted model answers the scenario prompts only. A file edit is not checked by the example; the docs say so.
+- Client helpers in each example are defined outside the snippet regions they use. Each page lists the names a snippet uses.
+- The examples job timeout is now 30 minutes: the Python examples resolve and install their locked environments on first run.
+
+Rejected
+- A VitePress .data.ts loader imported by the components (see above).
+- Keeping compat/py for the Agents and LiteLLM pins. Each example pins its own openai version, so no shared environment is needed.
+
+Validation
+- bun run typecheck, bun test (2704 pass, 0 fail), coverage-manifest, check-pack, smoke-pack, bun run docs:build: all pass.
+- bun .github/scripts/examples-index.ts --check: current; 38 examples; all <<< imports in docs/ resolve.
+- bun examples/_harness/check-regions.ts: pass.
+- bun examples/_harness/run.ts all --target scripted run twice: every file under runs/scripted has the same sha256 both times.
+- The #187 acceptance demo is recorded on the PR, separately.
+
+Closes #186
+Closes #187
+Closes #366
+
+**feat(examples): unobserved checks keyed by scenario id, in TypeScript and Python** ([`dfc19d4`](https://github.com/jjjermiah/opencode-plugboard/commit/dfc19d4f37fa187cb9ef0e8a2a17e7a2457dc45b))
+
+RunOptions.unobserved only worked per variant, and the Python helpers had no unobserved at all. smolagents' S3 needs one: generate_stream does not return finish_reason, so that check cannot be observed. It was recorded as a gap, which reads as a fault, and the row never passed.
+
+An unobserved entry may now be keyed by scenario id alone, which covers every model and variant of the scenario, or by id|variant as before. A check left out of its row is named in the note. An entry that names no planned scenario or check, or that would drop every check of its row, is refused before anything runs. The Python helpers, py/harness.py, get the same rules, and smolagents uses them for S3.
+
+smolagents S3 now passes three of three checks, and its note says which check it does not make. Its S2 row keeps its gap: the final_answer turn finishes with tool_calls by design, so that check describes a different protocol and is not an unobservable check.
+
+Tests: test/unit/examples-unobserved.test.ts covers the id-only entry, the missing entry, and the two refusals and the unplanned scenario. The Python path is exercised by the smolagents scripted run.
+
+Refs #370
+
+**feat(examples): the relay scores rows with the runAll rule, gaps and n/a included** ([`b4debc4`](https://github.com/jjjermiah/opencode-plugboard/commit/b4debc4383bd77a587ab35eac6767eed2ff40fd9))
+
+The Go and .NET relay scored rows with its own copy of the status rule. It had no known gaps, no n/a scenarios and no unobserved checks, so a Go or .NET runner could not state a limit the way a TypeScript or Python runner can. The two paths could also drift.
+
+The rule now lives in one place: scoreRow in ts/harness.ts. runAll and the relay both call it. The relay's plan line carries the runner's gaps, na, unobserved and variants, with the same meaning as RunOptions. The relay checks them against the planned scenarios with checkUnobserved, which is also exported now, and it emits the n/a rows itself, one per model and variant of each declared scenario. A runner still cannot print a result line. Only the plan line is trusted to declare limits, and the checks still decide every verdict.
+
+runAll's output is unchanged: openai-js regenerates byte-identical.
+
+Tests: test/unit/examples-relay.test.ts adds parity cases for a declared gap, declared n/a rows, an unobserved check with its note, and a refused unobserved entry that prints nothing.
+
+Refs #370
+
+**feat(anthropic): replay signed thinking to Anthropic models across turns** ([`d7e6074`](https://github.com/jjjermiah/opencode-plugboard/commit/d7e6074256347d8988e810d4f812d83a1e44d5dc))
+
+Plugboard dropped every thinking and redacted_thinking block a client sent. A tool-use turn after thinking then failed Anthropic's rule that thinking comes before tool_use, because the reasoning was gone.
+
+What changed:
+- The neutral contract has a `reasoning` part (text, signature, redactedData). The Messages decoder keeps a `thinking` block that has a signature, and every `redacted_thinking` block. An unsigned thinking block is still dropped, because its empty signature is rejected.
+- The context hook replays reasoning parts as host reasoning parts with providerMetadata.anthropic, which the host's Anthropic protocol lowers back to signed thinking and redacted_thinking blocks.
+- Replay is gated on the request's model being provider `anthropic`. A signature is proof issued by one provider and is sent to no other. Other providers get the history with reasoning removed, as before.
+- The stored transcript and token estimate handle the new part.
+
+Decisions:
+- Replay goes through the context hook, not the stored transcript. The stored transcript is text, so structured replay needs the hook.
+- The gate reads `model.providerID` from the hook event. The event type gets an optional `model`, so a host that omits it replays nothing.
+
+Rejected:
+- Replaying unsigned thinking with an empty signature. Anthropic rejects it, and the decoder already dropped it for that reason.
+
+Validation: typecheck, full bun test (2631 pass), coverage gates (floors raised to current counts), coverage manifest, pack and smoke pack, docs build, scripted examples (no diff), mutations (84 of 84 killed, two new #374 entries).
+
+Not verified: a live Anthropic round trip. The dev server runs main, not this branch, so the live check runs after merge.
+
+Refs #374
+
+#### Fixes
+
+**fix(examples): refuse runner verdicts in the relay and pin the .NET SDK** ([`c1922d6`](https://github.com/jjjermiah/opencode-plugboard/commit/c1922d61c1a5a4405e30d80a2294bda87d631cc2))
+
+The relay passed any line that was not an observation through unchanged, so a runner could print a result line that said pass with no checks. It now accepts only plan, client and done from a runner, and it refuses the whole input before printing anything when another kind appears. Two tests cover a forged result line, one before done and one after it.
+
+CI built the .NET runner with whichever SDK dotnet run found, not 8.0.423. examples/openai-dotnet/global.json now pins 8.0.423 with rollForward latestFeature, setup-dotnet installs from that file, and the job prints dotnet --version from the example directory. The Go setup now caches against examples/go-openai/go.sum, so setup-go no longer warns that there is no go.mod at the root. The job timeout goes back to 10 minutes; the last run took 86 seconds.
+
+The copyable openai-dotnet example now needs an 8.0.4xx SDK. A reader with only a newer SDK gets an SDK-not-found error from global.json. That is the cost of one pinned version, and it is stated in the PR.
+
+Refs #362
+
+**fix(examples): pin the .NET SDK exactly, not to a feature band** ([`5840420`](https://github.com/jjjermiah/opencode-plugboard/commit/5840420513cbd4d89c2311f8a1960136509e8a8c))
+
+The previous global.json used rollForward latestFeature. The CI check printed dotnet --version as 8.0.425, not 8.0.423: the runner image already has 8.0.425, and latestFeature resolves to the newest 8.0.4xx at or above the pin. The pin was not exact, so the runner did not build with the SDK the docs and CHANGELOG name.
+
+global.json now uses rollForward disable, so only SDK 8.0.423 resolves. The cost is for readers: anyone on another 8.0.x SDK gets an SDK-not-found error from global.json and must install 8.0.423. That is the trade for a CI build that is reproducible. The local SDK is 8.0.423, and the four scripted runs are byte-identical after the change.
+
+Refs #362
+
+**fix(examples): pin aider's edit format so its scripted run is the same on every host** ([`e94c237`](https://github.com/jjjermiah/opencode-plugboard/commit/e94c2373c7dc50eb41df919bd52c24186eb37e26))
+
+The examples job failed on the first CI run of #371. The file examples/aider/runs/scripted/transcripts/S1.anthropic-claude-haiku-4-5.json differed from a fresh run in CI. Aider chooses its edit format (editblock or whole) from model metadata, and the metadata it reads differs by host. The chosen format changes the system prompt the transcript records.
+
+What changed
+- examples/aider/run.sh: --edit-format whole on every call, so the prompt does not depend on the model metadata. LITELLM_LOCAL_MODEL_COST_MAP=True, so LiteLLM uses its bundled price map and does not fetch one from GitHub.
+- examples/aider/runs/scripted: the anthropic transcript is regenerated (the other transcripts and the summary are unchanged).
+
+Decisions
+- whole, not editblock: the scripted model answers in plain text and the example checks only the answer, so the simpler format is enough. editblock would need the model to answer in SEARCH/REPLACE blocks, which the scripted model does not do.
+- Pinning the edit format in run.sh rather than in a .aider.conf.yml in the temp repo: the runner creates the repo, so the flag is the one place it is set.
+
+Validation
+- bun examples/_harness/run.ts aider --target scripted, run twice: every file under examples/aider/runs/scripted has the same sha256 both times.
+- Closes nothing: part of #187, whose examples job this keeps green.
+
+Refs #187
+
+**fix(examples): address review of #371: one shell check, docs links, unit tests** ([`7fb91eb`](https://github.com/jjjermiah/opencode-plugboard/commit/7fb91ebf2438eeb69188948ce7faba25646d2de0))
+
+Review of #371 at ab26177. Refs #186, #187, #366.
+
+What changed
+- ci.yml: the "Syntax-check shell scripts" step was left in the host job when the compat job was removed, so it ran three times. The examples job runs it once; the step is gone from host. Examples job timeout: 15 minutes (a cold run takes under two).
+- docs/releasing.md: the CI gate list no longer names "compat kit checks" (job gone), and the required-check replacement list drops "Compat kit checks". The release order names examples.
+- docs/examples.md: the closing link goes to examples/README.md without the historical-records anchor; the rerun instructions are at the top of that file.
+- ExampleResult.vue: the plugboard version and commit print as plain text, not inside markdown backticks (they showed literally on the built page). The stale comment names examples.json.
+- test/unit/examples-scripted-model.test.ts: DSPy branch cases (S1 and S6 answers, the reasoning prefix, an unknown DSPy prompt gets the error, plain S1 unchanged).
+- test/unit/examples-index.test.ts (new): renderTable rows and the no-Shows-text marker; snippet import checks (resolves, renamed region, missing file); readExamples (directories only, the newest live run by date then plugboard version, the scripted run, empty example).
+
+Decisions
+- examples/README.md:66 and :68 keep their compat/ paths. They are the migration notes that say where a removed script is (git show 3d3735c:<path>). Rewording them would lose the path. The PR body states that the acceptance greps match them on purpose.
+- The generated README table does not check scenario statuses. The table prints only the verdict; scenario rows show on the client pages, from the same summary. The PR body says so.
+
+Validation
+- bun test test/unit/examples-index.test.ts test/unit/examples-scripted-model.test.ts: 20 pass.
+- bun run typecheck, bun test, coverage-manifest, check-pack, docs:build, examples-index --check and check-regions: run after the merge (see the merge commit).
+
+**fix(examples): decide a stream's done from the wire, not the runner's flag** ([`f0b6f4a`](https://github.com/jjjermiah/opencode-plugboard/commit/f0b6f4a2aea872551ace1972cde2aaeca145794b))
+
+Every runner set done to true after its stream loop, so the S3 check "stream ended with [DONE]" could not fail. A stream cut off mid-answer passed. The capture proxy already has the bytes, so run.ts now decides the check from the wire: a chat completions stream must end with data: [DONE], a Responses stream with response.completed, a Messages stream with message_stop, and a Gemini stream with a finishReason. A row whose stream did not end normally is downgraded from pass to fail, and its done check is replaced by the harness's answer. The runners still send done, but the harness no longer uses it.
+
+The check is renamed "stream ended normally", since it now covers four protocols. Eighteen summary.json files change name only. No row changed status, so every existing stream ended on the wire the way its runner claimed.
+
+Tests: test/unit/examples-stream-end.test.ts covers a complete and a truncated stream for each protocol, and the rule that a row needs at least one stream. The downgrade itself is wired into writeExample and is exercised by the scripted run, not by a unit test.
+
+Refs #370
+
+**fix(examples): answer smolagents' tool observation with final_answer** ([`ac4ddf3`](https://github.com/jjjermiah/opencode-plugboard/commit/ac4ddf38ed99962d97a4da6fed28aea57eb8e413))
+
+smolagents sends a tool result as user text ("Observation:") and ends a run only when the model calls final_answer. The scripted fake answered the tool turn only after a tool-role message, so the smolagents S2 run looped to max_steps and its final answer never came back. The fake now answers an Observation: turn with a final_answer call when the request offers that tool. Requests without the tool keep the old path, so other clients' runs are unchanged.
+
+smolagents S2 now passes five of six checks: the tool call, its name, city and id, the first finish reason, and the final answer. The sixth, "turn 2 finish_reason is stop", stays a gap. The final_answer turn finishes with tool_calls by design, so the check does not describe smolagents' protocol. Calling that unobserved would hide a real difference, so the row keeps its gap and the note says why.
+
+Only the smolagents S2 transcripts change (three models). Every other run is byte-identical.
+
+Tests: test/unit/examples-scripted-model.test.ts covers the final_answer answer and the unchanged path without the tool.
+
+Refs #370
+
+**fix(examples): stop the aider runner opening a browser page** ([`aa1ae23`](https://github.com/jjjermiah/opencode-plugboard/commit/aa1ae2310bae45cb298a7ce14dd7fcc7f7367c86))
+
+Every scripted or live run of the Aider example starts Aider in a fresh uv environment, so Aider treats it as the first run of its version and offers to open its release notes. The runner passes --yes-always, which accepts that offer, so each run opened a browser tab on the machine running it. Lanes regenerate the scripted runs often, so the owner's browser kept opening the Aider page.
+
+The runner now passes --no-show-release-notes, which removes the offer, and exports BROWSER=true, so any other webbrowser.open Aider might reach (an "open URL for more info?" prompt under --yes-always) runs `true` instead of a browser. Nothing Aider sends to plugboard changes, so the scripted transcripts are unchanged.
+
+Validation: bash -n on run.sh; the aider scripted run regenerated with no diff under examples/aider/runs and no browser tab opened.
+
+**fix(examples): declare the scenario checks in run.ts's spec type** ([`11a2bc9`](https://github.com/jjjermiah/opencode-plugboard/commit/11a2bc949496bdbc266cb6301abfa86316d62b0e))
+
+Item 1 (f0b6f4a) looked up a scenario's done check through the spec type, which did not declare checks. The examples typecheck (tsc -p examples/_harness) failed with an implicit any, so that commit was not typecheck-clean. ScenarioSpec now declares checks, and the typecheck passes.
+
+Refs #370
+
+**fix(examples): harden the harness checks the PR review flagged** ([`d9598cd`](https://github.com/jjjermiah/opencode-plugboard/commit/d9598cd37d6e90a440255739d9c20761564d5f75))
+
+Review of #379 found five places where a check accepted something it should refuse. Each is fixed, and each has a test.
+
+- A stream counts as ended only once its last SSE event's blank line has arrived. A capture cut inside "data: [DONE]" or a final event no longer passes. The WHATWG SSE rule dispatches an event at its blank line.
+- Gemini's end is read from the last chunk's candidate finishReason, not by searching the payload text. A text part that says "finishReason" no longer passes.
+- A row that failed only on the runner's own done flag becomes a pass when the wire shows a complete stream, so the wire decides. A pass whose stream did not end is still a fail.
+- An unobserved key with more than one "|" is refused in TypeScript, and an empty variant ("S1|") is refused in Python. Before, the extra part was dropped and the exclusion was silently ignored.
+- The relay refuses an observation for a scenario the plan does not run, including an n/a one, and refuses an error that is not text. Before, a malformed error was scored as a success.
+
+The committed scripted runs are byte-identical after the change, so no existing row was downgraded by the stricter rules. The unit test floor moves with the new tests.
+
+Refs #370
+
+**fix(examples): a failed chat stream is not a normal end; pin aider to C.UTF-8** ([`41d8f8e`](https://github.com/jjjermiah/opencode-plugboard/commit/41d8f8e13f13043f9008450744b57835805d4f37))
+
+The stream check accepted a chat completions stream that ended with an error frame and then [DONE]. That is what plugboard sends when a committed stream fails (src/openai/fanout.ts), so a late upstream failure could pass S3 and, with the done-only lift, turn a failing row into a pass. A chat or legacy completions stream now counts as ended only when its last frame is [DONE] and no data frame has a top-level error. A text delta or a non-JSON line does not count as an error. The Responses, Messages and Gemini checks already failed on their own error frames, and the doc comment now says response.incomplete does not count as ended.
+
+"stream ended normally" can no longer be named in unobserved. The stream check is decided from the captured wire, so a runner cannot leave it out. TypeScript and Python both refuse it.
+
+The aider runner pins LANG and LC_ALL to C.UTF-8. en_US.UTF-8 adds a "Reply in English." line to aider's prompt, which changes the committed transcripts, so C.UTF-8 is the pin. The comment says CI is the reference and that a host without C.UTF-8 fails the drift check.
+
+The relay and README now say that the plan line's limits are trusted with the same reach as the TypeScript and Python options.
+
+Tests: examples-stream-end covers the real failed-stream body for chat and legacy completions, a successful stream, a quoted "error" in a delta, and a non-JSON line. examples-unobserved covers refusing the stream check.
+
+Refs #370
+
+**fix(anthropic): state the measured reason for replaying signed thinking** ([`f0c1fa2`](https://github.com/jjjermiah/opencode-plugboard/commit/f0c1fa284aecde16b337309b17c3b79f6ab87fcd))
+
+The first commit said Anthropic rejects a tool-use turn whose thinking is missing or unsigned. Live runs did not show that. The host always sends the interleaved-thinking beta, and a turn-2 history with the thinking block stripped returned 200 on claude-haiku-5-5, claude-sonnet-4-6, claude-haiku-4-5 and claude-opus-4-5.
+
+What was measured (isolated dev server, plugboard from this branch, OpenCode v2.0.27, non-stream, thinking enabled with budget 2048):
+- claude-opus-4-5: with the signed thinking block replayed, turn 2 kept thinking (signature 472). With it stripped, turn 2 had no thinking.
+- A replaced signature (same length, junk value) returns 400 from the provider. The real signature returns 200. So the replayed signature reaches the host request, and the provider checks it.
+- A forged redacted_thinking data value returns 400, so the redacted block also reaches the request.
+- An unsigned block (signature "") returns 200, because it is dropped.
+- A non-anthropic model (opencode-go/glm-5.3-flash) and Copilot Claude get the history without reasoning and return 200.
+
+What this change does, then: the signed block reaches an anthropic model, so the model keeps its earlier reasoning across turns. It is a quality gain, not the fix for a 400. The reason text in CHANGELOG.md and docs/messages.md is corrected to match.
+
+Also in this commit:
+- Docs: plugboard never emits redacted_thinking on a response (follow-up #385), so a client replays one only if it got it from elsewhere. Copilot Claude is not replayed yet (follow-up #386).
+- Tests: a host event without a model replays no reasoning and does not throw; an omitted-thinking block (empty text, signature) is kept as a signed reasoning part.
+- Coverage floor for test/session ratcheted from 350 to 351; test/unit is unchanged at 1313.
+
+Validation: typecheck, bun test (2632 pass, 0 fail, 126 live skips), coverage gates with ratchet, coverage-manifest, check-pack and smoke-pack, docs build, scripted examples (no diff), mutations (84 of 84 killed).
+
+Refs #374
+
+#### Tests
+
+**test(examples): run the Go, .NET, Langfuse and smolagents clients in scripted CI** ([`ebdefb1`](https://github.com/jjjermiah/opencode-plugboard/commit/ebdefb1fc6cd296569a37c870fe721f2387f0548))
+
+Four clients were checked only by hand against the dev server (#234, #236, #240, #228). Their pages said there was no scripted test, and CI could not notice if one broke. The examples job now runs each of them against the scripted fake, the same way it runs the other example runners.
+
+Each example gets a runner. Langfuse and smolagents are Python: a pyproject.toml and uv.lock, pinned as the docs record, like openai-python. Go and .NET keep their example program untouched and add a runner sub-program (examples/go-openai/runner, examples/openai-dotnet/runner), built with go run and dotnet run. Those two print raw observations, and examples/_harness/ts/relay.ts applies the checks from scenarios.json, so the check logic is not copied into each language. The .NET example csproj excludes runner/** so the example keeps one entry point.
+
+On the fake, go-openai, openai-dotnet and Langfuse pass text, stream and tool round trip on every model the scenario lists. smolagents passes text. Its stream and tool round trip are gaps, not passes. generate_stream does not return finish_reason. The fake answers a tool turn only after a tool-role message, and smolagents sends the observation as user text, so the agent runs to max_steps. The gap notes say this, and so does docs/compatibility.md.
+
+Decisions: the shared fake is not changed. It sits outside examples/<client>, and changing it would make the smolagents tool gap pass without fixing the client. Runtime versions are recorded by major version only (Go 1, .NET 8, Python 3). setup-go is pinned to Go 1.27.2 and setup-dotnet to 8.0.423, the versions the runners were checked against.
+
+Refs #362
+
+**test(session): pin the agent's system prompt in the stored session prompt** ([`1d38c93`](https://github.com/jjjermiah/opencode-plugboard/commit/1d38c9342670adb2b7d8e5029dcf727f7b8a088e))
+
+The session test for an `agent/<name>` request now reads the prompt the session receives (the text passed to `port.prompt`, rendered by `renderTranscript`). It asserts the transcript opens with `## system` and the agent's prompt, and that the caller's system text never appears in it. The Agents section of docs/configuration.md states the same shape and says it was checked live.
+
+Issue #6 asked whether an agent's own persona is applied, not only whether the session is created as that agent. The caller-side tests already checked the session's agent name and the replaced `system` array, but nothing pinned the text the host receives, so a regression in the transcript could pass them.
+
+Live proof on the isolated dev server (main, with a throwaway agent whose prompt is "Always answer in exactly three words, the last being BANANA." and a caller that sends "CALLER SYSTEM: reply in German."):
+- `/v1/chat/completions` answered "Yellow ripe BANANA".
+- `/v1/messages` answered "SUNNY RIPE BANANA".
+- `/v1/responses` answered "It's a BANANA." (three words).
+- Control, plain alias `fast`, same question: "The capital of France is Paris."
+- OpenCode session via the dev API `/api/session/<id>/message`: agent `banana`, and the user text starts with "## system" then the agent's prompt, with no caller system text. Session permissions are `deny *` then the `plugboard_seed_*` allow.
+
+No src change: the behaviour already held. Rejected: a live test in CI, because it needs a real model and key.
+
+Validation: typecheck, bun test (2727 tests, 0 fail), coverage gates with ratchet (session and unit floors raised by the ratchet), coverage-manifest, check-pack, smoke-pack, docs:build, and the examples harness scripted with no diff under examples/.
+
+Refs #6
+
+#### Docs
+
+**docs(examples): build client pages from examples/ snippets** ([`f85ad4d`](https://github.com/jjjermiah/opencode-plugboard/commit/f85ad4dc1635a601551a1b6413d9453fd6d88eeb))
+
+Part of #174, step 1 of #186. Client pages showed code copied by hand from examples/ and a Tested line dated to older runs. Now the code is imported from the example's snippet region, and the Tested line links the newest live run in examples/<client>/runs/live/.
+
+What changed
+- docs/clients/{openai-python,openai-js,vercel-ai-sdk,langchain-python, langchain-js,pydantic-ai}.md: code blocks are <<< imports of the snippet regions (langchain-python tools use snippet-tool and snippet-round-trip). Prose and gotchas are kept.
+- docs/clients/{n8n,open-webui}.md: Tested line points at the newest live run (n8n b92fb6f, partial; open-webui 0cf8030, pass). open-webui shows docker-compose.yml, not a docker run copy, and the compat/ link now points at examples/open-webui/README.md.
+- examples/open-webui/docker-compose.yml: a snippet region around the services and volumes, so the page can import it. No change to the file's content.
+
+Decisions
+- Setup lines for openai-python, openai-js and pydantic-ai stay as short hand-written blocks. Their examples build the client inside an indented __main__ block, and a region there would paste with indentation.
+- Snippets that sit inside a function keep that indentation in the page. VitePress does not dedent regions. Fixing it needs a markdown plugin or moved regions, so it is a follow-up.
+- langchain-python's Tested line uses the live run already committed (2026-10-13-c97ac66). The 2026-10-11 record is migrated in the cleanup step.
+
+Rejected
+- Rewriting every dated claim in the prose. Only the Tested line is refreshed here, so gotchas that mention older runs may still read as dated.
+
+Validation
+- bun run docs:build passes. Rendered client pages contain the region text and not the whole example file (no "S1, plain chat" header in the output).
+- bun examples/_harness/run.ts all --target scripted leaves git diff examples/ clean.
+- bun examples/_harness/check-regions.ts passes.
+
+**docs(examples): index every example with its run status** ([`ab2cade`](https://github.com/jjjermiah/opencode-plugboard/commit/ab2cade9c852c252975730c66ac5c3cfbee5e7b3))
+
+Part of #174, step 2 of #186. examples/README.md listed 33 directories, left out the six client examples that have runs, and kept a curl section that duplicated examples/curl/. Now the README has two status tables that cover every example directory: the harness examples with their scripted verdict and newest live run, and the rest as "not run" or docs-verified.
+
+What changed
+- examples/README.md: a short section on what runs/scripted and runs/live hold, and how to rerun one example or all of them. The status tables. The curl section links to examples/curl/ (its README and runs/), which replaces the hand-written curl list. The line that said examples are kept out of compat/ is gone with compat's README.
+
+Decisions
+- Hand-written tables, not a generator. The generator and its --check belong to the examples-index part of #186 and are not in this commit. A tree that adds an example or a run changes this file by hand until then.
+- Verdicts are copied from each newest summary.json (scripted and live). The curl live run is listed as fail, which is what its record says.
+- A run's date and commit are read from the directory name. Same-day runs of different commits are listed by the name the harness gave them.
+
+Rejected
+- Listing "Last run" from the directory sort alone. Same-day runs sort by sha, not by time, so the index names the run it shows.
+
+Validation
+- Every link in the tables resolves to a file in the tree (checked by listing each path with git ls-files).
+- The tables cover every directory under examples/ except _harness, _shared, _tools and _release.
+
+**docs(cache): table of provider cache reads with and without anchor affinity** ([`3a0d858`](https://github.com/jjjermiah/opencode-plugboard/commit/3a0d858cb6627e37e9ec75babfa59f67c753e2ea))
+
+The report in #277 said there were no prompt-cache reads from ChatGPT, GLM and Copilot Gemini. Anchor affinity has shipped since, so this re-measures all three on the isolated dev server with promptCache off and anchor, and writes down what each provider's cache is driven by.
+
+The change is a table in the prompt-cache affinity section of docs/configuration.md (what OpenCode sends, what each provider documents, cached tokens per run with and without anchor, and the likely reason), plus a CHANGELOG bullet under Unreleased. There is no code change, so no "since" marker.
+
+The result is that anchor helps ChatGPT (3712 cached tokens on repeat runs) and changes nothing for GLM or Copilot Gemini. Plugboard sends no key that would change GLM, and Copilot Gemini's affinity header is the same in both arms.
+
+Google documents a 4,096-token minimum for Gemini 3.8 Flash. The doc does not claim it explains the Gemini result, because a 5,103-token repeat still got no reads. The 2026-10-12 paragraph stays in place, with the new run beside it.
+
+Changing plugboard's cache routing for GLM or Gemini was rejected. Neither has a plugboard-side key to fix, so a code change would be a guess.
+
+Validation ran typecheck, bun test (2704 tests, 0 fail), the coverage gates, coverage-manifest, check-pack and smoke-pack, docs:build, and the scripted examples with git diff examples/ clean. The live measurements are in the PR.
+
+Refs #277
+
+**docs(examples): fix review findings on the client pages and the index** ([`79ef3f8`](https://github.com/jjjermiah/opencode-plugboard/commit/79ef3f8feb0c20652243c467af4fa9ccffafe77e))
+
+Review of #367 at 5412c51 (follow-up commit, Refs #174, #186, #187).
+
+Dead links and snippets
+- examples/_release/release-candidate.md: three link targets now point at the moved records (langchain-python and vercel-ai-sdk 2026-10-11 REPORT.md) and at examples/open-webui/README.md (was ../docker/README.md). Only link targets change; the text is otherwise the same.
+- The seven historical 2026-10-11 REPORT.md copies still link release-candidate.md by a relative path. They are not edited, because a live directory is never rewritten. examples/README.md has a "Historical records" section that maps the old path.
+- examples/langchain-python/llm.py: the snippet region now wraps the whole chat_model function (it was inside the body, so the page showed a bare return). Comment-only change, scripted runs unchanged.
+- docs/clients/langchain-python.md: the snippet's module-level names (os, NO_RETRIES) and the names used by the chat and tool snippets are stated.
+- docs/clients/pydantic-ai.md: the setup block has the pydantic-ai and asyncio imports, and the page says the snippets are the body of an async function taking client and model.
+- docs/clients/{openai-python,openai-js,vercel-ai-sdk,langchain-js}.md: each snippet names the variables and imports it uses that are not in the region (client, model, messages, TOOL, PROMPT, Meal, variant, wireFinish).
+- docs/clients/pydantic-ai.md: the Tested line names the two run directories (2026-10-13-c97ac66 fail, 2026-10-13-c97ac66-2 pass) instead of "the earlier record".
+
+Index and records
+- examples/README.md: the five clients with a 2026-10-12 live record and no scripted run are marked "live record only (compat/py/clients)".
+- examples/_harness/README.md: "Record-keeping" section restores the rules from the old compat/README.md (template pointer, superseded-note convention, no session chatter, captures are sensitive, sessions.py).
+
+CI and config
+- .github/workflows/docs.yml: examples/** added to the trigger paths, so an example change rebuilds the client pages.
+- .github/dependabot.yml: the comment now says what is covered and what is not (the smoke projects, async-openai, compat/py-litellm). No new entries.
+
+Validation
+- check-regions, bun run docs:build and bun run typecheck pass.
+- bun examples/_harness/run.ts all --target scripted leaves no change under examples/*/runs.
+
+**docs(cache): table of provider cache reads with and without anchor affinity** ([`f4a9fc3`](https://github.com/jjjermiah/opencode-plugboard/commit/f4a9fc3ae8aa57743b0af53124d7f6bf71fbefc0))
+
+The report in #277 said there were no prompt-cache reads from ChatGPT, GLM and Copilot Gemini. Anchor affinity has shipped since, so this re-measures all three on the isolated dev server with promptCache off and anchor, and records what each provider's cache is driven by.
+
+The change is a table in the prompt-cache affinity section of docs/configuration.md (what OpenCode sends, what each provider documents, cached tokens per run with and without anchor, and the likely reason), plus a CHANGELOG bullet under Unreleased, in the Changed section. There is no code change, so no "since" marker.
+
+ChatGPT: anchor cached 2 of 3 later runs and off cached 0 of 3 in this run. Earlier, anchor cached 8 of 9 repeats and off 2 of 9. The mechanism comes from OpenCode's source comment, not from provider documentation.
+
+GLM: OpenCode sends no body cache key, but it sends the affinity headers on every request, and anchor kept them stable. No reads followed. Whether the OpenCode Go route uses zai-chat, forwards these headers, or applies Z.ai's implicit cache is not established.
+
+Copilot Gemini: below Google's 4,096-token minimum no read is expected. At 5,103 tokens both arms got HTTP 400 on run 1 and no reads on the repeats after it. Google's caching is best effort, so this is recorded as an open question, not a finding.
+
+Changing plugboard's cache routing for GLM or Gemini was rejected. Nothing in plugboard has been shown to change either result, so a code change would be a guess.
+
+Validation ran typecheck, bun test (2704 tests, 0 fail), the coverage gates, coverage-manifest, check-pack and smoke-pack, docs:build, and the scripted examples with git diff examples/ clean. The live measurements are in the PR.
+
+Refs #277
+
+**docs(examples): describe the stream check, gaps and unobserved checks** ([`aeab2c0`](https://github.com/jjjermiah/opencode-plugboard/commit/aeab2c03633736b39ba43a55b8ad7c3fcabd0d51))
+
+The harness README now explains the four row outcomes (gap, unobserved, n/a, and the wire-decided stream check) and the relay's plan options. A reader who writes a runner no longer has to read run.ts to learn what a gap or an unobserved check does. docs/compatibility.md's smolagents row gives the current result: text and stream pass, five of six tool round-trip checks pass, and the sixth is a gap with its reason.
+
+The unit test-count floor moves with the new tests (relay, unobserved, stream end, scripted model final_answer), recorded by test-gates --ratchet.
+
+Refs #370
+
+**docs(config): document the measured cost of the maxTools seed pool** ([`d6ca97f`](https://github.com/jjjermiah/opencode-plugboard/commit/d6ca97f9bad24f5d97297f9dd5b4125e78e86f2f))
+
+The issue asks what each maxTools slot costs, because every slot is a registered placeholder tool in each app Location (src/session/context.ts, installSessionHooks). The cost was measured instead of guessed, and the numbers are small enough that no code change is needed.
+
+Measured with the real installSessionHooks, the spy plugin context and a fake host transform editor (scratch harness, not committed): one Location per registration, a 36-tool Claude Code style request per hook call. Four runs agreed within a few microseconds.
+
+- registration: 4 to 13 us per Location up to 256 slots, 16 to 19 us at 512, 25 to 29 us at 1024
+- retained heap per Location: about 20 KiB at 64, 38 KiB at 128, 72 KiB at 256, 146 KiB at 512, 285 KiB at 1024 (linear, about 0.28 KiB per slot)
+- context hook per request: 6 to 13 us up to 256, 30 to 37 us at 1024
+- tool list sent to the host: 36 entries, 9,773 bytes at every cap; the seed pool size only changes what is handed to the hook, never what the model gets
+
+Decision: at 256 the cost is negligible (about 70 KiB and under 15 us per Location), so lazy registration is not implemented. Lazy registration would rebuild the host tool transform on demand and change the descriptor-identity mapping in remapSeedTools, a riskier change than the cost justifies. The maxTools row in docs/configuration.md now gives the numbers in place of the stale "a few KiB per Location" claim. Rejected: the bench suite (test/bench) was not extended, because mitata measures request latency and this cost is per Location registration and memory, which it does not capture.
+
+Validation: bun run typecheck ok; bun test 2627 pass, 0 fail; coverage gate ok with floors unchanged; coverage-manifest, check-pack, smoke-pack, docs:build and the scripted examples harness (git diff --exit-code examples/) all exit 0.
+
+Closes #377
+
+**docs(config): move the seed pool numbers into their own section** ([`6483833`](https://github.com/jjjermiah/opencode-plugboard/commit/648383359c2781f73c86f6626dcfd8ebc2652f68))
+
+The maxTools row in docs/configuration.md held about 190 words of measurements, which is hard to read in the rendered table and in the source. The row now keeps the default and one sentence with the per-Location cost at 256, and links to a new "Cost of the seed pool" subsection that holds the method and a five-row table (64 to 1024).
+
+The review asked for two notes, now in that subsection. The harness excludes the host's own per-tool cost and the seed descriptors the host hands the hook (about 35 KB at 256 and 140 KB at 1024). The retained heap includes about 2.6 KiB of harness baseline. The figures are unchanged from the earlier commit.
+
+Validation: bun run docs:build exit 0, no dead-link warnings. No code changed.
+
+Refs #377
+
+#### CI and tooling
+
+**chore(examples): retire compat/ except the Python checks with no example** ([`5412c51`](https://github.com/jjjermiah/opencode-plugboard/commit/5412c517d4b35f88c082e4760b086a9f8d290a07))
+
+Part of #174, step 3 of #187. The client checks now live in examples/: each client has a runnable example, a scripted run that CI keeps current, and its dated live runs. compat/ keeps only the Python checks that have no example yet (aider, DSPy, Instructor, LiteLLM, OpenAI Agents SDK), tracked in #366. compat/ cannot be deleted until #366 is done.
+
+Where each compat/ path went
+- compat/results/{openai-python,openai-js,vercel-ai-sdk,pydantic-ai, langchain,n8n,open-webui}.md: already migrated byte-identical to examples/<client>/runs/live/<2026-10-11 dir>/REPORT.md. Checked with cmp before removing the copies here.
+- compat/results/aider.md, dspy.md, instructor.md, litellm.md, openai-agents.md: git mv to examples/<client>/runs/live/2026-10-12-a67e176/ REPORT.md (aider, dspy, instructor, litellm-client, openai-agents).
+- compat/results/release-candidate.md: git mv (verbatim) to examples/_release/release-candidate.md.
+- compat/results/_template.md: git mv to examples/_release/_template.md, Env and Scripts lines now point at the examples.
+- compat/fixtures/*: already in examples/_shared/ (byte-identical, checked).
+- compat/docker/n8n/*.json: already in examples/n8n/workflows/ (checked; run.sh is replaced by the harness --docker option).
+- compat/docker/open-webui.sh and compat/docker/README.md: replaced by examples/open-webui/docker-compose.yml, README.md and the harness.
+- compat/js/*: replaced by examples/{openai-js,langchain-js,vercel-ai-sdk}.
+- compat/py/{openai_py.py,langchain_py.py,pydantic_ai_check.py,smoke.py}: replaced by examples/{openai-python,langchain-python,pydantic-ai} and the examples/_harness smoke ports.
+- compat/tools/logproxy.py: replaced by examples/_harness/capture.ts.
+- compat/tools/sessions.py: already in examples/_tools/sessions.py (checked).
+- compat/README.md: replaced by examples/README.md; a short README for the remaining files is kept.
+- KEPT: compat/py/clients/* (aider, dspy, instructor, litellm, openai_agents, _common.py, run_all.py), compat/py/pyproject.toml, compat/py/uv.lock, compat/py-litellm/. No replacement yet; see #366.
+
+CI and tooling
+- ci.yml: the compat job lost the compat/js typecheck (the folder is gone) and keeps only the py_compile of compat/py/*.py. The examples job already ran the scripted runs and the region check; it now also runs the docs build and uploads the regenerated scripted runs as an artifact, so a contributor without uv can copy a fix. Docker examples are skipped (they need --docker and a daemon).
+- dependabot.yml: /compat/js removed; /compat/py kept; one uv or npm entry for each example with a lockfile (openai-python, langchain-python, pydantic-ai, openai-js, vercel-ai-sdk, langchain-js, tool-bot).
+- Docs and root files that named compat/ paths now name examples/ (AGENTS.md, CONTRIBUTING.md, STRUCTURE.md, README.md, docs/architecture.md, docs/development.md, docs/releasing.md, docs/history.md, docs/compatibility.md, bunfig.toml comment, test/README.md, example metadata). Historical runs/live REPORT.md files keep their text, as the migration rule requires, and so does release-candidate.md (verbatim).
+- CHANGELOG [Unreleased]: one entry for the move.
+
+Decisions
+- compat/ is not deleted. The four clients and aider have no harness runner, so deleting their scripts would delete the only way to run them. Their pages in docs/clients still name compat/py/clients, which exists.
+- release-candidate.md keeps links to deleted per-client records and to compat/docker/README.md. It is verbatim on purpose; those links are dead in examples/_release/ and need a follow-up decision.
+
+Rejected
+- Deleting the Python checks outright. That removes checks no example covers, and the epic does not allow it.
+- Editing the historical REPORT.md files to fix their compat/ paths. The migration rule says byte-identical.
+
+Validation
+- bun run typecheck, bun test (2704 pass, 0 fail), coverage-manifest (67 covered, 0 gaps), check-pack and smoke-pack, bun run docs:build all pass.
+- bun examples/_harness/check-regions.ts passes.
+- bun examples/_harness/run.ts all --target scripted runs clean: git diff shows no change under examples/ from the scripted runs.
+- python3 -m py_compile on the remaining compat/py files and bash -n on all tracked shell scripts pass.
+- git grep for compat/ outside the allowed paths lists only the kept checks, the migration notes and test/compat. See the PR body.
+
+**chore(tests): raise the unit test-count floor for the relay tests** ([`af9f0a2`](https://github.com/jjjermiah/opencode-plugboard/commit/af9f0a2b571c5d09b644688b09b9da7d3832d2b4))
+
+The examples relay gained seven unit tests (test/unit/examples-relay.test.ts), so the unit floor moves from 1262 to 1269. The ratchet only raises floors, and this commit records the new count with the tests that raised it.
+
+Validation: bun test passed with 2585 pass, 126 skip, 0 fail, and test-gates --ratchet reported all floors met.
+
+**chore(examples): scratch, hand-edit a scripted summary (#187 demo)** ([`deb39d8`](https://github.com/jjjermiah/opencode-plugboard/commit/deb39d8d7681a3675099281c0a37e577425bd61b))
+
+Demo only: changes the instructor scripted verdict by hand, so the examples job must fail. The next commit reverts this one. Not for merge.
+
+**chore(examples): revert the #187 demo commit** ([`f915e3a`](https://github.com/jjjermiah/opencode-plugboard/commit/f915e3afa67f83c16c8c10f437ad6d7113e03ba6))
+
+The scratch commit hand-edited examples/instructor/runs/scripted/summary.json to fail, and the examples job check failed on it as intended. This restores the regenerated run, so the tree matches the committed scripted output again. Refs #187.
+
+**ci(examples): rerun the pull request checks on the review-fix head** ([`b062bcc`](https://github.com/jjjermiah/opencode-plugboard/commit/b062bcceb62c8a32d5c04092f285f64e9f4a1104))
+
+GitHub sent no pull_request events for d9598cd. The push, and a close and reopen of the PR, both produced none, so the required checks never started on that head. A workflow_dispatch run of the same commit passed every job, including CI passed (run 38447420741). This empty commit gives the PR a new head that starts the checks. It changes no file.
+
+Refs #370
+
+#### Dependencies
+
+**build(deps): support opencode 2.0.28** ([`de63d9b`](https://github.com/jjjermiah/opencode-plugboard/commit/de63d9b0122ae97bd87babd6419ba9e99d1ea037))
+
+OpenCode published @opencode/plugin 2.0.28. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.33.0] - 2026-10-13: Stays Awake
 
@@ -6085,7 +6562,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...v0.31.0
