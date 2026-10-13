@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """List or delete plugboard history sessions of one app on an OpenCode server. Other apps are never touched.
 
-  python3 compat/tools/sessions.py list                          # sessions of the app: id, time, model, title
-  python3 compat/tools/sessions.py delete --all --dry-run        # show what would go
-  python3 compat/tools/sessions.py delete --older-than 60        # only sessions older than 60 minutes
-  python3 compat/tools/sessions.py delete ses_abc ses_def        # specific ids (refused unless they belong to the app)
+  python3 examples/_tools/sessions.py list                          # sessions of the app: id, time, model, title
+  python3 examples/_tools/sessions.py delete --all --dry-run        # show what would go
+  python3 examples/_tools/sessions.py delete --older-than 60        # only sessions older than 60 minutes
+  python3 examples/_tools/sessions.py delete ses_abc ses_def        # specific ids (refused unless they belong to the app)
 
 Environment:
   PLUGBOARD_OC         command that runs the OpenCode CLI against the server you mean (default: opencode).

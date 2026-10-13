@@ -1,61 +1,30 @@
 # Vercel AI SDK
 
-Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91. Live on 2026-10-13 at plugboard 0.26.0 (`c97ac66`): all 45 rows pass on all three ways in (`examples/vercel-ai-sdk/runs/live/2026-10-13-c97ac66/summary.md`). The 2026-10-11 record at `3fcedc7` predates the Responses route.
+Tested: `ai` 7.0.137, `@ai-sdk/openai-compatible` 3.0.67, `@ai-sdk/openai` 4.0.91. Live run [`2026-10-13-c97ac66`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/vercel-ai-sdk/runs/live/2026-10-13-c97ac66) at plugboard 0.26.0 (`c97ac66`): pass, all 45 rows pass on all three ways in. The code below is the example's snippet, and the run's summary and transcripts are in the example directory.
 
 Use `createOpenAICompatible`. It passed every scenario with `supportsStructuredOutputs: true`. Without that flag structured output failed (see Gotchas).
 
-```ts
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+<<< @/../examples/vercel-ai-sdk/providers.ts#snippet
 
-const plugboard = createOpenAICompatible({
-  name: "plugboard",
-  baseURL: "http://localhost:4010/v1",
-  apiKey: process.env.PLUGBOARD_KEY,
-  includeUsage: true,                // usage while streaming
-  supportsStructuredOutputs: true,   // see below
-})
-const model = plugboard.chatModel("fast")
-```
+The scenario files take `client`, a function from a model id to a model. In [`providers.ts`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/vercel-ai-sdk/providers.ts), `apis.compat` is `(id) => compat.chatModel(id)`. The snippets below use `client(model)`, with `model` set to `"fast"`.
 
 `fast` is an alias from the plugboard `aliases` option. Use any allowed `provider/model[#variant]` instead.
 
 ## Chat
 
-```ts
-import { generateText } from "ai"
-
-const { text } = await generateText({ model, prompt: "Reply with exactly: pong" })
-```
+<<< @/../examples/vercel-ai-sdk/chat.ts#snippet
 
 ## Tool call
 
-```ts
-import { generateText, tool, isStepCount } from "ai"
-import { z } from "zod"
+<<< @/../examples/vercel-ai-sdk/tools.ts#snippet
 
-const { text } = await generateText({
-  model,
-  tools: { get_weather: tool({
-    description: "Current weather for a city",
-    inputSchema: z.object({ city: z.string() }),
-    execute: async ({ city }) => ({ city, temp_c: 18, sky: "cloudy" }),
-  }) },
-  stopWhen: isStepCount(4),
-  prompt: "What is the weather in Paris? Use the tool.",
-})
-```
-
-The SDK runs `execute` and sends the second request. Plugboard only returns the call.
+The SDK runs `execute` and sends the second request. Plugboard only returns the call. The snippet uses `client`, `model`, and `PROMPT` (`"What is the weather in Paris? Use the tool."`) and `wireFinish` from the file's top; `weatherResult` is `examples/_shared/get_weather.result.json`.
 
 ## Structured output
 
-```ts
-import { generateText, Output } from "ai"
+<<< @/../examples/vercel-ai-sdk/structured.ts#snippet
 
-const { output } = await generateText({ model, output: Output.object({ schema: z.object({ calories: z.number(), protein_g: z.number() }) }), prompt: "Estimate: 2 boiled eggs and a slice of toast." })
-```
-
-`generateObject` is deprecated in `ai` v7 and sends the same request.
+The snippet uses `Meal`, a zod `strictObject` with `calories` and `protein_g`, and `PROMPT` from the file's top. `generateObject` is deprecated in `ai` v7 and sends the same request.
 
 ## Gotchas
 

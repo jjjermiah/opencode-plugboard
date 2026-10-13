@@ -1,43 +1,82 @@
 # Examples
 
-Copyable starting points. They are not part of the npm package (`files` in `package.json` ships only `index.ts`, `src/`, `README.md` and `LICENSE`), and they are not in `compat/`, which holds the client test harnesses.
+Copyable starting points, one directory per client. They are not part of the npm package (`files` in `package.json` ships only `index.ts`, `src/`, `README.md` and `LICENSE`).
 
-| Example | Shows |
-| --- | --- |
-| [open-webui/](open-webui/README.md) | Open WebUI in Docker, pointed at plugboard on the host, with the plugboard options it needs |
-| [claude-code/](claude-code/README.md) | Claude Code through `ANTHROPIC_BASE_URL`: shell exports and a `settings.json` `env` block |
-| [codex-cli/](codex-cli/README.md) | Codex CLI through a custom `responses` provider: a `config.toml` |
-| [continue/](continue/README.md) | Continue `config.yaml` with one plugboard model on Chat Completions and one on Responses |
-| [kilo-code/](kilo-code/README.md) | Kilo Code CLI provider block for plugboard's Chat Completions route |
-| [librechat/](librechat/README.md) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` |
-| [lobechat/](lobechat/docker-compose.yml) | LobeChat in Docker: `OPENAI_PROXY_URL` and the model list, in a compose file and `.env.example` |
-| [jan/](jan/setup.sh) | Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example` |
-| [anythingllm/](anythingllm/docker-compose.yml) | AnythingLLM in Docker with the Generic OpenAI provider's env vars |
-| [sillytavern/](sillytavern/docker-compose.yml) | SillyTavern in Docker; the plugboard endpoint and key are set in its UI |
-| [llamaindex/](llamaindex/example.py) | LlamaIndex `OpenAILike` against plugboard: text, stream and a tool round trip. A PEP 723 script |
-| [haystack/](haystack/example.py) | Haystack `OpenAIChatGenerator` in a two-component pipeline, with streaming and a tool round trip. A PEP 723 script |
-| [mastra/](mastra/agent.ts) | Mastra agent with one tool, using the `plugboard/fast` model object. Run with bun after `npm i @mastra/core zod` |
-| [smolagents/](smolagents/example.py) | smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`) |
-| [langfuse/](langfuse/example.py) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off |
-| [promptfoo/](promptfoo/promptfooconfig.yaml) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check |
-| [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider |
-| [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines |
-| [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` |
-| [go-openai/](go-openai/main.go) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard |
-| [vercel-ai-sdk/](vercel-ai-sdk/README.md) | The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses`. Chat, tools, streaming, structured output, images, models and errors, with a committed live run (`runs/live/2026-10-13-c97ac66`) that passes |
-| [openai-dotnet/](openai-dotnet/Program.cs) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard |
-| [async-openai/](async-openai/src/main.rs) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard |
-| [crewai/](crewai/crew.py) | CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard |
-| [autogen/](autogen/chat.py) | AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run |
-| [semantic-kernel/](semantic-kernel/chat.py) | Semantic Kernel (Python) with a text call, a stream and a plugin call through automatic function calling. A PEP 723 script, run with `uv run`; passes against plugboard |
-| [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script |
-| [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script |
-| [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script |
-| [aider/](aider/.aider.conf.yml) | Aider (a terminal coding tool) pointed at plugboard: `.aider.conf.yml` and `.env.example` |
-| [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt, paperless-ai (`.env` and compose), PR-Agent (`.env`), SiYuan (`.env` and compose). Page per app in [docs/self-hosted](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted.md) |
-| [curl](#curl) | One request per API: chat, responses, messages, Gemini, models and usage |
+The client examples with a harness run (the first block of the table) check themselves. `run.ts` drives each scenario against a scripted plugboard. Its output is committed under `runs/scripted/`, and a rerun must leave `git diff` clean. Their `runs/live/` directories hold the runs against a real provider. A live run directory is named `<date>-<shortsha>` of the plugboard commit it ran against, and is never rewritten. A directory with only a `REPORT.md` is a historical record.
 
-Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option.
+Rerun the scripted check for one example, or for all of them:
+
+```sh
+bun examples/_harness/run.ts langchain-python --target scripted
+bun examples/_harness/run.ts all --target scripted
+git diff --exit-code examples/
+```
+
+Set `PLUGBOARD_BASE_URL` and `PLUGBOARD_KEY` to run an example against a server you run. The harness does this for you when it runs an example. See [_harness/README.md](_harness/README.md) for the targets and how to add an example.
+
+## Status
+
+Status is the verdict of the newest run in each directory (`pass`, `partial`, `fail`). "Not run" means no run is committed for the example yet. A run's verdict is per target; the table shows the scripted run and the newest live run.
+
+| Example | Shows | Scripted | Newest live run |
+| --- | --- | --- | --- |
+| [openai-python/](openai-python/README.md) | The OpenAI Python SDK: chat, tools, streaming, images, structured output, models and the error paths | pass | `2026-10-12-a38860b`, pass |
+| [openai-js/](openai-js/README.md) | The OpenAI JS SDK: the same scenarios in TypeScript | pass | `2026-10-13-50219b1`, pass |
+| [vercel-ai-sdk/](vercel-ai-sdk/README.md) | The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses` | pass | `2026-10-13-c97ac66`, pass |
+| [langchain-python/](langchain-python/README.md) | LangChain (`langchain-openai`'s `ChatOpenAI`): chat, tools, streaming, images, structured output, models and the error paths | pass | `2026-10-13-c97ac66`, pass |
+| [langchain-js/](langchain-js/README.md) | LangChain JS (`@langchain/openai`): the same scenarios, with a `chat` and an `auto` variant | partial | `2026-10-13-c97ac66-2`, partial (the Responses route for `gpt-5.6` ids) |
+| [pydantic-ai/](pydantic-ai/README.md) | pydantic-ai (`OpenAIChatModel`, Chat Completions): chat, tools, streaming, images, structured output and the error paths | pass | `2026-10-13-c97ac66-2`, pass |
+| [n8n/](n8n/README.md) | n8n in Docker, driven headless through webhooks: S1 to S7; workflows in `workflows/` | pass | `2026-10-13-b92fb6f`, partial |
+| [open-webui/](open-webui/README.md) | Open WebUI in Docker, pointed at plugboard on the host, with the plugboard options it needs; driven over its HTTP API | pass | `2026-10-13-0cf8030`, pass |
+| [tool-bot/](tool-bot/index.ts) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines | pass | `2026-10-13-50219b1`, partial |
+| [curl/](curl/README.md) | One request per API in plain shell: chat, responses, Anthropic Messages, Gemini, legacy completions and models | pass | `2026-10-12-a38860b-2`, fail (see its report) |
+
+The clients below are examples without a harness run yet. Their status is "not run", or "live record only" where a dated live record was migrated from the old `compat/py/clients` checks: the example's README says what was tested, and the record is in its `runs/live/` directory.
+
+Five of these (aider, dspy, instructor, litellm-client, openai-agents) have a 2026-10-12 live record and no scripted run. Their Python checks still run from `compat/py/clients` (`bun run compat:python`), see [#366](https://github.com/jjjermiah/opencode-plugboard/issues/366).
+
+| Example | Shows | Status |
+| --- | --- | --- |
+| [claude-code/](claude-code/README.md) | Claude Code through `ANTHROPIC_BASE_URL`: shell exports and a `settings.json` `env` block | not run |
+| [codex-cli/](codex-cli/README.md) | Codex CLI through a custom `responses` provider: a `config.toml` | not run |
+| [continue/](continue/README.md) | Continue `config.yaml` with one plugboard model on Chat Completions and one on Responses | not run |
+| [kilo-code/](kilo-code/README.md) | Kilo Code CLI provider block for plugboard's Chat Completions route | not run |
+| [librechat/](librechat/README.md) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` | not run |
+| [lobechat/](lobechat/docker-compose.yml) | LobeChat in Docker: `OPENAI_PROXY_URL` and the model list, in a compose file and `.env.example` | not run |
+| [jan/](jan/setup.sh) | Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example` | not run |
+| [anythingllm/](anythingllm/docker-compose.yml) | AnythingLLM in Docker with the Generic OpenAI provider's env vars | not run |
+| [sillytavern/](sillytavern/docker-compose.yml) | SillyTavern in Docker; the plugboard endpoint and key are set in its UI | not run |
+| [llamaindex/](llamaindex/example.py) | LlamaIndex `OpenAILike` against plugboard: text, stream and a tool round trip. A PEP 723 script | not run |
+| [haystack/](haystack/example.py) | Haystack `OpenAIChatGenerator` in a two-component pipeline, with streaming and a tool round trip. A PEP 723 script | not run |
+| [mastra/](mastra/agent.ts) | Mastra agent with one tool, using the `plugboard/fast` model object. Run with bun after `npm i @mastra/core zod` | not run |
+| [smolagents/](smolagents/example.py) | smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`) | not run |
+| [langfuse/](langfuse/example.py) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off | not run |
+| [promptfoo/](promptfoo/promptfooconfig.yaml) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check | not run |
+| [zed/](zed/README.md) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider | not run |
+| [openai-agents/](openai-agents/agent.py) | The OpenAI Agents SDK (Python) with one tool, on the Responses API or Chat Completions. A PEP 723 script, run with `uv run` | live record only (compat/py/clients), 2026-10-12 |
+| [go-openai/](go-openai/main.go) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard | not run |
+| [openai-dotnet/](openai-dotnet/Program.cs) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard | not run |
+| [async-openai/](async-openai/src/main.rs) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard | not run |
+| [crewai/](crewai/crew.py) | CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard | not run |
+| [autogen/](autogen/chat.py) | AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run | not run |
+| [semantic-kernel/](semantic-kernel/chat.py) | Semantic Kernel (Python) with a text call, a stream and a plugin call through automatic function calling. A PEP 723 script, run with `uv run`; passes against plugboard | not run |
+| [litellm-client/](litellm-client/example.py) | LiteLLM's `completion()` with the `openai/` prefix, one call and one stream. A PEP 723 script | live record only (compat/py/clients), 2026-10-12 |
+| [instructor/](instructor/example.py) | Instructor extracting a validated Pydantic object, with `mode=TOOLS`. A PEP 723 script | live record only (compat/py/clients), 2026-10-12 |
+| [dspy/](dspy/example.py) | A DSPy `ChainOfThought` program with a typed pydantic output, through `dspy.LM`. A PEP 723 script | live record only (compat/py/clients), 2026-10-12 |
+| [aider/](aider/.aider.conf.yml) | Aider (a terminal coding tool) pointed at plugboard: `.aider.conf.yml` and `.env.example` | live record only (compat/py/clients), 2026-10-12 |
+| [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt, paperless-ai (`.env` and compose), PR-Agent (`.env`), SiYuan (`.env` and compose). Page per app in [docs/self-hosted](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted.md) | docs-verified, not run |
+
+Setup for each client is in the [client guides](https://github.com/jjjermiah/opencode-plugboard/tree/main/docs/clients). The [configuration reference](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) covers every option. The [curl example](curl/README.md) covers the chat, responses, messages, Gemini, completions and models routes. The usage route (`/plugboard/usage`) is not in it yet.
+
+## Historical records
+
+A `runs/live/<date>-<sha>/REPORT.md` is a copy of a dated record and is never rewritten. Three things in those copies are out of date, and none is a fact about the run:
+
+- Records dated before 2026-10-13 name scripts under `compat/` that were removed in `5412c51` (for example `compat/docker/open-webui.sh`, `compat/docker/n8n/run.sh`, `compat/tools/logproxy.py`, `compat/py/openai_py.py`). `git show 3d3735c:<path>` restores any of them.
+- The header of the seven 2026-10-11 copies (openai-python, openai-js, vercel-ai-sdk, pydantic-ai, langchain-python, n8n, open-webui) links `release-candidate.md` by a relative path. It now lives at `examples/_release/release-candidate.md`.
+- `langchain-python`'s 2026-10-11 record names `compat/py/langchain_py.py` and `compat/js/langchain_js.ts`; those scripts are in `git show 3d3735c:<path>`.
+
+A new record for a client goes in `runs/live/<date>-<sha>/REPORT.md`, written from [`_release/_template.md`](_release/_template.md). Rules for records and superseded notes are in [_harness/README.md](_harness/README.md#record-keeping).
 
 ## Self-hosted apps
 
@@ -118,47 +157,4 @@ See [the Aider client page](https://github.com/jjjermiah/opencode-plugboard/blob
 
 ## curl
 
-Set the base URL and a key, then run any line. Each one is a single request, so you can paste it into a shell to see what plugboard returns.
-
-```sh
-export PLUGBOARD_URL=${PLUGBOARD_URL:-http://127.0.0.1:4010}
-export PLUGBOARD_KEY=<your app key>
-```
-
-Models your key may use (`/v1/models` lists only what the app's policy allows):
-
-```sh
-curl -s "$PLUGBOARD_URL/v1/models" -H "Authorization: Bearer $PLUGBOARD_KEY"
-```
-
-Chat Completions (`/v1/chat/completions`):
-
-```sh
-curl -s "$PLUGBOARD_URL/v1/chat/completions" -H "Authorization: Bearer $PLUGBOARD_KEY" -H "Content-Type: application/json" -d '{"model": "fast", "messages": [{"role": "user", "content": "reply with exactly: pong"}]}'
-```
-
-Responses (`/v1/responses`):
-
-```sh
-curl -s "$PLUGBOARD_URL/v1/responses" -H "Authorization: Bearer $PLUGBOARD_KEY" -H "Content-Type: application/json" -d '{"model": "fast", "input": "reply with exactly: pong"}'
-```
-
-Anthropic Messages (`/v1/messages`), with the key in `x-api-key`:
-
-```sh
-curl -s "$PLUGBOARD_URL/v1/messages" -H "x-api-key: $PLUGBOARD_KEY" -H "anthropic-version: 2023-06-01" -H "Content-Type: application/json" -d '{"model": "fast", "max_tokens": 64, "messages": [{"role": "user", "content": "reply with exactly: pong"}]}'
-```
-
-Gemini `generateContent`, with the key in `x-goog-api-key`:
-
-```sh
-curl -s "$PLUGBOARD_URL/v1beta/models/fast:generateContent" -H "x-goog-api-key: $PLUGBOARD_KEY" -H "Content-Type: application/json" -d '{"contents": [{"parts": [{"text": "reply with exactly: pong"}]}]}'
-```
-
-Usage (`/plugboard/usage`) needs the admin key from the `adminKey` option, not an app key. Dates are UTC and inclusive:
-
-```sh
-curl -s "$PLUGBOARD_URL/plugboard/usage?from=2026-10-01&to=2026-10-11" -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
-```
-
-Replace `fast` with any id from `/v1/models`, or with an alias you defined.
+The [curl example](curl/README.md) has one script per API (chat, responses, Anthropic Messages, Gemini, legacy completions and models), each runnable on its own, and its scripted and live runs are in [curl/runs/](curl/runs/). The usage route (`/plugboard/usage`) needs the admin key, not an app key, and is not in the curl example yet.

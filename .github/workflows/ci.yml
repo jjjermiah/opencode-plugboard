@@ -120,8 +120,9 @@ jobs:
             echo "No test script, skipping."
           fi
 
+  # Only the Python checks that have no example yet (compat/py/clients). The client examples run in `examples`.
   compat:
-    name: Compat kit checks
+    name: Remaining compat checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -130,16 +131,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-      - name: Typecheck compat/js
-        working-directory: compat/js
-        run: |
-          bun install --frozen-lockfile
-          bunx tsc --noEmit
-      - name: Compile compat Python
-        run: git ls-files -z 'compat/py/*.py' 'compat/tools/*.py' | xargs -0 python3 -m py_compile
+      - name: Compile remaining compat Python
+        run: git ls-files -z 'compat/py/*.py' | xargs -0 python3 -m py_compile
       - name: Syntax-check shell scripts
         run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
 
@@ -193,6 +186,18 @@ jobs:
             echo "a scripted run is stale or not deterministic: regenerate it and commit the result"
             exit 1
           fi
+      # The docs build the client pages from examples/ snippets and runs, so a broken include or region fails here.
+      # Docker examples (n8n, open-webui) are not run in CI: their scripted runs need `--docker` and a local daemon.
+      - name: Docs build (client pages import from examples/)
+        run: bun run docs:build
+      # A contributor without uv can fix a stale run from this artifact, copied over examples/*/runs/scripted.
+      - name: Upload the regenerated scripted runs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: example-scripted-runs
+          path: examples/*/runs/scripted
+          if-no-files-found: ignore
 
   # The one check the ruleset requires for "all of CI" (see docs/releasing.md). It runs even when a job failed, and passes
   # only when every job in `needs` succeeded: a failed, cancelled or skipped job all count as not passed. A new gating job
