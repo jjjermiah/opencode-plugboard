@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.29.0] - 2026-10-13: Every Step on the Record
+
+**Full diff:** [v0.28.0...v0.29.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.28.0...v0.29.0)
+
 ### Added
 
 - **Per-step debug lines** ([#262](https://github.com/jjjermiah/opencode-plugboard/issues/262)). At `logLevel: debug`, each model request writes one line per step: `request.received` (app and model asked), `model.resolved` (the target that answered, its failed fallbacks, whether it was a list alias), `session.created`, `model.first_event` and `model.finished` (finish reason, input and output tokens, duration). They hold ids, counts and enums only, never a prompt, body or key. Each is checked against the level before its fields are built, so at `info` none of them is built. The `logLevel` row in [configuration](docs/configuration.md) lists them.
@@ -25,6 +31,231 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Fixed
 
 - **Live example runs record the version of the commit they name** ([#335](https://github.com/jjjermiah/opencode-plugboard/issues/335)). The harness wrote the checkout's `package.json` version next to a commit from `PLUGBOARD_COMMIT`, so a run of an older commit named the wrong version. It now reads that commit's `package.json`, and refuses a commit the checkout does not have before the runner starts. The server exposes no OpenCode version, so new live runs record `opencode` as `null` with a note in `summary.md`. Existing live records are not rewritten.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (11 commits)</summary>
+
+#### Features
+
+**feat(log): per-step debug lines for a model request at logLevel debug** ([`8f9273f`](https://github.com/jjjermiah/opencode-plugboard/commit/8f9273f3cb199b949e62ddc9565c23f5936940b0))
+
+#262 asked for debug lines that show what one request did, step by step, so an operator who lowers logLevel to debug can follow it. The logLevel and logRequests switches already shipped (3c38d39); the per-step lines were the open part. This adds one line per step through the existing logger:
+
+- request.received: the app and the model the client asked for. The route is not in the caller; it is on the access line with the same request id.
+- model.resolved: the target that answered (served), its failed fallbacks, and whether the alias is a list. Written from reportServed (src/fallback.ts), so every route that echoes x-plugboard-model reports it.
+- session.created: the OpenCode session id of the request.
+- model.first_event: the type of the first event the model produced.
+- model.finished: the finish reason, input and output tokens, and duration.
+
+Decisions:
+- Each line is one logDebug. The level is checked with debugEnabled() before the fields are built, so info builds no objects for them. A plain logDebug call would still build its object literal at info.
+- Only ids, counts, durations and enums are logged. No prompt, body, URL or key, so I14 and the redaction list are unchanged. A test checks that prompt text does not reach a step line.
+- Route is not threaded through CallContext. That would be a contract change for one debug field, and the access line already carries route and the same id.
+- The access line (request, request.finished) is unchanged at info.
+
+Rejected: a line per streamed delta. It is noise even at debug, and model.first_event answers "did the model start".
+
+Validation: caller.test.ts, fallback.test.ts and log.test.ts pass (69 tests). Not run against the pre-change tree, so the new tests were not shown to fail before the change. Docs: docs/configuration.md logLevel row lists the lines; CHANGELOG under [Unreleased].
+
+Closes #262
+
+**feat(examples): runnable Open WebUI example with scripted and live runs** ([`75b3f46`](https://github.com/jjjermiah/opencode-plugboard/commit/75b3f4651074270f28044abc21109ae629cd163e))
+
+examples/open-webui/ now has a bun runner (run.ts) that starts the Open WebUI 0.12.0 container, signs in, and drives the scenarios through Open WebUI's own HTTP API, with no browser. It has one copyable file per scenario (chat, tools, stream, stream_tools, image, structured, models, wrong_key), each with a region snippet. E2 is n/a: Open WebUI answers an unknown model itself with 400 Model not found, so nothing reaches plugboard.
+
+The harness gains --docker. A container cannot reach the capture proxy on loopback, so with --docker the proxy binds 0.0.0.0 for the length of the run and the runner gets PLUGBOARD_CONTAINER_URL (http://host.docker.internal:<port>). Without --docker the proxy and its environment are unchanged, and `all` still skips Docker examples.
+
+This replaces compat/docker/open-webui.sh with runnable, committed evidence. The old dated record moves under runs/live/ unchanged; compat/ is not touched.
+
+The runner starts the container with docker run, not compose, so it owns the port, volume and env. The image is read from docker-compose.yml, so the pin lives in one place, and the compose file is unchanged for the live setup in the README. Background generation is off (ENABLE_TITLE, TAGS, FOLLOW_UP, AUTOCOMPLETE and SEARCH_QUERY_GENERATION, names checked in the pinned image), because otherwise title, tag and follow-up calls reach the scripted model with prompts it does not answer. The key goes to docker through the environment (-e OPENAI_API_KEY), so it never shows in the process list. Every chat call sends max_tokens 1024, since fast is a reasoning model.
+
+S2 and S4 read the tool call from the stored chat record. Open WebUI runs the tool loop only on the streamed path, and it answers a completion sent with chat_id at once with a task id, so the runner polls until the stored message is done. Parsing the SSE for S4 was rejected for that reason. The bind address was not made per-host: 0.0.0.0 for the run only is simpler, and the proxy never holds a key, it forwards the caller's.
+
+Validation: scripted (bun examples/_harness/run.ts open-webui --target scripted --docker) gives verdict pass with 16 scenario rows passing and E2 n/a, and a second run is identical (sha256 of every file). Live (same command with --target live, against the isolated dev server at plugboard 0cf8030) gives verdict pass, recorded in runs/live/2026-10-13-0cf8030 with a REPORT.md. bun run typecheck passes, bun test gives 2383 pass and 0 fail, and bun examples/_harness/run.ts all --target scripted exits 0 with no file changed under any other example. check-pack, smoke-pack, docs:build, the coverage ratchet and coverage-manifest pass. The compat key appears in no file under examples/open-webui.
+
+Not verified: browser rendering, file upload, RAG and web search, multiple connections, and any Open WebUI image other than 0.12.0.
+
+Closes #183
+
+#### Fixes
+
+**fix(examples): live runs record the version of the commit they name** ([`5286e64`](https://github.com/jjjermiah/opencode-plugboard/commit/5286e6482a16db7d2637b784493d626a6a0ac0a0))
+
+The harness read plugboard.version from the checkout's package.json, but the commit it recorded came from PLUGBOARD_COMMIT. In #328 that gave 0.25.1 for c97ac66, the 0.26.0 release merge, and the four summaries were fixed by hand.
+
+What changed:
+- plugboardVersion(commit) reads `git show <commit>:package.json` in the checkout. livePlugboard() pairs that with the commit the run names.
+- The commit and version are resolved before the runner starts, so a commit the checkout does not have stops the run up front. The old code recorded "unknown" for that, and the run finished before anyone saw it.
+- opencode is recorded as null. The server exposes no OpenCode version. /plugboard/status returns runtimeVersion, which is the plugin runtime's VERSION constant and not the package version. Nothing else I checked exposes either version, so there is nothing to read from the server under test.
+- run.schema.json allows opencode null. render.ts writes "OpenCode version not recorded" in summary.md when it is null.
+- ROOT is removed, since it was only used for the package.json read.
+
+Rejected:
+- Reading the version from the server. Nothing exposes the package version, so the commit is the only source, as the issue asks.
+- Rewriting the existing live records. They stay as they are; only new runs use the new rule.
+
+Validation: test/unit/examples-harness.test.ts covers a throwaway repo whose checkout is 0.26.0 while the named commit is 0.25.1. It checks that the named commit's version is recorded, that HEAD is not, and that an unknown commit is refused. It also checks that a live summary with opencode null validates.
+
+Closes #335
+
+**fix(examples): correct the open-webui live version, readme tool count and docker errors** ([`6d8035b`](https://github.com/jjjermiah/opencode-plugboard/commit/6d8035b8dc39a56962ff5b35ce02a692fc49a530))
+
+Review fixes for the Open WebUI example.
+
+The 2026-10-13 live record named plugboard 0.27.0 for commit 0cf8030, whose package.json says 0.28.0: the harness read the version from its own checkout, the bug #335 fixes. The summary, its markdown and the report are corrected by hand and the report says so.
+
+The README said the API-only scenarios send none of Open WebUI's built-in tools. The S2 and S4 transcripts carry 33 tools per request, the example's own tool plus Open WebUI's, so the note now says that and points at maxTools. The install snippet pins the current 0.28.0.
+
+run.ts discarded docker's stderr, so a failed docker run reported only an exit code. The error now includes docker's message.
+
+Refs #183
+
+**fix(examples): address review of #339 (version marker, guard test, harness checkout)** ([`2916391`](https://github.com/jjjermiah/opencode-plugboard/commit/291639176b9e4469cba781aa7a7066c6c98d8280))
+
+The review of PR #339 found six things to fix, and two test gaps.
+
+- The debug-line marker said "since 0.28.0". 0.28.0 is released, so the lines ship in 0.29.0. configuration.md now says 0.29.0. The "pays nothing" wording is now "none of their fields is built at info", which is what the guard does.
+- debugEnabled() had no test of its own. The info-level tests passed even with the guard forced to true, because pino drops the line anyway. A new test asserts debugEnabled() is false at info and warn, and true at debug, so an always-true guard fails it.
+- The harness default checkout was a hardcoded home path. It is the harness's own repo again (ROOT), as before #335. Setting PLUGBOARD_COMMIT alone no longer needs that path to exist.
+- A missing commit now reports git's stderr, and says whether the checkout was PLUGBOARD_CHECKOUT or the default. No path is printed.
+- A PLUGBOARD_COMMIT that starts with `-` is refused before git sees it.
+- The caller tests now assert the answer text ("Hi", "!") is absent from the step lines too. model.finished gains an outcome field. Tests cover it on a failed prompt (outcome error:502:prompt_failed, no finish) and on a cancelled request (outcome cancelled, no finish).
+
+Rejected: a spy on the field builder. The fields are object-literal arguments built inline, so there is no builder to spy on without a refactor. The guard test checks the value the callers branch on.
+
+Validation: bun test 2397 pass, 126 skip, 0 fail. Coverage ratchet met; the session and unit floors rise to 323 and 1210 and are committed here. Manifest, pack, smoke, docs:build and the scripted harness pass.
+
+Refs #262, Refs #335
+
+**fix(gemini): a non-string role is a 400, not a throw** ([`4685782`](https://github.com/jjjermiah/opencode-plugboard/commit/468578280f91c4047b16ea9c2ecee3472c58f978))
+
+CI on #339 failed one random property run: "any request-shaped body is a 400 or a request" for the Gemini decoder. The shrunk counterexample was a content whose role is an object with `toString: null`. The unsupported-role check built its 400 message with String(role). String() on an object whose toString is not callable throws a TypeError, so the decoder threw where it should refuse. The bug predates this branch. The property test only reaches it on some random seeds, which is why local runs passed.
+
+What changed:
+- The message names a non-string role by its type ("object"), not by String(role). A string role gives exactly the same message as before.
+- A regression test pins the shrunk counterexample: a 400 with that message.
+
+Rejected:
+- JSON.stringify(role). It echoes the client's object into the message, and throws on a value JSON cannot hold.
+- Fixing the property test or pinning its seed. The test found a real bug, and the decoder has to refuse it.
+
+Validation: test/unit/properties.test.ts passes (14 tests) on three runs. Full bun test: 2524 tests ran, 126 skipped (live suites), 0 fail. The unit floor rises to 1211 with the new test.
+
+Refs #339
+
+#### Tests
+
+**test(tests): raise the session and unit test floors for #262 and #335** ([`a21d494`](https://github.com/jjjermiah/opencode-plugboard/commit/a21d4947bbc2fd2ad050c0cd3fa041779c23e668))
+
+The ratchet (`bun .github/scripts/test-gates.ts .coverage --ratchet`) counts the tests that ran per layer. The new tests raise two floors: test/session goes from 319 to 321 (the per-step debug line tests in caller.test.ts) and test/unit goes from 1200 to 1206 (the model.resolved tests in fallback.test.ts, the live-version and null-opencode tests in examples-harness.test.ts). The floors only move up. They are committed here, with the tests that raise them, as LANE.md asks.
+
+Validation: bun test passes (2391 pass, 126 skip, 0 fail); the gate reports all floors met after the raise.
+
+#### CI and tooling
+
+**ci: gate releases on every CI job and watch the release checks** ([`5a15d1e`](https://github.com/jjjermiah/opencode-plugboard/commit/5a15d1eaa3b486c737e9a044e65eda10e8d0d0c2))
+
+Releases could ship with a red job. The release script enabled auto-merge, which waits only for the required checks. Examples and CodeQL were not all required, so the release pull request merged and tagged while they were red. v0.25.0 failed that way (Examples red, npm never got 0.25.0, so 0.25.1 had to follow). v0.23.0's Publish run also failed: npm got the version, then the GitHub release step failed ("failed to run git: not a git repository") and a release was made by hand afterwards.
+
+What changes:
+
+- ci.yml: a new aggregate job, "CI passed". It needs every gating job (package, host-versions, host, compat, examples), runs with if: always(), and passes only when each needed job result is "success". Skipped and cancelled count as not passed. The advisory benchmark is not in needs. It runs on push, pull_request, workflow_call and workflow_dispatch, so publish.yml (which calls ci.yml) is gated by it too. The main ruleset should require this one check instead of the individual jobs, because matrix job names change with each host version.
+- release.ts --push, step by step:
+  1. Preflight: the newest CI run for origin/main's commit must be completed and successful (gh run list --workflow ci.yml --commit). No run, a run in progress or a failed run stops it before anything is committed or pushed. Local main must equal origin/main and the tree must be clean, as before.
+  2. Opens the release pull request. Auto-merge is no longer enabled.
+  3. Polls gh pr checks until every check has reported and passed. The advisory benchmark is ignored. The required checks must have reported (CI passed, Lint commit messages, Analyze), so an empty list is not a pass. A failing, cancelled or skipped check stops at once: the pull request stays open, the failing checks are printed, nothing is merged or tagged, and the exit code is 1. A 60 minute limit applies.
+  4. Merges with gh pr merge --merge --delete-branch --match-head-commit <the head that passed>, so a commit pushed after the check cannot ride along. Then it tags the merge commit and pushes the tag.
+- --dry-run prints the CI state of origin/main too, and never fails when gh is missing.
+- docs/releasing.md and CONTRIBUTING.md: the release rule, the required checks, the failed-release recovery (fix on main and cut the next patch; never move a pushed tag).
+
+Decisions and rejected alternatives:
+
+- Aggregate job, not a list of matrix job names in the ruleset. The host matrix job names change with each @opencode/plugin version, so listing them would break on every host bump.
+- A poll of gh pr checks --json instead of gh pr checks --watch. --watch would also wait for the advisory benchmark, and it cannot exclude a check.
+- Merge with --match-head-commit, not auto-merge. Auto-merge gates only on the required checks, which is the bug this fixes.
+- CodeQL and Commits stay separate workflows. CI passed cannot include them without merging codeql.yml into ci.yml, which is a bigger change.
+- publish.yml is unchanged. Its release job needs publish and attest, and publish needs ci (which now carries CI passed), so a red CI or a failed publish or attestation creates no GitHub release. Confirmed from run history: the v0.25.0 Publish run had its publish, attest and release jobs skipped, and no v0.25.0 GitHub release exists.
+
+Validation:
+
+- actionlint with shellcheck on all workflows: clean.
+- bun run typecheck, bun test (2483 tests, 0 failures), test gates with --ratchet, coverage-manifest, check-pack, smoke-pack, docs:build, and the scripted examples (git diff clean).
+- release.ts rehearsal against a throwaway bare origin, with a stub gh that emulates the PR merge:
+  - dry run: prints the diff, the plan and the CI state; changes nothing.
+  - green: merges with --match-head-commit, no --auto, tags v0.27.1 on the merge commit, the release branch is deleted.
+  - one required check fails: exit 1, no merge, no tag, PR open.
+  - CI on main concluded failure: refuses before any branch is pushed.
+  - a check pending and a required check not yet reported: waits, then merges once all pass; the advisory benchmark failing is ignored.
+
+Not verified here: the real GitHub ruleset and gh behaviour (the stub approximates it), and the gh release create step in a checkout-less job (gh release view works without git when GH_REPO is set, which is what the release job sets).
+
+**ci: tag only tested release commits and fix the release gate's gaps** ([`baf3873`](https://github.com/jjjermiah/opencode-plugboard/commit/baf38733ca4448c858ae5e8d58b9e93d97599ae0))
+
+Review of #334 found three gaps. The release script could tag a merge commit that nobody tested: the checks ran on the pull request head, and the merge commit is a new commit. It died when the pull request had no checks yet. And the docs claimed things the code did not do. Also, the Examples check depended on the runner's tool versions.
+
+What changes:
+
+- release.ts, tagging: after the merge, the script waits for the ci.yml push run on the merge commit and tags only when it concluded success. A failed run, a cancelled run or no run within 45 minutes stops the script with nothing tagged, and prints what to do next. A cancelled run is re-run by hand, and only a commit whose CI passed is tagged by hand.
+- release.ts, checks: an empty check list, "no checks reported yet" and transient gh errors keep the watch going, bounded by the 60 minute limit. A required check that has not reported after 10 minutes fails the release with its name. The old comment about gh exiting non-zero with JSON was wrong: the exit code is not used, only the parsed list.
+- release.ts, --resume: after a failed check and a fix pushed to the release branch, run the same command with --resume from a clean main. It watches the same pull request again and merges the head that passed. A second run without --resume refuses, because the branch exists.
+- release.ts, --dry-run fetches origin/main first, so its CI line is not stale. The fetch touches only the remote-tracking ref.
+- ci.yml: runs on main are no longer cancelled by a newer push (cancel-in-progress is off for main). Without this, a second push during a release cancelled the run on the merge commit, and the release could not be verified.
+- codeql.yml gets workflow_dispatch, and host-bump.yml starts it on its branch with ci.yml and commits.yml. Without it, a host-bump pull request opened with GITHUB_TOKEN never got the required Analyze check, and its auto-merge waited forever.
+- Scripted examples: the python and bun harnesses record the runtime's major version only, like curl and bash already do. Python 3.12 on the CI runner against 3.13 on a laptop was the cause of the Examples diff that failed v0.25.0. The scripted runs were regenerated; two runs in a row give identical output.
+- docs/releasing.md: the release rule, the ruleset change (only after this change is on main; open pull requests need a new push), how to continue after a failed check (fix on the release branch, then --resume; never merge or tag by hand), which checks gate (every check except the advisory benchmark, skipped counts as not passed, CodeQL and external checks included), and the recovery for a failed or cancelled merge-commit run. The false sentence that the pull request checks ran on the tagged commit is gone.
+- CHANGELOG: the Changed bullet names the two real gaps (the host matrix was not required, and the merge commit was never tested).
+
+Decisions and rejected alternatives:
+
+- Stop and tell the operator on a cancelled merge-commit run, instead of re-running it from the script. A re-run is a write to Actions that the operator should choose to make, and the operator can see the run is cancelled.
+- The 10 minute grace for a required check, instead of deriving the expected names from the pull request. A pull request does not say which checks are required, so the names stay in the script, and a missing one fails fast with its name.
+- An external check such as CodeRabbit gates too. A check that must never block goes into ADVISORY_CHECKS in a reviewed change. This is fail-safe, and the docs say so.
+
+Validation:
+
+- actionlint with shellcheck on all workflows: clean.
+- bun run typecheck: exit 0.
+- bun test: 2483 tests, 0 failures. test-gates --ratchet: floors met. coverage-manifest: matches. check-pack and smoke-pack: ok. docs:build: exit 0. Scripted examples: run twice, identical.
+- release.ts rehearsal against a throwaway bare origin, with a stub gh that emulates the PR merge, the CI runs on main and on the merge commit, and gh's "no checks reported" answer:
+  - green: merged with --match-head-commit, the merge commit's CI passed, v0.27.1 tagged on the merge commit.
+  - a required check fails: exit 1, no merge, no tag, PR open.
+  - no checks reported at the start: waited, then merged and tagged.
+  - CI on the merge commit failed: exit 1, merge made, no tag.
+  - CI on the merge commit cancelled: exit 1, no tag, re-run hint printed.
+  - --resume after a fix is pushed to the release branch: merged the fix head, tagged the merge commit.
+- The real GitHub dry run (--dry-run, origin/main): prints the CI state.
+- PR checks on the real repository: see the PR.
+
+Not verified here: the grace period expiring (it needs 10 minutes of a check that never reports), the real GitHub behaviour of the ruleset, and a live host-bump run dispatching codeql.yml (it runs on a schedule).
+
+**ci(examples): regenerate the pydantic-ai scripted run with the major version** ([`4b0f413`](https://github.com/jjjermiah/opencode-plugboard/commit/4b0f4136549a46c8a0af2aafbe68daaa44730102))
+
+The Examples check failed on the release-gate PR: main added the pydantic-ai example and its committed scripted run records python 3.13, while the runner ran 3.12 and the harness recorded the minor. The check globs every examples/*/runs/scripted, so this run went stale.
+
+The harness now records the runtime major only (see the previous commit), so the regenerated summary says python 3. Regenerated with `bun examples/_harness/run.ts all --target scripted`, twice: the second run is byte-identical to the first. Only examples/pydantic-ai changed.
+
+**ci: key main's CI runs by commit and wait for the PR head before judging** ([`e6bedd0`](https://github.com/jjjermiah/opencode-plugboard/commit/e6bedd0121e423a278cd8917ce9bdb1c57a57939))
+
+Follow-up review of #334 found two gaps in the release gate.
+
+First, a push to main used the branch as its concurrency group, so a newer push could replace the merge commit's pending run. The group for pushes to main is now keyed by the commit SHA: no later push can cancel or replace an earlier one. Pull request and branch runs keep their groups, so an older run on the same ref is still cancelled by a newer one. The ci.yml comment and docs/releasing.md now say exactly this.
+
+Second, --resume could judge the checks of the previous head: right after a push GitHub can still report the old head of the release branch. The script now waits until the pull request's headRefOid equals the commit it fetched or pushed (waitForHead, bounded by the 60 minute limit) before it watches the checks. The checks it judges are then the ones for that commit. The merge still uses --match-head-commit, so a head that moves after the check is refused.
+
+The CHANGELOG bullet is back under [Unreleased]. The auto-merge of the 0.28.0 release had put it inside the released section; it is removed from there.
+
+Also: the scripted runs of openai-js and tool-bot, which main added, record the runtime major only, like the other examples. Regenerated with `run.ts all --target scripted`, twice; the second run is identical.
+
+Validation:
+- actionlint with shellcheck: clean.
+- typecheck: exit 0. bun test: 2509 pass, 0 fail. test-gates --ratchet, coverage-manifest, check-pack, smoke-pack: ok. docs:build: exit 0.
+- release.ts rehearsal (throwaway origin, stub gh): green path tags the merge commit; a failed check, a fix pushed, then --resume while GitHub still reports the previous head: waited on the stale head, then merged the fix head and tagged the merge commit; merge-commit CI cancelled: nothing tagged.
+
+Not verified here: the SHA-keyed concurrency group on GitHub (only actionlint, which parses the expression); the 10 minute grace expiry; a live host-bump run.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.28.0] - 2026-10-13: Counts That Add Up
 
@@ -4962,7 +5193,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.25.1...v0.26.0
