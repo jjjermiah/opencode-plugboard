@@ -11,6 +11,8 @@
  * normalises, validates and writes. Runners never write files.
  *
  * Exits 1 when a required scenario fails. `all` skips Docker examples (a compose file in the directory) unless --docker.
+ * With --docker the capture proxy listens on 0.0.0.0 and the runner gets PLUGBOARD_CONTAINER_URL
+ * (http://host.docker.internal:<port>), the address a container uses to reach it.
  */
 import { existsSync, readdirSync, statSync } from "node:fs"
 import { join, resolve } from "node:path"
@@ -152,7 +154,7 @@ function liveDirectory(base: string, date: string, sha: string): string {
   }
 }
 
-async function runExample(name: string, target: "scripted" | "live"): Promise<ScenarioRow[]> {
+async function runExample(name: string, target: "scripted" | "live", docker: boolean): Promise<ScenarioRow[]> {
   const dir = exampleDir(name)
   // Resolved before anything runs: a commit the checkout does not have fails here, not after the runner has spent its time.
   const plugboard = target === "live" ? await livePlugboard() : undefined
@@ -179,13 +181,20 @@ async function runExample(name: string, target: "scripted" | "live"): Promise<Sc
     if (!health?.ok) throw new Error(`no plugboard answers at ${new URL(upstream).origin} (GET /healthz)`)
   }
 
-  const capture = await startCapture(new URL(upstream).origin)
+  const capture = await startCapture(new URL(upstream).origin, docker ? "0.0.0.0" : "127.0.0.1")
   const started = Date.now()
   try {
     const cmd = runnerCommand(dir)
     const proc = Bun.spawn(cmd, {
       cwd: dir,
-      env: { ...process.env, PLUGBOARD_BASE_URL: `${capture.url}/v1`, PLUGBOARD_KEY: key, PLUGBOARD_CAPTURE_URL: capture.url, PYTHONUNBUFFERED: "1" },
+      env: {
+        ...process.env,
+        PLUGBOARD_BASE_URL: `${capture.url}/v1`,
+        PLUGBOARD_KEY: key,
+        PLUGBOARD_CAPTURE_URL: capture.url,
+        ...(docker ? { PLUGBOARD_CONTAINER_URL: `http://host.docker.internal:${capture.port}` } : {}),
+        PYTHONUNBUFFERED: "1",
+      },
       stdout: "pipe",
       stderr: "inherit",
     })
@@ -317,7 +326,7 @@ if (import.meta.main) {
 
   let failed = 0
   for (const name of selected) {
-    const rows = await runExample(name, target)
+    const rows = await runExample(name, target, docker)
     failed += rows.filter((row) => row.required && row.status === "fail").length
   }
   if (failed > 0) {

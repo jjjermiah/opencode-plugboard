@@ -61,9 +61,9 @@ def emit(line: dict[str, Any]) -> None:
 
 
 def emit_client(package: str) -> None:
-    """Reports the client (its installed version, which `uv run --frozen` pins to the lockfile) and the Python runtime, major.minor."""
-    major, minor = sys.version_info[:2]
-    emit({"kind": "client", "name": package, "version": metadata.version(package), "runtime": {"name": "python", "version": f"{major}.{minor}"}})
+    """Reports the client (its installed version, which `uv run --frozen` pins to the lockfile) and the Python runtime's major version only: the runner's minor differs between hosts, and a scripted run must not depend on the machine."""
+    major = sys.version_info[0]
+    emit({"kind": "client", "name": package, "version": metadata.version(package), "runtime": {"name": "python", "version": str(major)}})
 
 
 def _error_text(error: BaseException) -> str:

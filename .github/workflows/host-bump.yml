@@ -276,8 +276,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           # A pull request opened with GITHUB_TOKEN starts no workflow, so its required checks would
-          # never report and auto-merge would wait forever. Start the two required workflows on the branch.
-          for wf in ci.yml commits.yml; do
+          # never report and auto-merge would wait forever. Start every workflow that reports a required check on the branch.
+          for wf in ci.yml commits.yml codeql.yml; do
             gh workflow run "$wf" --ref "$BRANCH" \
               || echo "::warning::could not start $wf on $BRANCH; push an empty commit to start it"
           done
