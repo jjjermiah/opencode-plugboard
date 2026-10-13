@@ -1,0 +1,266 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Reply with exactly: pong",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "",
+                      "role": "assistant"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-1>",
+                "id": "<id-1>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "po"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-2>",
+                "id": "<id-1>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "ng"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-3>",
+                "id": "<id-1>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {},
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-4>",
+                "id": "<id-1>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [],
+                "created": "<time-5>",
+                "id": "<id-1>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": {
+                  "completion_tokens": 7,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 11,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 18
+                }
+              }
+            },
+            {
+              "data": "[DONE]"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Reply with exactly: pong",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          }
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "",
+                      "role": "assistant"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-6>",
+                "id": "<id-2>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "po"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-7>",
+                "id": "<id-2>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "ng"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-8>",
+                "id": "<id-2>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {},
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-9>",
+                "id": "<id-2>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [],
+                "created": "<time-10>",
+                "id": "<id-2>",
+                "model": "fast",
+                "object": "chat.completion.chunk",
+                "usage": {
+                  "completion_tokens": 7,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 11,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 18
+                }
+              }
+            },
+            {
+              "data": "[DONE]"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
