@@ -29,6 +29,40 @@ const toolResult: PlugRequest["messages"][number] = {
 }
 const calls = (events: PlugEvent[]): PlugEvent[] => events.filter((event) => event.type === "tool-call")
 
+/** The text the scripted model streams for a request: its text-delta events joined. */
+const textOf = (events: PlugEvent[]): string => events.map((event) => (event.type === "text-delta" ? event.text : "")).join("")
+
+describe("scripted model DSPy answers", () => {
+  // DSPy's chat adapter wraps the question in [[ ## field ## ]] markers and asks for the answer in an `answer` field.
+  const dspy = (text: string): PlugRequest => plugRequest({ messages: [user(`[[ ## question ## ]]\n${text}\n\nRespond with the fields [[ ## answer ## ]]`)] })
+
+  test("S1 answers in the answer field, followed by the completed marker", () => {
+    const text = textOf(answer(dspy(prompt("S1"))))
+    expect(text).toBe("[[ ## answer ## ]]\npong\n\n[[ ## completed ## ]]")
+  })
+
+  test("S6 answers the meal JSON in the answer field", () => {
+    const text = textOf(answer(dspy(prompt("S6"))))
+    expect(text).toBe(`[[ ## answer ## ]]\n${JSON.stringify({ calories: 180, protein_g: 13 })}\n\n[[ ## completed ## ]]`)
+  })
+
+  test("a signature with a reasoning field gets the reasoning before the answer", () => {
+    const request = plugRequest({
+      messages: [user(`[[ ## question ## ]]\n${prompt("S1")}\n\nRespond with [[ ## reasoning ## ]] then [[ ## answer ## ]]. Use \`[[ ## reasoning ## ]]\`.`)],
+    })
+    expect(textOf(answer(request))).toMatch(/^\[\[ ## reasoning ## \]\]\nThe answer is requested\.\n\n\[\[ ## answer ## \]\]\npong/)
+  })
+
+  test("a DSPy request for another prompt gets the scripted error, not an invented answer", () => {
+    const events = answer(dspy("Something the scripted model has no answer for"))
+    expect(events.some((event) => event.type === "error")).toBe(true)
+  })
+
+  test("other clients' requests (no DSPy markers) keep the plain S1 answer", () => {
+    expect(textOf(answer(plugRequest({ messages: [user(prompt("S1"))] })))).toBe("pong")
+  })
+})
+
 describe("scripted model tool choices", () => {
   test("required with one fillable tool forces it with the meal", () => {
     const events = answer(

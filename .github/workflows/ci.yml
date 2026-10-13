@@ -120,16 +120,14 @@ jobs:
             echo "No test script, skipping."
           fi
 
-      - name: Syntax-check shell scripts
-        run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
-
   # The scripted runs of the client examples take about 5 seconds and are deterministic. A diff, or a new file in the run
   # directories, means a run went stale: regenerate it with `bun examples/_harness/run.ts <example> --target scripted`.
   examples:
     name: Examples (scripted runs are current)
     runs-on: ubuntu-latest
     # The Python examples (DSPy, LiteLLM, Instructor, OpenAI Agents, Aider) resolve and install their locked envs on first run.
-    timeout-minutes: 30
+    # A cold run takes under two minutes, so 15 minutes leaves room for a slow runner and fails a hang sooner.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:

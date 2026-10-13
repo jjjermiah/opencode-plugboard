@@ -39,7 +39,7 @@ The script refuses when the working tree is dirty, the branch is not `main`, loc
 
 The required status checks are the names GitHub shows on a pull request:
 
-- `CI passed` (`ci.yml`): one aggregate job. It needs every gating CI job (typecheck, tests and pack, host versions, the OpenCode host matrix, compat kit checks, examples) and passes only when each one succeeded. A new gating job goes into its `needs:`, not into the ruleset.
+- `CI passed` (`ci.yml`): one aggregate job. It needs every gating CI job (typecheck, tests and pack, host versions, the OpenCode host matrix, examples) and passes only when each one succeeded. A new gating job goes into its `needs:`, not into the ruleset.
 - `Lint commit messages` (`commits.yml`).
 - `Analyze (javascript-typescript)` (`codeql.yml`). CodeQL is not in `ci.yml`, so `CI passed` cannot stand in for it.
 
@@ -49,7 +49,7 @@ The repository needs two settings for this: "Allow auto-merge" (General), which 
 
 ### Changing the ruleset
 
-The `main` ruleset is changed by hand, in the repository settings, and only after the change that adds `CI passed` is on `main`. Until then the check does not exist on `main`'s workflows. Replace the six required checks (`Typecheck, test and pack`, `Compat kit checks`, `Host versions`, `Examples (scripted runs are current)`, `Lint commit messages` and `Analyze (javascript-typescript)`, the last two of which stay) with exactly: `CI passed`, `Lint commit messages`, `Analyze (javascript-typescript)`.
+The `main` ruleset is changed by hand, in the repository settings, and only after the change that adds `CI passed` is on `main`. Until then the check does not exist on `main`'s workflows. Replace the required checks (`Typecheck, test and pack`, `Host versions`, `Examples (scripted runs are current)`, and `Lint commit messages` and `Analyze (javascript-typescript)`, the last two of which stay) with exactly: `CI passed`, `Lint commit messages`, `Analyze (javascript-typescript)`.
 
 A pull request opened before the change ran the old `ci.yml`, so it has no `CI passed` check. After the ruleset change it shows that check as expected and cannot merge until its workflows run again on the new file. Push an empty commit to it (`git commit --allow-empty -m "ci: rerun checks"`), or close and reopen it.
 
@@ -76,7 +76,7 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 
 `.github/workflows/publish.yml` runs on a `v*` tag push, with one run per ref and no cancelling. In order:
 
-1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, compat checks, examples) run through `workflow_call`, so a release has exactly the same gates as CI. The `CI passed` job must succeed for `publish` to run.
+1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, examples) run through `workflow_call`, so a release has exactly the same gates as CI. The `CI passed` job must succeed for `publish` to run.
 2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
 3. It builds the release notes from the changelog section and the git history with `.github/scripts/release-notes.ts`. A missing or empty section, a heading without a title, or a previous tag missing from the clone fails here, before anything is published. The checkout uses `fetch-depth: 0` so the tag range is available.
 4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.

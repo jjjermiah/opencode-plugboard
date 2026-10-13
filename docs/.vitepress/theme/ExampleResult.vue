@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The latest results of one example, on a client page: the scripted run (CI) and the newest live run, with its scenario
-// table. Read from examples/*/runs at build time (examples.data.ts).
+// table. Read from examples.json, written from examples/*/runs before each docs build.
 import { computed } from "vue"
 import data from "../examples.json"
 import type { ExampleEntry, ExampleRun } from "./examples-model"
@@ -10,7 +10,7 @@ const entry = computed(() => (data as ExampleEntry[]).find((candidate) => candid
 const repo = "https://github.com/jjjermiah/opencode-plugboard/tree/main/examples"
 const linkOf = (run: ExampleRun) => `${repo}/${props.example}/${run.path}`
 const dirOf = (run: ExampleRun) => run.path.split("/").pop()
-const plugboardOf = (run: ExampleRun) => (run.plugboard ? `plugboard ${run.plugboard.version} (\`${run.plugboard.commit}\`)` : "")
+const plugboardOf = (run: ExampleRun) => (run.plugboard ? `plugboard ${run.plugboard.version} (${run.plugboard.commit})` : "")
 </script>
 
 <template>
@@ -24,7 +24,7 @@ const plugboardOf = (run: ExampleRun) => (run.plugboard ? `plugboard ${run.plugb
     <p v-if="entry.newestLive">
       <strong>Newest live run:</strong>
       <a :href="linkOf(entry.newestLive)"><code>{{ dirOf(entry.newestLive) }}</code></a>,
-      {{ entry.newestLive.date }}<template v-if="plugboardOf(entry.newestLive)">, {{ plugboardOf(entry.newestLive) }}</template>,
+      {{ entry.newestLive.date }}<template v-if="plugboardOf(entry.newestLive)">, <span>{{ plugboardOf(entry.newestLive) }}</span></template>,
       {{ entry.newestLive.verdict ?? "historical record" }}
       <template v-if="entry.newestLive.client"> ({{ entry.newestLive.client.name }} {{ entry.newestLive.client.version }})</template>
     </p>

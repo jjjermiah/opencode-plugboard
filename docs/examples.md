@@ -6,4 +6,4 @@ The table is built from the run records by the docs build. The same records make
 
 <ExamplesIndex />
 
-To rerun an example against a scripted plugboard, see [`examples/README.md`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/README.md#historical-records). Each client page shows its example's newest results, and the code it links is the code that ran.
+To rerun an example against a scripted plugboard, see [`examples/README.md`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/README.md). Each client page shows its example's newest results, and the code it links is the code that ran.
