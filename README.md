@@ -401,7 +401,7 @@ Prometheus metrics are off by default. Turn them on, and get structured logs whe
 "logFormat": "json"   // one object per line; ids and outcomes only, never keys or bodies
 ```
 
-Since 0.27.0 `logLevel` picks the lowest level written, and `logRequests: false` drops the per-request access lines (#262). Problems stay visible at `warn`: rate limits, budget refusals, failed fallbacks and failed history deletions. Admin key creation and revocation are audit lines and are written at every level. See [`logLevel` in the configuration](docs/configuration.md) for the full list.
+Since 0.27.0 `logLevel` picks the lowest level written, and `logRequests: false` drops the per-request access lines (#262). Problems stay visible at `warn`: rate limits, budget refusals, failed fallbacks and failed history deletions. Admin key creation and revocation are audit lines and are written at every level. See [`logLevel` in the configuration](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/configuration.md) for the full list.
 
 ```sh
 curl -s http://127.0.0.1:4010/plugboard/metrics -H "Authorization: Bearer $KEY" | grep plugboard_requests_total
