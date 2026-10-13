@@ -56,6 +56,8 @@ const REDACT_PATHS = REDACTED.flatMap((name) => {
 
 interface LogState {
   format: LogFormat
+  /** The audit logger (`logAudit`, #319): a second instance at a fixed level, so `logLevel` never silences it. */
+  readonly audit: Logger
   /** Option `logRequests` (#262): `false` drops the access lines, see `logRequest`. */
   accessLog: boolean
   readonly requests: AsyncLocalStorage<{ readonly id: string } | undefined>
@@ -86,7 +88,7 @@ function formatValue(value: unknown): string {
 
 function createState(): LogState {
   const requests = new AsyncLocalStorage<{ readonly id: string } | undefined>()
-  const state = { format: "text" as LogFormat, accessLog: true, requests } as { format: LogFormat; accessLog: boolean; requests: typeof requests; logger: Logger }
+  const state = { format: "text" as LogFormat, accessLog: true, requests } as { format: LogFormat; accessLog: boolean; requests: typeof requests; logger: Logger; audit: Logger }
   // `console` is read at write time, not captured, so spies and host patches of it keep working.
   const destination = (channel: "log" | "error") => ({
     write(line: string) {
@@ -94,9 +96,10 @@ function createState(): LogState {
       console[channel](state.format === "json" ? text : toText(text))
     },
   })
-  state.logger = pino(
+  const build = (level: string): Logger =>
+    pino(
     {
-      level: "info",
+      level,
       base: { service: SERVICE },
       timestamp: pino.stdTimeFunctions.isoTime,
       formatters: { level: (label) => ({ level: label }) },
@@ -117,6 +120,8 @@ function createState(): LogState {
       { dedupe: true },
     ),
   )
+  state.logger = build("info")
+  state.audit = build("info")
   return state
 }
 
@@ -154,6 +159,12 @@ function record(event: string, fields: LogFields | undefined): Record<string, un
 }
 
 export const log = (event: string, fields?: LogFields): void => state().logger.info(record(event, fields))
+
+/**
+ * An audit line (`admin.key_created`, `admin.key_revoked`): written at every `logLevel`, including `error`, because an operator
+ * who keeps only errors still needs the record of who changed a key (#319). Same redaction and envelope as the other lines.
+ */
+export const logAudit = (event: string, fields?: LogFields): void => state().audit.info(record(event, fields))
 
 /** The per-request access line (`request`, `request.finished`): an info line that `logRequests: false` drops (#262). */
 export const logRequest = (event: string, fields?: LogFields): void => {

@@ -1,6 +1,6 @@
 /** #76 the logger: text and JSON lines, and the ambient request id. */
 import { afterEach, describe, expect, test } from "bun:test"
-import { errorMessage, log, logDebug, logError, logRequest, logWarn, outsideRequest, setLogFormat, setLogLevel, setLogRequests, withRequestId } from "../../src/log.js"
+import { errorMessage, log, logAudit, logDebug, logError, logRequest, logWarn, outsideRequest, setLogFormat, setLogLevel, setLogRequests, withRequestId } from "../../src/log.js"
 import { captureLogs } from "../support/logs.js"
 
 const logs = captureLogs()
@@ -135,5 +135,21 @@ describe("#262 log level and access lines", () => {
     setLogFormat("json")
     logDebug("x", { authorization: "Bearer sk-9" })
     expect(logs.lines.map((line) => line.raw).join("")).not.toMatch(/sk-9/)
+  })
+})
+
+/** Review of #319 (SHOULD 4): audit lines (`admin.key_*`) are written at every logLevel, the operational info lines are not. */
+describe("#262 review: audit lines survive every logLevel", () => {
+  test.each(["debug", "info", "warn", "error"] as const)("logAudit is written at logLevel %s", (level) => {
+    setLogLevel(level)
+    logAudit("admin.key_created", { id: "k1", app: "alpha" })
+    expect(logs.of("admin.key_created")).toHaveLength(1)
+  })
+
+  test("at error, an operational info line is dropped while the audit line stays", () => {
+    setLogLevel("error")
+    log("model.fallback", { app: "alpha" })
+    logAudit("admin.key_revoked", { id: "k1" })
+    expect(logs.lines.map((line) => line.event)).toEqual(["admin.key_revoked"])
   })
 })

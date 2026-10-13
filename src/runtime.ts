@@ -56,7 +56,7 @@ import { cachedCaller, createCacheStore, type CacheStore } from "./cache.js"
 import { personaOf } from "./models.js"
 import type { PlugboardOptions } from "./config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError } from "./contract.js"
-import { errorMessage, log, logError, outsideRequest, setLogFormat, setLogLevel, setLogRequests } from "./log.js"
+import { errorMessage, log, logError, logWarn, outsideRequest, setLogFormat, setLogLevel, setLogRequests } from "./log.js"
 import { createLimitState, type LimitState } from "./limits.js"
 import { createMetrics, type Metrics, type RuntimeSnapshot } from "./metrics.js"
 import { ensureAppDir } from "./session/history.js"
@@ -299,7 +299,9 @@ async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Pro
     }
     if (result.more) rt.sweep.nextAt = Date.now() + SWEEP_BACKLOG_MS
     rt.metrics.sweep("ok", result.removed)
-    log("history.swept", { ...result, durationMs: Date.now() - now })
+    // A sweep that could not delete something signals a problem (warn); a clean one is routine (info).
+    const swept = result.failed > 0 ? logWarn : log
+    swept("history.swept", { ...result, durationMs: Date.now() - now })
   } catch (error) {
     rt.metrics.sweep("failed", 0)
     logError("history.sweep_failed", { error: errorMessage(error) })
