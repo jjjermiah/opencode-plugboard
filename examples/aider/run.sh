@@ -13,7 +13,9 @@ set -euo pipefail
 # Aider picks its edit format and prompts from model metadata, which the host can change (a fetched price map differs
 # between machines). Pin both so the prompts in the transcripts are the same on every host.
 export LITELLM_LOCAL_MODEL_COST_MAP=True
-# Aider adds a "Reply in <language>" line from the locale. Pin it, so a laptop with a non-C locale writes the same prompt as CI.
+# Aider adds a "Reply in <language>" line from the locale. C.UTF-8 adds none, which is what the committed run and CI show, so the
+# pin reproduces CI's prompt. en_US.UTF-8 adds the line and would change the transcript. CI is the reference: if a host has no
+# C.UTF-8, its run will differ from the committed one and the drift check fails, which is the intended signal.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 # Every run uses a fresh environment, so Aider treats it as a first run and offers to open its release notes in a browser;
 # --yes-always accepts that offer. --no-show-release-notes stops the offer, and BROWSER=true makes any other

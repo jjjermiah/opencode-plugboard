@@ -45,6 +45,12 @@ describe("#370 unobserved checks without a variant", () => {
     expect(results().every((row) => row.status === "fail")).toBe(true)
   })
 
+  test("the stream check cannot be left unobserved: the wire decides it, so the entry is refused before anything runs (#379)", async () => {
+    const streamObservations = { text: "pong", finish_reason: "stop", usage: { input_tokens: 1, output_tokens: 1 }, done: true }
+    await expect(runAll({ S3: async () => streamObservations }, { unobserved: { S3: { "stream ended normally": "the client does not show it" } } })).rejects.toThrow("which the wire decides")
+    expect(lines).toEqual([])
+  })
+
   test("an entry that names a check the scenario does not have is refused before anything runs", async () => {
     await expect(runAll({ S1: async () => S1_OBSERVATIONS }, { unobserved: { S1: { "no such check": "why" } } })).rejects.toThrow('names no check "no such check"')
     expect(lines).toEqual([])

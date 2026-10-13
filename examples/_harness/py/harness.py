@@ -85,8 +85,12 @@ def _check_unobserved(unobserved: Mapping[str, Mapping[str, str]], planned: list
         if scenario is None or (has_variant and variant not in variants.get(scenario_id, [])):
             raise ValueError(f"unobserved {key} names no planned scenario variant")
         for name in names:
-            if not any(check["name"] == name for check in scenario["checks"]):
+            matches = [check for check in scenario["checks"] if check["name"] == name]
+            if not matches:
                 raise ValueError(f'unobserved {key} names no check "{name}"')
+            # The stream check is decided from the captured wire (run.ts), so a runner cannot leave it out (#379).
+            if matches[0]["path"] == "done":
+                raise ValueError(f'unobserved {key} names "{name}", which the wire decides and cannot be left out')
         if len(names) >= len(scenario["checks"]):
             raise ValueError(f"unobserved {key} would drop every check of the row")
 

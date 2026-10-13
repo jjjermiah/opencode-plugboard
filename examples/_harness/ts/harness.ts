@@ -104,7 +104,10 @@ export function checkUnobserved(options: RunOptions, planned: ReadonlyArray<Scen
       throw new Error("unobserved " + key + " names no planned scenario variant")
     }
     for (const name of Object.keys(names)) {
-      if (!scenario.checks.some((check) => check.name === name)) throw new Error("unobserved " + key + " names no check \"" + name + "\"")
+      const check = scenario.checks.find((candidate) => candidate.name === name)
+      if (!check) throw new Error("unobserved " + key + " names no check \"" + name + "\"")
+      // The stream check is decided from the captured wire (run.ts), so a runner cannot leave it out (#379).
+      if (check.path === "done") throw new Error("unobserved " + key + " names \"" + name + "\", which the wire decides and cannot be left out")
     }
     if (Object.keys(names).length >= scenario.checks.length) throw new Error("unobserved " + key + " would drop every check of the row")
   }

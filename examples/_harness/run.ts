@@ -28,8 +28,30 @@ const LIVE_DEFAULT_URL = "http://127.0.0.1:4010/v1"
 const RUNNER_TIMEOUT_MS = 20 * 60_000
 
 /**
+ * A chat or legacy completions stream ended normally: its last frame is `data: [DONE]` and no frame carries a top-level
+ * `error`. A failed committed stream sends an error frame and then `[DONE]` (src/openai/fanout.ts), so the terminator alone
+ * does not show success (#379).
+ */
+function chatEnded(body: string): boolean {
+  if (!/(^|\n)data: \[DONE\]$/.test(body)) return false
+  for (const line of body.split("\n")) {
+    if (!line.startsWith("data:")) continue
+    const data = line.slice("data:".length).trim()
+    if (data === "[DONE]") continue
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(data)
+    } catch {
+      continue // not JSON, so not an error frame
+    }
+    if (typeof parsed === "object" && parsed !== null && "error" in parsed) return false
+  }
+  return true
+}
+
+/**
  * Whether one captured stream ended on the wire the way its API says it does: chat completions with `data: [DONE]`,
- * Responses with a last `response.completed` event, Messages with a last `message_stop` event, Gemini with a `finishReason`
+ * Responses with a last `response.completed` event (a stream that ends with `response.incomplete` did not end normally), Messages with a last `message_stop` event, Gemini with a `finishReason`
  * in its last chunk. A stream cut off mid-answer, or any other route, did not end normally. The runner's own `done`
  * flag is not used: the wire decides (#370).
  */
@@ -41,7 +63,7 @@ export function streamEnded(exchange: Pick<Exchange, "path" | "resBody">): boole
   const lines = body.split("\n")
   const lastEvent = [...lines].reverse().find((line) => line.startsWith("event:"))?.slice("event:".length).trim()
   const lastData = [...lines].reverse().find((line) => line.startsWith("data:"))?.slice("data:".length).trim() ?? ""
-  if (path.startsWith("/v1/chat/completions")) return /(^|\n)data: \[DONE\]$/.test(body)
+  if (path.startsWith("/v1/chat/completions") || path.startsWith("/v1/completions")) return chatEnded(body)
   if (path.startsWith("/v1/responses")) return lastEvent === "response.completed"
   if (path.startsWith("/v1/messages")) return lastEvent === "message_stop"
   if (path.startsWith("/v1beta/")) {

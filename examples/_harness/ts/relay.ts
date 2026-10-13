@@ -8,8 +8,10 @@
  * The plan line may carry the runner's known gaps, n/a scenarios, unobserved checks and variants, with the same meaning
  * as RunOptions (#370). The relay validates them against the planned scenarios and emits the n/a rows itself.
  *
- * A runner may not print a `result` line: the verdict is the relay's, so a runner cannot claim a pass the checks did not
- * make. Any other kind is an error, and the whole input is refused before anything is printed.
+ * A runner may not print a `result` line: every verdict is the relay's. The plan line may declare the runner's limits (gaps,
+ * n/a, unobserved checks), and those are trusted with the same reach as RunOptions in the TypeScript and Python runners, so
+ * a verdict is the checks' only within what the plan declares. Any other kind is an error, and the whole input is refused
+ * before anything is printed.
  *
  *   go run ./runner | bun ../_harness/ts/relay.ts
  */

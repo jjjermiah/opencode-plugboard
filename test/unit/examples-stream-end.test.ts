@@ -53,4 +53,33 @@ describe("#370 a stream ended normally on the wire", () => {
     const spelledInText = 'data: {"candidates":[{"content":{"parts":[{"text":"finishReason"}]}}]}\n\n'
     expect(streamEnded({ path: "/v1beta/models/fast:streamGenerateContent", resBody: spelledInText })).toBe(false)
   })
+
+  // The shape fanout.ts writes when a committed chat stream fails: a text delta, an error frame, then [DONE] (#379).
+  const failedChat =
+    'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"hi"}}]}\n\n' +
+    'data: {"error":{"message":"upstream failed","type":"server_error","param":null,"code":null}}\n\n' +
+    "data: [DONE]\n\n"
+
+  test("a chat stream that ends with an error frame before [DONE] did not end normally", () => {
+    expect(streamEnded({ path: chat, resBody: failedChat })).toBe(false)
+  })
+
+  test("a legacy completions stream that ends with an error frame before [DONE] did not end normally", () => {
+    expect(streamEnded({ path: "/v1/completions", resBody: failedChat })).toBe(false)
+  })
+
+  test("a successful chat stream with a text delta and [DONE] still ended normally", () => {
+    const ok = failedChat.replace(/data: \{"error".*\n\n/, "")
+    expect(streamEnded({ path: chat, resBody: ok })).toBe(true)
+    expect(streamEnded({ path: "/v1/completions", resBody: ok })).toBe(true)
+  })
+
+  test("an error key inside a delta's text does not count: only a top-level error frame does", () => {
+    const quoted = 'data: {"choices":[{"index":0,"delta":{"content":"{\\"error\\":1}"}}]}\n\ndata: [DONE]\n\n'
+    expect(streamEnded({ path: chat, resBody: quoted })).toBe(true)
+  })
+
+  test("a non-JSON data line is not an error frame, so the stream is judged by its terminator", () => {
+    expect(streamEnded({ path: chat, resBody: "data: not-json\n\ndata: [DONE]\n\n" })).toBe(true)
+  })
 })
