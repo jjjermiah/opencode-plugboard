@@ -113,6 +113,7 @@ export default defineConfig({
           { text: "Tandoor Recipes", link: "/self-hosted/tandoor" },
           { text: "Vane", link: "/self-hosted/vane" },
           { text: "paperless-ai", link: "/self-hosted/paperless-ai" },
+          { text: "LLM Vision", link: "/self-hosted/llm-vision" },
         ],
       },
       {
