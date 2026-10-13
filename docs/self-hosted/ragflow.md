@@ -66,7 +66,8 @@ Retrieval uses a rerank model only when one is set (`rerank_id` and `tenant_rera
 - **Chat and answers through `chat`**: works per the source. Not run.
 - **Uploading and indexing**: need the embedding provider.
 - **Retrieval**: needs the embedding provider. Reranking is off unless set.
-- **Thinking**: when the chat config sets `Thinking`, RAGFlow adds a `thinking` object to the request. For names containing `qwen3`, it adds `chat_template_kwargs` (`vllm.go`, lines 57 to 87). Plugboard's handling of those fields was not checked. Leave Thinking off for the plugboard alias.
+- **Thinking**: the driver adds a `thinking` object only when the chat config sets `Thinking`, and `chat_template_kwargs` only for model names containing `qwen3` (`vllm.go`, lines 57 to 87). The compatible driver calls that function from `vllm.go`, so the code is there, not in `openai_api_compatible.go`. Plugboard reads only the fields it knows (`parseChatRequest`, `src/openai/request.ts`), so neither field is rejected or applied. The Thinking toggle does nothing through plugboard. Leaving it off is the safe default.
+- **Sampling**: the chat setter sends `temperature`, `top_p`, `max_tokens`, `stop` and `do_sample` when the chat config sets them (`base_model.go`, lines 491 to 495). Plugboard ignores `do_sample`. If the alias targets Claude 4.6 or older, plugboard drops `top_p` when `temperature` is also sent, and reports it in `x-plugboard-dropped-params` (`src/openai/sampling.ts`, lines 56 to 58). With `dropUnsupportedParams: false`, that call fails with a 400. Leave the option on.
 - **Images for the VLM role**: not checked.
 - **Speech (ASR, TTS)**: plugboard serves no audio.
 

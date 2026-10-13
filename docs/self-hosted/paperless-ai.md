@@ -9,7 +9,7 @@ paperless-ai runs beside paperless-ngx. It suggests titles, tags, correspondents
 | Plugboard API | `/v1/chat/completions`, text only |
 | Status | **Chat only.** Suggestions and chat go through plugboard as text. No images are sent. No embeddings: the RAG index uses a local model. docs-verified, not run (checked 2026-10-13) |
 
-The upstream README says the author is rewriting the codebase and may not finish it (README, lines 10 and 11). This page describes the code at `d2fda69`. Check it again before you upgrade.
+The upstream README says the repo is currently not maintained (line 9), that the author is rewriting it (line 10), and that an official AI integration in paperless-ngx may replace it (line 11). This page describes the code at `d2fda69`. Check it again before you upgrade.
 
 ## Plugboard options
 
@@ -54,7 +54,7 @@ A runnable copy is in [`examples/self-hosted/paperless-ai/`](https://github.com/
 - **Thumbnail.** The same function fetches the document thumbnail from paperless-ngx and caches it under `public/images`. The thumbnail is not put in the request. No image reaches plugboard.
 - **Chat.** `services/chatService.js` has a `custom` branch that streams (`stream: true`) with `CUSTOM_BASE_URL`, `CUSTOM_API_KEY` and `CUSTOM_MODEL`.
 - **RAG.** `services/ragService.js` calls the AI provider for the answer only. Retrieval runs in the Python RAG service. `main.py` loads `paraphrase-multilingual-MiniLM-L12-v2` for embeddings and `cross-encoder/ms-marco-MiniLM-L-6-v2` for reranking, both with sentence-transformers, and keeps the vectors in ChromaDB. Nothing in that path calls plugboard.
-- **Playground and status check.** `generateText` sends `max_tokens: 128000` (`customService.js`, `generateText`). `checkStatus` sends a `Ping` with `max_tokens: 1000`. Whether a model accepts 128000 depends on the model. Not traced through plugboard.
+- **Playground and status check.** `generateText` sends `max_tokens: 128000` (`customService.js`, `generateText`). `checkStatus` sends a `Ping` with `max_tokens: 1000`. Plugboard accepts any integer of at least 1 for `max_tokens` (`src/openai/request.ts`, line 262) and passes it on without a clamp (`src/session/context.ts`, line 47). The target model decides whether 128000 is accepted.
 
 ## What works and what does not
 
@@ -67,7 +67,7 @@ A runnable copy is in [`examples/self-hosted/paperless-ai/`](https://github.com/
 
 ## Gotchas
 
-- **Setting precedence.** The app loads `data/.env` with dotenv (`config/config.js`). dotenv does not overwrite a variable that is already set in the process environment. The compose `env_file` sets the same variables in the container, so a value you change in the web UI is ignored while the `.env` value is set. Change it in `.env` and recreate the container. This follows dotenv's default behaviour; not run.
+- **Web UI changes do not survive a recreate.** Saving settings in the web UI calls `saveConfig` (`services/setupService.js`, lines 238 to 243). It writes `data/.env` in the volume and sets the same variables in the running process, so the new value applies at once. But the compose `env_file` puts the `.env` values into the container environment, and dotenv does not overwrite a variable that is already set (`config/config.js`). After `docker compose up -d` recreates the container, the `.env` value wins again and the UI change is lost. Change provider settings in `.env` and recreate the container. Pinned at d2fda69; not run.
 - **Open setup.** With `PAPERLESS_AI_INITIAL_SETUP=yes`, the setup route stays open until setup is done (`routes/setup.js`, around lines 177 to 179). The upstream compose publishes the port on all interfaces. The example binds it to loopback instead.
 - **Upstream may change.** The README says the rewrite may replace this codebase. Pin the image to a tag or digest you have tested.
 

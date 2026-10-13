@@ -6,7 +6,7 @@ Onyx (formerly Danswer) is an enterprise search and chat app. Connectors index y
 | --- | --- |
 | Upstream | [onyx-dot-app/onyx](https://github.com/onyx-dot-app/onyx) (about 32k stars), commit [e89ebea](https://github.com/onyx-dot-app/onyx/tree/e89ebeaac40b2eb0a874ac4819b8946d3488c49b) |
 | Config source | the admin UI, read from `web/src/sections/modals/languageModels/OpenAICompatibleModal.tsx` and `web/src/views/admin/IndexSettingsPage/`. Backend: `backend/onyx/llm/` and `backend/onyx/server/manage/llm/api.py`. Compose: `deployment/docker_compose/docker-compose.yml` |
-| Plugboard API | `/v1/chat/completions` for the LLM role. `/v1/models` for the model list. No embeddings, reranking, images or speech |
+| Plugboard API | `/v1/chat/completions` for the LLM role. `/v1/models` for the model list. No embeddings, reranking, image generation or speech |
 | Status | **Chat only.** Answers run through plugboard. Indexing and search need an embedding model from somewhere else. docs-verified, not run (checked 2026-10-13) |
 
 ## Model roles
@@ -62,7 +62,8 @@ The Index Settings self-hosted tab does not take a URL. Its custom model asks on
 - **Chat and answers through `text`**: works per the source. Not run.
 - **Indexing and search**: need an embedding model. Plugboard has none to offer.
 - **Reranking**: no plugboard role. Off by default.
-- **Images in chat, image generation, speech**: not checked in Onyx. Plugboard's image input is data URLs only.
+- **Images in chat**: not checked in Onyx. Plugboard takes `data:` image URLs by default. It fetches http(s) image URLs only when the `remoteImages` option is on, which is off by default (`src/config.ts`).
+- **Image generation, speech**: plugboard serves neither.
 
 ## Gotchas
 

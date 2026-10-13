@@ -20,7 +20,7 @@ docker compose up -d
 
 `PAPERLESS_API_URL` must be an address the container reaches. If paperless-ngx runs on the same compose network, use its service name.
 
-Settings in `.env` win over the same settings in the web UI, because the compose file passes `.env` into the container environment. To change a provider setting, edit `.env` and run `docker compose up -d` again.
+A setting saved in the web UI works until the container is recreated. The UI writes `data/.env` in the volume, but the compose file passes `.env` into the container environment, and dotenv does not overwrite that. On the next `docker compose up -d` the `.env` value wins again. To change a provider setting, edit `.env` and run `docker compose up -d`.
 
 ## 3. Check
 
@@ -29,4 +29,4 @@ curl -s http://127.0.0.1:4010/healthz
 curl -s http://127.0.0.1:4010/v1/models -H "Authorization: Bearer $PLUGBOARD_KEY_PAPERLESS_AI"
 ```
 
-Open http://127.0.0.1:3000, finish setup, and run analysis on one document before you enable the scan.
+Open http://127.0.0.1:3000, finish setup, and run analysis on one document before you enable the scan. Finishing setup writes `SYSTEM_PROMPT` to `data/.env`. The analysis prompt needs it, so the scan does nothing useful until setup is done.

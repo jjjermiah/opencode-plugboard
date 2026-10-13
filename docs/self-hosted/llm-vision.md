@@ -58,10 +58,12 @@ The service is `llmvision.image_analyzer`, from `services.yaml`. Its fields that
 
 The Custom OpenAI provider uses the `OpenAI` class in `providers.py`:
 
-- `max_completion_tokens`, `temperature` and `top_p`. `reasoning_effort` only when the reasoning option is set.
+- `max_completion_tokens`, `temperature` and `top_p`. `reasoning_effort` is never sent for the `vision` alias: the provider adds it only when the model name starts with one of the GPT-5 names in its table (`_model_supports_thinking`, `providers.py`), and the alias is not one of them.
 - A `system` message, then the user message with one `text` part and one `image_url` part per image.
 - An image as `{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}`. The base64 data is the snapshot. The code adds this form in `_prepare_vision_data` (around line 748). Memory images use the same form (`memory.py`).
 - When the call asks for JSON and gives a schema: `response_format` with `type: json_schema`, `strict: true`, and `additionalProperties: false` added to the schema.
+
+Sampling: `temperature` 0.5 and `top_p` 0.9 are sent by default (the Custom OpenAI step's model defaults, `config_flow.py`). If the alias targets Claude 4.6 or older, plugboard drops `top_p` and reports it in `x-plugboard-dropped-params` (`src/openai/sampling.ts`, lines 56 to 58). With `dropUnsupportedParams: false`, Anthropic rejects the call with a 400 that says the two cannot both be specified. Leave the option on.
 
 No `http(s)` image URL is sent. The images are base64 data in every request path in `providers.py` and `memory.py`. So plugboard's `remoteImages` option can stay off.
 
@@ -89,4 +91,4 @@ Plugboard accepts `max_completion_tokens` and `response_format` `json_schema`. I
 - [LLM Vision `providers.py` at b81d626](https://github.com/valentinfrlch/ha-llmvision/blob/b81d62688f549332194413ae500eed81b313a58e/custom_components/llmvision/providers.py) (read 2026-10-13)
 - [LLM Vision `services.yaml` at b81d626](https://github.com/valentinfrlch/ha-llmvision/blob/b81d62688f549332194413ae500eed81b313a58e/custom_components/llmvision/services.yaml) (read 2026-10-13)
 - [LLM Vision `media_handlers.py` at b81d626](https://github.com/valentinfrlch/ha-llmvision/blob/b81d62688f549332194413ae500eed81b313a58e/custom_components/llmvision/media_handlers.py) (read 2026-10-13)
-- [LLM Vision provider docs](https://llm-vision.gitbook.io/getting-started/setup/providers) (not read in this pass; the source is the basis for this page)
+- [LLM Vision provider docs](https://llm-vision.gitbook.io/getting-started/setup/providers) (read 2026-10-13). They list Ollama, Open WebUI and LocalAI as self-hosted providers and no Custom OpenAI entry, so the Custom OpenAI setup on this page comes from the source.
