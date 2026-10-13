@@ -27,6 +27,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **An over-size request body is `request_body_too_large` (breaking for clients that match on the old 413).** The 413 on the OpenAI-shaped routes and on `/plugboard/` routes now carries the code `request_body_too_large` where it had none. Clients that matched the codeless 413 must match the code instead. Messages (`request_too_large`) and Gemini (`code: 413`) keep their own shapes, which did not change. The body cap is `limits.maxBodyBytes` (32 MiB by default) or the app's `limits.apps.<name>.maxBodyBytes`.
 
+### Fixed
+
+- Release script: a `git fetch` that loses a ref-lock race with a parallel worktree (`cannot lock ref`) is retried, 4 attempts with a short backoff, instead of stopping the release ([#352](https://github.com/jjjermiah/opencode-plugboard/issues/352)). `--resume` now handles a release pull request that is already merged: it waits for CI on the merge commit and tags that commit only when the run succeeded. If the tag is already on origin, it says so and watches the release. Before, a fetch that failed after the merge left the tag to a hand push. Tooling only, not in the package.
+
 ## [0.31.0] - 2026-10-13: Know Your Versions
 
 **Full diff:** [v0.30.0...v0.31.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...v0.31.0)
