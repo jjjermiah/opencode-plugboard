@@ -1,0 +1,39 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "Reply with exactly: pong",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "invalid_api_key",
+            "message": "Missing or invalid API key",
+            "param": null,
+            "type": "authentication_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 401
+      }
+    }
+  ]
+}

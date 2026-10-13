@@ -17,6 +17,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Added
 
 - **`examples/openai-js` runs the OpenAI JS SDK against plugboard** ([#178](https://github.com/jjjermiah/opencode-plugboard/issues/178)). Every scenario (chat, tools, streaming with and without usage, streamed tool calls, images, structured output, models, errors) is one copyable file, and the scripted run is checked in CI. `examples/tool-bot` gets a runner too; its tool-call checks are a gap until [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
+- **LangChain JS example** ([#181](https://github.com/jjjermiah/opencode-plugboard/issues/181)). `examples/langchain-js` runs S1 to S7 and the two error paths against a scripted plugboard in CI. Chat Completions and the Responses route are both run for `openai/gpt-5.6-luna#low`; the Responses route is recorded as a gap, because LangChain does not expose a `finish_reason` for it.
 
 ## [0.27.0] - 2026-10-12: Every App Its Own Rules
 
@@ -26,7 +27,6 @@ Each app can now carry its own history limits and `n` cap, the log level is your
 
 ### Added
 
-- **`examples/openai-js` runs the OpenAI JS SDK against plugboard** ([#178](https://github.com/jjjermiah/opencode-plugboard/issues/178)). Every scenario (chat, tools, streaming with and without usage, streamed tool calls, images, structured output, models, errors) is one copyable file, and the scripted run is checked in CI. `examples/tool-bot` gets a runner too; its tool-call checks are a gap until [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
 - **Browser scripts can read the plugboard response headers** ([#314](https://github.com/jjjermiah/opencode-plugboard/issues/314)). With `cors` set, an allowed origin's answers now send `Access-Control-Expose-Headers` with the `x-plugboard-*` headers and `retry-after`. Before, a browser hid them, so `x-plugboard-session` or `x-plugboard-usage` could not be read from a page. Origins off the list still get no CORS headers.
 - **History retention per app** ([#265](https://github.com/jjjermiah/opencode-plugboard/issues/265)). `history` was one pair of numbers for every app. A high-volume bot wants to keep few sessions while a coding assistant keeps many. `apps.<name>.history` sets `maxSessions` and `maxAgeDays` for one app. A field replaces the global one for that app, and an unset field falls back to it. The stricter field still wins inside an app. An app with no limit anywhere keeps its sessions forever, as before. The history index is written only for an app that has a limit, so an unlimited app adds nothing to host storage.
 

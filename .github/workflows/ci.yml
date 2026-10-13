@@ -158,19 +158,18 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Install uv (the Python example runs with uv run --frozen)
         run: pipx install uv==0.12.18
-      - name: Scripted runs of the curl, openai-python, openai-js and tool-bot examples
-        run: |
-          bun examples/_harness/run.ts curl --target scripted
-          bun examples/_harness/run.ts openai-python --target scripted
-          bun examples/_harness/run.ts openai-js --target scripted
-          bun examples/_harness/run.ts tool-bot --target scripted
+      # `all` runs every example that has a runner, so a new example needs no edit here (and parallel example PRs
+      # stop conflicting on this list).
+      - name: Scripted runs of every example
+        run: bun examples/_harness/run.ts all --target scripted
       - name: Type check the OpenAI JS example and the tool bot
         run: |
           (cd examples/openai-js && bunx tsc --noEmit)
           (cd examples/tool-bot && bunx tsc --noEmit)
       - name: The committed scripted runs match a fresh run
         run: |
-          RUNS=(examples/curl/runs/scripted examples/openai-python/runs/scripted examples/openai-js/runs/scripted examples/tool-bot/runs/scripted)
+          shopt -s nullglob
+          RUNS=(examples/*/runs/scripted)
           if [ -n "$(git status --porcelain -- "${RUNS[@]}")" ]; then
             git --no-pager diff -- "${RUNS[@]}" | head -200
             git status --short -- "${RUNS[@]}"
