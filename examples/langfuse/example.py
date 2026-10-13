@@ -7,17 +7,18 @@
     PLUGBOARD_KEY=<app key> uv run example.py
 
 The wrapper is the only change from the plain OpenAI SDK: `from langfuse.openai import OpenAI`.
-Tracing goes to Langfuse only when LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are set (and
-LANGFUSE_BASE_URL points at your instance). Without them this script sets LANGFUSE_TRACING_ENABLED=false
-so no Langfuse server is needed. PLUGBOARD_URL is the base with /v1 (default http://127.0.0.1:4010/v1).
+Tracing goes to Langfuse only when LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and LANGFUSE_BASE_URL
+are all set. Without all three this script sets LANGFUSE_TRACING_ENABLED=false, so no Langfuse server
+is needed. PLUGBOARD_URL is the base with /v1 (default http://127.0.0.1:4010/v1).
 """
 
 import json
 import os
 import sys
 
-if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
-    os.environ.setdefault("LANGFUSE_TRACING_ENABLED", "false")
+LANGFUSE_SERVER_VARS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL")
+if not all(os.environ.get(name) for name in LANGFUSE_SERVER_VARS):
+    os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
 from langfuse.openai import OpenAI  # noqa: E402
 

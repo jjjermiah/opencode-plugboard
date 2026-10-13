@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["smolagents[openai]"]
+# dependencies = ["smolagents[openai]==1.26.0"]
 # ///
 """smolagents through plugboard: text, streaming if the model supports it, and a tool-calling agent.
 

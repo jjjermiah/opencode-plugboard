@@ -39,7 +39,7 @@ cd examples/langfuse
 PLUGBOARD_KEY=<app key> uv run example.py
 ```
 
-With no `LANGFUSE_PUBLIC_KEY` set, the script sets `LANGFUSE_TRACING_ENABLED=false`, so no Langfuse server is needed. To trace, set the three `LANGFUSE_*` variables above and run the same command; that path was not run.
+Unless all three of `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` are set, the script sets `LANGFUSE_TRACING_ENABLED=false`, so no Langfuse server is needed. With all three set, the same command traces to that server; that path was not run.
 
 ## Features exercised
 
