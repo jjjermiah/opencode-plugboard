@@ -107,6 +107,8 @@ describe("parseOptions: every rejection names the option", () => {
     ["a maxTools above 1024", { maxTools: 1025 }, /`maxTools`/],
     ["a requestTimeoutMs past the timer limit", { requestTimeoutMs: 2 ** 31 }, /`requestTimeoutMs`/],
     ["a string requestTimeoutMs", { requestTimeoutMs: "1000" }, /`requestTimeoutMs`/],
+    ["a fallbackAfterMs past the timer limit", { fallbackAfterMs: 2 ** 31 }, /`fallbackAfterMs`/],
+    ["a string fallbackAfterMs", { fallbackAfterMs: "500" }, /`fallbackAfterMs`/],
     ["a remoteImages that is not a boolean", { remoteImages: "yes" }, /`remoteImages` must be a boolean/],
     ["a dropUnsupportedParams that is not a boolean", { dropUnsupportedParams: 1 }, /`dropUnsupportedParams` must be a boolean/],
     ["a history that is not an object", { history: 5 }, /`history` must be an object/],
@@ -632,5 +634,13 @@ describe("reasoningOutput (since 0.36.0)", () => {
     expect(reasoningOutputFor(parseOptions({ keys: { on: "k2" }, apps: { on: { reasoningOutput: true } } }), "on")).toBe(true)
     expect(reasoningOutputFor(parseOptions({ keys: { none: "k3" } }), "none")).toBe(false)
     expect(reasoningOutputFor(options, "on")).toBe(true)
+  })
+})
+
+describe("#391 fallbackAfterMs", () => {
+  test("absent by default; set, it is the global first-event deadline", () => {
+    expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("fallbackAfterMs")
+    expect(() => parseOptions({ models: ["a/*"], fallbackAfterMs: 0 })).toThrow(/`fallbackAfterMs` must be an integer between 1/)
+    expect(parseOptions({ models: ["a/*"], fallbackAfterMs: 1500 }).fallbackAfterMs).toBe(1500)
   })
 })

@@ -38,7 +38,13 @@ export interface PlugboardOptions {
    * first target, so everything that resolves an alias keeps working; the model caller retries the rest
    * (`src/fallback.ts`). Absent for an alias with one target. Every target passes the allowlist.
    */
-  readonly fallbacks: Readonly<Record<string, ReadonlyArray<string>>>
+   readonly fallbacks: Readonly<Record<string, ReadonlyArray<string>>>
+  /**
+   * Option `fallbackAfterMs` (since 0.37.0, #391): when a target of a list alias has produced no model event within
+   * this many ms, its attempt is aborted and the next target is tried. The last target is bounded only by the request
+   * deadline. Absent (the default): no first-event deadline. Global only: a list entry is a plain string.
+   */
+  readonly fallbackAfterMs?: number
   readonly maxTools: number
   /** Most model calls one request may fan out to: `n` for chat completions, prompts x `n` for legacy completions. Each is a full call and a kept session. */
   readonly maxN: number
@@ -305,7 +311,7 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests", "reasoningOutput"])
+const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "fallbackAfterMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests", "reasoningOutput"])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -1023,6 +1029,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   }
   const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
   const fallbacks: Record<string, string[]> = Object.fromEntries(fallbackEntries)
+  const fallbackAfterMs = input.fallbackAfterMs === undefined ? undefined : positiveInt(input.fallbackAfterMs, "fallbackAfterMs", 0, MAX_TIMER_MS)
   const agents = parseAgents(input.agents, models as string[])
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
@@ -1086,6 +1093,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     aliases,
     agents,
     fallbacks,
+    ...(fallbackAfterMs === undefined ? {} : { fallbackAfterMs }),
     maxTools,
     maxN,
     requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),

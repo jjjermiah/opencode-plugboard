@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **First-event deadline for fallback chains** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.37.0). A fallback chain could not help when its first target hung: on aihub every ChatGPT model failed upstream with HTTP 520, and a request to one hung for more than 90 seconds with no event and no failure. Option `fallbackAfterMs` sets a deadline for each target that is not the last. A target that has produced no model event within it is aborted (its OpenCode session is interrupted and retired, not left running) and the next target is tried. It is reported like any other fallback: `x-plugboard-fallbacks`, the `model.fallback` log line with reason `first_event_deadline`, and `plugboard_fallbacks_total`. The last target has no first-event deadline and is bounded only by `requestTimeoutMs`. Off by default. Global only, because a list entry is a plain model string.
 
 ## [0.36.0] - 2026-10-13: Show Your Work
 

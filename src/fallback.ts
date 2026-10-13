@@ -7,7 +7,9 @@
  * target in a fresh call, so each attempt is its own session. Once any event has been handed on
  * nothing is retried: a partly streamed answer is never restarted. Attempts are capped at the chain
  * length, share the request's signal (so the deadline and a disconnect end the chain) and nothing is
- * buffered beyond that first event.
+ * buffered beyond that first event. With option `fallbackAfterMs` (#391), an attempt that has a target after it
+ * and produces no event in time is aborted (its session is interrupted and retired by the caller) and the next
+ * target is tried; the last target is not bounded by it.
  *
  * A call whose model is not an alias with fallbacks goes straight to the wrapped caller.
  */
@@ -78,6 +80,9 @@ export function reportServed(response: ServerResponse, info: ServedInfo, then?: 
 
 export const isRetryable = (error: PlugError): boolean => error.code !== undefined && RETRYABLE.has(error.code)
 
+/** The `reason` of a fallback whose target produced no model event within `fallbackAfterMs` (#391). */
+export const FIRST_EVENT_DEADLINE = "first_event_deadline"
+
 /** The caller's events with a chain of fallbacks behind the request's model; see the file comment. */
 export function withFallbacks(inner: ModelCaller, deps: FallbackDeps): ModelCaller {
   return {
@@ -111,7 +116,20 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     // The history id of this attempt: handed on only if the attempt is the one that answers (or the last).
     let recorded: { id: string; directory?: string } | undefined
     const next = attempt === 0 ? request : retarget(deps.options, request, ref)
-    const iterator = inner.stream(next, { ...context, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
+    // With a first-event deadline, an attempt that has a target after it is aborted when the deadline passes; the last target is not.
+    const deadline = deps.options.fallbackAfterMs ?? 0
+    if (deadline > 0) rest ??= await resolveRest(deps, request, context.app)
+    const bounded = deadline > 0 && rest!.length > attempt
+    const deadlineAbort = bounded ? new AbortController() : undefined
+    let timedOut = false
+    const timer = deadlineAbort
+      ? setTimeout(() => {
+          timedOut = true
+          deadlineAbort.abort()
+        }, deadline)
+      : undefined
+    const signal = deadlineAbort ? AbortSignal.any([context.signal, deadlineAbort.signal]) : context.signal
+    const iterator = inner.stream(next, { ...context, signal, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
 
     let first: IteratorResult<PlugEvent> | undefined
     let thrown: { readonly error: unknown } | undefined
@@ -119,11 +137,14 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
       first = await iterator.next()
     } catch (error) {
       thrown = { error }
+    } finally {
+      clearTimeout(timer)
     }
 
     // Why this attempt failed before any output, or undefined when it answered.
     let reason: string | undefined
-    if (thrown) reason = "caller_error"
+    if (timedOut) reason = FIRST_EVENT_DEADLINE
+    else if (thrown) reason = "caller_error"
     else if (first!.done) reason = "no_response"
     else if (first!.value.type === "error" && isRetryable(first!.value.error)) reason = first!.value.error.code
     if (context.signal.aborted) reason = undefined
@@ -132,7 +153,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
       rest ??= await resolveRest(deps, request, context.app)
       const target = rest[attempt]
       if (target) {
-        if (!thrown) await close(iterator)
+        if (!thrown || timedOut) await close(iterator)
         log("model.fallback", { app: context.app, from: refToString(ref), to: refToString(target), reason, attempt: attempt + 1 })
         deps.onFallback?.(context.app)
         ref = target
