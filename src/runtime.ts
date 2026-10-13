@@ -56,12 +56,12 @@ import { cachedCaller, createCacheStore, type CacheStore } from "./cache.js"
 import { personaOf } from "./models.js"
 import type { PlugboardOptions } from "./config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError } from "./contract.js"
-import { errorMessage, log, logError, outsideRequest, setLogFormat } from "./log.js"
+import { errorMessage, log, logError, logWarn, outsideRequest, setLogFormat, setLogLevel, setLogRequests } from "./log.js"
 import { createLimitState, type LimitState } from "./limits.js"
 import { createMetrics, type Metrics, type RuntimeSnapshot } from "./metrics.js"
 import { ensureAppDir } from "./session/history.js"
 import type { HistoryPort } from "./session/host.js"
-import { recordSession, sweepHistory, type HistoryLimits } from "./session/prune.js"
+import { limitsFor, recordSession, sweepHistory, type HistoryLimits } from "./session/prune.js"
 import { createSessionStore, type SessionStore } from "./session/state.js"
 import { createBudgetState, type BudgetState } from "./budgets.js"
 import { createKeyState, type KeyState } from "./keys.js"
@@ -105,7 +105,8 @@ export interface GenerationInput {
    */
   readonly refresh: () => Promise<void>
   /** The host storage and session deletion used to index and prune request sessions, with the configured limits (identical in every accepted generation). */
-  readonly history: { readonly port: HistoryPort; readonly limits: HistoryLimits }
+  /** `apps`: each app's own limits (`apps.<name>.history`, #265); an app without them uses `limits`. */
+  readonly history: { readonly port: HistoryPort; readonly limits: HistoryLimits; readonly apps?: Readonly<Record<string, HistoryLimits>> }
 }
 
 const GRACE_MS = 10_000
@@ -259,8 +260,9 @@ function runtime(): Runtime | undefined {
 function trackSession(rt: Runtime, app: string, sessionID: string): void {
   const history = preferred(rt)?.history
   if (!history) return logError("history.index_skipped", { app, sessionID, reason: "no live generation" })
-  // No limits, no index: an unbounded index would grow opencode.db by a row per request forever (#85).
-  if (history.limits.maxSessions === undefined && history.limits.maxAgeDays === undefined) return
+  // No limits for this app, no index: an unbounded index would grow opencode.db by a row per request forever (#85, #265).
+  const limits = limitsFor(history.limits, history.apps, app)
+  if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) return
   // Not about the request that happened to create the session: its log lines carry no request id.
   void outsideRequest(() =>
     recordSession(history.port, app, sessionID, Date.now())
@@ -275,8 +277,8 @@ function trackSession(rt: Runtime, app: string, sessionID: string): void {
  * a complete one after `SWEEP_INTERVAL_MS`. Logs one line with counts only.
  */
 async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Promise<void> {
-  const { limits, port } = history
-  if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) return
+  const { limits, port, apps } = history
+  if (limits.maxSessions === undefined && limits.maxAgeDays === undefined && Object.keys(apps ?? {}).length === 0) return
   const now = Date.now()
   if (rt.sweep.running || now < rt.sweep.nextAt) return
   rt.sweep.running = true
@@ -285,7 +287,7 @@ async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Pro
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const result = await Promise.race([
-      sweepHistory({ port, limits, sessions: rt.sessions, now, signal: deadline }),
+      sweepHistory({ port, limits, apps, sessions: rt.sessions, now, signal: deadline }),
       new Promise<undefined>((resolve) => {
         timer = setTimeout(() => resolve(undefined), SWEEP_DEADLINE_MS + 5_000)
         timer.unref?.()
@@ -297,7 +299,9 @@ async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Pro
     }
     if (result.more) rt.sweep.nextAt = Date.now() + SWEEP_BACKLOG_MS
     rt.metrics.sweep("ok", result.removed)
-    log("history.swept", { ...result, durationMs: Date.now() - now })
+    // A sweep that could not delete something signals a problem (warn); a clean one is routine (info).
+    const swept = result.failed > 0 ? logWarn : log
+    swept("history.swept", { ...result, durationMs: Date.now() - now })
   } catch (error) {
     rt.metrics.sweep("failed", 0)
     logError("history.sweep_failed", { error: errorMessage(error) })
@@ -595,8 +599,10 @@ export function registerGeneration(input: GenerationInput): Registration {
   }
   rt.generations.push(generation)
   // Accepted generations share the live options, so this is the live `logFormat` (log lines are process-wide).
-  const options = input.options as { readonly logFormat?: unknown } | null
+  const options = input.options as { readonly logFormat?: unknown; readonly logLevel?: unknown; readonly logRequests?: unknown } | null
   setLogFormat(options?.logFormat === "json" ? "json" : "text")
+  setLogLevel(options?.logLevel === "debug" || options?.logLevel === "warn" || options?.logLevel === "error" ? options.logLevel : "info")
+  setLogRequests(options?.logRequests !== false)
   return {
     accepted: true,
     confirmed: () => rt.confirmed.has(directory),

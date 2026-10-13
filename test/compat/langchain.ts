@@ -152,6 +152,8 @@ const legacyCompletions: Client = {
     n: async (target) => {
       const result = await new OpenAICompletions({ ...openai(target), n: 2 }).generate([tag("n")])
       expect(result.generations[0]!.map((generation) => generation.text)).toEqual([TEXT, TEXT])
+      // The usage LangChain reports is the sum over the choices.
+      expect(result.llmOutput?.tokenUsage).toMatchObject({ promptTokens: 2 * USAGE.inputTokens, completionTokens: 2 * USAGE.outputTokens })
     },
     "prompt-array": async (target) => {
       const result = await new OpenAICompletions(openai(target)).generate([tag("prompt-array"), `${tag("prompt-array")} again`])
@@ -202,6 +204,7 @@ export const LANGCHAIN_CLIENTS: ReadonlyArray<Client> = [
       n: async (target) => {
         const result = await new ChatOpenAI({ ...openai(target), n: 2 }).generate([[new HumanMessage(tag("n"))]])
         expect(result.generations[0]!.map((generation) => generation.text)).toEqual([TEXT, TEXT])
+        expect(result.llmOutput?.tokenUsage).toMatchObject({ promptTokens: 2 * USAGE.inputTokens, completionTokens: 2 * USAGE.outputTokens })
       },
     },
     na: { thinking: "Chat Completions has no thinking blocks", document: "LangChain converts file blocks per provider; the openai SDK rows cover the PDF wire" },

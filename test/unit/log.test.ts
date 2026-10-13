@@ -1,10 +1,14 @@
 /** #76 the logger: text and JSON lines, and the ambient request id. */
 import { afterEach, describe, expect, test } from "bun:test"
-import { errorMessage, log, logError, outsideRequest, setLogFormat, withRequestId } from "../../src/log.js"
+import { errorMessage, log, logAudit, logDebug, logError, logRequest, logWarn, outsideRequest, setLogFormat, setLogLevel, setLogRequests, withRequestId } from "../../src/log.js"
 import { captureLogs } from "../support/logs.js"
 
 const logs = captureLogs()
-afterEach(() => setLogFormat("text"))
+afterEach(() => {
+  setLogFormat("text")
+  setLogLevel("info")
+  setLogRequests(true)
+})
 
 describe("#76 log lines", () => {
   test("text: event then key=value, quoting values that need it, skipping undefined", () => {
@@ -76,5 +80,76 @@ describe("#76 log lines", () => {
   test("errorMessage keeps only the message", () => {
     expect(errorMessage(Object.assign(new Error("boom"), { secret: "x" }))).toBe("boom")
     expect(errorMessage("plain")).toBe("plain")
+  })
+})
+
+/** #262 `logLevel` and `logRequests`: volume switches. Neither changes what a written line holds. */
+describe("#262 log level and access lines", () => {
+  test("at error, an info line is dropped and an error line is written", () => {
+    setLogLevel("error")
+    log("request", { status: 200 })
+    logWarn("budget.warn", { app: "a" })
+    logError("request.failed", { status: 500 })
+    expect(logs.lines.map((line) => line.event)).toEqual(["request.failed"])
+  })
+
+  test("at warn, info is dropped but a warning is kept", () => {
+    setLogLevel("warn")
+    log("request", { status: 200 })
+    logWarn("budget.warn", { app: "a" })
+    expect(logs.lines.map((line) => line.event)).toEqual(["budget.warn"])
+  })
+
+  test("at debug, a debug line is written to stdout", () => {
+    setLogLevel("debug")
+    logDebug("location.keepalive", { outcome: "ok" })
+    expect(logs.lines).toHaveLength(1)
+    expect(logs.lines[0]).toMatchObject({ level: "log", event: "location.keepalive" })
+  })
+
+  test("at info (the default), a debug line is dropped", () => {
+    logDebug("location.keepalive", { outcome: "ok" })
+    expect(logs.lines).toHaveLength(0)
+  })
+
+  test("logRequests off drops the access line and keeps an error line", () => {
+    setLogRequests(false)
+    logRequest("request", { status: 200 })
+    logError("request.failed", { status: 500 })
+    expect(logs.lines.map((line) => line.event)).toEqual(["request.failed"])
+  })
+
+  test("logRequests off keeps a warning (only the access lines are switched)", () => {
+    setLogRequests(false)
+    logWarn("budget.warn", { app: "a" })
+    expect(logs.lines.map((line) => line.event)).toEqual(["budget.warn"])
+  })
+
+  test("with logRequests on (the default), the access line is written as before", () => {
+    logRequest("request", { status: 200 })
+    expect(logs.lines[0]!.raw).toBe("[opencode-plugboard] request status=200")
+  })
+
+  test("the redaction holds at debug (#126)", () => {
+    setLogLevel("debug")
+    setLogFormat("json")
+    logDebug("x", { authorization: "Bearer sk-9" })
+    expect(logs.lines.map((line) => line.raw).join("")).not.toMatch(/sk-9/)
+  })
+})
+
+/** Review of #319 (SHOULD 4): audit lines (`admin.key_*`) are written at every logLevel, the operational info lines are not. */
+describe("#262 review: audit lines survive every logLevel", () => {
+  test.each(["debug", "info", "warn", "error"] as const)("logAudit is written at logLevel %s", (level) => {
+    setLogLevel(level)
+    logAudit("admin.key_created", { id: "k1", app: "alpha" })
+    expect(logs.of("admin.key_created")).toHaveLength(1)
+  })
+
+  test("at error, an operational info line is dropped while the audit line stays", () => {
+    setLogLevel("error")
+    log("model.fallback", { app: "alpha" })
+    logAudit("admin.key_revoked", { id: "k1" })
+    expect(logs.lines.map((line) => line.event)).toEqual(["admin.key_revoked"])
   })
 })
