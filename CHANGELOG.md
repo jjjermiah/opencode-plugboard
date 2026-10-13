@@ -16,8 +16,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Fixed
 
-- **The keep-alive now holds the location** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.32.0). Since 0.26.0 the keep-alive renamed one session every 30 minutes, but a rename does not restart OpenCode's 60-minute idle timer. Plugin calls publish their events without the Location, and the timer only counts events that carry one. The keep-alive now creates one child session every 30 minutes under a long-lived parent in its own Location, and removes the children the earlier ticks left. A child create carries the Location, so the timer restarts, and the lists show one stable parent row. The parent is reused from 0.26.0 to 0.31.0. A removal that fails is kept and retried on a later tick, and a failed write removes the child it just created, so nothing is left behind. Versions 0.26.0 to 0.31.0 still need the external timer in `docs/warm-up.md`.
-- **`/readyz` stays ready after an idle app directory is evicted** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.32.0). Readiness used to follow the newest generation, so when OpenCode evicted the idle app directory after an hour, `/readyz` went to 503 until the next request. It now counts a confirmed app directory for the whole process.
+- **The keep-alive now holds the location** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.33.0). Since 0.26.0 the keep-alive renamed one session every 30 minutes, but a rename does not restart OpenCode's 60-minute idle timer. Plugin calls publish their events without the Location, and the timer only counts events that carry one. The keep-alive now creates one child session every 30 minutes under a long-lived parent in its own Location, and removes the children the earlier ticks left. A child create carries the Location, so the timer restarts, and the lists show one stable parent row. The parent is reused from 0.26.0 to 0.32.0. A removal that fails is kept and retried on a later tick, and a failed write removes the child it just created, so nothing is left behind. Versions 0.26.0 to 0.32.0 still need the external timer in `docs/warm-up.md`.
+- **`/readyz` stays ready after an idle app directory is evicted** ([#350](https://github.com/jjjermiah/opencode-plugboard/issues/350), since 0.33.0). Readiness used to follow the newest generation, so when OpenCode evicted the idle app directory after an hour, `/readyz` went to 503 until the next request. It now counts a confirmed app directory for the whole process.
+
+## [0.32.0] - 2026-10-13: Every App Its Own Dials
+
+**Full diff:** [v0.31.0...v0.32.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.31.0...v0.32.0)
 
 ### Added
 
@@ -37,6 +41,409 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Fixed
 
 - Release script: a `git fetch` that loses a ref-lock race with a parallel worktree (`cannot lock ref`) is retried, 4 attempts with a short backoff, instead of stopping the release ([#352](https://github.com/jjjermiah/opencode-plugboard/issues/352)). `--resume` now handles a release pull request that is already merged: it waits for CI on the merge commit and tags that commit only when the run succeeded. If the tag is already on origin, it says so and watches the release. Before, a fetch that failed after the merge left the tag to a hand push. Tooling only, not in the package.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (26 commits)</summary>
+
+#### Features
+
+**feat(config): per-app request deadline with apps.<name>.requestTimeoutMs** ([`a79e9ee`](https://github.com/jjjermiah/opencode-plugboard/commit/a79e9ee918edb3db019227bef143b9ccb2b11344))
+
+One global deadline cannot fit a batch job and a chat widget on the same server. The widget wants a stuck request to free its slot quickly, and the batch wants minutes. The new option apps.<name>.requestTimeoutMs (since 0.29.0, issue #257) gives an app its own deadline. It replaces the global value for that app's requests, higher or lower. The deadline is still one timer created once, now from the app that requestApp read from the credentials, so the commit before this one made the value reachable before the timer starts.
+
+The option is per app and not per model, as the issue proposes: the app is the unit operators reason about. Validation uses the same integer check as the global option, 1 to 2147483647, so the value always fits a timer. An app without the field gets the global value, and a request whose credentials match no app gets it too. The timeout error keeps its text, which still names requestTimeoutMs; naming the app's option there is a follow-up.
+
+A timer re-armed after authentication was rejected. It would split the deadline in two and let the credential read run without one.
+
+New tests in test/http/per-app-timeout.test.ts cover a short app deadline that times out, a long one that outlives the global deadline, two apps on one server, and an unknown key that keeps the 401. test/unit/config.test.ts accepts 1 and the ceiling and rejects 0, a fraction, a string and the ceiling plus one, each naming the option. The mutation P257-app-deadline- ignored pins the lookup. Typecheck passes and the config tests (189) pass.
+
+Closes #257
+
+**feat(http): per-app request body cap with limits.apps.<name>.maxBodyBytes** ([`ed7d41f`](https://github.com/jjjermiah/opencode-plugboard/commit/ed7d41fbda10a906be154b0203610124de4286d1))
+
+The body cap was 32 MiB for every app, and the in-flight budget is one number for the whole process, so a large upload from one app took room from every other app. limits.apps.<name>.maxBodyBytes (since 0.29.0, issue #258) lowers the largest body for one app, and limits.maxBodyBytes sets it for every app. Both can only lower the 32 MiB hard cap, and an app's value cannot be above the global one. Unset, the cap is 32 MiB as before.
+
+The check stays where it was. readJsonBody compares the declared Content-Length and the bytes as they arrive against the cap it is given, so a body over the app's cap is refused before it is buffered (I28). Every route that reads a body (chat, Responses, legacy completions, Messages, Gemini) passes the app that authenticated, which serve already knows before the read. The admin route keeps the default.
+
+Decisions: the cap lives under limits.apps, as the issue proposes, and not under the app's own block, so it sits with maxConcurrent and requestsPerMinute. It is rejected under limits.perApp, because a per-app cap there would apply to every app. The 413 keeps its existing text and carries no error code. The issue asks for request_body_too_large, but a code would change the shape every existing 413 answers with, so that is a follow-up.
+
+Rejected: a second budget per app. The process budget stays as it is, since the issue asks for a cap on size, not on the total held.
+
+BodyLimits.maxBodyBytes is optional, so existing callers and tests that build the object by hand compile unchanged. bodyLimits() always fills it in. The test that compares the whole bodyLimits() object now expects the new field, which is the one change to an existing test in this commit.
+
+Validation: test/http/per-app-body.test.ts (an app over its cap gets 413 while another app with no cap is accepted, the declared length is checked before the read, the global cap applies to every app, and neither field leaves the 200 path alone). test/unit/config.test.ts covers the resolved value, the ceilings, the zero value and the perApp rejection. Mutations P258-app-body-cap-ignored and P258-body-read-ignores-cap guard the lookup and the read. Typecheck passes and all 752 config and http tests pass.
+
+Closes #258
+
+**feat(openai): per-app output token cap with apps.<name>.maxOutputTokens** ([`5a48a3f`](https://github.com/jjjermiah/opencode-plugboard/commit/5a48a3fa1fc7939af624116479e798c043ae93da))
+
+A widget that forgets max_tokens can produce a long and expensive answer, and budgets only limit the spend after the fact. The new option apps.<name>.maxOutputTokens (since 0.29.0, issue #263) bounds one answer of an app. It is 1 to 2147483647. A caller with no limit gets the cap, a higher limit is lowered to it, and a lower one is kept. The cap is never raised, so a caller cannot use it to get more output than the operator allows.
+
+The cap is applied on every route: Chat Completions, Responses, legacy completions and Gemini apply appGeneration to the parsed generation, before dropRejected, so the sampling drop sees the capped value and the model call gets it. Messages is different. Its max_tokens is required and the thinking budget rule (budget below max_tokens) runs in the parser, so the cap lowers max_tokens before the parse. A budget the cap cannot hold then gets the existing 400 and no model call, rather than a thinking block that was switched off without a word.
+
+Rejected: applying the cap after parsing on Messages. The thinking check would have to be repeated there and the budget is not kept on the parsed request. Rejected: a new 400 for a cap below the budget. The existing message already says the rule, and the issue asks for that 400.
+
+New tests in test/http/per-app-output-cap.test.ts cover each route with a caller that sends no limit, a higher one and a lower one, the other app that keeps its own limit, the Messages budget refusal, a budget the cap does hold, and the load-time range. Mutations P263-app-output-cap-raises and P263-messages-cap-after-parse pin the rule and the Messages order. The http and unit suites pass (1780 tests), and typecheck passes.
+
+Closes #263
+
+**feat(config): per-app sampling defaults with apps.<name>.sampling** ([`4de02ec`](https://github.com/jjjermiah/opencode-plugboard/commit/4de02ec0d2ecaf8b2bbe58c340e3b5af9f8cb835))
+
+An app that never sends temperature gets whatever default the provider picks, and that default is not the same for every model. So the same app answers differently after a model change, with nothing in the app changed. The new option apps.<name>.sampling (since 0.29.0, issue #264) sets temperature, topP, maxTokens, stop and the two penalties for one app. A field fills a request only where the caller sent none, so the caller's value always wins. This is the opposite of systemMode replace on purpose: it fills a gap and does not force.
+
+The defaults go through appGeneration, the same seam as the output cap (#263), before dropRejected. A default that a model is known to reject is therefore dropped and reported in x-plugboard-dropped-params, like a caller's value, and cannot turn a working app into a 400. The ranges and the stop limit are the request field's own, checked at load with the option named in the message.
+
+Rejected: a global default. The issue asks for it per app, because the reason to set sampling is specific to one app. Rejected: forcing the value over the caller's, which is systemMode replace for sampling and would hide a caller's deliberate choice. Messages requires max_tokens, so the default maxTokens has no effect there; the docs say so.
+
+New tests in test/http/per-app-sampling.test.ts cover the defaults on Chat Completions, the caller's value winning with the rest still filled, an app without sampling, Responses and Messages, and the appGeneration rules: fill only unset fields, the cap after the default, and a rejected default dropped by dropRejected. The load-time ranges and unknown fields are tested too. The mutation P264-app-sampling-overrides-caller pins the fill-only rule. Typecheck passes and the http and unit suites pass (1797 tests).
+
+Closes #264
+
+**feat(config): pin an app to one model with apps.<name>.model** ([`505204f`](https://github.com/jjjermiah/opencode-plugboard/commit/505204fb50675a97941dd4f95fdee29a69b1ee5c))
+
+A widget with a model name baked in breaks when the operator wants a cheaper model. The existing apps.<name>.models refuses the old name with 404, and the widget cannot be changed. The new option apps.<name>.model (since 0.29.0, issue #261) runs every request of one app on one model. The caller's model and reasoning_effort are ignored, and the answer names the pinned model in its model field.
+
+The pin is a canonical id or an alias name. A provider pattern cannot pin one model, so it is refused at load. A canonical id must pass the global models, and when the app has models it must be listed there; an alias must be listed by name. So the pin never widens access. A pin the server does not have is the usual 404 model_not_found, not a silent fallback to the caller's model.
+
+Decisions: the caller's reasoning_effort is dropped under a pin, because the pinned id already names the variant (the issue's rule). The pin is applied where each route resolves its model (chat, Responses, completions, Messages and Gemini, both the generate and count paths), through one helper, requestedModel, so the rule is in one place. The request's model field follows the pin too, so the session title and metadata name the model that runs.
+
+Rejected: checking the pin against the catalog at load. The catalog loads later, so the request-time 404 is the check that works, and the pin is refused at load only where the config alone can decide.
+
+New tests in test/http/per-app-model.test.ts cover a pinned app with a caller's other model, a caller's reasoning_effort ignored, an app without a pin, a pinned alias, a pin the server lacks (404), and the pin on Responses, Messages and Gemini. The load rules (pattern, global models, app models, alias listing, malformed id) are tested too. Mutations P261-app-pin-ignored and P261-pin-outside-global-models-allowed pin the rule. Typecheck passes and the http and unit suites pass (1831 tests).
+
+Closes #261
+
+**feat(config): read the end user from a request header with apps.<name>.userHeader** ([`7b0b2e8`](https://github.com/jjjermiah/opencode-plugboard/commit/7b0b2e8442375f5cdbc600e7bd69d0b2c7eb4ce8))
+
+Plugboard reads the end user from the body only: the user field, or metadata.user_id on Messages. A bot behind a reverse proxy often already knows the user, but the proxy sets a header and not a body field, and many clients never send user. So every request of that bot lands in one history and one usage pile. The new option apps.<name>.userHeader (since 0.29.0, issue #272) names a header to read the end user from. The body is the fallback when the header is absent.
+
+The header is not trusted more than the body. The same sanitizer decides (trimmed, at most 64 characters of the allowed set), and a present but refused header is dropped with x-plugboard-user-dropped: 1 rather than falling back to the body, so a bad header cannot quietly swap in another user. The name must be lower case, 1 to 64 letters, digits or hyphens. A credential header (authorization, x-api-key, x-goog-api-key, cookie) is refused at load, since its value is a key and the end user is logged and counted.
+
+Decisions: requestUser picks the value and withEndUser puts it back into the body, so the existing parsers for Chat Completions, Responses, legacy completions and Messages stay as they are. A request without userHeader gets the same body back, unchanged. Gemini is not covered: it has no end user today and the issue names the other routes. The option lives under apps.<name>, next to the other per-app request fields.
+
+Rejected: a parser argument for the user. It would change four decoders to carry a value that a route can already put in the body.
+
+New tests in test/http/per-app-user-header.test.ts cover the header ahead of the body, the body when the header is absent, a refused header dropped without a fallback, an app without the option, Messages reading the header ahead of metadata.user_id, and the load rules (case, empty, length, type and credential headers). Mutations P272-user-header-ignored and P272-credential-header-allowed pin the lookup and the refusal. Typecheck passes and the http and unit suites pass (1847 tests).
+
+Closes #272
+
+**feat(anthropic): carry cache_control ttl 1h on requests without tools** ([`d83eaf5`](https://github.com/jjjermiah/opencode-plugboard/commit/d83eaf54a3954b77a69d0fd26979aed15dbc149a))
+
+A caller's Anthropic block with cache_control ttl "1h" reached the model as a 5-minute breakpoint (#275). This commit carries the 1h TTL when the request has no tools, and keeps 5m when it has tools.
+
+Why the rule has two sides: Anthropic needs every 1h cache entry before every 5m one. OpenCode adds 5m breakpoints by itself (its AUTO policy: the last tool, the first and last system part, the last text part of the last message), and plugboard sends no cache policy, so that placement always runs. With tools, the last-tool 5m breakpoint comes before every message, so a 1h block cannot precede it and stays 5m. Without tools there is no last-tool breakpoint, so the only earlier 5m hints are the system and tail ones, and plugboard can set them itself.
+
+What it does, in src/session/context.ts (orderOneHourHints), on a request without tools (session.tools empty after the rewrite, which is what Anthropic receives, so tool_choice none counts): every hinted part before the last 1h block gets 1h, including a caller's 5m block there (raised, so it is billed at the 1h write price); the system first and last part and the tail part get 1h when OpenCode would otherwise give them 5m before that block; parts after the last 1h block keep 5m. The four-slot budget is respected, so no slot is added beyond the cap. With tools, every 1h hint is set back to the 5m default.
+
+Parts are replaced, never mutated, because a host media object can be shared with the host's own prompt.
+
+src/contract.ts gains cacheTtl ("1h") on text, media and tool-result parts; src/anthropic/request.ts sets it for ttl "1h" (any other ttl stays 5m).
+
+Rejected alternatives: forwarding ttlSeconds without the ordering pass (the AUTO 5m hints would precede it; Anthropic documents that as an error, and no live request has shown it); turning OpenCode's placement off with cache none (loses caching for every caller); raising the 1h hint on tools (the context hook cannot set a tool's hint).
+
+Tests: test/session/context.test.ts pins the wire order and TTLs of the host request for the tool-less cases (system first/last, earlier 5m raised, tail pinned, budget of 4 and of 3, tool_choice none) and for the with-tools case; test/unit/anthropic-request.test.ts and test/http/messages.test.ts now expect cacheTtl (the old assertions pinned the dropped TTL). Two mutation entries (P275-*) kill the with-tools downgrade and the raise loop.
+
+Validation: typecheck; bun test 2433 pass, 0 fail; coverage gates met (floors raised and committed); coverage-manifest; check-pack and smoke-pack; docs:build; examples harness with no diff; bun run mutations 66 of 66 killed.
+
+Not verified: a live request with a tool-less 1h block against Anthropic. The dev server runs main, so this needs the merge first; the check is in the PR. Also not verified: that Anthropic accepts the order on every model; the docs state the rule, and no 400 was observed.
+
+Docs: docs/messages.md has a Prompt caching section; docs/configuration.md links to it. CHANGELOG under Unreleased, since 0.31.0.
+
+Refs #275
+
+#### Fixes
+
+**fix(http): close the review of the per-app options with the 413 code and wire tests** ([`b9e7391`](https://github.com/jjjermiah/opencode-plugboard/commit/b9e73916bd5d79915c47bd514cc314ce5871fb7e))
+
+The review of the per-app options found a count_tokens refusal caused by the output cap, a 413 with no code, a timeout that named only the global option, and gaps in the wire tests. Each is fixed here. A count never uses max_tokens, so the cap no longer applies to count_tokens, and a count with a thinking budget the cap could not hold answers 200 again. The 413 for an over-size body now carries the code request_body_too_large in every dialect, which is a breaking change for clients that matched on the old codeless 413; that is accepted for this project. The 504 names the option that set the deadline, apps.<name>.requestTimeoutMs for an app that has its own. A budget refused because the cap lowered max_tokens names the app option in the same 400. Responses echoes the capped max_output_tokens and the effective temperature and top_p, so a client reading the object back sees what the model got.
+
+Tests: a dropped sampling default appears in x-plugboard-dropped-params on the wire; the deadline on Messages (x-api-key and Bearer) and on Gemini (the header and the query key) is the app's own; the body cap on Messages and Gemini is the app's, in each dialect's error shape; count_tokens is not refused by the cap. The README per-app example gains the maxOutputTokens and sampling lines, the configuration rows are corrected, and I19 states that the key digests read is the one await before the deadline. The mutation id P263-messages-cap-after-parse is renamed P263-messages-cap-removed, since it removes the cap, and two guards are added: the count path skipping the cap and the timeout option naming.
+
+Validation: bun run typecheck passes; bun test test/http test/unit passes (1818 tests, 0 failures).
+
+Refs #257, #258, #263, #264
+
+**fix(ci): retry release git fetches and resume an already-merged release** ([`550f8a8`](https://github.com/jjjermiah/opencode-plugboard/commit/550f8a8c8ddc47d4a7c4a53eaa71a068ba2b3569))
+
+Parallel worktrees share one .git. On 0.30.0, `git fetch origin main` lost a ref-lock race ("cannot lock ref") right after the release pull request merged. The script exited before it waited for the merge commit's CI or tagged it, so the tag had to be pushed by hand.
+
+What changed in .github/scripts/release.ts:
+- Every git fetch goes through fetchOrigin: 4 attempts with a 2s, 4s, 6s backoff. Each retry is logged.
+- A fetch that still fails after the merge stops with nothing tagged and prints the --resume command.
+- --resume on a pull request that is already MERGED (its branch is deleted by the merge) skips the version and changelog checks, fetches main, and waits for CI on the merge commit. It tags that commit only when that run concluded success (tagAfterMergeCi, shared with the normal path).
+- If the tag is already on origin, --resume says so, checks that it points at the merge commit, watches the release and exits with the watch result. It never moves the tag.
+
+Decisions:
+- Retry only fetches. Pushes and merges keep their single attempt: a retried push could hide a real rejection.
+- The merged-PR check uses `gh pr view <branch>` (the same lookup mergedCommit uses), and runs before the version checks, which a merged release has already moved past.
+- The merged resume does not fast-forward local main. The normal path still does.
+
+Rejected:
+- A committed test for release.ts. The script shells out to git, gh and npm, and the release-gate lane rehearsed it against a throwaway bare origin with stub gh. Same approach here (the rehearsal is kept out of the repo).
+
+Validation:
+- Rehearsal (throwaway bare origin, stub gh/git/npm on PATH), all pass: A fetch lock failure once, then the retry succeeds and the release tags the merge commit. B merged, post-merge fetch fails (nothing tagged), --resume tags after green merge CI. C already merged, --resume, merge CI failure: exit 1, no tag. D tag already on origin: --resume says so, watches, exits 0, tag not moved. E every fetch fails before the merge: exit 1 after 4 attempts, no branch pushed.
+- bun run typecheck: clean. bun test: 2424 pass, 0 fail, 126 skip (live).
+- coverage gates --ratchet: all floors met, no floor changed. coverage-manifest: 0 gaps.
+- check-pack and smoke-pack: ok. docs:build: ok. examples scripted: no diff.
+
+Not verified:
+- A real GitHub merge, gh behaviour on a merged branch lookup, and a real ref-lock race. The rehearsal stubs them.
+- The live opencode dev server check: not needed, no src/ change.
+
+Closes #352
+
+**fix(config): review fixes for the per-app options: 0.31.0 labels, userHeader gaps, alias pin rule** ([`3f8b7c1`](https://github.com/jjjermiah/opencode-plugboard/commit/3f8b7c12b20e0be53bbce9fa95f3c5699e407ce1))
+
+A follow-up review of #345 found version labels that were wrong, a missing problem code, and gaps in userHeader and the model pin. 0.30.0 is already released (it shipped hidden app sessions, #337), so every "since" marker this PR added now says 0.31.0. The #337 and #262 markers keep their versions. CHANGELOG [Unreleased] holds only this PR's bullets again, and the 413 change is a "Changed" bullet calling it breaking.
+
+Breaking: an over-size body on the OpenAI-shaped and /plugboard/ routes now answers the code request_body_too_large (it had none). The code is in PROBLEM_CODES and has an anchor in docs/errors.md, so the admin route's problem body names it too. Messages (request_too_large) and Gemini (code 413) did not change.
+
+userHeader: a blank header value is absent, so the body's user is used, and a proxy that always sets the header no longer hides every body user. The credential denylist adds proxy-authorization, api-key and x-auth-token. The header is read as an own property, so a name such as constructor cannot read an inherited value. Metadata that is an array is not spread into an object. Tests cover the blank header, Responses and legacy completions, the new denylist names, and the own-property lookup. The Gemini limit is in the option's table row.
+
+Model pin: the load rule for an alias now matches the request check (inAppScope): an alias is accepted when the app lists its name or when its target matches one of the app's models patterns. Before, a pin that the request would admit was refused at load. The docs say so. Tests check x-plugboard-model and the echoed model on Chat, Responses, Messages and Gemini, and that a missing pinned model's 404 names the pinned model.
+
+Validation: bun run typecheck passes; bun test passes (2530 tests, 0 failures); coverage gates, manifest, pack, smoke-pack, docs build and the examples harness pass with no drift; bun run mutations runs 78 of 78 killed in the foreground. The new guards P272-blank-header-hides-body and P261-alias-target-refused-by-app-models are in the catalogue, and P272-user-header-ignored is re-anchored to the new requestUser body.
+
+Refs #257, #258, #261, #263, #264, #272
+
+**fix(ci): check a merged release before --resume tags its merge commit** ([`bf51ddb`](https://github.com/jjjermiah/opencode-plugboard/commit/bf51ddb0b976f6e20b2522a4269c2b63df54337a))
+
+Review of #361 found that the merged resume trusted whatever pull request gh returned for the release branch, and fell through to the normal resume when gh failed. This commit closes both.
+
+What changed in .github/scripts/release.ts:
+- A merged pull request is tagged only when it was merged into main, its merge commit is an ancestor of origin/main, and that commit's package.json says the release version. Each failure stops with "Nothing is tagged".
+- A gh pr view failure is an error with gh's message. It no longer falls through to the normal resume, which said the branch was not on origin.
+- A local tag already at the merge commit (an earlier push failed) is pushed, not created again. A local tag anywhere else stops the run before anything is pushed.
+- --no-watch is honoured when the tag is already on origin.
+- From a clean main, a merged resume fast-forwards local main to origin/main, as the normal run does.
+- The cancelled-CI message and docs/releasing.md now point to `gh run rerun` followed by --resume, not a hand-made tag. The two docs bullets that split the list are one list now.
+
+Decisions:
+- The guards read gh's baseRefName and the git objects, not gh's ordering. gh picks the newest PR for a branch name, so the guards decide whether that PR is the release being cut.
+- The local tag case is handled, not documented: pushing an existing tag at the right commit is the only way out that does not need a hand step.
+
+Merged origin/main (0.31.0) into this branch, a merge and not a rebase, so the commits already pushed stay as they are. The CHANGELOG bullet stays under [Unreleased].
+
+Validation:
+- Rehearsal (throwaway bare origin, stub gh/git/npm on PATH): ALL PASS, 14 cases. A to E as before. New: F tag on origin at another commit, G base other than main, G2 merge commit not on origin/main, G3 another version's release, H gh pr view failure, I local tag at the merge commit pushed, J local tag elsewhere refused, K --no-watch on the tag-present path. B also checks that local main is fast-forwarded.
+- bun run typecheck: clean. bun test: 2567 ran, 0 fail (126 live skips).
+- Coverage gates --ratchet: pass, floors unchanged. coverage-manifest: 0 gaps.
+- check-pack and smoke-pack: ok. docs:build: ok. Scripted examples: no diff.
+
+Not verified: a real GitHub merge, gh behaviour on a deleted release branch (the review checked this live), and a real ref-lock race. The rehearsal stubs them.
+
+Refs #352
+
+#### Refactors
+
+**refactor(http): read the app from the credentials before arming the deadline** ([`df0e652`](https://github.com/jjjermiah/opencode-plugboard/commit/df0e65276d7481361fa4055ba9ef754062007d0a))
+
+The request deadline was armed in `run` before anything knew which app the caller was, so the per-app request timeout (#257) had no app to read. This commit moves the credential read ahead of `beginRequest`. `requestApp` in `src/openai/route.ts` applies the same rules `serve` uses (the Messages x-api-key fallback, the Gemini key forms, the keyless default) and returns the app name or nothing. It answers nothing, so every refusal, the 401 and the probes stay where they were, in the same order (I15).
+
+The body read and the model resolution were already after authentication in every route (`serve` authenticates before `readJsonBody`, and each dialect resolves its model after that), so no route changed. Only the deadline moved.
+
+Decisions: the deadline is still the global `requestTimeoutMs`. `requestTimeoutFor` takes the app now and ignores it, so #257 changes one function and no call site. Rejected: arming the timer later with a setter on the scope, because the handoff asked for the app before `beginRequest` and a late timer would also change when a disconnect is noticed. A socket that closes during the credential read is still caught, because `beginRequest` checks the socket state when it is created.
+
+Validation: `bun run typecheck` passes; `bun test test/http` passes unchanged (544 tests, 0 failures). I19 in docs/architecture.md now says where the scope starts.
+
+Refs #257, #258
+
+#### Tests
+
+**test(tests): ratchet the test floors and re-anchor the output cap mutation** ([`61d3b12`](https://github.com/jjjermiah/opencode-plugboard/commit/61d3b12b047f495f6a065c82923e2c330b79aa42))
+
+The new per-app tests raised the unit-layer test count, so `test-gates --ratchet` moved its floor to the current value. Floors are only ever raised, and the ratchet wrote them, so .github/floors/test-count-floors.json changes with the tests that caused it.
+
+The #263 mutation P263-app-output-cap-raises pointed at the line that #264 rewrote, so its anchor no longer occurred and the run could not apply it. The anchor now names the new cap line. It still breaks the same guard: the cap sets maxTokens without the min, so a caller's higher limit is raised to the cap rather than lowered. The full catalogue then runs 68 of 68 killed, exit 0.
+
+Validation: `bun test` 2436 pass, 0 fail (2562 tests); coverage gates pass; `bun run mutations` 68 of 68 killed.
+
+**test(examples): observe tool-bot S2 from the capture round trip** ([`38ff63c`](https://github.com/jjjermiah/opencode-plugboard/commit/38ff63ccb3ad743bcfc213ace4fb27aedaa9ad92))
+
+The tool-bot runner printed the bot's stdout, which holds only the final answer. So the S2 checks that read the tool call (finish_reason, the get_weather name, the city, the call id) had nothing to read, and S2 was a gap with verdict partial.
+
+The runner now reads its own round trip from the capture proxy. The capture gains GET /__exchanges, which waits for the in-flight requests and returns the exchanges of the current mark. The first chat completion of the round trip is the tool call; the second is the answer after the tool result. The runner maps them to the S2 observations. The bot is unchanged.
+
+Decision: the issue's first option. The runner cannot read the transcript file, which the parent writes after the runner exits, so the capture gets a read route instead of the file being parsed in the runner. The second option (the bot writes observations on stderr behind a flag) would have changed what the bot prints.
+
+Rejected: a second capture or a separate log file. Those duplicate the exchanges the capture already holds.
+
+Validation: bun examples/_harness/run.ts tool-bot --target scripted gives pass with 6/6 checks on fast, anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low. The transcripts are unchanged; only the summary changed (the S2 gap is gone). The live tool-bot run is not regenerated here.
+
+Closes #320
+
+**test(examples): give the scripted n8n S6 answer the output wrapper** ([`01f88a9`](https://github.com/jjjermiah/opencode-plugboard/commit/01f88a9d011594ca9c495046b83a8a65d4396209))
+
+n8n's Structured Output Parser asks the model for its JSON with an `output` wrapper: the prompt carries the schema instance {"type":"object","properties":{"output":{...}}}. The live model writes the wrapper, so n8n S6 passed live. The shared scripted model answered the S6 prompt with bare MEAL JSON, which the parser rejects. S6 was a whole-row gap on the scripted target only.
+
+The scripted model now keys the answer on the request. When the user text carries that schema (`"properties":{"output"`), it answers {"output": MEAL}. Other clients send only the bare S6 prompt, so their S6 answer is unchanged. The n8n runner loses its scripted-only S6 gap.
+
+Decision: key on what the request asks, not on the client name. The scripted model sees requests, not clients, and the schema text is the thing the parser needs.
+
+Rejected: changing the shared answer to the wrapper. That changes the committed transcripts of every client that sends the bare prompt.
+
+Validation: bun examples/_harness/run.ts n8n --target scripted --docker (Colima running): S6 passes 3/3 on fast, anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low. Only the n8n S6 transcripts changed in examples/; the other examples' scripted runs are byte-identical. The verdict is still partial: S1 (responses) is the #343 gap, fixed in the next commit.
+
+Closes #344
+
+**test(examples): record n8n's Responses limitation instead of a gap** ([`c89987d`](https://github.com/jjjermiah/opencode-plugboard/commit/c89987d47b4fddaec18110fe61efdadd7ff0f9ae))
+
+The n8n S1 responses variant was a gap as a whole row. Its two failing checks are n8n's own: the Responses node records no finish_reason, and the usage it records is tokenUsageEstimate, not tokenUsage. A gap covers the whole row, so any regression in the answer text would have hidden in it too. The variant could never pass, so the gap was permanent.
+
+The fix reads what n8n does expose, and stops reporting the one check n8n never produces:
+
+- n8n/n8n.ts turns(): usage falls back to tokenUsageEstimate when tokenUsage is absent. The estimate is n8n's guess, and the note says so.
+- The harness gains RunOptions.unobserved, keyed id|variant: a check name to a reason. The row leaves that check out and its note names it. It is for a permanent client limitation, so it does not hide a bug. Anything else that fails on the row is a fail, not a gap.
+- n8n/run.ts declares "finish_reason is stop" unobserved on S1|responses. The S1 responses row is 2/2 and passes.
+- render.ts shows the note of a passing row, so summary.md says which check was left out. Only passing rows: n/a rows carry notes too, and they keep their current rendering.
+
+Decision: unobserved checks are per row and named, not a whole-row gap. That keeps the regressions the gap used to hide visible.
+
+Rejected: keeping the gap with a better note. It would still be a perpetual gap, and it would still hide a text regression. Rejected: reporting finish_reason as "stop" for this variant. n8n does not give that value, so the check would pass on a fact the run did not observe.
+
+Validation: bun examples/_harness/run.ts all --target scripted --docker (Colima running), run twice: the second run's diff of the working tree is identical to the first. n8n is pass; summary.md shows the S1 responses rows as pass with the not-checked note. Only n8n's summary changed in this commit. Full test suite: 2424 pass, 0 fail.
+
+Closes #343
+
+**test(tests): cover prompt array times n on legacy completions and record live eval-harness runs** ([`1bd69f1`](https://github.com/jjjermiah/opencode-plugboard/commit/1bd69f1faea2b22177ecacdc7a0a8e47c6b76833))
+
+The legacy /v1/completions case of the n scenario (test/compat/clients.ts) now also sends two prompts with n 2. It checks four choices with indexes 0 to 3, usage summed over the four calls, and the same indexes in a stream. The matrix server (test/compat/matrix.test.ts) raises maxN from 2 to 4 so that request is allowed. Docs: docs/clients/promptfoo.md gets a live Verified record for 2026-10-13, docs/clients/lm-eval.md is new, and the README client table and the vitepress sidebar link it.
+
+Issue 106 left two things open. A prompt array times n had no coverage, because the matrix allowed only two calls and two prompts with n 2 make four. The eval harnesses (lm-evaluation-harness, promptfoo) had no live record.
+
+No new scenario was added. The existing n scenario already covers legacy n and streamed n, so the prompt-array case goes there. A separate prompt-array-n scenario would add a todo or n/a row to every client for one case. The matrix cap is raised for the whole server because it has one maxN. The other cases send n 2 at most, so the wider cap only lets this case through.
+
+Live runs against 127.0.0.1:4010 (main, model fast, max_tokens 1024):
+
+- promptfoo 0.124.1 (npx, pinned), the example config with max_tokens 1024 added in a scratch copy: 2 of 2 pass (text, tool call).
+- lm-eval 0.4.13 (venv, lm-eval[api]), local-completions on a generate_until task with --limit 2: exact_match 1.0 (pong, 4).
+- lm-eval local-chat-completions on the same task: 1.0 on the rerun, 0.5 on the first run (one empty answer from the reasoning model, recorded in the docs).
+- Loglikelihood tasks cannot run: plugboard answers logprobs with 400 unsupported_parameter.
+- The dev server has maxN 1, so n 2 gets 400 too_many_choices there. The live runs send no n.
+
+bun test: 2424 pass, 0 fail, compat at its floor of 236. Typecheck clean. Coverage ratchet, coverage manifest, check-pack and smoke-pack pass. docs:build passes. The examples harness passes with no diff under examples/.
+
+Not verified: loglikelihood tasks (the server refuses logprobs), full benchmark suites, and which prompt each choice answers. The fake returns the same text for both prompts, so the matrix cannot tell the mapping apart. The unit tests in test/unit/completions.test.ts cover that.
+
+Closes #106
+
+**test(tests): ratchet test-count floors after merging origin/main** ([`3856024`](https://github.com/jjjermiah/opencode-plugboard/commit/38560246929b7477652489a84b50ca64d35b2f56))
+
+The merge of origin/main brought new tests, so the ratchet raised the test-count floors to the counts on the merged tree (2450 pass, 0 fail). The floors never go down; this commit only records the new counts so the next run starts from them.
+
+Validation: bun test 2450 pass, 0 fail; test-gates.ts --ratchet met.
+
+Refs #275
+
+**test(examples): address the review of #357** ([`a74488a`](https://github.com/jjjermiah/opencode-plugboard/commit/a74488aeab9a09a9e4b5da4e1a27b2599c944c89))
+
+The review found four SHOULDs and some NITs. Each is fixed here.
+
+1. The capture's control routes leaked keys. `--docker` binds the proxy to 0.0.0.0, and GET /__exchanges returned every request header, so a live run's plugboard key was readable from the LAN. Both control routes (POST /__mark, GET /__exchanges) now answer only loopback callers (403 otherwise). GET /__exchanges returns only seq, path (no query), status and the response body, with every credential the caller sent replaced by <redacted> in the body. The proxied routes are unchanged: a container still reaches them. Tests in test/unit/examples-capture.test.ts: the loopback rule, and the route from loopback with a key in the header, the query and an echoed body. A test cannot put a LAN peer on the socket, so the rule is tested as the isLoopback function.
+
+2. The region name form was documented but not enforced, and openai-js broke it (parse, raw, wrong-key, unknown-model). check-regions.ts now enforces the form (`snippet` or `snippet-<kebab-case>`), that each endregion closes the region it names, that regions do not nest and that none is left open. It skips Markdown, whose prose quotes the markers. The four openai-js regions are renamed to snippet-parse, snippet-raw, snippet-wrong-key and snippet-unknown-model (comments only). The logic is in regionProblems(), tested in test/unit/examples-regions.test.ts.
+
+3. tool-bot's roundTrip() asserted exactly two chat calls. The SDK retries and the loop can run more turns, so a live 429 or 5xx would have thrown. It now reads only the status-200 chat completions, takes the first one that asks for a tool and the last one, and assumes no count.
+
+4. n8n's S1 responses row passed `usage present` on n8n's own estimate, which says nothing about plugboard's usage. That check is now listed under `unobserved` with its reason, next to finish_reason, so the row checks only the answer text (1/1). n8n.ts is back to main: nothing reads tokenUsageEstimate now.
+
+The harness refuses an `unobserved` entry that names no planned scenario variant or check, or that would drop every check of its row (test/unit/examples-unobserved.test.ts). A renamed check cannot leave a stale entry, and a row cannot pass with no checks.
+
+NITs: the summary section is titled "Failures, gaps and unchecked items", since a passing row with a note now appears there. The README's Snippet regions section says `snippet` is the first region and lists what the check enforces. The n8n README gives the Responses limit its own bullet. The long capture guard is wrapped.
+
+Validation: bun run typecheck, the examples tsc (openai-js, tool-bot), bun test (2563 tests, 0 fail), test-gates --ratchet (test-count floor raised to unit 1236, committed here), coverage-manifest, check-pack and smoke-pack, docs:build, check-regions. The scripted run with --docker was run twice; the working-tree diff is identical after both. The langchain-js summary changed only in its section title.
+
+Refs #186
+
+**test(tests): ratchet test-count floors after the round-2 tests** ([`4fed3fa`](https://github.com/jjjermiah/opencode-plugboard/commit/4fed3fa356405411bce8e2b66d18f85bf9908df4))
+
+The two new context tests and the merge of origin/main moved the test counts, so the ratchet raised the test-count floors to the merged tree (2453 pass, 0 fail). Floors never go down; this only records the new counts.
+
+Validation: bun test 2453 pass, 0 fail; test-gates.ts --ratchet met.
+
+Refs #275
+
+**test(tests): ratchet the unit test floor to 1249** ([`7d65b38`](https://github.com/jjjermiah/opencode-plugboard/commit/7d65b385df31243fd6314d70f5d73c689c00eb1c))
+
+The gates ran after the merge commit and raised the unit-layer test count floor from 1248 to 1249, the count the tests now report. Floors only ever go up, and the ratchet wrote the file, so the floor moves with the tests that caused it.
+
+Validation: test-gates --ratchet passes on this tree; bun test passes (2559 tests, 0 failures).
+
+Refs #257, #258, #261, #263, #264, #272
+
+#### Docs
+
+**docs(anthropic): explain why caller cache_control TTL 1h is not forwarded** ([`2f5dd69`](https://github.com/jjjermiah/opencode-plugboard/commit/2f5dd69ad5f5cd4bbed8cba40b83c45e9c124f2c))
+
+Callers of the Anthropic Messages route can put cache_control with ttl "1h" on a message block. Plugboard already sends such a block as the default 5-minute breakpoint (#275, earlier change). This commit does not change that. It documents why the 1h TTL stays dropped, in docs/messages.md and CHANGELOG.md, so the next person does not repeat the investigation.
+
+Why 1h cannot be forwarded yet:
+
+- Anthropic requires 1-hour cache breakpoints to come before 5-minute ones in a request (prompt caching docs, "Mixing different TTLs").
+- OpenCode builds the request with no cache policy, so its automatic placement always runs for an Anthropic-messages model: a 5-minute breakpoint on the last tool and on the first and last system block (packages/ai/src/cache-policy.ts, AUTO).
+- A caller's 1h breakpoint on a message block comes after those system and tool breakpoints. Anthropic would reject the request with
+  400. Forwarding it would turn a working caller into a failing one.
+- The context hook cannot fix either part. It sets the session's messages, system, tools and options. It has no request cache policy, and it cannot set a tool's cache hint (it rewrites only name, description and schema).
+
+Rejected alternatives:
+
+- Forward ttlSeconds on the part's CacheHint. The host schema accepts it, but the auto breakpoints still precede it, so it is unsafe.
+- Turn OpenCode's automatic placement off (cache "none") to make room. That gives up the caching plugboard gets today, for every caller.
+- Map ttl to the request's cache policy TTL, the first step in #275. The hook cannot reach the request policy, and a policy TTL only changes the automatic breakpoints, not the caller's.
+
+What would lift the limit: OpenCode orders the breakpoints or lets a hook set the request cache policy. Either is an upstream change, not plugboard's.
+
+Checked: existing tests already pin the host hint as exactly { type: "ephemeral" } (test/session/context.test.ts) and the decoder drops ttl (test/unit/anthropic-request.test.ts). No code changed, so no new test. Validation: typecheck, bun test (2424 pass, 126 skip, 0 fail), coverage gates, coverage-manifest, check-pack, smoke-pack, docs:build and the examples harness all exit 0.
+
+Not verified: a live request through the dev server with a 1h breakpoint. The live check needs main with this change merged and is listed in the PR.
+
+Refs #275
+
+**docs(anthropic): fix 1h release marker to 0.32.0 and correct the 1h cost note** ([`a0e7cce`](https://github.com/jjjermiah/opencode-plugboard/commit/a0e7cceaca2d4ec444b68ad6afe5ae5e03c9532b))
+
+Round-2 review of #353. The 1h TTL change ships in the next minor, 0.32.0; 0.31.0 is released. docs/messages.md and the CHANGELOG bullet said "since 0.31.0", so both now say 0.32.0.
+
+The cost note was wrong. Anthropic bills a 1-hour write for every token up to the highest 1-hour breakpoint (positions A and B in its "Mixing different TTLs" section), whatever breakpoints come before it. So raising an earlier 5m caller block to 1h adds no cost: the caller's 1h block already prices everything before it as a 1-hour write. The docs and CHANGELOG now say so, and say that without the raise Anthropic's documented order is broken.
+
+Code: a comment in orderOneHourHints records a known gap. The host's replaceMedia can swap a part after this pass (a text-only model, or images over the byte budget), and a hint-less replacement can become the tail, which gives 1h, 5m, 1h. It needs an Anthropic-protocol route with those conditions, and the request then fails with Anthropic's order error. Not handled here.
+
+Tests (test/session/context.test.ts): two 1h blocks with a 5m block between them (the 5m is raised, the 5m after the last 1h stays 5m); a whitespace-only hinted text part before the 1h block (raised like any part; the lowering skips it before it spends a slot, checked in packages/ai/src/protocols/ anthropic-messages.ts:905,929); a whitespace-only hinted tail after the 1h block (stays 5m, not pinned).
+
+Validation: see the PR comment for the merged-tree run.
+
+Refs #275
+
+#### CI and tooling
+
+**ci(examples): reject duplicate snippet region names** ([`0e67279`](https://github.com/jjjermiah/opencode-plugboard/commit/0e67279ec08cf425b66ccdba13533f3afa8d1070))
+
+The examples contract allowed one `snippet` region per file, but examples/langchain-python uses named regions and VitePress imports one region with `<<< file#name`. The rule is now: a region is `snippet` or `snippet-<name>`, and each name appears once per file. The rule is written in examples/_harness/README.md under Snippet regions.
+
+examples/_harness/check-regions.ts scans the tracked files under examples/ and fails on a duplicate region name. The examples CI job runs it before the scripted runs. Before this change it failed on examples/curl/{chat,completions,gemini,messages,responses}.sh and examples/openai-python/structured.py, which each declared `snippet` more than once.
+
+The fix renames the later regions after what they show: `snippet-s1`, `snippet-s2`, `snippet-s3`, `snippet-s5` in the curl scripts, and `snippet-raw` in structured.py. The first region of each file keeps `snippet`. Comments only, so no scripted transcript changes.
+
+Not changed: examples/openai-js/errors.ts (`wrong-key`, `unknown-model`) and structured.ts (`parse`, `raw`) use names outside the rule. The check allows them, since it only looks for duplicates. Renaming them is a follow-up.
+
+Closes #338
+Refs #186
+
+**ci(examples): rerun the PR checks on the review fixes** ([`c95ea4d`](https://github.com/jjjermiah/opencode-plugboard/commit/c95ea4d5b58f59c381447334a484060383d060bd))
+
+The pull_request workflows did not start for the commit that answers the review (a74488a), so the PR showed the checks of the commit before it. Closing and reopening the PR did not start them either. The branch CI was run with workflow_dispatch and passed, but those runs do not attach to the PR. This empty commit gives the PR a new head so the pull_request workflows run on the reviewed tree. It changes no file.
+
+Refs #186
+
+**ci: re-run checks on the merged head** ([`8d5ce84`](https://github.com/jjjermiah/opencode-plugboard/commit/8d5ce84fa164cf6b7248f0de0a74054b530229a4))
+
+Actions created no runs for 959d21a (the merge with the review fixes), so the PR showed only CodeRabbit. This empty commit is a new push to the same branch and triggers the pull_request workflows again. No content changes, no history rewritten.
+
+Refs #106
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.31.0] - 2026-10-13: Know Your Versions
 
@@ -5617,7 +6024,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.28.0...v0.29.0
