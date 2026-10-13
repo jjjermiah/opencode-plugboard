@@ -9,7 +9,7 @@
 
 import { Effect } from "effect"
 import { appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
-import type { PlugError, PlugMessage, PlugRequest } from "../contract.js"
+import type { PlugError, PlugMessage, PlugRequest, ReasoningPart } from "../contract.js"
 import { log } from "../log.js"
 import type { ContextHookEvent, HostContext, HostPart, HostToolDescriptor } from "./host.js"
 import { SEED_PREFIX, SEED_RESULT, seedToolsFor } from "./seeds.js"
@@ -30,10 +30,27 @@ const hintOf = (cacheTtl: "1h" | undefined): Hint => (cacheTtl === "1h" ? hint(O
 /** Placeholder for a caller image; swapped for the host-built media part in `applyContext`. */
 const mediaPlaceholder = (index: number, cache: boolean | undefined, cacheTtl: "1h" | undefined): HostPart => ({ type: "media", __attachment: index, ...(cache ? { cache: hintOf(cacheTtl) } : {}) })
 
-/** Caller messages as host `Message` objects. Media placeholders are swapped in `applyContext`. */
-function toHostMessages(messages: ReadonlyArray<PlugMessage>): Array<{ role: string; content: HostPart[] }> {
+/**
+ * The provider the host's Anthropic protocol reads a signature from: `providerMetadata["anthropic"]`, the Anthropic route's
+ * `providerMetadataKey` (`packages/ai/src/protocols/anthropic-messages.ts`). Replay is gated on the request's provider being
+ * `anthropic`, so a signature never reaches another provider (#374).
+ */
+const ANTHROPIC_METADATA_KEY = "anthropic"
+
+/** A caller's signed reasoning as the host's reasoning part, which the Anthropic protocol lowers back to a signed `thinking` or `redacted_thinking` block. */
+const reasoningOf = (item: ReasoningPart): HostPart => ({
+  type: "reasoning",
+  text: item.text,
+  providerMetadata: { [ANTHROPIC_METADATA_KEY]: item.redactedData !== undefined ? { redactedData: item.redactedData } : { signature: item.signature } },
+})
+
+/**
+ * Caller messages as host `Message` objects. Media placeholders are swapped in `applyContext`. Reasoning parts are kept only when
+ * `replayReasoning` is set; a message left empty by that is dropped.
+ */
+function toHostMessages(messages: ReadonlyArray<PlugMessage>, replayReasoning: boolean): Array<{ role: string; content: HostPart[] }> {
   let image = 0
-  const part = (item: PlugMessage["content"][number]): HostPart => {
+  const part = (item: PlugMessage["content"][number]): HostPart | undefined => {
     switch (item.type) {
       case "text":
         return item.cache ? { ...text(item.text), cache: hintOf(item.cacheTtl) } : text(item.text)
@@ -43,9 +60,19 @@ function toHostMessages(messages: ReadonlyArray<PlugMessage>): Array<{ role: str
         return { type: "tool-call", id: item.id, name: item.name, input: item.input }
       case "tool-result":
         return { type: "tool-result", id: item.id, name: item.name, result: { type: "text", value: item.result }, ...(item.cache ? { cache: hintOf(item.cacheTtl) } : {}) }
+      case "reasoning":
+        return replayReasoning ? reasoningOf(item) : undefined
     }
   }
-  return messages.map((message) => ({ role: message.role, content: message.content.map(part) }))
+  return messages
+    .map((message) => ({
+      role: message.role,
+      content: message.content.flatMap((item) => {
+        const host = part(item)
+        return host ? [host] : []
+      }),
+    }))
+    .filter((message) => message.content.length > 0)
 }
 
 function generationOptions(request: PlugRequest): Record<string, unknown> {
@@ -230,7 +257,9 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   }
 
   session.system = requestSystem(request, state.prelude ?? [], policy).map(text)
-  session.messages = toHostMessages(request.messages).map((message) => ({ ...message, content: message.content.map(swap) }))
+  // Signed reasoning goes back only to Anthropic (the gate in `reasoningOf`'s doc); every other provider gets the history without it.
+  const replayReasoning = session.model?.providerID === "anthropic"
+  session.messages = toHostMessages(request.messages, replayReasoning).map((message) => ({ ...message, content: message.content.map(swap) }))
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 
   const missingTools = remapSeedTools(session, request, policy?.serverTools ?? [])
