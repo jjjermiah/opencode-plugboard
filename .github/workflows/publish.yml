@@ -215,15 +215,21 @@ jobs:
           tgz=$(ls "$RUNNER_TEMP"/release/*.tgz)
           digest="sha512-$(openssl dgst -sha512 -binary "$tgz" | base64 -w0)"
           served=""
-          for _ in $(seq 1 12); do
+          # npm can take several minutes to serve a new version's metadata: wait up to 10 minutes,
+          # and fail only on a real mismatch or when it never appears.
+          for _ in $(seq 1 60); do
             served=$(npm view "$NAME@$VERSION" dist.integrity 2>/dev/null || true)
             if [ "$served" = "$digest" ]; then
               echo "The packed tarball matches the integrity npm serves for $NAME@$VERSION."
               exit 0
             fi
+            if [ -n "$served" ]; then
+              echo "::error::the packed tarball ($digest) is not what npm serves for $NAME@$VERSION ($served). Not attesting it."
+              exit 1
+            fi
             sleep 10
           done
-          echo "::error::the packed tarball ($digest) is not what npm serves for $NAME@$VERSION ($served). Not attesting it."
+          echo "::error::npm did not serve $NAME@$VERSION within 10 minutes. Re-run the failed jobs once it does."
           exit 1
 
       - name: Attest the tarball
