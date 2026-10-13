@@ -31,7 +31,7 @@ Plugboard must accept connections from the container, so it binds a non-loopback
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.26.0",
+      "package": "opencode-plugboard@0.28.0",
       "options": {
         // Reachable from the container. Bind the docker bridge address (`ip addr show docker0`)
         // or 0.0.0.0, and keep the host firewall closed to everything else.
@@ -105,7 +105,7 @@ OWUI_BASE=http://127.0.0.1:3000 OWUI_TOKEN="$TOKEN" OWUI_UPSTREAM=http://host.do
 - **Tool calls run on the streamed path.** Open WebUI runs the tool loop only when the request has `stream: true`, the way its UI sends it. A non-stream request stops after the first tool call (S2 uses the streamed path for this reason).
 - **The completion POST returns before the turn runs.** With a `chat_id` it answers `{"status":true,"task_ids":[...]}` at once. The answer and the tool call are in the stored chat message once it is `done`. S2 and S4 poll for that.
 - **Native mode is the default.** Anything but `"function_calling": "legacy"` sends real `tools`, which is the path plugboard serves. In 0.12.0 there is no separate `default` mode.
-- **About 31 built-in tools per UI chat.** Open WebUI adds its own tools (timestamps, chat search, notes, calendar, ...) to every request, even when none is selected. The API-only scenarios here send none of them.
+- **About 31 built-in tools per chat.** Open WebUI adds its own tools (timestamps, chat search, notes, calendar, ...) to every request, even when none is selected. The tool scenarios (S2 and S4) carry them too: their scripted transcripts show 33 tools per request, the example's own tool plus Open WebUI's. Set plugboard's `maxTools` above that (the default 64 is enough).
 - **Background calls.** With the UI defaults, each chat turn also sends three non-stream calls to the same model: follow-ups, title and tags. The example turns them off (`ENABLE_*_GENERATION=False`), so the scripted model is never asked an unscripted prompt. The old record measured them.
 - **Structured output has no UI.** Open WebUI forwards `response_format` unchanged, which is what S6 tests.
 - **Unknown model is answered by Open WebUI.** It returns `400 Model not found` before any request reaches plugboard (E2 is `n/a`).

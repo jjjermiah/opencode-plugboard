@@ -29,10 +29,10 @@ if (!IMAGE) throw new Error("docker-compose.yml has no image line")
 const TAG = IMAGE.slice(IMAGE.lastIndexOf(":") + 1)
 
 /** Runs `docker` with the key in its environment, not its arguments, so `ps` never shows it. Output is captured. */
-async function docker(...args: string[]): Promise<{ code: number; stdout: string }> {
+async function docker(...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["docker", ...args], { stdout: "pipe", stderr: "pipe", env: { ...process.env, OPENAI_API_KEY: KEY } })
-  const [stdout] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
-  return { code: await proc.exited, stdout: stdout.trim() }
+  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+  return { code: await proc.exited, stdout: stdout.trim(), stderr: stderr.trim() }
 }
 
 /** A free loopback port: Docker publishes the UI there, and the runner calls it from the host. */
@@ -76,7 +76,7 @@ try {
     "-e", "ENABLE_SEARCH_QUERY_GENERATION=False",
     IMAGE,
   )
-  if (run.code !== 0) throw new Error(`docker run failed (exit ${run.code})`)
+  if (run.code !== 0) throw new Error(`docker run failed (exit ${run.code}): ${run.stderr}`)
   await waitForHealth(base)
 
   // With WEBUI_AUTH=False the default admin signs in with any password; the token is what the API needs.
