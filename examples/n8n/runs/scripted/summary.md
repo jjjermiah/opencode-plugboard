@@ -1,15 +1,15 @@
 # n8n · scripted
 
-Verdict: **partial** · n8n 2.42.6 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
+Verdict: **pass** · n8n 2.42.6 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
 | S1 (chat) | fast | yes | pass | 3/3 |
-| S1 (responses) | fast | yes | gap | 1/3 |
+| S1 (responses) | fast | yes | pass | 2/2 |
 | S1 (chat) | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
-| S1 (responses) | anthropic/claude-haiku-4-5 | yes | gap | 1/3 |
+| S1 (responses) | anthropic/claude-haiku-4-5 | yes | pass | 2/2 |
 | S1 (chat) | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
-| S1 (responses) | openai/gpt-5.6-luna#low | yes | gap | 1/3 |
+| S1 (responses) | openai/gpt-5.6-luna#low | yes | pass | 2/2 |
 | S2 | fast | yes | pass | 6/6 |
 | S2 | anthropic/claude-haiku-4-5 | yes | pass | 6/6 |
 | S2 | openai/gpt-5.6-luna#low | yes | pass | 6/6 |
@@ -27,21 +27,15 @@ Verdict: **partial** · n8n 2.42.6 on bun 1 · models: fast, anthropic/claude-ha
 
 ## Failures and gaps
 
-### S1 (responses) on fast: gap
+### S1 (responses) on fast: pass
 
-n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read (https://github.com/jjjermiah/opencode-plugboard/issues/343)
+not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)
 
-Failed checks: finish_reason is stop; usage present
+### S1 (responses) on anthropic/claude-haiku-4-5: pass
 
-### S1 (responses) on anthropic/claude-haiku-4-5: gap
+not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)
 
-n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read (https://github.com/jjjermiah/opencode-plugboard/issues/343)
+### S1 (responses) on openai/gpt-5.6-luna#low: pass
 
-Failed checks: finish_reason is stop; usage present
-
-### S1 (responses) on openai/gpt-5.6-luna#low: gap
-
-n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read (https://github.com/jjjermiah/opencode-plugboard/issues/343)
-
-Failed checks: finish_reason is stop; usage present
+not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)
 

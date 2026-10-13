@@ -70,7 +70,7 @@ export function renderSummaryMd(summary: RunSummary): string {
     const label = row.variant === undefined ? row.id : `${row.id} (${row.variant})`
     lines.push(`| ${label} | ${row.model} | ${row.required ? "yes" : "no"} | ${row.status} | ${row.checks.length === 0 ? "" : `${ok}/${row.checks.length}`} |`)
   }
-  const notable = summary.scenarios.filter((row) => row.status === "fail" || row.status === "gap")
+  const notable = summary.scenarios.filter((row) => row.status === "fail" || row.status === "gap" || (row.status === "pass" && row.note))
   if (notable.length > 0) {
     lines.push("", "## Failures and gaps", "")
     for (const row of notable) {

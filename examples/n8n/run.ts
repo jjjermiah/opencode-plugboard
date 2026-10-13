@@ -136,13 +136,10 @@ try {
     },
     {
       variants: { S1: ["chat", "responses"] },
-      // A gap covers the whole row: a failing check of that row is reported as the gap, so each note names the known
-      // check. The harness has no per-check gaps; the issues say which check is known.
-      gaps: {
-        "S1|responses": {
-          note: "n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read",
-          issue: "https://github.com/jjjermiah/opencode-plugboard/issues/343",
-        },
+      // n8n's Responses node records no finish_reason, so that check is not read on this variant (#343). Its usage check
+      // reads n8n's tokenUsageEstimate. Any other failure on the row is a fail, not a gap.
+      unobserved: {
+        "S1|responses": { "finish_reason is stop": "n8n's Responses node records no finish_reason (#343)" },
       },
       na: {
         E1: "n8n shows plugboard's message (Missing or invalid API key) and LangChain's error class (MODEL_AUTHENTICATION), not the error code, so invalid_api_key cannot be read here",

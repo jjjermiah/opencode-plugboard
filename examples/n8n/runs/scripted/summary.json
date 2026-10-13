@@ -46,20 +46,16 @@
           "ok": true
         },
         {
-          "name": "finish_reason is stop",
-          "ok": false
-        },
-        {
           "name": "usage present",
-          "ok": false
+          "ok": true
         }
       ],
       "error": null,
       "id": "S1",
       "model": "fast",
-      "note": "n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read (https://github.com/jjjermiah/opencode-plugboard/issues/343)",
+      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S1.responses.fast.json",
       "variant": "responses"
     },
@@ -94,20 +90,16 @@
           "ok": true
         },
         {
-          "name": "finish_reason is stop",
-          "ok": false
-        },
-        {
           "name": "usage present",
-          "ok": false
+          "ok": true
         }
       ],
       "error": null,
       "id": "S1",
       "model": "anthropic/claude-haiku-4-5",
-      "note": "n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read (https://github.com/jjjermiah/opencode-plugboard/issues/343)",
+      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S1.responses.anthropic-claude-haiku-4-5.json",
       "variant": "responses"
     },
@@ -142,20 +134,16 @@
           "ok": true
         },
         {
-          "name": "finish_reason is stop",
-          "ok": false
-        },
-        {
           "name": "usage present",
-          "ok": false
+          "ok": true
         }
       ],
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "n8n's Responses node records no finish_reason and only an estimated usage, so those checks cannot be read (https://github.com/jjjermiah/opencode-plugboard/issues/343)",
+      "note": "not checked, finish_reason is stop: n8n's Responses node records no finish_reason (#343)",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S1.responses.openai-gpt-5.6-luna-low.json",
       "variant": "responses"
     },
@@ -478,5 +466,5 @@
   ],
   "schema": 1,
   "target": "scripted",
-  "verdict": "partial"
+  "verdict": "pass"
 }
