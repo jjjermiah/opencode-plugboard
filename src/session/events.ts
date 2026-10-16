@@ -22,6 +22,7 @@ import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type Plug
 import { log, logError, logWarn } from "../log.js"
 import type { BusEvent } from "./host.js"
 import { StopScan } from "../stop.js"
+import { placeholderRewriter } from "../tool-placeholders.js"
 import { FAILURE_EVENT } from "./state.js"
 
 /** At most this many events may wait for a slow consumer, and at most this many (estimated) bytes of them. */
@@ -278,6 +279,8 @@ export class RequestCollector {
   private readonly stopScan: StopScan | undefined
   private readonly emittedText = new Map<number, number>()
   private readonly toolNames = new Map<string, string>()
+  /** Reasoning text with the tool placeholder ids named by the caller's tool names (#411). */
+  private readonly reasoningNames = placeholderRewriter()
   private readonly calls = new Set<string>()
   private readonly serverCalls = new Map<string, ServerCall>()
   private stepServerCalls = 0
@@ -364,6 +367,7 @@ export class RequestCollector {
     switch (item.type) {
       case "session.text.delta": {
         if (this.finished) return
+        this.endReasoningText()
         const ordinal = Number(item.ordinal ?? 0)
         const delta = String(item.delta ?? "")
         this.emittedText.set(ordinal, (this.emittedText.get(ordinal) ?? 0) + delta.length)
@@ -389,13 +393,14 @@ export class RequestCollector {
       }
       case "session.reasoning.delta": {
         if (this.finished) return
-        const delta = String(item.delta ?? "")
+        const delta = this.reasoningNames.push(String(item.delta ?? ""))
         if (delta.length > 0) this.emit({ type: "reasoning-delta", text: delta })
         return
       }
       case "session.reasoning.ended": {
         // The block's provider metadata carries the provider's signature (#146). It goes out as an empty-text reasoning-delta.
         if (this.finished) return
+        this.endReasoningText()
         const signature = signatureOf(item.state)
         if (signature !== undefined) this.emit({ type: "reasoning-delta", text: "", signature })
         return
@@ -406,6 +411,7 @@ export class RequestCollector {
       case "session.tool.called": {
         const id = String(item.id)
         const name = String(item.name ?? this.toolNames.get(id) ?? "")
+        this.endReasoningText()
         if (this.finished) {
           if (this.hooks.serverTools?.has(name)) this.lateServerCall(id, name)
           // A client that left mid-run (the settle window): no tool runs for it, and the run is stopped at once (no further step).
@@ -652,6 +658,12 @@ export class RequestCollector {
     if (this.finished) return
     this.emit({ type: "error", error })
     this.end()
+  }
+
+  /** The reasoning text held back for a placeholder id that might still be growing goes out now (#411). */
+  private endReasoningText(): void {
+    const rest = this.reasoningNames.flush()
+    if (rest.length > 0) this.emit({ type: "reasoning-delta", text: rest })
   }
 
   private emit(event: PlugEvent): void {

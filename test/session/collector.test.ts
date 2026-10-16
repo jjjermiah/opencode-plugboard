@@ -162,6 +162,23 @@ describe("event mapping", () => {
     expect(await play(host.reasoningDelta("think"), host.reasoningEnded({}), host.stepEnded("stop"))).toEqual([{ type: "reasoning-delta", text: "think" }, expect.objectContaining({ type: "finish" })])
   })
 
+  test("#411 a placeholder id in reasoning text is rewritten to the tool's name, even when split across deltas", async () => {
+    expect(await play(host.reasoningDelta("I can use mcp_TZ2V0"), host.reasoningDelta("X3dlYXRoZXI here"), host.reasoningEnded({}), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "I can use " },
+      { type: "reasoning-delta", text: "get_weather here" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
+  test("#411 an id that ends a reasoning block is flushed at its end, before the signature", async () => {
+    expect(await play(host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"), host.reasoningEnded({ signature: "sig_abc" }), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "call " },
+      { type: "reasoning-delta", text: "get_weather" },
+      { type: "reasoning-delta", text: "", signature: "sig_abc" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
   test("text and reasoning deltas, then a plain stop", async () => {
     expect(await play(host.reasoningDelta("think"), host.textDelta("Hel"), host.textDelta(""), host.textDelta("lo"), host.stepEnded("stop"))).toEqual([
       { type: "reasoning-delta", text: "think" },
