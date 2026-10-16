@@ -631,8 +631,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I15-unknown-route-before-auth",
     invariant: "I15",
     file: "src/openai/route.ts",
-    find: "    const auth = authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())",
-    replace: `    if (!googleShaped && modelId === undefined && !known(route)) return fail(response, { status: 404, kind: "not_found", code: "not_found", message: "No route" })\n    const auth = authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())`,
+    find: "    const auth = isModelsRead(request.method, path)",
+    replace: `    if (!googleShaped && modelId === undefined && !known(route)) return fail(response, { status: 404, kind: "not_found", code: "not_found", message: "No route" })\n    const auth = isModelsRead(request.method, path)`,
     tests: ["test/http/ingress.test.ts", "test/http/observability.test.ts"],
   },
   {
