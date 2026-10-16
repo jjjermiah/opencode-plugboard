@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test"
 import { createBudgetState, withBudgets } from "../../src/budgets.js"
 import type { Budgets } from "../../src/config.js"
 import type { CallContext, PlugEvent } from "../../src/contract.js"
-import { createSessionCaller } from "../../src/session/caller.js"
+import { createSessionCaller, type SessionCallerDeps } from "../../src/session/caller.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { createUsageRecorder, createUsageState, withUsage, type UsageRecorder, type UsageReport } from "../../src/usage.js"
 import { collect, model, plugRequest, until } from "../support/fixtures.js"
@@ -19,11 +19,15 @@ const NOW = Date.parse("2026-10-11T12:00:00Z")
 /** The model the request names (`test/echo`), priced at 2 USD per million input and output tokens. */
 const PRICED = model("test", "echo", { cost: [{ input: 2, output: 2, cacheRead: 0, cacheWrite: 0 }] })
 
-/** The session caller under the usage recorder and the budget wrapper, in the order the server composes them. */
-function harness(budgets?: Budgets) {
+/**
+ * The session caller under the usage recorder and the budget wrapper, in the order the server composes them. `settleMs` is
+ * short by default: a disconnected run waits that long for its host step before it is interrupted.
+ */
+function harness(budgets?: Budgets, deps: Partial<SessionCallerDeps> = {}) {
   const port = new FakeSessionPort()
   const sessions = createSessionStore()
-  const session = createSessionCaller({ port, sessions, maxTools: 2 })
+  const missing: string[] = []
+  const session = createSessionCaller({ port, sessions, maxTools: 2, settleMs: 100, stopDrainMs: 50, onUsageMissing: (app) => void missing.push(app), ...deps })
   const usage: UsageRecorder = createUsageRecorder({
     state: createUsageState(),
     storage: new FakeStorage(),
@@ -32,7 +36,7 @@ function harness(budgets?: Budgets) {
     now: () => NOW,
   })
   const caller = withUsage(withBudgets(session, budgets, usage, createBudgetState(), { now: () => NOW }), usage)
-  return { port, sessions, caller, usage }
+  return { port, sessions, caller, usage, missing }
 }
 
 /** The host's answer: each list of bus events is dispatched in order, as one step of the run. */
@@ -78,5 +82,58 @@ describe("a cancelled run is recorded and charged for the usage the host reporte
     const totals = await appTotals(run.usage)
     expect(totals.tokens).toMatchObject({ input: 0, output: 0 })
     expect(totals.costUsd).toBe(0)
+  })
+})
+
+describe("a disconnected run gets the settle window: the host step that ends within it is charged", () => {
+  test("the host is not interrupted at once; its step end with usage inside the window is charged, and nothing is counted missing", async () => {
+    const run = harness(undefined, { settleMs: 1000 })
+    run.port.script.prompt = async (input) => {
+      const id = String(input.sessionID)
+      queueMicrotask(() => run.sessions.dispatch(bus(id).textDelta("hel")))
+      setTimeout(() => {
+        run.sessions.dispatch(bus(id).usage({ input: 800, output: 100 }))
+        run.sessions.dispatch(bus(id).stepEnded("stop", { input: 800, output: 100 }))
+      }, 50)
+    }
+    const controller = new AbortController()
+    for await (const _event of run.caller.stream(plugRequest(), { app: "app", signal: controller.signal })) controller.abort()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(run.port.interrupted).toEqual([])
+    await until(async () => (await appTotals(run.usage)).tokens.input === 800, 1_000, "the step end usage")
+    const totals = await appTotals(run.usage)
+    expect(totals.tokens).toMatchObject({ input: 800, output: 100 })
+    expect(run.port.interrupted).toEqual([])
+    expect(run.missing).toEqual([])
+  })
+
+  test("a host that never ends its step is interrupted when the window runs out, and the miss is counted with no tokens", async () => {
+    const run = harness(undefined, { settleMs: 100 })
+    answer(run, (id) => [bus(id).textDelta("hel")])
+    const controller = new AbortController()
+    for await (const _event of run.caller.stream(plugRequest(), { app: "app", signal: controller.signal })) controller.abort()
+    expect(run.port.interrupted).toEqual([])
+    await until(() => run.port.interrupted.length === 1, 1_000, "the interrupt after the window")
+    await until(() => run.missing.length === 1, 1_000, "the missing count")
+    expect(run.missing).toEqual(["app"])
+    expect((await appTotals(run.usage)).tokens.input).toBe(0)
+  })
+
+  test("a request timeout still interrupts at once, without the window, and the usage reported so far is charged", async () => {
+    const run = harness(undefined, { settleMs: 10_000 })
+    answer(run, (id) => [bus(id).textDelta("hel"), bus(id).usage({ input: 300, output: 30 })])
+    const controller = new AbortController()
+    for await (const _event of run.caller.stream(plugRequest(), { app: "app", signal: controller.signal })) controller.abort(Object.assign(new Error("timeout"), { kind: "timeout" }))
+    await until(() => run.port.interrupted.length === 1, 1_000, "the interrupt")
+    await until(async () => (await appTotals(run.usage)).tokens.input === 300, 1_000, "the usage reported before the timeout")
+    expect(run.missing).toEqual([])
+  })
+
+  test("settleMs 0 interrupts a disconnected run at once", async () => {
+    const run = harness(undefined, { settleMs: 0 })
+    answer(run, (id) => [bus(id).textDelta("hel")])
+    const controller = new AbortController()
+    for await (const _event of run.caller.stream(plugRequest(), { app: "app", signal: controller.signal })) controller.abort()
+    expect(run.port.interrupted).toEqual(["ses_1"])
   })
 })

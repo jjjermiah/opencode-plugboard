@@ -16,8 +16,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Fixed
 
-- **Usage of a cut-short run is counted in usage and budgets** (since 0.39.0). A run that ended without its finish, because the caller left or the request timed out after the host had reported usage, was not recorded, so its tokens and cost did not count toward `budgets`. The usage the host reported is now recorded and charged on every route, stream and non-stream. A run that never reported usage is recorded as before.
+- **Usage of a cut-short run is counted in usage and budgets** (since 0.39.0). A run that ended without its finish, because the caller left or the request timed out after the host had reported usage, was not recorded, so its tokens and cost did not count toward `budgets`. The usage the host reported is now recorded and charged on every route, stream and non-stream. A client that left is given the app's `settleMs` window (default 2000 ms) for its step to end: nothing waits for it, and the usage the host reports inside the window is charged when it arrives. A request timeout still interrupts at once. A run whose host reported no usage is counted in `plugboard_usage_missing_total{reason="disconnect"}`.
 - **One app's large uploads no longer use up the request-body room of the others** (since 0.39.0). Request bodies were read under one process-wide limit, so one app's large, slow uploads could make every other app's requests fail with 503 `server_busy`. One app now holds at most half of `limits.maxBodyBytesInFlight`. A body that is not complete within `limits.bodyReadTimeoutMs` still gets 408.
+
+### Changed
+
+- **`apps.<name>.stopSettleMs` is renamed `apps.<name>.settleMs`** (since 0.39.0), because it now also applies to a client that left. Its first release was 0.38.0, so this breaks that option. The metric `plugboard_stop_usage_missing_total{app}` is renamed `plugboard_usage_missing_total{app,reason}`: dashboards that read the old name need updating.
 
 ## [0.38.0] - 2026-10-16: Stops Where It Should
 

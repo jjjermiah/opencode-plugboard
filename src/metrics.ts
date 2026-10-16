@@ -62,8 +62,11 @@ export interface Metrics {
   dropped(params: ReadonlyArray<string>): void
   /** A model call failed before any output and was retried on the next target of its alias. */
   fallback(app: string): void
-  /** A stop-sequence answer closed without host usage: its step did not finish in the settle window (`stopSettleMs`, #390). Counted, not estimated. */
-  stopUsageMissing(app: string): void
+  /**
+   * A run closed without the host's usage: its step did not finish in the settle window (`settleMs`). `reason` is `stop` (a stop
+   * sequence ended the answer, #390) or `disconnect` (the client left). Counted, not estimated.
+   */
+  usageMissing(app: string, reason: "stop" | "disconnect"): void
   /** A call was refused with 429 by a concurrency cap (`concurrency`), a requests-per-minute limit (`rate`) or a budget (`budget`). */
   limited(app: string, reason: "concurrency" | "rate" | "budget"): void
   /** A call the response cache applied to: a stored answer replayed (`hit`) or the model run (`miss`). */
@@ -104,10 +107,10 @@ export function createMetrics(): Metrics {
     labelNames: ["param"],
     registers: [registry],
   })
-  const stopUsageMissing = new Counter({
-    name: "plugboard_stop_usage_missing_total",
-    help: "Stop-sequence answers that closed without the host's usage for the run (the step did not finish within stopSettleMs), by app.",
-    labelNames: ["app"],
+  const usageMissing = new Counter({
+    name: "plugboard_usage_missing_total",
+    help: "Runs that closed without the host's usage (the step did not finish within settleMs), by app and reason (stop or disconnect).",
+    labelNames: ["app", "reason"],
     registers: [registry],
   })
   const fallbacks = new Counter({
@@ -166,7 +169,7 @@ export function createMetrics(): Metrics {
       for (const param of params) count(dropped, { param })
     },
     fallback: (app) => count(fallbacks, { app }),
-    stopUsageMissing: (app) => count(stopUsageMissing, { app }),
+    usageMissing: (app, reason) => count(usageMissing, { app, reason }),
     limited: (app, reason) => count(limited, { app, reason }),
     cache: (app, result) => count(cache, { app, result }),
     sweep(result, amount) {

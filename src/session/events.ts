@@ -280,6 +280,7 @@ export class RequestCollector {
   private executionDone = false
   private wasCancelled = false
   private settled = false
+  private reportHook: (() => void) | undefined
 
   constructor(private readonly hooks: CollectorHooks) {
     this.stopScan = hooks.stopSequences !== undefined && hooks.stopSequences.length > 0 ? new StopScan(hooks.stopSequences) : undefined
@@ -318,6 +319,17 @@ export class RequestCollector {
   /** The request's events, in order. Ends when the collector is terminal. */
   events(): AsyncIterable<PlugEvent> {
     return this.queue
+  }
+
+  /** Calls `done` once, when the host reports the end of a step or of the execution: the usage of the run is final from then on. */
+  whenReported(done: () => void): void {
+    this.reportHook = done
+  }
+
+  private reported(): void {
+    const hook = this.reportHook
+    this.reportHook = undefined
+    hook?.()
   }
 
   /** Mark the request cancelled by its owner (client gone or timed out) and close the stream without a terminal event. */
@@ -421,6 +433,7 @@ export class RequestCollector {
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         return
       case "session.step.ended": {
+        this.reported()
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         // After a match the step is the last one: no server tools are run and no next step starts (#390 review).
         // A plain end leaves the host to finish the run itself; a pending client tool call needs the interrupt.
@@ -445,6 +458,7 @@ export class RequestCollector {
         if (isPlugError(item.error)) this.abort(item.error)
         return
       case "session.step.failed": {
+        this.reported()
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         // Assumed invariant: `error` is the host's `SessionError` (RawError shape).
         const error = item.error as RawError | undefined
@@ -463,6 +477,7 @@ export class RequestCollector {
         return this.failFromHost(error, "Model step failed")
       }
       case "session.execution.failed":
+        this.reported()
         this.executionDone = true
         this.logUnfinishedServerCalls()
         if (!this.finished) this.failFromHost(item.error as RawError | undefined, "Session execution failed")
@@ -470,6 +485,7 @@ export class RequestCollector {
         return
       case "session.execution.interrupted":
       case "session.execution.succeeded":
+        this.reported()
         this.executionDone = true
         this.logUnfinishedServerCalls()
         if (!this.finished) {

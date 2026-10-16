@@ -117,11 +117,15 @@ describe("#56 createMetrics: Prometheus text", () => {
     expect(await first.render(snapshot)).not.toContain("process_cpu")
   })
 
-  test("#390 a stop answer without host usage is counted per app: plugboard_stop_usage_missing_total", async () => {
+  test("#390 a run without host usage is counted per app and reason: plugboard_usage_missing_total", async () => {
     const metrics = createMetrics()
-    metrics.stopUsageMissing("alpha")
-    metrics.stopUsageMissing("alpha")
-    expect(samples(await metrics.render(snapshot), "plugboard_stop_usage_missing_total")).toEqual(['plugboard_stop_usage_missing_total{app="alpha"} 2'])
+    metrics.usageMissing("alpha", "stop")
+    metrics.usageMissing("alpha", "stop")
+    metrics.usageMissing("alpha", "disconnect")
+    expect(samples(await metrics.render(snapshot), "plugboard_usage_missing_total")).toEqual([
+      'plugboard_usage_missing_total{app="alpha",reason="stop"} 2',
+      'plugboard_usage_missing_total{app="alpha",reason="disconnect"} 1',
+    ])
   })
 
   test("the content type is the registry's (text format 0.0.4)", () => {

@@ -199,10 +199,10 @@ export interface AppPolicy {
    */
   readonly maxOutputTokens?: number
   /**
-   * How long the host may finish the step after a stop sequence matched, before it is interrupted (option `apps.<name>.stopSettleMs`,
+   * How long the host may finish its step after a stop sequence matched, or after the client left mid-run, before it is interrupted (option `apps.<name>.settleMs`,
    * since 0.38.0, #390). 0 interrupts at once and the usage of the step is then lost. Absent: 2000 ms.
    */
-  readonly stopSettleMs?: number
+  readonly settleMs?: number
   /**
    * Option `apps.<name>.reasoningOutput` (since 0.36.0): this app's reasoning switch. Absent: the global `reasoningOutput`. Look the
    * effective value up with `reasoningOutputFor`.
@@ -459,7 +459,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader", "reasoningOutput", "stopSettleMs"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader", "reasoningOutput", "settleMs"])
 
 /**
  * Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hidden` (since 0.29.0, #337).
@@ -633,7 +633,7 @@ function parseApps(
     // A deadline may be longer or shorter than the global one (#257); it is checked against the same ceiling as the global option.
     const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
     const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
-    const stopSettleMs = value.stopSettleMs === undefined ? undefined : positiveInt(value.stopSettleMs, `apps.${app}.stopSettleMs`, 0, MAX_TIMER_MS)
+    const settleMs = value.settleMs === undefined ? undefined : positiveInt(value.settleMs, `apps.${app}.settleMs`, 0, MAX_TIMER_MS)
     const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
     const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, value.models as string[] | undefined, context)
     const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
@@ -655,14 +655,14 @@ function parseApps(
       ...(endpoints === undefined ? {} : { endpoints }),
       ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
       ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
-      ...(stopSettleMs === undefined ? {} : { stopSettleMs }),
+      ...(settleMs === undefined ? {} : { settleMs }),
       ...(sampling === undefined ? {} : { sampling }),
       ...(model === undefined ? {} : { model }),
       ...(userHeader === undefined ? {} : { userHeader }),
       ...(reasoningOutput === undefined ? {} : { reasoningOutput }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined || reasoningOutput !== undefined || stopSettleMs !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined || reasoningOutput !== undefined || settleMs !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)

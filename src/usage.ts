@@ -738,6 +738,11 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
       let cache: "hit" | "miss" | undefined
       // The host's usage for the run when it ends without a finish (client gone, timeout, stop sequence): see `CallContext.onRunUsage`.
       let running: PlugUsage | undefined
+      let ended = false
+      const charge = (usage: PlugUsage | undefined) => {
+        const ref = served ? parseModelRef(served.model) : request.ref
+        recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered: false, ...(usage ? { usage } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
+      }
       const forward: CallContext = {
         ...context,
         onServed: (value) => {
@@ -749,7 +754,9 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
           context.onCache?.(result)
         },
         onRunUsage: (value) => {
-          running = value
+          // Reported after the run's own record (a client that left, whose host step ended in its settle window): charged on its own.
+          if (ended) charge(value)
+          else running = value
         },
       }
       const events = inner.stream(request, forward)
@@ -778,6 +785,7 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
             yield event
           }
         } finally {
+          ended = true
           const ref = served ? parseModelRef(served.model) : request.ref
           // A run that never reached its finish still spent what the host reported: it is charged, not left out.
           const spent = usage ?? running
