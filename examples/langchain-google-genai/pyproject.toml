@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-langchain-google-genai"
+version = "0.1.0"
+description = "LangChain's ChatGoogleGenerativeAI against plugboard's Gemini route: S1 to S7 and the error paths. Exact pin; the lock is the source of truth."
+requires-python = ">=3.12"
+# Exact pin: the version `uv lock` resolved when the example was written.
+dependencies = ["langchain-google-genai==4.4.2"]

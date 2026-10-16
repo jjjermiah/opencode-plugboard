@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- **Examples for the Gemini clients** ([#103](https://github.com/jjjermiah/opencode-plugboard/issues/103)). The Google GenAI JS and Python SDKs, LangChain's `ChatGoogleGenerativeAI`, the Vercel AI SDK's Google provider and the Gemini CLI (headless) each have a runnable example and a client page, with scripted and live runs. The examples show two model-id rules: a `#variant` goes as `%23` (the SDKs treat `#` as a URL fragment), and the Vercel provider needs a `/` in an id sent as `%2F`. A Python or LangChain image request fails until [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401) is fixed.
+
 ### Fixed
 
 - **Signed thinking replays to Copilot Claude** ([#386](https://github.com/jjjermiah/opencode-plugboard/issues/386), since 0.37.0). Replay of a client's signed `thinking` blocks was gated on the provider being `anthropic`, so Copilot's Claude models got the history without their earlier reasoning, even though Copilot serves Claude on the Anthropic messages route with the same `anthropic` metadata key. The gate now also admits `github-copilot` models whose id starts with `claude-`. The hook event carries only the model's provider and id, not its route, so plugboard cannot ask which route a model uses. The other Copilot routes (chat completions, responses) do not read that key, so a signature sent to them is dropped. Other Copilot models stay out.

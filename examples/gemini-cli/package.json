@@ -1,0 +1,9 @@
+{
+  "name": "plugboard-example-gemini-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Gemini CLI against plugboard's Gemini route, headless, with an API key and a base URL from the environment. No login, no browser.",
+  "dependencies": {
+    "@google/gemini-cli": "0.64.0"
+  }
+}

@@ -4,7 +4,7 @@
 
 Plugboard is stateless, as on the other endpoints: every request carries the whole conversation in `contents`. Nothing is stored.
 
-Tested, 2026-10-11, `@google/genai` 2.28.0 (JS SDK): against a fake model caller (plain, streamed and function-calling chat, JSON output, image input, `models.list` and `models.get`, errors, `apiVersion: "v1"`), and live on OpenCode 2.0.26 with `opencode-go/glm-5.3-flash` (alias `fast`), `anthropic/claude-haiku-5-5` and `openai/gpt-5.6-luna%23low`: text, stream, a function-calling round trip, JSON schema, parallel calls in a stream and in `ai.chats`, and an array schema. Not run with the Python SDK or the Gemini CLI.
+Tested, 2026-10-11, `@google/genai` 2.28.0 (JS SDK): against a fake model caller (plain, streamed and function-calling chat, JSON output, image input, `models.list` and `models.get`, errors, `apiVersion: "v1"`), and live on OpenCode 2.0.26 with `opencode-go/glm-5.3-flash` (alias `fast`), `anthropic/claude-haiku-5-5` and `openai/gpt-5.6-luna%23low`: text, stream, a function-calling round trip, JSON schema, parallel calls in a stream and in `ai.chats`, and an array schema. Run through the example clients on 2026-10-16 (live, plugboard `987338b`): the Google GenAI JS and Python SDKs, LangChain's `ChatGoogleGenerativeAI`, the Vercel AI SDK's Google provider and the headless Gemini CLI. Each has a page under [clients](clients/google-genai-js.md). The Python SDK and LangChain image requests fail until [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401).
 
 ```ts
 import { GoogleGenAI } from "@google/genai"
@@ -34,7 +34,7 @@ The `{model}` segment is an alias or a plugboard id, percent-decoded:
 | `ollama/llama3:8b` | ids with a colon work: only the text after the last `:` is the method |
 | `models/fast` | the `models/` prefix a client may add is dropped |
 
-Use aliases. A `#variant` cannot be sent through an SDK (the URL it builds treats `#` as a fragment), and a name with `/` or `:` is awkward in other tools. Define an alias per model and variant in the plugboard `aliases` option and give clients that name.
+Use aliases. A `#variant` cannot be sent through an SDK (the URL it builds treats `#` as a fragment), and a name with `/` or `:` is awkward in other tools. The Vercel AI SDK's Google provider also drops the `models/` prefix for an id with a `/`, so send it as `%2F` there. Define an alias per model and variant in the plugboard `aliases` option and give clients that name.
 
 `GET /v1beta/models` lists the same ids and aliases as `/v1/models`, as `models/<id>`; `GET /v1beta/models/{model}` returns one. Everything is on one page (`pageSize` and `pageToken` are ignored). `inputTokenLimit` is the model's context limit when known.
 

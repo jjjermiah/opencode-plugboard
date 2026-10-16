@@ -10,11 +10,15 @@
   "crewai": "CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard",
   "curl": "One request per API in plain shell: chat, responses, Anthropic Messages, Gemini, legacy completions and models",
   "dspy": "DSPy (through its LiteLLM route, `openai/` prefix): a Predict and a ChainOfThought on one question, and a typed output",
+  "gemini-cli": "The Gemini CLI, headless (`gemini -p`), with an API key and a base URL from the environment and no login: a chat and a stream. Its built-in tools make the other scenarios not applicable",
+  "gemini-js": "The Google GenAI JS SDK (`@google/genai`) on plugboard's Gemini route: S1 to S7 and the error paths in TypeScript. A `#variant` id goes as `%23`",
+  "gemini-python": "The Google GenAI Python SDK (`google-genai`) on plugboard's Gemini route: S1 to S7 and the error paths. A `uv run` project with exact pins",
   "go-openai": "go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard",
   "haystack": "Haystack `OpenAIChatGenerator` in a two-component pipeline, with streaming and a tool round trip. A PEP 723 script",
   "instructor": "Instructor extracting a validated Pydantic object, in TOOLS mode, JSON_SCHEMA mode and as a partial stream",
   "jan": "Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example`",
   "kilo-code": "Kilo Code CLI provider block for plugboard's Chat Completions route",
+  "langchain-google-genai": "LangChain's `ChatGoogleGenerativeAI` (`langchain-google-genai`) on the Gemini route: chat, tools, streaming, images, structured output and the error paths",
   "langchain-js": "LangChain JS (`@langchain/openai`): the same scenarios, with a `chat` and an `auto` variant",
   "langchain-python": "LangChain (`langchain-openai`'s `ChatOpenAI`): chat, tools, streaming, images, structured output, models and the error paths",
   "langfuse": "Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off",
@@ -36,6 +40,7 @@
   "sillytavern": "SillyTavern in Docker; the plugboard endpoint and key are set in its UI",
   "smolagents": "smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`)",
   "tool-bot": "The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines",
+  "vercel-ai-google": "The Vercel AI SDK's Google provider (`@ai-sdk/google`) on the Gemini route: chat, tools, streaming, images, structured output and the errors. A model id with a `/` is sent as `%2F`",
   "vercel-ai-sdk": "The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses`. Chat, tools, streaming, structured output, images, models and errors",
   "zed": "Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider"
 }

@@ -1,0 +1,51 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "Reply with exactly: pong"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "generationConfig": {}
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/nope:generateContent"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": 404,
+            "details": [
+              {
+                "@type": "type.googleapis.com/google.rpc.BadRequest",
+                "fieldViolations": [
+                  {
+                    "description": "Model nope is not available",
+                    "field": "model"
+                  }
+                ]
+              }
+            ],
+            "message": "Model nope is not available",
+            "status": "NOT_FOUND"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 404
+      }
+    }
+  ]
+}
