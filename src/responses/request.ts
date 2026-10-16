@@ -385,7 +385,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
     exchange: {
       model: body.model,
       stream: body.stream === true,
-      // Echoed in the response object, as OpenAI does. `store` is always false: nothing is kept for retrieval.
+      // Echoed in the response object as the caller sent it, true by default as OpenAI has it (#442). `store: false` keeps nothing for retrieval (#426, src/responses/route.ts).
       envelope: {
         instructions: typeof body.instructions === "string" ? body.instructions : null,
         max_output_tokens: generation.maxTokens ?? null,
@@ -393,7 +393,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
         parallel_tool_calls: body.parallel_tool_calls !== false,
         previous_response_id: null,
         reasoning: { effort: reasoningEffort ?? null, summary: null },
-        store: false,
+        store: body.store !== false,
         temperature: generation.temperature ?? null,
         text: { format: isRecord(text?.format) ? text.format : { type: "text" } },
         tool_choice: body.tool_choice ?? "auto",

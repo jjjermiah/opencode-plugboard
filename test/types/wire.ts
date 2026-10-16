@@ -215,7 +215,7 @@ export const responsesResponse = {
     "effort": null,
     "summary": null
   },
-  "store": false,
+  "store": true,
   "temperature": 0.5,
   "text": {
     "format": {
@@ -276,7 +276,7 @@ export const responsesEvents = [
         "effort": null,
         "summary": null
       },
-      "store": false,
+      "store": true,
       "temperature": 0.5,
       "text": {
         "format": {
@@ -325,7 +325,7 @@ export const responsesEvents = [
         "effort": null,
         "summary": null
       },
-      "store": false,
+      "store": true,
       "temperature": 0.5,
       "text": {
         "format": {
@@ -513,7 +513,7 @@ export const responsesEvents = [
         "effort": null,
         "summary": null
       },
-      "store": false,
+      "store": true,
       "temperature": 0.5,
       "text": {
         "format": {

@@ -120,6 +120,39 @@ describe("beginRequest: one deadline and disconnect abort per request", () => {
     }
   })
 
+  test("#441 a stream committed before the deadline ends with its error frame, then its socket closes without waiting for the grace", async () => {
+    let socketClosed = false
+    const { port } = await serve(async (request, response) => {
+      request.socket.once("close", () => (socketClosed = true))
+      const scope = beginRequest(request, response, 20, 60_000)
+      // The route's shape: an SSE writer bounded by the scope, the error frame written on the timeout, then the response ends.
+      const sse = sseWriter(response, scope.signal, 60_000)
+      for await (const event of sse.paced(boundEvents(script(ev.reasoning("x"), new Promise(() => {})), scope)))
+        if (event.type === "error") sse.write("data: {\"error\":\"timeout\"}\n\n")
+      response.end()
+      scope.dispose()
+    })
+    // A keep-alive client, so the socket stays pooled unless the server closes it.
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 })
+    try {
+      const body = await new Promise<string>((resolve, reject) => {
+        const client = httpRequest({ host: "127.0.0.1", port, path: "/", agent }, (response) => {
+          let text = ""
+          response.setEncoding("utf8")
+          response.on("data", (chunk: string) => (text += chunk))
+          response.on("end", () => resolve(text))
+          response.on("error", reject)
+        })
+        client.on("error", reject)
+        client.end()
+      })
+      expect(body).toContain('data: {"error":"timeout"}')
+      await until(() => socketClosed, 1_000, "the socket to close once the committed stream ended")
+    } finally {
+      agent.destroy()
+    }
+  })
+
   test("race settles like the promise, or rejects with the abort reason", async () => {
     const results: unknown[] = []
     const { send } = await serve(async (request, response) => {
