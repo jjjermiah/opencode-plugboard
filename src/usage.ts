@@ -24,7 +24,7 @@
  * at 0 and its call counted in `unpricedRequests`.
  */
 
-import { APP_NAME_PATTERN, type BudgetMetric, type BudgetWindow } from "./config.js"
+import { isAppName, type BudgetMetric, type BudgetWindow } from "./config.js"
 import { isPlugError, type CallContext, type CatalogCost, type CatalogModel, type ModelCaller, type ModelRef, type PlugError, type PlugEvent, type PlugRequest, type PlugUsage, type ServedModel } from "./contract.js"
 import { errorMessage, log, logError } from "./log.js"
 import type { Outcome } from "./metrics.js"
@@ -679,7 +679,7 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
 
     async query(input) {
       const at = now()
-      if (input.app !== undefined && !APP_NAME_PATTERN.test(input.app))
+      if (input.app !== undefined && !isAppName(input.app))
         return { status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: "`app` must be an app name from the keys configuration" }
       if (input.user !== undefined && validEndUser(input.user) === undefined)
         return { status: 400, kind: "invalid_request", code: "invalid_user", param: "user", message: "`user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-`" }

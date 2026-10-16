@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
+import { DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, isAppName, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { debugEnabled, log, logDebug, logError, logRequest, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
@@ -133,8 +133,9 @@ function applyToolPolicy(request: PlugRequest, policy: AppPolicy | undefined): {
   const structured = request.structuredTool
   const kept = structured === undefined ? [] : request.tools.filter((tool) => tool.name === structured)
   if (structured === undefined || kept.length === 0) {
-    const { toolChoice: _dropped, ...rest } = request
-    return { request: { ...rest, tools: [] }, stripped: request.tools.length > 0 }
+    // `none` refers to no tool at all, so it stays (#421): the server tools stay out too.
+    const { toolChoice: dropped, ...rest } = request
+    return { request: { ...rest, tools: [], ...(dropped === "none" ? { toolChoice: "none" as const } : {}) }, stripped: request.tools.length > 0 }
   }
   return { request: { ...request, tools: kept, toolChoice: { type: "tool", name: structured } }, stripped: request.tools.length > kept.length }
 }
@@ -284,7 +285,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
 
   return {
     async *stream(called: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
-      const app = APP_NAME_PATTERN.test(context.app) || context.app === DEFAULT_APP ? context.app : undefined
+      const app = isAppName(context.app) || context.app === DEFAULT_APP ? context.app : undefined
       if (!app) return yield failure(400, `Invalid app name: ${context.app}`, "invalid_app")
       if (context.signal.aborted) return
 
