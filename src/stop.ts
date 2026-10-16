@@ -10,6 +10,7 @@
  * the turn a tool turn, as Anthropic reports it.
  */
 import type { CallContext, ModelCaller, PlugEvent, PlugRequest } from "./contract.js"
+import { logWarn } from "./log.js"
 
 /** Where the earliest of `stops` starts in `text`, and which one (the longer one where two start together). */
 export function stopAt(text: string, stops: ReadonlyArray<string>): { readonly index: number; readonly stop: string } | undefined {
@@ -78,18 +79,24 @@ export class StopScan {
  * carries the app's `sampling.stop` default too). Structured output has no text to scan: it is a tool call whose
  * arguments are the answer, so it passes through unchanged.
  */
-export function withStopSequences(inner: ModelCaller): ModelCaller {
+export function withStopSequences(inner: ModelCaller, onMissingUsage?: (app: string) => void): ModelCaller {
   return {
     stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
       const stops = request.generation.stop
       if (stops === undefined || stops.length === 0 || request.structuredTool !== undefined) return inner.stream(request, context)
       const stopping = new AbortController()
-      return answer(inner.stream(request, { ...context, stopAnswer: stopping.signal }), stops, stopping)
+      return answer(inner.stream(request, { ...context, stopAnswer: stopping.signal }), stops, stopping, context.app, onMissingUsage)
     },
   }
 }
 
-async function* answer(events: AsyncIterable<PlugEvent>, stops: ReadonlyArray<string>, stopping: AbortController): AsyncGenerator<PlugEvent> {
+async function* answer(
+  events: AsyncIterable<PlugEvent>,
+  stops: ReadonlyArray<string>,
+  stopping: AbortController,
+  app: string,
+  onMissingUsage: ((app: string) => void) | undefined,
+): AsyncGenerator<PlugEvent> {
   const scan = new StopScan(stops)
   // The stream is read to its finish even after a match: the host's finish carries the usage of the run (#390).
   for await (const event of events) {
@@ -110,7 +117,14 @@ async function* answer(events: AsyncIterable<PlugEvent>, stops: ReadonlyArray<st
       if (rest.length > 0) yield { type: "text-delta", text: rest }
       const sequence = scan.matched
       if (sequence === undefined) yield event
-      else yield { type: "finish", reason: "stop", ...(event.usage ? { usage: event.usage } : {}), stopSequence: sequence }
+      else {
+        // The host reported no usage for the run (its step did not finish in the settle window, #390): counted and logged, no estimate.
+        if (event.usage === undefined) {
+          logWarn("request.stop_usage_missing", { app })
+          onMissingUsage?.(app)
+        }
+        yield { type: "finish", reason: "stop", ...(event.usage ? { usage: event.usage } : {}), stopSequence: sequence }
+      }
     } else yield event
   }
 }

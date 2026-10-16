@@ -83,6 +83,12 @@ describe("#58 chat completions with n > 1, streaming", () => {
     expect(chunks.filter((chunk) => chunk.usage)).toEqual([expect.objectContaining({ choices: [], usage: expect.objectContaining({ prompt_tokens: 10, completion_tokens: 3 }) })])
   })
 
+  test("#390 review: include_usage with n > 1 and no usage from any choice still ends with a usage chunk of zeros", async () => {
+    await route(() => [ev.text("x"), ev.finish("stop")])
+    const chunks = sseData(await (await server!.open(chat({ n: 2, stream: true, stream_options: { include_usage: true } }))).ended)
+    expect(chunks.filter((chunk) => chunk.usage)).toEqual([expect.objectContaining({ choices: [], usage: expect.objectContaining({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }) })])
+  })
+
   test("a failure after the stream committed is one error frame and [DONE]; the other choice is cancelled", async () => {
     const caller = await route((_request, call) => (call === 0 ? [ev.text("A1"), "hang"] : [ev.text("B1"), ev.error({ message: "died", code: "upstream" })]))
     const stream = await server!.open(chat({ n: 2, stream: true }))

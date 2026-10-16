@@ -4,6 +4,13 @@ import { parseChatRequest, type ParsedChat } from "../../src/openai/request.js"
 import { testOptions } from "../support/fixtures.js"
 
 const options = testOptions({ maxTools: 3 })
+
+// #390 review: a client value with no usable toString is a 400, never a thrown TypeError (show, src/client-value.ts).
+test("openai: a message role with a null toString is a 400, not a crash", () => {
+  const result = parseChatRequest({ model: "test/echo", messages: [{ role: { toString: null }, content: "hi" }] }, options)
+  expect(isPlugError(result)).toBe(true)
+  expect(result).toMatchObject({ status: 400, message: expect.stringContaining('"object"') })
+})
 const user = (content: unknown = "hi") => ({ role: "user", content })
 const body = (extra: Record<string, unknown> = {}) => ({ model: "test/echo", messages: [user()], ...extra })
 const fn = (name: string, extra: Record<string, unknown> = {}) => ({ type: "function", function: { name, ...extra } })
