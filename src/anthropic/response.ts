@@ -38,6 +38,9 @@ const newId = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll("-
 /** Host call ids are not always Anthropic-shaped; `toolu_` plus the id with unsafe characters replaced. */
 const toolId = (id: string) => (/^toolu_[A-Za-z0-9_-]+$/.test(id) ? id : `toolu_${id.replace(/[^A-Za-z0-9_-]/g, "_")}`)
 
+/** Every tool call plugboard returns is one the model made directly (not from a server tool), as Anthropic reports it. */
+const DIRECT_CALLER = () => ({ type: "direct" as const })
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
 /** Tool input must be a JSON object; a string is parsed, anything else becomes `{}`. */
@@ -196,11 +199,11 @@ export async function runMessage(
     const index = nextIndex++
     const toolUseId = toolId(call.id)
     const input = toolInput(call.input)
-    emit({ type: "content_block_start", index, content_block: { type: "tool_use", id: toolUseId, name: call.name, input: {} } })
+    emit({ type: "content_block_start", index, content_block: { type: "tool_use", id: toolUseId, name: call.name, caller: DIRECT_CALLER(), input: {} } })
     ping()
     emit({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } })
     emit({ type: "content_block_stop", index })
-    if (aggregate) content.push({ type: "tool_use", id: toolUseId, name: call.name, input })
+    if (aggregate) content.push({ type: "tool_use", id: toolUseId, name: call.name, caller: DIRECT_CALLER(), input })
     calls++
   }
 

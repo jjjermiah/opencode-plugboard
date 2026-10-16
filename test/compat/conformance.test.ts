@@ -201,10 +201,9 @@ describe("#107 Gemini responses conform to the vendored discovery schemas", () =
 
 /**
  * Anthropic fields the SDK's types require that plugboard does not send yet: the Message's nullable
- * fields, a text block's `citations`, a tool_use block's `caller` (test/types/generate.ts GAPS, and
- * the `caller` gap found by this test).
+ * fields and a text block's `citations` (test/types/generate.ts GAPS).
  */
-const MESSAGE_GAPS = ["container", "diagnostics", "stop_details", "cache_creation", "inference_geo", "output_tokens_details", "server_tool_use", "service_tier", "citations", "caller"]
+const MESSAGE_GAPS = ["container", "diagnostics", "stop_details", "cache_creation", "inference_geo", "output_tokens_details", "server_tool_use", "service_tier", "citations"]
 /** The SDK's error body carries request_id; plugboard sends it as the request-id header instead. */
 const ERROR_GAPS = ["request_id"]
 /** The stream event each SSE frame name maps to: the frame's name is its `type` (checked below). */
@@ -330,10 +329,10 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
     expectConforms("anthropic", "Message", reply.json(), MESSAGE_GAPS.filter((field) => field !== "citations"))
   })
 
-  test.failing("#107 gap (#404): a tool_use block omits caller, which the SDK requires and plugboard does not send", async () => {
+  test("#404 a tool_use block carries caller, which the SDK requires", async () => {
     await withRoute([ev.call("call_1", "weather", { city: "Oslo" }), ev.finish("tool-calls", USAGE)], async (route) => {
       const reply = await route.send(messagesPost({ model: "fast", max_tokens: 64, tools: [{ name: "weather", input_schema: { type: "object", properties: { city: { type: "string" } } } }], messages: [{ role: "user", content: tag("tools") }] }))
-      expectConforms("anthropic", "Message", reply.json(), MESSAGE_GAPS.filter((field) => field !== "caller"))
+      expectConforms("anthropic", "Message", reply.json(), MESSAGE_GAPS)
     })
   })
 })

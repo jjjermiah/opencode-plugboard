@@ -59,7 +59,7 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
       ["content_block_stop", 1],
     ])
     expect(emitted.find((event) => event.type === "content_block_delta" && event.index === 1)).toMatchObject({ delta: { type: "input_json_delta", partial_json: '{"path":"a"}' } })
-    expect(message.content[1]).toEqual({ type: "tool_use", id: "toolu_call_1", name: "read", input: { path: "a" } })
+    expect(message.content[1]).toEqual({ type: "tool_use", id: "toolu_call_1", name: "read", caller: { type: "direct" }, input: { path: "a" } })
     expect(message.stop_reason).toBe("tool_use")
   })
 
