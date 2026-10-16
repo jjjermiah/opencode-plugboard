@@ -385,6 +385,10 @@
         {
           "name": "status is 401",
           "ok": true
+        },
+        {
+          "name": "error type is authentication_error",
+          "ok": true
         }
       ],
       "error": null,
@@ -399,6 +403,10 @@
       "checks": [
         {
           "name": "status is 404",
+          "ok": true
+        },
+        {
+          "name": "error type is not_found_error",
           "ok": true
         }
       ],

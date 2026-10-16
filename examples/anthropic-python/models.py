@@ -1,13 +1,13 @@
-"""S7, list models. The Anthropic SDK lists GET /v1/models; the first page holds plugboard's whole catalog."""
+"""S7, list models. The Anthropic SDK lists GET /v1/models; iterating the page walks every page (limit 100 per page)."""
 
 from provider import client
 
 
 def run():
     # region snippet
-    page = client.models.list(limit=100)
+    models = client.models.list(limit=100)
     # endregion snippet
-    ids = [model.id for model in page.data]
+    ids = [model.id for model in models]  # iterates every page
     return {
         "model_ids": ids,
         "has_fast": "fast" in ids,

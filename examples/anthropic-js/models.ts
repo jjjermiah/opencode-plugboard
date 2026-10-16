@@ -1,11 +1,12 @@
-// S7, list models. The Anthropic SDK lists GET /v1/models; the first page holds plugboard's whole catalog.
+// S7, list models. The Anthropic SDK lists GET /v1/models; `for await` walks every page (limit 100 per page).
 import { client } from "./providers.ts"
 
 export async function run() {
   // #region snippet
-  const page = await client.models.list({ limit: 100 })
+  const models = client.models.list({ limit: 100 })
   // #endregion snippet
-  const ids = page.data.map((model) => model.id)
+  const ids: string[] = []
+  for await (const model of models) ids.push(model.id) // every page
   return {
     model_ids: ids,
     has_fast: ids.includes("fast"),

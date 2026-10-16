@@ -15,7 +15,7 @@ def run(client, model):
     try:
         wrong.chat.completions.create(model=model, messages=[{"role": "user", "content": PROMPT}])
     except openai.AuthenticationError as error:
-        return {"status": error.status_code, "code": error.code}
+        return {"status": error.status_code, "code": error.code, "type": error.type}
     # endregion snippet
     raise AssertionError("a wrong key was accepted")
 

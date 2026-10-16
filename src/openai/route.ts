@@ -59,7 +59,7 @@ import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { authenticateRequest, isMessagesPath, serveMessages } from "../anthropic/route.js"
-import { encodeModel, encodeModelPage } from "../anthropic/response.js"
+import { encodeModel, encodeModelPage, modelPageQuery, pageModels } from "../anthropic/response.js"
 import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
@@ -385,7 +385,16 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const anthropic = request.headers["anthropic-version"] !== undefined
       if (modelId === undefined) {
         const models = capability ? filterByCapability(listed, capability) : listed
-        return sendJson(response, 200, anthropic ? encodeModelPage(models) : encodeModelList(models))
+        if (!anthropic) return sendJson(response, 200, encodeModelList(models))
+        // Anthropic pages this list with limit (default 20, max 1000), after_id and before_id (#457).
+        const query = modelPageQuery(url.searchParams)
+        if (isPlugError(query)) return fail(response, query)
+        const page = pageModels(models, query)
+        if (!page) {
+          const param = query.beforeId === undefined ? "after_id" : "before_id"
+          return fail(response, { status: 400, kind: "invalid_request", code: "invalid_cursor", param, message: `${param} is not a listed model` })
+        }
+        return sendJson(response, 200, encodeModelPage(page.models, page.hasMore))
       }
       const item = listed.find((m) => m.id === modelId)
       if (!item) {

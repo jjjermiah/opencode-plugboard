@@ -16,7 +16,7 @@ def run(model):
     except APIStatusError as error:
         # Messages errors carry Anthropic's error.type; there is no error.code (see unobserved in run.py).
         inner = error.body.get("error", {}) if isinstance(error.body, dict) else {}
-        return {"status": error.status_code, "code": inner.get("code") or inner.get("type")}
+        return {"status": error.status_code, "code": inner.get("code") or inner.get("type"), "type": inner.get("type")}
     # endregion snippet
     raise RuntimeError("a wrong key was accepted")
 

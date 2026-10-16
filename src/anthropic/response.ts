@@ -126,10 +126,49 @@ export const encodeModel = ({ id, model }: ListedModel) => {
   return { type: "model", id, display_name: model.name ?? id, created_at: new Date(Number.isNaN(released) ? 0 : released).toISOString() }
 }
 
-/** `GET /v1/models` in Anthropic's list shape. The whole catalog is one page, so `has_more` is false. */
-export const encodeModelPage = (models: ReadonlyArray<ListedModel>) => ({
+/** Anthropic's `limit` on `GET /v1/models`: default 20, from 1 to 1000. */
+export const MODEL_PAGE_DEFAULT = 20
+export const MODEL_PAGE_MAX = 1000
+
+export interface ModelPageQuery {
+  readonly limit: number
+  readonly afterId?: string
+  readonly beforeId?: string
+}
+
+/** The paging query of `GET /v1/models`. A refusal is a 400, the same shape as the other parameter refusals. */
+export const modelPageQuery = (params: URLSearchParams): ModelPageQuery | PlugError => {
+  const raw = params.get("limit")
+  const limit = raw === null ? MODEL_PAGE_DEFAULT : /^\d+$/.test(raw) ? Number(raw) : Number.NaN
+  if (!(limit >= 1 && limit <= MODEL_PAGE_MAX))
+    return { status: 400, kind: "invalid_request", code: "invalid_limit", param: "limit", message: "limit must be a whole number from 1 to 1000" }
+  const afterId = params.get("after_id") ?? undefined
+  const beforeId = params.get("before_id") ?? undefined
+  if (afterId !== undefined && beforeId !== undefined)
+    return { status: 400, kind: "invalid_request", code: "invalid_cursor", param: "before_id", message: "after_id and before_id cannot both be set" }
+  return { limit, afterId, beforeId }
+}
+
+/**
+ * One page in catalog order. `after_id` starts after that model, `before_id` ends before it; `hasMore` says
+ * whether the page's direction has models left. `undefined` when the cursor names no listed model.
+ */
+export const pageModels = (models: ReadonlyArray<ListedModel>, { limit, afterId, beforeId }: ModelPageQuery) => {
+  if (beforeId !== undefined) {
+    const end = models.findIndex((m) => m.id === beforeId)
+    if (end < 0) return undefined
+    const start = Math.max(0, end - limit)
+    return { models: models.slice(start, end), hasMore: start > 0 }
+  }
+  const start = afterId === undefined ? 0 : models.findIndex((m) => m.id === afterId) + 1
+  if (afterId !== undefined && start === 0) return undefined
+  return { models: models.slice(start, start + limit), hasMore: start + limit < models.length }
+}
+
+/** `GET /v1/models` in Anthropic's list shape: one page, with `has_more` for its direction. */
+export const encodeModelPage = (models: ReadonlyArray<ListedModel>, hasMore: boolean) => ({
   data: models.map(encodeModel),
-  has_more: false,
+  has_more: hasMore,
   first_id: models[0]?.id ?? null,
   last_id: models.at(-1)?.id ?? null,
 })

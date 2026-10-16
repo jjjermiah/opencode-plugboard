@@ -19,5 +19,5 @@ Verdict: **pass** · openai-agents-js 0.20.0 on bun 1 · models: fast, anthropic
 | S6 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
 | S6 | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
 | S7 | - | yes | n/a |  |
-| E1 | fast | no | pass | 2/2 |
-| E2 | nope | no | pass | 2/2 |
+| E1 | fast | no | pass | 3/3 |
+| E2 | nope | no | pass | 3/3 |

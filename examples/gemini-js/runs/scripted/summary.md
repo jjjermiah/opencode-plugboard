@@ -19,8 +19,8 @@ Verdict: **pass** · @google/genai 2.30.0 on bun 1 · models: fast, anthropic/cl
 | S6 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
 | S6 | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
 | S7 | - | yes | pass | 3/3 |
-| E1 | fast | no | pass | 1/1 |
-| E2 | nope | no | pass | 1/1 |
+| E1 | fast | no | pass | 2/2 |
+| E2 | nope | no | pass | 2/2 |
 
 ## Failures, gaps and unchecked items
 

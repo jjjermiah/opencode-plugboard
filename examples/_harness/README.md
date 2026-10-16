@@ -24,8 +24,10 @@ The scripted model answers only the exact prompts in `_shared/scenarios.json`. A
 | S5 | image as data URL (answer says red) | yes |
 | S6 | structured output (as text and as a forced tool) | yes |
 | S7 | list models | yes |
-| E1 | wrong key (401 `invalid_api_key`) | no |
-| E2 | unknown model (404 `model_not_found`) | no |
+| E1 | wrong key (401 `invalid_api_key`, type `authentication_error`) | no |
+| E2 | unknown model (404 `model_not_found`, type `not_found_error`) | no |
+
+The error `type` is checked on both wires. Each runner reports the neutral type: the OpenAI and Messages wires send it as `error.type`, and a Gemini runner maps the status (`UNAUTHENTICATED`, `NOT_FOUND`) to the same two values (#427).
 
 Model ids: `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. In a directory name `/` and `#` become `-`.
 

@@ -18,6 +18,10 @@ const m = await client.messages.create({ model: "fast", max_tokens: 256, message
 
 Send the plugboard key as `x-api-key` (what the Anthropic SDKs do) or as `Authorization: Bearer` (what Claude Code does with `ANTHROPIC_AUTH_TOKEN`). Both check the same key store. If both headers are present and the bearer token is not a key, `x-api-key` is tried next. Without `keys` on a loopback listener no header is needed. `anthropic-version` and `anthropic-beta` are accepted and ignored.
 
+## Model list
+
+`GET /v1/models` answers Anthropic's list shape when the request carries `anthropic-version` (the SDKs send it). It pages like Anthropic: `limit` (default 20, from 1 to 1000), `after_id` and `before_id`, using the ids in `first_id` and `last_id`. `has_more` says whether the page's direction has models left. An unknown cursor, both cursors, or a limit outside 1 to 1000 is a 400. Without `anthropic-version` the list is OpenAI's, unpaged.
+
 ## Claude Code
 
 ```sh
