@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fc from "fast-check"
 import type { PlugError } from "../../src/contract.js"
-import { filterByCapability, fromSlug, listAvailableModels, parseCapability, refToString, resolveModel, toSlug } from "../../src/models.js"
+import { effortVariant, filterByCapability, fromSlug, listAvailableModels, parseCapability, refToString, resolveModel, thinkingUnavailable, toSlug } from "../../src/models.js"
 import { CATALOG, model, testOptions } from "../support/fixtures.js"
 
 const notAvailable = (name: string): PlugError => ({ status: 404, kind: "not_found", code: "model_not_found", param: "model", message: `Model ${name} is not available` })
@@ -54,12 +54,49 @@ describe("resolveModel: aliases and reasoning effort", () => {
     expect(resolveModel(options, "plain", CATALOG, "high")).toEqual({ providerID: "test", id: "echo", variant: "high" })
   })
 
-  test("reasoning effort is ignored when the model has no such variant", () => {
-    expect(resolveModel(options, "test/echo", CATALOG, "max")).toEqual({ providerID: "test", id: "echo" })
+  test("reasoning effort above every variant the model has runs on the highest one (#410)", () => {
+    expect(resolveModel(options, "test/echo", CATALOG, "max")).toEqual({ providerID: "test", id: "echo", variant: "high" })
+  })
+
+  test("a budget that maps to a variant the model lacks runs on the nearest one above it (#410)", () => {
+    // Claude Haiku 4.5 lists only high and max: a thinking budget of 1500 is effort low, which runs on high.
+    const haiku = [model("anthropic", "claude-haiku-4-5", { variants: ["high", "max"] })]
+    const allowed = testOptions({ models: ["anthropic/*"] })
+    expect(resolveModel(allowed, "anthropic/claude-haiku-4-5", haiku, "low")).toEqual({ providerID: "anthropic", id: "claude-haiku-4-5", variant: "high" })
+    expect(resolveModel(allowed, "anthropic/claude-haiku-4-5", haiku, "medium")).toEqual({ providerID: "anthropic", id: "claude-haiku-4-5", variant: "high" })
+  })
+
+  test("a model with no thinking variant ignores reasoning effort (#410)", () => {
+    const plain = [model("test", "plain", { variants: ["fast"] })]
+    expect(resolveModel(testOptions({ models: ["test/*"] }), "test/plain", plain, "high")).toEqual({ providerID: "test", id: "plain" })
   })
 
   test("an explicit variant wins over reasoning effort", () => {
     expect(resolveModel(options, "fast", CATALOG, "high")).toEqual({ providerID: "test", id: "echo", variant: "low" })
+  })
+})
+
+describe("effortVariant (#410)", () => {
+  test.each([
+    ["the same name when the model has it", ["low", "high"], "high", "high"],
+    ["the nearest variant at or above the effort", ["high", "max"], "low", "high"],
+    ["the nearest at or above, not the highest", ["low", "high", "max"], "medium", "high"],
+    ["the highest when none is at or above", ["low", "medium"], "xhigh", "medium"],
+    ["the lowest thinking variant for minimal", ["low", "high"], "minimal", "low"],
+    ["nothing when the model has no thinking variant", ["fast"], "low", undefined],
+    ["nothing when the model has no variants", [], "high", undefined],
+    ["nothing for none, so a request without thinking stays without it", ["high"], "none", undefined],
+    ["nothing for a name outside the thinking order", ["high"], "banana", undefined],
+    ["none when the model names none as a variant", ["none", "high"], "none", "none"],
+  ])("%s", (_name, variants, effort, expected) => {
+    expect(effortVariant(variants, effort)).toBe(expected)
+  })
+
+  test("thinkingUnavailable is true only for a model with no thinking variant", () => {
+    const catalog = [model("test", "plain", { variants: ["fast"] }), model("test", "thinker", { variants: ["high"] })]
+    expect(thinkingUnavailable(catalog, { providerID: "test", id: "plain" })).toBe(true)
+    expect(thinkingUnavailable(catalog, { providerID: "test", id: "thinker" })).toBe(false)
+    expect(thinkingUnavailable(catalog, { providerID: "test", id: "missing" })).toBe(false)
   })
 })
 

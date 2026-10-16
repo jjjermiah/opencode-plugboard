@@ -3,7 +3,7 @@
  * stream, on the same route, deadline and model caller as the OpenAI front-ends.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import { CATALOG, ev, gate } from "../support/fixtures.js"
+import { CATALOG, ev, gate, model } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { parseSse, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
@@ -79,7 +79,7 @@ describe("#4 the route", () => {
     await server!.close()
     await route([ev.finish()], { apps: { default: { system: "P".repeat(400), systemMode: "prepend" } } })
     const withPolicy = (await server!.send({ ...messages(), path: "/v1/messages/count_tokens" })).json().input_tokens
-    expect(withPolicy - plain).toBe(100)
+    expect(withPolicy - plain).toBe(80)
   })
 
   test("#275 a caller's cache_control breakpoint reaches the model call; the request is still answered", async () => {
@@ -243,9 +243,9 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const port = new FakeSessionPort()
     port.skills.set("invoice-parser", "S".repeat(400))
     await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, port)
-    // ceil((400 skill characters + 2 for "hi") / 4)
-    expect((await countOf("invoice-parser")).body).toEqual({ input_tokens: 101 })
-    expect((await countOf("test/echo")).body).toEqual({ input_tokens: 1 })
+    // 21 request + 4 message + (400 skill characters + 2 for "hi") / 5, rounded up
+    expect((await countOf("invoice-parser")).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 402 / 5) })
+    expect((await countOf("test/echo")).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 2 / 5) })
   })
 
   test("an agent's prompt replaces the caller's system prompt in the count", async () => {
@@ -253,8 +253,8 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     port.agents.set("review", { system: "A".repeat(400) })
     await countServerWith({ models: ["test/*"], agents: [{ name: "review", model: "test/echo" }] }, port)
     const system = "C".repeat(800)
-    expect((await countOf("agent/review", { system })).body).toEqual({ input_tokens: 101 })
-    expect((await countOf("test/echo", { system })).body).toEqual({ input_tokens: 201 })
+    expect((await countOf("agent/review", { system })).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 402 / 5) })
+    expect((await countOf("test/echo", { system })).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 802 / 5) })
   })
 
   test("a skill missing from the app directory is the 404 the request would get", async () => {
@@ -271,11 +271,11 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
     await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
     const headers = { "x-api-key": "secret" }
-    // ceil((2 for "hi" + name + description + JSON schema characters) / 4)
-    expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil((2 + "websearch".length + 200 + JSON.stringify(input).length) / 4) })
+    // 21 request + 4 message + 534 tool preamble + 40 per tool + (2 for "hi" + name + description + JSON schema characters) / 5
+    expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 534 + 40 + (2 + "websearch".length + 200 + JSON.stringify(input).length) / 5) })
     // tool_choice is kept only with a caller tool (src/anthropic/request.ts). `none` offers no caller tool and no server tool.
     const caller = { name: "lookup", description: "Looks up", input_schema: { type: "object" } }
-    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({ input_tokens: 1 })
+    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 2 / 5) })
   })
 
   test("a named tool choice counts only that caller tool, its steering sentence, and the server tools", async () => {
@@ -288,8 +288,9 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const fetch = { name: "fetch", description: "Fetches", input_schema: { type: "object" } }
     const steering = "You must respond by calling the `fetch` tool."
     const chars = 2 + steering.length + "fetch".length + "Fetches".length + JSON.stringify(fetch.input_schema).length + "websearch".length + 200 + JSON.stringify(input).length
+    // Two tools (fetch and websearch): the preamble and 40 per tool, on top of the characters
     expect((await countOf("test/echo", { tools: [lookup, fetch], tool_choice: { type: "tool", name: "fetch" } }, { "x-api-key": "secret" })).body).toEqual({
-      input_tokens: Math.ceil(chars / 4),
+      input_tokens: Math.ceil(21 + 4 + 534 + 2 * 40 + chars / 5),
     })
   })
 
@@ -304,5 +305,37 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const refused: PlugError = { status: 503, kind: "server", code: "backend_unavailable", message: "Not ready" }
     await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, new FakeSessionPort(), async () => refused)
     expect((await countOf("invoice-parser")).status).toBe(503)
+  })
+})
+
+describe("#410 a thinking budget that maps to no variant of the model", () => {
+  /** A thinking request for `budget` tokens on a model with `variants`; the caller sees the ref the request runs on. */
+  async function thinking(variants: string[], budget: number) {
+    const caller = new FakeModelCaller([ev.finish()])
+    const catalog = [model("anthropic", "claude-haiku-4-5", { variants })]
+    server = await startRoute({ caller, options: { models: ["anthropic/*"] }, catalog })
+    const reply = await server!.send(messages({ model: "anthropic/claude-haiku-4-5", max_tokens: 20000, thinking: { type: "enabled", budget_tokens: budget } }))
+    return { reply, ref: caller.call.request.ref }
+  }
+
+  test("a budget of 1500 on Haiku 4.5 (high and max only) runs on high, with no unavailable header", async () => {
+    const { reply, ref } = await thinking(["high", "max"], 1500)
+    expect(reply.status).toBe(200)
+    expect(ref).toMatchObject({ providerID: "anthropic", id: "claude-haiku-4-5", variant: "high" })
+    expect(reply.headers).not.toHaveProperty("x-plugboard-thinking")
+  })
+
+  test("a model with no thinking variant runs without thinking and says so in x-plugboard-thinking", async () => {
+    const { reply, ref } = await thinking(["fast"], 1500)
+    expect(reply.status).toBe(200)
+    expect(ref.variant).toBeUndefined()
+    expect(reply.headers["x-plugboard-thinking"]).toBe("unavailable")
+  })
+
+  test("a request without thinking never gets the header", async () => {
+    const caller = new FakeModelCaller([ev.finish()])
+    server = await startRoute({ caller, options: { models: ["anthropic/*"] }, catalog: [model("anthropic", "claude-haiku-4-5", { variants: ["fast"] })] })
+    const reply = await server!.send(messages({ model: "anthropic/claude-haiku-4-5" }))
+    expect(reply.headers).not.toHaveProperty("x-plugboard-thinking")
   })
 })

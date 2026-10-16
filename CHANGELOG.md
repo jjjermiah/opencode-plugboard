@@ -14,7 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- A thinking request on a model that lists no variant for its budget ran without thinking and said nothing. Claude Haiku 4.5 lists only `high` and `max`, so a `budget_tokens` of 1500 (effort `low`) was silently ignored. Now a requested effort runs on the nearest variant at or above it, else the model's highest one, on Messages, Responses, Chat Completions and Gemini `thinkingConfig` alike. A model with no thinking variant at all still runs without thinking, and the Messages answer says so with the new `x-plugboard-thinking: unavailable` header (since 0.46.0). [#410](https://github.com/jjjermiah/opencode-plugboard/issues/410)
+- `count_tokens` and Gemini `countTokens` were off by up to 9 times with tools and 13 times with images, and undercounted CJK text by about four times. The estimate is now calibrated against live provider counts for Claude Haiku 4.5 and Gemini 3.x: tool-use framing and a per-tool cost, a fixed cost per request and message, one token per CJK character on Claude, and Anthropic's `width * height / 750` for each image from its header (a flat cost on Gemini). Chat Completions and Responses still have no count endpoint. [#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)
 
 ## [0.45.0] - 2026-10-16: Clean Endings
 

@@ -34,7 +34,7 @@ export interface ParsedGemini {
   readonly request: Omit<PlugRequest, "ref">
   /** Response presentation state for the encoder; never reaches the model call. */
   readonly exchange: GeminiExchange
-  /** From `generationConfig.thinkingConfig`: picks the model variant of that name when the model has one. */
+  /** From `generationConfig.thinkingConfig`: picks the model variant of that name, else the nearest one above it (`effortVariant`, #410). */
   readonly reasoningEffort?: string
 }
 
