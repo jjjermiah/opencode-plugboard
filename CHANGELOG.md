@@ -14,12 +14,144 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.47.0] - 2026-10-16: Speaks Anthropic Fluently
+
+**Full diff:** [v0.46.0...v0.47.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...v0.47.0)
+
 ### Fixed
 
 - `GET /v1/models` and `GET /v1/models/{id}` accept `x-api-key`, as `POST /v1/messages` does, so `client.models.list()` in the Anthropic SDKs works. A request with `anthropic-version` gets Anthropic's list shape (`data`, `has_more`, `first_id`, `last_id`, each model with `type`, `id`, `display_name`, `created_at`); other requests keep the OpenAI shape. Since 0.47.0 ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)).
 - Chat Completions, Responses and Gemini now send `x-plugboard-thinking: unavailable` too, when a requested reasoning effort cannot apply because the model has no thinking variant. Until now only Messages said so. `none` never sets it. Since 0.47.0.
 - A redacted reasoning block the provider returns is now sent back on the Messages route as one `redacted_thinking` block with its opaque data, in both the JSON and the stream. Before, the host's redacted reasoning was dropped, so a client never got a block it could replay. Like thinking, it is left out unless the request asked for thinking. Since 0.47.0 ([#385](https://github.com/jjjermiah/opencode-plugboard/issues/385)).
 - The `count_tokens` estimate has its own profile for Claude 5.x models (for example `claude-sonnet-5-5`). The shared Claude profile was 0.51 to 1.42 of the real input count on Sonnet 5.5; Claude 4.x keeps its numbers. Since 0.47.0 ([#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (12 commits)</summary>
+
+#### Features
+
+**feat(openai): send x-plugboard-thinking on Chat, Responses and Gemini when effort cannot apply** ([`b206c59`](https://github.com/jjjermiah/opencode-plugboard/commit/b206c59797d63810f6d941b9be2bdd5a4b36f212))
+
+Until now only the Messages route answered x-plugboard-thinking: unavailable (#410). A request on Chat Completions, Responses or Gemini thinkingConfig that asked for an effort on a model with no thinking variant ran without thinking and said nothing. Those three routes now set the same header, so every front-end with a reasoning effort answers the same way.
+
+The check lives in models.ts as effortUnavailable. It is true when an effort was requested, the effort is not none, and thinkingUnavailable says the resolved model has no thinking variant. none asks for no thinking, so it never sets the header. Each route calls it once the model resolves and before any response bytes, so the header is on the first byte.
+
+Rejected: putting the header on the shared contract. The contract carries no presentation, and the header is a front-end matter (I20). The Messages route keeps its own check, which uses exchange.thinking, so its behaviour is unchanged.
+
+Checked with test/http/thinking-header.test.ts: nine cases, three front-ends by three situations (no thinking variant, a variant it can run, no effort or none). The header cases fail before this change. test/http/messages.test.ts and models-anthropic.test.ts still pass.
+
+Refs #410
+
+**feat(anthropic): return redacted_thinking blocks on Messages when the host reports them** ([`9155d84`](https://github.com/jjjermiah/opencode-plugboard/commit/9155d84a6c3b033fa2e7a141ce955ad8249e6af2))
+
+The host (OpenCode 2.0.30) keeps a redacted reasoning block as its start state, with redactedData in place of a signature. session.reasoning.ended carries that state merged with the end state (publish-llm-event.ts), so the plugin can read it there. Before this change events.ts only read signatures, so a redacted block never reached the Messages encoder, and a client never got a block to send back on the next turn.
+
+The contract's reasoning-delta gains an optional redactedData. events.ts emits it as an empty-text reasoning-delta at the block's end, next to the signature. The Messages encoder turns it into one redacted_thinking block with its data and no deltas, the way the API sends it, in the JSON body and in the stream. Like thinking, it is left out unless the request asked for thinking. The cache stores it as its own event, so a replay keeps it and does not merge it with text.
+
+Rejected: reading redactedData from session.reasoning.started. The ended event already carries the merged state, and the started event is not subscribed to. Rejected: a separate event type. A redacted block is a reasoning part, like a signature, so one more optional field on reasoning-delta is enough.
+
+Checked with test/unit/anthropic-response.test.ts (two cases, the stream and the JSON body), test/session/collector.test.ts (the host state maps to the event) and test/unit/cache.test.ts, test/http/messages.test.ts, test/unit/stop-sequences.test.ts, which still pass (229 tests). The live round trip with the redaction trigger string is checked separately; see the PR.
+
+Refs #385
+
+#### Fixes
+
+**fix(openai): accept x-api-key on GET /v1/models and answer Anthropic's list shape** ([`577c5af`](https://github.com/jjjermiah/opencode-plugboard/commit/577c5afb8693aa2848044e0b8ab7a7c9491caeb2))
+
+GET /v1/models and GET /v1/models/{id} now authenticate through the same rule as POST /v1/messages: Bearer first, then x-api-key. A request that carries anthropic-version gets Anthropic's list shape, with data, has_more (always false), first_id, last_id, and each model as type "model", id, display_name and created_at. Without that header the OpenAI shape is unchanged.
+
+The Anthropic SDKs send x-api-key on models.list() and got a 401 from the OpenAI-routed list, so client.models.list() failed on plugboard. The S7 gap in examples/anthropic-python and examples/anthropic-js is now a pass.
+
+The shape follows the header, not the path, because the same path serves OpenAI clients too. Errors on these paths keep the OpenAI body: the status and type match Anthropic's, and the body shape is a follow-up. The catalog is one page, so limit is accepted and ignored. A separate /v1/models route for Anthropic clients was rejected: a second route table to keep in step, and the SDKs call the same path.
+
+Checked with test/http/models-anthropic.test.ts (5 tests; x-api-key got 401 before the change). The scripted runs of anthropic-python and anthropic-js were regenerated, and S7 passes in both.
+
+Refs #399
+
+**fix(anthropic): give Claude 5.x its own count_tokens profile** ([`c762c0a`](https://github.com/jjjermiah/opencode-plugboard/commit/c762c0a292446cbe438f65756800dd9bef65aa55))
+
+The count_tokens estimate used one Claude profile for every Claude id. The issue's measurements (0.46.0, one request per cell, against real usage.input_tokens) showed that Haiku 4.5 is within target and Claude Sonnet 5.5 is not: its ratios ran from 0.51 to 1.42, with the short no-tool case low and the short tool case high. The gap is in the family, not the request: Claude 5.x packs Latin text into about 2.5 characters per token, not 5, its fixed request cost is larger, and its tool framing is smaller.
+
+The estimator now picks a profile by the model id. A Gemini id keeps the Gemini profile, a Claude 5.x id (claude-<family>-5-...) gets CLAUDE_5, and every other id keeps the Claude profile it had, so Haiku 4.5 is unchanged. CLAUDE_5 is fitted to the claude-sonnet-5-5 rows of the issue: the short and long no-tool requests, and the short and long tool requests. Its numbers are in tokens.ts, next to the profile they replace.
+
+Rejected: a per-model table. Two model ids cannot show a family's tokenizer, and a table would grow with every release. Rejected: one scale factor. The fit needs the characters per token and the tool framing to move on their own, and a single factor misses the tool case.
+
+Checked with test/unit/tokens.test.ts (a new #412 case: the request cost and the characters per token follow the family). The live ratios for claude-sonnet-5-5 and claude-haiku-5-5 are in the PR body, measured against real input tokens on the dev server.
+
+Refs #412
+
+**fix(anthropic): refit the Claude 5.x count profile on live usage** ([`2d73407`](https://github.com/jjjermiah/opencode-plugboard/commit/2d73407f9f1f54af257deb7daf0ec020527a7460))
+
+The first Claude 5.x profile (c762c0a) was fitted to the issue's Sonnet 5.5 rows. Measured live on the dev server at a0efa4b, the same estimate ran 23 to 32 percent high on both claude-sonnet-5-5 and claude-haiku-5-5. The live rows, one request per cell, count from count_tokens and real from usage.input_tokens plus the cache tokens:
+
+    model              shape  tool     count   real   ratio claude-sonnet-5-5  short  no tool    59     46    1.28 claude-sonnet-5-5  short  tool      517    421    1.23 claude-sonnet-5-5  long   no tool   862    652    1.32 claude-sonnet-5-5  long   tool     1320   1027    1.29 claude-haiku-5-5   (same four rows, the same counts and real tokens)
+
+The long turn is 2072 characters. Its real tokens were all in cache_creation (648 of 652), which is why input_tokens alone reads 4. The two models agree row by row, so one profile covers the family.
+
+The refit solves the four rows. The text rate is (2072 - 24) / (652 - 46), about 3.38 characters per token. The fixed request cost is 46 - 4 - 24 / 3.38, about 35. One tool adds 375 real tokens, of which the tool's own text (123 characters, about 36 tokens) is counted separately, so the framing is about 299 with perTool at 40. Offline, the new profile gives 47, 422, 653 and 1028 for the four rows, within 2 percent of real.
+
+This is an in-sample fit: the same rows set the constants. The live counts were taken before the refit, so the post-refit ratios are predicted, not measured. Claude 4.x and Gemini are unchanged.
+
+Rejected: keeping the issue's Sonnet fit. It was off by a quarter on this content.
+
+Refs #412
+
+#### Tests
+
+**test(examples): drop the #399 S7 gap in pydantic-ai-anthropic and ratchet test floors** ([`f15c8c4`](https://github.com/jjjermiah/opencode-plugboard/commit/f15c8c463ce4d9fb08fb867db80bf08af0b55b9f))
+
+With the fix from #399, GET /v1/models accepts x-api-key, so pydantic-ai-anthropic's S7 passes without its gap entry. The gap is removed from run.py, the regenerated scripted run is committed, and the comments that said the route refuses x-api-key are reworded in the Anthropic runners that send Bearer. The live records under runs/live are dated records and stay as they were.
+
+The new tests from #399 and #410 raise the http and unit floors by the same count, so the ratchet is committed with them (.github/floors/test-count-floors.json).
+
+Refs #399
+
+**test(examples): record live S7 runs of anthropic-python and anthropic-js on a0efa4b** ([`bdca4af`](https://github.com/jjjermiah/opencode-plugboard/commit/bdca4af85afdaa17adf1fc5589bc6d5e5ae8c8a1))
+
+Live target runs of the two Anthropic SDK examples on the dev server at a0efa4b (the #399 fix). S7 passes in both: models.list() with x-api-key, the list in Anthropic's shape.
+Refs #399
+
+**test(tests): repoint the I15 mutation anchor at the models auth line** ([`85b4f64`](https://github.com/jjjermiah/opencode-plugboard/commit/85b4f6495a49bbe3d599e6cd6685fc3994bc5748))
+
+Since the change for issue 399 replaced the generic auth line in src/openai/route.ts with a ternary, the I15-unknown-route-before-auth anchor no longer matched. The mutation now targets the new const auth line and places the same guard before it. The mutation still kills, and the full validate with mutations passes.
+
+Refs #399
+
+#### Docs
+
+**docs(changelog): note the Claude 5.x count profile and ratchet the unit floor** ([`a0efa4b`](https://github.com/jjjermiah/opencode-plugboard/commit/a0efa4b38ba66cc11c6b42c413b86bd0d1972da0))
+
+The Claude 5.x count_tokens profile (#412) gets its CHANGELOG entry under Unreleased, with the measured range it replaces. The new #412 unit case raises the unit floor by one, so the ratchet is committed with it (.github/floors/test-count-floors.json).
+
+Refs #412
+
+**docs(examples): regenerate the examples index after the S7 gap flips** ([`ee7ec05`](https://github.com/jjjermiah/opencode-plugboard/commit/ee7ec0570847b6f33f0b330389130f0acf6b2426))
+
+The scripted and newest live columns of examples/README.md come from the run records. The S7 gaps closed for #399 changed three rows: anthropic-js and anthropic-python now pass on their new live records, and pydantic-ai-anthropic passes scripted. The index is regenerated by examples-index.ts, so the examples CI check passes again.
+
+Refs #399
+
+#### CI and tooling
+
+**ci(ci): make pr-wait wait for every required check** ([`e677e2d`](https://github.com/jjjermiah/opencode-plugboard/commit/e677e2d27c5d349e409e52cad7d984fdc8115243))
+
+`bun run pr-wait 454 --merge` reported green with one check, right after a push: only CodeQL had registered on the new head, it had finished, and every listed check being done was the stop condition. The merge was then refused by the ruleset, and the real CI run later failed.
+
+pr-wait now reads the checks the main ruleset requires (`GET /repos/{repo}/rules/branches/main`, `required_status_checks`) and waits until each of them is present on the head and every listed check has finished. A timeout lists the missing and pending names.
+
+Validation: run against #454 at the same head, it waited for the full set and reported `red: 2 of 12 checks did not pass` (CI passed, Examples), the real outcome.
+
+#### Dependencies
+
+**build(deps): support opencode 2.0.30** ([`058a1f2`](https://github.com/jjjermiah/opencode-plugboard/commit/058a1f2e73e300fd8b9cdc3e542808aea3f708f4))
+
+OpenCode published @opencode/plugin 2.0.30. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.46.0] - 2026-10-16: Honest Counts
 
@@ -8035,7 +8167,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...HEAD
+[0.47.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...v0.44.0
