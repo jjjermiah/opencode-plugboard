@@ -7,8 +7,8 @@ const repo = "https://github.com/jjjermiah/opencode-plugboard"
 // the tag is its merge commit. The theme shows it in a banner (theme/index.ts).
 const latest: string = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version
 
-// The site is built from docs/. The Guide page (index.md) includes the README, so the README stays
-// the single source for the quick start and the feature list.
+// The site is built from docs/. The sidebar tells one story: get started, then one guide per task, then the
+// clients, the reference and the project pages. Page files keep their old paths, so old links still work.
 export default defineConfig({
   title: "opencode-plugboard",
   description:
@@ -19,7 +19,7 @@ export default defineConfig({
   vite: { define: { __PLUGBOARD_LATEST__: JSON.stringify(latest) } },
   themeConfig: {
     nav: [
-      { text: "Guide", link: "/" },
+      { text: "Get started", link: "/install" },
       { text: "Configuration", link: "/configuration" },
       { text: "Architecture", link: "/architecture" },
       { text: "Clients", link: "/clients/any-app" },
@@ -43,6 +43,14 @@ export default defineConfig({
       { text: "Changelog", link: `${repo}/blob/main/CHANGELOG.md` },
     ],
     sidebar: [
+      {
+        text: "Get started",
+        items: [
+          { text: "What is plugboard", link: "/" },
+          { text: "Install and first request", link: "/install" },
+          { text: "Connect your app", link: "/connect" },
+        ],
+      },
       {
         text: "Reference",
         items: [
