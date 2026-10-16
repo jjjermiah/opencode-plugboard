@@ -310,6 +310,11 @@ export class RequestCollector {
     return this.wasCancelled
   }
 
+  /** The host's usage for the run so far (the last `session.usage.updated` or step token record), or undefined before any. */
+  get spent(): PlugUsage | undefined {
+    return toUsage(this.usage)
+  }
+
   /** The request's events, in order. Ends when the collector is terminal. */
   events(): AsyncIterable<PlugEvent> {
     return this.queue

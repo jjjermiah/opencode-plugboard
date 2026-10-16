@@ -245,7 +245,7 @@ export interface Limits {
   readonly apps?: Readonly<Record<string, LimitCaps>>
   /**
    * Bytes of request bodies buffered at once, across every request in the process (`readJsonBody` in
-   * `src/http.ts`). A body that would go over it is refused with 503 `server_busy` before it is read. Not per app.
+   * `src/http.ts`). A body that would go over it is refused with 503 `server_busy` before it is read. One app may hold at most half of it.
    */
   readonly maxBodyBytesInFlight?: number
   /** Milliseconds a request body may take to arrive in full; a slower one is refused with 408. */

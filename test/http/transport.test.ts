@@ -175,9 +175,9 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
   const small: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 5_000 }
 
   /** Reads with `limits` and answers the way a route does: 200 when read, the refusal's status and Retry-After otherwise. */
-  function answerWith(limits: BodyLimits, probe?: (request: IncomingMessage) => void): Handler {
+  function answerWith(limits: BodyLimits, probe?: (request: IncomingMessage) => void, appOf?: (request: IncomingMessage) => string | undefined): Handler {
     return (request, response) => {
-      const read = readJsonBody(request, new AbortController().signal, limits)
+      const read = readJsonBody(request, new AbortController().signal, limits, appOf?.(request))
       probe?.(request)
       void read.then(
         () => sendJson(response, 200, { ok: true }),
@@ -274,6 +274,51 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
     expect(bodyPlugError(new BodyError(503, "busy", "server_busy", 1))).toEqual({ status: 503, kind: "server", message: "busy", code: "server_busy", retryAfterSeconds: 1 })
     expect(bodyPlugError(new BodyError(408, "slow", "body_read_timeout"))).toEqual({ status: 408, kind: "timeout", message: "slow", code: "body_read_timeout" })
     expect(bodyPlugError(new BodyError(413, "big"))).toEqual({ status: 413, kind: "invalid_request", message: "big" })
+  })
+
+  /** A JSON body of exactly `bytes` bytes. */
+  const bodyOf = (bytes: number) => JSON.stringify({ text: "a".repeat(bytes - 11) })
+  const byApp = (request: IncomingMessage) => (request.headers["x-app"] === undefined ? undefined : String(request.headers["x-app"]))
+
+  test("a stalled upload from app a holds only a's share: a's excess is a 503, and app b is still admitted", async () => {
+    // Two stalled bodies of 250 bytes fill a's share (half of 1000). A third from a is refused; b (400 bytes) fits in the rest.
+    const limits: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 500 }
+    let entered = 0
+    const { port, send } = await serve(answerWith(limits, () => void entered++, byApp))
+    const stalled = [0, 1].map(() => openPost(port, { "content-type": "application/json", "content-length": 250, "x-app": "a" }))
+    const replies = stalled.map(replyOf)
+    for (const client of stalled) client.write("{")
+    await until(() => entered === 2)
+
+    const excess = bodyOf(250)
+    const refused = await send({ method: "POST", body: excess, headers: { "content-length": 250, "x-app": "a" } })
+    expect(refused.status).toBe(503)
+    expect(refused.json()).toEqual({ error: "Too many request bodies are being read; retry shortly" })
+
+    const other = bodyOf(400)
+    expect((await send({ method: "POST", body: other, headers: { "content-length": 400, "x-app": "b" } })).status).toBe(200)
+
+    // The stalled bodies answer 408 at the read deadline, and their bytes go back to a's share.
+    for (const reply of await Promise.all(replies)) expect(reply.statusCode).toBe(408)
+    expect((await send({ method: "POST", body: excess, headers: { "content-length": 250, "x-app": "a" } })).status).toBe(200)
+  })
+
+  test("a stalled upload gets 408 after the read deadline and frees its app's slot for the next upload", async () => {
+    const limits: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 50 }
+    let entered = 0
+    const { port, send } = await serve(answerWith(limits, () => void entered++, byApp))
+    const stalled = openPost(port, { "content-type": "application/json", "content-length": 500, "x-app": "a" })
+    const reply = replyOf(stalled)
+    stalled.write("{")
+    await until(() => entered === 1)
+    // Only 1 byte has arrived; the declared 500 holds a's whole share, so a second upload from a waits for the timeout.
+    expect((await send({ method: "POST", body: bodyOf(100), headers: { "content-length": 100, "x-app": "a" } })).status).toBe(503)
+
+    const answer = await reply
+    expect(answer.statusCode).toBe(408)
+    expect(JSON.parse(await textOf(answer))).toEqual({ error: "Request body was not received within 50 ms (option limits.bodyReadTimeoutMs)" })
+    stalled.destroy()
+    expect((await send({ method: "POST", body: bodyOf(500), headers: { "content-length": 500, "x-app": "a" } })).status).toBe(200)
   })
 })
 

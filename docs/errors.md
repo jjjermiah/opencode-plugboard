@@ -113,7 +113,7 @@ The request body is over the body cap: `limits.maxBodyBytes` (32 MiB by default)
 
 ### server_busy {#server-busy}
 
-Too many request bodies are being read at once (`limits.maxBodyBytesInFlight`). Retry after the `Retry-After` delay.
+Too many request bodies are being read at once (`limits.maxBodyBytesInFlight`), or this app already holds half of it. Retry after the `Retry-After` delay.
 
 ### timeout {#timeout}
 

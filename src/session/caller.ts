@@ -521,6 +521,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         context.stopAnswer?.removeEventListener("abort", onStopAnswer)
         clearTimeout(settle)
         clearTimeout(drain)
+        // What the host has spent on the run so far: the usage record charges it when the run ends without a finish (client gone, timeout).
+        if (collector?.spent) context.onRunUsage?.(collector.spent)
         if (sessionID && collector) {
           // The response may be over (consumer left early, error, timeout, a failed step) while the
           // host keeps running the session: interrupt unless it reported the end of the execution

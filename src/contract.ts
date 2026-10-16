@@ -233,6 +233,12 @@ export interface CallContext {
    */
   readonly onUsage?: (totals: CallTotals) => void
   /**
+   * Called once when the call ends without a finish event (client gone, timeout, or a stop sequence cut the run short), with
+   * the host's usage for the run up to then. `withUsage` records it, so the tokens are charged to the app's budgets. The
+   * finish's own usage takes precedence when there is one.
+   */
+  readonly onRunUsage?: (usage: PlugUsage) => void
+  /**
    * Called once when the call ends, only if OpenCode ran server tools for it (option `apps.<name>.serverTools`),
    * with how many. Front-ends set `x-plugboard-server-tools` from it while the headers are open, so a stream
    * (headers sent first) never gets it, and a choice of `n` adds to the count of the others.

@@ -393,7 +393,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(response, unsupported)
 
-    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
+    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app), auth.app)
     // The end user: the app's `userHeader` when the request sends it (#272), else the body's `user`.
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUser(sent))
     const body = withEndUser(sent, user, "user")

@@ -47,9 +47,13 @@ export function bodyPlugError(error: BodyError): PlugError {
   }
 }
 
-/** Process-wide bytes of request bodies being read. On `globalThis` under a versioned key (I6), so every plugin generation shares one budget. */
+/**
+ * Process-wide bytes of request bodies being read, and the bytes each app holds of them. On `globalThis` under a versioned
+ * key (I6), so every plugin generation shares one budget. `apps` is added by a later generation: an older one ignores it.
+ */
 interface BodyBudget {
   inFlight: number
+  apps?: Map<string, number>
 }
 const BODY_BUDGET = Symbol.for("opencode-plugboard.body-budget/1")
 const bodyBudget = (): BodyBudget => {
@@ -145,11 +149,18 @@ export function beginRequest(
  * buffered, so the response can still be delivered (see `finishRequest`).
  *
  * Bounded before it is buffered (#156, invariant I28). The bytes held by every body being read in the
- * process stay within `limits.maxBytesInFlight`: a declared Content-Length is charged before the first
- * byte is read, a body without one as it arrives, and a body that would go over is refused with 503
- * `server_busy` (Retry-After 1). A body not complete within `limits.readTimeoutMs` is refused with 408.
+ * process stay within `limits.maxBytesInFlight`, and those of one app (`app`) within half of it, so one app
+ * cannot take the room of the others: a declared Content-Length is charged before the first byte is read, a body
+ * without one as it arrives, and a body that would go over either is refused with 503 `server_busy`
+ * (Retry-After 1). A body not complete within `limits.readTimeoutMs` is refused with 408.
  */
-export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<unknown> {
+export function readJsonBody(
+  request: IncomingMessage,
+  signal: AbortSignal,
+  limits: BodyLimits = BODY_LIMIT_DEFAULTS,
+  /** The app that sent the request, once its key is known. Absent: only the process-wide budget applies. */
+  app?: string,
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const maxBodyBytes = limits.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
     const declared = Math.max(0, Number(request.headers["content-length"]) || 0)
@@ -159,13 +170,18 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     }
     if (signal.aborted) return reject(signal.reason)
     const budget = bodyBudget()
+    const apps = (budget.apps ??= new Map<string, number>())
+    const appShare = Math.ceil(limits.maxBytesInFlight / 2)
     const chunks: Buffer[] = []
     let size = 0
     // Bytes this read holds in the budget. Released on every exit: complete, refused or abandoned.
     let held = 0
     const charge = (bytes: number): boolean => {
       if (budget.inFlight + bytes > limits.maxBytesInFlight) return false
+      const mine = app === undefined ? 0 : (apps.get(app) ?? 0)
+      if (app !== undefined && mine + bytes > appShare) return false
       budget.inFlight += bytes
+      if (app !== undefined) apps.set(app, mine + bytes)
       held += bytes
       return true
     }
@@ -174,6 +190,11 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     const cleanup = () => {
       clearTimeout(timer)
       budget.inFlight -= held
+      if (app !== undefined) {
+        const left = (apps.get(app) ?? 0) - held
+        if (left > 0) apps.set(app, left)
+        else apps.delete(app)
+      }
       held = 0
       request.off("data", onData)
       request.off("error", onError)
