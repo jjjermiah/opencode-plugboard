@@ -41,10 +41,12 @@ interface Profile {
 const CLAUDE: Profile = { charsPerToken: 5, cjkTokens: 1, request: 21, message: 4, toolBlock: 35, toolPreamble: 534, perTool: 40, unreadableImage: MEDIA_TOKENS }
 const GEMINI: Profile = { charsPerToken: 5, cjkTokens: 0.67, request: 0, message: 0, toolBlock: 0, toolPreamble: 0, perTool: 0, flatImage: 1090, unreadableImage: 1090 }
 /**
- * Claude 5.x (#412): its tokenizer packs Latin text into about 2.5 characters per token, not 5, and its tool framing is
- * smaller, with a larger fixed request cost. Fitted to `claude-sonnet-5-5` (the 2026-10-16 measurements on the issue).
+ * Claude 5.x (#412): its tokenizer packs Latin text into about 3.4 characters per token, not 5, its fixed request cost is
+ * about 35 tokens, and one tool adds about 340 tokens of framing (the tool's own text is counted on top). Fitted to live
+ * `usage.input_tokens` of `claude-sonnet-5-5` and `claude-haiku-5-5` (2026-10-16): a short and a 2072-character user turn,
+ * each with and without one tool. The four rows of each model agree to 1 token.
  */
-const CLAUDE_5: Profile = { charsPerToken: 2.55, cjkTokens: 1, request: 45, message: 4, toolBlock: 35, toolPreamble: 370, perTool: 40, unreadableImage: MEDIA_TOKENS }
+const CLAUDE_5: Profile = { charsPerToken: 3.38, cjkTokens: 1, request: 35, message: 4, toolBlock: 35, toolPreamble: 299, perTool: 40, unreadableImage: MEDIA_TOKENS }
 
 /** The profile for a model id: Gemini, Claude 5.x (`claude-<family>-5-...`), or the Claude 4.x profile for every other id. */
 const profileOf = (model: string): Profile => (/gemini/i.test(model) ? GEMINI : /claude-[a-z]+-5(?:-|$)/i.test(model) ? CLAUDE_5 : CLAUDE)
