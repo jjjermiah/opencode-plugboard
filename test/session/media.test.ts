@@ -50,6 +50,11 @@ const routes: Record<string, (response: ServerResponse) => void> = {
     response.writeHead(200, { "content-type": "image/png", "content-length": String(21 * 1024 * 1024) })
     response.end()
   },
+  "/streamed-huge": (response) => {
+    response.writeHead(200, { "content-type": "image/png", "transfer-encoding": "chunked" })
+    response.write(Buffer.alloc(600, 0x41))
+    response.end(Buffer.alloc(600, 0x42))
+  },
 }
 beforeAll(async () => {
   server = await listen((request, response) => {
@@ -78,13 +83,19 @@ describe("#84 addresses that are not public are refused before any connection", 
     ["loopback", "http://127.0.0.1/a.png"],
     ["loopback, another address", "http://127.255.0.9/a.png"],
     ["loopback in hex (URL-normalized)", "http://0x7f000001/a.png"],
+    ["loopback in dotted hex", "http://0x7f.0.0.1/a.png"],
+    ["loopback in octal (URL-normalized)", "http://0177.0.0.1/a.png"],
+    ["loopback in two-part shorthand", "http://127.1/a.png"],
     ["loopback as one integer", "http://2130706433/a.png"],
     ["this network", "http://0.0.0.0/a.png"],
     ["private 10/8", "http://10.1.2.3/a.png"],
+    ["private 10/8 in octal", "http://012.0.0.1/a.png"],
+    ["private 10/8 in dotted hex", "http://0x0a.0.0.1/a.png"],
     ["private 172.16/12", "http://172.31.255.255/a.png"],
     ["private 192.168/16", "http://192.168.1.1/a.png"],
     ["CGNAT", "http://100.64.0.1/a.png"],
     ["link-local (cloud metadata)", "http://169.254.169.254/latest/meta-data"],
+    ["link-local in octal", "http://0251.0376.0251.0376/a.png"],
     ["documentation", "http://203.0.113.5/a.png"],
     ["benchmarking", "http://198.18.0.1/a.png"],
     ["multicast", "http://224.0.0.1/a.png"],
@@ -218,6 +229,7 @@ describe("#259 remoteImages limits tighten the fetch", () => {
 
   test("maxBytes below the image size is image_too_large; at the size it is fetched", async () => {
     expect(code(await fetchImage(url("/ok.png"), { allow, maxBytes: PNG.length - 1 }))).toBe("image_too_large")
+    expect(code(await fetchImage(url("/streamed-huge"), { allow, maxBytes: 1024 }))).toBe("image_too_large")
     expect(code(await fetchImage(url("/ok.png"), { allow, maxBytes: PNG.length }))).toBe("fetched")
   })
 
