@@ -41,12 +41,15 @@ interface Profile {
 const CLAUDE: Profile = { charsPerToken: 5, cjkTokens: 1, request: 21, message: 4, toolBlock: 35, toolPreamble: 534, perTool: 40, unreadableImage: MEDIA_TOKENS }
 const GEMINI: Profile = { charsPerToken: 5, cjkTokens: 0.67, request: 0, message: 0, toolBlock: 0, toolPreamble: 0, perTool: 0, flatImage: 1090, unreadableImage: 1090 }
 /**
- * Claude 5.x (#412): its tokenizer packs Latin text into about 3.4 characters per token, not 5, its fixed request cost is
- * about 35 tokens, and one tool adds about 340 tokens of framing (the tool's own text is counted on top). Fitted to live
+ * Claude 5.x (#412): its tokenizer packs Latin text into about 3 to 3.4 characters per token, not 5, its fixed request cost is
+ * about 35 tokens, and one tool adds about 300 tokens of framing (the tool's own text is counted on top). Fitted to live
  * `usage.input_tokens` of `claude-sonnet-5-5` and `claude-haiku-5-5` (2026-10-16): a short and a 2072-character user turn,
  * each with and without one tool. The four rows of each model agree to 1 token.
+ * The hub's long prose without tools (about 1850 characters, 770 real tokens) is denser than that turn: at 3.38 it counts
+ * 0.76 of real. At 3.1 that row counts about 0.82, and a 1800-character prose sample measured live (1.07 at 3.38) counts
+ * about 1.16. Both stay within 20%. The hub text itself was not available, so the hub figure is taken from the issue.
  */
-const CLAUDE_5: Profile = { charsPerToken: 3.38, cjkTokens: 1, request: 35, message: 4, toolBlock: 35, toolPreamble: 299, perTool: 40, unreadableImage: MEDIA_TOKENS }
+const CLAUDE_5: Profile = { charsPerToken: 3.1, cjkTokens: 1, request: 35, message: 4, toolBlock: 35, toolPreamble: 299, perTool: 40, unreadableImage: MEDIA_TOKENS }
 
 /** The profile for a model id: Gemini, Claude 5.x (`claude-<family>-5-...`), or the Claude 4.x profile for every other id. */
 const profileOf = (model: string): Profile => (/gemini/i.test(model) ? GEMINI : /claude-[a-z]+-5(?:-|$)/i.test(model) ? CLAUDE_5 : CLAUDE)

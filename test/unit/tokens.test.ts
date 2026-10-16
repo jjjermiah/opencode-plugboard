@@ -179,7 +179,7 @@ describe("#412 a Claude 5.x model has its own profile", () => {
     expect(estimateTokens(plugRequest({ messages: [] }), "claude-haiku-5-5")).toBe(35)
     expect(estimateTokens(plugRequest({ messages: [] }), "claude-haiku-4-5")).toBe(21)
     const long = turn(text("a".repeat(2550)))
-    expect(estimateTokens(long, "claude-sonnet-5-5")).toBe(Math.ceil(35 + 4 + 2550 / 3.38))
+    expect(estimateTokens(long, "claude-sonnet-5-5")).toBe(Math.ceil(35 + 4 + 2550 / 3.1))
     expect(estimateTokens(long, "claude-haiku-4-5")).toBe(21 + 4 + 510)
   })
 })

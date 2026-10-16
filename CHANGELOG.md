@@ -17,6 +17,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Fixed
 
 - `GET /v1/models` with `anthropic-version` pages like Anthropic's list. It honours `limit` (default 20, from 1 to 1000), `after_id` and `before_id`, and `has_more` says whether the page's direction has models left. Before, `?limit=2` returned all 388 models on a real deployment, so the SDKs' `models.list()` got one page and no paging. The cost: a caller that reads only the first page now gets 20 models, not the whole catalog. Iterate the list (the SDKs do this for you) to get all of them. An unknown cursor, both cursors, or a limit outside 1 to 1000 is a 400. The OpenAI list is not paged. Since 0.48.0 ([#457](https://github.com/jjjermiah/opencode-plugboard/issues/457)).
+- The `count_tokens` estimate for Claude 5.x counts long prose closer to what the provider bills. A dense prose turn without tools counted 24 percent low on `claude-sonnet-5-5` (0.76 of real). The Claude 5.x rate for prose drops from 3.38 to 3.1 characters per token. Short turns and tool requests move little. Chat Completions and Responses have no count endpoint, by design. Since 0.48.0 ([#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)).
 
 ## [0.47.0] - 2026-10-16: Speaks Anthropic Fluently
 
