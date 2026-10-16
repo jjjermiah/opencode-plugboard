@@ -45,7 +45,7 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig_abc" }
     const { types, message } = await run(plain, ev.reasoning("hmm"), signed, ev.text("answer"), ev.finish())
     expect(types).not.toContain("signature_delta")
-    expect(message.content).toEqual([{ type: "text", text: "answer" }])
+    expect(message.content).toEqual([{ type: "text", text: "answer", citations: null }])
   })
 
   test("a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use", async () => {
@@ -80,10 +80,10 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
 
   test("reasoning becomes a thinking block only when thinking was asked for", async () => {
     const on = await run(thinking, ev.reasoning("hmm"), ev.text("answer"), ev.finish())
-    expect(on.message.content).toEqual([{ type: "thinking", thinking: "hmm", signature: "" }, { type: "text", text: "answer" }])
+    expect(on.message.content).toEqual([{ type: "thinking", thinking: "hmm", signature: "" }, { type: "text", text: "answer", citations: null }])
     expect(on.emitted.find((event) => event.type === "content_block_delta")).toMatchObject({ delta: { type: "thinking_delta", thinking: "hmm" } })
     const off = await run(plain, ev.reasoning("hmm"), ev.text("answer"), ev.finish())
-    expect(off.message.content).toEqual([{ type: "text", text: "answer" }])
+    expect(off.message.content).toEqual([{ type: "text", text: "answer", citations: null }])
   })
 
   test.each([
@@ -157,6 +157,6 @@ describe("#153 a stream keeps no aggregate", () => {
 
   test("a non-streamed answer keeps its content for the JSON body", async () => {
     const { message } = await run({ ...plain, stream: false }, ev.text("Hi"), ev.finish("stop"))
-    expect(message.content).toEqual([{ type: "text", text: "Hi" }])
+    expect(message.content).toEqual([{ type: "text", text: "Hi", citations: null }])
   })
 })

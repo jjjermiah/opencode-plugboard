@@ -42,6 +42,9 @@
         "body": {
           "content": [
             {
+              "caller": {
+                "type": "direct"
+              },
               "id": "<id-1>",
               "input": {
                 "city": "Paris"
@@ -81,6 +84,9 @@
             {
               "content": [
                 {
+                  "caller": {
+                    "type": "direct"
+                  },
                   "id": "<id-1>",
                   "input": {
                     "city": "Paris"
@@ -134,6 +140,7 @@
         "body": {
           "content": [
             {
+              "citations": null,
               "text": "18 C and cloudy",
               "type": "text"
             }

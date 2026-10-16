@@ -41,7 +41,7 @@ const GAPS: Readonly<Record<string, string>> = {
   responsesResponse: "plugboard omits output_text (the SDK computes it client-side), access_programs and usage.input_tokens_details.cache_write_tokens",
   responsesEvents: "the response objects in created/in_progress/completed omit output_text, access_programs and cache_write_tokens (see responsesResponse)",
   completionChunks: "stream chunks carry finish_reason null until the last; the SDK types chunks as Completion, whose finish_reason is never null",
-  anthropicMessage: "plugboard omits nullable fields Anthropic always sends: container, diagnostics, stop_details, text citations, usage cache_creation, inference_geo, output_tokens_details, server_tool_use, service_tier",
+  anthropicMessage: "plugboard omits nullable fields Anthropic always sends: container, diagnostics, stop_details, usage cache_creation, inference_geo, output_tokens_details, server_tool_use, service_tier",
   anthropicEvents: "message_start and message_delta omit the same nullable fields as anthropicMessage (container, stop_details, usage details)",
   anthropicError: "request_id is sent as the request-id header, not in the body",
 }

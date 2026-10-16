@@ -618,12 +618,16 @@ export const anthropicMessage = {
     },
     {
       "type": "text",
-      "text": "Checking."
+      "text": "Checking.",
+      "citations": null
     },
     {
       "type": "tool_use",
       "id": "toolu_call_1",
       "name": "weather",
+      "caller": {
+        "type": "direct"
+      },
       "input": {
         "city": "Oslo"
       }
@@ -687,7 +691,8 @@ export const anthropicEvents = [
     "index": 1,
     "content_block": {
       "type": "text",
-      "text": ""
+      "text": "",
+      "citations": null
     }
   },
   {
@@ -709,6 +714,9 @@ export const anthropicEvents = [
       "type": "tool_use",
       "id": "toolu_call_1",
       "name": "weather",
+      "caller": {
+        "type": "direct"
+      },
       "input": {}
     }
   },
@@ -863,7 +871,7 @@ exact<Array<(OpenAI.Responses.ResponseStreamEvent & { response?: { store: boolea
 exact<OpenAI.Completions.Completion>(completion)
 // @ts-expect-error stream chunks carry finish_reason null until the last; the SDK types chunks as Completion, whose finish_reason is never null
 exact<OpenAI.Completions.Completion[]>(completionChunks)
-// @ts-expect-error plugboard omits nullable fields Anthropic always sends: container, diagnostics, stop_details, text citations, usage cache_creation, inference_geo, output_tokens_details, server_tool_use, service_tier
+// @ts-expect-error plugboard omits nullable fields Anthropic always sends: container, diagnostics, stop_details, usage cache_creation, inference_geo, output_tokens_details, server_tool_use, service_tier
 exact<Anthropic.Message>(anthropicMessage)
 // @ts-expect-error message_start and message_delta omit the same nullable fields as anthropicMessage (container, stop_details, usage details)
 exact<Array<Anthropic.RawMessageStreamEvent | { type: "ping" }>>(anthropicEvents)

@@ -54,6 +54,9 @@
         "body": {
           "content": [
             {
+              "caller": {
+                "type": "direct"
+              },
               "id": "<id-1>",
               "input": {
                 "calories": 180,

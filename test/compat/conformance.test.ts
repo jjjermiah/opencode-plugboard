@@ -199,11 +199,8 @@ describe("#107 Gemini responses conform to the vendored discovery schemas", () =
   })
 })
 
-/**
- * Anthropic fields the SDK's types require that plugboard does not send yet: the Message's nullable
- * fields and a text block's `citations` (test/types/generate.ts GAPS).
- */
-const MESSAGE_GAPS = ["container", "diagnostics", "stop_details", "cache_creation", "inference_geo", "output_tokens_details", "server_tool_use", "service_tier", "citations"]
+/** Anthropic fields the SDK's types require that plugboard does not send yet: the Message's nullable fields (test/types/generate.ts GAPS). */
+const MESSAGE_GAPS = ["container", "diagnostics", "stop_details", "cache_creation", "inference_geo", "output_tokens_details", "server_tool_use", "service_tier"]
 /** The SDK's error body carries request_id; plugboard sends it as the request-id header instead. */
 const ERROR_GAPS = ["request_id"]
 /** The stream event each SSE frame name maps to: the frame's name is its `type` (checked below). */
@@ -324,9 +321,9 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
     expectConforms("anthropic", "Message", reply.json())
   })
 
-  test.failing("#107 gap (#405): a text block omits citations, which the SDK requires (null when there are none) and plugboard does not send", async () => {
+  test("#405 a text block carries citations, which the SDK requires (null when there are none)", async () => {
     const reply = await server.send(messagesPost({ model: "fast", max_tokens: 64, messages: [{ role: "user", content: tag("text") }] }))
-    expectConforms("anthropic", "Message", reply.json(), MESSAGE_GAPS.filter((field) => field !== "citations"))
+    expectConforms("anthropic", "Message", reply.json(), MESSAGE_GAPS)
   })
 
   test("#404 a tool_use block carries caller, which the SDK requires", async () => {

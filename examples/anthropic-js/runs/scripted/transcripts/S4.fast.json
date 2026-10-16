@@ -65,6 +65,9 @@
             {
               "data": {
                 "content_block": {
+                  "caller": {
+                    "type": "direct"
+                  },
                   "id": "<id-2>",
                   "input": {},
                   "name": "get_weather",

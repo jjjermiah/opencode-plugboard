@@ -102,7 +102,5 @@ Anthropic publishes no machine-readable Messages spec, so `anthropic.json` is ge
 Open Anthropic gaps, each a `test.failing` case:
 
 - **Message and usage nullable fields** (#406): `container`, `diagnostics`, `stop_details`, and the usage fields `cache_creation`, `inference_geo`, `output_tokens_details`, `server_tool_use`, `service_tier`.
-- **Text block citations** (#405): `citations` is required, `null` when there are none.
-- **tool_use caller** (#404): `caller` is required on a tool_use block.
 
 The schemas are upstream definitions, not a live provider's. A passing check shows plugboard's shape matches the type. It does not show what Anthropic sends. The live provider matrix is tracked in #99.

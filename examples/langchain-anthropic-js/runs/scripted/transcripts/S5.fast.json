@@ -38,6 +38,7 @@
         "body": {
           "content": [
             {
+              "citations": null,
               "text": "red",
               "type": "text"
             }

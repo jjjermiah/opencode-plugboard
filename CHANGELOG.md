@@ -17,6 +17,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Fixed
 
 - **A Messages `tool_use` block carries `caller`** ([#404](https://github.com/jjjermiah/opencode-plugboard/issues/404)). The `@anthropic-ai/sdk` types make `caller` required on a tool_use block. Plugboard sends `"caller": {"type": "direct"}` on each tool call, in the stream and in the final message (since 0.43.0).
+- **A Messages text block carries `citations`** ([#405](https://github.com/jjjermiah/opencode-plugboard/issues/405)). The SDK types require `citations` on a text block, `null` when there are none. Plugboard sends `"citations": null` on each text block, in the stream and in the final message (since 0.43.0).
 
 ## [0.42.0] - 2026-10-16: Loose Ends Tied
 

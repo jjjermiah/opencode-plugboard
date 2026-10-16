@@ -162,7 +162,7 @@ export async function runMessage(
     emit({ type: "content_block_stop", index: open.index })
     // A thinking block carries the provider's signature when the host reported one (#146); otherwise it is empty. Plugboard drops
     // thinking blocks it receives, so a replayed block never reaches a provider with an empty signature.
-    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: open.signature ?? "" })
+    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text, citations: null } : { type: "thinking", thinking: open.text, signature: open.signature ?? "" })
     open = undefined
   }
   /** The provider's signature for the open thinking block (#146): a `signature_delta` before the block stops. */
@@ -181,7 +181,7 @@ export async function runMessage(
       emit({
         type: "content_block_start",
         index: open.index,
-        content_block: kind === "text" ? { type: "text", text: "" } : { type: "thinking", thinking: "", signature: "" },
+        content_block: kind === "text" ? { type: "text", text: "", citations: null } : { type: "thinking", thinking: "", signature: "" },
       })
       ping()
     }
