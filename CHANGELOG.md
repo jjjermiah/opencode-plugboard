@@ -14,6 +14,11 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Security
+
+- **A crafted end-user value could corrupt shared counters** (since 0.38.0). Later requests could fail until restart, and usage stopped recording. Per-user records no longer resolve inherited names, and the reserved names (`__proto__`, `prototype`, `constructor`, `_other`) are refused as end users. The `?user=` filter still accepts them, so a name an older version stored stays queryable.
+- **A metrics or usage write that fails no longer changes a request's answer** (since 0.38.0). The failure is logged once, with the write's name, and the access log line is still written.
+
 ### Fixed
 
 - **Stop sequences apply to the answer text, not the reasoning** ([#390](https://github.com/jjjermiah/opencode-plugboard/issues/390), since 0.38.0). A reasoning model that quoted the prompt in its reasoning could end with no answer: `fast` (glm-5.3-flash) matched `END` inside its reasoning, the provider stopped there, and the client got an empty answer with `finish_reason` `stop` (2 of 8 calls on the dev server, 0 of 8 without the stop). Plugboard no longer sends stop sequences to the model. It scans the answer text as it streams, on every route, and the first sequence ends the answer: the text before it is returned, the sequence is removed, and reasoning is never matched. The app's `sampling.stop` default applies the same way, Responses included (Responses has no stop parameter of its own).
