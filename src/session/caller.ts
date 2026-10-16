@@ -57,15 +57,23 @@ export interface SessionCallerDeps {
   readonly affinity?: Affinity
   /** Global `history.hidden` (since 0.29.0, #337); an app's `apps.<name>.history.hidden` overrides it. Absent: off. */
   readonly historyHidden?: boolean
+  /** Test seams for the stop timers (#390): defaults are `STOP_SETTLE_MS` and `STOP_DRAIN_MS`. */
+  readonly stopSettleMs?: number
+  readonly stopDrainMs?: number
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
 const CLEANUP_TIMEOUT_MS = 30_000
 
 /**
- * After a stop sequence ended the answer (`CallContext.stopAnswer`, #390), how long the host may take to end the interrupted run
- * before the stream closes with the usage counted so far (the collector's running total).
+ * After a stop sequence ended the answer (`CallContext.stopAnswer`, #390), how long the host may run the step on its own before it is
+ * interrupted. The host reports a step's usage only when the step finishes: an interrupted step has none (OpenCode 2.0.27 publishes
+ * `session.step.failed` without tokens), so the step is let to finish. The model writes what follows the sequence meanwhile; nothing
+ * of it reaches the caller.
  */
+const STOP_SETTLE_MS = 2_000
+
+/** After the interrupt, how long the host may take to report the end before the stream closes with the usage counted so far. */
 const STOP_DRAIN_MS = 5_000
 
 const failure = (status: number, message: string, code: string): PlugEvent => ({
@@ -319,13 +327,17 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         collector?.cancel()
         interrupt()
       }
-      // A stop sequence ended the answer (#390): interrupt the host run and keep the stream open until its finish carries the usage.
+      // A stop sequence ended the answer (#390): let the host finish the step for up to `STOP_SETTLE_MS` (its usage comes with the
+      // finish), then interrupt it, and close with the running usage if the host still has not ended it `STOP_DRAIN_MS` later.
+      let settle: ReturnType<typeof setTimeout> | undefined
       let drain: ReturnType<typeof setTimeout> | undefined
       const onStopAnswer = () => {
         collector?.markStopped()
-        interrupt()
-        if (drain !== undefined) return
-        drain = setTimeout(() => collector?.finishNow(), STOP_DRAIN_MS)
+        if (settle !== undefined) return
+        const settleMs = deps.stopSettleMs ?? STOP_SETTLE_MS
+        settle = setTimeout(interrupt, settleMs)
+        settle.unref?.()
+        drain = setTimeout(() => collector?.finishNow(), settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS))
         drain.unref?.()
       }
 
@@ -488,6 +500,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       } finally {
         context.signal.removeEventListener("abort", onAbort)
         context.stopAnswer?.removeEventListener("abort", onStopAnswer)
+        clearTimeout(settle)
         clearTimeout(drain)
         if (sessionID && collector) {
           // The response may be over (consumer left early, error, timeout, a failed step) while the

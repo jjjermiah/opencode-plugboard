@@ -284,7 +284,7 @@ describe("failures before anything is created", () => {
 })
 
 describe("#390 a stop sequence ends the answer: the run is interrupted and the stream still ends with its usage", () => {
-  test("the stream stays open after the stop signal and ends with the run's finish and usage", async () => {
+  test("the stream stays open after the stop signal and ends with the step's finish and usage (the host ended the step, so no interrupt)", async () => {
     const run = setup()
     const stopping = new AbortController()
     run.answer((id) => [bus(id).textDelta("Hello END"), bus(id).usage({ input: 10, output: 500 }), bus(id).stepEnded("stop", { input: 10, output: 500 })])
@@ -294,7 +294,7 @@ describe("#390 a stop sequence ends the answer: the run is interrupted and the s
       seen.push(event)
       if (event.type === "text-delta") stopping.abort()
     }
-    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(run.port.interrupted).toEqual([])
     expect(seen.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } })
   })
 })
@@ -312,6 +312,36 @@ describe("#390 the host's interrupt of a stop-sequence run ends the answer with 
       { type: "text-delta", text: "alpha " },
       { type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 }, stopSequence: "END" },
     ])
+  })
+
+  test("Anthropic order (2.0.27, live 2026-10-16): the host finishes the step itself inside the settle window, so the usage is the step's and nothing is interrupted", async () => {
+    const run = setup({ stopSettleMs: 200, stopDrainMs: 200 })
+    // message_start carries the input tokens; the text runs past the sequence; message_delta carries the output and the step ends.
+    run.answer((id) => {
+      setTimeout(() => {
+        run.sessions.dispatch(bus(id).stepEnded("stop", { input: 10, output: 500 }))
+        run.sessions.dispatch(bus(id).executionSucceeded())
+      }, 20)
+      return [bus(id).usage({ input: 10 }), bus(id).textDelta("alpha END beta")]
+    })
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(run.port.interrupted).toEqual([])
+    expect(events).toEqual([
+      { type: "text-delta", text: "alpha " },
+      { type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 }, stopSequence: "END" },
+    ])
+  })
+
+  test("Anthropic order, host still running after the settle window: it is interrupted, and the aborted step ends the answer with stop", async () => {
+    const run = setup({ stopSettleMs: 30, stopDrainMs: 200 })
+    run.port.script.interrupt = async (sessionID) => {
+      run.sessions.dispatch(bus(sessionID).stepFailed({ type: "aborted", message: "Step interrupted" }))
+      run.sessions.dispatch(bus(sessionID).executionInterrupted())
+    }
+    run.answer((id) => [bus(id).usage({ input: 10 }), bus(id).textDelta("alpha END beta")])
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop", stopSequence: "END" })
   })
 
   test("any other step failure still surfaces as an error while the answer is being read", async () => {

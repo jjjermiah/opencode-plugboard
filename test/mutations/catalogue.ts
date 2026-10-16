@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P390-no-settle-window",
+    invariant: "#390",
+    file: "src/session/caller.ts",
+    find: "        settle = setTimeout(interrupt, settleMs)",
+    replace: "        settle = setTimeout(interrupt, 0)",
+    tests: ["test/session/caller.test.ts"],
+  },
+  {
     id: "P390-interrupt-stop-is-error",
     invariant: "#390",
     file: "src/session/events.ts",
