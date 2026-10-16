@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.43.0] - 2026-10-16: Names, Not Placeholders
+
+**Full diff:** [v0.42.0...v0.43.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...v0.43.0)
+
 ### Fixed
 
 - **SECURITY.md lists the dashboard page** ([#419](https://github.com/jjjermiah/opencode-plugboard/issues/419)). A page that rebinds its name to the listener, behind a trusted loopback proxy, reaches the usage dashboard page and its files as well as `/healthz`, `/readyz` and the discovery page. The dashboard holds no data, and its data route still needs a key. SECURITY.md did not list the page (since 0.43.0).
@@ -22,6 +28,153 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - **A Messages `tool_use` block carries `caller`** ([#404](https://github.com/jjjermiah/opencode-plugboard/issues/404)). The `@anthropic-ai/sdk` types make `caller` required on a tool_use block. Plugboard sends `"caller": {"type": "direct"}` on each tool call, in the stream and in the final message (since 0.43.0).
 - **A Messages text block carries `citations`** ([#405](https://github.com/jjjermiah/opencode-plugboard/issues/405)). The SDK types require `citations` on a text block, `null` when there are none. Plugboard sends `"citations": null` on each text block, in the stream and in the final message (since 0.43.0).
 - **Messages answers carry the nullable fields the SDK types require** ([#406](https://github.com/jjjermiah/opencode-plugboard/issues/406)). The Message has `container`, `diagnostics` and `stop_details`, and its usage has `cache_creation`, `inference_geo`, `output_tokens_details`, `server_tool_use` and `service_tier`. plugboard sends `null` where it has no value. The message_delta event carries `container` and `stop_details` in its delta, and `output_tokens_details` and `server_tool_use` in its usage (since 0.43.0).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (9 commits)</summary>
+
+#### Fixes
+
+**fix(anthropic): send caller on Messages tool_use blocks** ([`3703d8f`](https://github.com/jjjermiah/opencode-plugboard/commit/3703d8fd79a6198d3ec99c84e8a0791da25f243b))
+
+What changed: a tool_use block in a Messages answer (the final message and the content_block_start of a stream) now carries `caller: {type: "direct"}`.
+
+Why it was needed: the pinned @anthropic-ai/sdk (0.133.0) types make `caller` required on ToolUseBlock, and its doc says "Tool invocation directly from the model". Anthropic's programmatic tool calling docs show a direct tool_use block with `"caller": {"type": "direct"}`. Plugboard only returns direct calls, so the value is fixed.
+
+Decisions made: a fixed value, not a field from the host. Plugboard has no server tool callers. The request decoder ignores `caller` on replayed tool_use blocks (it reads named fields only), so clients that echo the block still work.
+
+Rejected alternative: omitting the field and waiving it in the conformance test. The SDK type says the field is always present, and a client that checks the type sees it missing.
+
+Validation done: test/compat/conformance.test.ts "#404 a tool_use block carries caller" was test.failing and failed with the field missing before this change; it now passes. test/unit/anthropic-response.test.ts updated for the new exact shape. bun test test/compat test/unit/anthropic test/http/anthropic: 355 pass. bun run typecheck clean.
+
+Fixes #404
+
+**fix(anthropic): send citations on Messages text blocks** ([`64f2103`](https://github.com/jjjermiah/opencode-plugboard/commit/64f210348bc2b1e4dbb6aa735fe8bb2f0515d195))
+
+What changed: a text block in a Messages answer (the content of the final message and the content_block_start of a stream) carries `citations: null`. Plugboard never produces citations, so the value is always null.
+
+Why it was needed: the pinned @anthropic-ai/sdk (0.133.0) types make `citations` required on TextBlock: `Array<TextCitation> | null`. A client that checks the type sees the field missing. null is the value the type allows when there are no citations.
+
+Decisions made: null, not an empty array, because the SDK's TextBlock doc says citations are "supporting the text block" and a plugboard answer has none. The same field is set on the stream's content_block_start, so the stream and the final message agree.
+
+Rejected alternative: waiving the field in the conformance test. The type says it is always present.
+
+Also in this commit: the scripted example transcripts under examples/ were regenerated (`bun examples/_harness/run.ts all --target scripted`). The diff is additive only (91 files, 257 insertions, no deletions): each gains `"citations": null` on text blocks, and some gain `"caller"` on tool_use blocks from the previous commit. The wire-format tests in test/types/wire.ts were regenerated with `bun test/types/generate.ts` after GAPS dropped the text citations gap. Exact-shape assertions in test/unit and test/compat now expect `citations: null`.
+
+Validation: test/compat/conformance.test.ts "#405 a text block carries citations" was test.failing and failed with the field missing before this change; it now passes. bun test test/compat test/types test/unit test/http test/session test/runtime: 2870 pass before the examples run. bun run typecheck clean. bun examples/_harness/run.ts all --target scripted exit 0.
+
+Fixes #405
+
+**fix(anthropic): send the nullable fields the SDK requires on Messages answers** ([`ae0252b`](https://github.com/jjjermiah/opencode-plugboard/commit/ae0252b5905b415e869ce6a5819dbbca6cf8cb4a))
+
+What changed: a Messages answer carries the nullable fields that the pinned @anthropic-ai/sdk (0.133.0) types mark required. On the Message (final and message_start): `container`, `diagnostics` and `stop_details`. On the Message usage: `cache_creation`, `inference_geo`, `output_tokens_details`, `server_tool_use` and `service_tier`. On message_delta: `container` and `stop_details` in the delta, and `output_tokens_details` and `server_tool_use` in the usage. Every value is null, because plugboard has no value for any of them.
+
+Why it was needed: the SDK types make each field required, typed as nullable. A client that checks the type sees the field missing. null satisfies the type.
+
+Decisions made: null for all of them, not a computed value. `cache_creation` could carry the cache write split by TTL, and `service_tier` could carry the tier; plugboard does not return those today, so null is honest. The message_delta usage keeps its narrower SDK shape (MessageDeltaUsage has no cache_creation, inference_geo or service_tier), so the strict conformance check accepts it.
+
+Rejected alternative: keep the waivers in the conformance test. The waiver list is now empty, and the wire goldens (test/types/wire.ts) no longer need the ts-expect-error lines for the Message and events.
+
+Not verified: which of these fields a live Anthropic response always carries. The SDK types and Anthropic's docs were the evidence, not a captured response.
+
+Also in this commit: the scripted example transcripts under examples/ were regenerated (`bun examples/_harness/run.ts all --target scripted`). The new fields add lines; the deleted lines are the trailing commas after output_tokens. The summary files are unchanged. The pydantic-ai and smolagents runs are `partial` (the S7 GET /v1/models gap, #399), and the harness exited 1 with them. Its exit code on main was not checked.
+
+Validation: test/compat/conformance.test.ts "#406 a Message carries the SDK's nullable fields" was test.failing and failed before this change; it now passes. bun test test/compat test/unit test/http test/session test/runtime test/types: 2870 pass, 0 fail. bun run typecheck exit 0.
+
+Fixes #406
+
+**fix(session): rewrite tool placeholder ids in reasoning text to tool names** ([`513542a`](https://github.com/jjjermiah/opencode-plugboard/commit/513542a16d24a07cd13782e29ffc063ecfc68b0c))
+
+What changed: the collector (src/session/events.ts) rewrites an id of the form `mcp_` + `T` + base64url(name) in reasoning text to the tool's name, before the text becomes a reasoning-delta. The rewrite is in src/tool-placeholders.ts. It runs on the neutral event, so every route that returns reasoning gets it: Messages thinking (stream and final message), Chat Completions and Responses reasoningOutput (stream and final), and the signed text that is replayed.
+
+Why it was needed: the model sees its tools under these ids and sometimes names them in its thinking (for example "a tool called mcp_TZ2V0X3dlYXRoZXI"). The tool_use block carries the right name, so only the reasoning leaked the encoding. A client that shows thinking exposed plugboard internals, and the mangled name went back to the provider on the next turn.
+
+Decisions made: the rewrite decodes the id, and rewrites only when the decoded name is a plain tool name and re-encodes to the same id. That leaves `mcp_servers` and half ids alone. The decoder strips the leading `T`, which both examples in #411 carry. An id split across deltas is held back until it ends: the held text is only a run of id characters that starts with `mcp_` (or is a prefix of it). It flushes at the end of a reasoning block, before a text or tool event, and before the signature. Gemini returns no thought parts (its route drops reasoning-delta), so there is nothing to rewrite on that route.
+
+Rejected alternatives: a map from the request's tool names. It needs the tool list threaded into three encoders and is no more precise when the encoding decodes cleanly. Rewriting in each encoder: three copies of the held-back logic, and the replay path would stay unrewritten.
+
+Not verified: the leading `T` is inferred from two examples, not from the host source. The live check on the dev server shows whether a real Claude thinking run has no placeholder ids.
+
+Validation: test/unit/tool-placeholders.test.ts (new) and test/session/collector.test.ts (two #411 cases) failed before this change and pass now. bun test (full): 3005 tests, 2879 pass, 0 fail. bun run typecheck exit 0. Mutation entries reasoning-placeholder-ids-not-rewritten, reasoning-placeholder-prefix-not-held and reasoning-held-text-not-flushed-at-block-end are in test/mutations/catalogue.ts; the mutation run is pending.
+
+Fixes #411
+
+**fix(session): replay signed reasoning as signed, rewrite only this request's ids** ([`90de386`](https://github.com/jjjermiah/opencode-plugboard/commit/90de386bfdddc4e5c4d359fe7e345a6b8c2cf1b0))
+
+What changed:
+- The placeholder rewrite (src/tool-placeholders.ts) matches exact ids only. An id is the whole run of id characters after `mcp_`, and it is rewritten only when that run is one of THIS request's aliases: `mcp_T` plus base64url(name) for a name of 44 bytes or fewer, `mcp_H` plus base64url(sha256(name)) for a longer one, and the 1.x form (`mcp_` plus the upper-cased name). The producer is @ex-machina/opencode-anthropic-auth 2.0.0-next.x, read at 2.0.0-next.6. The generic decode fallback is removed, so `mcp_servers`, `mcp_Tbm90` and `mcp_TZ2V0X3dlYXRoZXI_tool` are left as they are.
+- The collector (src/session/events.ts) builds the aliases from the request's caller and server tool names (caller.ts passes `toolNames`).
+- Held reasoning text goes out before a text delta, a tool call, a failure's error, a finish and the end of the stream. A block that ends with a signature and was rewritten is remembered under that signature.
+- src/reasoning-replay.ts keeps those originals in a bounded LRU (1000 blocks, 8M characters, the lru-cache dependency). src/anthropic/request.ts restores the original text when a signed thinking block comes back. A signature the map does not hold replays as received.
+
+Why: the caller sends the reasoning back with the signature the provider made for the original text. Anthropic checks a replayed thinking block against that signature, and a modified block is a 400. Before this change a rewritten block would have failed on the next turn. The aliases come from this request's tools because a text-level decode also changed model text that only looked like an id.
+
+Decisions made: an exact alias lookup, not a decode. The map is per process; a restart or an eviction replays the text as received, which is the same as before the rewrite. Responses drops reasoning items on input, so there is nothing to replay there. Gemini returns no thought parts.
+
+Rejected alternatives: making the rewrite opt-in (it would hide the leak from the default path); proving live that an edited summary replays (it may be accepted on some models and refused on others, and the map covers all of them).
+
+Not verified in this commit: the live two-turn round trip on anthropic/claude-haiku-5-5#high (run after this commit, in the PR body).
+
+Validation: test/unit/tool-placeholders.test.ts (aliases, H form, non-tool text, split ids, hold-back), test/session/collector.test.ts (flush before text, before a tool call, before an error, at the end with no reasoning.ended, after a server tool call; the H form; the replay record), test/unit/anthropic-request.test.ts (replay restores the original, unknown signature unchanged). Full chain: typecheck, bun test, coverage and ratchet (session 409, unit 1428), coverage manifest, pack, docs build, scripted examples, and the foreground-equivalent mutation run: 148 of 148 killed.
+
+Fixes #411
+
+#### Security
+
+**docs(security): list the dashboard page in what a rebinding page reaches** ([`7390c42`](https://github.com/jjjermiah/opencode-plugboard/commit/7390c4271d0425de13ddc3099204d1b769fa54f5))
+
+What changed: SECURITY.md says what a page that rebinds its name to the listener reaches when `listen.trustProxy` trusts a loopback proxy. The sentence listed `/healthz`, `/readyz` and the minimal discovery page. It now also lists the usage dashboard page (`/plugboard/dashboard`) and its files, with usage on, and says the data route `/plugboard/usage` still needs a key.
+
+Why: the reporter (issue #419) reproduced it on plugboard 0.37.0 with listen.trustProxy: true and usage on. A keyless request with a forged Host of `evil.example` and X-Forwarded-Host from a loopback peer got 200 for /plugboard/dashboard and /plugboard/dashboard/app.js, and 401 for /v1/models, /plugboard/usage, /plugboard/status, /plugboard/metrics and /plugboard/admin/keys. The behaviour is correct: the page holds no data. Only the docs were short.
+
+Decisions made: no code change. The reported behaviour is what the design intends (the dashboard page is a static page, as the discovery page is). The docs/configuration.md Reverse proxies section does not list the pages, so it is unchanged.
+
+Validation: the repro in the issue was not re-run in this commit. The docs build (bun run docs:build) is run with the rest of the branch.
+
+Fixes #419
+
+#### Docs
+
+**docs(docs): fix the four places that sent a new user the wrong way** ([`926cc40`](https://github.com/jjjermiah/opencode-plugboard/commit/926cc40a859ac00b9e22eeef8ff12665f6ebbe39))
+
+What changed:
+- README quick start and the full example pin `opencode-plugboard@0.42.0`, the version in package.json. They pinned 0.26.0, so a new user got a version without userHeader, thinking replay or Copilot replay.
+- README Known gaps: a Gemini model id with a `/` from the AI SDK's Google provider or LangChain's google-genai gets a 404 NOT_FOUND that names the expected path. It said 401. docs/gemini.md and compatibility.md already said 404.
+- docs/gemini.md: a paragraph says the tested run covers the JS SDK only. The Python SDK's image requests failed until #401 and #409, both fixed in 0.41.0.
+- docs/clients/vercel-ai-sdk.md: `@ai-sdk/anthropic` with a real Claude id sends output_config.format for `Output.object`, which plugboard refuses with a 400. The page gives `providerOptions: { anthropic: { structuredOutputMode: "jsonTool" } }` and says the alias `fast` hides the problem.
+
+Why: each one was reproduced on the hub by the reporter (issue #413). The README pin is the first thing a new user copies.
+
+Decisions made: the pin is the current package.json version, not the release tag of the moment. The 401 is replaced by the 404 that compatibility.md already documents. The Vercel snippet is the reporter's verified form, not a new example run.
+
+Validation: bun run docs:build exit 0. The Vercel snippet and the Gemini 404 were not re-run in this commit; the reporter's run is the evidence.
+
+Fixes #413
+
+#### CI and tooling
+
+**ci(tests): ratchet the session and unit test-count floors for #411** ([`42a214e`](https://github.com/jjjermiah/opencode-plugboard/commit/42a214efea330e2f9460da86187ad63deadf70bc))
+
+What changed: .github/floors/test-count-floors.json raises session from 400 to 402 and unit from 1414 to 1421, the counts after the #411 tests were added (the placeholder rewriter unit tests and two collector cases). The floors only go up.
+
+Why: the test gate ratchets the per-layer floors with `test-gates.ts --ratchet` on each change that adds tests. This commit carries only that generated change.
+
+Validation: bun test --coverage ... && bun .github/scripts/test-gates.ts .coverage --ratchet exit 0 on this branch.
+
+**ci(ci): add one-command validate and pr-wait scripts** ([`4ff9d98`](https://github.com/jjjermiah/opencode-plugboard/commit/4ff9d985e90b52a1c8974d266aef9f679d943511))
+
+Lanes ran the local validation chain as six separate commands, often in the background, and then polled log files in sleep loops to see when they ended. That wasted turns and wall time: the scripted examples alone take about six minutes, long enough for the shell tool to move a command to the background.
+
+`bun run validate` runs the chain in order in one foreground process: typecheck, tests with the coverage gates (ratchet), the coverage manifest, pack and smoke, the docs build, and the scripted examples with a clean `examples/` diff. `--mutations` adds the mutation run, `--only` and `--skip` pick steps, `--keep-going` continues after a failure. Each step's full output goes to `.agents/validate/<step>.log` (ignored by git); the console shows one line per step with its time, and the last 30 lines of a failed step's log. The plain `bun test` step was dropped: the coverage run already runs every test.
+
+`bun run pr-wait <n> [--merge]` waits in the foreground for every check on a pull request's head, reports a conflicting PR at once (GitHub runs no checks then), prints each failed check with its link and one verdict line, and optionally merges with a merge commit when everything passed.
+
+Rejected: an OpenCode custom tool for this. A package script works for every agent and for humans, needs no plugin registration, and keeps the chain defined next to the code it checks.
+
+Validation: a full `bun run validate` passed all six steps in 399s on this branch (examples 341s, the rest 58s). `bun run pr-wait 445` reported green for 12 checks. `--only`/`--skip` with an unknown or empty selection fail.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.42.0] - 2026-10-16: Loose Ends Tied
 
@@ -7635,7 +7788,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...HEAD
+[0.43.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...v0.40.0
