@@ -289,3 +289,45 @@ describe("in-process failures and bounds", () => {
     expect((await run.drain()).map((event) => event.type)).toEqual(["error"])
   })
 })
+
+/** #391: a host retry before any output fails the call at once when a fallback target follows; the last target keeps the host's retries. */
+describe("#391 a host retry before any output moves a fallback chain on", () => {
+  const upstream520 = { type: "provider.internal", status: 520, message: "upstream 520" }
+  function failFast(failFastRetry: boolean) {
+    let stops = 0
+    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", failFastRetry })
+    const store = createSessionStore()
+    store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
+    return { collector, store, get stops() { return stops } }
+  }
+
+  test("with a target after it, the retry is a provider_retry error at once and the turn is stopped", async () => {
+    const run = failFast(true)
+    run.store.dispatch(host.retryScheduled(upstream520))
+    const events = await collect(run.collector.events())
+    expect(events).toEqual([{ type: "error", error: { status: 503, kind: "server", code: "provider_retry", message: "The model provider failed; the next target is tried" } }])
+    expect(run.stops).toBe(1)
+  })
+
+  test("without a target after it, the retry is left to the host: nothing is emitted and the turn goes on", async () => {
+    const run = failFast(false)
+    run.store.dispatch(host.retryScheduled(upstream520))
+    run.store.dispatch(host.textDelta("hi"))
+    run.store.dispatch(host.stepEnded("stop"))
+    expect((await collect(run.collector.events())).map((event) => event.type)).toEqual(["text-delta", "finish"])
+    expect(run.stops).toBe(0)
+  })
+
+  test.each([
+    ["text", () => host.textDelta("partial")],
+    ["reasoning", () => host.reasoningDelta("thinking")],
+  ])("after %s output a retry is not a failure: the answer is committed", async (_name, first) => {
+    const run = failFast(true)
+    run.store.dispatch(first())
+    run.store.dispatch(host.retryScheduled(upstream520))
+    run.store.dispatch(host.stepEnded("stop"))
+    const types = (await collect(run.collector.events())).map((event) => event.type)
+    expect(types).not.toContain("error")
+    expect(types.at(-1)).toBe("finish")
+  })
+})

@@ -185,6 +185,46 @@ describe("withFallbacks", () => {
   })
 })
 
+/** #391: a host retry before any output (`provider_retry`) moves the chain on at once; the last target keeps the host's retries. */
+describe("#391 a host retry before any output fails an attempt that has a target after it", () => {
+  const providerRetry = ev.error({ status: 503, kind: "server", code: "provider_retry", message: "The model provider failed; the next target is tried" })
+
+  test("the retry is a failure: the next target answers, and the failed attempt is closed", async () => {
+    const r = await run([[providerRetry], [ev.text("hi"), ev.finish()]])
+    expect(r.targets).toEqual(["a/x", "b/y"])
+    expect(r.served).toEqual([{ model: "b/y#low", fallbacks: 1, chain: true }])
+    expect(r.closed).toEqual([true, true])
+    expect(r.retried).toEqual(["app1"])
+  })
+
+  test("each target that is not last is told a target follows; the last one is not", async () => {
+    const flags: Array<boolean | undefined> = []
+    const caller = withFallbacks(
+      {
+        stream(_request, context) {
+          flags.push(context.fallbackNext)
+          const answered = flags.length === 3
+          return (async function* () {
+            if (answered) yield* [ev.text("hi"), ev.finish()]
+            else yield providerRetry
+          })()
+        },
+      },
+      { options, loadCatalog: async () => CATALOG },
+    )
+    const events = await collect(caller.stream(chainRequest(), { app: "app1", signal: new AbortController().signal }))
+    expect(flags).toEqual([true, true, false])
+    expect(events.map((e) => e.type)).toEqual(["text-delta", "finish"])
+  })
+
+  test("the last target's retry is not a fallback: the host's answer (its error) stands", async () => {
+    const r = await run([[rateLimited], [rateLimited], [providerRetry]])
+    expect(r.targets).toEqual(["a/x", "b/y", "c/z"])
+    expect(r.events).toEqual([providerRetry])
+    expect(r.served).toEqual([])
+  })
+})
+
 /** #391: `fallbackAfterMs`. A timed target yields each step's events after that step's wait (counted from the previous step), or never answers (`"hang"`). Like the session caller, it ends on its signal's abort. */
 type Step = { readonly after: number; readonly events: PlugEvent[] }
 type Timed = "hang" | Step | { readonly steps: ReadonlyArray<Step> }

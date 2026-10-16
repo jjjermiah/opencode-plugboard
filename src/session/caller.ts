@@ -356,6 +356,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           stopTurn: interrupt,
           requestID,
           app,
+          ...(context.fallbackNext ? { failFastRetry: true } : {}),
           ...(request.parallelToolCalls === false ? { singleToolCall: true } : {}),
           ...(policy?.serverTools
             ? {

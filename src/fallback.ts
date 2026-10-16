@@ -9,7 +9,8 @@
  * length, share the request's signal (so the deadline and a disconnect end the chain) and nothing is
  * buffered beyond that first event. With option `fallbackAfterMs` (#391), an attempt that has a target after it
  * and produces no event in time is aborted (its session is interrupted and retired by the caller) and the next
- * target is tried; the last target is not bounded by it.
+ * target is tried; the last target is not bounded by it. An attempt with a target after it is also not made to wait
+ * out a host retry: the host's `session.retry.scheduled` before any output fails it at once (`provider_retry`, #391).
  *
  * A call whose model is not an alias with fallbacks goes straight to the wrapped caller.
  */
@@ -44,6 +45,8 @@ const RETRYABLE = new Set([
   "model_run_failed",
   "prompt_failed",
   "backend_failed",
+  // Set by the session caller for an attempt with a target after it: the host's retry before any output (#391).
+  "provider_retry",
 ])
 
 export const MODEL_HEADER = "x-plugboard-model"
@@ -116,10 +119,12 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     // The history id of this attempt: handed on only if the attempt is the one that answers (or the last).
     let recorded: { id: string; directory?: string } | undefined
     const next = attempt === 0 ? request : retarget(deps.options, request, ref)
-    // With a first-event deadline, an attempt that has a target after it is aborted when the deadline passes; the last target is not.
+    // Whether a target follows this attempt. With a first-event deadline, an attempt that has one is aborted when the
+    // deadline passes; the last target is not. A host retry before any output also fails it at once (#391).
+    rest ??= await resolveRest(deps, request, context.app)
+    const following = rest.length > attempt
     const deadline = deps.options.fallbackAfterMs ?? 0
-    if (deadline > 0) rest ??= await resolveRest(deps, request, context.app)
-    const bounded = deadline > 0 && rest!.length > attempt
+    const bounded = deadline > 0 && following
     const deadlineAbort = bounded ? new AbortController() : undefined
     let timedOut = false
     const timer = deadlineAbort
@@ -129,7 +134,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
         }, deadline)
       : undefined
     const signal = deadlineAbort ? AbortSignal.any([context.signal, deadlineAbort.signal]) : context.signal
-    const iterator = inner.stream(next, { ...context, signal, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
+    const iterator = inner.stream(next, { ...context, signal, fallbackNext: following, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
 
     let first: IteratorResult<PlugEvent> | undefined
     let thrown: { readonly error: unknown } | undefined
