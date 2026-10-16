@@ -9,7 +9,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, authenticateUsage, type PlugboardOptions } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, authenticateUsage, bodyLimits, type PlugboardOptions } from "../config.js"
 import { isPlugError, type PlugError } from "../contract.js"
 import { checkJsonContentType, readJsonBody, sendJson, sendProblem, type RequestScope } from "../http.js"
 import type { KeyStore } from "../keys.js"
@@ -53,7 +53,7 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
     info.route = "POST /plugboard/admin/keys"
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
-    const body = await readJsonBody(request, scope.signal)
+    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
     const app = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as { app?: unknown }).app : undefined
     if (typeof app !== "string" || app === DEFAULT_APP || !APP_NAME_PATTERN.test(app))
       return fail({ status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: `\`app\` must match ${APP_NAME_PATTERN} and must not be \`${DEFAULT_APP}\`` })

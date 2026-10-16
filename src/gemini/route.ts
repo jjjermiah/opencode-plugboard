@@ -116,7 +116,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   if (match.op === "count") {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
-    const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app), app)), host.options)
+    const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app))), host.options)
     if (isPlugError(parsed)) return fail(parsed)
     const catalog = await scope.race(host.loadCatalog())
     const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
@@ -142,7 +142,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     return fail({ status: 400, kind: "invalid_request", code: "unsupported_parameter", param: "alt", message: "streamGenerateContent needs the query parameter alt=sse" })
   const unsupported = checkJsonContentType(request)
   if (unsupported) return fail(unsupported)
-  const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, app), app)
+  const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, app))
 
   const parsed = parseGeminiRequest(match.model, match.stream, body, host.options)
   if (isPlugError(parsed)) return fail(parsed)

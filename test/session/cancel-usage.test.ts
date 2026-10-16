@@ -137,3 +137,67 @@ describe("a disconnected run gets the settle window: the host step that ends wit
     expect(run.port.interrupted).toEqual(["ses_1"])
   })
 })
+
+describe("a client that left: no tool runs and no step starts, and internal cancels stop at once", () => {
+  /** A run the client leaves after its first text: the window is long, so only an interrupt before it can satisfy a test. */
+  async function leftAfterFirstText(options: Partial<SessionCallerDeps> = {}) {
+    const run = harness(undefined, { settleMs: 10_000, ...options })
+    answer(run, (id) => [bus(id).textDelta("hel")])
+    const controller = new AbortController()
+    for await (const _event of run.caller.stream(plugRequest(), { app: "app", signal: controller.signal })) controller.abort()
+    return run
+  }
+
+  test("a client tool call in the window interrupts the host at once", async () => {
+    const run = await leftAfterFirstText()
+    run.sessions.dispatch(bus("ses_1").toolCalled("c1", "lookup", { q: 1 }))
+    await until(() => run.port.interrupted.length === 1, 300, "the interrupt at the tool call")
+    expect(run.port.interrupted).toEqual(["ses_1"])
+  })
+
+  test("a server tool call in the window interrupts the host at once", async () => {
+    const run = harness(undefined, { settleMs: 10_000, apps: { app: { serverTools: ["lookup"] } } as never })
+    run.port.toolIDs.push("lookup")
+    answer(run, (id) => [bus(id).textDelta("hel")])
+    const controller = new AbortController()
+    for await (const _event of run.caller.stream(plugRequest(), { app: "app", signal: controller.signal })) controller.abort()
+    run.sessions.dispatch(bus("ses_1").toolCalled("s1", "lookup", {}))
+    await until(() => run.port.interrupted.length === 1, 300, "the interrupt at the server tool call")
+    expect(run.port.interrupted).toEqual(["ses_1"])
+  })
+
+  test("a step that ends with tool calls in the window interrupts the host at once, so no next step starts", async () => {
+    const run = await leftAfterFirstText()
+    run.sessions.dispatch(bus("ses_1").stepEnded("tool-calls"))
+    await until(() => run.port.interrupted.length === 1, 300, "the interrupt at the step end")
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(run.port.interrupted).toEqual(["ses_1"])
+  })
+
+  test("a tool call and its step end are one interrupt, not two", async () => {
+    const run = await leftAfterFirstText()
+    run.sessions.dispatch(bus("ses_1").toolCalled("c1", "lookup", { q: 1 }))
+    run.sessions.dispatch(bus("ses_1").stepEnded("tool-calls"))
+    await until(() => run.port.interrupted.length === 1, 300, "the interrupt")
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(run.port.interrupted).toEqual(["ses_1"])
+  })
+
+  test("a finish that was already yielded when the client leaves is charged once, not again when the window closes", async () => {
+    // `length` is not a settled stop, so without the guard the caller would wait for the window and charge the same usage again.
+    const run = harness(undefined, { settleMs: 200, stopDrainMs: 50 })
+    answer(run, (id) => [bus(id).textDelta("hel"), bus(id).usage({ input: 800, output: 100 }), bus(id).stepEnded("length", { input: 800, output: 100 })])
+    const controller = new AbortController()
+    for await (const event of run.caller.stream(plugRequest(), { app: "app", signal: controller.signal })) if (event.type === "finish") controller.abort()
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect((await appTotals(run.usage)).tokens).toMatchObject({ input: 800, output: 100 })
+  })
+
+  test("a cancel by plugboard itself (a sibling choice failed) interrupts at once, without the window", async () => {
+    const run = harness(undefined, { settleMs: 10_000 })
+    answer(run, (id) => [bus(id).textDelta("hel")])
+    const controller = new AbortController()
+    for await (const _event of run.caller.stream(plugRequest(), { app: "app", signal: controller.signal })) controller.abort(Object.assign(new Error("cancelled"), { kind: "cancelled" }))
+    await until(() => run.port.interrupted.length === 1, 300, "the interrupt")
+  })
+})

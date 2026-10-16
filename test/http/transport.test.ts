@@ -177,7 +177,7 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
   /** Reads with `limits` and answers the way a route does: 200 when read, the refusal's status and Retry-After otherwise. */
   function answerWith(limits: BodyLimits, probe?: (request: IncomingMessage) => void, appOf?: (request: IncomingMessage) => string | undefined): Handler {
     return (request, response) => {
-      const read = readJsonBody(request, new AbortController().signal, limits, appOf?.(request))
+      const read = readJsonBody(request, new AbortController().signal, { ...limits, app: appOf?.(request) })
       probe?.(request)
       void read.then(
         () => sendJson(response, 200, { ok: true }),
@@ -262,7 +262,7 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
     stalled.write("{")
     const reply = await stalledReply
     expect(reply.statusCode).toBe(408)
-    expect(JSON.parse(await textOf(reply))).toEqual({ error: "Request body was not received within 5 ms (option limits.bodyReadTimeoutMs)" })
+    expect(JSON.parse(await textOf(reply))).toEqual({ error: "Request body stopped arriving for 5 ms (option limits.bodyReadTimeoutMs)" })
     stalled.destroy()
 
     // The stalled body held all 100 bytes; once it timed out they are free, so a body of 92 bytes fits.
@@ -282,7 +282,7 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
 
   test("a stalled upload from app a holds only a's share: a's excess is a 503, and app b is still admitted", async () => {
     // Two stalled bodies of 250 bytes fill a's share (half of 1000). A third from a is refused; b (400 bytes) fits in the rest.
-    const limits: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 500 }
+    const limits: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 500, appShare: 500 }
     let entered = 0
     const { port, send } = await serve(answerWith(limits, () => void entered++, byApp))
     const stalled = [0, 1].map(() => openPost(port, { "content-type": "application/json", "content-length": 250, "x-app": "a" }))
@@ -304,7 +304,7 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
   })
 
   test("a stalled upload gets 408 after the read deadline and frees its app's slot for the next upload", async () => {
-    const limits: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 50 }
+    const limits: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 50, appShare: 500 }
     let entered = 0
     const { port, send } = await serve(answerWith(limits, () => void entered++, byApp))
     const stalled = openPost(port, { "content-type": "application/json", "content-length": 500, "x-app": "a" })
@@ -316,7 +316,7 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
 
     const answer = await reply
     expect(answer.statusCode).toBe(408)
-    expect(JSON.parse(await textOf(answer))).toEqual({ error: "Request body was not received within 50 ms (option limits.bodyReadTimeoutMs)" })
+    expect(JSON.parse(await textOf(answer))).toEqual({ error: "Request body stopped arriving for 50 ms (option limits.bodyReadTimeoutMs)" })
     stalled.destroy()
     expect((await send({ method: "POST", body: bodyOf(500), headers: { "content-length": 500, "x-app": "a" } })).status).toBe(200)
   })

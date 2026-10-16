@@ -281,6 +281,8 @@ export class RequestCollector {
   private wasCancelled = false
   private settled = false
   private reportHook: (() => void) | undefined
+  /** The host was stopped because the client left (a tool call or a step that asks for more): once. */
+  private leftStopped = false
 
   constructor(private readonly hooks: CollectorHooks) {
     this.stopScan = hooks.stopSequences !== undefined && hooks.stopSequences.length > 0 ? new StopScan(hooks.stopSequences) : undefined
@@ -391,6 +393,11 @@ export class RequestCollector {
         const name = String(item.name ?? this.toolNames.get(id) ?? "")
         if (this.finished) {
           if (this.hooks.serverTools?.has(name)) this.lateServerCall(id, name)
+          // A client that left mid-run (the settle window): no tool runs for it, and the run is stopped at once (no further step).
+          if (this.wasCancelled && !this.executionDone && !this.leftStopped) {
+            this.leftStopped = true
+            this.hooks.stopTurn()
+          }
           return
         }
         // After a match no tool runs: the answer is complete, and the run ends at once (#390 review).
@@ -448,6 +455,12 @@ export class RequestCollector {
         // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
         if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
         const reason = toFinish(item.finish)
+        // A client that left mid-run: a step that asks for another (server tools, or a finish that is not a plain stop) is stopped at
+        // once, so no further step starts. A client tool call already stopped the run above (`calls` is non-empty then).
+        if (this.wasCancelled && !this.executionDone && !this.leftStopped && this.calls.size === 0 && (reason !== "stop" || serverCalls > 0)) {
+          this.leftStopped = true
+          this.hooks.stopTurn()
+        }
         if (this.calls.size === 0 && serverCalls > 0) return this.serverStepEnded(reason)
         if (this.calls.size === 0 && reason === "stop") this.settled = true
         this.finishWith(withCalls(reason, this.calls.size > 0))

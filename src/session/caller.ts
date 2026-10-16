@@ -59,7 +59,7 @@ export interface SessionCallerDeps {
   readonly historyHidden?: boolean
   /** The global `requestTimeoutMs` (the route's deadline; an app's own value wins). Absent: no deadline to keep clear of (#390). */
   readonly requestTimeoutMs?: number
-  /** Test seams for the settle timers (#390, #cancel-usage): defaults are `SETTLE_MS` and `STOP_DRAIN_MS`. */
+  /** Test seams for the settle timers (#390): defaults are `SETTLE_MS` and `STOP_DRAIN_MS`. */
   readonly settleMs?: number
   readonly stopDrainMs?: number
   /** Called once for a run whose usage the host never reported (`reason` `disconnect`, see `settleMs`). Counted, never estimated. */
@@ -341,12 +341,15 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       }
       // The window a client that left gets: the app's `settleMs` (0 = interrupt at once), else the seam, else the default.
       const disconnectWindow = (): number => Math.min(policy?.settleMs ?? deps.settleMs ?? SETTLE_MS, roomLeft())
-      // A timeout is interrupted at once; so is a client that left when there is no window, or a stop match already runs its own.
-      const timedOut = () => (context.signal.reason as { kind?: unknown } | undefined)?.kind === "timeout"
+      // Only a client that left gets the window. A timeout or a cancel by plugboard (a sibling choice of `n` failed) is interrupted at once.
+      const interruptAtOnce = () => {
+        const kind = (context.signal.reason as { kind?: unknown } | undefined)?.kind
+        return kind === "timeout" || kind === "cancelled"
+      }
       let stopFired = false
       const onAbort = () => {
         collector?.cancel()
-        if (!collector || stopFired || timedOut() || disconnectWindow() === 0) interrupt()
+        if (!collector || stopFired || interruptAtOnce() || disconnectWindow() === 0) interrupt()
       }
       // A stop sequence ended the answer (#390): let the host finish the step for up to `SETTLE_MS` (its usage comes with the
       // finish), then interrupt it, and close with the running usage if the host still has not ended it `STOP_DRAIN_MS` later.
@@ -564,7 +567,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         clearTimeout(settle)
         clearTimeout(drain)
         // A client that left mid-run gets its window (see `disconnectWindow`): the usage is recorded when the host reports it, later.
-        const waiting = sessionID !== undefined && collector !== undefined && promptStarted && context.signal.aborted && !timedOut() && !stopFired && !collector.executionEnded && !collector.turnSettled && !interruptRequested && disconnectWindow() > 0
+        // A finish already emitted ends the run for the caller: its usage is charged now, not again later (no double charge).
+        const waiting = sessionID !== undefined && collector !== undefined && promptStarted && context.signal.aborted && !interruptAtOnce() && !stopFired && finish === undefined && !collector.executionEnded && !collector.turnSettled && !interruptRequested && disconnectWindow() > 0
         if (waiting && collector) settleAfterDisconnect(collector, disconnectWindow())
         // What the host has spent on the run so far: the usage record charges it when the run ends without a finish (timeout).
         else if (collector?.spent) context.onRunUsage?.(collector.spent)

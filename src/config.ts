@@ -250,6 +250,7 @@ export interface Limits {
   readonly maxBodyBytesInFlight?: number
   /** Milliseconds a request body may take to arrive in full; a slower one is refused with 408. */
   readonly bodyReadTimeoutMs?: number
+  readonly bodyReadMaxMs?: number
   /**
    * The largest request body any app may send (since 0.32.0, #258), 1 to 33554432. Absent: 32 MiB. It is the ceiling for
    * `apps.<name>.maxBodyBytes`-style caps in `limits.apps`, and a body over it is refused with 413 before it is read.
@@ -260,13 +261,27 @@ export interface Limits {
 /** The bounds `readJsonBody` applies before it buffers a request body (see `bodyLimits`). */
 export interface BodyLimits {
   readonly maxBytesInFlight: number
+  /** The app this request is of, and the bytes that app may hold of the budget (`bodyLimits`). Absent: no split. */
+  readonly app?: string
+  readonly appShare?: number
+  /** No new bytes for this long (idle), then 408 (`limits.bodyReadTimeoutMs`). */
   readonly readTimeoutMs: number
+  /** The whole body must be complete within this long, then 408 (`limits.bodyReadMaxMs`). Absent: `BODY_LIMIT_DEFAULTS.readCeilingMs`. */
+  readonly readCeilingMs?: number
   /** The largest body this request may send: `limits.apps.<name>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB (#258). Absent: 32 MiB. */
   readonly maxBodyBytes?: number
 }
 
-/** Defaults of `limits.maxBodyBytesInFlight` (128 MiB) and `limits.bodyReadTimeoutMs` (30 s). */
-export const BODY_LIMIT_DEFAULTS: BodyLimits & { readonly maxBodyBytes: number } = { maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, maxBodyBytes: 32 * 1024 * 1024 }
+/**
+ * Defaults of `limits.maxBodyBytesInFlight` (128 MiB), `limits.bodyReadTimeoutMs` (30 s idle) and `limits.bodyReadMaxMs` (5 min
+ * in total: 10 MiB on a 2 Mbit/s link takes about 42 s, a full 32 MiB about 2 min).
+ */
+export const BODY_LIMIT_DEFAULTS: BodyLimits & { readonly maxBodyBytes: number; readonly readCeilingMs: number } = {
+  maxBytesInFlight: 128 * 1024 * 1024,
+  readTimeoutMs: 30_000,
+  readCeilingMs: 300_000,
+  maxBodyBytes: 32 * 1024 * 1024,
+}
 
 /** What a budget counts: HTTP requests on the model routes (refusals by `limits` or budgets left out), tokens, or cost in USD. */
 export type BudgetMetric = "requests" | "tokens" | "costUsd"
@@ -315,7 +330,7 @@ const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
 const MAX_RETENTION_DAYS = 3650
-const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs", "maxBodyBytes"])
+const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs", "bodyReadMaxMs", "maxBodyBytes"])
 /** The hard cap of one request body (32 MiB). `limits.maxBodyBytes` and `limits.apps.<name>.maxBodyBytes` cannot go above it. */
 const BODY_HARD_CAP = 32 * 1024 * 1024
 const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
@@ -722,6 +737,16 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
   for (const [app, caps] of Object.entries(apps))
     if (caps.maxBodyBytes !== undefined && caps.maxBodyBytes > (maxBodyBytes ?? BODY_HARD_CAP))
       throw new Error(`plugboard option \`limits.apps.${app}.maxBodyBytes\` cannot be above \`limits.maxBodyBytes\` (or ${BODY_HARD_CAP} when that is unset)`)
+  // With several app keys each app's share of the budget (`bodyLimits`) must hold one body of the largest size.
+  if (Object.keys(keys).length > 1) {
+    const cap = raw.maxBodyBytesInFlight === undefined ? BODY_LIMIT_DEFAULTS.maxBytesInFlight : positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER)
+    const largest = maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
+    const count = Object.keys(keys).length
+    if (Math.floor(cap / count) < largest)
+      throw new Error(
+        `plugboard option \`limits.maxBodyBytesInFlight\` (${cap}) is split across ${count} app keys, so each app gets ${Math.floor(cap / count)} bytes, less than \`limits.maxBodyBytes\` (${largest}): raise it to at least ${count * largest}`,
+      )
+  }
   return {
     ...(maxBodyBytes === undefined ? {} : { maxBodyBytes }),
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, "limits.maxConcurrent", 0, MAX_LIMIT) }),
@@ -731,6 +756,7 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
       ? {}
       : { maxBodyBytesInFlight: positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER) }),
     ...(raw.bodyReadTimeoutMs === undefined ? {} : { bodyReadTimeoutMs: positiveInt(raw.bodyReadTimeoutMs, "limits.bodyReadTimeoutMs", 0, MAX_TIMER_MS) }),
+    ...(raw.bodyReadMaxMs === undefined ? {} : { bodyReadMaxMs: positiveInt(raw.bodyReadMaxMs, "limits.bodyReadMaxMs", 0, MAX_TIMER_MS) }),
   }
 }
 
@@ -739,11 +765,18 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
  * `limits.apps.<app>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB, #258), or the defaults. `app` is absent before a
  * credential is read; the global cap applies then.
  */
-export function bodyLimits(options: Pick<PlugboardOptions, "limits">, app?: string): BodyLimits {
+export function bodyLimits(options: Pick<PlugboardOptions, "limits"> & Partial<Pick<PlugboardOptions, "keys">>, app?: string): BodyLimits {
   const own = app !== undefined && options.limits?.apps && Object.hasOwn(options.limits.apps, app) ? options.limits.apps[app] : undefined
+  const budget = options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight
+  // With several app keys the budget is split evenly: each app may hold `budget / keys` bytes of bodies, so no other app can take
+  // the room it needs for one body of the largest size (`parseLimits` refuses a split that would leave less). One key or none: no split.
+  const keys = Object.keys(options.keys ?? {}).length
+  const split = keys > 1 && app !== undefined
   return {
-    maxBytesInFlight: options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight,
+    maxBytesInFlight: budget,
+    ...(split ? { app, appShare: Math.floor(budget / keys) } : {}),
     readTimeoutMs: options.limits?.bodyReadTimeoutMs ?? BODY_LIMIT_DEFAULTS.readTimeoutMs,
+    readCeilingMs: options.limits?.bodyReadMaxMs ?? BODY_LIMIT_DEFAULTS.readCeilingMs,
     maxBodyBytes: own?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes,
   }
 }
