@@ -45,136 +45,42 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
-          "x-plugboard-session": "<id-1>"
-        },
-        "status": 429
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "max_tokens": 1024,
-          "messages": [
+          "choices": [
             {
-              "content": "Estimate: 2 boiled eggs and a slice of toast.",
-              "role": "user"
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "{\"calories\":235,\"protein_g\":15.5}",
+                "refusal": null,
+                "role": "assistant"
+              }
             }
           ],
-          "model": "fast",
-          "response_format": {
-            "json_schema": {
-              "name": "response",
-              "schema": {
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "additionalProperties": false,
-                "properties": {
-                  "calories": {
-                    "type": "number"
-                  },
-                  "protein_g": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "calories",
-                  "protein_g"
-                ],
-                "type": "object"
-              },
-              "strict": true
+          "created": "<time-1>",
+          "id": "<id-2>",
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 174,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
             },
-            "type": "json_schema"
-          }
-        },
-        "headers": {
-          "accept": "*/*",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/chat/completions"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
+            "prompt_tokens": 661,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 835
           }
         },
         "headers": {
           "content-type": "application/json",
-          "x-plugboard-session": "<id-2>"
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=661; output=174; cache_read=0; cache_write=0; cost_usd=0.001531"
         },
-        "status": 429
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "max_tokens": 1024,
-          "messages": [
-            {
-              "content": "Estimate: 2 boiled eggs and a slice of toast.",
-              "role": "user"
-            }
-          ],
-          "model": "fast",
-          "response_format": {
-            "json_schema": {
-              "name": "response",
-              "schema": {
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "additionalProperties": false,
-                "properties": {
-                  "calories": {
-                    "type": "number"
-                  },
-                  "protein_g": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "calories",
-                  "protein_g"
-                ],
-                "type": "object"
-              },
-              "strict": true
-            },
-            "type": "json_schema"
-          }
-        },
-        "headers": {
-          "accept": "*/*",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/chat/completions"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
-          "x-plugboard-session": "<id-3>"
-        },
-        "status": 429
+        "status": 200
       }
     }
   ]

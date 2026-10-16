@@ -107,7 +107,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "Red",
+                "content": "Red.",
                 "refusal": null,
                 "role": "assistant"
               }
@@ -118,7 +118,7 @@
           "model": "anthropic/claude-haiku-4-5",
           "object": "chat.completion",
           "usage": {
-            "completion_tokens": 4,
+            "completion_tokens": 5,
             "completion_tokens_details": {
               "reasoning_tokens": 0
             },
@@ -126,14 +126,14 @@
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
-            "total_tokens": 43
+            "total_tokens": 44
           }
         },
         "headers": {
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-3>",
-          "x-plugboard-usage": "input=39; output=4; cache_read=0; cache_write=0; cost_usd=0.000059"
+          "x-plugboard-usage": "input=39; output=5; cache_read=0; cache_write=0; cost_usd=0.000064"
         },
         "status": 200
       }

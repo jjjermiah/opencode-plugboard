@@ -1,0 +1,379 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user",
+              "type": "message"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "openai/gpt-5.6-luna#low",
+          "stream": false,
+          "text": {
+            "format": {
+              "description": "Meal nutrition estimate.",
+              "name": "Meal",
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "description": "Meal nutrition estimate.",
+                "properties": {
+                  "calories": {
+                    "title": "Meal",
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "title": "Meal",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "title": "Meal",
+                "type": "object"
+              },
+              "strict": true,
+              "type": "json_schema"
+            }
+          }
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-1>",
+          "error": null,
+          "id": "<id-2>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "openai/gpt-5.6-luna#low",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "{\"calories\":240,\"protein_g\":16}",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-3>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "description": "Meal nutrition estimate.",
+              "name": "Meal",
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "description": "Meal nutrition estimate.",
+                "properties": {
+                  "calories": {
+                    "title": "Meal",
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "title": "Meal",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "title": "Meal",
+                "type": "object"
+              },
+              "strict": true,
+              "type": "json_schema"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 99,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 67,
+            "output_tokens_details": {
+              "reasoning_tokens": 42
+            },
+            "total_tokens": 166
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=99; output=67; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user",
+              "type": "message"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "openai/gpt-5.6-luna#low",
+          "stream": false,
+          "text": {},
+          "tool_choice": {
+            "name": "Meal",
+            "type": "function"
+          },
+          "tools": [
+            {
+              "description": "Meal nutrition estimate.",
+              "name": "Meal",
+              "parameters": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "description": "Meal nutrition estimate.",
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "strict": null,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-2>",
+          "error": null,
+          "id": "<id-5>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "openai/gpt-5.6-luna#low",
+          "object": "response",
+          "output": [
+            {
+              "arguments": "{\"calories\":236,\"protein_g\":16}",
+              "call_id": "<id-6>",
+              "id": "<id-7>",
+              "name": "Meal",
+              "status": "completed",
+              "type": "function_call"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": {
+            "name": "Meal",
+            "type": "function"
+          },
+          "tools": [
+            {
+              "description": "Meal nutrition estimate.",
+              "name": "Meal",
+              "parameters": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "description": "Meal nutrition estimate.",
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 76,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 65,
+            "output_tokens_details": {
+              "reasoning_tokens": 39
+            },
+            "total_tokens": 141
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-4>",
+          "x-plugboard-usage": "input=76; output=65; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast. Respond as JSON with keys calories and protein_g (numbers).",
+              "role": "user",
+              "type": "message"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "openai/gpt-5.6-luna#low",
+          "stream": false,
+          "text": {
+            "format": {
+              "type": "json_object"
+            }
+          }
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-3>",
+          "error": null,
+          "id": "<id-9>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "openai/gpt-5.6-luna#low",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "{\"calories\":236,\"protein_g\":15.6}",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-10>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "json_object"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 43,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 57,
+            "output_tokens_details": {
+              "reasoning_tokens": 38
+            },
+            "total_tokens": 100
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-8>",
+          "x-plugboard-usage": "input=43; output=57; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

@@ -22,26 +22,52 @@
   },
   "scenarios": [
     {
-      "checks": [],
-      "duration_ms": 410,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 570,
+      "error": null,
       "id": "S1",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S1.chat.fast.json",
       "variant": "chat"
     },
     {
-      "checks": [],
-      "duration_ms": 297,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 683,
+      "error": null,
       "id": "S1",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S1.responses.fast.json",
       "variant": "responses"
     },
@@ -60,7 +86,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 427,
+      "duration_ms": 407,
       "error": null,
       "id": "S1",
       "model": "anthropic/claude-haiku-4-5",
@@ -85,7 +111,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 474,
+      "duration_ms": 436,
       "error": null,
       "id": "S1",
       "model": "anthropic/claude-haiku-4-5",
@@ -110,7 +136,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1592,
+      "duration_ms": 1517,
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
@@ -135,7 +161,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 3235,
+      "duration_ms": 1661,
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
@@ -146,33 +172,83 @@
       "variant": "responses"
     },
     {
-      "checks": [],
-      "duration_ms": 178,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1881,
+      "error": null,
       "id": "S2",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S2.chat.fast.json",
       "variant": "chat"
     },
     {
-      "checks": [],
-      "duration_ms": 207,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 2035,
+      "error": null,
       "id": "S2",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S2.responses.fast.json",
       "variant": "responses"
     },
     {
       "checks": [],
-      "duration_ms": 146,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "duration_ms": 1061,
+      "error": "BadRequestError: Error code: 400 - {'error': {'message': 'previous_response_id is not supported: plugboard is stateless, send the full conversation in input', 'type': 'invalid_request_error', 'param': 'previous_response_id', 'code': 'unsupported_parameter'}}",
       "id": "S2",
       "model": "fast",
       "note": "previous_response_id is refused: plugboard is stateless, send the full input (docs/responses.md) (#104)",
@@ -208,7 +284,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1680,
+      "duration_ms": 1615,
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
@@ -245,7 +321,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1549,
+      "duration_ms": 1861,
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
@@ -257,7 +333,7 @@
     },
     {
       "checks": [],
-      "duration_ms": 855,
+      "duration_ms": 839,
       "error": "BadRequestError: Error code: 400 - {'error': {'message': 'previous_response_id is not supported: plugboard is stateless, send the full conversation in input', 'type': 'invalid_request_error', 'param': 'previous_response_id', 'code': 'unsupported_parameter'}}",
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
@@ -294,7 +370,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 3501,
+      "duration_ms": 3578,
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
@@ -331,7 +407,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 3992,
+      "duration_ms": 3995,
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
@@ -343,7 +419,7 @@
     },
     {
       "checks": [],
-      "duration_ms": 1883,
+      "duration_ms": 1746,
       "error": "BadRequestError: Error code: 400 - {'error': {'message': 'previous_response_id is not supported: plugboard is stateless, send the full conversation in input', 'type': 'invalid_request_error', 'param': 'previous_response_id', 'code': 'unsupported_parameter'}}",
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
@@ -356,69 +432,120 @@
     {
       "checks": [
         {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage chunk present when requested",
+          "ok": true
+        },
+        {
           "name": "stream ended normally",
-          "ok": false
+          "ok": true
         }
       ],
-      "duration_ms": 190,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "duration_ms": 1687,
+      "error": null,
       "id": "S3",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S3.chat.fast.json",
       "variant": "chat"
     },
     {
       "checks": [
         {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage chunk present when requested",
+          "ok": true
+        },
+        {
           "name": "stream ended normally",
-          "ok": false
+          "ok": true
         }
       ],
-      "duration_ms": 186,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "duration_ms": 606,
+      "error": null,
       "id": "S3",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S3.responses.fast.json",
       "variant": "responses"
     },
     {
-      "checks": [],
-      "duration_ms": 210,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "streamed get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 968,
+      "error": null,
       "id": "S4",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S4.fast.json"
     },
     {
-      "checks": [],
-      "duration_ms": 165,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 647,
+      "error": null,
       "id": "S5",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S5.chat.fast.json",
       "variant": "chat"
     },
     {
-      "checks": [],
-      "duration_ms": 156,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 588,
+      "error": null,
       "id": "S5",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S5.responses.fast.json",
       "variant": "responses"
     },
@@ -429,7 +556,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 450,
+      "duration_ms": 454,
       "error": null,
       "id": "S5",
       "model": "anthropic/claude-haiku-4-5",
@@ -446,7 +573,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 425,
+      "duration_ms": 554,
       "error": null,
       "id": "S5",
       "model": "anthropic/claude-haiku-4-5",
@@ -463,7 +590,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1740,
+      "duration_ms": 1397,
       "error": null,
       "id": "S5",
       "model": "openai/gpt-5.6-luna#low",
@@ -480,7 +607,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1909,
+      "duration_ms": 1398,
       "error": null,
       "id": "S5",
       "model": "openai/gpt-5.6-luna#low",
@@ -491,26 +618,52 @@
       "variant": "responses"
     },
     {
-      "checks": [],
-      "duration_ms": 4177,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 6260,
+      "error": null,
       "id": "S6",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S6.chat.fast.json",
       "variant": "chat"
     },
     {
-      "checks": [],
-      "duration_ms": 174,
-      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 4068,
+      "error": null,
       "id": "S6",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S6.responses.fast.json",
       "variant": "responses"
     },
@@ -529,7 +682,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 4026,
+      "duration_ms": 4471,
       "error": null,
       "id": "S6",
       "model": "anthropic/claude-haiku-4-5",
@@ -554,7 +707,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 2891,
+      "duration_ms": 3497,
       "error": null,
       "id": "S6",
       "model": "anthropic/claude-haiku-4-5",
@@ -579,7 +732,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 7986,
+      "duration_ms": 8572,
       "error": null,
       "id": "S6",
       "model": "openai/gpt-5.6-luna#low",
@@ -604,7 +757,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 5981,
+      "duration_ms": 5050,
       "error": null,
       "id": "S6",
       "model": "openai/gpt-5.6-luna#low",
@@ -629,7 +782,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 40,
+      "duration_ms": 19,
       "error": null,
       "id": "S7",
       "model": "-",
@@ -649,7 +802,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 4,
+      "duration_ms": 2,
       "error": null,
       "id": "E1",
       "model": "fast",
@@ -669,7 +822,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 118,
+      "duration_ms": 137,
       "error": null,
       "id": "E2",
       "model": "nope",
@@ -681,5 +834,5 @@
   ],
   "schema": 1,
   "target": "live",
-  "verdict": "fail"
+  "verdict": "partial"
 }

@@ -51,7 +51,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "{\"calories\":220,\"protein_g\":14.5}",
+                "content": "{\"calories\":155,\"protein_g\":13}",
                 "refusal": null,
                 "role": "assistant"
               }
@@ -62,7 +62,7 @@
           "model": "anthropic/claude-haiku-4-5",
           "object": "chat.completion",
           "usage": {
-            "completion_tokens": 175,
+            "completion_tokens": 83,
             "completion_tokens_details": {
               "reasoning_tokens": 0
             },
@@ -70,14 +70,14 @@
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
-            "total_tokens": 836
+            "total_tokens": 744
           }
         },
         "headers": {
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-1>",
-          "x-plugboard-usage": "input=661; output=175; cache_read=0; cache_write=0; cost_usd=0.001536"
+          "x-plugboard-usage": "input=661; output=83; cache_read=0; cache_write=0; cost_usd=0.001076"
         },
         "status": 200
       }
@@ -132,7 +132,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "{\"calories\":255,\"protein_g\":16}",
+                "content": "{\"calories\":255,\"protein_g\":15.3}",
                 "refusal": null,
                 "role": "assistant"
               }
@@ -143,7 +143,7 @@
           "model": "anthropic/claude-haiku-4-5",
           "object": "chat.completion",
           "usage": {
-            "completion_tokens": 172,
+            "completion_tokens": 176,
             "completion_tokens_details": {
               "reasoning_tokens": 0
             },
@@ -151,14 +151,14 @@
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
-            "total_tokens": 813
+            "total_tokens": 817
           }
         },
         "headers": {
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-3>",
-          "x-plugboard-usage": "input=641; output=172; cache_read=0; cache_write=0; cost_usd=0.001501"
+          "x-plugboard-usage": "input=641; output=176; cache_read=0; cache_write=0; cost_usd=0.001521"
         },
         "status": 200
       }

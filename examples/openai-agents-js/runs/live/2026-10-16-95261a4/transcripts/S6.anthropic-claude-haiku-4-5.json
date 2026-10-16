@@ -115,11 +115,11 @@
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 176,
+            "output_tokens": 172,
             "output_tokens_details": {
               "reasoning_tokens": 0
             },
-            "total_tokens": 842
+            "total_tokens": 838
           },
           "user": null
         },
@@ -127,7 +127,7 @@
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-1>",
-          "x-plugboard-usage": "input=666; output=176; cache_read=0; cache_write=0; cost_usd=0.001546"
+          "x-plugboard-usage": "input=666; output=172; cache_read=0; cache_write=0; cost_usd=0.001526"
         },
         "status": 200
       }

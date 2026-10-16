@@ -25,18 +25,95 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
+          "sse": [
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "",
+                      "role": "assistant"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-1>",
+                "id": "<id-2>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "pong"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-2>",
+                "id": "<id-2>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {},
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-3>",
+                "id": "<id-2>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [],
+                "created": "<time-4>",
+                "id": "<id-2>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": {
+                  "completion_tokens": 5,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 29,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 34
+                }
+              }
+            },
+            {
+              "data": "[DONE]"
+            }
+          ]
         },
         "headers": {
-          "content-type": "application/json",
+          "content-type": "text/event-stream; charset=utf-8",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-1>"
         },
-        "status": 429
+        "status": 200
       }
     },
     {
@@ -50,10 +127,7 @@
             }
           ],
           "model": "fast",
-          "stream": true,
-          "stream_options": {
-            "include_usage": true
-          }
+          "stream": true
         },
         "headers": {
           "accept": "*/*",
@@ -64,165 +138,72 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
-          "x-plugboard-session": "<id-2>"
-        },
-        "status": 429
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "max_tokens": 1024,
-          "messages": [
+          "sse": [
             {
-              "content": "Reply with exactly: pong",
-              "role": "user"
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "",
+                      "role": "assistant"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-5>",
+                "id": "<id-4>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk"
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "pong"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-6>",
+                "id": "<id-4>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk"
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {},
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-7>",
+                "id": "<id-4>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk"
+              }
+            },
+            {
+              "data": "[DONE]"
             }
-          ],
-          "model": "fast",
-          "stream": true,
-          "stream_options": {
-            "include_usage": true
-          }
+          ]
         },
         "headers": {
-          "accept": "*/*",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/chat/completions"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
+          "content-type": "text/event-stream; charset=utf-8",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-3>"
         },
-        "status": 429
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "max_tokens": 1024,
-          "messages": [
-            {
-              "content": "Reply with exactly: pong",
-              "role": "user"
-            }
-          ],
-          "model": "fast",
-          "stream": true
-        },
-        "headers": {
-          "accept": "*/*",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/chat/completions"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
-          "x-plugboard-session": "<id-4>"
-        },
-        "status": 429
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "max_tokens": 1024,
-          "messages": [
-            {
-              "content": "Reply with exactly: pong",
-              "role": "user"
-            }
-          ],
-          "model": "fast",
-          "stream": true
-        },
-        "headers": {
-          "accept": "*/*",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/chat/completions"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
-          "x-plugboard-session": "<id-5>"
-        },
-        "status": 429
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "max_tokens": 1024,
-          "messages": [
-            {
-              "content": "Reply with exactly: pong",
-              "role": "user"
-            }
-          ],
-          "model": "fast",
-          "stream": true
-        },
-        "headers": {
-          "accept": "*/*",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/chat/completions"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
-          "x-plugboard-session": "<id-6>"
-        },
-        "status": 429
+        "status": 200
       }
     }
   ]

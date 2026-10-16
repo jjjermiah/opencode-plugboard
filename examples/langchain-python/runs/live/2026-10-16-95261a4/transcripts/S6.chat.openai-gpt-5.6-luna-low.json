@@ -54,7 +54,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "{\"calories\":236,\"protein_g\":16}",
+                "content": "{\"calories\":236,\"protein_g\":18}",
                 "refusal": null,
                 "role": "assistant"
               }
@@ -65,22 +65,22 @@
           "model": "openai/gpt-5.6-luna#low",
           "object": "chat.completion",
           "usage": {
-            "completion_tokens": 66,
+            "completion_tokens": 67,
             "completion_tokens_details": {
-              "reasoning_tokens": 41
+              "reasoning_tokens": 42
             },
             "prompt_tokens": 96,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
-            "total_tokens": 162
+            "total_tokens": 163
           }
         },
         "headers": {
           "content-type": "application/json",
           "x-plugboard-model": "openai/gpt-5.6-luna#low",
           "x-plugboard-session": "<id-1>",
-          "x-plugboard-usage": "input=96; output=66; cache_read=0; cache_write=0"
+          "x-plugboard-usage": "input=96; output=67; cache_read=0; cache_write=0"
         },
         "status": 200
       }
@@ -165,15 +165,15 @@
           "model": "openai/gpt-5.6-luna#low",
           "object": "chat.completion",
           "usage": {
-            "completion_tokens": 68,
+            "completion_tokens": 67,
             "completion_tokens_details": {
-              "reasoning_tokens": 40
+              "reasoning_tokens": 39
             },
             "prompt_tokens": 71,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
-            "total_tokens": 139
+            "total_tokens": 138
           }
         },
         "headers": {
@@ -181,7 +181,7 @@
           "x-plugboard-model": "openai/gpt-5.6-luna#low",
           "x-plugboard-parallel-tools": "limited",
           "x-plugboard-session": "<id-3>",
-          "x-plugboard-usage": "input=71; output=68; cache_read=0; cache_write=0"
+          "x-plugboard-usage": "input=71; output=67; cache_read=0; cache_write=0"
         },
         "status": 200
       }
@@ -216,7 +216,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "{\"calories\":236,\"protein_g\":15.6}",
+                "content": "{\"calories\":220,\"protein_g\":16}",
                 "refusal": null,
                 "role": "assistant"
               }
@@ -227,22 +227,22 @@
           "model": "openai/gpt-5.6-luna#low",
           "object": "chat.completion",
           "usage": {
-            "completion_tokens": 57,
+            "completion_tokens": 15,
             "completion_tokens_details": {
-              "reasoning_tokens": 38
+              "reasoning_tokens": 0
             },
             "prompt_tokens": 43,
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
-            "total_tokens": 100
+            "total_tokens": 58
           }
         },
         "headers": {
           "content-type": "application/json",
           "x-plugboard-model": "openai/gpt-5.6-luna#low",
           "x-plugboard-session": "<id-6>",
-          "x-plugboard-usage": "input=43; output=57; cache_read=0; cache_write=0"
+          "x-plugboard-usage": "input=43; output=15; cache_read=0; cache_write=0"
         },
         "status": 200
       }

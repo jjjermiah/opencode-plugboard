@@ -54,7 +54,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "{\"calories\":270,\"protein_g\":17}",
+                "content": "{\"calories\":200,\"protein_g\":15}",
                 "refusal": null,
                 "role": "assistant"
               }
@@ -216,7 +216,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "{\n  \"calories\": 310,\n  \"protein_g\": 17\n}",
+                "content": "{\n  \"calories\": 310,\n  \"protein_g\": 18\n}",
                 "refusal": null,
                 "role": "assistant"
               }

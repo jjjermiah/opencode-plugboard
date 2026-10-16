@@ -57,7 +57,7 @@
                 {
                   "annotations": [],
                   "logprobs": [],
-                  "text": "{\"calories\":280,\"protein_g\":16}",
+                  "text": "{\"calories\":220,\"protein_g\":16}",
                   "type": "output_text"
                 }
               ],
@@ -111,11 +111,11 @@
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 103,
+            "output_tokens": 172,
             "output_tokens_details": {
               "reasoning_tokens": 0
             },
-            "total_tokens": 766
+            "total_tokens": 835
           },
           "user": null
         },
@@ -123,7 +123,7 @@
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-1>",
-          "x-plugboard-usage": "input=663; output=103; cache_read=0; cache_write=0; cost_usd=0.001178"
+          "x-plugboard-usage": "input=663; output=172; cache_read=0; cache_write=0; cost_usd=0.001523"
         },
         "status": 200
       }
@@ -182,7 +182,7 @@
                 {
                   "annotations": [],
                   "logprobs": [],
-                  "text": "{\"calories\":220,\"protein_g\":14.5}",
+                  "text": "{\"calories\":230,\"protein_g\":15.5}",
                   "type": "output_text"
                 }
               ],
@@ -233,11 +233,11 @@
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 175,
+            "output_tokens": 183,
             "output_tokens_details": {
               "reasoning_tokens": 0
             },
-            "total_tokens": 816
+            "total_tokens": 824
           },
           "user": null
         },
@@ -245,7 +245,7 @@
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-4>",
-          "x-plugboard-usage": "input=641; output=175; cache_read=0; cache_write=0; cost_usd=0.001516"
+          "x-plugboard-usage": "input=641; output=183; cache_read=0; cache_write=0; cost_usd=0.001556"
         },
         "status": 200
       }

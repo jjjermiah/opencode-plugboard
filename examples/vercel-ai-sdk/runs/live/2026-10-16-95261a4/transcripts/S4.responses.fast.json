@@ -49,144 +49,263 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
+          "sse": [
+            {
+              "data": {
+                "response": {
+                  "created_at": "<time-1>",
+                  "error": null,
+                  "id": "<id-2>",
+                  "incomplete_details": null,
+                  "instructions": null,
+                  "max_output_tokens": 1024,
+                  "metadata": {},
+                  "model": "anthropic/claude-haiku-4-5",
+                  "object": "response",
+                  "output": [],
+                  "parallel_tool_calls": true,
+                  "previous_response_id": null,
+                  "reasoning": {
+                    "effort": null,
+                    "summary": null
+                  },
+                  "status": "in_progress",
+                  "store": false,
+                  "temperature": null,
+                  "text": {
+                    "format": {
+                      "type": "text"
+                    }
+                  },
+                  "tool_choice": "auto",
+                  "tools": [
+                    {
+                      "description": "Current weather for a city",
+                      "name": "get_weather",
+                      "parameters": {
+                        "$schema": "http://json-schema.org/draft-07/schema#",
+                        "additionalProperties": false,
+                        "properties": {
+                          "city": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "city"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    }
+                  ],
+                  "top_p": null,
+                  "truncation": "disabled",
+                  "user": null
+                },
+                "sequence_number": 0,
+                "type": "response.created"
+              },
+              "event": "response.created"
+            },
+            {
+              "data": {
+                "response": {
+                  "created_at": "<time-2>",
+                  "error": null,
+                  "id": "<id-2>",
+                  "incomplete_details": null,
+                  "instructions": null,
+                  "max_output_tokens": 1024,
+                  "metadata": {},
+                  "model": "anthropic/claude-haiku-4-5",
+                  "object": "response",
+                  "output": [],
+                  "parallel_tool_calls": true,
+                  "previous_response_id": null,
+                  "reasoning": {
+                    "effort": null,
+                    "summary": null
+                  },
+                  "status": "in_progress",
+                  "store": false,
+                  "temperature": null,
+                  "text": {
+                    "format": {
+                      "type": "text"
+                    }
+                  },
+                  "tool_choice": "auto",
+                  "tools": [
+                    {
+                      "description": "Current weather for a city",
+                      "name": "get_weather",
+                      "parameters": {
+                        "$schema": "http://json-schema.org/draft-07/schema#",
+                        "additionalProperties": false,
+                        "properties": {
+                          "city": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "city"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    }
+                  ],
+                  "top_p": null,
+                  "truncation": "disabled",
+                  "user": null
+                },
+                "sequence_number": 1,
+                "type": "response.in_progress"
+              },
+              "event": "response.in_progress"
+            },
+            {
+              "data": {
+                "item": {
+                  "arguments": "",
+                  "call_id": "<id-3>",
+                  "id": "<id-4>",
+                  "name": "get_weather",
+                  "status": "in_progress",
+                  "type": "function_call"
+                },
+                "output_index": 0,
+                "sequence_number": 2,
+                "type": "response.output_item.added"
+              },
+              "event": "response.output_item.added"
+            },
+            {
+              "data": {
+                "delta": "{\"city\":\"Paris\"}",
+                "item_id": "<id-4>",
+                "output_index": 0,
+                "sequence_number": 3,
+                "type": "response.function_call_arguments.delta"
+              },
+              "event": "response.function_call_arguments.delta"
+            },
+            {
+              "data": {
+                "arguments": "{\"city\":\"Paris\"}",
+                "item_id": "<id-4>",
+                "name": "get_weather",
+                "output_index": 0,
+                "sequence_number": 4,
+                "type": "response.function_call_arguments.done"
+              },
+              "event": "response.function_call_arguments.done"
+            },
+            {
+              "data": {
+                "item": {
+                  "arguments": "{\"city\":\"Paris\"}",
+                  "call_id": "<id-3>",
+                  "id": "<id-4>",
+                  "name": "get_weather",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "output_index": 0,
+                "sequence_number": 5,
+                "type": "response.output_item.done"
+              },
+              "event": "response.output_item.done"
+            },
+            {
+              "data": {
+                "response": {
+                  "created_at": "<time-3>",
+                  "error": null,
+                  "id": "<id-2>",
+                  "incomplete_details": null,
+                  "instructions": null,
+                  "max_output_tokens": 1024,
+                  "metadata": {},
+                  "model": "anthropic/claude-haiku-4-5",
+                  "object": "response",
+                  "output": [
+                    {
+                      "arguments": "{\"city\":\"Paris\"}",
+                      "call_id": "<id-3>",
+                      "id": "<id-4>",
+                      "name": "get_weather",
+                      "status": "completed",
+                      "type": "function_call"
+                    }
+                  ],
+                  "parallel_tool_calls": true,
+                  "previous_response_id": null,
+                  "reasoning": {
+                    "effort": null,
+                    "summary": null
+                  },
+                  "status": "completed",
+                  "store": false,
+                  "temperature": null,
+                  "text": {
+                    "format": {
+                      "type": "text"
+                    }
+                  },
+                  "tool_choice": "auto",
+                  "tools": [
+                    {
+                      "description": "Current weather for a city",
+                      "name": "get_weather",
+                      "parameters": {
+                        "$schema": "http://json-schema.org/draft-07/schema#",
+                        "additionalProperties": false,
+                        "properties": {
+                          "city": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "city"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    }
+                  ],
+                  "top_p": null,
+                  "truncation": "disabled",
+                  "usage": {
+                    "input_tokens": 626,
+                    "input_tokens_details": {
+                      "cached_tokens": 0
+                    },
+                    "output_tokens": 69,
+                    "output_tokens_details": {
+                      "reasoning_tokens": 0
+                    },
+                    "total_tokens": 695
+                  },
+                  "user": null
+                },
+                "sequence_number": 6,
+                "type": "response.completed"
+              },
+              "event": "response.completed"
+            }
+          ]
         },
         "headers": {
-          "content-type": "application/json",
+          "content-type": "text/event-stream; charset=utf-8",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-1>"
         },
-        "status": 429
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "input": [
-            {
-              "content": [
-                {
-                  "text": "What is the weather in Paris? Use the tool.",
-                  "type": "input_text"
-                }
-              ],
-              "role": "user"
-            }
-          ],
-          "max_output_tokens": 1024,
-          "model": "fast",
-          "stream": true,
-          "tool_choice": "auto",
-          "tools": [
-            {
-              "description": "Current weather for a city",
-              "name": "get_weather",
-              "parameters": {
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "additionalProperties": false,
-                "properties": {
-                  "city": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "city"
-                ],
-                "type": "object"
-              },
-              "strict": false,
-              "type": "function"
-            }
-          ]
-        },
-        "headers": {
-          "accept": "*/*",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/responses"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
-          "x-plugboard-session": "<id-2>"
-        },
-        "status": 429
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "input": [
-            {
-              "content": [
-                {
-                  "text": "What is the weather in Paris? Use the tool.",
-                  "type": "input_text"
-                }
-              ],
-              "role": "user"
-            }
-          ],
-          "max_output_tokens": 1024,
-          "model": "fast",
-          "stream": true,
-          "tool_choice": "auto",
-          "tools": [
-            {
-              "description": "Current weather for a city",
-              "name": "get_weather",
-              "parameters": {
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "additionalProperties": false,
-                "properties": {
-                  "city": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "city"
-                ],
-                "type": "object"
-              },
-              "strict": false,
-              "type": "function"
-            }
-          ]
-        },
-        "headers": {
-          "accept": "*/*",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/responses"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json",
-          "x-plugboard-session": "<id-3>"
-        },
-        "status": 429
+        "status": 200
       }
     }
   ]

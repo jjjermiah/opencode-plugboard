@@ -45,4 +45,4 @@ Reported as `n/a`: S4 (streamed tool call), S5 (image), E1 and E2 (error paths) 
 
 ## Live run
 
-The live run is `runs/live/2026-10-16-95261a4/`, against the isolated dev server at plugboard 0.41.0 (main `v0.41.0-4-g95261a4`). Every row on `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low` passes. The `fast` rows fail with an upstream 429 (its quota is out), which is not a plugboard finding.
+The live run is `runs/live/2026-10-16-95261a4/`, against the isolated dev server at plugboard 0.41.0 (main `v0.41.0-4-g95261a4`). Every row passes, including `fast`, which the dev server's fallback served from `anthropic/claude-haiku-4-5` during this run (see the run's `REPORT.md`).

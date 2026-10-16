@@ -204,7 +204,7 @@
                 {
                   "annotations": [],
                   "logprobs": [],
-                  "text": "The current weather in Paris is:\n- **Temperature:** 18°C (about 64°F)\n- **Sky:** Cloudy\n\nIt's a mild, cloudy day in Paris!",
+                  "text": "The weather in Paris is currently:\n- **Temperature:** 18°C (about 64°F)\n- **Sky condition:** Cloudy\n\nIt's a mild, overcast day in Paris.",
                   "type": "output_text"
                 }
               ],
@@ -258,11 +258,11 @@
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 46,
+            "output_tokens": 47,
             "output_tokens_details": {
               "reasoning_tokens": 0
             },
-            "total_tokens": 772
+            "total_tokens": 773
           },
           "user": null
         },
@@ -270,7 +270,7 @@
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-5>",
-          "x-plugboard-usage": "input=726; output=46; cache_read=0; cache_write=0; cost_usd=0.000956"
+          "x-plugboard-usage": "input=726; output=47; cache_read=0; cache_write=0; cost_usd=0.000961"
         },
         "status": 200
       }

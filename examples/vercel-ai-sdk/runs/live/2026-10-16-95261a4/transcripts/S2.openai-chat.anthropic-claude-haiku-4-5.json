@@ -162,7 +162,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "The weather in Paris is currently:\n- **Temperature:** 18°C (approximately 64°F)\n- **Conditions:** Cloudy\n\nIt's a mild day in Paris with overcast skies.",
+                "content": "The weather in Paris is currently:\n- **Temperature**: 18°C (approximately 64°F)\n- **Conditions**: Cloudy\n\nIt's a mild, overcast day in Paris!",
                 "refusal": null,
                 "role": "assistant"
               }
@@ -173,7 +173,7 @@
           "model": "anthropic/claude-haiku-4-5",
           "object": "chat.completion",
           "usage": {
-            "completion_tokens": 49,
+            "completion_tokens": 47,
             "completion_tokens_details": {
               "reasoning_tokens": 0
             },
@@ -181,14 +181,14 @@
             "prompt_tokens_details": {
               "cached_tokens": 0
             },
-            "total_tokens": 775
+            "total_tokens": 773
           }
         },
         "headers": {
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-4>",
-          "x-plugboard-usage": "input=726; output=49; cache_read=0; cache_write=0; cost_usd=0.000971"
+          "x-plugboard-usage": "input=726; output=47; cache_read=0; cache_write=0; cost_usd=0.000961"
         },
         "status": 200
       }

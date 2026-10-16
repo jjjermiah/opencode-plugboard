@@ -153,7 +153,7 @@
               "index": 0,
               "logprobs": null,
               "message": {
-                "content": "The current weather in Paris is:\n- **Temperature:** 18°C (about 64°F)\n- **Sky conditions:** Cloudy\n\nIt's a mild, overcast day in Paris!",
+                "content": "The weather in Paris is currently:\n- **Temperature**: 18°C (about 64°F)\n- **Sky conditions**: Cloudy\n\nIt's a mild day with cloud cover in Paris.",
                 "refusal": null,
                 "role": "assistant"
               }

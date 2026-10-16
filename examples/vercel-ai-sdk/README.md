@@ -68,7 +68,7 @@ bunx tsc --noEmit
 
 ## Known gaps
 
-Live (`runs/live/2026-10-16-95261a4`, plugboard 0.41.0, main `v0.41.0-4-g95261a4`): every row on `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low` passes on all three ways in, including `openai(id)` on `/v1/responses`, and S2 passes with `store: false`. The `fast` rows fail with an upstream 429 (its quota is out); that is not a plugboard finding. Scripted: none. The earlier live run `runs/live/2026-10-13-c97ac66` (plugboard 0.26.0) is kept as recorded.
+Live (`runs/live/2026-10-16-95261a4`, plugboard 0.41.0, main `v0.41.0-4-g95261a4`): every row passes on all three ways in, including `openai(id)` on `/v1/responses`, and S2 passes with `store: false`. `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see the run's `REPORT.md`). Scripted: none. The earlier live run `runs/live/2026-10-13-c97ac66` (plugboard 0.26.0) is kept as recorded.
 
 The 2026-10-11 record under `runs/live/2026-10-11-3fcedc7/REPORT.md` predates this example and shows the old `openai-default` failure. Per the contract it is kept unchanged.
 

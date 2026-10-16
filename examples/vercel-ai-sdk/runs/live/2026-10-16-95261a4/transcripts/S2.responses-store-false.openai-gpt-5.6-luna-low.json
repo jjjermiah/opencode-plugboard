@@ -206,7 +206,7 @@
                 {
                   "annotations": [],
                   "logprobs": [],
-                  "text": "Paris: **18°C and cloudy**.",
+                  "text": "Paris is currently **18°C and cloudy**.",
                   "type": "output_text"
                 }
               ],
@@ -260,11 +260,11 @@
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 13,
+            "output_tokens": 14,
             "output_tokens_details": {
               "reasoning_tokens": 0
             },
-            "total_tokens": 110
+            "total_tokens": 111
           },
           "user": null
         },
@@ -272,7 +272,7 @@
           "content-type": "application/json",
           "x-plugboard-model": "openai/gpt-5.6-luna#low",
           "x-plugboard-session": "<id-5>",
-          "x-plugboard-usage": "input=97; output=13; cache_read=0; cache_write=0"
+          "x-plugboard-usage": "input=97; output=14; cache_read=0; cache_write=0"
         },
         "status": 200
       }

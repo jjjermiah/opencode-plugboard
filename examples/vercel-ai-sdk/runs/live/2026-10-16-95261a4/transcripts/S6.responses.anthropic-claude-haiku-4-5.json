@@ -65,7 +65,7 @@
                 {
                   "annotations": [],
                   "logprobs": [],
-                  "text": "{\"calories\":230,\"protein_g\":16}",
+                  "text": "{\"calories\":280,\"protein_g\":17}",
                   "type": "output_text"
                 }
               ],
@@ -117,11 +117,11 @@
             "input_tokens_details": {
               "cached_tokens": 0
             },
-            "output_tokens": 179,
+            "output_tokens": 103,
             "output_tokens_details": {
               "reasoning_tokens": 0
             },
-            "total_tokens": 840
+            "total_tokens": 764
           },
           "user": null
         },
@@ -129,7 +129,7 @@
           "content-type": "application/json",
           "x-plugboard-model": "anthropic/claude-haiku-4-5",
           "x-plugboard-session": "<id-1>",
-          "x-plugboard-usage": "input=661; output=179; cache_read=0; cache_write=0; cost_usd=0.001556"
+          "x-plugboard-usage": "input=661; output=103; cache_read=0; cache_write=0; cost_usd=0.001176"
         },
         "status": 200
       }

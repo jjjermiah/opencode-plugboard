@@ -40,18 +40,212 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
+          "created_at": "<time-1>",
+          "error": null,
+          "id": "<id-2>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "{\"calories\":210,\"protein_g\":14}",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-3>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "name": "meal_estimate",
+              "schema": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "strict": true,
+              "type": "json_schema"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 661,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 83,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 744
+          },
+          "user": null
         },
         "headers": {
           "content-type": "application/json",
-          "x-plugboard-session": "<id-1>"
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=661; output=83; cache_read=0; cache_write=0; cost_usd=0.001076"
         },
-        "status": 429
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": "Estimate: 2 boiled eggs and a slice of toast.",
+          "max_output_tokens": 1024,
+          "model": "fast",
+          "text": {
+            "format": {
+              "name": "meal_estimate",
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "strict": true,
+              "type": "json_schema"
+            }
+          }
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-2>",
+          "error": null,
+          "id": "<id-5>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "{\"calories\":245,\"protein_g\":16.5}",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-6>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "name": "meal_estimate",
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "strict": true,
+              "type": "json_schema"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 641,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 188,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 829
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-4>",
+          "x-plugboard-usage": "input=641; output=188; cache_read=0; cache_write=0; cost_usd=0.001581"
+        },
+        "status": 200
       }
     }
   ]

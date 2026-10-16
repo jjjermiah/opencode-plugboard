@@ -16,18 +16,70 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": "rate_limited",
-            "message": "The model provider is rate limiting requests; retry later",
-            "param": null,
-            "type": "rate_limit_error"
-          }
+          "created_at": "<time-1>",
+          "error": null,
+          "id": "<id-2>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "pong",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-3>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 29,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 5,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 34
+          },
+          "user": null
         },
         "headers": {
           "content-type": "application/json",
-          "x-plugboard-session": "<id-1>"
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=29; output=5; cache_read=0; cache_write=0; cost_usd=0.000054"
         },
-        "status": 429
+        "status": 200
       }
     }
   ]

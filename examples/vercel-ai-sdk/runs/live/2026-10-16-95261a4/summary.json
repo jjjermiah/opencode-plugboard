@@ -22,38 +22,77 @@
   },
   "scenarios": [
     {
-      "checks": [],
-      "duration_ms": 6519,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 575,
+      "error": null,
       "id": "S1",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S1.compat.fast.json",
       "variant": "compat"
     },
     {
-      "checks": [],
-      "duration_ms": 6496,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 575,
+      "error": null,
       "id": "S1",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S1.openai-chat.fast.json",
       "variant": "openai-chat"
     },
     {
-      "checks": [],
-      "duration_ms": 6486,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 607,
+      "error": null,
       "id": "S1",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S1.responses.fast.json",
       "variant": "responses"
     },
@@ -72,7 +111,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 646,
+      "duration_ms": 418,
       "error": null,
       "id": "S1",
       "model": "anthropic/claude-haiku-4-5",
@@ -97,7 +136,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 433,
+      "duration_ms": 443,
       "error": null,
       "id": "S1",
       "model": "anthropic/claude-haiku-4-5",
@@ -122,7 +161,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 566,
+      "duration_ms": 393,
       "error": null,
       "id": "S1",
       "model": "anthropic/claude-haiku-4-5",
@@ -147,7 +186,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1654,
+      "duration_ms": 1487,
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
@@ -172,7 +211,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 2141,
+      "duration_ms": 1433,
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
@@ -197,7 +236,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1612,
+      "duration_ms": 2117,
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
@@ -208,50 +247,150 @@
       "variant": "responses"
     },
     {
-      "checks": [],
-      "duration_ms": 7077,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 2237,
+      "error": null,
       "id": "S2",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S2.compat.fast.json",
       "variant": "compat"
     },
     {
-      "checks": [],
-      "duration_ms": 6509,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1981,
+      "error": null,
       "id": "S2",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S2.openai-chat.fast.json",
       "variant": "openai-chat"
     },
     {
-      "checks": [],
-      "duration_ms": 6579,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 2102,
+      "error": null,
       "id": "S2",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S2.responses.fast.json",
       "variant": "responses"
     },
     {
-      "checks": [],
-      "duration_ms": 6555,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1961,
+      "error": null,
       "id": "S2",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S2.responses-store-false.fast.json",
       "variant": "responses-store-false"
     },
@@ -282,7 +421,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1675,
+      "duration_ms": 1763,
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
@@ -319,7 +458,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1646,
+      "duration_ms": 1602,
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
@@ -356,7 +495,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1590,
+      "duration_ms": 1622,
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
@@ -393,7 +532,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1827,
+      "duration_ms": 1471,
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
@@ -430,7 +569,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 3579,
+      "duration_ms": 3342,
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
@@ -467,7 +606,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 3547,
+      "duration_ms": 3213,
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
@@ -504,7 +643,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 4632,
+      "duration_ms": 3483,
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
@@ -541,7 +680,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 4265,
+      "duration_ms": 3071,
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
@@ -554,51 +693,87 @@
     {
       "checks": [
         {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage chunk present when requested",
+          "ok": true
+        },
+        {
           "name": "stream ended normally",
-          "ok": false
+          "ok": true
         }
       ],
-      "duration_ms": 13076,
-      "error": "Error: stream without usage gave \"\"",
+      "duration_ms": 1282,
+      "error": null,
       "id": "S3",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S3.compat.fast.json",
       "variant": "compat"
     },
     {
       "checks": [
         {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage chunk present when requested",
+          "ok": true
+        },
+        {
           "name": "stream ended normally",
-          "ok": false
+          "ok": true
         }
       ],
-      "duration_ms": 12942,
-      "error": "Error: stream without usage gave \"\"",
+      "duration_ms": 1215,
+      "error": null,
       "id": "S3",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S3.openai-chat.fast.json",
       "variant": "openai-chat"
     },
     {
       "checks": [
         {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage chunk present when requested",
+          "ok": true
+        },
+        {
           "name": "stream ended normally",
-          "ok": false
+          "ok": true
         }
       ],
-      "duration_ms": 13089,
-      "error": "Error: stream without usage gave \"\"",
+      "duration_ms": 1165,
+      "error": null,
       "id": "S3",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S3.responses.fast.json",
       "variant": "responses"
     },
@@ -606,28 +781,28 @@
       "checks": [
         {
           "name": "finish_reason is tool_calls",
-          "ok": false
+          "ok": true
         },
         {
           "name": "streamed get_weather call",
-          "ok": false
+          "ok": true
         },
         {
           "name": "city is Paris",
-          "ok": false
+          "ok": true
         },
         {
           "name": "call id present",
-          "ok": false
+          "ok": true
         }
       ],
-      "duration_ms": 6488,
+      "duration_ms": 981,
       "error": null,
       "id": "S4",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S4.compat.fast.json",
       "variant": "compat"
     },
@@ -635,28 +810,28 @@
       "checks": [
         {
           "name": "finish_reason is tool_calls",
-          "ok": false
+          "ok": true
         },
         {
           "name": "streamed get_weather call",
-          "ok": false
+          "ok": true
         },
         {
           "name": "city is Paris",
-          "ok": false
+          "ok": true
         },
         {
           "name": "call id present",
-          "ok": false
+          "ok": true
         }
       ],
-      "duration_ms": 6547,
+      "duration_ms": 1028,
       "error": null,
       "id": "S4",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S4.openai-chat.fast.json",
       "variant": "openai-chat"
     },
@@ -664,64 +839,79 @@
       "checks": [
         {
           "name": "finish_reason is tool_calls",
-          "ok": false
+          "ok": true
         },
         {
           "name": "streamed get_weather call",
-          "ok": false
+          "ok": true
         },
         {
           "name": "city is Paris",
-          "ok": false
+          "ok": true
         },
         {
           "name": "call id present",
-          "ok": false
+          "ok": true
         }
       ],
-      "duration_ms": 6549,
+      "duration_ms": 1014,
       "error": null,
       "id": "S4",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S4.responses.fast.json",
       "variant": "responses"
     },
     {
-      "checks": [],
-      "duration_ms": 6537,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 630,
+      "error": null,
       "id": "S5",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S5.compat.fast.json",
       "variant": "compat"
     },
     {
-      "checks": [],
-      "duration_ms": 6654,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 646,
+      "error": null,
       "id": "S5",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S5.openai-chat.fast.json",
       "variant": "openai-chat"
     },
     {
-      "checks": [],
-      "duration_ms": 6491,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 595,
+      "error": null,
       "id": "S5",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S5.responses.fast.json",
       "variant": "responses"
     },
@@ -732,7 +922,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 575,
+      "duration_ms": 450,
       "error": null,
       "id": "S5",
       "model": "anthropic/claude-haiku-4-5",
@@ -749,7 +939,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 424,
+      "duration_ms": 484,
       "error": null,
       "id": "S5",
       "model": "anthropic/claude-haiku-4-5",
@@ -766,7 +956,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 420,
+      "duration_ms": 406,
       "error": null,
       "id": "S5",
       "model": "anthropic/claude-haiku-4-5",
@@ -783,7 +973,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1656,
+      "duration_ms": 1792,
       "error": null,
       "id": "S5",
       "model": "openai/gpt-5.6-luna#low",
@@ -800,7 +990,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1815,
+      "duration_ms": 2221,
       "error": null,
       "id": "S5",
       "model": "openai/gpt-5.6-luna#low",
@@ -817,7 +1007,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 2170,
+      "duration_ms": 1371,
       "error": null,
       "id": "S5",
       "model": "openai/gpt-5.6-luna#low",
@@ -828,38 +1018,77 @@
       "variant": "responses"
     },
     {
-      "checks": [],
-      "duration_ms": 6529,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1234,
+      "error": null,
       "id": "S6",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S6.compat.fast.json",
       "variant": "compat"
     },
     {
-      "checks": [],
-      "duration_ms": 6477,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 2058,
+      "error": null,
       "id": "S6",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S6.openai-chat.fast.json",
       "variant": "openai-chat"
     },
     {
-      "checks": [],
-      "duration_ms": 6768,
-      "error": "AI_RetryError: Failed after 3 attempts. Last error: AI_APICallError: The model provider is rate limiting requests; retry later",
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 2104,
+      "error": null,
       "id": "S6",
       "model": "fast",
       "note": null,
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "transcript": "transcripts/S6.responses.fast.json",
       "variant": "responses"
     },
@@ -878,7 +1107,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 980,
+      "duration_ms": 1088,
       "error": null,
       "id": "S6",
       "model": "anthropic/claude-haiku-4-5",
@@ -903,7 +1132,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 950,
+      "duration_ms": 1049,
       "error": null,
       "id": "S6",
       "model": "anthropic/claude-haiku-4-5",
@@ -928,7 +1157,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 1698,
+      "duration_ms": 1235,
       "error": null,
       "id": "S6",
       "model": "anthropic/claude-haiku-4-5",
@@ -953,7 +1182,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 3618,
+      "duration_ms": 2864,
       "error": null,
       "id": "S6",
       "model": "openai/gpt-5.6-luna#low",
@@ -978,7 +1207,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 2842,
+      "duration_ms": 2415,
       "error": null,
       "id": "S6",
       "model": "openai/gpt-5.6-luna#low",
@@ -1003,7 +1232,7 @@
           "ok": true
         }
       ],
-      "duration_ms": 5940,
+      "duration_ms": 2621,
       "error": null,
       "id": "S6",
       "model": "openai/gpt-5.6-luna#low",
@@ -1080,5 +1309,5 @@
   ],
   "schema": 1,
   "target": "live",
-  "verdict": "fail"
+  "verdict": "pass"
 }
