@@ -180,8 +180,11 @@ const AUTH_FAILURE = /unauthori[sz]ed|invalid[_ ]api[_ ]key|incorrect api key|no
 const MODEL_NOT_FOUND = /model[^\n]{0,60}(?:not found|does not exist|not supported|unknown)|unknown model|model_not_found/i
 /** A provider overload: Anthropic's `overloaded_error` (its 529), in the message or the body of the failure (#204). */
 const OVERLOADED = /overloaded/i
-/** A provider that refuses a replayed thinking block's signature (#424). Only its class is kept: the provider's text is logged, not sent. */
-const SIGNATURE_REJECTED = /signature/i
+/**
+ * A provider that refuses a replayed thinking block's signature (#424). The word has to sit near "thinking" or "reasoning",
+ * so another signature error keeps the generic class. Only the class is kept: the provider's text is logged, not sent.
+ */
+const SIGNATURE_REJECTED = /signature[^\n]{0,60}(?:thinking|reasoning)|(?:thinking|reasoning)[^\n]{0,60}signature/i
 
 const AUTH_MESSAGE = "The model provider rejected its credentials; the plugboard host needs to sign in again"
 

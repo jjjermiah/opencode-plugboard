@@ -321,6 +321,11 @@ describe("#88 host errors reach the caller only as a stable code and a fixed mes
     expect(JSON.stringify(event)).not.toMatch(/org-12345|internal\.example|sk-live|Invalid/)
   })
 
+  test("#424 another provider signature error keeps the generic provider message", async () => {
+    const [event] = await play(host.stepFailed({ type: "provider.invalid-request", status: 400, message: `Invalid request signature ${SECRET}` }))
+    expect(event).toMatchObject({ type: "error", error: { code: "provider_rejected_request", message: "The model provider rejected the request" } })
+  })
+
   test("the raw text goes to the log as model.failed, with the request id", async () => {
     await play(host.stepFailed({ type: "provider.other", status: 503, message: SECRET }))
     expect(logs.of("model.failed")[0]!.fields).toMatchObject({ requestID: "req_1", type: "provider.other", status: "503", message: SECRET })
