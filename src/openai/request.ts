@@ -337,7 +337,7 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions, capOp
     system: format.instruction ? [...parsed.system, format.instruction] : parsed.system,
     messages: parsed.messages,
     tools,
-    ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),
+    ...(forced && (tools.length > 0 || forced === "none") ? { toolChoice: forced } : {}),
     ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
     generation,
     ...(body.parallel_tool_calls === false ? { parallelToolCalls: false } : {}),

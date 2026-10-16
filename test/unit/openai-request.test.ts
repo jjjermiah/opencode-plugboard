@@ -178,6 +178,10 @@ describe("parseChatRequest: tools and tool_choice", () => {
     expect(parse(body({ tools: [fn("a")], tool_choice: { type: "function", function: { name: "a" } } })).request.toolChoice).toEqual({ type: "tool", name: "a" })
   })
 
+  test("#421 tool_choice none without tools is kept, so the session offers no server tool", () => {
+    expect(parse(body({ tool_choice: "none" })).request.toolChoice).toBe("none")
+  })
+
   test("tool_choice without tools is left out", () => {
     expect(parse(body({ tool_choice: "required" })).request).not.toHaveProperty("toolChoice")
   })

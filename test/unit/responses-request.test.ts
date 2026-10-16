@@ -23,6 +23,12 @@ describe("a client value that cannot be turned into a string is a 400, not a cra
   })
 })
 
+describe("#421 tool_choice none without tools", () => {
+  test("is kept as the neutral none, so the session offers no server tool", () => {
+    expect(parse(body({ tool_choice: "none" })).request.toolChoice).toBe("none")
+  })
+})
+
 describe("#202 parallel_tool_calls", () => {
   test("false asks for one tool call per answer; true and absent do not", () => {
     expect(parse(body({ parallel_tool_calls: false })).request.parallelToolCalls).toBe(false)

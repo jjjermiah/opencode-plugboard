@@ -446,7 +446,7 @@ export function parseGeminiRequest(model: string, stream: boolean, body: unknown
     system: [...(system.length > 0 ? [system] : []), ...(format.instruction ? [format.instruction] : [])],
     messages,
     tools,
-    ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),
+    ...(forced && (tools.length > 0 || forced === "none") ? { toolChoice: forced } : {}),
     ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
     generation,
   }

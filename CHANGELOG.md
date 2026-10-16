@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`tool_choice: "none"` offers no server tool without `tools`** ([#421](https://github.com/jjjermiah/opencode-plugboard/issues/421)). A trusted app's `serverTools` were still offered when a caller sent `tool_choice: "none"` and no `tools` array. The Chat Completions, Responses, Messages and Gemini request decoders dropped the choice in that case. Now `none` reaches the session and means no tools, server tools included (since 0.44.0).
 
 ## [0.43.0] - 2026-10-16: Names, Not Placeholders
 

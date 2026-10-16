@@ -197,9 +197,8 @@ describe("#408 1. serverTools on the wire", () => {
     expect((await ask(TRUSTED, { n: 2 })).headers["x-plugboard-server-tools"]).toBe("3")
   })
 
-  // Known bug #421: `parseChatRequest` (and the other request decoders) drop `toolChoice: "none"` when
-  // the caller sends no `tools` array (`tools.length === 0`), so `remapSeedTools` still offers `serverTools`.
-  test.failing("#421 serverTools: tool_choice none without caller tools offers no serverTools on the route", async () => {
+  // #421: the request decoders keep `toolChoice: "none"` when the caller sends no `tools` array, so no server tool is offered.
+  test("#421 serverTools: tool_choice none without caller tools offers no serverTools on the route", async () => {
     const port = new FakeSessionPort()
     port.toolIDs.push("read", "glob", "grep")
     port.operatorRules = OPERATOR_RULES
