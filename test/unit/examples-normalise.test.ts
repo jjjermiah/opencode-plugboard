@@ -157,6 +157,13 @@ describe("Gemini CLI session context", () => {
     expect(normaliseSessionContext(prompt)).toBe("Memory at (<gemini-cli-home>/.gemini/GEMINI.md) and <gemini-cli-workspace>/x")
   })
 
+  test("replaces only the checkout prefix of the CLI's install path, so a local and a CI checkout give the same text", () => {
+    const local = "<location>/Users/a/work/opencode-plugboard/examples/gemini-cli/node_modules/@google/gemini-cli/bundle/builtin/skill-creator/SKILL.md</location>"
+    const ci = "<location>/home/runner/work/opencode-plugboard/opencode-plugboard/examples/gemini-cli/node_modules/@google/gemini-cli/bundle/builtin/skill-creator/SKILL.md</location>"
+    expect(normaliseSessionContext(local)).toBe("<location><checkout>/examples/gemini-cli/node_modules/@google/gemini-cli/bundle/builtin/skill-creator/SKILL.md</location>")
+    expect(normaliseSessionContext(ci)).toBe(normaliseSessionContext(local))
+  })
+
   test("applies to every string of a parsed body and keeps its structure", () => {
     const body = { contents: [{ parts: [{ text: block }, { text: "Reply with exactly: pong" }] }], n: 3 }
     const out = normaliseSessionContextValue(body) as typeof body

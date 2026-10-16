@@ -100,6 +100,8 @@ const SESSION_FIELDS: ReadonlyArray<readonly [RegExp, string]> = [
  * in its system prompt (memory-file locations), outside the session context, so this rule covers the whole request text.
  */
 const CLI_PATHS = /(?:\/[^\s"'`]*)?\/plugboard-gemini-cli-(home|workspace)/g
+/** The checkout prefix of the CLI's own install path (its built-in skills are listed by absolute path). Only that prefix changes. */
+const CLI_INSTALL = /(?:\/[^\s"'`<>]*)?\/examples\/gemini-cli\//g
 
 /**
  * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, and the Gemini CLI's
@@ -107,7 +109,7 @@ const CLI_PATHS = /(?:\/[^\s"'`]*)?\/plugboard-gemini-cli-(home|workspace)/g
  */
 export function normaliseSessionContext(text: string): string {
   const inBlocks = text.replace(SESSION_CONTEXT, (block) => SESSION_FIELDS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), block))
-  return inBlocks.replace(CLI_PATHS, (_match, name: string) => `<gemini-cli-${name}>`)
+  return inBlocks.replace(CLI_PATHS, (_match, name: string) => `<gemini-cli-${name}>`).replace(CLI_INSTALL, "<checkout>/examples/gemini-cli/")
 }
 
 /** The same, applied to every string in a parsed JSON value. */
