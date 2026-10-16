@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.38.0] - 2026-10-16: Stops Where It Should
+
+**Full diff:** [v0.37.0...v0.38.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...v0.38.0)
+
 ### Security
 
 - **A crafted end-user value could corrupt shared counters** (since 0.38.0). Later requests could fail until restart, and usage stopped recording. Per-user records no longer resolve inherited names, and the reserved names (`__proto__`, `prototype`, `constructor`, `_other`) are refused as end users. The `?user=` filter still accepts them, so a name an older version stored stays queryable.
@@ -27,6 +33,256 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
   The host reports a step's usage only when the step finishes, so after a match the host gets up to 2 seconds to finish the step on its own, and only then is it interrupted. The window is set per app with `apps.<name>.stopSettleMs` (0 interrupts at once, and the step's usage is then lost). Inside the window a tool call or a step end ends the run at once, so no tool runs after the match, and a host failure finishes the answer as `stop` with a warning. The host answers the interrupt with an aborted step failure (`Step interrupted`), which is the expected end (Messages `stop_sequence`). A stop answer that closes without the host's usage is logged and counted in `plugboard_stop_usage_missing_total`; its usage fields are zeros, not an estimate. Chat (single choice and `n` > 1 streams), Responses and Messages always carry `usage`, zeros when the host reported none. The window never runs past the request deadline: a stop match close to the deadline finishes as `stop` with the usage so far, before the 504 would fire (the window is clamped to the time left, minus 250 ms).
 - **A malformed client value is a 400 on every decoder** (since 0.38.0). A request whose `type` or `role` is an object with no usable `toString` used to throw `No default value` while the error message was built, and the request ended as an unhandled error. Chat, Messages, Gemini and Responses now name such a value as `object` in a 400. Found by the property tests in CI.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (18 commits)</summary>
+
+#### Fixes
+
+**fix(openai): match stop sequences on the answer text, never reasoning** ([`6745835`](https://github.com/jjjermiah/opencode-plugboard/commit/674583533803c2bf7ea49faaf95f3ade1935bf9a))
+
+On aihub, `fast` (glm-5.3-flash) sometimes quoted the prompt in its reasoning, and the caller's stop word `END` matched there. The provider stopped the stream inside the reasoning, so the client got an empty answer with finish_reason "stop" (2 of 8 calls on the dev server; 0 of 8 without the stop word).
+
+Cause: plugboard passed the caller's stop sequences to the host (appGeneration -> PlugRequest.generation -> session prompt options), and the provider applies a stop to every token it emits, reasoning included. The plugboard matcher (src/stop.ts) only saw answer text, so it could not help.
+
+What changed:
+- appGeneration (src/openai/sampling.ts) removes `stop` from the generation the model gets, on every route that calls it. Responses included.
+- stopOf() gives the effective list the answer is matched on: the caller's stops, else the app default (apps.<name>.sampling.stop). Chat, completions, Gemini and Messages set it on their exchange.
+- src/stop.ts: StopHoldback and stripStopTail are replaced by StopScan, which scans streamed answer text as it arrives. The first sequence ends the answer: text before it is sent, the sequence and what follows are not, and the route stops reading, so the session caller interrupts the host run.
+- Chat, completions, Gemini and Messages (streamed and not) use StopScan. A match breaks the loop; reasoning and tool calls never reach the scan.
+
+Decisions and rejected alternatives:
+- Stop matching on the answer, not forwarding stops "when the model reasons". The route cannot know before the stream starts whether a model reasons, and a provider stop cannot be scoped to answer text, so forwarding stays wrong for any reasoning model.
+- Scan the whole answer, not just its tail. The old tail rule relied on the provider cutting mid-answer stops; without a forwarded stop, a middle match must end the answer here. Changed behaviour: a sequence anywhere in the answer ends it, and a sequence ends it under finish_reason length too (the model produced it). A tool call after a sequence is not produced.
+- Known gap, not fixed here: Responses has no stop parameter. An app's sampling.stop default used to reach the provider on Responses; it now neither reaches the provider nor is matched there. Matching needs a scan in src/responses/response.ts (follow-up on #390).
+
+Validation:
+- test/unit/stop-not-in-reasoning.test.ts (new): a provider that honours the forwarded stop, run through each route. Reproduced before the change: the quoted-reasoning cases fail on chat (streamed and not), completions, Gemini and Messages. Passes after.
+- test/unit/stop-sequences.test.ts, anthropic-stop.test.ts, per-app-sampling updated for the new rule (listed in the PR).
+- Mutations P390-stop-sent-to-model, P390-answer-scan-off and P390-app-default-stop-dropped: each killed. Full catalogue 89 of 89 killed.
+- Live (dev server runs main, so it shows the bug only): 8 calls with stop ["END"] gave 2 empty answers with finish stop; 8 calls without gave none.
+
+Refs #390
+
+**fix(openai): apply stop sequences to the answer in one wrapper, count usage after a match** ([`e7d40e5`](https://github.com/jjjermiah/opencode-plugboard/commit/e7d40e59ed7b629451bdd1368267a51c76f49a25))
+
+Review of #395 (stop sequences matched on the answer text) found that a stop match dropped the usage of the call, because the routes stopped reading at the match and the finish event (the only place usage comes from) never arrived. The response cache keyed on a request that no longer carried the stop. The Responses route ignored the app's sampling.stop default. A tool call before a sequence gave a stop_sequence where Anthropic reports a tool turn.
+
+What changed:
+- withStopSequences (src/stop.ts) wraps the session caller in index.ts, under the response cache. It scans the streamed answer text, and on a match it aborts CallContext.stopAnswer and keeps reading to the finish. Reasoning and tool calls are never matched; text, tool calls and reasoning after the match are not sent. The finish is passed on with the run's usage, forced to stop, and carries stopSequence.
+- The session caller (src/session/caller.ts) interrupts the host run on stopAnswer and keeps the stream open. If the host does not end the run within 5 seconds, the collector finishes with the usage counted so far (RequestCollector.finishNow).
+- The stop sequences stay on the request (appGeneration no longer strips them), so the cache key includes them. The host hook drops them before the host (src/session/context.ts), so the provider never stops inside reasoning.
+- Responses gets the same scan through the wrapper, for the app's default.
+- The four response encoders no longer scan. Messages reads stopSequence from the finish. A tool call before the sequence makes the turn tool_use with stop_sequence null (Anthropic does not report a stop after a call in the same turn), and chat reports tool_calls.
+- Reasoning between text chunks no longer flushes a partial match (the wrapper never releases held text on reasoning).
+
+Decisions and rejected alternatives:
+- Usage by draining the stream to the finish, not by a synthetic finish from the route: the host's finish carries the real tokens, and the collector's running total is kept only as the 5 second fallback.
+- The wrapper sits innermost, so the cache stores the answer as cut, under a key that includes the stop. Rejected: scanning per dialect in each encoder, which is how Responses was missed.
+- Structured output (a forced respond call) is not scanned: its arguments are the answer, as before.
+
+Validation: typecheck clean; bun test 2710 pass, 0 fail, 126 skip (live suite); coverage ratchet passes; mutation catalogue 93 of 93 killed, including P390-stop-sent-to-model, P390-answer-scan-off, P390-app-default-stop-dropped, P390-usage-after-stop and P390-cache-key-no-stop. The live check was not run: the isolated copy never loaded the worktree plugin (see the PR).
+
+Refs #390
+
+**fix(usage): keep end-user counters off the object prototype** ([`d37ebfc`](https://github.com/jjjermiah/opencode-plugboard/commit/d37ebfcec07ccf36c37340e8f0260a543fd1e559))
+
+A crafted end-user value could write onto Object.prototype of the whole OpenCode process, after which later model requests failed (500) and metrics and usage stopped recording until restart.
+
+Why: per-user records were plain objects, and the user slot lookup returned inherited properties for names like `__proto__`, `constructor`, `toString`, `hasOwnProperty` and `valueOf`. The `++` and `+=` on the counters then wrote onto the prototype chain. The metrics library also iterates inherited label keys, so every metrics write threw.
+
+What: per-user and per-model records are null-prototype objects (in emptyDay, fromJson and sumUsers, and the report apps map). The slot lookup uses Object.hasOwn. The sanitizer refuses `__proto__`, `prototype`, `constructor` and `_other` like any other invalid user, so they get the existing x-plugboard-user-dropped header. `_other` is reserved so it cannot collide with the overflow slot. JSON on disk keeps its shape. Other lookups keyed by request-derived strings were checked (see PR body); the endpoint-by-route table and the dashboard asset table now use hasOwn too.
+
+Also: the metrics and usage writes in the request finally block are wrapped. A throw there is logged once at error level and no longer replaces the answer or stops the access log.
+
+Rejected: prefixing user keys (changes the stored shape and the query filter); only rejecting the names (leaves the store unsafe for any future name); a Map (the JSON shape and the existing report code would all change).
+
+Validation: typecheck; bun test (full suite) with the new tests in test/unit/end-user.test.ts and test/http/end-user.test.ts; test gates with ratchet; coverage manifest; check-pack; smoke-pack; docs:build; examples scripted run with no diff. Mutation entries added for the null-prototype store, the sanitizer, and the write guard.
+
+**fix(session): finish a stop-sequence run as stop when the host reports the interrupt** ([`b2e5478`](https://github.com/jjjermiah/opencode-plugboard/commit/b2e5478c800417df0106a29e4efa05246669eb58))
+
+OpenCode 2.0.27 answers the interrupt that ends a stop-sequence run with an aborted step failure ("Step interrupted", no tokens) and execution.interrupted. The collector treated the aborted failure as an error, so every request whose answer contained a stop sequence failed with 502 model_run_failed on main.
+
+markStopped (set when the wrapper matches a stop) makes that failure and the interrupt the expected end: the answer finishes with stop, with the usage of the step, else the running total. Any other failure still surfaces as an error.
+
+Tests: the fake host answers the interrupt the way 2.0.27 does. The new test fails without the fix. Mutation P390-interrupt-stop-is-error is killed.
+
+Refs #390
+
+**fix(session): let the host finish a stop-sequence step before interrupting it** ([`16f3249`](https://github.com/jjjermiah/opencode-plugboard/commit/16f3249e6d9376fe9e4f18ae101517e1d7f891e9))
+
+The live check on main (2026-10-16) showed the 502 gone but no usage on the Anthropic provider: chat non-stream had no usage, chat stream had no usage chunk, and Messages reported zero tokens. The host publishes a step's usage only when the step finishes. Anthropic reports input tokens on message_start and output tokens on message_delta; an interrupted step never reaches message_delta, so the usage is lost. Copilot's Claude reported usage because its stream finished before the interrupt landed.
+
+Decision (a) from the review: after a stop match the caller no longer interrupts at once. It gives the host STOP_SETTLE_MS (2 seconds) to finish the step on its own, so the step's usage arrives with its finish. Only then is it interrupted. The fallback closes the stream with the running usage STOP_DRAIN_MS later.
+
+The model writes what follows the sequence during the settle window; nothing of it reaches the caller. Rejected for now: (b), estimating usage from token counts. It would put estimated numbers in billing, and only needed if the window is too short.
+
+Tests: the Anthropic event order is modelled (usage on message_start, text past the sequence, step end with output tokens). A new test fails on the previous caller (it interrupted at once). A second test covers a host that stays running past the window: it is interrupted, and the aborted failure ends with stop. Mutation P390-no-settle-window is killed.
+
+Refs #390
+
+**fix(openai): chat answers always carry usage, zeros when the host reported none** ([`654b8ae`](https://github.com/jjjermiah/opencode-plugboard/commit/654b8ae9f0f5247a1917ac64379c69cb73ac01c1))
+
+After the settle-window change the live check showed usage on every stop answer. The one remaining gap is the chat body and its include_usage chunk, which dropped usage whenever the finish carried none. The contract says a chat answer always has usage, so the fields are now zeros in that case. Zeros are only the fallback for a host that reported no usage for the run; a real count is never replaced.
+
+Tests: the non-stream body and the include_usage chunk assert zeros when the host reports none. Mutation P390-chat-usage-always (the previous behaviour) is killed.
+
+Refs #390
+
+**fix(responses): a malformed input item is a 400, not a crash** ([`d17402b`](https://github.com/jjjermiah/opencode-plugboard/commit/d17402b0b7159754f6dd6d14a0b7599c7e2a5a3b))
+
+CI on the #429 head failed the #130 property test ("any request-shaped body is a 400 or a request"). The counterexample was an input item whose role is an object with a null toString. The decoder built its error message with String(item.role), and String() of that object throws "No default value", so the request ended as an unhandled error instead of a 400. The same String() sat in five other error messages in src/responses/request.ts (content part type, assistant part type, tool type, text.format type, input item type).
+
+Decision: a helper `show` renders primitives as before and objects as "object". Messages for string and number values are unchanged. Rejected: validating every field type up front, which is a larger change for the same outcome.
+
+Tests: a regression test for the counterexample (400) and an object type named as "object". Mutation P130-responses-message-string-throws is killed.
+
+The property test was flaky only because fast-check rarely generates this shape; the fix is in the decoder, not the test. The test is unchanged.
+
+Refs #390
+
+**fix(session): finish a stop run at once inside the settle window** ([`67113b7`](https://github.com/jjjermiah/opencode-plugboard/commit/67113b793bc614c56d530d532dd6399d4354154e))
+
+Review of #429: the settle window let a server tool call run after the match and start a next step, and discarded a complete answer when the host failed inside it.
+
+Changes:
+- The collector scans the text it emits for the request's stop sequences and marks the match itself (the stop wrapper only saw the text when it read it, so a tool call queued behind the matching text was not stopped). The owner starts the settle window from that hook.
+- Inside the window a tool call ends the run at once with finish stop: no tool runs after the match, and the host is interrupted now. A plain step end finishes as stop with the step's usage and does not interrupt (the host ends the run). A pending client tool call still interrupts.
+- A non-aborted host failure inside the window finishes as stop with the usage so far, and logs request.stop_step_failed. Failures before any match still surface.
+- finishStopped finishes before it interrupts: an interrupt that reports back synchronously must find the run already over.
+- A stop answer closed without the host's usage is logged (request.stop_usage_missing) and counted in plugboard_stop_usage_missing_total{app}. No estimate.
+- apps.<name>.stopSettleMs (0 to 2147483647, default 2000): 0 interrupts at once. The default and the test seams are unchanged.
+- n > 1 stream include_usage and the Responses object always carry usage, zeros when no host usage was reported, as the chat body does.
+- The client-value helper moved to src/client-value.ts (show), and it is applied at every String(client value) site in the anthropic, openai and gemini decoders, not only Responses. One regression test per decoder.
+- Tests: the window tests use a small stopSettleMs; the host fake answers an interrupt once (a fake that answers every interrupt with a failure looped when a guard was removed, which made the mutation hang instead of fail).
+
+Not done: a stop match close to the request deadline still answers 504. The deadline is enforced by the request scope (http.ts boundEvents writes the 504 and ignores later events), so a complete answer past the deadline is not returned. Documented in the CHANGELOG.
+
+Validation: typecheck clean; bun test 2747 pass, 0 fail, 126 skip; coverage ratchet passes (floors raised); mutations 104 of 104 killed, including the new guards P390-tool-in-window-runs, P390-step-failure-in-window-errors, P390-collector-scan-off, P390-no-stop-usage-count, P390-settle-option-ignored, P390-responses-usage-always, P390-fanout-usage-always, P130-shared-show-throws; manifest, pack, smoke, docs and the examples harness exit 0.
+
+Refs #390
+
+**fix(session): a stop match near the request deadline finishes as stop before the 504** ([`4d92bcb`](https://github.com/jjjermiah/opencode-plugboard/commit/4d92bcba6ada313f67fa0204cadd41d457d30fc7))
+
+The stop settle window (2 s by default) could run past the request deadline, so a complete answer near the deadline was answered 504. The window does not need an HTTP change: the caller clamps it.
+
+The caller now computes the time left before the request deadline (its own start plus the app's requestTimeoutMs, else the global one, passed in as requestTimeoutMs) minus a 250 ms margin. The settle window is min(stopSettleMs, time left), and the drain timer is clamped to the time left too. With no time left the window is 0: the host is interrupted at once and the answer finishes as stop.
+
+Notes:
+- The settle clamp alone is not observable: the drain clamp finishes the answer at the same moment. The mutation that is killed removes the drain clamp (P390-deadline-clamp-off); the settle clamp is kept because it stops the host run at the same point the answer ends.
+- The margin is a constant (250 ms): the request starts in the HTTP layer before the caller's start time, and the margin covers that gap.
+
+Tests: a short deadline (400 ms) with a match and a host that never reports the end finishes as stop with the usage so far, well before the deadline.
+
+Refs #390
+
+**fix(usage): the user filter accepts stored and reserved names** ([`06adb3b`](https://github.com/jjjermiah/opencode-plugboard/commit/06adb3bbcf5e467ddab27d450e3639b1fa411b06))
+
+The `?user=` filter of GET /plugboard/usage and the usage RPC used the end-user sanitizer, so the reserved names (`_other`, `prototype`, `constructor`, `__proto__`) became 400 there. A day an older version wrote can hold those as users, and they could no longer be queried.
+
+The filter now checks the charset and length only (validEndUser). The sanitizer still refuses the reserved names as end users.
+
+Also: the write guard logs which write failed (`write` field on metrics.record_failed), the user.ts header comment lists the reserved names, the architecture I23 entry says a failed metrics or usage write never changes the answer or the access log, and the CHANGELOG bullets carry bold lead lines.
+
+Checked: the filter tests cover the four names in the store, the route and the RPC; the userHeader path has a reserved-name row; the mutation catalogue has an entry that restores the reserved list on the filter. Full validation passed (typecheck, tests with ratchet gates, manifest, pack, smoke, docs, examples, mutations 110 of 110).
+
+#### Tests
+
+**test(session): name history.hidden tests for 0.30.0, not 0.29.0** ([`f1c5f92`](https://github.com/jjjermiah/opencode-plugboard/commit/f1c5f924a45c55f875bc3e4f9769f523e75bc9c1))
+
+The describe title in test/unit/history-hidden-config.test.ts and the header comment of test/session/hidden.test.ts said "since 0.29.0". history.hidden shipped in 0.30.0 (CHANGELOG [0.30.0], #340), so both now say 0.30.0. Only the names changed. No assertion changed.
+
+The lane named test/session/history-hidden-config.test.ts, but that file is at test/unit/history-hidden-config.test.ts, so that is the file edited.
+
+Refs #337
+
+**test(anthropic): pin thinking budget 2048 to the low variant** ([`0703c7b`](https://github.com/jjjermiah/opencode-plugboard/commit/0703c7bf3c6aee6f79118704c3f5c3a035826a73))
+
+Reported in #394: a Messages `thinking.budget_tokens: 1024` on github-copilot/claude-haiku-5.5 got a provider 404 with tools, while 2048 worked. The mapping in src/anthropic/request.ts (effortOfBudget: budget <= 4096 -> low) sends both 1024 and 2048 to the `low` variant, so the mapping cannot explain a 1024-only failure. The existing table pinned 1024 and 4096 but not 2048. This adds 2048.
+
+Live probe against the isolated dev server (/v1/messages, model github-copilot/claude-haiku-5.5, max_tokens 4096, 3 attempts each):
+
+  budget  tools  attempts  status 1024    no     3         200 x3 1024    yes    3         200 x3 2048    no     3         200 x3 2048    yes    3         200 x3
+
+All 12 served github-copilot/claude-haiku-5.5#low (server.log). No 404 reproduced, so no behaviour change. The probe sessions were deleted with DELETE /api/session/:id.
+
+Test-only change: one new row in the existing test.each table. It passes before and after the change, since the behaviour is unchanged; it pins the 2048 boundary the issue is about.
+
+Refs #394
+
+**test(compat): validate Anthropic Messages responses against SDK-derived schemas** ([`6a7411b`](https://github.com/jjjermiah/opencode-plugboard/commit/6a7411b618fd908581ae241d07aa709ecc457fcd))
+
+Anthropic publishes no machine-readable Messages spec. The Stainless spec URL the SDK repos once recorded in .stats.yml is gone from every version, and the copies on GitHub and in gists are not Anthropic's. The pinned SDK's types are what Anthropic ships, so test/fixtures/specs/vendor-anthropic.ts derives anthropic.json from @anthropic-ai/sdk 0.133.0 with the TypeScript compiler API (already a devDependency). The version is pinned and the generator fails if the installed SDK differs.
+
+The conformance test now validates, over loopback with the fake host: one Message (text and tool_use), every stream event (text, thinking with signature_delta, tool_use with input_json_delta, error mid-stream, and ping checked as {type: "ping"} because the SDK's stream union omits it), the error body (401, 400, provider 429) and MessageTokensCount.
+
+Each union variant is a $ref, so the strict unknown-field check applies to every content block and stream event. The existing rule that exempts composition branches is skipped for Anthropic, since its unions are discriminated by type. A negative test shows a stray field, including one in a content block, is a violation.
+
+Three mismatches are open and named as test.failing cases, each with a bug issue: tool_use omits caller (#404), text blocks omit citations (#405), and the Message and usage omit nullable fields the SDK requires (#406). Plugboard is not changed. The Anthropic stream check is against the SDK types, not a live provider.
+
+Validation: typecheck clean; bun test 2686 pass, 0 fail; conformance 23 pass; coverage gates met with ratcheted test-count floor; coverage-manifest, pack and smoke-pack, docs:build, and examples scripted run with no diff.
+
+Closes #107
+
+#### Docs
+
+**docs(docs): answer whether SiYuan Q/A needs embeddings** ([`1524b81`](https://github.com/jjjermiah/opencode-plugboard/commit/1524b81aee1eec6f6bb716891ab6da2d45c54609))
+
+The SiYuan page now says Q/A chat needs no embedding provider. Only semantic search uses embeddings, and it stays off until ai.embedding.enabled is turned on in the AI settings. Each claim cites a file:line from SiYuan at 7a7430d.
+
+The issue asked which features fail without embeddings. The page said "Whether Q/A needs it was not checked", which was the one open acceptance item. The chat path (kernel/model/ai.go:53-59) and kernel/agent contain no embedding call, and the agent's fulltext search works without embeddings (kernel/mcp/tools/search.go:64-65). The semantic action is the only consumer (kernel/mcp/tools/search.go:50,66-67; search dialog method 4 in app/src/search/util.ts:119; isEmbeddingEnabled at kernel/model/embedding.go:624-627). The SIYUAN_OPENAI_EMBEDDING_* env vars set the config (kernel/conf/ai.go:508-518), but Enabled stays false (kernel/conf/ai.go:113-115), so an operator has to turn it on.
+
+A live run was not used. Plugboard serves no embeddings route, so the source is the evidence. Not verified: a running SiYuan instance.
+
+Closes #248
+
+**docs(docs): say the four client pages run scripted in CI** ([`b110254`](https://github.com/jjjermiah/opencode-plugboard/commit/b1102540f4e4546c6463c4401fe08120003c78c1))
+
+The go-openai, openai-dotnet, langfuse and smolagents pages no longer say there is no scripted test. Each now points to the "Client examples in CI" section of compatibility.md and to its committed runs/scripted/ directory. PRs #368 and #379 put these clients in the examples CI job, so the old sentence was wrong.
+
+The smolagents page now states its turn-2 finish_reason gap as a gap. In the scripted run 5 of 6 round-trip checks pass. The sixth, that the final turn finishes with stop, fails because smolagents ends a run with a final_answer call, which finishes with tool_calls. I accepted the gap as the verdict and said so on the page, rather than weakening the check. The check is a real expectation, and changing it would hide how smolagents differs from the other clients. It is not a plugboard fault.
+
+Closes #362
+
+**docs(docs): fix the opencode dialect note on reasoning** ([`39be9d0`](https://github.com/jjjermiah/opencode-plugboard/commit/39be9d01416ad5ddc493bfb00d201a49cce162c0))
+
+The opencode page said Chat Completions and Responses drop reasoning. Since 0.36.0, reasoningOutput: true returns it on both routes, as an opt-in. The line now says so and links the Reasoning output section. The advice to prefer the Anthropic dialect stays, with its reason: the Messages route keeps reasoning and thinking replay with no setting.
+
+Whether OpenCode sends the returned reasoning back on the next turn over Chat Completions or Responses was not checked, and the page now says so. #255 stays open for it.
+
+Refs #255
+
+**docs(changelog): move the #390 entry under Unreleased as since 0.38.0** ([`369eb8d`](https://github.com/jjjermiah/opencode-plugboard/commit/369eb8d42162b2ba14f31d0af3ec607aadeb7182))
+
+Main released 0.37.0 while this branch was in review, and the merge put the #390 bullet under the released 0.37.0 section. The fix ships in the next minor, so the bullet moves to Unreleased and its version marker becomes 0.38.0.
+
+Refs #390
+
+#### CI and tooling
+
+**ci(ci): lint a dispatched branch's own commits, not the whole history** ([`0c0444c`](https://github.com/jjjermiah/opencode-plugboard/commit/0c0444cb5d07a1fc3283d0aa4bbad3e8bd81638c))
+
+host-bump.yml starts ci.yml, commits.yml and codeql.yml on its pull request branch, because a PR opened with GITHUB_TOKEN starts no workflow. Those dispatched runs reported CI passed and Analyze, but Lint commit messages failed on both bump runs for deps/opencode-2.0.29 (2026-10-14 and 2026-10-15).
+
+Why it failed: commits.yml picks the lint range from github.event_name. A workflow_dispatch has no before or base SHA, so it fell through to the push branch, which set from to the cutoff a54a703. The range became a54a703..HEAD: 426 commits of history, not the one commit the bump adds. Some older commit in that history fails the rules, so the check went red, while the bump's own commit passes (the pull_request run on the same head linted 1 commit, 0 problems).
+
+What changed: a workflow_dispatch run now lints from the merge base of origin/<default branch> and the dispatched head, to the head. That is the commits the branch adds. The cutoff still applies: a base older than the cutoff starts at the cutoff, as before. push and pull_request keep their ranges.
+
+Rejected: passing the PR base as a dispatch input. host-bump.yml would have to know it, and the merge base needs no input. Rejected: skipping the commit lint on dispatched runs. The required check must still mean "these commits are linted".
+
+Check names: the dispatched runs report the names the ruleset requires. Checked on the 2.0.29 head 17db836: "CI passed", "Lint commit messages" and "Analyze (javascript-typescript)". No rename needed.
+
+host-bump.yml: the warning for a failed dispatch no longer tells the reader to push an empty commit. It names the exact gh workflow run command.
+
+docs/releasing.md: the host bump entry said Mondays (the schedule is daily at 06:23 UTC) and told the reader to push an empty commit or close and reopen the PR. Both now describe the dispatch.
+
+Not changed: the bump version. host-versions.ts --latest already returns the newest stable version in the peer range (2.0.30 now). The 2.0.29 bump ran at 11:43 UTC on 2026-10-15, and 2.0.30 was published at 19:46 UTC that day.
+
+Refs #397
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.37.0] - 2026-10-15: Copilot Thinks Too
 
@@ -6765,7 +7021,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...v0.35.0
