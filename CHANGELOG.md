@@ -14,11 +14,90 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.45.0] - 2026-10-16: Clean Endings
+
+**Full diff:** [v0.44.0...v0.45.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...v0.45.0)
+
 ### Fixed
 
 - **The Gemini CLI example no longer picks up the laptop's skills** ([#443](https://github.com/jjjermiah/opencode-plugboard/issues/443)). The CLI reads its home from `GEMINI_CLI_HOME` before `HOME`, so a machine that set it put its own skills into the scripted transcript. The example runner now clears every `GEMINI_CLI_*` override and sets its own home and an empty system settings file, so the transcript is the same on a laptop and in CI (since 0.45.0).
 - **A stream committed before the deadline closes after its error frame** ([#441](https://github.com/jjjermiah/opencode-plugboard/issues/441)). When the request deadline passed after the 200 was sent, the stream ended with its error frame, but its socket stayed open until the grace timer cut it two seconds later. Now the socket closes once that final frame is flushed, so a keep-alive client never reuses it (since 0.45.0).
 - **The Responses envelope echoes the caller's `store`** ([#442](https://github.com/jjjermiah/opencode-plugboard/issues/442)). Every response said `store: false`, including for requests that sent `store: true` or left it out. It now echoes the value sent, and `true` when the request leaves it out, as OpenAI does. An answer made with `store: false` is still not kept for retrieval (since 0.45.0).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (5 commits)</summary>
+
+#### Fixes
+
+**fix(examples): isolate the gemini-cli scripted run from the laptop's skills** ([`db3d70b`](https://github.com/jjjermiah/opencode-plugboard/commit/db3d70bf6ac22734c1737773dc6883032a841ac0))
+
+The scripted Gemini CLI transcripts changed on a machine with extra skills present. An antigravity-support skill from the maintainer's laptop went into the <available_skills> block of the system prompt, so the committed S1 and S3 transcripts no longer matched, and CI, which has no such skill, passed while the laptop failed.
+
+The CLI environment is now built in one place, cliEnv in examples/gemini-cli/cli.ts. It drops every GEMINI_CLI_* variable the caller has set, then sets HOME and GEMINI_CLI_HOME to the run's home, and GEMINI_CLI_SYSTEM_SETTINGS_PATH to an empty settings file inside that home.
+
+The CLI finds its user skills and extensions under homedir(), which reads GEMINI_CLI_HOME before HOME (bundle, function homedir). The runner already overrode HOME, but it spread process.env, so a laptop that exported GEMINI_CLI_HOME kept reading its own ~/.gemini and ~/.agents skills. CI does not set it, which is why CI passed.
+
+Setting GEMINI_CLI_HOME explicitly was chosen over only deleting it. Deleting would also work today, since HOME then becomes the home, but an explicit value keeps the run's home first whatever the CLI reads first in a later version. The system settings path is redirected for the same kind of reason: with no override the CLI reads a machine-wide settings file from a fixed path (/Library/Application Support/GeminiCli on macOS, /etc/gemini-cli elsewhere).
+
+The CLI's machine-wide policies directory has no environment override, so a policy installed system-wide still applies. Policies are not skills, and nothing on this laptop installs one. Noted, not handled.
+
+Validation, on the laptop: a scratch home with a user antigravity-support skill was set as GEMINI_CLI_HOME, and the scripted gemini-cli target ran and passed with runs/scripted identical to the committed transcripts (git diff clean). The same run with the previous environment handling (GEMINI_CLI_HOME passed through) changed the transcripts, so the probe does reach the prompt. A run with the ambient environment is also identical. CI sets no GEMINI_CLI_* variable, so its output is unchanged. CI itself was not run here.
+
+Closes #443
+
+**fix(http): close a committed stream's socket once its deadline error is sent** ([`d49225b`](https://github.com/jjjermiah/opencode-plugboard/commit/d49225b54b57a8fdb70bc4c1e6d3012d1a2dd3fe))
+
+A request that had already sent its 200 and streamed before the deadline passed ended its stream with the dialect's error frame. The response then finished, but the socket stayed open, and the grace timer armed at the deadline cut it two seconds later. A keep-alive client could meanwhile send its next request on that socket, which the grace timer then destroyed.
+
+beginRequest now listens for the response's finish once the deadline has fired, and ends the request socket when the finish arrives. The end is a half-close the client answers, so the socket closes right after the final frame has been flushed. The grace timer stays armed as the fallback for a client that stops reading and never flushes, and it is still cleared when the socket closes.
+
+Alternative rejected: clearing the grace timer at finish and leaving the socket open. A client that ignores the close would then hold the socket forever, because the server socket allows a half-open connection.
+
+Alternative rejected: setting connection: close on the response. Headers are already sent on a committed stream, so the header cannot change. The 504 path of #422 keeps using it, since that answer has not been sent yet.
+
+Test: test/http/transport.test.ts, "#441 a stream committed before the deadline ends with its error frame, then its socket closes without waiting for the grace". The handler is the route's shape (sseWriter bounded by the scope, the error frame written on the timeout, then the response ends), with a 60 second grace and a keep-alive client. It failed before this change (the socket stayed open for the whole second), and it passes now.
+
+Closes #441
+
+**fix(responses): echo the caller's store in the response envelope** ([`70ae1c6`](https://github.com/jjjermiah/opencode-plugboard/commit/70ae1c6d02c00466408efd22a4b79e2d355e8365))
+
+Every Responses answer carried store: false in its envelope, whatever the request sent. The value was a constant in src/responses/request.ts, written when plugboard stopped keeping answers for retrieval (#426). A caller that sent store: true, or left the field out, got back a false it had not asked for. OpenAI echoes the value sent and defaults it to true.
+
+The envelope now carries body.store !== false, so an absent or true value echoes true, and false echoes false. The route's keeps check in src/responses/route.ts already reads store the same way, so what the envelope reports and what plugboard keeps for retrieval now agree.
+
+Alternative rejected: echoing the raw body.store value. A non-boolean would then reach the response unchanged. The request decoder has no check for store, and the boolean comparison keeps the echo a boolean without adding one.
+
+Tests: test/http/responses.test.ts gains two cases (the default, an explicit true and an explicit false on the JSON answer, and both on the created and completed stream events). The existing JSON assertion that pinned store false for a request without store now expects true. test/unit/ responses-request.test.ts asserts the envelope for an absent and for a false store, and its old "always says store false" name is replaced.
+
+Wire goldens: test/types/wire.ts is regenerated with bun test/types/generate.ts. The only change is the store field, from false to true, on the response and its stream events. The goldens still satisfy the SDK types, because the store field is typed boolean in the wire type. docs/responses.md and docs/clients/codex-cli.md said the response always reports store: false, and now say it echoes the value sent.
+
+Closes #442
+
+#### Tests
+
+**test(examples): record the echoed store in the scripted Responses transcripts** ([`76f73db`](https://github.com/jjjermiah/opencode-plugboard/commit/76f73db4535dd629029e8597fe50d64f297c93aa))
+
+The scripted runs of the client examples send Responses requests without a store field. Those requests used to get store false back, because the envelope had a constant false. The #442 fix echoes true for an absent store, as OpenAI does, so every scripted Responses transcript now records store true.
+
+What changed: 136 lines across 84 files under examples/*/runs/scripted/ transcripts/, each one "store": false replaced by "store": true. Nothing else moved. The check was made with git diff -U0: every changed line matches "store", every removed line is false and every added line is true. The live runs under runs/live/ are historical records and are not regenerated.
+
+Validation: bun examples/_harness/run.ts all --target scripted ran and wrote these transcripts. The examples step of bun run validate ends with git diff --exit-code examples/, so the committed files must match the run.
+
+Refs #442
+
+**test(mutations): catch a regression of the #441 socket close** ([`558699f`](https://github.com/jjjermiah/opencode-plugboard/commit/558699f5dffd7792e9ab22380fa626052810121a))
+
+The socket close added for #441 ends a committed stream's socket once its response finishes after the deadline. The transport test that pins it fails without the line, but the mutation catalogue had no entry for that line, so a later edit could remove it and the mutation check would not notice. This adds mutation P441, which replaces the socket end with a no-op and must be caught by test/http/transport.test.ts.
+
+The test count floor in .github/floors/test-count-floors.json is raised to the count the new #441 and #442 tests give, as the validate ratchet writes it.
+
+Refs #441
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.44.0] - 2026-10-16: Tools That Remember
 
@@ -7891,7 +7970,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...HEAD
+[0.45.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...v0.42.0
