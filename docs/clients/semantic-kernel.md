@@ -59,3 +59,14 @@ Not exercised: structured output, the .NET route, and the Responses API (`OpenAI
 
 - The streamed reply gave one or two non-empty content updates across runs (one and two were observed). The count varies per run, so the script prints it and does not check it against a number.
 - `max_completion_tokens` is set to 1024, so a reasoning model behind the `fast` alias still has room to answer.
+
+## Harness runs (2026-10-16)
+
+`examples/semantic-kernel/run.py` runs through the examples harness with semantic-kernel 1.45.0, pinned in `uv.lock`. It covers S1 text, S2 tool round trip (calls made by hand, `auto_invoke=False`), S3 stream and S4 streamed tool call on `fast`. Semantic Kernel asks for stream usage itself, so S3 checks it. S5 to S7 and E1/E2 are not covered.
+
+- Scripted, byte-identical across two runs: [runs/scripted](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/semantic-kernel/runs/scripted). Partial: S1 and S3 pass; S2 and S4 are gaps on the scripted target. Semantic Kernel sends the tool as `weather-get_weather` (plugin prefix), and the scripted model answers only the bare name `get_weather`. A bare name needs a plugin-free function, which Semantic Kernel 1.45.0 does not allow, so the gap stays until the fixture accepts the prefixed name (#105).
+- Live against the dev server at plugboard `ef5be0e`: [runs/live/2026-10-16-ef5be0e](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/semantic-kernel/runs/live/2026-10-16-ef5be0e). Pass, including S2 and S4.
+
+The copyable client in `chat.py`:
+
+<<< @/../examples/semantic-kernel/chat.py#snippet

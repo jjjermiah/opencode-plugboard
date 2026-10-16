@@ -1,0 +1,188 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "tools": [
+            {
+              "function": {
+                "description": "Current weather for a city.",
+                "name": "get_weather",
+                "parameters": {
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": null,
+                "refusal": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{\"city\":\"Paris\"}",
+                      "name": "get_weather"
+                    },
+                    "id": "<id-2>",
+                    "type": "function"
+                  }
+                ]
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-3>",
+          "model": "fast",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 12,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 164,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 176
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=164; output=12; cache_read=0; cache_write=0; cost_usd=0.000031"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            },
+            {
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"city\":\"Paris\"}",
+                    "name": "get_weather"
+                  },
+                  "id": "<id-2>",
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "content": "{\"temp_c\": 18, \"sky\": \"cloudy\"}",
+              "role": "tool",
+              "tool_call_id": "<id-2>"
+            }
+          ],
+          "model": "fast",
+          "tools": [
+            {
+              "function": {
+                "description": "Current weather for a city.",
+                "name": "get_weather",
+                "parameters": {
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "The current weather in Paris is **18°C and cloudy**.",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-2>",
+          "id": "<id-5>",
+          "model": "fast",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 15,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 194,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 209
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-4>",
+          "x-plugboard-usage": "input=194; output=15; cache_read=0; cache_write=0; cost_usd=0.000037"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

@@ -9,7 +9,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | --- | --- | --- | --- |
 | [aider/](aider/) | Aider (a terminal coding tool) through plugboard's OpenAI-compatible endpoint. A runner checks one message on three models | pass | [`2026-10-12-a67e176`](aider/runs/live/2026-10-12-a67e176/), historical record |
 | [anythingllm/](anythingllm/) | AnythingLLM in Docker with the Generic OpenAI provider's env vars | not run | not run |
-| [async-openai/](async-openai/) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard | not run | not run |
+| [async-openai/](async-openai/) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard | pass | [`2026-10-16-ef5be0e`](async-openai/runs/live/2026-10-16-ef5be0e/), pass |
 | [autogen/](autogen/) | AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run | not run | not run |
 | [claude-code/](claude-code/) | Claude Code through `ANTHROPIC_BASE_URL`: shell exports and a `settings.json` `env` block | not run | not run |
 | [codex-cli/](codex-cli/) | Codex CLI through a custom `responses` provider: a `config.toml` | not run | not run |
@@ -18,7 +18,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [curl/](curl/) | One request per API in plain shell: chat, responses, Anthropic Messages, Gemini, legacy completions and models | pass | [`2026-10-12-a38860b-2`](curl/runs/live/2026-10-12-a38860b-2/), fail |
 | [dspy/](dspy/) | DSPy (through its LiteLLM route, `openai/` prefix): a Predict and a ChainOfThought on one question, and a typed output | pass | [`2026-10-12-a67e176`](dspy/runs/live/2026-10-12-a67e176/), historical record |
 | [go-openai/](go-openai/) | go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard | pass | not run |
-| [haystack/](haystack/) | Haystack `OpenAIChatGenerator` in a two-component pipeline, with streaming and a tool round trip. A PEP 723 script | not run | not run |
+| [haystack/](haystack/) | Haystack `OpenAIChatGenerator` in a two-component pipeline, with streaming and a tool round trip. A PEP 723 script | pass | [`2026-10-16-ef5be0e`](haystack/runs/live/2026-10-16-ef5be0e/), pass |
 | [instructor/](instructor/) | Instructor extracting a validated Pydantic object, in TOOLS mode, JSON_SCHEMA mode and as a partial stream | pass | [`2026-10-12-a67e176`](instructor/runs/live/2026-10-12-a67e176/), historical record |
 | [jan/](jan/) | Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example` | not run | not run |
 | [kilo-code/](kilo-code/) | Kilo Code CLI provider block for plugboard's Chat Completions route | not run | not run |
@@ -27,9 +27,9 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [langfuse/](langfuse/) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off | pass | not run |
 | [librechat/](librechat/) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` | not run | not run |
 | [litellm-client/](litellm-client/) | LiteLLM's `completion()` with the `openai/` prefix: a completion, a stream, a tool round trip and structured output | pass | [`2026-10-12-a67e176`](litellm-client/runs/live/2026-10-12-a67e176/), historical record |
-| [llamaindex/](llamaindex/) | LlamaIndex `OpenAILike` against plugboard: text, stream and a tool round trip. A PEP 723 script | not run | not run |
+| [llamaindex/](llamaindex/) | LlamaIndex `OpenAILike` against plugboard: text, stream and a tool round trip. A PEP 723 script | pass | [`2026-10-16-ef5be0e`](llamaindex/runs/live/2026-10-16-ef5be0e/), pass |
 | [lobechat/](lobechat/) | LobeChat in Docker: `OPENAI_PROXY_URL` and the model list, in a compose file and `.env.example` | not run | not run |
-| [mastra/](mastra/) | Mastra agent with one tool, using the `plugboard/fast` model object. Run with bun after `npm i @mastra/core zod` | not run | not run |
+| [mastra/](mastra/) | Mastra agent with one tool, using the `plugboard/fast` model object. Run with bun after `npm i @mastra/core zod` | pass | [`2026-10-16-ef5be0e`](mastra/runs/live/2026-10-16-ef5be0e/), pass |
 | [n8n/](n8n/) | n8n in Docker, driven headless through webhooks: S1 to S7; workflows in `workflows/` | pass | [`2026-10-13-b92fb6f`](n8n/runs/live/2026-10-13-b92fb6f/), partial |
 | [open-webui/](open-webui/) | Open WebUI in Docker, pointed at plugboard on the host, with the plugboard options it needs; driven over its HTTP API | pass | [`2026-10-13-0cf8030`](open-webui/runs/live/2026-10-13-0cf8030/), pass |
 | [openai-agents/](openai-agents/) | The OpenAI Agents SDK on the Responses API and on Chat Completions: text, stream, tool and structured output. Run with `uv run` | pass | [`2026-10-12-a67e176`](openai-agents/runs/live/2026-10-12-a67e176/), historical record |
@@ -39,7 +39,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [promptfoo/](promptfoo/) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check | not run | not run |
 | [pydantic-ai/](pydantic-ai/) | pydantic-ai (`OpenAIChatModel`, Chat Completions): chat, tools, streaming, images, structured output and the error paths | pass | [`2026-10-13-c97ac66-2`](pydantic-ai/runs/live/2026-10-13-c97ac66-2/), pass |
 | [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt, paperless-ai (`.env` and compose), PR-Agent (`.env`), SiYuan (`.env` and compose). Page per app in docs/self-hosted | not run | not run |
-| [semantic-kernel/](semantic-kernel/) | Semantic Kernel (Python) with a text call, a stream and a plugin call through automatic function calling. A PEP 723 script, run with `uv run`; passes against plugboard | not run | not run |
+| [semantic-kernel/](semantic-kernel/) | Semantic Kernel (Python) with a text call, a stream and a plugin call through automatic function calling. A PEP 723 script, run with `uv run`; passes against plugboard | partial | [`2026-10-16-ef5be0e`](semantic-kernel/runs/live/2026-10-16-ef5be0e/), pass |
 | [sillytavern/](sillytavern/) | SillyTavern in Docker; the plugboard endpoint and key are set in its UI | not run | not run |
 | [smolagents/](smolagents/) | smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`) | partial | not run |
 | [tool-bot/](tool-bot/) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines | pass | [`2026-10-13-50219b1`](tool-bot/runs/live/2026-10-13-50219b1/), partial |
@@ -116,4 +116,4 @@ See [the Aider client page](https://github.com/jjjermiah/opencode-plugboard/blob
 
 ### Python examples with a runner
 
-The DSPy, Instructor, LiteLLM and OpenAI Agents examples have a `pyproject.toml` with exact pins and a `uv.lock`. Their runner is `run.py`, and `uv run --frozen run.py` runs it through the harness. `bun examples/_harness/run.ts <example> --target scripted` is the same run, with the capture proxy and the committed output.
+The DSPy, Instructor, LiteLLM, OpenAI Agents, LlamaIndex, Semantic Kernel and Haystack examples have a `pyproject.toml` with exact pins and a `uv.lock`. Their runner is `run.py`, and `uv run --frozen run.py` runs it through the harness. `bun examples/_harness/run.ts <example> --target scripted` is the same run, with the capture proxy and the committed output.

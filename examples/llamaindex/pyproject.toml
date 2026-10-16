@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-llamaindex"
+version = "0.1.0"
+description = "LlamaIndex OpenAILike against plugboard: text, stream, a tool round trip and streaming tool calls. Pins as in docs/clients/llamaindex.md."
+requires-python = ">=3.10"
+# Exact pin: the version docs/clients/llamaindex.md records (llama-index-llms-openai-like 0.8.1).
+dependencies = ["llama-index-llms-openai-like==0.8.1"]

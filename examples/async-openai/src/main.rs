@@ -29,10 +29,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key =
         std::env::var("PLUGBOARD_KEY").map_err(|_| "set PLUGBOARD_KEY to a plugboard app key")?;
     // Explicit base. OPENAI_BASE_URL is the env var the crate reads (src/config.rs), not OPENAI_API_BASE.
+    // #region snippet
     let config = OpenAIConfig::new()
         .with_api_key(key)
         .with_api_base("http://127.0.0.1:4010/v1");
     let client = Client::with_config(config);
+    // #endregion snippet
 
     // 1. Text.
     let req = CreateChatCompletionRequestArgs::default()

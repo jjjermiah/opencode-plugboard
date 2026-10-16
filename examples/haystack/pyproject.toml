@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-haystack"
+version = "0.1.0"
+description = "Haystack OpenAIChatGenerator against plugboard: a two-component pipeline, streaming and a tool round trip. Pins as in docs/clients/haystack.md."
+requires-python = ">=3.10"
+# Exact pin: the version docs/clients/haystack.md records (haystack-ai 3.4.0).
+dependencies = ["haystack-ai==3.4.0"]

@@ -52,3 +52,14 @@ Not exercised: the Responses API and structured output. The crate also covers bo
 - The API is behind Cargo features. A project that only needs chat must enable `chat-completion`; without it, `async_openai::config` and the chat types do not compile.
 - Chat types live under `async_openai::types::chat`. Some message and tool types are plain structs (build them with a struct literal), and others have `*Args` builders. Check the 0.42 docs when you upgrade.
 - The example sets `max_completion_tokens` to 1024, so a reasoning model behind the `fast` alias still has room to answer.
+
+## Harness runs (2026-10-16)
+
+`examples/async-openai/src/bin/runner.rs` runs through the examples harness (`run.sh`, which pipes the Rust observations through the relay) with async-openai `=0.42.2`, the version `Cargo.lock` resolves. It covers S1 text, S2 tool round trip, S3 stream (with `include_usage`) and S4 streamed tool call on `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low` (S3 and S4 on `fast`). S5 to S7 and E1/E2 are not covered.
+
+- Scripted, byte-identical across two runs: [runs/scripted](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/async-openai/runs/scripted). Pass.
+- Live against the dev server at plugboard `ef5be0e`: [runs/live/2026-10-16-ef5be0e](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/async-openai/runs/live/2026-10-16-ef5be0e). Pass.
+
+The copyable client in `src/main.rs`:
+
+<<< @/../examples/async-openai/src/main.rs#snippet

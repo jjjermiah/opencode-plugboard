@@ -50,4 +50,15 @@ Keep `/v1` in `api_base_url`. The full example is a pipeline: a `ChatPromptBuild
 
 ## Verified
 
-Run against the fake, as above. The live dev server was not up, so a live run is still open.
+Run against the fake, as above. The live run is in [Harness runs](#harness-runs-2026-10-16) below.
+
+## Harness runs (2026-10-16)
+
+`examples/haystack/run.py` runs through the examples harness with `haystack-ai` 3.4.0, pinned in `uv.lock`. It covers S1 text through the two-component pipeline, S2 tool round trip, S3 stream and S4 streamed tool call on `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low` (S3 and S4 on `fast`). S5 to S7 and E1/E2 are not covered. Haystack sends no stream usage unless asked, so S3 sets `stream_options` through `generation_kwargs` to request the usage chunk.
+
+- Scripted, byte-identical across two runs: [runs/scripted](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/haystack/runs/scripted). Pass.
+- Live against the dev server at plugboard `ef5be0e`: [runs/live/2026-10-16-ef5be0e](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/haystack/runs/live/2026-10-16-ef5be0e). Pass.
+
+The copyable pipeline in `example.py`:
+
+<<< @/../examples/haystack/example.py#snippet

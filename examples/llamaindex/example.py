@@ -30,6 +30,7 @@ def check(name: str, ok: bool, detail: str = "") -> bool:
 
 
 def main() -> int:
+    # region snippet
     # The OpenAI class looks up the model name in OpenAI's own table and raises for `fast`,
     # so plugboard ids need OpenAILike with the capability flags set.
     llm = OpenAILike(
@@ -40,6 +41,7 @@ def main() -> int:
         is_chat_model=True,
         is_function_calling_model=True,
     )
+    # endregion snippet
     results = []
 
     text = llm.complete("Reply with exactly: pong").text

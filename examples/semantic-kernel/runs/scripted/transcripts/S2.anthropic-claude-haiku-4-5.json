@@ -1,0 +1,172 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "stream": false,
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "function": {
+                "description": "Current weather for a city.",
+                "name": "weather-get_weather",
+                "parameters": {
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": null,
+            "message": "scripted model has no answer for this prompt: What is the weather in Paris? Use the tool.",
+            "param": null,
+            "type": "server_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 500
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "stream": false,
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "function": {
+                "description": "Current weather for a city.",
+                "name": "weather-get_weather",
+                "parameters": {
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": null,
+            "message": "scripted model has no answer for this prompt: What is the weather in Paris? Use the tool.",
+            "param": null,
+            "type": "server_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 500
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "max_completion_tokens": 1024,
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "stream": false,
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "function": {
+                "description": "Current weather for a city.",
+                "name": "weather-get_weather",
+                "parameters": {
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ],
+                  "type": "object"
+                }
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": null,
+            "message": "scripted model has no answer for this prompt: What is the weather in Paris? Use the tool.",
+            "param": null,
+            "type": "server_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 500
+      }
+    }
+  ]
+}
