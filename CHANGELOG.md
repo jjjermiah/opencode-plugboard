@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The Gemini CLI example no longer picks up the laptop's skills** ([#443](https://github.com/jjjermiah/opencode-plugboard/issues/443)). The CLI reads its home from `GEMINI_CLI_HOME` before `HOME`, so a machine that set it put its own skills into the scripted transcript. The example runner now clears every `GEMINI_CLI_*` override and sets its own home and an empty system settings file, so the transcript is the same on a laptop and in CI (since 0.45.0).
 
 ## [0.44.0] - 2026-10-16: Tools That Remember
 

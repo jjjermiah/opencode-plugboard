@@ -14,6 +14,9 @@ const CLI = join(EXAMPLE, "node_modules/.bin/gemini")
 // Both are fixed paths here so a scripted run does not change between runs. The date in that context cannot be turned off.
 const HOME = join(tmpdir(), "plugboard-gemini-cli-home")
 const WORKSPACE = join(tmpdir(), "plugboard-gemini-cli-workspace")
+// The CLI reads its home from GEMINI_CLI_HOME before HOME, and its system settings from GEMINI_CLI_SYSTEM_SETTINGS_PATH, so a
+// laptop that sets them would leak its own skills into the prompt (#443). The run clears every GEMINI_CLI_* override and sets these.
+const SYSTEM_SETTINGS = join(HOME, "system-settings.json")
 
 /** A fresh home for one run, with the settings that select API-key auth. Trust is passed as a flag (--skip-trust). */
 export function cliHome(): string {
@@ -25,15 +28,29 @@ export function cliHome(): string {
     join(HOME, ".gemini", "settings.json"),
     JSON.stringify({ security: { auth: { selectedType: "gemini-api-key" } }, context: { includeDirectoryTree: false } }),
   )
+  writeFileSync(SYSTEM_SETTINGS, "{}")
   return HOME
+}
+
+/** The CLI's environment: the caller's, minus every GEMINI_CLI_* override, with the run's home and an empty system settings file. */
+function cliEnv(home: string): Record<string, string | undefined> {
+  const inherited = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GEMINI_CLI_")))
+  return {
+    ...inherited,
+    HOME: home,
+    GEMINI_CLI_HOME: home,
+    GEMINI_CLI_SYSTEM_SETTINGS_PATH: SYSTEM_SETTINGS,
+    GEMINI_API_KEY: process.env.PLUGBOARD_KEY ?? "",
+    GOOGLE_GEMINI_BASE_URL: (process.env.PLUGBOARD_BASE_URL ?? "").replace(/\/v1\/?$/, ""),
+    BROWSER: "true",
+  }
 }
 
 /** One headless call: the prompt, the model (a `#` goes as %23, as with the other SDKs) and the output flags. Returns stdout. */
 export async function gemini(home: string, model: string, prompt: string, output: string): Promise<string> {
-  const origin = (process.env.PLUGBOARD_BASE_URL ?? "").replace(/\/v1\/?$/, "")
   const proc = Bun.spawn([CLI, "-p", prompt, "-m", model.replaceAll("#", "%23"), "--output-format", output, "--skip-trust"], {
     cwd: WORKSPACE,
-    env: { ...process.env, HOME: home, GEMINI_API_KEY: process.env.PLUGBOARD_KEY ?? "", GOOGLE_GEMINI_BASE_URL: origin, BROWSER: "true" },
+    env: cliEnv(home),
     stdout: "pipe",
     stderr: "pipe",
   })
