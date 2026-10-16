@@ -85,3 +85,23 @@ Four clients run against the scripted fake in the `examples` CI job, through `bu
 | [.NET (openai-dotnet)](clients/openai-dotnet.md), OpenAI 2.14.0 on .NET 8 | [examples/openai-dotnet](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-dotnet) | text, stream and tool round trip: 7 pass, 0 fail (same models as Go) |
 | [Langfuse](clients/langfuse.md), langfuse 4.17.0 with tracing off | [examples/langfuse](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langfuse) | text, stream and tool round trip: 7 pass, 0 fail (same models as Go) |
 | [smolagents](clients/smolagents.md), smolagents 1.26.0 | [examples/smolagents](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/smolagents) | text and stream: 6 pass. The stream's `finish_reason` is not checked, because `generate_stream` does not return it. Tool round trip: 5 of 6 checks pass, including the tool call and the final answer. The sixth, the final turn's `finish_reason` is `stop`, stays a gap: smolagents ends a run with a `final_answer` call, which finishes with `tool_calls` (#362, #370) |
+
+## Conformance
+
+`test/compat/conformance.test.ts` (#107) sends plugboard's responses and stream events over loopback and validates each one against an upstream schema. The schemas are vendored under `test/fixtures/specs/` with their source and retrieval date, and the tests never fetch them. Unknown fields fail, and so do missing required fields. A known gap is a `test.failing` case, so it flips to a failure once fixed.
+
+| Endpoint | Schema | What is validated |
+|---|---|---|
+| `POST /v1/chat/completions`, `POST /v1/completions`, `POST /v1/responses`, `GET /v1/models` | OpenAI OpenAPI 3.1, `openai.json` (retrieved 2026-10-11) | One answer, every stream chunk, the Response, the model list |
+| `POST /v1beta/models/{model}:generateContent`, `:countTokens` | Gemini discovery document, `gemini.json` (retrieved 2026-10-11) | One answer, token count |
+| `POST /v1/messages`, `POST /v1/messages/count_tokens` | `@anthropic-ai/sdk` 0.133.0 types, `anthropic.json` (2026-10-15) | One Message (text and tool_use), every stream event (text, thinking with `signature_delta`, tool_use with `input_json_delta`, error mid-stream), the error body (401, 400, 429), the token count |
+
+Anthropic publishes no machine-readable Messages spec, so `anthropic.json` is generated from the pinned SDK's types by `test/fixtures/specs/vendor-anthropic.ts`. Run it by hand when the SDK is bumped. The SDK's stream union has no `ping` event, so a keep-alive is checked as `{"type": "ping"}` exactly, the same as the SDK's own type check (#132).
+
+Open Anthropic gaps, each a `test.failing` case:
+
+- **Message and usage nullable fields** (#406): `container`, `diagnostics`, `stop_details`, and the usage fields `cache_creation`, `inference_geo`, `output_tokens_details`, `server_tool_use`, `service_tier`.
+- **Text block citations** (#405): `citations` is required, `null` when there are none.
+- **tool_use caller** (#404): `caller` is required on a tool_use block.
+
+The schemas are upstream definitions, not a live provider's. A passing check shows plugboard's shape matches the type. It does not show what Anthropic sends. The live provider matrix is tracked in #99.
