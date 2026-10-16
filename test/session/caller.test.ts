@@ -282,6 +282,22 @@ describe("failures before anything is created", () => {
   })
 })
 
+describe("#390 a stop sequence ends the answer: the run is interrupted and the stream still ends with its usage", () => {
+  test("the stream stays open after the stop signal and ends with the run's finish and usage", async () => {
+    const run = setup()
+    const stopping = new AbortController()
+    run.answer((id) => [bus(id).textDelta("Hello END"), bus(id).usage({ input: 10, output: 500 }), bus(id).stepEnded("stop", { input: 10, output: 500 })])
+    const context: CallContext = { ...run.context, stopAnswer: stopping.signal }
+    const seen: PlugEvent[] = []
+    for await (const event of run.caller.stream(plugRequest(), context)) {
+      seen.push(event)
+      if (event.type === "text-delta") stopping.abort()
+    }
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(seen.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } })
+  })
+})
+
 describe("#33 the response and the host execution end separately", () => {
   test("a tool-call turn interrupts once at the step end, and the guard is retired until the execution ends", async () => {
     const run = setup()

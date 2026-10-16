@@ -26,6 +26,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **An upstream HTTP 520 is answered as 502** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.38.0). A status that reached the client unchanged could be 520 to 527, which are not HTTP statuses (Cloudflare uses them). Such a status is answered as 502 `provider_unavailable`, the gateway class. Statuses 500 to 511 and the 4xx ones are unchanged.
 
+- **Stop sequences apply to the answer text, not the reasoning** ([#390](https://github.com/jjjermiah/opencode-plugboard/issues/390), since 0.38.0). A reasoning model that quoted the prompt in its reasoning could end with no answer: `fast` (glm-5.3-flash) matched `END` inside its reasoning, the provider stopped there, and the client got an empty answer with `finish_reason` `stop` (2 of 8 calls on the dev server, 0 of 8 without the stop). Plugboard no longer sends stop sequences to the model. It scans the answer text as it streams, on every route, and the first sequence ends the answer: the text before it is returned, the sequence is removed, the host run is interrupted, and reasoning is never matched. The app's `sampling.stop` default applies the same way, Responses included (Responses has no stop parameter of its own).
+
+  Behaviour changes with it. A sequence anywhere in the answer ends it, not only at the end. A sequence ends the answer under `length` too. A tool call after the sequence is not sent. A tool call before it makes the turn a tool turn (`tool_use` on Messages, `tool_calls` on Chat Completions), with no `stop_sequence`. The usage of the run is counted after a match: the response waits for the host to end the interrupted run (at most 5 seconds, then the usage counted so far), so a stop request is billed and reported like any other. The response cache keys on the stop sequences, so a stop request is never answered from a no-stop entry.
+
 ## [0.37.0] - 2026-10-15: Copilot Thinks Too
 
 **Full diff:** [v0.36.0...v0.37.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...v0.37.0)

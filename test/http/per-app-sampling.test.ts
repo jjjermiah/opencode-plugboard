@@ -10,6 +10,7 @@ import { appGeneration, dropRejected } from "../../src/openai/sampling.js"
 import { ev, model } from "../support/fixtures.js"
 import { startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller } from "../support/model-caller.js"
+import { withStopSequences } from "../../src/stop.js"
 
 let server: RouteServer | undefined
 afterEach(async () => {
@@ -30,7 +31,7 @@ const chat = (key: string, body: Record<string, unknown> = {}): SendInit => ({
 
 async function route() {
   const caller = new FakeModelCaller(() => [ev.text("answer"), ev.finish()])
-  server = await startRoute({ caller, options })
+  server = await startRoute({ caller: withStopSequences(caller), options })
   return caller
 }
 
@@ -45,6 +46,15 @@ describe("#264 apps.<name>.sampling on the wire", () => {
     const caller = await route()
     await server!.send(chat(KEYS.bot, { temperature: 0.9, stop: ["STOP"] }))
     expect(caller.call.request.generation).toEqual({ ...SAMPLING, temperature: 0.9, stop: ["STOP"] })
+  })
+
+  test("#390 the app's default stop ends the answer when the caller sends none (matched on the answer, not sent to the host)", async () => {
+    const caller = new FakeModelCaller(() => [ev.reasoning("quoting END"), ev.text("Hello END there"), ev.finish("stop", { inputTokens: 4, outputTokens: 9 })])
+    server = await startRoute({ caller: withStopSequences(caller), options })
+    const reply = await server.send(chat(KEYS.bot))
+    expect(caller.call.request.generation.stop).toEqual(["END"])
+    expect(reply.json().choices[0].message.content).toBe("Hello ")
+    expect(reply.json().usage).toMatchObject({ prompt_tokens: 4, completion_tokens: 9 })
   })
 
   test("another app without sampling sends only what the caller sent", async () => {
