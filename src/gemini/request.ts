@@ -13,6 +13,7 @@
  * API also accepts.
  */
 import type { PlugboardOptions } from "../config.js"
+import { show } from "../client-value.js"
 import { imageProblem } from "../image.js"
 import {
   isPlugError,
@@ -120,6 +121,15 @@ const toolParameters = (declaration: JsonObject): JsonObject | undefined => {
 
 const dataUrl = (mimeType: string, data: string) => `data:${mimeType};base64,${data}`
 
+/**
+ * URL-safe base64 (`-` and `_`, which the google-genai Python SDK sends for bytes) -> standard base64 (`+` and `/`),
+ * padded when the input has no padding. Anything else is left as is for the base64 check to reject.
+ */
+const standardBase64 = (data: string): string => {
+  const standard = data.replace(/-/g, "+").replace(/_/g, "/")
+  return data.includes("=") ? standard : standard + "=".repeat((4 - (standard.length % 4)) % 4)
+}
+
 const textOf = (value: unknown, param: string): string | PlugError => {
   if (typeof value === "string") return value
   if (!isRecord(value)) return bad("Expected a string or a content object with text parts", param)
@@ -212,12 +222,13 @@ const parseContents = (raw: unknown): PlugMessage[] | PlugError => {
         })
       } else if (inline !== undefined) {
         if (role === "model") return unsupported("inlineData is not supported in a model turn", `${at}.inlineData`)
-        if (!isRecord(inline) || typeof inline.data !== "string" || typeof inline.mimeType !== "string")
+        const mimeType = isRecord(inline) ? field(inline, "mimeType") : undefined
+        if (!isRecord(inline) || typeof inline.data !== "string" || typeof mimeType !== "string")
           return bad("inlineData needs mimeType and base64 data", `${at}.inlineData`)
-        const url = dataUrl(inline.mimeType, inline.data)
-        const problem = inline.mimeType.toLowerCase().startsWith("image/") ? imageProblem(url) : undefined
+        const url = dataUrl(mimeType, standardBase64(inline.data))
+        const problem = mimeType.toLowerCase().startsWith("image/") ? imageProblem(url) : undefined
         if (problem) return bad(problem, `${at}.inlineData`, "invalid_image")
-        parts.push({ type: "media", url, mediaType: inline.mimeType })
+        parts.push({ type: "media", url, mediaType: mimeType })
       } else if (file !== undefined) {
         if (role === "model") return unsupported("fileData is not supported in a model turn", `${at}.fileData`)
         const uri = isRecord(file) ? field(file, "fileUri") : undefined
@@ -299,7 +310,7 @@ const parseToolConfig = (raw: unknown, tools: PlugTool[]): { tools: PlugTool[]; 
   if (!isRecord(config)) return bad("functionCallingConfig must be an object", "toolConfig.functionCallingConfig")
   const mode = config.mode == null ? "AUTO" : typeof config.mode === "string" ? config.mode.toUpperCase() : undefined
   if (mode === undefined || !["AUTO", "ANY", "NONE", "VALIDATED", "MODE_UNSPECIFIED"].includes(mode))
-    return bad(`Unsupported functionCallingConfig mode "${String(config.mode)}": use AUTO, ANY or NONE`, "toolConfig.functionCallingConfig.mode")
+    return bad(`Unsupported functionCallingConfig mode "${show(config.mode)}": use AUTO, ANY or NONE`, "toolConfig.functionCallingConfig.mode")
   const allowed = field(config, "allowedFunctionNames")
   if (allowed != null && (!Array.isArray(allowed) || !allowed.every((name) => typeof name === "string")))
     return bad("allowedFunctionNames must be an array of strings", "toolConfig.functionCallingConfig.allowedFunctionNames")
@@ -388,7 +399,7 @@ const checkUnsupported = (body: JsonObject, config: JsonObject): PlugError | und
   }
   if (field(config, "responseLogprobs") === true) return unsupported("responseLogprobs is not supported", "generationConfig.responseLogprobs")
   const modalities = field(config, "responseModalities")
-  if (Array.isArray(modalities) && modalities.some((m) => String(m).toUpperCase() !== "TEXT"))
+  if (Array.isArray(modalities) && modalities.some((m) => show(m).toUpperCase() !== "TEXT"))
     return unsupported("Only the TEXT response modality is supported", "generationConfig.responseModalities")
 }
 

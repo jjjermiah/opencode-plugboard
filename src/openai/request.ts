@@ -6,6 +6,7 @@
  * the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { show } from "../client-value.js"
 import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
@@ -89,7 +90,7 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
       const problem = pdfProblem(url)
       if (problem) return bad(problem, `${at}.file.file_data`, "invalid_file")
       parts.push({ type: "media", url, mediaType: dataUrlType(url) })
-    } else return bad(`Unsupported content part type "${String(item.type)}"`, `${at}.type`, "unsupported_parameter")
+    } else return bad(`Unsupported content part type "${show(item.type)}"`, `${at}.type`, "unsupported_parameter")
   }
   return parts
 }
@@ -160,7 +161,7 @@ const parseMessages = (raw: unknown[]): { system: string[]; messages: PlugMessag
         break
       }
       default:
-        return bad(`Unsupported message role "${String(message.role)}"`, `${param}.role`)
+        return bad(`Unsupported message role "${show(message.role)}"`, `${param}.role`)
     }
   }
   return { system, messages }
@@ -230,7 +231,7 @@ export const parseResponseFormat = (raw: unknown): { structured?: PlugTool; inst
       },
     }
   }
-  return bad(`Unsupported response_format type "${String(raw.type)}"`, "response_format.type")
+  return bad(`Unsupported response_format type "${show(raw.type)}"`, "response_format.type")
 }
 
 /** `n` is how many completions to return. Each one is a full model call (see `src/openai/fanout.ts`), so it is capped by the `maxN` option. */
