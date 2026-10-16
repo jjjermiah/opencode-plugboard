@@ -62,10 +62,10 @@ Not exercised: structured output, the .NET route, and the Responses API (`OpenAI
 
 ## Harness runs (2026-10-16)
 
-`examples/semantic-kernel/run.py` runs through the examples harness with semantic-kernel 1.45.0, pinned in `uv.lock`. It covers S1 text, S2 tool round trip (calls made by hand, `auto_invoke=False`), S3 stream and S4 streamed tool call on `fast`. Semantic Kernel asks for stream usage itself, so S3 checks it. S5 to S7 and E1/E2 are not covered.
+`examples/semantic-kernel/run.py` runs through the examples harness with semantic-kernel 1.45.0, pinned in `uv.lock`. It covers S1 text, S2 tool round trip (calls made by hand, `auto_invoke=False`), S3 stream and S4 streamed tool call. S1 and S2 run on `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`; S3 and S4 run on `fast`. Semantic Kernel asks for stream usage itself, so S3 checks it. S5 to S7 and E1/E2 were not run.
 
-- Scripted, byte-identical across two runs: [runs/scripted](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/semantic-kernel/runs/scripted). Partial: S1 and S3 pass; S2 and S4 are gaps on the scripted target. Semantic Kernel sends the tool as `weather-get_weather` (plugin prefix), and the scripted model answers only the bare name `get_weather`. A bare name needs a plugin-free function, which Semantic Kernel 1.45.0 does not allow, so the gap stays until the fixture accepts the prefixed name (#105).
-- Live against the dev server at plugboard `ef5be0e`: [runs/live/2026-10-16-ef5be0e](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/semantic-kernel/runs/live/2026-10-16-ef5be0e). Pass, including S2 and S4.
+- Scripted, byte-identical across two runs: [runs/scripted](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/semantic-kernel/runs/scripted). Pass. The scripted model answers the prefixed tool name `weather-get_weather`, the name Semantic Kernel sends.
+- Live against the dev server, served build `git describe` v0.41.0-32-g9852300 (main): [runs/live/2026-10-16-9852300](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/semantic-kernel/runs/live/2026-10-16-9852300). Pass, including S2 and S4. `fast` was served by `anthropic/claude-haiku-4-5` (see its REPORT.md).
 
 The copyable client in `chat.py`:
 

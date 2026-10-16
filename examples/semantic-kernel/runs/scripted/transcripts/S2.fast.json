@@ -43,17 +43,48 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": null,
-            "message": "scripted model has no answer for this prompt: What is the weather in Paris? Use the tool.",
-            "param": null,
-            "type": "server_error"
+          "choices": [
+            {
+              "finish_reason": "tool_calls",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": null,
+                "refusal": null,
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "function": {
+                      "arguments": "{\"city\":\"Paris\"}",
+                      "name": "weather-get_weather"
+                    },
+                    "id": "<id-1>",
+                    "type": "function"
+                  }
+                ]
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-2>",
+          "model": "fast",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 7,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 11,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 18
           }
         },
         "headers": {
           "content-type": "application/json"
         },
-        "status": 500
+        "status": 200
       }
     },
     {
@@ -64,6 +95,24 @@
             {
               "content": "What is the weather in Paris? Use the tool.",
               "role": "user"
+            },
+            {
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"city\":\"Paris\"}",
+                    "name": "weather-get_weather"
+                  },
+                  "id": "<id-1>",
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "content": "{\"temp_c\": 18, \"sky\": \"cloudy\"}",
+              "role": "tool",
+              "tool_call_id": "<id-1>"
             }
           ],
           "model": "fast",
@@ -99,73 +148,38 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": null,
-            "message": "scripted model has no answer for this prompt: What is the weather in Paris? Use the tool.",
-            "param": null,
-            "type": "server_error"
-          }
-        },
-        "headers": {
-          "content-type": "application/json"
-        },
-        "status": 500
-      }
-    },
-    {
-      "request": {
-        "body": {
-          "max_completion_tokens": 1024,
-          "messages": [
+          "choices": [
             {
-              "content": "What is the weather in Paris? Use the tool.",
-              "role": "user"
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "18 C and cloudy",
+                "refusal": null,
+                "role": "assistant"
+              }
             }
           ],
+          "created": "<time-2>",
+          "id": "<id-3>",
           "model": "fast",
-          "stream": false,
-          "tool_choice": "auto",
-          "tools": [
-            {
-              "function": {
-                "description": "Current weather for a city.",
-                "name": "weather-get_weather",
-                "parameters": {
-                  "properties": {
-                    "city": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "city"
-                  ],
-                  "type": "object"
-                }
-              },
-              "type": "function"
-            }
-          ]
-        },
-        "headers": {
-          "accept": "application/json",
-          "content-type": "application/json"
-        },
-        "method": "POST",
-        "path": "/v1/chat/completions"
-      },
-      "response": {
-        "body": {
-          "error": {
-            "code": null,
-            "message": "scripted model has no answer for this prompt: What is the weather in Paris? Use the tool.",
-            "param": null,
-            "type": "server_error"
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 7,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 11,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 18
           }
         },
         "headers": {
           "content-type": "application/json"
         },
-        "status": 500
+        "status": 200
       }
     }
   ]

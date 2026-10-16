@@ -83,4 +83,8 @@ const s4 = async (model: string) => {
   }
 }
 
-await runAll({ S1: s1, S2: s2, S3: s3, S4: s4 })
+// Mastra's stream() sends no stream_options, so the stream usage chunk is never requested. Its usage is unobserved here, not a pass.
+await runAll(
+  { S1: s1, S2: s2, S3: s3, S4: s4 },
+  { unobserved: { S3: { "usage chunk present when requested": "Mastra does not request stream usage: no stream_options on the wire" } } },
+)

@@ -30,14 +30,6 @@ PROMPT = "Reply with exactly: pong"
 TOOL_PROMPT = "What is the weather in Paris? Use the tool."
 TOOL_RESULT = (SHARED / "get_weather.result.json").read_text().strip()
 
-# Semantic Kernel names a plugin function `plugin-function` on the wire (weather-get_weather). The scripted model
-# answers only the bare name get_weather, so on the scripted target the two tool scenarios are gaps, not passes.
-# Live models call the prefixed name and are checked as normal.
-SCRIPTED_TOOL_GAP = {
-    "note": "Semantic Kernel sends the tool as weather-get_weather (plugin prefix); the scripted model answers only get_weather",
-    "issue": "#105",
-}
-
 
 class WeatherPlugin:
     @kernel_function(name="get_weather", description="Current weather for a city.")
@@ -175,10 +167,7 @@ def s4(model: str) -> dict:
 
 def main() -> None:
     harness.emit_client("semantic-kernel")
-    gaps = {}
-    if os.environ.get("PLUGBOARD_TARGET") == "scripted":
-        gaps = {"S2": SCRIPTED_TOOL_GAP, "S4": SCRIPTED_TOOL_GAP}
-    harness.run_all({"S1": s1, "S2": s2, "S3": s3, "S4": s4}, gaps=gaps)
+    harness.run_all({"S1": s1, "S2": s2, "S3": s3, "S4": s4})
 
 
 if __name__ == "__main__":

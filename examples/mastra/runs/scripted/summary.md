@@ -10,5 +10,12 @@ Verdict: **pass** · @mastra/core 1.78.0 on bun 1 · models: fast, anthropic/cla
 | S2 | fast | yes | pass | 6/6 |
 | S2 | anthropic/claude-haiku-4-5 | yes | pass | 6/6 |
 | S2 | openai/gpt-5.6-luna#low | yes | pass | 6/6 |
-| S3 | fast | yes | pass | 4/4 |
+| S3 | fast | yes | pass | 3/3 |
 | S4 | fast | yes | pass | 4/4 |
+
+## Failures, gaps and unchecked items
+
+### S3 on fast: pass
+
+not checked, usage chunk present when requested: Mastra does not request stream usage: no stream_options on the wire
+
