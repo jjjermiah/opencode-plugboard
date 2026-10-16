@@ -257,6 +257,7 @@ describe("#4 parseMessagesRequest: tools, sampling and thinking", () => {
 
   test.each([
     [1024, "low"],
+    [2048, "low"],
     [4096, "low"],
     [4097, "medium"],
     [16384, "medium"],
