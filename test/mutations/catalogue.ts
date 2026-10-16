@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P130-responses-message-string-throws",
+    invariant: "#130",
+    file: "src/responses/request.ts",
+    find: '? "object" : String(value)',
+    replace: "? String(value) : String(value)",
+    tests: ["test/unit/responses-request.test.ts"],
+  },
+  {
     id: "P390-chat-usage-always",
     invariant: "#390",
     file: "src/openai/response.ts",
