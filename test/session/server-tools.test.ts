@@ -309,7 +309,7 @@ describe("the context hook keeps the server tools (#82)", () => {
       sessionID: "ses_1",
       system: ["host"],
       messages: [
-        ...(step1.messages ?? []),
+        { content: [{ type: "text", text: "## user\nRead inside.txt once." }] },
         { content: [{ type: "tool-call", id: "call_1", name: "read", input: { path: "inside.txt" } }] },
         { content: [{ type: "tool-result", id: "call_1", name: "read", result: { type: "text", value: "SURFACE_INSIDE_7391" } }] },
       ],
@@ -325,10 +325,59 @@ describe("the context hook keeps the server tools (#82)", () => {
     const step1: ContextHookEvent = { sessionID: "ses_1", system: ["host"], messages: [{ content: [{ type: "text", text: "placeholder" }] }], tools: { ...seeds(), read: { description: "Read", input: {} } } }
     run(step1)
     const call = { content: [{ type: "tool-call", id: "call_1", name: "read", input: { path: "inside.txt" } }] }
-    const step2: ContextHookEvent = { sessionID: "ses_1", system: ["host"], messages: [...(step1.messages ?? []), call], tools: { ...seeds(), read: { description: "Read", input: {} } } }
+    const step2: ContextHookEvent = { sessionID: "ses_1", system: ["host"], messages: [{ content: [{ type: "text", text: "placeholder" }] }, call], tools: { ...seeds(), read: { description: "Read", input: {} } } }
     run(step2)
     expect(step2.messages).toHaveLength(2)
     expect(step2.messages?.[1]).toBe(call)
+  })
+})
+
+describe("#417 the continuation follows the host's messages, not the caller's", () => {
+  const MARKER = "SURFACE_INSIDE_7391"
+  const prompt = () => ({ content: [{ type: "text", text: "stored prompt" }] })
+  const call = (id: string) => ({ content: [{ type: "tool-call", id, name: "read", input: { path: "inside.txt" } }] })
+  const result = (id: string) => ({ content: [{ type: "tool-result", id, name: "read", result: { type: "text", value: MARKER } }] })
+  const caller = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ role: i % 2 === 0 ? ("user" as const) : ("assistant" as const), content: [{ type: "text" as const, text: `caller ${i}` }] }))
+  /** The host's messages for a step: a fresh array, as the host reloads it, never the plugboard's rewritten one. */
+  const host = (...messages: unknown[]): ContextHookEvent => ({
+    sessionID: "ses_1",
+    system: ["host"],
+    messages: messages as never,
+    tools: { ...seeds(), read: { description: "Read", input: {} } },
+  })
+
+  test.each([1, 2, 3, 5])("a %i-message caller transcript: step 2 is the caller transcript, then the host's call and result", (n) => {
+    const run = hook(plugRequest({ messages: caller(n) }), ["read"])
+    run(host(prompt()))
+    const c = call("call_1")
+    const r = result("call_1")
+    const step2 = host(prompt(), c, r)
+    run(step2)
+    expect(step2.messages).toHaveLength(n + 2)
+    expect(step2.messages?.[n]).toBe(c)
+    expect(step2.messages?.[n + 1]).toBe(r)
+  })
+
+  test("a third step keeps both call and result pairs, in order", () => {
+    const run = hook(plugRequest({ messages: caller(3) }), ["read"])
+    run(host(prompt()))
+    const [c1, r1, c2, r2] = [call("c1"), result("c1"), call("c2"), result("c2")]
+    run(host(prompt(), c1, r1))
+    const step3 = host(prompt(), c1, r1, c2, r2)
+    run(step3)
+    expect(step3.messages).toHaveLength(3 + 4)
+    expect(step3.messages?.slice(3)).toEqual([c1, r1, c2, r2])
+    expect(step3.messages?.[3]).toBe(c1)
+    expect(step3.messages?.[6]).toBe(r2)
+  })
+
+  test("an app without serverTools keeps today's behaviour: the host's later messages are not sent", () => {
+    const run = hook(plugRequest({ messages: caller(2) }), [])
+    run(host(prompt()))
+    const step2 = host(prompt(), call("call_1"), result("call_1"))
+    run(step2)
+    expect(step2.messages).toHaveLength(2)
   })
 })
 

@@ -197,6 +197,66 @@ describe("#408 1. serverTools on the wire", () => {
     expect((await ask(TRUSTED, { n: 2 })).headers["x-plugboard-server-tools"]).toBe("3")
   })
 
+  // #417 end to end: a fake host reloads the session each step (the stored prompt, then the calls and results so far). The
+  // stub model asks for `read` until its history holds the result, then answers. A broken continuation loops until the cap.
+  test("#417 a multi-message request with a server read: the second step answers from the result, one server call", async () => {
+    const MARKER = "SURFACE_INSIDE_7391"
+    const port = new FakeSessionPort()
+    port.toolIDs.push("read", "glob", "grep")
+    port.operatorRules = OPERATOR_RULES
+    const sessions = createSessionStore()
+    const spy = spyContext({ directory: "/data/trusted" })
+    Effect.runSync(Effect.scoped(installSessionHooks(spy.ctx, { maxTools: 4, sessions, active: () => true, apps: APPS })))
+    const runHook = spy.registered<(event: unknown) => Effect.Effect<void>>("session.hook")
+    const hostStep = (sessionID: string, messages: unknown[]): ContextHookEvent => {
+      const event: ContextHookEvent = { sessionID, system: ["host"], messages: messages as never, tools: hostTools() }
+      Effect.runSync(runHook(event))
+      return event
+    }
+    let asks = 0
+    port.script.prompt = async (input) => {
+      queueMicrotask(() => {
+        const b = bus(input.sessionID)
+        const prompt = { content: [{ type: "text", text: input.text }] }
+        const history: unknown[] = []
+        for (let step = 0; step < 3; step++) {
+          const event = hostStep(input.sessionID, [prompt, ...history])
+          if (JSON.stringify(event.messages).includes(MARKER)) {
+            ;[b.textDelta(MARKER), b.stepEnded("stop"), b.executionSucceeded()].forEach((e) => sessions.dispatch(e))
+            return
+          }
+          asks++
+          const id = `s${asks}`
+          history.push({ content: [{ type: "tool-call", id, name: "read", input: { path: "inside.txt" } }] })
+          history.push({ content: [{ type: "tool-result", id, name: "read", result: { type: "text", value: MARKER } }] })
+          ;[b.toolCalled(id, "read", { path: "inside.txt" }), b.toolSucceeded(id), b.stepEnded("tool-calls")].forEach((e) => sessions.dispatch(e))
+        }
+        ;[b.textDelta("NO RESULT"), b.stepEnded("stop"), b.executionSucceeded()].forEach((e) => sessions.dispatch(e))
+      })
+    }
+
+    const caller = createSessionCaller({ port, sessions, maxTools: 4, apps: APPS })
+    server = await startRoute({ caller, options: OPTIONS })
+    const reply = await server.send({
+      method: "POST",
+      path: "/v1/chat/completions",
+      headers: TRUSTED,
+      body: {
+        model: "test/echo",
+        messages: [
+          { role: "system", content: "You read files." },
+          { role: "user", content: "Read inside.txt." },
+          { role: "assistant", content: "I will read it." },
+          { role: "user", content: "Use read exactly once on inside.txt, then return its exact content." },
+        ],
+      },
+    })
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-server-tools"]).toBe("1")
+    expect(reply.json().choices[0].message.content).toBe(MARKER)
+    expect(asks).toBe(1)
+  })
+
   // #421: the request decoders keep `toolChoice: "none"` when the caller sends no `tools` array, so no server tool is offered.
   test("#421 serverTools: tool_choice none without caller tools offers no serverTools on the route", async () => {
     const port = new FakeSessionPort()
