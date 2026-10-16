@@ -6,6 +6,8 @@ import OpenAI from "openai"
 import { setDefaultOpenAIClient, setOpenAIAPI, setTracingDisabled } from "@openai/agents"
 import { emitClient, runAll } from "../_harness/ts/harness.ts"
 import * as chat from "./chat.ts"
+import * as errors from "./errors.ts"
+import * as image from "./image.ts"
 import * as stream from "./stream.ts"
 import * as structured from "./structured.ts"
 import * as tools from "./tools.ts"
@@ -19,21 +21,20 @@ setTracingDisabled(true)
 const version = JSON.parse(await Bun.file(new URL("./node_modules/@openai/agents/package.json", import.meta.url)).text()).version as string
 emitClient("openai-agents-js", version)
 
-const NOT_WRITTEN = "not written for this example yet"
 await runAll(
   {
     S1: (model) => chat.runChat(client, model),
     S2: (model) => tools.runTools(client, model),
     S3: (model) => stream.runStream(client, model),
+    S4: (model) => tools.runStreamTools(client, model),
+    S5: (model) => image.runImage(client, model),
     S6: (model) => structured.runStructured(client, model),
+    E1: (model) => errors.runWrongKey(client, model),
+    E2: (model) => errors.runUnknownModel(client, model),
   },
   {
     na: {
-      S4: NOT_WRITTEN,
-      S5: NOT_WRITTEN,
       S7: "the Agents SDK has no model-list call",
-      E1: NOT_WRITTEN,
-      E2: NOT_WRITTEN,
     },
   },
 )

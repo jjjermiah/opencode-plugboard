@@ -217,44 +217,76 @@
       "transcript": "transcripts/S3.fast.json"
     },
     {
-      "checks": [],
+      "checks": [
+        {
+          "name": "finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "streamed get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        }
+      ],
       "error": null,
       "id": "S4",
       "model": "fast",
-      "note": "not written for this example yet",
+      "note": null,
       "required": true,
-      "status": "n/a",
-      "transcript": null
+      "status": "pass",
+      "transcript": "transcripts/S4.fast.json"
     },
     {
-      "checks": [],
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
       "error": null,
       "id": "S5",
       "model": "fast",
-      "note": "not written for this example yet",
+      "note": null,
       "required": true,
-      "status": "n/a",
-      "transcript": null
+      "status": "pass",
+      "transcript": "transcripts/S5.fast.json"
     },
     {
-      "checks": [],
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
       "error": null,
       "id": "S5",
       "model": "anthropic/claude-haiku-4-5",
-      "note": "not written for this example yet",
+      "note": null,
       "required": true,
-      "status": "n/a",
-      "transcript": null
+      "status": "pass",
+      "transcript": "transcripts/S5.anthropic-claude-haiku-4-5.json"
     },
     {
-      "checks": [],
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
       "error": null,
       "id": "S5",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "not written for this example yet",
+      "note": null,
       "required": true,
-      "status": "n/a",
-      "transcript": null
+      "status": "pass",
+      "transcript": "transcripts/S5.openai-gpt-5.6-luna-low.json"
     },
     {
       "checks": [
@@ -336,24 +368,42 @@
       "transcript": null
     },
     {
-      "checks": [],
+      "checks": [
+        {
+          "name": "status is 401",
+          "ok": true
+        },
+        {
+          "name": "code is invalid_api_key",
+          "ok": true
+        }
+      ],
       "error": null,
       "id": "E1",
       "model": "fast",
-      "note": "not written for this example yet",
+      "note": null,
       "required": false,
-      "status": "n/a",
-      "transcript": null
+      "status": "pass",
+      "transcript": "transcripts/E1.fast.json"
     },
     {
-      "checks": [],
+      "checks": [
+        {
+          "name": "status is 404",
+          "ok": true
+        },
+        {
+          "name": "code is model_not_found",
+          "ok": true
+        }
+      ],
       "error": null,
       "id": "E2",
       "model": "nope",
-      "note": "not written for this example yet",
+      "note": null,
       "required": false,
-      "status": "n/a",
-      "transcript": null
+      "status": "pass",
+      "transcript": "transcripts/E2.nope.json"
     }
   ],
   "schema": 1,

@@ -1,8 +1,8 @@
 // S1, plain chat through the OpenAI Agents SDK on the Responses API. The snippet is the agent and one run. `run.ts` points
 // the SDK at plugboard once (one client, tracing off: it would call OpenAI otherwise).
 //
-// finish_reason is derived from the last model response: `tool_calls` if it holds a function call, else `stop`. The SDK
-// does not expose the wire finish_reason, so this is a mapping, not a read.
+// finish_reason is mapped from the response: `tool_calls` if it holds a function call, else the provider's response status
+// (`completed` becomes `stop`). The status comes from `providerData`, the raw Responses object the SDK keeps.
 import { Agent, OpenAIResponsesModel, run, setDefaultOpenAIClient, setTracingDisabled, type ModelResponse } from "@openai/agents"
 import OpenAI from "openai"
 
@@ -13,8 +13,10 @@ export function modelFor(client: OpenAI, model: string): OpenAIResponsesModel {
 }
 // #endregion snippet-model
 
-export function finishReason(response: ModelResponse): string {
-  return response.output.some((item) => item.type === "function_call") ? "tool_calls" : "stop"
+/** `status` is the provider's response status; it defaults to the one on the response (a streamed run passes its last event's). */
+export function finishReason(response: ModelResponse, status: unknown = response.providerData?.status): string {
+  if (response.output.some((item) => item.type === "function_call")) return "tool_calls"
+  return status === "completed" ? "stop" : String(status ?? "")
 }
 
 export function usageOf(response: ModelResponse): Record<string, number> | null {
