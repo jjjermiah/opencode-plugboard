@@ -99,6 +99,7 @@ describe("parseGeminiRequest: rejections answer 400 with their param", () => {
     ["temperature above 2", body({ generationConfig: { temperature: 2.5 } }), { param: "generationConfig.temperature" }],
     ["a fractional maxOutputTokens", body({ generationConfig: { maxOutputTokens: 1.5 } }), { param: "generationConfig.maxOutputTokens" }],
     ["six stop sequences", body({ generationConfig: { stopSequences: ["a", "b", "c", "d", "e", "f"] } }), { param: "generationConfig.stopSequences" }],
+    ["#424 an empty stop sequence", body({ generationConfig: { stopSequences: ["", "x"] } }), { param: "generationConfig.stopSequences" }],
   ]
   test.each(rejections)("rejects %s", (_name, raw, expected) => {
     expect(parseGeminiRequest("fast", false, raw, options)).toMatchObject({ status: 400, kind: "invalid_request", ...expected })

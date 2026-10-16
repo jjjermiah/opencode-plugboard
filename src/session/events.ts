@@ -180,6 +180,8 @@ const AUTH_FAILURE = /unauthori[sz]ed|invalid[_ ]api[_ ]key|incorrect api key|no
 const MODEL_NOT_FOUND = /model[^\n]{0,60}(?:not found|does not exist|not supported|unknown)|unknown model|model_not_found/i
 /** A provider overload: Anthropic's `overloaded_error` (its 529), in the message or the body of the failure (#204). */
 const OVERLOADED = /overloaded/i
+/** A provider that refuses a replayed thinking block's signature (#424). Only its class is kept: the provider's text is logged, not sent. */
+const SIGNATURE_REJECTED = /signature/i
 
 const AUTH_MESSAGE = "The model provider rejected its credentials; the plugboard host needs to sign in again"
 
@@ -223,6 +225,8 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
     if (status === 529 || OVERLOADED.test(detail)) return { status: 503, kind: "server", code: "provider_overloaded", message: "The model provider is overloaded; retry later" }
     if (MODEL_NOT_FOUND.test(detail)) return { status: 404, kind: "not_found", code: "model_not_found", param: "model", message: "The model provider does not know the requested model" }
     if (AUTH_FAILURE.test(detail)) return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
+    if (SIGNATURE_REJECTED.test(detail) && (status === undefined || status === 400 || status === 422))
+      return { status: status ?? 400, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the signature of a replayed thinking block" }
     if (status === 404) return { status, kind: "not_found", code: "provider_rejected_request", message: "The model provider rejected the request" }
     if (status !== undefined && status < 500) return { status, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the request" }
     // A status past 511 is not a standard HTTP status (Cloudflare uses 520 to 527): the client gets 502, the gateway class (#391).

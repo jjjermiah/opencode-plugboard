@@ -270,6 +270,8 @@ export const parseGeneration = (body: JsonObject): PlugGeneration | PlugError =>
   if (body.stop != null) {
     const stop = typeof body.stop === "string" ? [body.stop] : body.stop
     if (!Array.isArray(stop) || !stop.every((s) => typeof s === "string")) return bad("stop must be a string or an array of strings", "stop")
+    // An empty sequence matches everywhere, so it is refused here; whitespace (a newline) is a real sequence (#424).
+    if (stop.some((s) => s.length === 0)) return bad("stop sequences must not be empty", "stop")
     if (stop.length > MAX_STOP) return bad(`stop takes at most ${MAX_STOP} sequences`, "stop")
     out.stop = stop as string[]
   }
