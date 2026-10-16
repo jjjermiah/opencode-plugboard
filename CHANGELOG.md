@@ -18,6 +18,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **The Gemini CLI example no longer picks up the laptop's skills** ([#443](https://github.com/jjjermiah/opencode-plugboard/issues/443)). The CLI reads its home from `GEMINI_CLI_HOME` before `HOME`, so a machine that set it put its own skills into the scripted transcript. The example runner now clears every `GEMINI_CLI_*` override and sets its own home and an empty system settings file, so the transcript is the same on a laptop and in CI (since 0.45.0).
 - **A stream committed before the deadline closes after its error frame** ([#441](https://github.com/jjjermiah/opencode-plugboard/issues/441)). When the request deadline passed after the 200 was sent, the stream ended with its error frame, but its socket stayed open until the grace timer cut it two seconds later. Now the socket closes once that final frame is flushed, so a keep-alive client never reuses it (since 0.45.0).
+- **The Responses envelope echoes the caller's `store`** ([#442](https://github.com/jjjermiah/opencode-plugboard/issues/442)). Every response said `store: false`, including for requests that sent `store: true` or left it out. It now echoes the value sent, and `true` when the request leaves it out, as OpenAI does. An answer made with `store: false` is still not kept for retrieval (since 0.45.0).
 
 ## [0.44.0] - 2026-10-16: Tools That Remember
 

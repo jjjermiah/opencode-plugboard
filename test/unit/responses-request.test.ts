@@ -255,7 +255,9 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
     expect(parsed.exchange.envelope.reasoning).toEqual({ effort: "high", summary: null })
   })
 
-  test("the envelope echoes the request and always says store false", () => {
+  test("the envelope echoes the request, its store included (#442): true when the request leaves it out", () => {
+    expect(parse(body({})).exchange.envelope.store).toBe(true)
+    expect(parse(body({ store: false })).exchange.envelope.store).toBe(false)
     const tools = [fn("a")]
     expect(parse(body({ instructions: "i", max_output_tokens: 9, temperature: 0.5, top_p: 0.5, metadata: { k: "v" }, parallel_tool_calls: false, tools, tool_choice: "auto", user: "u", store: true })).exchange).toEqual({
       model: "test/echo",
@@ -267,7 +269,7 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
         parallel_tool_calls: false,
         previous_response_id: null,
         reasoning: { effort: null, summary: null },
-        store: false,
+        store: true,
         temperature: 0.5,
         text: { format: { type: "text" } },
         tool_choice: "auto",

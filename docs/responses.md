@@ -29,7 +29,7 @@ console.log(r.output_text)
 | `stream` | The standard event sequence, below. |
 | `parallel_tool_calls: false` | Keeps only the first tool call of the answer, and the response carries `x-plugboard-parallel-tools: limited`. The response echoes the value it received (`true` unless the request sent `false`). |
 | `include`, `metadata`, `user`, `service_tier`, `prompt_cache_key`, `safety_identifier`, `max_tool_calls`, `stream_options` | Accepted and ignored. |
-| `store` | `store: false` keeps nothing: the answer's output items are not kept, so a later `item_reference` to them is a 400 `item_not_found` (#426). The response always reports `store: false`. |
+| `store` | `store: false` keeps nothing: the answer's output items are not kept, so a later `item_reference` to them is a 400 `item_not_found` (#426). The response echoes the value you sent (`true` when you leave it out, as OpenAI does; #442). |
 
 ## What is rejected
 

@@ -55,8 +55,22 @@ describe("POST /v1/responses", () => {
     const reply = await server!.send(responses())
     expect(reply.status).toBe(200)
     expect(reply.headers["x-plugboard-session"]).toBe("ses_1")
-    expect(reply.json()).toMatchObject({ object: "response", status: "completed", model: "test/echo", store: false, output: [{ type: "message", content: [{ type: "output_text", text: "Hello" }] }], usage: { total_tokens: 2 } })
+    expect(reply.json()).toMatchObject({ object: "response", status: "completed", model: "test/echo", store: true, output: [{ type: "message", content: [{ type: "output_text", text: "Hello" }] }], usage: { total_tokens: 2 } })
     expect(logs.of("request")[0]!.fields).toMatchObject({ route: "POST /v1/responses", model: "test/echo", outcome: "ok" })
+  })
+
+  test("#442 the envelope echoes the caller's store: true by default, and the value sent otherwise", async () => {
+    await route([ev.text("Hello"), ev.finish()])
+    expect((await server!.send(responses())).json()).toMatchObject({ store: true })
+    expect((await server!.send(responses({ store: true }))).json()).toMatchObject({ store: true })
+    expect((await server!.send(responses({ store: false }))).json()).toMatchObject({ store: false })
+  })
+
+  test("#442 a streamed answer echoes the caller's store on its created and completed events", async () => {
+    await route([ev.text("Hi"), ev.finish()])
+    const frames = eventsOf((await server!.send(responses({ stream: true }))).text)
+    expect(frames.find((frame) => frame.event === "response.created")!.data.response).toMatchObject({ store: true })
+    expect(frames.find((frame) => frame.event === "response.completed")!.data.response).toMatchObject({ store: true })
   })
 
   test("a failure keeps its HTTP status in a JSON answer", async () => {
