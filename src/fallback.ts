@@ -23,7 +23,7 @@ import { dropRejected } from "./openai/sampling.js"
 
 export interface FallbackDeps {
   readonly options: PlugboardOptions
-  /** The serving Location's enabled models; read only after a first failure, to skip targets that are not available. */
+  /** The serving Location's enabled models, read once per chain request to know which targets follow, and to skip targets that are not available. */
   loadCatalog(): Promise<ReadonlyArray<CatalogModel>>
   /** A call is about to be retried on the next target (metrics). */
   readonly onFallback?: (app: string) => void

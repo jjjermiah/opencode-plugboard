@@ -38,11 +38,12 @@ export interface PlugboardOptions {
    * first target, so everything that resolves an alias keeps working; the model caller retries the rest
    * (`src/fallback.ts`). Absent for an alias with one target. Every target passes the allowlist.
    */
-   readonly fallbacks: Readonly<Record<string, ReadonlyArray<string>>>
+  readonly fallbacks: Readonly<Record<string, ReadonlyArray<string>>>
   /**
    * Option `fallbackAfterMs` (since 0.37.0, #391): when a target of a list alias has produced no model event within
    * this many ms, its attempt is aborted and the next target is tried. The last target is bounded only by the request
-   * deadline. Absent (the default): no first-event deadline. Global only: a list entry is a plain string.
+   * deadline. Absent (the default): no first-event deadline. Global only: a list entry is a plain string. Must be below
+   * `requestTimeoutMs` and below each `apps.<name>.requestTimeoutMs` (refused at load otherwise).
    */
   readonly fallbackAfterMs?: number
   readonly maxTools: number
@@ -1030,6 +1031,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
   const fallbacks: Record<string, string[]> = Object.fromEntries(fallbackEntries)
   const fallbackAfterMs = input.fallbackAfterMs === undefined ? undefined : positiveInt(input.fallbackAfterMs, "fallbackAfterMs", 0, MAX_TIMER_MS)
+  const requestTimeoutMs = positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS)
   const agents = parseAgents(input.agents, models as string[])
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
@@ -1083,6 +1085,12 @@ export function parseOptions(raw: unknown): PlugboardOptions {
       throw new Error(`plugboard app \`${app}\` sets \`history.hidden\` with \`promptCache\` scope \`user\`: the hidden parent is one per app, so it cannot also be the per-user anchor. Use scope \`app\`, or turn one of them off`)
   }
   const cors = parseCors(input.cors, keyEntries.length > 0)
+  // A first-event deadline at or past a request deadline never fires, so the chain would silently do nothing (#391).
+  if (fallbackAfterMs !== undefined && fallbackAfterMs >= requestTimeoutMs)
+    throw new Error(`plugboard option \`fallbackAfterMs\` (${fallbackAfterMs}) must be below \`requestTimeoutMs\` (${requestTimeoutMs}): a first-event deadline at or past the request deadline never fires`)
+  for (const [app, policy] of Object.entries(apps))
+    if (fallbackAfterMs !== undefined && policy.requestTimeoutMs !== undefined && fallbackAfterMs >= policy.requestTimeoutMs)
+      throw new Error(`plugboard option \`fallbackAfterMs\` (${fallbackAfterMs}) must be below \`apps.${app}.requestTimeoutMs\` (${policy.requestTimeoutMs}): the app's requests have that deadline`)
 
   return {
     ...(promptCache === undefined ? {} : { promptCache }),
@@ -1096,7 +1104,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     ...(fallbackAfterMs === undefined ? {} : { fallbackAfterMs }),
     maxTools,
     maxN,
-    requestTimeoutMs: positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS),
+    requestTimeoutMs,
     remoteImages,
     history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }), ...(hidden === undefined ? {} : { hidden }) },
     dropUnsupportedParams: input.dropUnsupportedParams !== false,

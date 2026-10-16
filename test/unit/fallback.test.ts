@@ -185,8 +185,24 @@ describe("withFallbacks", () => {
   })
 })
 
-/** #391: `fallbackAfterMs`. A timed target waits `after` ms then yields its events, or never yields (`"hang"`). Like the session caller, it ends on its signal's abort. */
-type Timed = "hang" | { readonly after: number; readonly events: PlugEvent[] }
+/** #391: `fallbackAfterMs`. A timed target yields each step's events after that step's wait (counted from the previous step), or never answers (`"hang"`). Like the session caller, it ends on its signal's abort. */
+type Step = { readonly after: number; readonly events: PlugEvent[] }
+type Timed = "hang" | Step | { readonly steps: ReadonlyArray<Step> }
+
+/** Resolves after `ms`, or as soon as `signal` aborts; without `ms`, only on abort. */
+function until(signal: AbortSignal, ms?: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = ms === undefined ? undefined : setTimeout(done, ms)
+    function done() {
+      clearTimeout(timer)
+      signal.removeEventListener("abort", done)
+      resolve()
+    }
+    if (signal.aborted) return done()
+    signal.addEventListener("abort", done, { once: true })
+  })
+}
+
 function timedTargets(plan: Timed[]) {
   const targets: string[] = []
   const aborted: boolean[] = []
@@ -196,12 +212,23 @@ function timedTargets(plan: Timed[]) {
       const i = targets.length
       targets.push(`${request.ref.providerID}/${request.ref.id}`)
       const step = plan[i]!
+      const steps: ReadonlyArray<Step> = step === "hang" ? [] : "steps" in step ? step.steps : [step]
       return (async function* () {
+        aborted[i] = false
         try {
-          await until(context.signal, step === "hang" ? undefined : step.after)
-          aborted[i] = context.signal.aborted
-          if (context.signal.aborted || step === "hang") return
-          yield* step.events
+          if (step === "hang") {
+            await until(context.signal)
+            aborted[i] = context.signal.aborted
+            return
+          }
+          for (const { after, events } of steps) {
+            await until(context.signal, after)
+            if (context.signal.aborted) {
+              aborted[i] = true
+              return
+            }
+            yield* events
+          }
         } finally {
           closed[i] = true
         }
@@ -211,20 +238,9 @@ function timedTargets(plan: Timed[]) {
   return { caller, targets, aborted, closed }
 }
 
-/** Resolves after `ms`, or as soon as `signal` aborts; without `ms`, only on abort. */
-function until(signal: AbortSignal, ms?: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = ms === undefined ? undefined : setTimeout(done, ms)
-    function done() {
-      clearTimeout(timer)
-      resolve()
-    }
-    if (signal.aborted) return done()
-    signal.addEventListener("abort", done, { once: true })
-  })
-}
-
-const DEADLINE = 200
+const DEADLINE = 400
+/** Well before the deadline, so a slow runner cannot push the event past it. */
+const EARLY = 50
 const timedOptions = parseOptions({
   models: ["a/*", "b/*", "c/*"],
   aliases: { chain: ["a/x", "b/y#low", "c/z"], pair: ["a/x", "c/z"] },
@@ -255,7 +271,7 @@ describe("#391 fallbackAfterMs: the first-event deadline", () => {
   })
 
   test("a target that emits before the deadline keeps its answer and is not aborted", async () => {
-    const r = await timedRun([{ after: DEADLINE - 100, events: answer }, "hang"])
+    const r = await timedRun([{ after: EARLY, events: answer }, "hang"])
     expect(r.targets).toEqual(["a/x"])
     expect(r.aborted).toEqual([false])
     expect(r.events.map((e) => e.type)).toEqual(["text-delta", "finish"])
@@ -276,5 +292,21 @@ describe("#391 fallbackAfterMs: the first-event deadline", () => {
     expect(r.targets).toEqual(["a/x", "c/z"])
     expect(r.aborted).toEqual([false, false])
     expect(r.served).toEqual([{ model: "c/z", fallbacks: 1, chain: true }])
+  })
+
+  test("a reasoning-first target is not aborted, and its stream runs past the deadline to the end", async () => {
+    const r = await timedRun([{ steps: [{ after: EARLY, events: [ev.reasoning("thinking")] }, { after: DEADLINE * 2, events: [ev.text("answer"), ev.finish()] }] }, "hang"])
+    expect(r.targets).toEqual(["a/x"])
+    expect(r.aborted).toEqual([false])
+    expect(r.events.map((e) => e.type)).toEqual(["reasoning-delta", "text-delta", "finish"])
+    expect(r.served).toEqual([{ model: "a/x", fallbacks: 0, chain: true }])
+  })
+
+  test("a text-first target is not aborted, and its answer streamed past the deadline is whole", async () => {
+    const r = await timedRun([{ steps: [{ after: EARLY, events: [ev.text("he")] }, { after: DEADLINE * 2, events: [ev.text("llo"), ev.finish()] }] }, "hang"])
+    expect(r.targets).toEqual(["a/x"])
+    expect(r.aborted).toEqual([false])
+    expect(r.events.filter((e) => e.type === "text-delta").map((e) => (e as { text: string }).text).join("")).toBe("hello")
+    expect(r.events.at(-1)).toMatchObject({ type: "finish" })
   })
 })

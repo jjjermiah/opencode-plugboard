@@ -643,4 +643,16 @@ describe("#391 fallbackAfterMs", () => {
     expect(() => parseOptions({ models: ["a/*"], fallbackAfterMs: 0 })).toThrow(/`fallbackAfterMs` must be an integer between 1/)
     expect(parseOptions({ models: ["a/*"], fallbackAfterMs: 1500 }).fallbackAfterMs).toBe(1500)
   })
+
+  test("refused at load when it is not below requestTimeoutMs, which would never let it fire", () => {
+    expect(() => parseOptions({ models: ["a/*"], requestTimeoutMs: 5000, fallbackAfterMs: 5000 })).toThrow(/must be below `requestTimeoutMs` \(5000\)/)
+    expect(() => parseOptions({ models: ["a/*"], fallbackAfterMs: 600_000 })).toThrow(/must be below `requestTimeoutMs` \(600000\)/)
+    expect(parseOptions({ models: ["a/*"], requestTimeoutMs: 5000, fallbackAfterMs: 4999 }).fallbackAfterMs).toBe(4999)
+  })
+
+  test("refused at load when an app's own requestTimeoutMs is not above it; the global deadline is checked against the app's too", () => {
+    const base = { models: ["a/*"], keys: { bot: "k-bot" } }
+    expect(() => parseOptions({ ...base, fallbackAfterMs: 1000, apps: { bot: { requestTimeoutMs: 1000 } } })).toThrow(/must be below `apps\.bot\.requestTimeoutMs` \(1000\)/)
+    expect(parseOptions({ ...base, fallbackAfterMs: 1000, apps: { bot: { requestTimeoutMs: 5000 } } }).fallbackAfterMs).toBe(1000)
+  })
 })

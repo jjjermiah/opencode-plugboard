@@ -676,6 +676,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/unit/fallback.test.ts"],
   },
   {
+    id: "fallback-first-event-deadline-never-cleared",
+    invariant: "fallback",
+    file: "src/fallback.ts",
+    find: "clearTimeout(timer)",
+    replace: "void timer",
+    tests: ["test/unit/fallback.test.ts"],
+  },
+  {
     id: "reasoning-output-off-still-returned",
     invariant: "reasoningOutput",
     file: "src/openai/response.ts",
