@@ -4,6 +4,7 @@
 //   bun run pr-wait 445            wait until every check on the PR head has finished (max 50 minutes)
 //   bun run pr-wait 445 --merge    then merge it with a merge commit when every check passed
 //
+// Waits until every check the main ruleset requires is present on the head and every listed check has finished.
 // Prints the PR head, then a single line per failed check with its link, then `pr-wait: green` or
 // `pr-wait: red`. A conflicting PR (GitHub runs no checks) is reported at once instead of waited on.
 // Exit 0 only when every non-skipped check succeeded (and the merge, when asked, went through).
@@ -49,6 +50,17 @@ let pr = await view()
 console.log(`pr-wait: #${number} head ${pr.headRefOid.slice(0, 7)} (${pr.state})`)
 if (pr.state !== "OPEN") throw new Error(`#${number} is ${pr.state}`)
 
+// The checks the main branch ruleset requires. Right after a push only some checks are registered, and those may
+// all be done already; waiting until every required check is present and done avoids a green verdict on a partial set.
+const required = async (): Promise<string[]> => {
+  const rules = JSON.parse(await gh(["api", `repos/${REPO}/rules/branches/main`])) as {
+    type: string
+    parameters?: { required_status_checks?: { context: string }[] }
+  }[]
+  return rules.flatMap((rule) => (rule.type === "required_status_checks" ? (rule.parameters?.required_status_checks ?? []).map((c) => c.context) : []))
+}
+const requiredNames = await required()
+
 const DONE = new Set(["SUCCESS", "FAILURE", "CANCELLED", "SKIPPED", "NEUTRAL", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "STALE"])
 let list: Check[] = []
 for (;;) {
@@ -58,9 +70,11 @@ for (;;) {
     process.exit(1)
   }
   list = await checks()
-  if (list.length > 0 && list.every((check) => DONE.has(check.state))) break
+  const missing = requiredNames.filter((name) => !list.some((check) => check.name === name))
+  if (missing.length === 0 && list.length > 0 && list.every((check) => DONE.has(check.state))) break
   if (Date.now() - started > MAX_MS) {
-    console.log(`pr-wait: red: checks still pending after 50 minutes: ${list.filter((c) => !DONE.has(c.state)).map((c) => c.name).join(", ")}`)
+    const pending = [...missing, ...list.filter((c) => !DONE.has(c.state)).map((c) => c.name)]
+    console.log(`pr-wait: red: checks still pending or missing after 50 minutes: ${pending.join(", ")}`)
     process.exit(1)
   }
   await Bun.sleep(POLL_MS)
