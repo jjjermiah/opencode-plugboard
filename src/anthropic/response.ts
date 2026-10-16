@@ -7,6 +7,7 @@
  * no-op `emit`. Thinking blocks are produced only when the request asked for thinking.
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
+import type { ListedModel } from "../models.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -118,6 +119,20 @@ const errorType = (error: PlugError): string => {
 
 /** `{"type":"error","error":{"type","message"}}`: the body of every error on this route, and the data of a stream `error` event. */
 export const encodeError = (error: PlugError) => ({ type: "error", error: { type: errorType(error), message: error.message } })
+
+/** One model as Anthropic's `GET /v1/models/{id}` (and each `data` entry) names it. An unknown release date is the epoch. */
+export const encodeModel = ({ id, model }: ListedModel) => {
+  const released = model.released === undefined ? NaN : new Date(model.released).getTime()
+  return { type: "model", id, display_name: model.name ?? id, created_at: new Date(Number.isNaN(released) ? 0 : released).toISOString() }
+}
+
+/** `GET /v1/models` in Anthropic's list shape. The whole catalog is one page, so `has_more` is false. */
+export const encodeModelPage = (models: ReadonlyArray<ListedModel>) => ({
+  data: models.map(encodeModel),
+  has_more: false,
+  first_id: models[0]?.id ?? null,
+  last_id: models.at(-1)?.id ?? null,
+})
 
 /** SSE frame of one stream event: `event: <type>` then `data: <json>`. */
 export const sseFrame = (event: MessagesStreamEvent): string => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`

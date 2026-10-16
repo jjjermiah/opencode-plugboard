@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- `GET /v1/models` and `GET /v1/models/{id}` accept `x-api-key`, as `POST /v1/messages` does, so `client.models.list()` in the Anthropic SDKs works. A request with `anthropic-version` gets Anthropic's list shape (`data`, `has_more`, `first_id`, `last_id`, each model with `type`, `id`, `display_name`, `created_at`); other requests keep the OpenAI shape. Since 0.47.0 ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)).
 
 ## [0.46.0] - 2026-10-16: Honest Counts
 
