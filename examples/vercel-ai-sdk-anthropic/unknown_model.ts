@@ -12,7 +12,7 @@ export async function run() {
     if (!APICallError.isInstance(error)) throw error
     // Messages errors carry Anthropic's error.type; there is no error.code (see unobserved in run.ts).
     const body = JSON.parse(error.responseBody ?? "{}") as { error?: { code?: string; type?: string } }
-    return { status: error.statusCode ?? null, code: body.error?.code ?? body.error?.type ?? null }
+    return { status: error.statusCode ?? null, code: body.error?.code ?? body.error?.type ?? null, type: body.error?.type ?? null }
   }
   // #endregion snippet
   throw new Error("an unknown model was accepted")

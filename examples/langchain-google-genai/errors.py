@@ -14,7 +14,7 @@ def google_error(error: ChatGoogleGenerativeAIError) -> dict:
     text = str(error)
     code = re.search(r"'code': (\d+)", text)
     status = re.search(r"'status': '([A-Z_]+)'", text)
-    return {"status": int(code.group(1)) if code else None, "code": status.group(1) if status else None}
+    return {"status": int(code.group(1)) if code else None, "code": status.group(1) if status else None, "type": {"UNAUTHENTICATED": "authentication_error", "NOT_FOUND": "not_found_error"}.get(status.group(1)) if status else None}
 
 
 def run_wrong_key(client, model):

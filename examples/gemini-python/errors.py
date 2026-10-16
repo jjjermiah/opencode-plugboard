@@ -19,7 +19,7 @@ def run_wrong_key(base_url, model):
     try:
         wrong.models.generate_content(model=model, contents="Reply with exactly: pong")
     except errors.ClientError as error:
-        return {"status": error.code, "code": google_status(error)}
+        return {"status": error.code, "code": google_status(error), "type": {"UNAUTHENTICATED": "authentication_error", "NOT_FOUND": "not_found_error"}.get(google_status(error) or "")}
     # endregion snippet-wrong-key
     raise RuntimeError("a wrong key was accepted")
 
@@ -29,7 +29,7 @@ def run_unknown_model(client, model):
     try:
         client.models.generate_content(model=model, contents="Reply with exactly: pong")
     except errors.ClientError as error:
-        return {"status": error.code, "code": google_status(error)}
+        return {"status": error.code, "code": google_status(error), "type": {"UNAUTHENTICATED": "authentication_error", "NOT_FOUND": "not_found_error"}.get(google_status(error) or "")}
     # endregion snippet-unknown-model
     raise RuntimeError(f"model {model} was accepted")
 

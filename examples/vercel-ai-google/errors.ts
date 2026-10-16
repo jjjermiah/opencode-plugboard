@@ -8,6 +8,9 @@ const PROMPT = "Reply with exactly: pong"
 const WRONG_KEY = "sk-wrong-key-example"
 
 /** Google's error body is `{"error": {"code", "message", "status"}}`, which the SDK keeps in responseBody. */
+/** Google's status as the neutral error type the other wires send (the per-wire map of #427). */
+const GOOGLE_TYPE: Record<string, string> = { UNAUTHENTICATED: "authentication_error", NOT_FOUND: "not_found_error" }
+
 function googleStatus(error: APICallError): string | null {
   const body = JSON.parse(error.responseBody ?? "{}") as { error?: { status?: string } }
   return body.error?.status ?? null
@@ -20,7 +23,7 @@ export async function runWrongKey(model: string) {
     await generateText({ model: wrong(model), prompt: PROMPT, maxRetries: 0 })
   } catch (error) {
     if (!APICallError.isInstance(error)) throw error
-    return { status: error.statusCode ?? null, code: googleStatus(error) }
+    return { status: error.statusCode ?? null, code: googleStatus(error), type: GOOGLE_TYPE[googleStatus(error) ?? ""] ?? null }
   }
   // #endregion snippet-wrong-key
   throw new Error("a wrong key was accepted")
@@ -32,7 +35,7 @@ export async function runUnknownModel(model: string) {
     await generateText({ model: client(model), prompt: PROMPT, maxRetries: 0 })
   } catch (error) {
     if (!APICallError.isInstance(error)) throw error
-    return { status: error.statusCode ?? null, code: googleStatus(error) }
+    return { status: error.statusCode ?? null, code: googleStatus(error), type: GOOGLE_TYPE[googleStatus(error) ?? ""] ?? null }
   }
   // #endregion snippet-unknown-model
   throw new Error(`model ${model} was accepted`)

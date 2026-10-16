@@ -2,6 +2,9 @@
 import { ApiError, GoogleGenAI } from "@google/genai"
 
 /** Google's error body: `{"error": {"code", "message", "status"}}`. The SDK keeps the body as the error message. */
+/** Google's status as the neutral error type the other wires send (the per-wire map of #427). */
+const GOOGLE_TYPE: Record<string, string> = { UNAUTHENTICATED: "authentication_error", NOT_FOUND: "not_found_error" }
+
 function googleStatus(error: ApiError): string | null {
   try {
     return (JSON.parse(error.message) as { error?: { status?: string } }).error?.status ?? null
@@ -17,7 +20,7 @@ export async function runWrongKey(baseUrl: string, model: string) {
   try {
     await wrong.models.generateContent({ model, contents: "Reply with exactly: pong" })
   } catch (error) {
-    if (error instanceof ApiError) return { status: error.status, code: googleStatus(error) }
+    if (error instanceof ApiError) return { status: error.status, code: googleStatus(error), type: GOOGLE_TYPE[googleStatus(error) ?? ""] ?? null }
     throw error
   }
   // #endregion snippet-wrong-key
@@ -30,7 +33,7 @@ export async function runUnknownModel(baseUrl: string, model: string) {
   try {
     await ai.models.generateContent({ model, contents: "Reply with exactly: pong" })
   } catch (error) {
-    if (error instanceof ApiError) return { status: error.status, code: googleStatus(error) }
+    if (error instanceof ApiError) return { status: error.status, code: googleStatus(error), type: GOOGLE_TYPE[googleStatus(error) ?? ""] ?? null }
     throw error
   }
   // #endregion snippet-unknown-model

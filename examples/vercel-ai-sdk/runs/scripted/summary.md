@@ -50,5 +50,5 @@ Verdict: **pass** · vercel-ai-sdk 7.0.137 on bun 1 · models: fast, anthropic/c
 | S6 (openai-chat) | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
 | S6 (responses) | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
 | S7 | - | yes | pass | 3/3 |
-| E1 | fast | no | pass | 2/2 |
-| E2 | nope | no | pass | 2/2 |
+| E1 | fast | no | pass | 3/3 |
+| E2 | nope | no | pass | 3/3 |

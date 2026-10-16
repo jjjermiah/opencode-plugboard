@@ -103,7 +103,7 @@ e1() { # wrong key: 401 invalid_api_key
   status=$(curl -s -o "$resp" -w '%{http_code}' "$PLUGBOARD_BASE_URL/chat/completions" \
     -H "Authorization: Bearer sk-wrong-key-example" -H "Content-Type: application/json" \
     -d "$(jq -cn --arg m "$1" '{model: $m, messages: [{role: "user", content: "Reply with exactly: pong"}]}')")
-  jq -c --argjson status "$status" '{status: $status, code: .error.code}' "$resp"
+  jq -c --argjson status "$status" '{status: $status, code: .error.code, type: .error.type}' "$resp"
   rm -f "$resp"
 }
 
@@ -112,7 +112,7 @@ e2() { # unknown model: 404 model_not_found
   resp=$(mktemp)
   status=$(curl -s -o "$resp" -w '%{http_code}' "$PLUGBOARD_BASE_URL/chat/completions" -H "Authorization: Bearer $PLUGBOARD_KEY" -H "Content-Type: application/json" \
     -d "$(jq -cn --arg m "$1" '{model: $m, messages: [{role: "user", content: "Reply with exactly: pong"}]}')")
-  jq -c --argjson status "$status" '{status: $status, code: .error.code}' "$resp"
+  jq -c --argjson status "$status" '{status: $status, code: .error.code, type: .error.type}' "$resp"
   rm -f "$resp"
 }
 

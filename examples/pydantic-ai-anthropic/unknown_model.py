@@ -18,7 +18,7 @@ async def run(client, model):
     except ModelHTTPError as error:
         body = error.body if isinstance(error.body, dict) else {}
         inner = body.get("error", {}) if isinstance(body.get("error"), dict) else {}
-        return {"status": error.status_code, "code": inner.get("type")}
+        return {"status": error.status_code, "code": inner.get("type"), "type": inner.get("type")}
     # endregion snippet
     raise AssertionError(f"model {model!r} was accepted")
 

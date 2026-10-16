@@ -15,7 +15,7 @@ export async function run(model: string) {
     if (!(error instanceof Anthropic.APIError)) throw error
     // Messages errors carry Anthropic's error.type; there is no error.code (see unobserved in run.ts).
     const body = error.error as { error?: { code?: string; type?: string } } | undefined
-    return { status: error.status ?? null, code: body?.error?.code ?? body?.error?.type ?? null }
+    return { status: error.status ?? null, code: body?.error?.code ?? body?.error?.type ?? null, type: body?.error?.type ?? null }
   }
   // #endregion snippet
   throw new Error("a wrong key was accepted")
