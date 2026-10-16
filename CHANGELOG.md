@@ -14,9 +14,48 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.41.0] - 2026-10-16: Gemini Pictures Welcome
+
+**Full diff:** [v0.40.0...v0.41.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...v0.41.0)
+
 ### Fixed
 
 - **Gemini `inlineData` from the Python SDK** ([#401](https://github.com/jjjermiah/opencode-plugboard/issues/401), [#409](https://github.com/jjjermiah/opencode-plugboard/issues/409), since 0.41.0). The google-genai Python SDK sends `inlineData` with `mime_type` (snake_case), and plugboard answered 400 `inlineData needs mimeType and base64 data`. The inline MIME type is now read in either case, like the other Gemini fields. The SDK also sends `inlineData.data` as URL-safe base64 (`-` and `_`), which plugboard answered 400 `Image data URL is not valid base64`: it is now normalised to standard base64 before the image check. Data with any other character, or a length no base64 string has, is still refused. `fileData`, `functionCall` and `functionResponse` were already read in both cases and are covered by tests now.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Fixes
+
+**fix(gemini): read inlineData snake_case mime_type and URL-safe base64** ([`7e114e6`](https://github.com/jjjermiah/opencode-plugboard/commit/7e114e6c030c2cc1373e1c0dc7c1bbf7f4bb85f9))
+
+The google-genai Python SDK sends inlineData with mime_type, and its bytes as URL-safe base64 (- and _). Plugboard answered 400 for both (#401, #409).
+
+What: the inline MIME type is read with field(), like the other Gemini fields. inlineData.data is normalised to standard base64 (padded when unpadded) before the image check. Garbage characters and impossible lengths are still refused.
+
+Why: a proto JSON parser accepts both names and both alphabets, so Google's API takes this body; plugboard was stricter than the API it proxies.
+
+Decisions: the normaliser lives in src/gemini/request.ts, not image.ts, so the image check still sees standard base64 only. fileData, functionCall and functionResponse already read snake_case via field(); they gain tests only.
+
+Validation: typecheck clean; bun test 2728 pass, 0 fail; coverage gates pass with the unit floor raised 1362 to 1369; coverage-manifest, check-pack, smoke-pack, docs:build, scripted harness and examples diff all pass. bun run mutations was started and stopped on owner pause; not complete.
+
+Not verified: live run against 127.0.0.1:4010 (examples/gemini-python is not on main, so S5 cannot run). Scripted harness has no Gemini example.
+
+Refs #401, #409
+
+#### Tests
+
+**test(floors): ratchet unit test floor to 1406** ([`7e3ad30`](https://github.com/jjjermiah/opencode-plugboard/commit/7e3ad30ac9bafa70a244887b823aa6534cf0e415))
+
+The Gemini inlineData tests added in this branch (snake_case mime_type, URL-safe base64, the Python SDK body) raise the unit count from 1400 to 1406. Ratchet run after the merge of origin/main; floors are only ever raised.
+
+Refs #401, #409
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.40.0] - 2026-10-16: Quick to Move On
 
@@ -7183,7 +7222,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...HEAD
+[0.41.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...v0.38.0
