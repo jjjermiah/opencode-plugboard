@@ -9,7 +9,7 @@ OpenCode can use plugboard as a provider in two ways:
 
 ## Dialects
 
-Use the Anthropic dialect when you can. Plugboard's Messages route keeps reasoning and thinking replay. Chat Completions and Responses drop reasoning ([#255](https://github.com/jjjermiah/opencode-plugboard/issues/255)).
+Use the Anthropic dialect when you can. Plugboard's Messages route keeps reasoning and thinking replay with no setting. Chat Completions and Responses drop reasoning by default. Since 0.36.0, `reasoningOutput: true` returns it on those two routes (opt-in, see [Reasoning output](../configuration.md#reasoning-output)). Whether OpenCode sends that reasoning back on the next turn was not checked here ([#255](https://github.com/jjjermiah/opencode-plugboard/issues/255)).
 
 Custom and built-in providers are declared under `providers` (plural) in the OpenCode config.
 

@@ -1,6 +1,6 @@
 # Go (go-openai)
 
-Verified: run, 2026-10-13. `examples/go-openai` (go-openai v1.43.0, Go 1.27.2) ran twice against plugboard with model `fast`: a text call, a stream and one tool round trip all passed. The config was checked against the go-openai README (`DefaultConfig`, `BaseURL`), <https://github.com/sashabaranov/go-openai>. Not in `docs/compatibility.md` yet: there is no scripted test for it.
+Verified: run, 2026-10-13. `examples/go-openai` (go-openai v1.43.0, Go 1.27.2) ran twice against plugboard with model `fast`: a text call, a stream and one tool round trip all passed. The config was checked against the go-openai README (`DefaultConfig`, `BaseURL`), <https://github.com/sashabaranov/go-openai>. The scripted run is in CI (`examples` job, committed under `runs/scripted/`), see [compatibility.md](../compatibility.md#client-examples-in-ci).
 
 go-openai is the community Go client for the OpenAI API. It is not an official OpenAI library. It covers Chat Completions, the Responses API, streaming and tool calls.
 
