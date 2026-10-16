@@ -487,12 +487,12 @@ One page per client, with the config, a chat, a tool call, structured output and
 | LangChain Python | [langchain-python][client-langchain-python] | pass; `json_mode` on `fast` was unreliable |
 | LangChain JS | [langchain-js][client-langchain-js] | pass except `gpt-5.6*` ids, which force the Responses API, and `json_mode` on `fast` |
 | pydantic-ai | [pydantic-ai][client-pydantic-ai] | pass with `OpenAIChatModel` |
-| Anthropic Python SDK | [anthropic-python][client-anthropic-python] | scripted: pass except S7 (`GET /v1/models` refuses `x-api-key`, [#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)); live 2026-10-16 on v0.37.0: pass on haiku and gpt-5.6-luna, `fast` out of quota |
-| Anthropic TypeScript SDK | [anthropic-js][client-anthropic-js] | same as the Python SDK |
-| LangChain Python (`ChatAnthropic`) | [langchain-anthropic-python][client-langchain-anthropic-python] | scripted: pass; live as above |
-| LangChain JS (`ChatAnthropic`) | [langchain-anthropic-js][client-langchain-anthropic-js] | scripted: pass; live as above |
-| Vercel AI SDK (`@ai-sdk/anthropic`) | [vercel-ai-sdk-anthropic][client-vercel-ai-sdk-anthropic] | scripted: pass with `structuredOutputMode: "jsonTool"`; live as above |
-| pydantic-ai (`AnthropicModel`) | [pydantic-ai-anthropic][client-pydantic-ai-anthropic] | scripted: pass except S7; live as above |
+| Anthropic Python SDK | [anthropic-python][client-anthropic-python] | scripted: pass except S7 (`GET /v1/models` refuses `x-api-key`, [#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)); live 2026-10-16 on v0.41.0: partial, S7 only |
+| Anthropic TypeScript SDK | [anthropic-js][client-anthropic-js] | scripted and live 2026-10-16 on v0.41.0: partial, S7 only |
+| LangChain Python (`ChatAnthropic`) | [langchain-anthropic-python][client-langchain-anthropic-python] | scripted and live 2026-10-16 on v0.41.0: pass |
+| LangChain JS (`ChatAnthropic`) | [langchain-anthropic-js][client-langchain-anthropic-js] | scripted and live 2026-10-16 on v0.41.0: pass |
+| Vercel AI SDK (`@ai-sdk/anthropic`) | [vercel-ai-sdk-anthropic][client-vercel-ai-sdk-anthropic] | scripted and live 2026-10-16 on v0.41.0: pass with `structuredOutputMode: "jsonTool"` |
+| pydantic-ai (`AnthropicModel`) | [pydantic-ai-anthropic][client-pydantic-ai-anthropic] | scripted and live 2026-10-16 on v0.41.0: partial, S7 only |
 | Open WebUI | [open-webui][client-open-webui] | pass over its HTTP API; no browser, no structured output in its UI |
 | n8n | [n8n][client-n8n] | pass with "Use Responses API" off |
 | Claude Code | [claude-code][client-claude-code] | pass: text and a tool turn through `/v1/messages`; needs `maxTools` above 36 |

@@ -2,7 +2,7 @@
 
 <ExampleResult example="langchain-anthropic-js" />
 
-Tested: `@langchain/anthropic` 1.5.12 with `@langchain/core` 1.2.17 on Bun 1.4.2. The example runs S1 to S7 and the two error paths through `ChatAnthropic`. The scripted run passes. The live run at plugboard `b41c376` (v0.37.0) passes on `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. Its `fast` rows failed on upstream quota, so that record's verdict is `fail` ([record](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain-anthropic-js/runs/live/2026-10-16-b41c376)). For the OpenAI-shaped client, see [LangChain JS](langchain-js.md).
+Tested: `@langchain/anthropic` 1.5.12 with `@langchain/core` 1.2.17 on Bun 1.4.2. The example runs S1 to S7 and the two error paths through `ChatAnthropic`. The scripted run passes. The live run on plugboard main v0.41.0 (`v0.41.0-13-g7e1fdcb`) passes ([record](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain-anthropic-js/runs/live/2026-10-16-v0.41.0-13-g7e1fdcb)). The `fast` alias falls back to `anthropic/claude-haiku-4-5` when its Go provider is rate-limited, so `fast` rows can be Haiku answers. For the OpenAI-shaped client, see [LangChain JS](langchain-js.md).
 
 `anthropicApiUrl` is plugboard's base URL without the `/v1`. The client adds `/v1/messages` itself:
 

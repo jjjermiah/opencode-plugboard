@@ -2,7 +2,7 @@
 
 <ExampleResult example="vercel-ai-sdk-anthropic" />
 
-Tested: `@ai-sdk/anthropic` 4.0.81 with `ai` 7.0.137 on Bun 1.4.2. The example runs S1 to S7 and the two error paths through the provider's Messages route. The scripted run passes. The live run at plugboard `b41c376` (v0.37.0) passes on `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. Its `fast` rows failed on upstream quota, so that record's verdict is `fail` ([record](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/vercel-ai-sdk-anthropic/runs/live/2026-10-16-b41c376)). The earlier `8ef91b5` record is kept, labelled. For the OpenAI-shaped providers in the same SDK, see [Vercel AI SDK](vercel-ai-sdk.md).
+Tested: `@ai-sdk/anthropic` 4.0.81 with `ai` 7.0.137 on Bun 1.4.2. The example runs S1 to S7 and the two error paths through the provider's Messages route. The scripted run passes. The live run on plugboard main v0.41.0 (`v0.41.0-13-g7e1fdcb`) passes ([record](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/vercel-ai-sdk-anthropic/runs/live/2026-10-16-v0.41.0-13-g7e1fdcb)). The `fast` alias falls back to `anthropic/claude-haiku-4-5` when its Go provider is rate-limited, so `fast` rows can be Haiku answers. The earlier `8ef91b5` record is kept, labelled. For the OpenAI-shaped providers in the same SDK, see [Vercel AI SDK](vercel-ai-sdk.md).
 
 The provider's base URL ends in `/v1`. Its default is `https://api.anthropic.com/v1`, and it appends `/messages`:
 
