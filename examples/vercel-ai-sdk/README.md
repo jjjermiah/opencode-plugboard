@@ -17,7 +17,7 @@ The Vercel AI SDK (`ai` 7) against plugboard, through its three ways in: `create
 | `wrong_key.ts` | E1 | a wrong key (401 `invalid_api_key`), as `APICallError` |
 | `unknown_model.ts` | E2 | an unknown model (404 `model_not_found`), as `APICallError` |
 
-Each file has a `run` function that takes a client (a function from a model id to a model) and returns the observations the checks read. `run.ts` is the runner the harness starts; it prints results and writes nothing. Every scenario runs on each of the three ways in (the `variant` in the run is `compat`, `openai-chat` or `responses`), except S7, E1 and E2, which use `compat`.
+Each file has a `run` function that takes a client (a function from a model id to a model) and returns the observations the checks read. `run.ts` is the runner the harness starts; it prints results and writes nothing. Every scenario runs on each of the three ways in (the `variant` in the run is `compat`, `openai-chat` or `responses`), except S7, E1 and E2, which use `compat`. S2 also runs `responses-store-false`: `openai(id)` with `store: false` on the call, so the SDK sends the whole history instead of `item_reference` items. Plugboard resolves an `item_reference` only while it holds that answer (one hour, the last 1000 answers per app), so the default `store: true` works for a live conversation and fails with a 400 `item_not_found` after a restart or expiry (see [responses.md](../../docs/responses.md)). That failure is documented, not run here.
 
 ## Setup
 
@@ -68,7 +68,7 @@ bunx tsc --noEmit
 
 ## Known gaps
 
-Scripted and live (`runs/live/2026-10-13-c97ac66`, plugboard 0.26.0): none. All scenarios pass on all three ways in, including `openai(id)` on `/v1/responses`.
+Scripted and live (`runs/live/2026-10-16-8ef91b5`, plugboard 0.37.0): none. All scenarios pass on all three ways in, including `openai(id)` on `/v1/responses`, and S2 passes with `store: false`. The earlier live run `runs/live/2026-10-13-c97ac66` (plugboard 0.26.0) is kept as recorded.
 
 The 2026-10-11 record under `runs/live/2026-10-11-3fcedc7/REPORT.md` predates this example and shows the old `openai-default` failure. Per the contract it is kept unchanged.
 

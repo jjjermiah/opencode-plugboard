@@ -1,0 +1,95 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "Reply with exactly: pong",
+                  "type": "input_text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-1>",
+          "error": null,
+          "id": "<id-2>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "fast",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "pong",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-3>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 17,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 126,
+            "output_tokens_details": {
+              "reasoning_tokens": 123
+            },
+            "total_tokens": 143
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=17; output=126; cache_read=0; cache_write=0; cost_usd=0.000066"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

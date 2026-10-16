@@ -6,7 +6,8 @@ import { wireFinish, type Client } from "./providers.ts"
 
 const PROMPT = "What is the weather in Paris? Use the tool."
 
-export async function run(client: Client, model: string) {
+/** `storeOff` is the store variant: `store: false` per call, so the SDK sends the history in full instead of item_reference. */
+export async function run(client: Client, model: string, storeOff = false) {
   const cities: string[] = []
   // #region snippet
   const get_weather = tool({
@@ -17,7 +18,7 @@ export async function run(client: Client, model: string) {
       return weatherResult
     },
   })
-  const result = await generateText({ model: client(model), tools: { get_weather }, stopWhen: isStepCount(4), prompt: PROMPT, maxOutputTokens: 1024 })
+  const result = await generateText({ model: client(model), tools: { get_weather }, stopWhen: isStepCount(4), prompt: PROMPT, maxOutputTokens: 1024, providerOptions: storeOff ? { openai: { store: false } } : undefined })
   // #endregion snippet
   const call = result.steps[0]?.toolCalls[0]
   return {

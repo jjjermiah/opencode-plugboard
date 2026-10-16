@@ -18,14 +18,18 @@ export const compat = createOpenAICompatible({ name: "plugboard", baseURL, apiKe
 export const openai = createOpenAI({ baseURL, apiKey })
 // #endregion snippet
 
-/** `compat` is createOpenAICompatible, `openai-chat` is openai.chat(id), `responses` is openai(id). */
-export type Api = "compat" | "openai-chat" | "responses"
+/**
+ * `compat` is createOpenAICompatible, `openai-chat` is openai.chat(id), `responses` is openai(id). `responses-store-false` is
+ * openai(id) too: the same model, with `store: false` set per call (tools.ts), so the history is sent in full.
+ */
+export type Api = "compat" | "openai-chat" | "responses" | "responses-store-false"
 export type Client = (id: string) => LanguageModel
 
 export const apis: Record<Api, Client> = {
   compat: (id) => compat.chatModel(id),
   "openai-chat": (id) => openai.chat(id),
   responses: (id) => openai(id),
+  "responses-store-false": (id) => openai(id),
 }
 
 /** The SDK says `tool-calls`; the wire and the shared checks say `tool_calls`. */

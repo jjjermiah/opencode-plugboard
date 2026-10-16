@@ -1,17 +1,17 @@
 # OpenAI JS SDK
 
-The OpenAI JS SDK against plugboard: plain chat, a tool round trip, streaming (raw and through the SDK's helper), streaming tool calls, an image, structured output, the model list, and the two error paths. Each scenario is one file you can copy, and the copyable part sits between `// #region` markers. A file with two parts names them: `errors.ts` has `wrong-key` and `unknown-model`, `structured.ts` has `parse` and `raw`. Each snippet declares its own constants, except the image data URL in `image.ts`, which it reads from `_shared/`. Part of the runnable-examples epic [#174](https://github.com/jjjermiah/opencode-plugboard/issues/174).
+The OpenAI JS SDK against plugboard: plain chat, a tool round trip, streaming (raw and through the SDK's helper), streaming tool calls, an image, structured output, the model list, and the two error paths. The Chat Completions scenarios also run on the Responses API (`responses.create`, `responses.stream`, `responses.parse`, `output_text`), as the `responses` variant. Each scenario is one file you can copy, and the copyable part sits between `// #region` markers. A file with two parts names them: `errors.ts` has `wrong-key` and `unknown-model`, `structured.ts` has `parse` and `raw`. Each snippet declares its own constants, except the image data URL in `image.ts`, which it reads from `_shared/`. Part of the runnable-examples epic [#174](https://github.com/jjjermiah/opencode-plugboard/issues/174).
 
 ## What it shows
 
 | File | Scenario | What the snippet does |
 | --- | --- | --- |
-| `chat.ts` | S1 | one non-streamed chat call |
-| `tools.ts` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id |
-| `stream.ts` | S3 | raw stream without usage, then with `include_usage`, and the stream helper that must agree with the second |
+| `chat.ts` | S1 | one non-streamed chat call; `runResponses`, one `responses.create` call read through `output_text` |
+| `tools.ts` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id; `runResponses` sends the whole history back with `store: false`; `runResponsesPreviousId` sends `previous_response_id` instead (a gap, see below) |
+| `stream.ts` | S3 | raw stream without usage, then with `include_usage`, and the stream helper that must agree with the second; `runResponses` streams `responses.stream` events and checks the final response |
 | `stream_tools.ts` | S4 | streamed tool call, arguments accumulated across deltas |
-| `image.ts` | S5 | a red PNG as a data URL in a multi-part message |
-| `structured.ts` | S6 | `chat.completions.parse` with a zod schema through `zodResponseFormat`, and the raw `json_schema` form |
+| `image.ts` | S5 | a red PNG as a data URL in a multi-part message; `runResponses` as an `input_image` part |
+| `structured.ts` | S6 | `chat.completions.parse` with a zod schema through `zodResponseFormat`, and the raw `json_schema` form; `runResponses` with `responses.parse` and `zodTextFormat` |
 | `models.ts` | S7 | `models.list()` and `models.retrieve("fast")` |
 | `errors.ts` | E1, E2 | a wrong key (401) and an unknown model (404) |
 
@@ -57,7 +57,9 @@ bun examples/_harness/run.ts openai-js --target live       # the isolated server
 
 ## Known gaps
 
-None. On both targets all 17 checks pass for `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The live run is `runs/live/2026-10-13-50219b1/`, on the isolated server at the main checkout's commit `50219b1` (plugboard 0.27.0). It ran the ChatGPT model without a quota error, and `models.retrieve` passes there, so the 2026-10-11 gotcha above is resolved. `runs/live/2026-10-13-c97ac66/` is an earlier run at `c97ac66` (0.26.0), before S3 gained its without-usage call; it is kept as recorded.
+`S2 (responses-previous-id)` is a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)): plugboard is stateless and refuses `previous_response_id` with a 400 `unsupported_parameter` ([responses.md](../../docs/responses.md)). Send the whole conversation in `input`, as `runResponses` does. Every other row passes on both targets. The live run of the Responses rows is `runs/live/2026-10-16-8ef91b5/`.
+
+Before the Responses variants, all 17 checks passed for `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The live run is `runs/live/2026-10-13-50219b1/`, on the isolated server at the main checkout's commit `50219b1` (plugboard 0.27.0). It ran the ChatGPT model without a quota error, and `models.retrieve` passes there, so the 2026-10-11 gotcha above is resolved. `runs/live/2026-10-13-c97ac66/` is an earlier run at `c97ac66` (0.26.0), before S3 gained its without-usage call; it is kept as recorded.
 
 The tool-bot runner (`examples/tool-bot/run.ts`, the same SDK) reads its S2 round trip from the capture proxy, since the bot prints only its final answer. See [#320](https://github.com/jjjermiah/opencode-plugboard/issues/320).
 

@@ -23,6 +23,13 @@ def _attempt(call):
         return {"ok": False, "error": f"{type(error).__name__}: {str(error)[:200]}"}
 
 
+def _text(content):
+    """A message's text. Chat Completions gives a string; the Responses path gives a list of content blocks."""
+    if isinstance(content, str):
+        return content
+    return "".join(block.get("text", "") for block in content if isinstance(block, dict))
+
+
 def run(client, model):
     # region snippet
     result = client(model).with_structured_output(Meal, method="json_schema", include_raw=True).invoke(PROMPT)
@@ -30,7 +37,7 @@ def run(client, model):
     meal = result["parsed"]
     if not isinstance(meal, Meal):
         raise AssertionError(f"parse did not give a Meal: {result['parsing_error']!r}")
-    data = json.loads(result["raw"].content)  # the raw JSON, so extra keys would show
+    data = json.loads(_text(result["raw"].content))  # the raw JSON, so extra keys would show
     function_calling = _attempt(lambda: client(model).with_structured_output(Meal, method="function_calling").invoke(PROMPT))
     json_mode = _attempt(
         lambda: client(model).with_structured_output(Meal, method="json_mode").invoke(PROMPT + " Respond as JSON with keys calories and protein_g (numbers).")

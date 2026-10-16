@@ -23,7 +23,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [jan/](jan/) | Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example` | not run | not run |
 | [kilo-code/](kilo-code/) | Kilo Code CLI provider block for plugboard's Chat Completions route | not run | not run |
 | [langchain-js/](langchain-js/) | LangChain JS (`@langchain/openai`): the same scenarios, with a `chat` and an `auto` variant | partial | [`2026-10-13-c97ac66-2`](langchain-js/runs/live/2026-10-13-c97ac66-2/), partial |
-| [langchain-python/](langchain-python/) | LangChain (`langchain-openai`'s `ChatOpenAI`): chat, tools, streaming, images, structured output, models and the error paths | pass | [`2026-10-13-c97ac66`](langchain-python/runs/live/2026-10-13-c97ac66/), pass |
+| [langchain-python/](langchain-python/) | LangChain (`langchain-openai`'s `ChatOpenAI`): chat, tools, streaming, images, structured output, models and the error paths, on Chat Completions and on the Responses API | pass | [`2026-10-16-8ef91b5`](langchain-python/runs/live/2026-10-16-8ef91b5/), pass |
 | [langfuse/](langfuse/) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off | pass | not run |
 | [librechat/](librechat/) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` | not run | not run |
 | [litellm-client/](litellm-client/) | LiteLLM's `completion()` with the `openai/` prefix: a completion, a stream, a tool round trip and structured output | pass | [`2026-10-12-a67e176`](litellm-client/runs/live/2026-10-12-a67e176/), historical record |
@@ -33,9 +33,10 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [n8n/](n8n/) | n8n in Docker, driven headless through webhooks: S1 to S7; workflows in `workflows/` | pass | [`2026-10-13-b92fb6f`](n8n/runs/live/2026-10-13-b92fb6f/), partial |
 | [open-webui/](open-webui/) | Open WebUI in Docker, pointed at plugboard on the host, with the plugboard options it needs; driven over its HTTP API | pass | [`2026-10-13-0cf8030`](open-webui/runs/live/2026-10-13-0cf8030/), pass |
 | [openai-agents/](openai-agents/) | The OpenAI Agents SDK on the Responses API and on Chat Completions: text, stream, tool and structured output. Run with `uv run` | pass | [`2026-10-12-a67e176`](openai-agents/runs/live/2026-10-12-a67e176/), historical record |
+| [openai-agents-js/](openai-agents-js/) | The OpenAI Agents SDK for JavaScript on the Responses API: text, stream, tool and structured output. Run with `bun` | pass | [`2026-10-16-8ef91b5`](openai-agents-js/runs/live/2026-10-16-8ef91b5/), pass |
 | [openai-dotnet/](openai-dotnet/) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard | pass | not run |
-| [openai-js/](openai-js/) | The OpenAI JS SDK: the same scenarios in TypeScript | pass | [`2026-10-13-50219b1`](openai-js/runs/live/2026-10-13-50219b1/), pass |
-| [openai-python/](openai-python/) | The OpenAI Python SDK: chat, tools, streaming, images, structured output, models and the error paths | pass | [`2026-10-12-a38860b`](openai-python/runs/live/2026-10-12-a38860b/), pass |
+| [openai-js/](openai-js/) | The OpenAI JS SDK: the same scenarios in TypeScript, on Chat Completions and on the Responses API | partial | [`2026-10-16-8ef91b5`](openai-js/runs/live/2026-10-16-8ef91b5/), partial |
+| [openai-python/](openai-python/) | The OpenAI Python SDK: chat, tools, streaming, images, structured output, models and the error paths, on Chat Completions and on the Responses API | partial | [`2026-10-16-8ef91b5`](openai-python/runs/live/2026-10-16-8ef91b5/), partial |
 | [promptfoo/](promptfoo/) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check | not run | not run |
 | [pydantic-ai/](pydantic-ai/) | pydantic-ai (`OpenAIChatModel`, Chat Completions): chat, tools, streaming, images, structured output and the error paths | pass | [`2026-10-13-c97ac66-2`](pydantic-ai/runs/live/2026-10-13-c97ac66-2/), pass |
 | [self-hosted/](self-hosted/) | Self-hosted apps configured by env or compose: Karakeep, Frigate (`config.yml`), paperless-gpt, paperless-ai (`.env` and compose), PR-Agent (`.env`), SiYuan (`.env` and compose). Page per app in docs/self-hosted | not run | not run |
@@ -43,7 +44,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [sillytavern/](sillytavern/) | SillyTavern in Docker; the plugboard endpoint and key are set in its UI | not run | not run |
 | [smolagents/](smolagents/) | smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`) | partial | not run |
 | [tool-bot/](tool-bot/) | The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines | pass | [`2026-10-13-50219b1`](tool-bot/runs/live/2026-10-13-50219b1/), partial |
-| [vercel-ai-sdk/](vercel-ai-sdk/) | The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses`. Chat, tools, streaming, structured output, images, models and errors | pass | [`2026-10-13-c97ac66`](vercel-ai-sdk/runs/live/2026-10-13-c97ac66/), pass |
+| [vercel-ai-sdk/](vercel-ai-sdk/) | The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses`. Chat, tools, streaming, structured output, images, models and errors | pass | [`2026-10-16-8ef91b5`](vercel-ai-sdk/runs/live/2026-10-16-8ef91b5/), pass |
 | [zed/](zed/) | Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider | not run | not run |
 <!-- examples-index:end -->
 

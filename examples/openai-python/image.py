@@ -25,6 +25,25 @@ def run(client, model):
     return {"text": response.choices[0].message.content or ""}
 
 
+def run_responses(client, model):
+    # region snippet-responses
+    response = client.responses.create(
+        model=model,
+        input=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "What color is this image? One word."},
+                    {"type": "input_image", "image_url": RED, "detail": "auto"},
+                ],
+            }
+        ],
+        max_output_tokens=1024,
+    )
+    # endregion snippet-responses
+    return {"text": response.output_text}
+
+
 if __name__ == "__main__":
     from openai import OpenAI
 

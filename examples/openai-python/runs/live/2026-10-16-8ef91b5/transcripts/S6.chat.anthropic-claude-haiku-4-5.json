@@ -1,0 +1,252 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "response_format": {
+            "json_schema": {
+              "name": "Meal",
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "title": "Calories",
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "title": "Protein G",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "title": "Meal",
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "json_schema"
+          },
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "{\"calories\":235,\"protein_g\":15.5}",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-2>",
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 162,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 663,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 825
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=663; output=162; cache_read=0; cache_write=0; cost_usd=0.001473"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "response_format": {
+            "json_schema": {
+              "name": "Meal",
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "title": "Calories",
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "title": "Protein G",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "title": "Meal",
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "json_schema"
+          },
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "{\"calories\":235,\"protein_g\":15.7}",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-2>",
+          "id": "<id-4>",
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 173,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 663,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 836
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-3>",
+          "x-plugboard-usage": "input=663; output=173; cache_read=0; cache_write=0; cost_usd=0.001528"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "response_format": {
+            "json_schema": {
+              "name": "meal_estimate",
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "json_schema"
+          }
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "{\"calories\":245,\"protein_g\":16.5}",
+                "refusal": null,
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": "<time-3>",
+          "id": "<id-6>",
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 189,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 641,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "total_tokens": 830
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-5>",
+          "x-plugboard-usage": "input=641; output=189; cache_read=0; cache_write=0; cost_usd=0.001586"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
