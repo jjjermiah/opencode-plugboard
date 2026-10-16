@@ -1164,6 +1164,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/http/transport.test.ts"],
   },
   {
+    id: "P441-committed-stream-socket-closes",
+    invariant: "#441",
+    file: "src/http.ts",
+    find: "if (!request.socket?.destroyed) request.socket?.end()",
+    replace: "void 0",
+    tests: ["test/http/transport.test.ts"],
+  },
+  {
     id: "P423-choice-openers-in-order",
     invariant: "#423",
     file: "src/openai/fanout.ts",
