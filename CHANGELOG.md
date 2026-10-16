@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.39.0] - 2026-10-16: Fair Shares for Everyone
+
+**Full diff:** [v0.38.0...v0.39.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...v0.39.0)
+
 ### Fixed
 
 - **Usage of a cut-short run is counted in usage and budgets** (since 0.39.0). A run that ended without its finish, because the caller left or the request timed out after the host had reported usage, was not recorded, so its tokens and cost did not count toward `budgets`. The usage the host reported is now recorded and charged on every route, stream and non-stream. A client that left is given the app's `settleMs` window (default 2000 ms) for its step to end: nothing waits for it, and the usage the host reports inside the window is charged when it arrives. A tool call or a further step inside the window stops the run at once, so no tool runs and no step starts for a client that left. A request timeout or a cancel by plugboard itself interrupts at once. A finish that was already yielded is charged once. A run whose host reported no usage is counted in `plugboard_usage_missing_total{reason="disconnect"}`.
@@ -22,6 +28,75 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - **`apps.<name>.stopSettleMs` is renamed `apps.<name>.settleMs`** (since 0.39.0), because it now also applies to a client that left. Its first release was 0.38.0, so this breaks that option. The metric `plugboard_stop_usage_missing_total{app}` is renamed `plugboard_usage_missing_total{app,reason}`: dashboards that read the old name need updating. `limits.bodyReadTimeoutMs` restarts with every chunk (it was the whole body's deadline in 0.38.0), so slow uploads are admitted longer: that is intended, and the total is now `limits.bodyReadMaxMs`.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (4 commits)</summary>
+
+#### Fixes
+
+**fix(http): charge cut-short runs and cap body reads per app** ([`f75bb6c`](https://github.com/jjjermiah/opencode-plugboard/commit/f75bb6c5b2b1ce0dd41ba8cbb830362e7aa15ad8))
+
+Two fixes on the request path.
+
+Usage of cut-short runs. A run that ended without its finish (the caller left, or the request timed out after the host had reported usage) recorded nothing, so its tokens and cost did not count toward budgets. The session caller now reports the host's running usage through a new CallContext callback (onRunUsage). withUsage records it when the finish is absent, and the recorder charges the tokens whether or not the call was answered. A call that never reported usage is recorded as before. Applies on every route, stream and non-stream.
+
+Per-app body reads. Request bodies were read under one process-wide byte budget, so one app's large, slow uploads could make every other app's requests fail with 503 server_busy. Each app may now hold half of limits.maxBodyBytesInFlight, charged in addition to the global budget and released on every exit path. The global cap and the 408 read deadline are unchanged, so clients that are not hogging the budget see no difference.
+
+Decisions. The per-app share is a fixed half, not a new setting: raising maxBodyBytesInFlight raises both. Charging the share against the app's maxConcurrent was rejected because the body is read before the app's concurrency slot is taken.
+
+Tests. test/session/cancel-usage.test.ts runs the session caller with the fake host: usage is reported, the client cancels, the usage is recorded and the next call is refused by the token budget; a cut-short run with no usage charges nothing. test/http/transport.test.ts covers two stalled uploads from one app (a third is 503, another app is 200, the stalled ones get 408 and free the share) and a stalled upload freeing its slot after the deadline. Mutation catalogue: four new entries, all killed.
+
+Validation: typecheck clean; bun test 2772 pass, 0 fail, 126 skipped (live, no server); coverage ratchet met, floors raised and committed; coverage-manifest, check-pack, smoke-pack, docs:build and the scripted examples pass; bun run mutations 114 of 114 killed.
+
+Docs: configuration.md (body share, usage tokens), architecture.md (I23, I28), errors.md (server_busy).
+
+**fix(http): settle window for a client that left, and settleMs rename** ([`221f877`](https://github.com/jjjermiah/opencode-plugboard/commit/221f877794c094359906c2c46c6a5d1b20019855))
+
+A client that left mid-run was interrupted at once, so the host's step usage was lost whenever the step had not finished. The stop-sequence path already gives the host a window (stopSettleMs) for its step to end. A client that left now gets the same window, and nothing waits for it: the caller is gone, so the usage is recorded when the host reports it.
+
+Flow: a client that leaves (not a timeout, no stop match) is not interrupted. The caller starts a detached task. If the host ends its step (or the execution) within the window, its usage is charged and the host is not interrupted. If not, the host is interrupted and given the drain window to report. A run with no usage reported at all is charged nothing and counted in plugboard_usage_missing_total{reason="disconnect"}. A request timeout still interrupts at once.
+
+Rename: the option is now apps.<name>.settleMs, since it applies to both cases. stopSettleMs was released in 0.38.0 only; the rename is breaking for that option and is noted in the CHANGELOG. The metric plugboard_stop_usage_missing_total{app} is now plugboard_usage_missing_total{app,reason}, reason stop or disconnect.
+
+withUsage: a usage report that arrives after the run's record is charged on its own, once, so the late step usage is not lost.
+
+Tests: test/session/cancel-usage.test.ts gains the window cases (step end inside the window is charged without an interrupt; a silent host is interrupted and counted; timeout still interrupts at once, with its usage charged; settleMs 0 interrupts at once). Two of them failed before this change. Mutation catalogue: three entries for the new behaviour. Full run: 117 of 117 killed.
+
+Validation: typecheck clean; bun test 2776 pass, 0 fail, 126 skipped; coverage ratchet met (functions 94.7%, floors committed); manifest, pack, smoke-pack, docs:build and scripted examples pass.
+
+**fix(http): stop a left client's run at once on a tool call, split the body budget per app** ([`0327ea3`](https://github.com/jjjermiah/opencode-plugboard/commit/0327ea3c6c901c4ebc4e13f4531aeb61de55c50f))
+
+Review follow-ups on the settle window and the body budget.
+
+Client that left. While the settle window runs, a tool call (client or server) or a step that asks for another step (a finish other than a plain stop, or server calls) stops the host at once, as the stop path does. No new step starts for a client that left. A finish already yielded when the client leaves is charged once: the window is only used when no finish was emitted. Only a real client disconnect gets the window. A timeout, and a cancel by plugboard itself (a sibling choice of n failed, now RequestAborted "cancelled"), interrupt at once.
+
+Body budget. The shared pool with a reserve did not hold for a fresh app once two or more apps held bytes, so it is replaced: with several app keys each app may hold its even share of limits.maxBodyBytesInFlight. parseOptions refuses a budget that does not give each share one body of the largest size (limits.maxBodyBytes), and the error names the figure to raise it to. One key or none has no split.
+
+Body deadlines. limits.bodyReadTimeoutMs is an idle timer that restarts with every chunk. The new limits.bodyReadMaxMs (default 5 minutes) bounds the whole body. Defaults keep a 10 MiB upload on a 2 Mbit/s link working (about 42 s). Both answer 408. The changed message is documented.
+
+Tests: cancel-usage gains the tool call, server call, step end, single interrupt, yielded-finish race and internal cancel cases; body-admission covers the idle reset, the ceiling, a chunked body against its share, a body larger than its share, release after 413 and after a client abort, and the config split. The #196 late-call expectations now count the stop at the call. Mutation catalogue: six entries for the new guards. Full run 122 of 122 killed.
+
+Validation: typecheck clean; bun test 2792 pass, 0 fail, 126 skipped; coverage ratchet met (functions 94.8%, floors committed); manifest, pack, smoke-pack, docs:build and scripted examples pass.
+
+**fix(http): size the body budget by apps, not keys, so an unset setting never refuses to start** ([`3b2a8aa`](https://github.com/jjjermiah/opencode-plugboard/commit/3b2a8aaf68cf1b715891ab0d8b09427ea9dd252a))
+
+The even split of the body budget by key count refused to start a config that sets nothing once it had five or more apps (5 x 32 MiB > 128 MiB). Upgrades must not break that config.
+
+Apps, not keys. The split counts apps: the configured keys' apps and the runtime keys' apps, each once. Several keys of one app are one share.
+
+Unset budget. limits.maxBodyBytesInFlight unset is now max(128 MiB, the sum of the apps' largest bodies), so every app always has room for one body of its largest size. The sum uses limits.apps.<name>.maxBodyBytes per app. Each app's share is proportional to its largest body, so a share always holds one body of that size whenever the budget covers the sum.
+
+Set budget. Only an explicitly set budget below the sum fails at load, with the same clear error and the figure to raise it to.
+
+Runtime keys. The admin key API refuses a key for a new app with 409 body_budget_insufficient when a set budget cannot hold it (nothing is created). Unset, the budget grows instead. The code is in PROBLEM_CODES and docs/errors.md.
+
+Tests: six apps with defaults load and each admits a 32 MiB body; an explicit cap below their requirement fails at load; several keys of one app count once in the split; the admin 409 with a set budget and 201 without; the config split checks. Mutation catalogue: entries for the default growth and the admin refusal. Full run 124 of 124 killed.
+
+Validation: typecheck clean; bun test 2797 pass, 0 fail, 126 skipped; coverage ratchet met; manifest, pack, smoke-pack, docs:build and scripted examples pass.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.38.0] - 2026-10-16: Stops Where It Should
 
@@ -7028,7 +7103,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...v0.36.0
