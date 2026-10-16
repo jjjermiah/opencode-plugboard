@@ -68,6 +68,7 @@ The Python clients are examples: each has a runner in `examples/<client>/` (its 
 | Client | Package | Fake (2026-10-12) | Live (isolated dev server, 2026-10-12) |
 |---|---|---|---|
 | [OpenAI Agents SDK](clients/openai-agents.md), Responses and Chat Completions | `openai-agents` 0.23.1 | 8 pass, 0 fail | 8 pass, 0 fail (`fast`) |
+| [OpenAI Agents SDK (JS)](clients/openai-agents-js.md), Responses | `@openai/agents` 0.20.0 | 16 pass, 0 fail, 1 n/a (S7) | pass on `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`; `fast` 429 (quota) |
 | [LiteLLM as a client](clients/litellm-client.md) | `litellm` 1.105.0 | 4 pass, 0 fail | 4 pass, 0 fail (`fast`) |
 | [Instructor](clients/instructor.md), TOOLS, JSON_SCHEMA and partial stream | `instructor` 1.17.0 | 3 pass, 0 fail | 3 pass, 0 fail (`fast`) |
 | [DSPy](clients/dspy.md), predict, chain-of-thought and typed output | `dspy` 3.4.0 | 3 pass, 0 fail | 3 pass, 0 fail (`fast`) |

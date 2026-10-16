@@ -57,7 +57,7 @@ bun examples/_harness/run.ts openai-js --target live       # the isolated server
 
 ## Known gaps
 
-`S2 (responses-previous-id)` is a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)): plugboard is stateless and refuses `previous_response_id` with a 400 `unsupported_parameter` ([responses.md](../../docs/responses.md)). Send the whole conversation in `input`, as `runResponses` does. Every other row passes on both targets. The live run of the Responses rows is `runs/live/2026-10-16-8ef91b5/`.
+`S2 (responses-previous-id)` is a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)): plugboard is stateless and refuses `previous_response_id` with a 400 `unsupported_parameter` ([responses.md](../../docs/responses.md)). Send the whole conversation in `input`, as `runResponses` does. Every other non-`fast` row passes on both targets. The live run of the Responses rows is `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0); its `fast` rows fail with an upstream 429 (quota), not a plugboard finding.
 
 Before the Responses variants, all 17 checks passed for `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The live run is `runs/live/2026-10-13-50219b1/`, on the isolated server at the main checkout's commit `50219b1` (plugboard 0.27.0). It ran the ChatGPT model without a quota error, and `models.retrieve` passes there, so the 2026-10-11 gotcha above is resolved. `runs/live/2026-10-13-c97ac66/` is an earlier run at `c97ac66` (0.26.0), before S3 gained its without-usage call; it is kept as recorded.
 

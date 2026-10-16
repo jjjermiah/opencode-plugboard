@@ -57,7 +57,7 @@ bun examples/_harness/run.ts openai-python --target live       # the isolated se
 
 ## Known gaps
 
-`S2 (responses-previous-id)` is a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)): plugboard is stateless and refuses `previous_response_id` with a 400 `unsupported_parameter` (see [responses.md](../../docs/responses.md)). Send the whole conversation in `input` instead, as `run_responses` does. Every other row passes on both targets; the live run is `runs/live/2026-10-16-8ef91b5/`.
+`S2 (responses-previous-id)` is a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)): plugboard is stateless and refuses `previous_response_id` with a 400 `unsupported_parameter` (see [responses.md](../../docs/responses.md)). Send the whole conversation in `input` instead, as `run_responses` does. Every other non-`fast` row passes on both targets; the live run is `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0). Its `fast` rows fail with an upstream 429 (quota), not a plugboard finding.
 
 ## Historical record
 

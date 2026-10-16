@@ -2,7 +2,7 @@
 
 <ExampleResult example="openai-agents-js" />
 
-Tested: `@openai/agents` 0.20.0 (with `openai` 7.32.0), against the isolated live dev server. The example's scripted run is checked in CI. The SDK defaults to the Responses API, so every row here exercises `/v1/responses`. The Python SDK is on the [OpenAI Agents SDK page](openai-agents.md), which also runs Chat Completions.
+Tested: `@openai/agents` 0.20.0 (with `openai` 7.32.0). Live record [`2026-10-16-95261a4`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-agents-js/runs/live/2026-10-16-95261a4) at plugboard 0.41.0 (main `v0.41.0-4-g95261a4`): every row on `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low` passes; the `fast` rows failed with an upstream 429. The example's scripted run is checked in CI. The SDK defaults to the Responses API, so every row here exercises `/v1/responses`. The Python SDK is on the [OpenAI Agents SDK page](openai-agents.md), which also runs Chat Completions.
 
 The example builds one model from the client. A model object sends the id as given; the SDK's own string lookup would read `anthropic/...` or `openai/...` as a provider prefix. Tracing is off (`setTracingDisabled(true)`); without it the SDK posts traces to OpenAI.
 
