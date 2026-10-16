@@ -15,10 +15,17 @@ export const USER_DROPPED_HEADER = "x-plugboard-user-dropped"
 
 const END_USER = /^[A-Za-z0-9._@:-]{1,64}$/
 
+/**
+ * Names no end user may take: the keys an object inherits (a value like `__proto__` once corrupted the shared usage counters)
+ * and `_other`, the overflow slot of the usage store (`src/usage.ts`). Refused like any other invalid value.
+ */
+const RESERVED_END_USERS: ReadonlySet<string> = new Set(["__proto__", "prototype", "constructor", "_other"])
+
 /** The user id to keep, or undefined when the value is absent, blank or not allowed. */
 export function sanitizeEndUser(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined
   const trimmed = raw.trim()
+  if (RESERVED_END_USERS.has(trimmed)) return undefined
   return END_USER.test(trimmed) ? trimmed : undefined
 }
 

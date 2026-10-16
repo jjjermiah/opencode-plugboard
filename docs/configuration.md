@@ -582,7 +582,7 @@ A bot that serves many people is one app, so its history and usage would be one 
 
 - OpenAI Chat Completions, Responses and legacy completions read the `user` field. Anthropic Messages reads `metadata.user_id`. Gemini has no such field.
 - An app with `userHeader` (since 0.32.0, #272) reads the user from that request header instead, when the request sends it. A bot behind a proxy that sets `x-user-id` gets per-user history and usage without changing the bot. The header is checked by the same rules, and a refused header is dropped without falling back to the body. Gemini is not covered: it has no user to read.
-- The value is trimmed and kept when it is at most 64 characters of `A-Z a-z 0-9 . _ @ : -`. Anything else is dropped, and the response carries `x-plugboard-user-dropped: 1`. A kept value is only ever a label: it never names a directory or a file.
+- The value is trimmed and kept when it is at most 64 characters of `A-Z a-z 0-9 . _ @ : -`. Anything else is dropped, and the response carries `x-plugboard-user-dropped: 1`. The names `__proto__`, `prototype`, `constructor` and `_other` are dropped too (`_other` is the overflow slot below). A kept value is only ever a label: it never names a directory or a file.
 - A kept user prefixes the session title, as `[alice] first words of the prompt`, and is logged as `user=` on the request line.
 - `GET /plugboard/usage` gains a `users` object per app, with `requests`, `tokens` and `costUsd` per user, summed over the range. A day keeps at most 200 distinct users per app; later ones count under `_other`. `GET /plugboard/usage?user=alice` restricts `users` to that user. The app totals and models still cover every user.
 

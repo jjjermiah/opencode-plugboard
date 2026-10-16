@@ -14,7 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- A crafted end-user value could corrupt shared counters and make later requests fail; fixed (since 0.38.0).
+- A metrics or usage write that fails no longer changes a request's answer or stops its access log (since 0.38.0).
 
 ## [0.37.0] - 2026-10-15: Copilot Thinks Too
 

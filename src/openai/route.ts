@@ -117,6 +117,18 @@ const DISCOVERY_ROUTES = ["GET /", "GET /v1"]
 /** Allows a page's inline style and nothing else: no scripts, images, fonts or frames. */
 const PAGE_HEADERS = { "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'", "x-frame-options": "DENY", "referrer-policy": "no-referrer" }
 
+/**
+ * Runs one metrics or usage write. A throw there is logged (once per failed write, under the request's id) and the request goes on:
+ * it never changes the answer or stops the access log.
+ */
+function recorded(write: () => void): void {
+  try {
+    write()
+  } catch (caught) {
+    logError("metrics.record_failed", { error: errorMessage(caught) })
+  }
+}
+
 /** Records the token usage of every finished model call (see `plugboard_tokens_total`); events pass through untouched. */
 function metered(caller: ModelCaller, metrics: Metrics): ModelCaller {
   return {
@@ -124,7 +136,9 @@ function metered(caller: ModelCaller, metrics: Metrics): ModelCaller {
       const inner = caller.stream(request, context)
       return (async function* () {
         for await (const event of inner) {
-          if (event.type === "finish" && event.usage) metrics.tokens(context.app, event.usage)
+          recorded(() => {
+            if (event.type === "finish" && event.usage) metrics.tokens(context.app, event.usage)
+          })
           yield event
         }
       })()
@@ -339,7 +353,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     // An app may be limited to some endpoints (#268). Checked after authentication and route existence (I15): a refusal is a 403, never a 404.
-    const endpoint: Endpoint | undefined = gemini ? "gemini" : modelId !== undefined ? "models" : ENDPOINT_BY_ROUTE[route]
+    const endpoint: Endpoint | undefined = gemini ? "gemini" : modelId !== undefined ? "models" : Object.hasOwn(ENDPOINT_BY_ROUTE, route) ? ENDPOINT_BY_ROUTE[route] : undefined
     const refusal = endpoint === undefined ? undefined : endpointRefusal(host.options, auth.app, endpoint)
     if (refusal) return fail(response, refusal)
 
@@ -400,7 +414,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (sampled && sampled.dropped.length > 0) {
       info.dropped = sampled.dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
-      metrics?.dropped(sampled.dropped)
+      recorded(() => metrics?.dropped(sampled.dropped))
     }
     const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, call)
@@ -498,7 +512,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const started = Date.now()
     const info: RequestInfo = { route: "unparsed" }
     if (host.options.listen.trustProxy !== undefined) info.client = clientAddress(request, host.options.listen.trustProxy)
-    metrics?.requestStarted()
+    recorded(() => metrics?.requestStarted())
     // The deadline is armed after the app is known, so an app's own `requestTimeoutMs` (#257) applies from the first await.
     const app = await requestApp(request)
     const scope = beginRequest(request, response, requestTimeoutFor(host.options, app), undefined, requestTimeoutOption(host.options, app))
@@ -541,8 +555,10 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         finishRequest(request, response)
       } catch {}
       const ms = Date.now() - started
-      metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms })
-      if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms, ...(info.user === undefined ? {} : { user: info.user }) })
+      recorded(() => metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms }))
+      recorded(() => {
+        if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms, ...(info.user === undefined ? {} : { user: info.user }) })
+      })
       // Probes and scrapes that succeed are not worth a line each. A readiness probe is never logged: it repeats until the backend is ready.
       const probe = READY_ROUTES.includes(info.route) || ((HEALTH_ROUTES.includes(info.route) || info.route === "GET /plugboard/metrics") && outcome === "ok")
       if (!probe) {

@@ -34,10 +34,10 @@ afterEach(async () => {
 })
 
 /** A route answering every call with 10 input and 5 output tokens, and a usage recorder when `usage` is set. */
-async function start({ usage = false }: { usage?: boolean } = {}): Promise<RouteServer> {
+async function start({ usage = false, options }: { usage?: boolean; options?: Record<string, unknown> } = {}): Promise<RouteServer> {
   recorder = usage ? createUsageRecorder({ state: createUsageState(), storage: new FakeStorage(), loadCatalog: async () => CATALOG, retentionDays: 90 }) : undefined
   const caller = withUsage(new FakeModelCaller(() => [ev.text("hi"), ev.finish("stop", { inputTokens: 10, outputTokens: 5 })]), recorder)
-  server = await startRoute({ caller, ...(recorder ? { usage: recorder } : {}) })
+  server = await startRoute({ caller, ...(options ? { options } : {}), ...(recorder ? { usage: recorder } : {}) })
   return server
 }
 
@@ -77,6 +77,63 @@ describe("#57 the end user reaches the request log", () => {
     const reply = await srv.send(chat())
     expect(reply.headers).not.toHaveProperty("x-plugboard-user-dropped")
     expect(logs.of("request")[0]!.fields).not.toHaveProperty("user")
+  })
+})
+
+const withUser = (user: string): Array<[string, SendInit]> => [
+  ["chat", chat(user)],
+  ["completions", { method: "POST", path: "/v1/completions", body: { model: "test/echo", prompt: "hi", user } }],
+  ["responses", { method: "POST", path: "/v1/responses", body: { model: "test/echo", input: "hi", user } }],
+  ["messages", messages(user)],
+]
+
+describe("end user names an object inherits: the shared counters and the routes survive", () => {
+  // A name like `__proto__` once wrote the counters onto Object.prototype of the whole process, and every later request failed.
+  afterEach(() => {
+    for (const key of ["requests", "tokens", "costUsd"]) delete (Object.prototype as Record<string, unknown>)[key]
+  })
+
+  test.each([
+    ["__proto__", true],
+    ["constructor", true],
+    ["prototype", true],
+    ["_other", true],
+    ["toString", false],
+  ])("#57 %j on every route that takes a user: 200 each time, metrics and usage keep working", async (name, dropped) => {
+    const srv = await start({ usage: true, options: { metrics: true } })
+    for (const [route, send] of withUser(name)) {
+      const reply = await srv.send(send)
+      expect({ route, status: reply.status }).toEqual({ route, status: 200 })
+      expect(reply.headers["x-plugboard-user-dropped"]).toBe(dropped ? "1" : undefined)
+    }
+    expect(({} as Record<string, unknown>).requests).toBeUndefined()
+    expect(({} as Record<string, unknown>).tokens).toBeUndefined()
+    expect(({} as Record<string, unknown>).costUsd).toBeUndefined()
+
+    expect((await srv.send({ path: "/plugboard/metrics" })).status).toBe(200)
+    expect((await srv.send(chat("alice"))).status).toBe(200)
+    await until(
+      async () => ((await recorder!.query({ app: "default" })) as UsageReport).apps.default?.users?.alice?.requests === 1,
+      1_000,
+      "alice counted",
+    )
+    const report = ((await recorder!.query({ app: "default" })) as UsageReport).apps.default!
+    expect(report.totals.requests).toBe(withUser(name).length + 1)
+    expect(Object.hasOwn(report.users!, "alice")).toBe(true)
+  })
+
+  test("#57 a metrics or usage write that throws neither changes the answer nor stops the access log", async () => {
+    const srv = await start({ usage: true, options: { metrics: true } })
+    const boom = () => {
+      throw new Error("metrics down")
+    }
+    Object.assign(srv.metrics, { requestStarted: boom, requestFinished: boom, tokens: boom, dropped: boom })
+    const reply = await srv.send(chat("alice"))
+    expect(reply.status).toBe(200)
+    expect(logs.of("request")[0]!.fields).toMatchObject({ status: "200", user: "alice", outcome: "ok" })
+    expect(logs.of("metrics.record_failed").length).toBeGreaterThan(0)
+    expect(logs.of("metrics.record_failed")[0]!.level).toBe("error")
+    await until(async () => ((await recorder!.query({ app: "default" })) as UsageReport).totals.requests === 1, 1_000, "usage still recorded")
   })
 })
 

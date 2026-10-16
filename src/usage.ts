@@ -214,6 +214,12 @@ const dateOf = (key: string): string | undefined => {
   return parts.length === 3 && parts[0] === "usage" && DATE_PATTERN.test(parts[2] ?? "") ? parts[2] : undefined
 }
 
+/**
+ * A record keyed by names the requests choose (end users, models). No prototype, so a name like `__proto__` or `constructor` is an
+ * ordinary key: a lookup never returns an inherited value, and a write never reaches `Object.prototype`.
+ */
+const nullRecord = <T>(): Record<string, T> => Object.create(null)
+
 export function emptyDay(): DayRecord {
   return {
     requests: 0,
@@ -226,8 +232,8 @@ export function emptyDay(): DayRecord {
     fallbacks: 0,
     limited: 0,
     unpricedRequests: 0,
-    perModel: {},
-    users: {},
+    perModel: nullRecord<ModelUsage>(),
+    users: nullRecord<UserUsage>(),
   }
 }
 
@@ -317,7 +323,7 @@ export function sumDays(parts: ReadonlyArray<DayRecord>): DayRecord {
 
 /** Per end user, summed over the day records (`only`: that user alone). */
 function sumUsers(parts: ReadonlyArray<DayRecord>, only?: string): Record<string, UserUsage> {
-  const out: Record<string, UserUsage> = {}
+  const out = nullRecord<UserUsage>()
   for (const part of parts)
     for (const [user, usage] of Object.entries(part.users ?? {})) {
       if (only !== undefined && user !== only) continue
@@ -352,12 +358,12 @@ export function fromJson(value: unknown): DayRecord {
   const latency = object(raw.latency)
   const tokens = object(raw.tokens)
   const buckets: unknown[] = Array.isArray(latency.buckets) ? latency.buckets : []
-  const perModel: Record<string, ModelUsage> = {}
+  const perModel = nullRecord<ModelUsage>()
   for (const [model, item] of Object.entries(object(raw.perModel))) {
     const usage = object(item)
     perModel[model] = { requests: nonNegative(usage.requests), tokens: nonNegative(usage.tokens), costUsd: nonNegative(usage.costUsd) }
   }
-  const users: Record<string, UserUsage> = {}
+  const users = nullRecord<UserUsage>()
   for (const [user, item] of Object.entries(object(raw.users))) {
     const usage = object(item)
     users[user] = { requests: nonNegative(usage.requests), tokens: nonNegative(usage.tokens), costUsd: nonNegative(usage.costUsd) }
@@ -481,13 +487,13 @@ async function readDay(storage: StoragePort, key: string): Promise<DayRecord | u
   }
 }
 
-/** Distinct end users a day keeps per app. Later users count under `_other` (the key cannot be an end user: no `_`). */
+/** Distinct end users a day keeps per app. Later users count under `_other`, which `sanitizeEndUser` never keeps as a user (src/user.ts). */
 export const USERS_PER_DAY = 200
 const OTHER_USER = "_other"
 
 /** The counts of one end user in a day, created on first use; past the cap the request counts under `_other`. */
 function userSlot(day: DayRecord, user: string): UserUsage {
-  if (day.users[user]) return day.users[user]
+  if (Object.hasOwn(day.users, user)) return day.users[user]!
   const distinct = Object.keys(day.users).length - (day.users[OTHER_USER] ? 1 : 0)
   const key = distinct < USERS_PER_DAY ? user : OTHER_USER
   return (day.users[key] ??= { requests: 0, tokens: 0, costUsd: 0 })
@@ -699,7 +705,7 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
       }
 
       const names = [...new Set([...byApp.keys(), ...(input.app === undefined ? [] : [input.app])])].sort()
-      const apps: Record<string, UsageAppReport> = {}
+      const apps = nullRecord<UsageAppReport>()
       const appTotals: DayRecord[] = []
       for (const app of names) {
         const rows = (byApp.get(app) ?? []).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
