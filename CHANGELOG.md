@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Gemini `inlineData` from the Python SDK** ([#401](https://github.com/jjjermiah/opencode-plugboard/issues/401), [#409](https://github.com/jjjermiah/opencode-plugboard/issues/409), since 0.41.0). The google-genai Python SDK sends `inlineData` with `mime_type` (snake_case), and plugboard answered 400 `inlineData needs mimeType and base64 data`. The inline MIME type is now read in either case, like the other Gemini fields. The SDK also sends `inlineData.data` as URL-safe base64 (`-` and `_`), which plugboard answered 400 `Image data URL is not valid base64`: it is now normalised to standard base64 before the image check. Data with any other character, or a length no base64 string has, is still refused. `fileData`, `functionCall` and `functionResponse` were already read in both cases and are covered by tests now.
 
 ## [0.40.0] - 2026-10-16: Quick to Move On
 
