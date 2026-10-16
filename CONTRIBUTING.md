@@ -16,6 +16,16 @@ bun test
 
 The type check also checks host compatibility: it fails when the pinned `@opencode/plugin` changes shape. CI runs the type check and the tests on every push and pull request.
 
+Before you open a pull request, run the whole local chain in one command:
+
+```sh
+bun run validate              # typecheck, tests + coverage gates, coverage manifest, pack, docs, scripted examples
+bun run validate --mutations  # also the mutation run, after touching a guard
+bun run validate --skip examples
+```
+
+It runs in the foreground, writes each step's full output to `.agents/validate/<step>.log`, and prints one line per step plus the tail of a failed step's log. The scripted examples take about six minutes; the rest about one. After you push, `bun run pr-wait <number>` waits for the pull request's checks and prints one verdict.
+
 ## Tests
 
 The suite runs on `bun test`. It is fast and never talks to a real OpenCode server: HOME and the XDG directories point at a temporary directory for the run. [test/README.md](test/README.md) explains the layout (`unit`, `http`, `session`, `runtime`, `compat`, `types`, `live`), the shared fakes, the property tests, the SDK wire-type checks and the client compatibility matrix ([docs/compatibility.md](docs/compatibility.md)). The opt-in live layer (`test/live`, `bun run live-matrix`) calls real models on an isolated server and costs tokens; see [test/README.md](test/README.md#live-layer-99-108).
