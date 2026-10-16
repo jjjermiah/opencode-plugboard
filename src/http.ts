@@ -47,9 +47,13 @@ export function bodyPlugError(error: BodyError): PlugError {
   }
 }
 
-/** Process-wide bytes of request bodies being read. On `globalThis` under a versioned key (I6), so every plugin generation shares one budget. */
+/**
+ * Process-wide bytes of request bodies being read, and the bytes each app holds of them. On `globalThis` under a versioned
+ * key (I6), so every plugin generation shares one budget. `apps` is added by a later generation: an older one ignores it.
+ */
 interface BodyBudget {
   inFlight: number
+  apps?: Map<string, number>
 }
 const BODY_BUDGET = Symbol.for("opencode-plugboard.body-budget/1")
 const bodyBudget = (): BodyBudget => {
@@ -57,10 +61,14 @@ const bodyBudget = (): BodyBudget => {
   return (slot[BODY_BUDGET] ??= { inFlight: 0 })
 }
 
-/** Why a request's work was abandoned: the client went away, or the deadline passed. It is the abort reason of `RequestScope.signal`. */
+/**
+ * Why a request's work was abandoned: the client went away (`disconnected`), the deadline passed (`timeout`), or the work was
+ * cancelled by plugboard itself (`cancelled`: a sibling choice of `n` failed). Only a client that left gets the settle window
+ * (`settleMs`, src/session/caller.ts); the other two stop the host at once.
+ */
 export class RequestAborted extends Error {
-  constructor(readonly kind: "disconnected" | "timeout") {
-    super(kind === "timeout" ? "Request deadline exceeded" : "Client disconnected")
+  constructor(readonly kind: "disconnected" | "timeout" | "cancelled") {
+    super(kind === "timeout" ? "Request deadline exceeded" : kind === "cancelled" ? "Request cancelled" : "Client disconnected")
   }
 }
 
@@ -145,9 +153,10 @@ export function beginRequest(
  * buffered, so the response can still be delivered (see `finishRequest`).
  *
  * Bounded before it is buffered (#156, invariant I28). The bytes held by every body being read in the
- * process stay within `limits.maxBytesInFlight`: a declared Content-Length is charged before the first
- * byte is read, a body without one as it arrives, and a body that would go over is refused with 503
- * `server_busy` (Retry-After 1). A body not complete within `limits.readTimeoutMs` is refused with 408.
+ * process stay within `limits.maxBytesInFlight`: a declared Content-Length is charged before the first byte
+ * is read, a body without one as it arrives, and a body that would go over is refused with 503 `server_busy`
+ * (Retry-After 1). A body that stops arriving for `limits.readTimeoutMs`, or is not complete within
+ * `limits.readCeilingMs`, is refused with 408, and its bytes go back to the budget.
  */
 export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -159,21 +168,34 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     }
     if (signal.aborted) return reject(signal.reason)
     const budget = bodyBudget()
+    const apps = (budget.apps ??= new Map<string, number>())
+    const app = limits.app
     const chunks: Buffer[] = []
     let size = 0
     // Bytes this read holds in the budget. Released on every exit: complete, refused or abandoned.
     let held = 0
     const charge = (bytes: number): boolean => {
       if (budget.inFlight + bytes > limits.maxBytesInFlight) return false
+      const mine = app === undefined ? 0 : (apps.get(app) ?? 0)
+      if (app !== undefined && limits.appShare !== undefined && mine + bytes > limits.appShare) return false
       budget.inFlight += bytes
+      if (app !== undefined) apps.set(app, mine + bytes)
       held += bytes
       return true
     }
     const busy = () => new BodyError(503, "Too many request bodies are being read; retry shortly", "server_busy", 1)
-    let timer: ReturnType<typeof setTimeout> | undefined
+    // The idle timer restarts with every chunk; the ceiling runs once, from the start, whatever arrives.
+    let idle: ReturnType<typeof setTimeout> | undefined
+    let ceiling: ReturnType<typeof setTimeout> | undefined
     const cleanup = () => {
-      clearTimeout(timer)
+      clearTimeout(idle)
+      clearTimeout(ceiling)
       budget.inFlight -= held
+      if (app !== undefined) {
+        const left = (apps.get(app) ?? 0) - held
+        if (left > 0) apps.set(app, left)
+        else apps.delete(app)
+      }
       held = 0
       request.off("data", onData)
       request.off("error", onError)
@@ -186,7 +208,17 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
       request.resume()
       reject(error)
     }
+    const armIdle = () => {
+      clearTimeout(idle)
+      idle = setTimeout(
+        () => stop(new BodyError(408, `Request body stopped arriving for ${limits.readTimeoutMs} ms (option limits.bodyReadTimeoutMs)`, "body_read_timeout")),
+        limits.readTimeoutMs,
+      )
+      idle.unref?.()
+    }
+    const ceilingMs = limits.readCeilingMs ?? BODY_LIMIT_DEFAULTS.readCeilingMs
     const onData = (chunk: Buffer) => {
+      armIdle()
       size += chunk.length
       if (size > maxBodyBytes) return stop(new BodyError(413, "Request body too large", "request_body_too_large"))
       if (size > held && !charge(size - held)) return stop(busy())
@@ -207,11 +239,12 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
       request.resume()
       return reject(busy())
     }
-    timer = setTimeout(
-      () => stop(new BodyError(408, `Request body was not received within ${limits.readTimeoutMs} ms (option limits.bodyReadTimeoutMs)`, "body_read_timeout")),
-      limits.readTimeoutMs,
+    armIdle()
+    ceiling = setTimeout(
+      () => stop(new BodyError(408, `Request body was not complete within ${ceilingMs} ms (option limits.bodyReadMaxMs)`, "body_read_timeout")),
+      ceilingMs,
     )
-    timer.unref?.()
+    ceiling.unref?.()
     request.on("data", onData)
     request.on("error", onError)
     request.on("end", onEnd)
@@ -307,6 +340,7 @@ export const PROBLEM_CODES: ReadonlySet<string> = new Set([
   "config_key",
   "app_has_server_tools",
   "app_has_config_key",
+  "body_budget_insufficient",
   "not_ready",
   "body_read_timeout",
   "request_body_too_large",

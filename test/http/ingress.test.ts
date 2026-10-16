@@ -201,7 +201,7 @@ describe("request bodies", () => {
     client.destroy()
     expect(reply.statusCode).toBe(408)
     expect(reply.headers.connection).toBe("close")
-    expect(JSON.parse(text).error.message).toBe("Request body was not received within 5 ms (option limits.bodyReadTimeoutMs)")
+    expect(JSON.parse(text).error.message).toBe("Request body stopped arriving for 5 ms (option limits.bodyReadTimeoutMs)")
     expect(logs.of("request")[0]!.fields.outcome).toBe("body_408")
   })
 

@@ -13,6 +13,7 @@
  * API also accepts.
  */
 import type { PlugboardOptions } from "../config.js"
+import { show } from "../client-value.js"
 import { imageProblem } from "../image.js"
 import {
   isPlugError,
@@ -309,7 +310,7 @@ const parseToolConfig = (raw: unknown, tools: PlugTool[]): { tools: PlugTool[]; 
   if (!isRecord(config)) return bad("functionCallingConfig must be an object", "toolConfig.functionCallingConfig")
   const mode = config.mode == null ? "AUTO" : typeof config.mode === "string" ? config.mode.toUpperCase() : undefined
   if (mode === undefined || !["AUTO", "ANY", "NONE", "VALIDATED", "MODE_UNSPECIFIED"].includes(mode))
-    return bad(`Unsupported functionCallingConfig mode "${String(config.mode)}": use AUTO, ANY or NONE`, "toolConfig.functionCallingConfig.mode")
+    return bad(`Unsupported functionCallingConfig mode "${show(config.mode)}": use AUTO, ANY or NONE`, "toolConfig.functionCallingConfig.mode")
   const allowed = field(config, "allowedFunctionNames")
   if (allowed != null && (!Array.isArray(allowed) || !allowed.every((name) => typeof name === "string")))
     return bad("allowedFunctionNames must be an array of strings", "toolConfig.functionCallingConfig.allowedFunctionNames")
@@ -398,7 +399,7 @@ const checkUnsupported = (body: JsonObject, config: JsonObject): PlugError | und
   }
   if (field(config, "responseLogprobs") === true) return unsupported("responseLogprobs is not supported", "generationConfig.responseLogprobs")
   const modalities = field(config, "responseModalities")
-  if (Array.isArray(modalities) && modalities.some((m) => String(m).toUpperCase() !== "TEXT"))
+  if (Array.isArray(modalities) && modalities.some((m) => show(m).toUpperCase() !== "TEXT"))
     return unsupported("Only the TEXT response modality is supported", "generationConfig.responseModalities")
 }
 

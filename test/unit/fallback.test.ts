@@ -184,3 +184,190 @@ describe("withFallbacks", () => {
     expect(fake.closed).toEqual([true])
   })
 })
+
+/** #391: a host retry before any output (`provider_retry`) moves the chain on at once; the last target keeps the host's retries. */
+describe("#391 a host retry before any output fails an attempt that has a target after it", () => {
+  const providerRetry = ev.error({ status: 503, kind: "server", code: "provider_retry", message: "The model provider failed; the next target is tried" })
+
+  test("the retry is a failure: the next target answers, and the failed attempt is closed", async () => {
+    const r = await run([[providerRetry], [ev.text("hi"), ev.finish()]])
+    expect(r.targets).toEqual(["a/x", "b/y"])
+    expect(r.served).toEqual([{ model: "b/y#low", fallbacks: 1, chain: true }])
+    expect(r.closed).toEqual([true, true])
+    expect(r.retried).toEqual(["app1"])
+  })
+
+  test("each target that is not last is told a target follows; the last one is not", async () => {
+    const flags: Array<boolean | undefined> = []
+    const caller = withFallbacks(
+      {
+        stream(_request, context) {
+          flags.push(context.fallbackNext)
+          const answered = flags.length === 3
+          return (async function* () {
+            if (answered) yield* [ev.text("hi"), ev.finish()]
+            else yield providerRetry
+          })()
+        },
+      },
+      { options, loadCatalog: async () => CATALOG },
+    )
+    const events = await collect(caller.stream(chainRequest(), { app: "app1", signal: new AbortController().signal }))
+    expect(flags).toEqual([true, true, false])
+    expect(events.map((e) => e.type)).toEqual(["text-delta", "finish"])
+  })
+
+  test("the last target's retry is not a fallback: the host's answer (its error) stands", async () => {
+    const r = await run([[rateLimited], [rateLimited], [providerRetry]])
+    expect(r.targets).toEqual(["a/x", "b/y", "c/z"])
+    expect(r.events).toEqual([providerRetry])
+    expect(r.served).toEqual([])
+  })
+})
+
+/** #391: `fallbackAfterMs`. A timed target yields each step's events after that step's wait (counted from the previous step), or never answers (`"hang"`). Like the session caller, it ends on its signal's abort. */
+type Step = { readonly after: number; readonly events: PlugEvent[] }
+type Timed = "hang" | Step | { readonly steps: ReadonlyArray<Step> }
+
+/** Resolves after `ms`, or as soon as `signal` aborts; without `ms`, only on abort. */
+function until(signal: AbortSignal, ms?: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = ms === undefined ? undefined : setTimeout(done, ms)
+    function done() {
+      clearTimeout(timer)
+      signal.removeEventListener("abort", done)
+      resolve()
+    }
+    if (signal.aborted) return done()
+    signal.addEventListener("abort", done, { once: true })
+  })
+}
+
+function timedTargets(plan: Timed[]) {
+  const targets: string[] = []
+  const aborted: boolean[] = []
+  const closed: boolean[] = []
+  const caller: ModelCaller = {
+    stream(request: PlugRequest, context: CallContext) {
+      const i = targets.length
+      targets.push(`${request.ref.providerID}/${request.ref.id}`)
+      const step = plan[i]!
+      const steps: ReadonlyArray<Step> = step === "hang" ? [] : "steps" in step ? step.steps : [step]
+      return (async function* () {
+        aborted[i] = false
+        try {
+          if (step === "hang") {
+            await until(context.signal)
+            aborted[i] = context.signal.aborted
+            return
+          }
+          for (const { after, events } of steps) {
+            await until(context.signal, after)
+            if (context.signal.aborted) {
+              aborted[i] = true
+              return
+            }
+            yield* events
+          }
+        } finally {
+          closed[i] = true
+        }
+      })()
+    },
+  }
+  return { caller, targets, aborted, closed }
+}
+
+const DEADLINE = 400
+/** Well before the deadline, so a slow runner cannot push the event past it. */
+const EARLY = 50
+const timedOptions = parseOptions({
+  models: ["a/*", "b/*", "c/*"],
+  aliases: { chain: ["a/x", "b/y#low", "c/z"], pair: ["a/x", "c/z"] },
+  fallbackAfterMs: DEADLINE,
+})
+
+async function timedRun(plan: Timed[], name = "chain") {
+  const fake = timedTargets(plan)
+  const retried: string[] = []
+  const served: ServedModel[] = []
+  const caller = withFallbacks(fake.caller, { options: timedOptions, loadCatalog: async () => CATALOG, onFallback: (app) => retried.push(app) })
+  const request = plugRequest({ model: name, ref: resolveModel(timedOptions, name, CATALOG) as never })
+  const events = await collect(caller.stream(request, { app: "app1", signal: new AbortController().signal, onServed: (s) => served.push(s) }))
+  return { ...fake, retried, served, events }
+}
+
+describe("#391 fallbackAfterMs: the first-event deadline", () => {
+  const answer = [ev.text("hi"), ev.finish()]
+
+  test("a target that never emits is aborted at the deadline, and the next target answers", async () => {
+    const r = await timedRun(["hang", { after: 0, events: answer }])
+    expect(r.targets).toEqual(["a/x", "b/y"])
+    expect(r.aborted).toEqual([true, false])
+    expect(r.closed).toEqual([true, true])
+    expect(r.events.map((e) => e.type)).toEqual(["text-delta", "finish"])
+    expect(r.served).toEqual([{ model: "b/y#low", fallbacks: 1, chain: true }])
+    expect(r.retried).toEqual(["app1"])
+  })
+
+  test("a target that emits before the deadline keeps its answer and is not aborted", async () => {
+    const r = await timedRun([{ after: EARLY, events: answer }, "hang"])
+    expect(r.targets).toEqual(["a/x"])
+    expect(r.aborted).toEqual([false])
+    expect(r.events.map((e) => e.type)).toEqual(["text-delta", "finish"])
+    expect(r.served).toEqual([{ model: "a/x", fallbacks: 0, chain: true }])
+    expect(r.retried).toEqual([])
+  })
+
+  test("each target that is not last has its own deadline: two hangs, the third answers", async () => {
+    const r = await timedRun(["hang", "hang", { after: 0, events: answer }])
+    expect(r.targets).toEqual(["a/x", "b/y", "c/z"])
+    expect(r.aborted).toEqual([true, true, false])
+    expect(r.served).toEqual([{ model: "c/z", fallbacks: 2, chain: true }])
+    expect(r.retried).toEqual(["app1", "app1"])
+  })
+
+  test("the last target has no first-event deadline: a slow last target still answers", async () => {
+    const r = await timedRun([{ after: 0, events: [rateLimited] }, { after: DEADLINE * 3, events: answer }], "pair")
+    expect(r.targets).toEqual(["a/x", "c/z"])
+    expect(r.aborted).toEqual([false, false])
+    expect(r.served).toEqual([{ model: "c/z", fallbacks: 1, chain: true }])
+  })
+
+  test("a reasoning-first target is not aborted, and its stream runs past the deadline to the end", async () => {
+    const r = await timedRun([{ steps: [{ after: EARLY, events: [ev.reasoning("thinking")] }, { after: DEADLINE * 2, events: [ev.text("answer"), ev.finish()] }] }, "hang"])
+    expect(r.targets).toEqual(["a/x"])
+    expect(r.aborted).toEqual([false])
+    expect(r.events.map((e) => e.type)).toEqual(["reasoning-delta", "text-delta", "finish"])
+    expect(r.served).toEqual([{ model: "a/x", fallbacks: 0, chain: true }])
+  })
+
+  test("a text-first target is not aborted, and its answer streamed past the deadline is whole", async () => {
+    const r = await timedRun([{ steps: [{ after: EARLY, events: [ev.text("he")] }, { after: DEADLINE * 2, events: [ev.text("llo"), ev.finish()] }] }, "hang"])
+    expect(r.targets).toEqual(["a/x"])
+    expect(r.aborted).toEqual([false])
+    expect(r.events.filter((e) => e.type === "text-delta").map((e) => (e as { text: string }).text).join("")).toBe("hello")
+    expect(r.events.at(-1)).toMatchObject({ type: "finish" })
+  })
+
+  test("an abandoned attempt is cancelled by plugboard, not left by a client: the caller sees reason kind cancelled, so it gets no settle window (#391)", async () => {
+    const reasons: unknown[] = []
+    let calls = 0
+    const caller: ModelCaller = {
+      stream(_request, context) {
+        const hangs = calls++ === 0
+        return (async function* () {
+          if (hangs) {
+            await until(context.signal)
+            reasons.push((context.signal.reason as { kind?: unknown } | undefined)?.kind)
+            return
+          }
+          yield* [ev.text("hi"), ev.finish()]
+        })()
+      },
+    }
+    const events = await collect(withFallbacks(caller, { options: timedOptions, loadCatalog: async () => CATALOG }).stream(plugRequest({ model: "chain", ref: resolveModel(timedOptions, "chain", CATALOG) as never }), { app: "app1", signal: new AbortController().signal }))
+    expect(reasons).toEqual(["cancelled"])
+    expect(events.at(-1)).toMatchObject({ type: "finish" })
+  })
+})
