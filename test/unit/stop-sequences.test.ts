@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test"
 import type { PlugEvent, PlugRequest } from "../../src/contract.js"
 import { StopScan, stopAt, withStopSequences } from "../../src/stop.js"
 import { collect, ev, plugRequest } from "../support/fixtures.js"
+import { captureLogs } from "../support/logs.js"
 import { FakeModelCaller } from "../support/model-caller.js"
 
 /** The events the wrapped model caller yields for `script`, with the caller so a test can see what it was handed. */
@@ -42,6 +43,26 @@ describe("#390 the shared stop helpers", () => {
     const scan = new StopScan([])
     expect(scan.push("abc")).toBe("abc")
     expect(scan.matched).toBeUndefined()
+  })
+})
+
+describe("#390 a stop answer closed without host usage is counted and logged, with no estimate (review #429)", () => {
+  const logs = captureLogs()
+
+  test("no usage from the host: one count for the app, a warning, and the finish carries no usage", async () => {
+    const counted: string[] = []
+    const wrapped = withStopSequences(new FakeModelCaller([ev.text("Hello END"), ev.finish("stop")]), (app) => counted.push(app))
+    const events = await collect(wrapped.stream(plugRequest({ generation: { stop: ["END"] } }), { app: "test", signal: new AbortController().signal }))
+    expect(finishOf(events)).toEqual({ type: "finish", reason: "stop", stopSequence: "END" })
+    expect(counted).toEqual(["test"])
+    expect(logs.of("request.stop_usage_missing")).toHaveLength(1)
+  })
+
+  test("usage reported: nothing is counted", async () => {
+    const counted: string[] = []
+    const wrapped = withStopSequences(new FakeModelCaller([ev.text("Hello END"), ev.finish("stop", usage)]), (app) => counted.push(app))
+    await collect(wrapped.stream(plugRequest({ generation: { stop: ["END"] } }), { app: "test", signal: new AbortController().signal }))
+    expect(counted).toEqual([])
   })
 })
 

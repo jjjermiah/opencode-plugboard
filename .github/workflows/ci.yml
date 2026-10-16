@@ -158,10 +158,13 @@ jobs:
       # stop conflicting on this list).
       - name: Scripted runs of every example
         run: bun examples/_harness/run.ts all --target scripted
-      - name: Type check the OpenAI JS example and the tool bot
+      - name: Type check the TypeScript examples
         run: |
           (cd examples/openai-js && bunx tsc --noEmit)
           (cd examples/tool-bot && bunx tsc --noEmit)
+          (cd examples/anthropic-js && bunx tsc --noEmit)
+          (cd examples/langchain-anthropic-js && bunx tsc --noEmit)
+          (cd examples/vercel-ai-sdk-anthropic && bunx tsc --noEmit)
       # The examples index (examples/README.md) and every <<< snippet import in docs/ must match the tree. The docs build
       # below reads the same records.
       - name: Examples index is current and every snippet import resolves

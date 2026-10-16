@@ -1,0 +1,19 @@
+{
+  "name": "plugboard-example-vercel-ai-sdk-anthropic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Vercel AI SDK's Anthropic provider (@ai-sdk/anthropic) on plugboard's Messages route: plain chat, tools, streaming, structured output, images, models and errors. Exact pins, locked in bun.lock.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.81",
+    "ai": "7.0.137",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

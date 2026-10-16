@@ -1,0 +1,29 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": "",
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01"
+        },
+        "method": "GET",
+        "path": "/v1/models?limit=100"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "invalid_api_key",
+            "message": "Missing or invalid API key",
+            "param": null,
+            "type": "authentication_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 401
+      }
+    }
+  ]
+}

@@ -218,6 +218,12 @@ export interface CallContext {
    * it echoes when `chain` is set. A call that fails never reports it.
    */
   readonly onServed?: (served: ServedModel) => void
+  /**
+   * A fallback target follows this call (`src/fallback.ts` sets it when the chain has one). A retry the host schedules
+   * for the call before any output then fails the call at once (`provider_retry`), so the chain moves on. Without it the
+   * host's own retries run. Set by the chain only (#391).
+   */
+  readonly fallbackNext?: boolean
   /** Called once, before the first event, with each change the app's policy made that the caller sent for. Front-ends report them in the `x-plugboard-policy` header. */
   readonly onPolicy?: (notes: ReadonlyArray<PolicyNote>) => void
   /** Called once, before the first event, when the response cache applies to the call: `hit` replays a stored answer (no session, no record), `miss` runs the model. Not called when the cache is off, skipped for the app, or `noCache` is set. */
@@ -232,6 +238,12 @@ export interface CallContext {
    * headers are open, so a stream (headers sent first) never gets it.
    */
   readonly onUsage?: (totals: CallTotals) => void
+  /**
+   * Called once when the call ends without a finish event (client gone, timeout, or a stop sequence cut the run short), with
+   * the host's usage for the run up to then. `withUsage` records it, so the tokens are charged to the app's budgets. The
+   * finish's own usage takes precedence when there is one.
+   */
+  readonly onRunUsage?: (usage: PlugUsage) => void
   /**
    * Called once when the call ends, only if OpenCode ran server tools for it (option `apps.<name>.serverTools`),
    * with how many. Front-ends set `x-plugboard-server-tools` from it while the headers are open, so a stream

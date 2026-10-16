@@ -11,4 +11,4 @@ export PLUGBOARD_KEY_CODEX_CLI="<your app key>"
 codex exec "reply with exactly: pong"
 ```
 
-Not run against plugboard yet.
+Not run against plugboard yet: Codex CLI is not installed, so `codex exec` has not run. The config targets plugboard's `/v1/responses` with `wire_api = "responses"`, the only value Codex accepts; that is documented, not tested. Until a live `codex exec` run is committed, Codex is a gap for [#104](https://github.com/jjjermiah/opencode-plugboard/issues/104).

@@ -1,0 +1,318 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "What is the weather in Paris? Use the tool.",
+                  "type": "text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": true,
+          "tool_choice": {
+            "type": "auto"
+          },
+          "tools": [
+            {
+              "description": "Get the current weather for a city.",
+              "input_schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "name": "get_weather"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages?beta=true"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "message": {
+                  "content": [],
+                  "id": "<id-1>",
+                  "model": "fast",
+                  "role": "assistant",
+                  "stop_reason": null,
+                  "stop_sequence": null,
+                  "type": "message",
+                  "usage": {
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0
+                  }
+                },
+                "type": "message_start"
+              },
+              "event": "message_start"
+            },
+            {
+              "data": {
+                "content_block": {
+                  "id": "<id-2>",
+                  "input": {},
+                  "name": "get_weather",
+                  "type": "tool_use"
+                },
+                "index": 0,
+                "type": "content_block_start"
+              },
+              "event": "content_block_start"
+            },
+            {
+              "data": {
+                "type": "ping"
+              },
+              "event": "ping"
+            },
+            {
+              "data": {
+                "delta": {
+                  "partial_json": "{\"city\":\"Paris\"}",
+                  "type": "input_json_delta"
+                },
+                "index": 0,
+                "type": "content_block_delta"
+              },
+              "event": "content_block_delta"
+            },
+            {
+              "data": {
+                "index": 0,
+                "type": "content_block_stop"
+              },
+              "event": "content_block_stop"
+            },
+            {
+              "data": {
+                "delta": {
+                  "stop_reason": "tool_use",
+                  "stop_sequence": null
+                },
+                "type": "message_delta",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "input_tokens": 11,
+                  "output_tokens": 7
+                }
+              },
+              "event": "message_delta"
+            },
+            {
+              "data": {
+                "type": "message_stop"
+              },
+              "event": "message_stop"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "What is the weather in Paris? Use the tool.",
+                  "type": "text"
+                }
+              ],
+              "role": "user"
+            },
+            {
+              "content": [
+                {
+                  "id": "<id-2>",
+                  "input": {
+                    "city": "Paris"
+                  },
+                  "name": "get_weather",
+                  "type": "tool_use"
+                }
+              ],
+              "role": "assistant"
+            },
+            {
+              "content": [
+                {
+                  "content": [
+                    {
+                      "text": "{\"temp_c\":18,\"sky\":\"cloudy\"}",
+                      "type": "text"
+                    }
+                  ],
+                  "is_error": false,
+                  "tool_use_id": "<id-2>",
+                  "type": "tool_result"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": true,
+          "tool_choice": {
+            "type": "auto"
+          },
+          "tools": [
+            {
+              "description": "Get the current weather for a city.",
+              "input_schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "name": "get_weather"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages?beta=true"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "message": {
+                  "content": [],
+                  "id": "<id-3>",
+                  "model": "fast",
+                  "role": "assistant",
+                  "stop_reason": null,
+                  "stop_sequence": null,
+                  "type": "message",
+                  "usage": {
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0
+                  }
+                },
+                "type": "message_start"
+              },
+              "event": "message_start"
+            },
+            {
+              "data": {
+                "content_block": {
+                  "text": "",
+                  "type": "text"
+                },
+                "index": 0,
+                "type": "content_block_start"
+              },
+              "event": "content_block_start"
+            },
+            {
+              "data": {
+                "type": "ping"
+              },
+              "event": "ping"
+            },
+            {
+              "data": {
+                "delta": {
+                  "text": "18 C and",
+                  "type": "text_delta"
+                },
+                "index": 0,
+                "type": "content_block_delta"
+              },
+              "event": "content_block_delta"
+            },
+            {
+              "data": {
+                "delta": {
+                  "text": " cloudy",
+                  "type": "text_delta"
+                },
+                "index": 0,
+                "type": "content_block_delta"
+              },
+              "event": "content_block_delta"
+            },
+            {
+              "data": {
+                "index": 0,
+                "type": "content_block_stop"
+              },
+              "event": "content_block_stop"
+            },
+            {
+              "data": {
+                "delta": {
+                  "stop_reason": "end_turn",
+                  "stop_sequence": null
+                },
+                "type": "message_delta",
+                "usage": {
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "input_tokens": 11,
+                  "output_tokens": 7
+                }
+              },
+              "event": "message_delta"
+            },
+            {
+              "data": {
+                "type": "message_stop"
+              },
+              "event": "message_stop"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

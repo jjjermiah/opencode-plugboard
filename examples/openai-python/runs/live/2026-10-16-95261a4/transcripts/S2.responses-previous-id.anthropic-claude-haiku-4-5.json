@@ -1,0 +1,172 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "input": "What is the weather in Paris? Use the tool.",
+          "max_output_tokens": 1024,
+          "model": "anthropic/claude-haiku-4-5",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "properties": {
+                  "city": {
+                    "description": "City name",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-1>",
+          "error": null,
+          "id": "<id-2>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "response",
+          "output": [
+            {
+              "arguments": "{\"city\":\"Paris\"}",
+              "call_id": "<id-3>",
+              "id": "<id-4>",
+              "name": "get_weather",
+              "status": "completed",
+              "type": "function_call"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "properties": {
+                  "city": {
+                    "description": "City name",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 606,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 69,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 675
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=606; output=69; cache_read=0; cache_write=0; cost_usd=0.000951"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "call_id": "<id-3>",
+              "output": "{\"temp_c\": 18, \"sky\": \"cloudy\"}",
+              "type": "function_call_output"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "anthropic/claude-haiku-4-5",
+          "previous_response_id": "<id-2>",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "properties": {
+                  "city": {
+                    "description": "City name",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "unsupported_parameter",
+            "message": "previous_response_id is not supported: plugboard is stateless, send the full conversation in input",
+            "param": "previous_response_id",
+            "type": "invalid_request_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 400
+      }
+    }
+  ]
+}

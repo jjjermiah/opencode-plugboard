@@ -1,7 +1,12 @@
-"""S3, streaming text, with and without usage. Raw chunks, then the SDK's stream helper, which must agree."""
+"""S3, streaming text, with and without usage. Raw chunks, then the SDK's stream helper, which must agree.
+
+`run_responses` streams the Responses API the same way: the raw events, then the helper's final response, which must agree.
+"""
 
 import json
 import os
+
+from chat import responses_finish_reason
 
 
 def run(client, model):
@@ -24,6 +29,26 @@ def run(client, model):
     if helper_text != text:
         raise AssertionError(f"stream helper text {helper_text!r} differs from the raw stream {text!r}")
     return {"text": text, "finish_reason": finish, "usage": usage, "done": True}
+
+
+def run_responses(client, model):
+    # region snippet-responses
+    with client.responses.stream(model=model, input="Reply with exactly: pong", max_output_tokens=1024) as stream:
+        text = ""
+        for event in stream:  # the SDK stops here when the server sends response.completed
+            if event.type == "response.output_text.delta":
+                text += event.delta
+        final = stream.get_final_response()
+    # endregion snippet-responses
+    # The helper's final response carries the same text the deltas did.
+    if final.output_text != text:
+        raise AssertionError(f"final response text {final.output_text!r} differs from the deltas {text!r}")
+    return {
+        "text": text,
+        "finish_reason": responses_finish_reason(final),
+        "usage": final.usage.model_dump(exclude_none=True) if final.usage else None,
+        "done": True,
+    }
 
 
 if __name__ == "__main__":

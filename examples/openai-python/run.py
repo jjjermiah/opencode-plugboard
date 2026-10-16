@@ -23,21 +23,52 @@ import wrong_key  # noqa: E402
 from openai import OpenAI  # noqa: E402
 
 
+# Chat Completions (`chat`) and the Responses API (`responses`) run side by side on the scenarios that have both.
+APIS = ["chat", "responses"]
+# previous_response_id is refused by plugboard by design (docs/responses.md). Recorded as a gap until the client moves to full input.
+PREVIOUS_ID = "responses-previous-id"
+PREVIOUS_ID_GAP = {
+    "note": "previous_response_id is refused: plugboard is stateless, send the full input (docs/responses.md)",
+    "issue": "#104",
+}
+
+
+def by_api(chat_run, responses_run):
+    """The run for a variant: `chat` is the Chat Completions call, `responses` the Responses one."""
+
+    def run(model, variant):
+        if variant == "chat":
+            return chat_run(model)
+        return responses_run(model)
+
+    return run
+
+
 def main() -> None:
     client = OpenAI(base_url=os.environ["PLUGBOARD_BASE_URL"], api_key=os.environ["PLUGBOARD_KEY"], max_retries=0)
     harness.emit_client("openai")
+
+    def s2(model, variant):
+        if variant == PREVIOUS_ID:
+            return tools.run_responses_previous_id(client, model)
+        if variant == "chat":
+            return tools.run(client, model)
+        return tools.run_responses(client, model)
+
     harness.run_all(
         {
-            "S1": lambda model: chat.run(client, model),
-            "S2": lambda model: tools.run(client, model),
-            "S3": lambda model: stream.run(client, model),
+            "S1": by_api(lambda model: chat.run(client, model), lambda model: chat.run_responses(client, model)),
+            "S2": s2,
+            "S3": by_api(lambda model: stream.run(client, model), lambda model: stream.run_responses(client, model)),
             "S4": lambda model: stream_tools.run(client, model),
-            "S5": lambda model: image.run(client, model),
-            "S6": lambda model: structured.run(client, model),
+            "S5": by_api(lambda model: image.run(client, model), lambda model: image.run_responses(client, model)),
+            "S6": by_api(lambda model: structured.run(client, model), lambda model: structured.run_responses(client, model)),
             "S7": lambda model: models.run(client, model),
             "E1": lambda model: wrong_key.run(client, model),
             "E2": lambda model: unknown_model.run(client, model),
-        }
+        },
+        variants={"S1": APIS, "S2": [*APIS, PREVIOUS_ID], "S3": APIS, "S5": APIS, "S6": APIS},
+        gaps={f"S2|{PREVIOUS_ID}": PREVIOUS_ID_GAP},
     )
 
 

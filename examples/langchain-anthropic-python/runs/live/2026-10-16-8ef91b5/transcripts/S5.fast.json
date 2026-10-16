@@ -1,0 +1,67 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "What color is this image? One word.",
+                  "type": "text"
+                },
+                {
+                  "source": {
+                    "data": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4nO3NMQ0AAAzDsPLHODAj0X6Wcse5ZNr2DgAAAAAAAAAAAIo9tPVwLraRYtkAAAAASUVORK5CYII=",
+                    "media_type": "image/png",
+                    "type": "base64"
+                  },
+                  "type": "image"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "text": "Red",
+              "type": "text"
+            }
+          ],
+          "id": "<id-2>",
+          "model": "fast",
+          "role": "assistant",
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "input_tokens": 39,
+            "output_tokens": 10
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=39; output=10; cache_read=0; cache_write=0; cost_usd=0.000011"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

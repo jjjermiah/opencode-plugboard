@@ -1,0 +1,24 @@
+// S7, list models. LangChain has no model-list call, so this is a plain GET /v1/models with fetch. It sends the key as a
+// Bearer token: GET /v1/models does not read x-api-key (see the anthropic-js gap, #399).
+import { plugboardKey } from "./llm.ts"
+
+const plugboardURL = process.env.PLUGBOARD_BASE_URL!
+
+export async function run() {
+  // #region snippet
+  const response = await fetch(`${plugboardURL}/models`, { headers: { authorization: `Bearer ${plugboardKey}` } })
+  const body = (await response.json()) as { data: Array<{ id: string }> }
+  // #endregion snippet
+  const ids = body.data.map((model) => model.id)
+  return {
+    status: response.status,
+    model_ids: ids,
+    has_fast: ids.includes("fast"),
+    has_claude: ids.some((id) => id.startsWith("anthropic/claude")),
+    has_gpt_low: ids.some((id) => id.endsWith("#low")),
+  }
+}
+
+if (import.meta.main) {
+  console.log(JSON.stringify(await run()))
+}
