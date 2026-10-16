@@ -80,19 +80,15 @@ const jpegSize = (b: Buffer): Size | undefined => {
   return undefined
 }
 
-/** Pixel size of a base64 `data:` image from its header (PNG, GIF, WebP or JPEG), or undefined. */
+/** Pixel size of a base64 `data:` image from its header (PNG, GIF, WebP or JPEG), or undefined. Each read is length-checked. */
 export function imageSize(url: string): Size | undefined {
   const match = /^data:[^,]*;base64,(.*)$/s.exec(url)
   if (!match) return undefined
-  try {
-    const b = Buffer.from(match[1]!, "base64")
-    if (b.length >= 24 && b[0] === 0x89 && b.toString("latin1", 1, 4) === "PNG") return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }
-    if (b.length >= 10 && b.toString("latin1", 0, 3) === "GIF") return { width: b.readUInt16LE(6), height: b.readUInt16LE(8) }
-    if (b.length >= 30 && b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP") return webpSize(b)
-    if (b[0] === 0xff && b[1] === 0xd8) return jpegSize(b)
-  } catch {
-    return undefined
-  }
+  const b = Buffer.from(match[1]!, "base64")
+  if (b.length >= 24 && b[0] === 0x89 && b.toString("latin1", 1, 4) === "PNG") return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }
+  if (b.length >= 10 && b.toString("latin1", 0, 3) === "GIF") return { width: b.readUInt16LE(6), height: b.readUInt16LE(8) }
+  if (b.length >= 30 && b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP") return webpSize(b)
+  if (b[0] === 0xff && b[1] === 0xd8) return jpegSize(b)
   return undefined
 }
 

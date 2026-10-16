@@ -51,6 +51,72 @@ const pngUrl = (width: number, height: number) => {
   return `data:image/png;base64,${header.toString("base64")}`
 }
 
+describe("imageSize reads the header of each format", () => {
+  const dataUrl = (type: string, bytes: Buffer) => `data:${type};base64,${bytes.toString("base64")}`
+  const le16 = (n: number) => Buffer.from([n & 0xff, n >> 8])
+  const be16 = (n: number) => Buffer.from([n >> 8, n & 0xff])
+  /** A 30-byte WebP container with the given chunk tag (the reader needs 30 bytes). */
+  const webp = (tag: string) => {
+    const b = Buffer.alloc(30)
+    b.write("RIFF", 0, "latin1")
+    b.write("WEBP", 8, "latin1")
+    b.write(tag, 12, "latin1")
+    return b
+  }
+
+  test("GIF: the logical screen size", () => {
+    expect(imageSize(dataUrl("image/gif", Buffer.concat([Buffer.from("GIF89a"), le16(320), le16(200)])))).toEqual({ width: 320, height: 200 })
+  })
+
+  test("WebP, lossy (VP8): 14-bit width and height", () => {
+    const b = webp("VP8 ")
+    b.writeUInt16LE(640, 26)
+    b.writeUInt16LE(480, 28)
+    expect(imageSize(dataUrl("image/webp", b))).toEqual({ width: 640, height: 480 })
+  })
+
+  test("WebP, lossless (VP8L): width and height minus one, packed in 14 bits each", () => {
+    const w = 640 - 1
+    const h = 480 - 1
+    const b = webp("VP8L")
+    b[21] = w & 0xff
+    b[22] = ((w >> 8) & 0x3f) | ((h & 0x3) << 6)
+    b[23] = (h >> 2) & 0xff
+    b[24] = (h >> 10) & 0xf
+    expect(imageSize(dataUrl("image/webp", b))).toEqual({ width: 640, height: 480 })
+  })
+
+  test("WebP, extended (VX8): the canvas size, minus one, in 24 bits each", () => {
+    const b = webp("VP8X")
+    b.writeUIntLE(639, 24, 3)
+    b.writeUIntLE(479, 27, 3)
+    expect(imageSize(dataUrl("image/webp", b))).toEqual({ width: 640, height: 480 })
+  })
+
+  test("JPEG: the first frame header, past a restart marker, a fill byte, an application segment and a table", () => {
+    const jpeg = Buffer.concat([
+      Buffer.from([0xff, 0xd8]), // SOI
+      Buffer.from([0xff, 0xd0]), // RST0: no length
+      Buffer.from([0xff, 0xff]), // fill byte
+      Buffer.from([0xff, 0xe0, 0x00, 0x10]),
+      Buffer.alloc(14), // APP0
+      Buffer.from([0xff, 0xc4, 0x00, 0x02]), // DHT: not a frame header
+      Buffer.from([0xff, 0xc0, 0x00, 0x11, 0x08]), // SOF0: height and width follow the precision
+      be16(480),
+      be16(640),
+      Buffer.from([0x03, ...Array(9).fill(0)]),
+    ])
+    expect(imageSize(dataUrl("image/jpeg", jpeg))).toEqual({ width: 640, height: 480 })
+  })
+
+  test("a JPEG with no frame header, a format it does not know, and a truncated PNG have no size", () => {
+    expect(imageSize(dataUrl("image/jpeg", Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x02])))).toBeUndefined()
+    expect(imageSize(dataUrl("image/bmp", Buffer.from("BM".padEnd(30, "\0"))))).toBeUndefined()
+    expect(imageSize(dataUrl("image/png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))).toBeUndefined()
+    expect(imageSize("https://example.com/cat.png")).toBeUndefined()
+  })
+})
+
 describe("#412 the token estimate", () => {
   test("a request costs a fixed overhead before any message (21 tokens for Claude, none for Gemini)", () => {
     expect(estimateTokens(plugRequest({ messages: [] }))).toBe(21)
