@@ -31,13 +31,25 @@ const hintOf = (cacheTtl: "1h" | undefined): Hint => (cacheTtl === "1h" ? hint(O
 const mediaPlaceholder = (index: number, cache: boolean | undefined, cacheTtl: "1h" | undefined): HostPart => ({ type: "media", __attachment: index, ...(cache ? { cache: hintOf(cacheTtl) } : {}) })
 
 /**
- * The provider the host's Anthropic protocol reads a signature from: `providerMetadata["anthropic"]`, the Anthropic route's
- * `providerMetadataKey` (`packages/ai/src/protocols/anthropic-messages.ts`). Replay is gated on the request's provider being
- * `anthropic`, so a signature never reaches another provider (#374).
+ * The metadata key the host's Anthropic route reads a signature from: `providerMetadata["anthropic"]`, the Anthropic route's
+ * `providerMetadataKey` (`packages/ai/src/protocols/anthropic-messages.ts`). Replay is gated by `replaysSignedThinking`, so a
+ * signature only goes to a model on that route (#374, #386).
  */
 const ANTHROPIC_METADATA_KEY = "anthropic"
 
-/** A caller's signed reasoning as the host's reasoning part, which the Anthropic protocol lowers back to a signed `thinking` or `redacted_thinking` block. */
+/**
+ * Whether a request's model gets its signed reasoning replayed (#374, #386). The hook event exposes only the model's provider and id,
+ * not its route or protocol, so the gate is on those: provider `anthropic`, and Copilot's Claude models (`github-copilot`, id `claude-*`).
+ * Copilot serves a Claude model on the Anthropic messages route when it lists `/v1/messages`, and on chat completions or responses
+ * otherwise. Neither of those reads the `anthropic` key (`src/github-copilot/chat` and `responses` in OpenCode v2.0.27), so the
+ * signature is not sent there. Other Copilot models are not Claude and stay out.
+ */
+export function replaysSignedThinking(model: { readonly providerID: string; readonly id?: string } | undefined): boolean {
+  if (model?.providerID === "anthropic") return true
+  return model?.providerID === "github-copilot" && model.id?.startsWith("claude-") === true
+}
+
+/** A caller's signed reasoning as the host's reasoning part, which the Anthropic route lowers back to a signed `thinking` or `redacted_thinking` block. */
 const reasoningOf = (item: ReasoningPart): HostPart => ({
   type: "reasoning",
   text: item.text,
@@ -257,8 +269,8 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   }
 
   session.system = requestSystem(request, state.prelude ?? [], policy).map(text)
-  // Signed reasoning goes back only to Anthropic (the gate in `reasoningOf`'s doc); every other provider gets the history without it.
-  const replayReasoning = session.model?.providerID === "anthropic"
+  // Signed reasoning goes back only where `replaysSignedThinking` allows it; every other model gets the history without it.
+  const replayReasoning = replaysSignedThinking(session.model)
   session.messages = toHostMessages(request.messages, replayReasoning).map((message) => ({ ...message, content: message.content.map(swap) }))
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 

@@ -604,6 +604,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/context.test.ts"],
   },
   {
+    id: "P386-copilot-non-claude-replayed",
+    invariant: "#386",
+    file: "src/session/context.ts",
+    find: 'return model?.providerID === "github-copilot" && model.id?.startsWith("claude-") === true',
+    replace: 'return model?.providerID === "github-copilot"',
+    tests: ["test/session/context.test.ts"],
+  },
+  {
+    id: "P386-copilot-claude-not-replayed",
+    invariant: "#386",
+    file: "src/session/context.ts",
+    find: 'return model?.providerID === "github-copilot" && model.id?.startsWith("claude-") === true',
+    replace: "return false",
+    tests: ["test/session/context.test.ts"],
+  },
+  {
     id: "P374-unsigned-thinking-replayed",
     invariant: "#374",
     file: "src/anthropic/request.ts",
