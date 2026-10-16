@@ -9,6 +9,7 @@
  * afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { show } from "../client-value.js"
 import { imageProblem } from "../image.js"
 import { bodyUserId, userField } from "../user.js"
 import {
@@ -68,7 +69,7 @@ const mediaPart = (block: JsonObject, at: string, what: "image" | "document"): P
     if (typeof source.data !== "string") return bad(`${at}.source.data: must be a string`)
     return { type: "text", text: source.data }
   }
-  return bad(`${at}.source.type: "${String(source.type)}" is not supported for ${what} blocks (use base64 or url)`)
+  return bad(`${at}.source.type: "${show(source.type)}" is not supported for ${what} blocks (use base64 or url)`)
 }
 
 /**
@@ -100,7 +101,7 @@ const toolResultContent = (content: unknown, at: string): { text: string; media:
       if (isPlugError(part)) return part
       if (part.type === "text") texts.push(part.text)
       else media.push(part)
-    } else return bad(`${here}.type: "${String(block.type)}" is not supported in tool_result content (use text or image)`)
+    } else return bad(`${here}.type: "${show(block.type)}" is not supported in tool_result content (use text or image)`)
   }
   return { text: texts.join("\n"), media }
 }
@@ -127,7 +128,7 @@ const userBlock = (block: JsonObject, at: string): PlugPart | undefined | PlugEr
       return isPlugError(part) ? part : { ...part, ...cached(block) }
     }
     default:
-      return bad(`${at}.type: "${String(block.type)}" is not supported in user messages (use text, image, document or tool_result)`)
+      return bad(`${at}.type: "${show(block.type)}" is not supported in user messages (use text, image, document or tool_result)`)
   }
 }
 
@@ -163,7 +164,7 @@ const parseMessages = (raw: unknown): PlugMessage[] | PlugError => {
           if (block.input != null && !isRecord(block.input)) return bad(`${here}.input: must be an object`)
           toolNames.set(block.id, block.name)
           parts.push({ type: "tool-call", id: block.id, name: block.name, input: block.input ?? {} })
-        } else return bad(`${here}.type: "${String(block.type)}" is not supported in assistant messages (use text, thinking, redacted_thinking or tool_use)`)
+        } else return bad(`${here}.type: "${show(block.type)}" is not supported in assistant messages (use text, thinking, redacted_thinking or tool_use)`)
       }
       if (parts.length > 0) messages.push({ role: "assistant", content: parts })
       continue
@@ -235,7 +236,7 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
     if (!isRecord(entry)) return bad(`${at}: must be an object`)
     if (entry.type != null && entry.type !== "custom")
       return bad(
-        `${at}.type: "${String(entry.type)}" is not supported. Only custom tools with an input_schema are: server tools (web_search, web_fetch, code_execution, ...) run on Anthropic's side, and computer use, bash and text editor tools are not available through plugboard`,
+        `${at}.type: "${show(entry.type)}" is not supported. Only custom tools with an input_schema are: server tools (web_search, web_fetch, code_execution, ...) run on Anthropic's side, and computer use, bash and text editor tools are not available through plugboard`,
       )
     if (typeof entry.name !== "string" || entry.name.length === 0) return bad(`${at}.name: Field required`)
     if (names.has(entry.name)) return bad(`${at}.name: duplicate tool name "${entry.name}"`)

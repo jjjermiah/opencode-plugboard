@@ -76,6 +76,7 @@ export default Plugin.define({
         promptCache: options.promptCache,
         affinity: createAffinity({ storage: createStoragePort(ctx) }),
         historyHidden: options.history.hidden,
+        requestTimeoutMs: options.requestTimeoutMs,
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
       }
@@ -105,7 +106,7 @@ export default Plugin.define({
             withBudgets(
               withLimits(
                 // Stop sequences are applied to the answer where the host run ends, so a cached answer is the one cut (src/stop.ts).
-                withFallbacks(withStopSequences(createSessionCaller(callerDeps)), {
+                withFallbacks(withStopSequences(createSessionCaller(callerDeps), (app) => { if (options.metrics) processMetrics().stopUsageMissing(app) }), {
                   options,
                   loadCatalog: servingCatalog,
                   onFallback: (app) => {

@@ -317,7 +317,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
     }
     return
   }
-  if (codec.includeUsage && usage) sse.write(`data: ${JSON.stringify(codec.usageChunk(shared, usage))}\n\n`)
+  // Always, with zeros when no choice reported usage (#390): the same rule as a single choice.
+  if (codec.includeUsage) sse.write(`data: ${JSON.stringify(codec.usageChunk(shared, usage ?? {}))}\n\n`)
   sse.write("data: [DONE]\n\n")
   if (!response.writableEnded) response.end()
 }

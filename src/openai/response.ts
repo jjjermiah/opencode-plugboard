@@ -392,7 +392,8 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
       created: now(),
       model: exchange.model,
       choices: [{ index: 0, message, logprobs: null, finish_reason: finishReason(finish, toolCalls.length, isStructured) }],
-      ...(usage ? { usage: encodeUsage(usage) } : {}),
+      // Always present (#390): a host that reported no usage for the run gives zeros rather than an absent field.
+      usage: encodeUsage(usage ?? {}),
     },
     ...(fallback !== undefined ? { structuredFallback: true } : {}),
   }
@@ -538,7 +539,7 @@ export async function streamCompletion(
   if (fallback !== undefined) chunk({ content: fallback })
   chunk({}, finishReason(finish!, calls, isStructured))
   if (choice) return { started, ...(usage ? { usage } : {}) }
-  if (exchange.includeUsage && usage) frame(chatUsageChunk(exchange.model, id, created, usage))
+  if (exchange.includeUsage) frame(chatUsageChunk(exchange.model, id, created, usage ?? {}))
   write("data: [DONE]\n\n")
   return { started }
 }

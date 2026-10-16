@@ -57,16 +57,29 @@ export interface SessionCallerDeps {
   readonly affinity?: Affinity
   /** Global `history.hidden` (since 0.29.0, #337); an app's `apps.<name>.history.hidden` overrides it. Absent: off. */
   readonly historyHidden?: boolean
+  /** The global `requestTimeoutMs` (the route's deadline; an app's own value wins). Absent: no deadline to keep clear of (#390). */
+  readonly requestTimeoutMs?: number
+  /** Test seams for the stop timers (#390): defaults are `STOP_SETTLE_MS` and `STOP_DRAIN_MS`. */
+  readonly stopSettleMs?: number
+  readonly stopDrainMs?: number
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
 const CLEANUP_TIMEOUT_MS = 30_000
 
 /**
- * After a stop sequence ended the answer (`CallContext.stopAnswer`, #390), how long the host may take to end the interrupted run
- * before the stream closes with the usage counted so far (the collector's running total).
+ * After a stop sequence ended the answer (`CallContext.stopAnswer`, #390), how long the host may run the step on its own before it is
+ * interrupted. The host reports a step's usage only when the step finishes: an interrupted step has none (OpenCode 2.0.27 publishes
+ * `session.step.failed` without tokens), so the step is let to finish. The model writes what follows the sequence meanwhile; nothing
+ * of it reaches the caller.
  */
+const STOP_SETTLE_MS = 2_000
+
+/** After the interrupt, how long the host may take to report the end before the stream closes with the usage counted so far. */
 const STOP_DRAIN_MS = 5_000
+
+/** Kept clear of the request deadline when a stop match is near it: the answer must finish before the route answers 504 (#390 review). */
+const STOP_DEADLINE_MARGIN_MS = 250
 
 const failure = (status: number, message: string, code: string): PlugEvent => ({
   type: "error",
@@ -319,12 +332,29 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         collector?.cancel()
         interrupt()
       }
-      // A stop sequence ended the answer (#390): interrupt the host run and keep the stream open until its finish carries the usage.
+      // A stop sequence ended the answer (#390): let the host finish the step for up to `STOP_SETTLE_MS` (its usage comes with the
+      // finish), then interrupt it, and close with the running usage if the host still has not ended it `STOP_DRAIN_MS` later.
+      let settle: ReturnType<typeof setTimeout> | undefined
       let drain: ReturnType<typeof setTimeout> | undefined
+      let stopFired = false
       const onStopAnswer = () => {
-        interrupt()
-        if (drain !== undefined) return
-        drain = setTimeout(() => collector?.finishNow(), STOP_DRAIN_MS)
+        collector?.markStopped()
+        // Called by the collector (the match in its text) and by the stop wrapper (the same match): once.
+        if (stopFired) return
+        stopFired = true
+        // The app's `stopSettleMs` (0 = interrupt at once), else the seam for tests, else the default (#390 review).
+        const configured = policy?.stopSettleMs ?? deps.stopSettleMs ?? STOP_SETTLE_MS
+        // The window never runs past the request deadline (the route's own timeout, from this request's start) minus a margin: a
+        // complete answer near the deadline finishes as stop before the 504 fires (#390 review).
+        const timeout = policy?.requestTimeoutMs ?? deps.requestTimeoutMs
+        const room = timeout === undefined ? Infinity : Math.max(0, startedAt + timeout - STOP_DEADLINE_MARGIN_MS - Date.now())
+        const settleMs = Math.min(configured, room)
+        if (settleMs === 0) interrupt()
+        else {
+          settle = setTimeout(interrupt, settleMs)
+          settle.unref?.()
+        }
+        drain = setTimeout(() => collector?.finishNow(), Math.min(settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS), room))
         drain.unref?.()
       }
 
@@ -370,6 +400,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           stopTurn: interrupt,
           requestID,
           app,
+          // The collector sees the match in the text it emits, so calls queued behind it are already after it (#390 review).
+          ...(request.structuredTool === undefined ? { stopSequences: request.generation.stop ?? [], onStopAnswer } : {}),
           ...(request.parallelToolCalls === false ? { singleToolCall: true } : {}),
           ...(policy?.serverTools
             ? {
@@ -487,6 +519,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       } finally {
         context.signal.removeEventListener("abort", onAbort)
         context.stopAnswer?.removeEventListener("abort", onStopAnswer)
+        clearTimeout(settle)
         clearTimeout(drain)
         if (sessionID && collector) {
           // The response may be over (consumer left early, error, timeout, a failed step) while the

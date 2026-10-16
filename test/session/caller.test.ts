@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { CallContext, PlugEvent, PlugRequest } from "../../src/contract.js"
 import { setLogLevel } from "../../src/log.js"
 import { createSessionCaller, type SessionCallerDeps } from "../../src/session/caller.js"
+import { withStopSequences } from "../../src/stop.js"
 import { ensureAppDir } from "../../src/session/history.js"
 import { REQUEST_PERMISSIONS } from "../../src/session/seeds.js"
 import { createSessionStore } from "../../src/session/state.js"
@@ -283,7 +284,7 @@ describe("failures before anything is created", () => {
 })
 
 describe("#390 a stop sequence ends the answer: the run is interrupted and the stream still ends with its usage", () => {
-  test("the stream stays open after the stop signal and ends with the run's finish and usage", async () => {
+  test("the stream stays open after the stop signal and ends with the step's finish and usage (the host ended the step, so no interrupt)", async () => {
     const run = setup()
     const stopping = new AbortController()
     run.answer((id) => [bus(id).textDelta("Hello END"), bus(id).usage({ input: 10, output: 500 }), bus(id).stepEnded("stop", { input: 10, output: 500 })])
@@ -293,8 +294,115 @@ describe("#390 a stop sequence ends the answer: the run is interrupted and the s
       seen.push(event)
       if (event.type === "text-delta") stopping.abort()
     }
-    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(run.port.interrupted).toEqual([])
     expect(seen.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } })
+  })
+})
+
+describe("#390 the host's interrupt of a stop-sequence run ends the answer with finish stop", () => {
+  test("OpenCode 2.0.27 answers an interrupt with an aborted step failure (no tokens) and execution.interrupted: the answer ends with stop and the running usage", async () => {
+    const run = setup({ stopSettleMs: 30, stopDrainMs: 200 })
+    run.port.script.interrupt = async (sessionID) => {
+      run.sessions.dispatch(bus(sessionID).stepFailed({ type: "aborted", message: "Step interrupted" }))
+      run.sessions.dispatch(bus(sessionID).executionInterrupted())
+    }
+    run.answer((id) => [bus(id).usage({ input: 10, output: 500 }), bus(id).textDelta("alpha END beta")])
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(events).toEqual([
+      { type: "text-delta", text: "alpha " },
+      { type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 }, stopSequence: "END" },
+    ])
+  })
+
+  test("Anthropic order (2.0.27, live 2026-10-16): the host finishes the step itself inside the settle window, so the usage is the step's and nothing is interrupted", async () => {
+    const run = setup({ stopSettleMs: 200, stopDrainMs: 200 })
+    // message_start carries the input tokens; the text runs past the sequence; message_delta carries the output and the step ends.
+    run.answer((id) => {
+      setTimeout(() => {
+        run.sessions.dispatch(bus(id).stepEnded("stop", { input: 10, output: 500 }))
+        run.sessions.dispatch(bus(id).executionSucceeded())
+      }, 20)
+      return [bus(id).usage({ input: 10 }), bus(id).textDelta("alpha END beta")]
+    })
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(run.port.interrupted).toEqual([])
+    expect(events).toEqual([
+      { type: "text-delta", text: "alpha " },
+      { type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 }, stopSequence: "END" },
+    ])
+  })
+
+  test("Anthropic order, host still running after the settle window: it is interrupted, and the aborted step ends the answer with stop", async () => {
+    const run = setup({ stopSettleMs: 30, stopDrainMs: 200 })
+    run.port.script.interrupt = async (sessionID) => {
+      run.sessions.dispatch(bus(sessionID).stepFailed({ type: "aborted", message: "Step interrupted" }))
+      run.sessions.dispatch(bus(sessionID).executionInterrupted())
+    }
+    run.answer((id) => [bus(id).usage({ input: 10 }), bus(id).textDelta("alpha END beta")])
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop", stopSequence: "END" })
+  })
+
+  test("a host failure inside the window, after the match, finishes as stop with a warning: the answer before the match is complete (#390 review)", async () => {
+    const run = setup({ stopSettleMs: 30, stopDrainMs: 200 })
+    // The host reports asynchronously, as it does, and answers the interrupt once: a second failure would be a new interrupt, not the host.
+    let answered = false
+    run.port.script.interrupt = async (sessionID) => {
+      if (answered) return
+      answered = true
+      await Promise.resolve()
+      run.sessions.dispatch(bus(sessionID).stepFailed({ type: "provider.rate-limit", message: "org-1 slow down" }))
+    }
+    run.answer((id) => [bus(id).textDelta("alpha END beta")])
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(events).toEqual([{ type: "text-delta", text: "alpha " }, { type: "finish", reason: "stop", stopSequence: "END" }])
+    expect(logs.of("request.stop_step_failed")).toHaveLength(1)
+  })
+
+  test("a tool call inside the window ends the run at once: nothing runs after the match, the host is interrupted now (#390 review)", async () => {
+    const run = setup({ stopSettleMs: 10_000, stopDrainMs: 10_000 })
+    run.answer((id) => [bus(id).textDelta("alpha END beta"), bus(id).toolCalled("c1", "lookup", { q: 1 })])
+    const started = Date.now()
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(events).toEqual([{ type: "text-delta", text: "alpha " }, { type: "finish", reason: "stop", usage: undefined, stopSequence: "END" }])
+  })
+
+  test("a host that never reports the end after the interrupt is closed by the drain, with the usage counted so far (#390)", async () => {
+    const run = setup({ stopSettleMs: 10, stopDrainMs: 20 })
+    run.answer((id) => [bus(id).usage({ input: 7 }), bus(id).textDelta("alpha END beta")])
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(events.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 7, outputTokens: undefined }, stopSequence: "END" })
+  })
+
+  test("#390 a stop match close to the request deadline finishes as stop before the deadline, not after the settle window", async () => {
+    // The deadline is 400 ms from the start; the window (2 s) and the drain (5 s) would both run past it. The window is clamped to the
+    // time left, minus a margin, so the answer ends as stop before the route's 504 fires.
+    const run = setup({ requestTimeoutMs: 400, stopSettleMs: 2000, stopDrainMs: 5000 })
+    run.answer((id) => [bus(id).usage({ input: 4 }), bus(id).textDelta("alpha END beta")])
+    const started = Date.now()
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(Date.now() - started).toBeLessThan(400)
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop", stopSequence: "END", usage: { inputTokens: 4 } })
+  })
+
+  test("apps.<name>.stopSettleMs 0 interrupts at once, so a step that never finishes is cut before the window", async () => {
+    const run = setup({ stopDrainMs: 200, apps: { app: { stopSettleMs: 0 } } as never })
+    run.port.script.interrupt = async (sessionID) => {
+      run.sessions.dispatch(bus(sessionID).stepFailed({ type: "aborted", message: "Step interrupted" }))
+      run.sessions.dispatch(bus(sessionID).executionInterrupted())
+    }
+    run.answer((id) => [bus(id).textDelta("alpha END beta")])
+    const started = Date.now()
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    // Not the 2 s default: the answer ends as soon as the host reports the interrupt.
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop", stopSequence: "END" })
   })
 })
 
