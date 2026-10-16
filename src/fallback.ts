@@ -7,7 +7,10 @@
  * target in a fresh call, so each attempt is its own session. Once any event has been handed on
  * nothing is retried: a partly streamed answer is never restarted. Attempts are capped at the chain
  * length, share the request's signal (so the deadline and a disconnect end the chain) and nothing is
- * buffered beyond that first event.
+ * buffered beyond that first event. With option `fallbackAfterMs` (#391), an attempt that has a target after it
+ * and produces no event in time is aborted (its session is interrupted and retired by the caller) and the next
+ * target is tried; the last target is not bounded by it. An attempt with a target after it is also not made to wait
+ * out a host retry: the host's `session.retry.scheduled` before any output fails it at once (`provider_retry`, #391).
  *
  * A call whose model is not an alias with fallbacks goes straight to the wrapped caller.
  */
@@ -15,13 +18,14 @@
 import type { ServerResponse } from "node:http"
 import type { PlugboardOptions } from "./config.js"
 import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest, ServedModel } from "./contract.js"
+import { RequestAborted } from "./http.js"
 import { debugEnabled, log, logDebug, logWarn } from "./log.js"
 import { fallbackRefs, refToString } from "./models.js"
 import { dropRejected } from "./openai/sampling.js"
 
 export interface FallbackDeps {
   readonly options: PlugboardOptions
-  /** The serving Location's enabled models; read only after a first failure, to skip targets that are not available. */
+  /** The serving Location's enabled models, read once per chain request to know which targets follow, and to skip targets that are not available. */
   loadCatalog(): Promise<ReadonlyArray<CatalogModel>>
   /** A call is about to be retried on the next target (metrics). */
   readonly onFallback?: (app: string) => void
@@ -42,6 +46,8 @@ const RETRYABLE = new Set([
   "model_run_failed",
   "prompt_failed",
   "backend_failed",
+  // Set by the session caller for an attempt with a target after it: the host's retry before any output (#391).
+  "provider_retry",
 ])
 
 export const MODEL_HEADER = "x-plugboard-model"
@@ -78,6 +84,9 @@ export function reportServed(response: ServerResponse, info: ServedInfo, then?: 
 
 export const isRetryable = (error: PlugError): boolean => error.code !== undefined && RETRYABLE.has(error.code)
 
+/** The `reason` of a fallback whose target produced no model event within `fallbackAfterMs` (#391). */
+export const FIRST_EVENT_DEADLINE = "first_event_deadline"
+
 /** The caller's events with a chain of fallbacks behind the request's model; see the file comment. */
 export function withFallbacks(inner: ModelCaller, deps: FallbackDeps): ModelCaller {
   return {
@@ -111,7 +120,23 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     // The history id of this attempt: handed on only if the attempt is the one that answers (or the last).
     let recorded: { id: string; directory?: string } | undefined
     const next = attempt === 0 ? request : retarget(deps.options, request, ref)
-    const iterator = inner.stream(next, { ...context, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
+    // Whether a target follows this attempt. With a first-event deadline, an attempt that has one is aborted when the
+    // deadline passes; the last target is not. A host retry before any output also fails it at once (#391).
+    rest ??= await resolveRest(deps, request, context.app)
+    const following = rest.length > attempt
+    const deadline = deps.options.fallbackAfterMs ?? 0
+    const bounded = deadline > 0 && following
+    const deadlineAbort = bounded ? new AbortController() : undefined
+    let timedOut = false
+    const timer = deadlineAbort
+      ? setTimeout(() => {
+          timedOut = true
+          // Cancelled by plugboard, not by a client that left: the caller interrupts the attempt at once and gives it no settle window (#391).
+          deadlineAbort.abort(new RequestAborted("cancelled"))
+        }, deadline)
+      : undefined
+    const signal = deadlineAbort ? AbortSignal.any([context.signal, deadlineAbort.signal]) : context.signal
+    const iterator = inner.stream(next, { ...context, signal, fallbackNext: following, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
 
     let first: IteratorResult<PlugEvent> | undefined
     let thrown: { readonly error: unknown } | undefined
@@ -119,11 +144,14 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
       first = await iterator.next()
     } catch (error) {
       thrown = { error }
+    } finally {
+      clearTimeout(timer)
     }
 
     // Why this attempt failed before any output, or undefined when it answered.
     let reason: string | undefined
-    if (thrown) reason = "caller_error"
+    if (timedOut) reason = FIRST_EVENT_DEADLINE
+    else if (thrown) reason = "caller_error"
     else if (first!.done) reason = "no_response"
     else if (first!.value.type === "error" && isRetryable(first!.value.error)) reason = first!.value.error.code
     if (context.signal.aborted) reason = undefined
@@ -132,7 +160,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
       rest ??= await resolveRest(deps, request, context.app)
       const target = rest[attempt]
       if (target) {
-        if (!thrown) await close(iterator)
+        if (!thrown || timedOut) await close(iterator)
         log("model.fallback", { app: context.app, from: refToString(ref), to: refToString(target), reason, attempt: attempt + 1 })
         deps.onFallback?.(context.app)
         ref = target

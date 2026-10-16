@@ -113,7 +113,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
 
-    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
+    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app, host.keys?.appNames()))
     // The end user: the app's `userHeader` when the request sends it (#272), else the body's `metadata.user_id`.
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUserId(sent))
     const body = withEndUser(sent, user, "metadata")

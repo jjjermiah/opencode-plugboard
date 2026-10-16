@@ -5,6 +5,14 @@ import { matchGeminiRoute } from "../../src/gemini/route.js"
 import { testOptions } from "../support/fixtures.js"
 
 const options = testOptions({ maxTools: 3 })
+
+// #390 review: a client value with no usable toString is a 400, never a thrown TypeError (show, src/client-value.ts).
+test("gemini: a functionCallingConfig mode with a null toString is a 400, not a crash", () => {
+  const body = { contents: [{ role: "user", parts: [{ text: "hi" }] }], toolConfig: { functionCallingConfig: { mode: { toString: null } } } }
+  const result = parseGeminiRequest("test/echo", false, body, options)
+  expect(isPlugError(result)).toBe(true)
+  expect(result).toMatchObject({ status: 400, message: expect.stringContaining('"object"') })
+})
 const user = (...parts: unknown[]) => ({ role: "user", parts })
 const modelTurn = (...parts: unknown[]) => ({ role: "model", parts })
 const body = (extra: Record<string, unknown> = {}) => ({ contents: [user({ text: "hi" })], ...extra })
@@ -65,6 +73,8 @@ describe("parseGeminiRequest: rejections answer 400 with their param", () => {
     ["a functionResponse answering nothing", body({ contents: [user({ functionResponse: { name: "f", response: {} } })] }), { param: "contents[0].parts[0].functionResponse" }],
     ["a functionCall left unanswered", body({ contents: [user({ text: "x" }), modelTurn({ functionCall: { name: "f" } }), user({ text: "y" })] }), { param: "contents" }],
     ["inlineData without mimeType", body({ contents: [user({ inlineData: { data: "AA" } })] }), { param: "contents[0].parts[0].inlineData" }],
+    ["inlineData with a character outside base64 (URL-safe and standard alphabets only)", body({ contents: [user({ inlineData: { mimeType: "image/png", data: "iVBORw0KGgr7!78=" } })] }), { param: "contents[0].parts[0].inlineData", code: "invalid_image" }],
+    ["URL-safe inlineData of a length no base64 string has", body({ contents: [user({ inlineData: { mimeType: "image/png", data: "iVBORw0KGgr7_" } })] }), { param: "contents[0].parts[0].inlineData", code: "invalid_image" }],
     ["inlineData in a model turn", body({ contents: [user({ text: "x" }), modelTurn({ inlineData: { mimeType: "image/png", data: "AA" } })] }), { param: "contents[1].parts[0].inlineData", code: "unsupported_parameter" }],
     ["fileData by gs:// URI", body({ contents: [user({ fileData: { fileUri: "gs://bucket/a.png" } })] }), { param: "contents[0].parts[0].fileData.fileUri", code: "unsupported_parameter" }],
     ["an unknown part kind", body({ contents: [user({ executableCode: { code: "x" } })] }), { param: "contents[0].parts[0]", code: "unsupported_parameter" }],
@@ -114,6 +124,53 @@ describe("parseGeminiRequest: contents", () => {
       { type: "text", text: "see" },
       { type: "media", url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==", mediaType: "image/jpeg" },
       { type: "media", url: "https://x.test/a.png", mediaType: "image/png" },
+    ])
+  })
+
+  // The google-genai Python SDK's wire shape: `mime_type` inside inlineData, and bytes as URL-safe base64.
+  // The PNG signature followed by 0xfb 0xff 0xbf encodes to `iVBORw0KGgr7/78=` in standard base64 (`+` and `/` present).
+  test.each([
+    ["padded", "iVBORw0KGgr7_78="],
+    ["unpadded", "iVBORw0KGgr7_78"],
+  ])("the Python SDK body: inlineData with mime_type and %s URL-safe base64 is a standard data URL", (_name, data) => {
+    const sdkBody = { contents: [{ role: "user", parts: [{ text: "What is shown?" }, { inlineData: { data, mime_type: "image/png" } }] }] }
+    expect(parse(sdkBody).request.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What is shown?" },
+          { type: "media", url: "data:image/png;base64,iVBORw0KGgr7/78=", mediaType: "image/png" },
+        ],
+      },
+    ])
+  })
+
+  test("standard base64 with its padding is passed through unchanged", () => {
+    expect(parse(body({ contents: [user({ inlineData: { mimeType: "image/png", data: "iVBORw0KGgr7/78=" } })] })).request.messages[0]!.content).toEqual([
+      { type: "media", url: "data:image/png;base64,iVBORw0KGgr7/78=", mediaType: "image/png" },
+    ])
+  })
+
+  test("snake_case part keys and fields: inline_data, file_data, function_call and function_response read like their camelCase forms", () => {
+    const parsed = parse(
+      body({
+        contents: [
+          user({ inline_data: { data: "iVBORw0KGgr7_78=", mime_type: "image/png" } }, { file_data: { file_uri: "https://x.test/a.pdf", mime_type: "application/pdf" } }),
+          modelTurn({ function_call: { id: "c1", name: "f", args: { a: 1 } } }),
+          user({ function_response: { id: "c1", name: "f", response: { output: "ok" } } }),
+        ],
+      }),
+    )
+    expect(parsed.request.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "media", url: "data:image/png;base64,iVBORw0KGgr7/78=", mediaType: "image/png" },
+          { type: "media", url: "https://x.test/a.pdf", mediaType: "application/pdf" },
+        ],
+      },
+      { role: "assistant", content: [{ type: "tool-call", id: "c1", name: "f", input: { a: 1 } }] },
+      { role: "tool", content: [{ type: "tool-result", id: "c1", name: "f", result: '{"output":"ok"}' }] },
     ])
   })
 

@@ -55,6 +55,14 @@ describe("#272 apps.<name>.userHeader on the wire", () => {
     expect(caller.call.request.user).toBeUndefined()
   })
 
+  test("a reserved name in the header is refused like any other: dropped, and the body's user is not used", async () => {
+    const caller = await route()
+    const reply = await server!.send(chat(KEYS.bot, { user: "bob" }, { "x-user-id": "__proto__" }))
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-user-dropped"]).toBe("1")
+    expect(caller.call.request.user).toBeUndefined()
+  })
+
   test("a blank header is absent: the body's user is used, and nothing is reported dropped", async () => {
     const caller = await route()
     const reply = await server!.send(chat(KEYS.bot, { user: "bob" }, { "x-user-id": "  " }))

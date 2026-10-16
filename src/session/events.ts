@@ -19,8 +19,9 @@
  */
 
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
-import { log, logError } from "../log.js"
+import { log, logError, logWarn } from "../log.js"
 import type { BusEvent } from "./host.js"
+import { StopScan } from "../stop.js"
 import { FAILURE_EVENT } from "./state.js"
 
 /** At most this many events may wait for a slow consumer, and at most this many (estimated) bytes of them. */
@@ -224,7 +225,8 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
     if (AUTH_FAILURE.test(detail)) return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
     if (status === 404) return { status, kind: "not_found", code: "provider_rejected_request", message: "The model provider rejected the request" }
     if (status !== undefined && status < 500) return { status, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the request" }
-    return { status: status ?? 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" }
+    // A status past 511 is not a standard HTTP status (Cloudflare uses 520 to 527): the client gets 502, the gateway class (#391).
+    return { status: status !== undefined && status <= 511 ? status : 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" }
   }
   return { status: 502, kind: "server", code: "model_run_failed", message: fallback }
 }
@@ -236,6 +238,11 @@ export interface CollectorHooks {
   readonly stopTurn: () => void
   /** The request's id, for the log line that carries a failure's raw host text. */
   readonly requestID?: string
+  /**
+   * A fallback target follows this call (`CallContext.fallbackNext`). A retry the host schedules before any output then
+   * fails the call at once with `provider_retry`, so the chain moves on; otherwise the host's retries run (#391).
+   */
+  readonly failFastRetry?: boolean
   /** The app, for the `server_tool.call` log lines. */
   readonly app?: string
   /** The app's `serverTools` (option `apps`): OpenCode runs these calls, the caller never sees them. */
@@ -244,6 +251,13 @@ export interface CollectorHooks {
   readonly maxServerToolSteps?: number
   /** Server tool calls allowed across all steps; the call past it fails the request. The owner passes it with `serverTools`. */
   readonly maxServerToolCalls?: number
+  /**
+   * The request's stop sequences (not structured output). The collector scans the text it emits and marks the match itself, so
+   * a tool call queued behind the matching text is already after the match (#390 review: the stop wrapper only sees text when it reads it).
+   */
+  readonly stopSequences?: ReadonlyArray<string>
+  /** Called once, when a stop sequence matches the text (`stopSequences`). The owner starts the settle window. */
+  readonly onStopAnswer?: () => void
 }
 
 interface ServerCall {
@@ -254,6 +268,7 @@ interface ServerCall {
 
 export class RequestCollector {
   private readonly queue = new EventQueue<PlugEvent>(MAX_QUEUED_EVENTS, MAX_QUEUED_BYTES)
+  private readonly stopScan: StopScan | undefined
   private readonly emittedText = new Map<number, number>()
   private readonly toolNames = new Map<string, string>()
   private readonly calls = new Set<string>()
@@ -265,12 +280,21 @@ export class RequestCollector {
   private lateStepCalls = 0
   private serverSteps = 0
   private usage?: RawUsage
+  /** True once any output event (not an error) was emitted: the answer is committed and no retry may restart it. */
+  private anyEmitted = false
   private finished = false
+  /** A stop sequence ended the answer and the run was interrupted for it (`markStopped`). */
+  private stopped = false
   private executionDone = false
   private wasCancelled = false
   private settled = false
+  private reportHook: (() => void) | undefined
+  /** The host was stopped because the client left (a tool call or a step that asks for more): once. */
+  private leftStopped = false
 
-  constructor(private readonly hooks: CollectorHooks) {}
+  constructor(private readonly hooks: CollectorHooks) {
+    this.stopScan = hooks.stopSequences !== undefined && hooks.stopSequences.length > 0 ? new StopScan(hooks.stopSequences) : undefined
+  }
 
   /** True once a `finish` or `error` event was emitted (or the stream was ended); later events are ignored. */
   get terminal(): boolean {
@@ -297,9 +321,25 @@ export class RequestCollector {
     return this.wasCancelled
   }
 
+  /** The host's usage for the run so far (the last `session.usage.updated` or step token record), or undefined before any. */
+  get spent(): PlugUsage | undefined {
+    return toUsage(this.usage)
+  }
+
   /** The request's events, in order. Ends when the collector is terminal. */
   events(): AsyncIterable<PlugEvent> {
     return this.queue
+  }
+
+  /** Calls `done` once, when the host reports the end of a step or of the execution: the usage of the run is final from then on. */
+  whenReported(done: () => void): void {
+    this.reportHook = done
+  }
+
+  private reported(): void {
+    const hook = this.reportHook
+    this.reportHook = undefined
+    hook?.()
   }
 
   /** Mark the request cancelled by its owner (client gone or timed out) and close the stream without a terminal event. */
@@ -321,6 +361,13 @@ export class RequestCollector {
         const delta = String(item.delta ?? "")
         this.emittedText.set(ordinal, (this.emittedText.get(ordinal) ?? 0) + delta.length)
         if (delta.length > 0) this.emit({ type: "text-delta", text: delta })
+        if (this.stopScan !== undefined && !this.stopped && delta.length > 0) {
+          this.stopScan.push(delta)
+          if (this.stopScan.matched !== undefined) {
+            this.markStopped()
+            this.hooks.onStopAnswer?.()
+          }
+        }
         return
       }
       case "session.text.ended": {
@@ -354,8 +401,15 @@ export class RequestCollector {
         const name = String(item.name ?? this.toolNames.get(id) ?? "")
         if (this.finished) {
           if (this.hooks.serverTools?.has(name)) this.lateServerCall(id, name)
+          // A client that left mid-run (the settle window): no tool runs for it, and the run is stopped at once (no further step).
+          if (this.wasCancelled && !this.executionDone && !this.leftStopped) {
+            this.leftStopped = true
+            this.hooks.stopTurn()
+          }
           return
         }
+        // After a match no tool runs: the answer is complete, and the run ends at once (#390 review).
+        if (this.stopped) return this.finishStopped(true)
         if (this.calls.has(id) || this.serverCalls.has(id)) return
         if (this.hooks.serverTools?.has(name)) {
           this.serverCalls.set(id, { name, startedAt: Date.now(), done: false })
@@ -394,7 +448,11 @@ export class RequestCollector {
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         return
       case "session.step.ended": {
+        this.reported()
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
+        // After a match the step is the last one: no server tools are run and no next step starts (#390 review).
+        // A plain end leaves the host to finish the run itself; a pending client tool call needs the interrupt.
+        if (this.stopped) return this.finishStopped(this.calls.size > 0)
         const serverCalls = this.stepServerCalls
         this.stepServerCalls = 0
         // A late step that ran server calls: the host is still running the session, so the turn is stopped again (#196).
@@ -405,6 +463,12 @@ export class RequestCollector {
         // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
         if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
         const reason = toFinish(item.finish)
+        // A client that left mid-run: a step that asks for another (server tools, or a finish that is not a plain stop) is stopped at
+        // once, so no further step starts. A client tool call already stopped the run above (`calls` is non-empty then).
+        if (this.wasCancelled && !this.executionDone && !this.leftStopped && this.calls.size === 0 && (reason !== "stop" || serverCalls > 0)) {
+          this.leftStopped = true
+          this.hooks.stopTurn()
+        }
         if (this.calls.size === 0 && serverCalls > 0) return this.serverStepEnded(reason)
         if (this.calls.size === 0 && reason === "stop") this.settled = true
         this.finishWith(withCalls(reason, this.calls.size > 0))
@@ -415,17 +479,35 @@ export class RequestCollector {
         if (isPlugError(item.error)) this.abort(item.error)
         return
       case "session.step.failed": {
+        this.reported()
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         // Assumed invariant: `error` is the host's `SessionError` (RawError shape).
         const error = item.error as RawError | undefined
         // The host can run another step after a failed one; the response is over, the turn must be too.
+        // After a match the answer before it is complete: a host failure now does not discard it, and the warning says so (#390 review).
+        if (this.stopped && error?.type !== "aborted") {
+          if (this.finished) return
+          logWarn("request.stop_step_failed", { requestID: this.hooks.requestID, app: this.hooks.app, error: error?.type ?? "unknown" })
+          return this.finishStopped(true)
+        }
         if (!this.executionDone && error?.type !== "aborted") this.hooks.stopTurn()
         if (this.calls.size > 0 && error?.type === "aborted") return this.finishWith("tool-calls")
+        if (error?.type === "aborted" && this.stopped) return this.finishWith("stop")
         if (item.finish === "content-filter") return this.finishWith("content-filter")
         if (error?.type === "aborted" && this.wasCancelled) return this.end()
         return this.failFromHost(error, "Model step failed")
       }
+      case "session.retry.scheduled": {
+        // The host waits, then runs the model step again (OpenCode 2.0.27 `session.retry.scheduled`). Before any output, a
+        // call with a fallback target after it is not made to wait: the retry is a failure now, and the chain moves on (#391).
+        const error = item.error as RawError | undefined
+        const failFast = this.hooks.failFastRetry === true && !this.anyEmitted
+        log("provider.retry_scheduled", { requestID: this.hooks.requestID, type: error?.type ?? "unknown", status: error?.status ?? 0, attempt: Number(item.attempt ?? 0), failFast })
+        if (failFast) this.abort({ status: 503, kind: "server", code: "provider_retry", message: "The model provider failed; the next target is tried" })
+        return
+      }
       case "session.execution.failed":
+        this.reported()
         this.executionDone = true
         this.logUnfinishedServerCalls()
         if (!this.finished) this.failFromHost(item.error as RawError | undefined, "Session execution failed")
@@ -433,12 +515,13 @@ export class RequestCollector {
         return
       case "session.execution.interrupted":
       case "session.execution.succeeded":
+        this.reported()
         this.executionDone = true
         this.logUnfinishedServerCalls()
         if (!this.finished) {
           if (this.calls.size > 0) this.finishWith("tool-calls")
           else if (this.wasCancelled) this.end()
-          else if (item.type === "session.execution.succeeded") this.finishWith("stop")
+          else if (item.type === "session.execution.succeeded" || this.stopped) this.finishWith("stop")
           else this.fail({ status: 500, kind: "server", message: "Request was interrupted before the model finished" })
         }
         this.end()
@@ -472,6 +555,22 @@ export class RequestCollector {
    */
   finishNow(): void {
     this.finishWith("stop")
+  }
+
+  /**
+   * A stop sequence ended the answer, so the host run is being interrupted on purpose (#390). The host then reports the
+   * interrupt as an aborted step failure (OpenCode 2.0.27, `Step interrupted`), which is the expected end, not an error.
+   */
+  markStopped(): void {
+    this.stopped = true
+  }
+
+  /** The answer is complete (a stop matched): end the run now, with the usage counted so far. The host is interrupted if it still runs. */
+  private finishStopped(interrupt: boolean): void {
+    if (this.finished) return
+    // Finish first: an interrupt may report back synchronously, and the run must already be over when it does.
+    this.finishWith("stop")
+    if (interrupt && !this.executionDone) this.hooks.stopTurn()
   }
 
   /**
@@ -549,6 +648,7 @@ export class RequestCollector {
   }
 
   private emit(event: PlugEvent): void {
+    if (event.type !== "error") this.anyEmitted = true
     // Errors are always queued: they are how an overflow is reported.
     if (this.queue.push(event, sizeOf(event), event.type === "error")) return
     // The consumer is not keeping up: drop what waits, fail this request only, and stop the turn.

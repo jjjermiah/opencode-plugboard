@@ -10,6 +10,19 @@ const message = (role: string, content: unknown) => ({ type: "message", role, co
 const fnCall = (call_id: string, name: string, args: unknown = "{}") => ({ type: "function_call", call_id, name, arguments: args })
 const fnOutput = (call_id: string, output: unknown) => ({ type: "function_call_output", call_id, output })
 
+describe("a client value that cannot be turned into a string is a 400, not a crash (property test counterexample)", () => {
+  test("an input item whose role is an object with a null toString is refused as a 400 (not a TypeError)", () => {
+    const result = parseResponsesRequest(body({ input: [{ type: "message", role: { toString: null }, content: [] }] }), options)
+    expect(isPlugError(result)).toBe(true)
+    expect(result).toMatchObject({ status: 400 })
+  })
+
+  test("an unsupported input item type that is an object is named as an object", () => {
+    const result = parseResponsesRequest(body({ input: [{ type: { toString: null } }] }), options)
+    expect(result).toMatchObject({ status: 400, message: 'Unsupported input item type "object"' })
+  })
+})
+
 describe("#202 parallel_tool_calls", () => {
   test("false asks for one tool call per answer; true and absent do not", () => {
     expect(parse(body({ parallel_tool_calls: false })).request.parallelToolCalls).toBe(false)

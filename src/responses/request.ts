@@ -10,6 +10,7 @@
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { show } from "../client-value.js"
 import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
@@ -103,7 +104,7 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
       } else if (typeof item.file_url === "string") {
         parts.push({ type: "media", url: item.file_url })
       } else return unsupported("input_file needs file_data or file_url; file_id is not supported (stateless)", `${at}.file_data`)
-    } else return unsupported(`Unsupported content part type "${String(item.type)}"`, `${at}.type`)
+    } else return unsupported(`Unsupported content part type "${show(item.type)}"`, `${at}.type`)
   }
   return parts
 }
@@ -117,7 +118,7 @@ const assistantText = (content: unknown, param: string): string | PlugError => {
     if (!isRecord(item)) return bad("Content part must be an object", `${param}[${index}]`)
     if (item.type === "refusal") continue
     if ((item.type !== "output_text" && item.type !== "input_text") || typeof item.text !== "string")
-      return unsupported(`Unsupported assistant content part type "${String(item.type)}"`, `${param}[${index}].type`)
+      return unsupported(`Unsupported assistant content part type "${show(item.type)}"`, `${param}[${index}].type`)
     texts.push(item.text)
   }
   return texts.join("")
@@ -187,7 +188,7 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system
             break
           }
           default:
-            return bad(`Unsupported message role "${String(item.role)}"`, `${param}.role`)
+            return bad(`Unsupported message role "${show(item.role)}"`, `${param}.role`)
         }
         break
       }
@@ -218,7 +219,7 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system
       case "reasoning":
         break
       default:
-        return unsupported(`Unsupported input item type "${String(type)}"`, `${param}.type`)
+        return unsupported(`Unsupported input item type "${show(type)}"`, `${param}.type`)
     }
   }
   flush()
@@ -235,7 +236,7 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
     const at = `tools[${index}]`
     if (!isRecord(entry)) return bad("Each tool must be an object", at)
     if (entry.type !== "function")
-      return unsupported(`Unsupported tool type "${String(entry.type)}": only function tools are supported (built-in tools such as web_search and file_search run on OpenAI's servers)`, `${at}.type`)
+      return unsupported(`Unsupported tool type "${show(entry.type)}": only function tools are supported (built-in tools such as web_search and file_search run on OpenAI's servers)`, `${at}.type`)
     if (typeof entry.name !== "string" || entry.name.length === 0) return bad('Each function tool needs a "name"', `${at}.name`)
     if (names.has(entry.name)) return bad(`Duplicate tool name "${entry.name}"`, `${at}.name`)
     if (entry.description != null && typeof entry.description !== "string") return bad("Tool description must be a string", `${at}.description`)
@@ -291,7 +292,7 @@ const parseTextFormat = (raw: unknown): { structured?: PlugTool; instruction?: s
       },
     }
   }
-  return bad(`Unsupported text.format type "${String(format.type)}"`, "text.format.type")
+  return bad(`Unsupported text.format type "${show(format.type)}"`, "text.format.type")
 }
 
 const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
