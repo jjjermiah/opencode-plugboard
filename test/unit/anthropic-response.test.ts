@@ -49,6 +49,20 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     expect(message.content).toEqual([{ type: "text", text: "answer", citations: null }])
   })
 
+  test("#385 a redacted reasoning event is one redacted_thinking block with its opaque data, and no deltas", async () => {
+    const redacted: PlugEvent = { type: "reasoning-delta", text: "", redactedData: "opaque_1" }
+    const { emitted, message, types } = await run(thinking, redacted, ev.text("answer"), ev.finish())
+    expect(emitted.find((event) => event.type === "content_block_start")).toEqual({ type: "content_block_start", index: 0, content_block: { type: "redacted_thinking", data: "opaque_1" } })
+    expect(types.filter((type) => type === "content_block_delta")).toHaveLength(1)
+    expect(message.content).toEqual([{ type: "redacted_thinking", data: "opaque_1" }, { type: "text", text: "answer", citations: null }])
+  })
+
+  test("#385 a redacted block is left out when the caller did not ask for thinking", async () => {
+    const redacted: PlugEvent = { type: "reasoning-delta", text: "", redactedData: "opaque_1" }
+    const { message } = await run(plain, redacted, ev.text("answer"), ev.finish())
+    expect(message.content).toEqual([{ type: "text", text: "answer", citations: null }])
+  })
+
   test("a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use", async () => {
     const { emitted, message } = await run(plain, ev.text("let me"), ev.call("call_1", "read", { path: "a" }), ev.finish("stop"))
     expect(emitted.filter((event) => event.type.startsWith("content_block")).map((event) => [event.type, event.index])).toEqual([

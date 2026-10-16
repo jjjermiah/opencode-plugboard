@@ -112,11 +112,17 @@ export function reportCache(response: ServerResponse): (result: "hit" | "miss") 
 const CACHEABLE_FINISH: ReadonlySet<PlugFinish> = new Set<PlugFinish>(["stop", "length"])
 
 /** Appends a delta to the list, merging it into the previous event when that is the same kind. */
-function append(events: PlugEvent[], event: { readonly type: "text-delta" | "reasoning-delta"; readonly text: string; readonly signature?: string }): void {
-  // A signature is its own event, so a replay puts it back after the block it closes (#146).
-  if (event.signature !== undefined) return void events.push({ type: event.type, text: event.text, signature: event.signature })
-  const last = events.at(-1)
-  if (last && last.type === event.type && (last as { signature?: string }).signature === undefined) events[events.length - 1] = { type: event.type, text: (last as { text: string }).text + event.text }
+function append(events: PlugEvent[], event: { readonly type: "text-delta" | "reasoning-delta"; readonly text: string; readonly signature?: string; readonly redactedData?: string }): void {
+  // A signature or a redacted payload is its own event, so a replay puts it back after the block it closes (#146, #385).
+  if (event.signature !== undefined || event.redactedData !== undefined)
+    return void events.push({
+      type: event.type,
+      text: event.text,
+      ...(event.signature === undefined ? {} : { signature: event.signature }),
+      ...(event.redactedData === undefined ? {} : { redactedData: event.redactedData }),
+    })
+  const last = events.at(-1) as { type: string; text: string; signature?: string; redactedData?: string } | undefined
+  if (last && last.type === event.type && last.signature === undefined && last.redactedData === undefined) events[events.length - 1] = { type: event.type, text: last.text + event.text }
   else events.push({ type: event.type, text: event.text })
 }
 

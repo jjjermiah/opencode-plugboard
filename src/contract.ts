@@ -169,7 +169,7 @@ export type PlugFinish = "stop" | "length" | "tool-calls" | "content-filter" | "
 export type PlugEvent =
   | { readonly type: "text-delta"; readonly text: string }
   // `signature` marks the end of a reasoning block: an empty-text event carrying the provider's signature for it (#146).
-  | { readonly type: "reasoning-delta"; readonly text: string; readonly signature?: string }
+  | { readonly type: "reasoning-delta"; readonly text: string; readonly signature?: string; readonly redactedData?: string }
   | { readonly type: "tool-call"; readonly id: string; readonly name: string; readonly input: unknown }
   | { readonly type: "finish"; readonly reason: PlugFinish; readonly usage?: PlugUsage; readonly stopSequence?: string }
   | { readonly type: "error"; readonly error: PlugError }

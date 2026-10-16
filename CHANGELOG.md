@@ -18,6 +18,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - `GET /v1/models` and `GET /v1/models/{id}` accept `x-api-key`, as `POST /v1/messages` does, so `client.models.list()` in the Anthropic SDKs works. A request with `anthropic-version` gets Anthropic's list shape (`data`, `has_more`, `first_id`, `last_id`, each model with `type`, `id`, `display_name`, `created_at`); other requests keep the OpenAI shape. Since 0.47.0 ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)).
 - Chat Completions, Responses and Gemini now send `x-plugboard-thinking: unavailable` too, when a requested reasoning effort cannot apply because the model has no thinking variant. Until now only Messages said so. `none` never sets it. Since 0.47.0.
+- A redacted reasoning block the provider returns is now sent back on the Messages route as one `redacted_thinking` block with its opaque data, in both the JSON and the stream. Before, the host's redacted reasoning was dropped, so a client never got a block it could replay. Like thinking, it is left out unless the request asked for thinking. Since 0.47.0 ([#385](https://github.com/jjjermiah/opencode-plugboard/issues/385)).
 
 ## [0.46.0] - 2026-10-16: Honest Counts
 

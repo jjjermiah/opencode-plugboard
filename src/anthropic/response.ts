@@ -197,6 +197,16 @@ export async function runMessage(
     open.signature = signature
     emit({ type: "content_block_delta", index: open.index, delta: { type: "signature_delta", signature } })
   }
+  /** A redacted thinking block (#385): the provider's opaque payload, one whole block with no deltas, as the API sends it. */
+  const redacted = (data: string) => {
+    start()
+    close()
+    const index = nextIndex++
+    emit({ type: "content_block_start", index, content_block: { type: "redacted_thinking", data } })
+    ping()
+    emit({ type: "content_block_stop", index })
+    if (aggregate) content.push({ type: "redacted_thinking", data })
+  }
   const text = (chunk: string) => delta("text", chunk)
   const delta = (kind: "text" | "thinking", text: string) => {
     if (text.length === 0) return
@@ -249,8 +259,11 @@ export async function runMessage(
     }
     if (event.type === "reasoning-delta") {
       if (exchange.thinking) {
-        delta("thinking", event.text)
-        if (event.signature !== undefined) sign(event.signature)
+        if (event.redactedData !== undefined) redacted(event.redactedData)
+        else {
+          delta("thinking", event.text)
+          if (event.signature !== undefined) sign(event.signature)
+        }
       }
     } else if (event.type === "text-delta") text(event.text)
     else toolCall(event)
