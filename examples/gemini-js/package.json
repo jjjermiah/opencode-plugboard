@@ -1,0 +1,17 @@
+{
+  "name": "plugboard-example-gemini-js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Google GenAI JS SDK (@google/genai) against plugboard's Gemini route: S1 to S7 and the error paths.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "2.30.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-gemini-python"
+version = "0.1.0"
+description = "The Google GenAI Python SDK (google-genai) against plugboard's Gemini route: S1 to S7 and the error paths. Exact pins; the lock is the source of truth."
+requires-python = ">=3.12"
+# Exact pin: the version `uv lock` resolved when the example was written.
+dependencies = ["google-genai==2.31.0"]
