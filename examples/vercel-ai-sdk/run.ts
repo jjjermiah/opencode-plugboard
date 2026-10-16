@@ -23,7 +23,7 @@ emitClient("vercel-ai-sdk", version)
 await runAll(
   {
     S1: (model, variant) => chat.run(clientFor(variant), model),
-    S2: (model, variant) => tools.run(clientFor(variant), model),
+    S2: (model, variant) => (variant === "responses-store-false" ? tools.runStoreOff(clientFor(variant), model) : tools.run(clientFor(variant), model)),
     S3: (model, variant) => stream.run(clientFor(variant), model),
     S4: (model, variant) => streamTools.run(clientFor(variant), model),
     S5: (model, variant) => image.run(clientFor(variant), model),
@@ -33,6 +33,6 @@ await runAll(
     E2: () => unknownModel.run(clientFor()),
   },
   {
-    variants: { S1: API, S2: API, S3: API, S4: API, S5: API, S6: API },
+    variants: { S1: API, S2: [...API, "responses-store-false"], S3: API, S4: API, S5: API, S6: API },
   },
 )

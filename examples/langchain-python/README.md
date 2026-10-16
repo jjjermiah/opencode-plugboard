@@ -56,9 +56,13 @@ bun examples/_harness/run.ts langchain-python --target live       # the isolated
 - **Structured output: the json_schema method is the checked one.** `function_calling` and `json_mode` run in the same scenario and their outcome is recorded in the observations, not checked. The 2026-10-11 record saw `json_mode` on `fast` return `{}`. See the record below.
 - **Tool call ids are opaque.** Send them back as they came; the run files hold placeholders, so the prefixes do not show.
 
+## Responses API
+
+The `responses` variant runs S1, S2, S3, S5 and S6 through `responses_model` (`llm.py`), which sets `use_responses_api=True`. On that route LangChain exposes no `finish_reason`, although plugboard returns status `completed`, so the finish_reason checks are listed under `unobserved` in `run.py` (#104). Every other check runs and passes on the three models. The S6 raw message is a list of content blocks on this route, so `structured.py` joins the text.
+
 ## Known gaps
 
-None in the scripted run. The live run of 2026-10-13 (`runs/live/2026-10-13-c97ac66`, plugboard `c97ac66`, 0.26.0) passed every scenario on every model, including `openai/gpt-5.6-luna#low`; its `REPORT.md` has the notes.
+None in the scripted run. The Responses variant's finish_reason checks are not checked (see above). The live run of 2026-10-13 (`runs/live/2026-10-13-c97ac66`, plugboard `c97ac66`, 0.26.0) passed every scenario on every model, including `openai/gpt-5.6-luna#low`; its `REPORT.md` has the notes.
 
 ## Historical record
 

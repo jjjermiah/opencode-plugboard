@@ -42,6 +42,29 @@ def run(client, model):
     }
 
 
+def run_responses(client, model):
+    # region snippet-responses
+    parsed = client.responses.parse(model=model, input=PROMPT, text_format=Meal, max_output_tokens=1024)
+    meal = parsed.output_parsed  # a Meal, or the SDK raises
+    # endregion snippet-responses
+    if not isinstance(meal, Meal):
+        raise AssertionError(f"parse did not give a Meal: {parsed.output_text!r}")
+    # region snippet-responses-raw
+    raw = client.responses.create(
+        model=model,
+        input=PROMPT,
+        max_output_tokens=1024,
+        text={"format": {"type": "json_schema", "name": SCHEMA["name"], "schema": SCHEMA["schema"], "strict": True}},
+    )
+    # endregion snippet-responses-raw
+    data = json.loads(raw.output_text or "")
+    return {
+        "calories": data.get("calories"),
+        "protein_g": data.get("protein_g"),
+        "extra_keys": sorted(set(data) - {"calories", "protein_g"}),
+    }
+
+
 if __name__ == "__main__":
     from openai import OpenAI
 
