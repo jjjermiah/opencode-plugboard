@@ -27,6 +27,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tui.json && tsc --noEmit -p test && tsc --noEmit -p examples/_harness",
     "test": "bun test",
+    "validate": "bun .github/scripts/validate.ts",
+    "pr-wait": "bun .github/scripts/pr-wait.ts",
     "bench": "bun test/bench/request.bench.ts",
     "mutations": "bun .github/scripts/mutation-check.ts",
     "flake-hunt": "bun .github/scripts/flake-hunt.ts",
