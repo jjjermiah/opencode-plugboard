@@ -5,7 +5,7 @@
  * so every wait here is a few milliseconds.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import { request as httpRequest, type ClientRequest, type IncomingMessage, type ServerResponse } from "node:http"
+import { Agent, request as httpRequest, type ClientRequest, type IncomingMessage, type ServerResponse } from "node:http"
 import type { BodyLimits } from "../../src/config.js"
 import type { PlugEvent } from "../../src/contract.js"
 import { BodyError, RequestAborted, beginRequest, boundEvents, bodyPlugError, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../../src/http.js"
@@ -84,6 +84,40 @@ describe("beginRequest: one deadline and disconnect abort per request", () => {
     const stream = await open()
     await stream.ended
     expect(stream.status).toBe(200)
+  })
+
+  test("#422 a 504 that keeps the connection does not cut the next request sent on it", async () => {
+    let calls = 0
+    const { port } = await serve(async (request, response) => {
+      calls++
+      if (calls > 1) {
+        // Slower than the grace: a socket cut by the first request's grace timer fails this one.
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        sendJson(response, 200, { ok: true })
+        return
+      }
+      const scope = beginRequest(request, response, 5, 10)
+      await new Promise((resolve) => scope.signal.addEventListener("abort", resolve))
+      // A 504 without `connection: close`, as the responses, completions and gemini routes send it.
+      sendJson(response, 504, scope.timeoutError)
+      scope.dispose()
+    })
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 })
+    const status = () =>
+      new Promise<number>((resolve, reject) => {
+        const client = httpRequest({ host: "127.0.0.1", port, path: "/", agent }, (response) => {
+          response.resume()
+          response.on("end", () => resolve(response.statusCode ?? 0))
+        })
+        client.on("error", reject)
+        client.end()
+      })
+    try {
+      expect(await status()).toBe(504)
+      expect(await status()).toBe(200)
+    } finally {
+      agent.destroy()
+    }
   })
 
   test("race settles like the promise, or rejects with the abort reason", async () => {

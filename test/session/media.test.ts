@@ -10,7 +10,7 @@ import type { ServerResponse } from "node:http"
 import ipaddr from "ipaddr.js"
 import type { PlugRequest } from "../../src/contract.js"
 import { ImageError, isPublicAddress, parseAllowEntry, prepareImages, type RemoteImages } from "../../src/session/media.js"
-import { plugRequest } from "../support/fixtures.js"
+import { plugRequest, until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { listen, type Loopback } from "../support/loopback.js"
 
@@ -20,6 +20,8 @@ const LOCALHOST = (await lookup("localhost", { all: true, verbatim: true })).map
 const PNG = Buffer.from("89504e470d0a1a0a", "hex")
 let server: Loopback
 let hits = 0
+/** Requests per path: a test counts its own fetches here, so a request from another test does not count (#434). */
+const served = new Map<string, number>()
 /** Responses a `/hang` fetch leaves open; a test destroys them when it is done. */
 const hung: ServerResponse[] = []
 const routes: Record<string, (response: ServerResponse) => void> = {
@@ -27,6 +29,7 @@ const routes: Record<string, (response: ServerResponse) => void> = {
     response.writeHead(200, { "content-type": "image/png" })
     response.end(PNG)
   },
+  "/max-items.png": (response) => routes["/ok.png"]!(response),
   "/redirect": (response) => {
     response.writeHead(302, { location: "/ok.png" })
     response.end()
@@ -59,6 +62,7 @@ const routes: Record<string, (response: ServerResponse) => void> = {
 beforeAll(async () => {
   server = await listen((request, response) => {
     hits++
+    served.set(request.url ?? "", (served.get(request.url ?? "") ?? 0) + 1)
     ;(routes[request.url ?? ""] ?? routes["/missing"]!)(response)
   })
 })
@@ -249,12 +253,19 @@ describe("#259 remoteImages limits tighten the fetch", () => {
   })
 
   test("maxItems: a second remote URL is refused before its fetch; data URLs are not counted", async () => {
-    const before = hits
-    const error = await prepareImages(withImages(url("/ok.png"), url("/ok.png")), new AbortController().signal, { allow, maxItems: 1 }).catch((caught: unknown) => caught)
+    const count = () => served.get("/max-items.png") ?? 0
+    const before = count()
+    // The hang test's request can reach the server after that test ended (#434): one arrives inside this window.
+    const seen = hung.length
+    const late = server.raw({ path: "/hang" })
+    await until(() => hung.length > seen, 1_000, "the late /hang request")
+    for (const response of hung.splice(0)) response.destroy()
+    late.destroy()
+    const error = await prepareImages(withImages(url("/max-items.png"), url("/max-items.png")), new AbortController().signal, { allow, maxItems: 1 }).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(ImageError)
     expect((error as ImageError).code).toBe("too_many_remote_images")
-    expect(hits).toBe(before + 1)
-    const files = await prepareImages(withImages("data:a", url("/ok.png"), "data:b"), new AbortController().signal, { allow, maxItems: 1 })
+    expect(count()).toBe(before + 1)
+    const files = await prepareImages(withImages("data:a", url("/max-items.png"), "data:b"), new AbortController().signal, { allow, maxItems: 1 })
     expect(files).toHaveLength(3)
   })
 })

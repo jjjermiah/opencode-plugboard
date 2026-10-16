@@ -360,6 +360,7 @@ const parseGeneration = (config: JsonObject): PlugGeneration | PlugError => {
   const stop = field(config, "stopSequences")
   if (stop != null) {
     if (!Array.isArray(stop) || !stop.every((s) => typeof s === "string")) return bad("stopSequences must be an array of strings", "generationConfig.stopSequences")
+    if (stop.some((s) => s.length === 0)) return bad("stopSequences must not contain an empty string", "generationConfig.stopSequences")
     if (stop.length > MAX_STOP) return bad(`stopSequences takes at most ${MAX_STOP} sequences`, "generationConfig.stopSequences")
     if (stop.length > 0) out.stop = stop as string[]
   }

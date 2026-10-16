@@ -34,6 +34,28 @@ const chat = (body: Record<string, unknown> = {}): SendInit => ({
   body: { model: "test/echo", messages: [{ role: "user", content: "hi" }], stop: "END", ...body },
 })
 
+describe("#424 stop strings: a whitespace stop is matched in the answer, an empty one is a 400 before any model call", () => {
+  test("a newline stop passes through and ends the answer before the newline", async () => {
+    const caller = new FakeModelCaller([ev.text("Hello\nworld"), ev.finish("stop")])
+    await routeWith(caller)
+    const reply = await server!.send(chat({ stop: "\n" }))
+    expect(reply.status).toBe(200)
+    expect(reply.json().choices[0].message.content).toBe("Hello")
+  })
+
+  test.each([
+    ["an empty stop", ""],
+    ["a list with an empty entry", ["", "x"]],
+  ])("%s is a 400 naming stop, and the model is never called", async (_name, stop) => {
+    const caller = new FakeModelCaller([ev.text("x"), ev.finish("stop")])
+    await routeWith(caller)
+    const reply = await server!.send(chat({ stop }))
+    expect(reply.status).toBe(400)
+    expect(reply.json().error).toMatchObject({ param: "stop" })
+    expect(caller.calls).toEqual([])
+  })
+})
+
 describe("#390 usage after a stop match, on each dialect", () => {
   test("Chat Completions: the JSON body has the usage of the run and the answer is cut", async () => {
     await routeWith(new FakeModelCaller(script))

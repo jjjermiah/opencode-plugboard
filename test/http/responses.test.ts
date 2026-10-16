@@ -154,6 +154,23 @@ describe("#147 item_reference resolves to an output item of a recent answer", ()
     expect(reply.json()).toMatchObject({ error: { code: "item_not_found", param: "input[0].id", message: expect.stringContaining("store: false") } })
   })
 
+  test("#426 an answer made with store: false keeps nothing: its items are a 400 item_not_found when referenced", async () => {
+    await route([ev.text("Hello"), ev.finish()])
+    const first = await server!.send(responses({ store: false }))
+    expect(first.status).toBe(200)
+    const reply = await server!.send(nextTurn(messageIdOf(first.json().output)))
+    expect(reply.status).toBe(400)
+    expect(reply.json()).toMatchObject({ error: { code: "item_not_found", param: "input[0].id" } })
+  })
+
+  test("#426 a streamed answer made with store: false is not kept either", async () => {
+    await route([ev.text("Hello"), ev.finish()])
+    const streamed = await server!.send(responses({ store: false, stream: true }))
+    const completed = eventsOf(streamed.text).find((event) => event.event === "response.completed")!
+    const id = messageIdOf((completed.data as { response: { output: Array<{ id: string; type: string }> } }).response.output)
+    expect((await server!.send(nextTurn(id))).status).toBe(400)
+  })
+
   test("an app reads only the items its own answers returned: another app's id is a 400", async () => {
     await route([ev.text("Hello"), ev.finish()], { keys: { alpha: "key-alpha", beta: "key-beta" } })
     const id = messageIdOf((await server!.send({ ...responses(), headers: { authorization: "Bearer key-alpha" } })).json().output)

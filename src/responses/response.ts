@@ -175,12 +175,13 @@ export async function runResponse(
     open.text += delta
     send("response.output_text.delta", { item_id: open.id, output_index: open.index, content_index: 0, delta, logprobs: [] })
   }
-  const closeMessage = () => {
+  /** `incomplete` when the answer was cut by a limit or a filter: the item open at the cut is cut too (#425). */
+  const closeMessage = (status: "completed" | "incomplete" = "completed") => {
     if (!open) return
     const part = { type: "output_text", text: open.text, annotations: [], logprobs: [] }
     send("response.output_text.done", { item_id: open.id, output_index: open.index, content_index: 0, text: open.text, logprobs: [] })
     send("response.content_part.done", { item_id: open.id, output_index: open.index, content_index: 0, part })
-    const item = messageItem(open.id, "completed", open.text)
+    const item = messageItem(open.id, status, open.text)
     send("response.output_item.done", { output_index: open.index, item })
     items.push(item)
     open = undefined
@@ -257,9 +258,9 @@ export async function runResponse(
   start()
   if (held && structuredAnswer) text(args(held.input))
   if (fallback !== undefined) text(fallback)
-  closeReasoning()
-  closeMessage()
   const incomplete = finish === "length" ? "max_output_tokens" : finish === "content-filter" ? "content_filter" : undefined
+  closeReasoning(incomplete ? "incomplete" : "completed")
+  closeMessage(incomplete ? "incomplete" : "completed")
   const response = envelope(incomplete ? "incomplete" : "completed", items, {
     ...(incomplete ? { incomplete_details: { reason: incomplete } } : {}),
     // Always present (#390): zeros when the host reported none for the run, as the chat body does.

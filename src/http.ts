@@ -104,6 +104,8 @@ export function beginRequest(
   let graceTimer: ReturnType<typeof setTimeout> | undefined
   const onDeadline = () => {
     abort("timeout")
+    // A 504 answered after this point closes its connection (#422): the grace below cuts the socket, so a client must not reuse it.
+    if (!response.headersSent) response.setHeader("connection", "close")
     // The error response (or the rest of a stream) may never flush to a client that stopped reading: cut the transport.
     // Cleared only once the socket is gone: on some runtimes the response reports finished/closed
     // after `end()` while bytes are still queued for a client that stopped reading, so neither
