@@ -1,40 +1,47 @@
 /**
- * #411 The model sometimes names a tool in its reasoning by the placeholder id it was shown:
- * `mcp_` plus `T` plus the base64url of the tool's name (`mcp_TZ2V0X3dlYXRoZXI` is `get_weather`).
- * The id is an internal encoding, so reasoning text returned to the caller says the name instead.
+ * #411 The model can name a tool in its reasoning by the placeholder id it was shown. The producer is
+ * `@ex-machina/opencode-anthropic-auth` 2.0.0-next.x (read at 2.0.0-next.6, transform.js): a tool name
+ * of 44 UTF-8 bytes or fewer becomes `mcp_T` plus base64url(name), a longer one `mcp_H` plus
+ * base64url(sha256(name)), which cannot be reversed without the name. The 1.x line sends `mcp_` plus the
+ * name with its first letter upper-cased. That id is internal, so reasoning text returned to the caller
+ * says the tool's name instead.
  *
- * Only an id that decodes to a plain tool name is rewritten. Anything else that starts with `mcp_`
- * (`mcp_servers`, a half id) is left as it is.
+ * Only this request's own tools are aliased. An id is the whole run of id characters after `mcp_`, and
+ * it is rewritten only when that exact run is one of the request's aliases. Text that merely looks like
+ * an id (`mcp_servers`, `mcp_Tbm90`, `mcp_TZ2V0X3dlYXRoZXI_tool`) is left as it is.
  */
+import { createHash } from "node:crypto"
 
-const PLACEHOLDER = /mcp_[A-Za-z0-9_-]+/g
-const NAME = /^[A-Za-z0-9_.:-]{1,128}$/
+/** The longest name (in UTF-8 bytes) the producer sends inline; a longer one is hashed. */
+const SHORT_NAME_BYTES = 44
 
-/** The caller's tool name an id encodes, or undefined when the id does not encode one. */
-export function toolNameOf(id: string): string | undefined {
-  const body = id.startsWith("mcp_") ? id.slice(4) : ""
-  // The encoding's leading `T` is stripped first; an id without it is tried as the bare base64url too.
-  for (const candidate of body.startsWith("T") ? [body.slice(1), body] : [body]) {
-    if (candidate.length === 0 || !/^[A-Za-z0-9_-]+$/.test(candidate)) continue
-    const name = Buffer.from(candidate, "base64url").toString("utf8")
-    // Canonical base64url only: re-encoding the name gives back the id, so a random word does not match.
-    if (Buffer.from(name, "utf8").toString("base64url") === candidate && NAME.test(name)) return name
+/** The ids this request's tool names are shown as, each mapped back to its name. */
+export function placeholderAliases(names: Iterable<string>): Map<string, string> {
+  const aliases = new Map<string, string>()
+  for (const name of names) {
+    const bytes = Buffer.from(name, "utf8")
+    const id = bytes.length <= SHORT_NAME_BYTES ? `mcp_T${bytes.toString("base64url")}` : `mcp_H${createHash("sha256").update(bytes).digest("base64url")}`
+    aliases.set(id, name)
+    aliases.set(`mcp_${name.charAt(0).toUpperCase()}${name.slice(1)}`, name)
   }
-  return undefined
+  return aliases
 }
 
+/** The whole id run after `mcp_`; `mcp_` alone is not a run worth rewriting. */
+const ID_RUN = /mcp_[A-Za-z0-9_-]*/g
+
 /**
- * Streams text through the rewrite. `push` returns the text that is safe to emit now; an id that
- * might still be growing (or a prefix of `mcp_`) waits in the buffer. `flush` returns what is left at
- * the end of a reasoning block or of the stream.
+ * Streams text through the rewrite. `push` returns the text that is safe to emit now: an id run that might
+ * still be growing, or a suffix that is the start of `mcp_`, waits in the buffer. `flush` returns what is
+ * left at the end of a reasoning block or of the stream.
  */
-export function placeholderRewriter() {
+export function placeholderRewriter(aliases: ReadonlyMap<string, string>) {
   let pending = ""
-  const rewrite = (text: string) => text.replace(PLACEHOLDER, (id) => toolNameOf(id) ?? id)
+  const rewrite = (text: string) => text.replace(ID_RUN, (id) => aliases.get(id) ?? id)
   return {
     push(chunk: string): string {
       const text = pending + chunk
-      // The trailing run of id characters is the only part that can still become an id.
+      // Only the trailing run of id characters can still become an id.
       const run = /[A-Za-z0-9_-]*$/.exec(text)![0]
       const base = text.length - run.length
       let cut = text.length

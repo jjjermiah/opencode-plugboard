@@ -5,7 +5,9 @@
  * the caller-safe error classes (#88).
  */
 import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import type { PlugEvent } from "../../src/contract.js"
+import { replayedReasoning } from "../../src/reasoning-replay.js"
 import { RequestCollector } from "../../src/session/events.js"
 import { createSessionStore, FAILURE_EVENT } from "../../src/session/state.js"
 import { collect, plugRequest } from "../support/fixtures.js"
@@ -16,9 +18,9 @@ const logs = captureLogs()
 const host = bus("ses_1")
 
 /** A collector registered in a fresh store, so events go through `dispatch` exactly as the event pump sends them. */
-function setup() {
+function setup(toolNames: readonly string[] = []) {
   let stops = 0
-  const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1" })
+  const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", toolNames })
   const store = createSessionStore()
   store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
   return {
@@ -118,6 +120,13 @@ async function play(...events: BusEnvelope[]): Promise<PlugEvent[]> {
   return run.drain()
 }
 
+/** `play` for a request with these tool names, which the reasoning ids are rewritten for (#411). */
+async function playWith(toolNames: readonly string[], ...events: BusEnvelope[]): Promise<PlugEvent[]> {
+  const run = setup(toolNames)
+  run.send(...events)
+  return run.drain()
+}
+
 describe("#202 a request that asked for one tool call keeps the first and drops the rest", () => {
   const twoCalls = async (singleToolCall: boolean) => {
     const collector = new RequestCollector({ stopTurn: () => {}, requestID: "req_1", singleToolCall })
@@ -163,7 +172,7 @@ describe("event mapping", () => {
   })
 
   test("#411 a placeholder id in reasoning text is rewritten to the tool's name, even when split across deltas", async () => {
-    expect(await play(host.reasoningDelta("I can use mcp_TZ2V0"), host.reasoningDelta("X3dlYXRoZXI here"), host.reasoningEnded({}), host.stepEnded("stop"))).toEqual([
+    expect(await playWith(["get_weather"], host.reasoningDelta("I can use mcp_TZ2V0"), host.reasoningDelta("X3dlYXRoZXI here"), host.reasoningEnded({}), host.stepEnded("stop"))).toEqual([
       { type: "reasoning-delta", text: "I can use " },
       { type: "reasoning-delta", text: "get_weather here" },
       expect.objectContaining({ type: "finish", reason: "stop" }),
@@ -171,12 +180,77 @@ describe("event mapping", () => {
   })
 
   test("#411 an id that ends a reasoning block is flushed at its end, before the signature", async () => {
-    expect(await play(host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"), host.reasoningEnded({ signature: "sig_abc" }), host.stepEnded("stop"))).toEqual([
+    expect(await playWith(["get_weather"], host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"), host.reasoningEnded({ signature: "sig_abc" }), host.stepEnded("stop"))).toEqual([
       { type: "reasoning-delta", text: "call " },
       { type: "reasoning-delta", text: "get_weather" },
       { type: "reasoning-delta", text: "", signature: "sig_abc" },
       expect.objectContaining({ type: "finish", reason: "stop" }),
     ])
+  })
+
+  test("#411 held reasoning text is flushed when the step ends with no reasoning.ended (the last characters are not lost)", async () => {
+    expect(await playWith(["get_weather"], host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "call " },
+      { type: "reasoning-delta", text: "get_weather" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
+  test("#411 held reasoning text is flushed before a failure's error", async () => {
+    expect(await playWith(["get_weather"], host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"), host.stepFailed({ type: "provider.rate-limit", message: "slow down" }))).toEqual([
+      { type: "reasoning-delta", text: "call " },
+      { type: "reasoning-delta", text: "get_weather" },
+      expect.objectContaining({ type: "error" }),
+    ])
+  })
+
+  test("#411 held reasoning text is flushed before a text delta and before a tool call", async () => {
+    expect(await playWith(["get_weather"], host.reasoningDelta("call mcp_TZ2V0"), host.textDelta("Hi"), host.reasoningDelta("x mcp_TZ2V0X3dlYXRoZXI"), host.toolCalled("c1", "get_weather", {}), host.stepEnded("tool-calls"))).toEqual([
+      { type: "reasoning-delta", text: "call " },
+      { type: "reasoning-delta", text: "mcp_TZ2V0" },
+      { type: "text-delta", text: "Hi" },
+      { type: "reasoning-delta", text: "x " },
+      { type: "reasoning-delta", text: "get_weather" },
+      expect.objectContaining({ type: "tool-call" }),
+      expect.objectContaining({ type: "finish" }),
+    ])
+  })
+
+  test("#411 held reasoning text is flushed by a server tool call, so the next delta does not join the id", async () => {
+    const collector = new RequestCollector({ stopTurn: () => {}, requestID: "req_1", toolNames: ["get_weather"], serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3 })
+    const store = createSessionStore()
+    store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
+    store.dispatch(host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"))
+    store.dispatch(host.toolCalled("s1", "web", {}))
+    store.dispatch(host.stepEnded("tool-calls"))
+    store.dispatch(host.reasoningDelta("more"))
+    store.dispatch(host.reasoningEnded({}))
+    store.dispatch(host.stepEnded("stop"))
+    expect(await collect(collector.events())).toEqual([
+      { type: "reasoning-delta", text: "call " },
+      { type: "reasoning-delta", text: "get_weather" },
+      { type: "reasoning-delta", text: "more" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
+  test("#411 the H form of a long tool name is rewritten, even when its id is split across deltas", async () => {
+    const long = "a_very_long_tool_name_that_goes_past_the_limit_".repeat(2)
+    const id = `mcp_H${createHash("sha256").update(long).digest("base64url")}`
+    const events = await playWith([long], host.reasoningDelta(`call ${id.slice(0, 30)}`), host.reasoningDelta(`${id.slice(30)} now`), host.reasoningEnded({}), host.stepEnded("stop"))
+    expect(events.filter((event) => event.type === "reasoning-delta").map((event) => (event as { text: string }).text).join("")).toBe(`call ${long} now`)
+  })
+
+  test("#411 reasoning text that is not one of this request's ids is left as it is", async () => {
+    expect(await playWith(["get_weather"], host.reasoningDelta("mcp_servers and mcp_Tbm90 stay"), host.reasoningEnded({}), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "mcp_servers and mcp_Tbm90 stay" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
+  test("#411 a rewritten block remembers the text it was signed for, so a replay can restore it", async () => {
+    await playWith(["get_weather"], host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"), host.reasoningEnded({ signature: "sig_rt" }), host.stepEnded("stop"))
+    expect(replayedReasoning("sig_rt", "call get_weather")).toBe("call mcp_TZ2V0X3dlYXRoZXI")
   })
 
   test("text and reasoning deltas, then a plain stop", async () => {

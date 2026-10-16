@@ -11,6 +11,7 @@
 import type { PlugboardOptions } from "../config.js"
 import { show } from "../client-value.js"
 import { imageProblem } from "../image.js"
+import { replayedReasoning } from "../reasoning-replay.js"
 import { bodyUserId, userField } from "../user.js"
 import {
   isPlugError,
@@ -82,7 +83,8 @@ const reasoningPart = (block: JsonObject): PlugPart | undefined => {
     return typeof block.data === "string" && block.data.length > 0 ? { type: "reasoning", text: "", redactedData: block.data } : undefined
   }
   if (typeof block.thinking !== "string" || typeof block.signature !== "string" || block.signature.length === 0) return undefined
-  return { type: "reasoning", text: block.thinking, signature: block.signature }
+  // The text the provider signed: a block whose text plugboard rewrote (#411) is replayed as it was signed.
+  return { type: "reasoning", text: replayedReasoning(block.signature, block.thinking), signature: block.signature }
 }
 
 /** Text of a tool_result `content`: a string, or text blocks; image blocks are returned separately. */

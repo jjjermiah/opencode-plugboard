@@ -445,6 +445,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           stopTurn: interrupt,
           requestID,
           app,
+          // The ids the model may name a tool by are rewritten only for this request's tools (#411).
+          toolNames: [...request.tools.map((tool) => tool.name), ...(policy?.serverTools ?? [])],
           ...(context.fallbackNext ? { failFastRetry: true } : {}),
           // The collector sees the match in the text it emits, so calls queued behind it are already after it (#390 review).
           ...(request.structuredTool === undefined ? { stopSequences: request.generation.stop ?? [], onStopAnswer } : {}),
