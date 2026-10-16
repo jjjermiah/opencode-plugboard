@@ -1,0 +1,268 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "include": [],
+          "input": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            }
+          ],
+          "instructions": "Use the tool to answer.",
+          "model": "fast",
+          "stream": false,
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "description": "City name",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": true,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-1>",
+          "error": null,
+          "id": "<id-1>",
+          "incomplete_details": null,
+          "instructions": "Use the tool to answer.",
+          "max_output_tokens": null,
+          "metadata": {},
+          "model": "fast",
+          "object": "response",
+          "output": [
+            {
+              "arguments": "{\"city\":\"Paris\"}",
+              "call_id": "<id-2>",
+              "id": "<id-3>",
+              "name": "get_weather",
+              "status": "completed",
+              "type": "function_call"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "description": "City name",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": true,
+              "type": "function"
+            }
+          ],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 11,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 7,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 18
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "include": [],
+          "input": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            },
+            {
+              "arguments": "{\"city\":\"Paris\"}",
+              "call_id": "<id-2>",
+              "id": "<id-3>",
+              "name": "get_weather",
+              "status": "completed",
+              "type": "function_call"
+            },
+            {
+              "call_id": "<id-2>",
+              "output": "{\"temp_c\":18,\"sky\":\"cloudy\"}",
+              "status": "completed",
+              "type": "function_call_output"
+            }
+          ],
+          "instructions": "Use the tool to answer.",
+          "model": "fast",
+          "stream": false,
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "description": "City name",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": true,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-2>",
+          "error": null,
+          "id": "<id-4>",
+          "incomplete_details": null,
+          "instructions": "Use the tool to answer.",
+          "max_output_tokens": null,
+          "metadata": {},
+          "model": "fast",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "18 C and cloudy",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-5>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "description": "City name",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": true,
+              "type": "function"
+            }
+          ],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 11,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 7,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 18
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

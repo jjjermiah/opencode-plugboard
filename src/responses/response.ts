@@ -262,7 +262,8 @@ export async function runResponse(
   const incomplete = finish === "length" ? "max_output_tokens" : finish === "content-filter" ? "content_filter" : undefined
   const response = envelope(incomplete ? "incomplete" : "completed", items, {
     ...(incomplete ? { incomplete_details: { reason: incomplete } } : {}),
-    ...(usage ? { usage: encodeUsage(usage) } : {}),
+    // Always present (#390): zeros when the host reported none for the run, as the chat body does.
+    usage: encodeUsage(usage ?? {}),
   })
   send(incomplete ? "response.incomplete" : "response.completed", { response })
   return { started, response, ...(fallback !== undefined ? { structuredFallback: true } : {}) }

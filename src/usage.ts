@@ -30,7 +30,7 @@ import { errorMessage, log, logError } from "./log.js"
 import type { Outcome } from "./metrics.js"
 import { parseModelRef } from "./models.js"
 import type { StoragePort } from "./session/host.js"
-import { sanitizeEndUser } from "./user.js"
+import { validEndUser } from "./user.js"
 
 /** Upper bounds of the latency buckets in ms; one more bucket holds everything above the last. */
 export const LATENCY_BOUNDS_MS: ReadonlyArray<number> = [100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000, 120_000, 300_000, 600_000]
@@ -214,6 +214,12 @@ const dateOf = (key: string): string | undefined => {
   return parts.length === 3 && parts[0] === "usage" && DATE_PATTERN.test(parts[2] ?? "") ? parts[2] : undefined
 }
 
+/**
+ * A record keyed by names the requests choose (end users, models). No prototype, so a name like `__proto__` or `constructor` is an
+ * ordinary key: a lookup never returns an inherited value, and a write never reaches `Object.prototype`.
+ */
+const nullRecord = <T>(): Record<string, T> => Object.create(null)
+
 export function emptyDay(): DayRecord {
   return {
     requests: 0,
@@ -226,8 +232,8 @@ export function emptyDay(): DayRecord {
     fallbacks: 0,
     limited: 0,
     unpricedRequests: 0,
-    perModel: {},
-    users: {},
+    perModel: nullRecord<ModelUsage>(),
+    users: nullRecord<UserUsage>(),
   }
 }
 
@@ -317,7 +323,7 @@ export function sumDays(parts: ReadonlyArray<DayRecord>): DayRecord {
 
 /** Per end user, summed over the day records (`only`: that user alone). */
 function sumUsers(parts: ReadonlyArray<DayRecord>, only?: string): Record<string, UserUsage> {
-  const out: Record<string, UserUsage> = {}
+  const out = nullRecord<UserUsage>()
   for (const part of parts)
     for (const [user, usage] of Object.entries(part.users ?? {})) {
       if (only !== undefined && user !== only) continue
@@ -352,12 +358,12 @@ export function fromJson(value: unknown): DayRecord {
   const latency = object(raw.latency)
   const tokens = object(raw.tokens)
   const buckets: unknown[] = Array.isArray(latency.buckets) ? latency.buckets : []
-  const perModel: Record<string, ModelUsage> = {}
+  const perModel = nullRecord<ModelUsage>()
   for (const [model, item] of Object.entries(object(raw.perModel))) {
     const usage = object(item)
     perModel[model] = { requests: nonNegative(usage.requests), tokens: nonNegative(usage.tokens), costUsd: nonNegative(usage.costUsd) }
   }
-  const users: Record<string, UserUsage> = {}
+  const users = nullRecord<UserUsage>()
   for (const [user, item] of Object.entries(object(raw.users))) {
     const usage = object(item)
     users[user] = { requests: nonNegative(usage.requests), tokens: nonNegative(usage.tokens), costUsd: nonNegative(usage.costUsd) }
@@ -432,7 +438,10 @@ export interface RequestUsage {
   readonly user?: string
 }
 
-/** One model call, when it ended. `answered` when its stream finished with an answer; `cache` when the response cache applied. */
+/**
+ * One model call, when it ended. `answered` when its stream finished with an answer; `cache` when the response cache applied.
+ * `usage` is what the host spent: charged even when the call was not answered (a run cut short, see `CallContext.onRunUsage`).
+ */
 export interface CallUsage {
   readonly app: string
   /** The model that answered, or the requested one when there was no fallback chain. */
@@ -481,13 +490,13 @@ async function readDay(storage: StoragePort, key: string): Promise<DayRecord | u
   }
 }
 
-/** Distinct end users a day keeps per app. Later users count under `_other` (the key cannot be an end user: no `_`). */
+/** Distinct end users a day keeps per app. Later users count under `_other`, which `sanitizeEndUser` never keeps as a user (src/user.ts). */
 export const USERS_PER_DAY = 200
 const OTHER_USER = "_other"
 
 /** The counts of one end user in a day, created on first use; past the cap the request counts under `_other`. */
 function userSlot(day: DayRecord, user: string): UserUsage {
-  if (day.users[user]) return day.users[user]
+  if (Object.hasOwn(day.users, user)) return day.users[user]!
   const distinct = Object.keys(day.users).length - (day.users[OTHER_USER] ? 1 : 0)
   const key = distinct < USERS_PER_DAY ? user : OTHER_USER
   return (day.users[key] ??= { requests: 0, tokens: 0, costUsd: 0 })
@@ -627,23 +636,23 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
     },
 
     call(input) {
-      if (!input.answered && input.cache === undefined) return
+      if (!input.answered && input.cache === undefined && input.usage === undefined) return
       const at = now()
       const tokens = input.usage ? tokenBreakdown(input.usage) : { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 }
       void (async () => {
-        // A cache hit spent no tokens and is not priced; an answer that spent tokens is priced from the catalog.
-        const spent = input.answered && input.cache !== "hit" && totalTokens(tokens) > 0
+        // A cache hit spent no tokens and is not priced. Tokens the host reported are charged whether or not the call was answered.
+        const spent = input.cache !== "hit" && totalTokens(tokens) > 0
         const cost = spent && input.ref ? await priceOf(input.ref, tokens) : undefined
         const unpriced = spent && cost === undefined
         record(input.app, at, (day) => {
           if (input.cache === "hit") day.cacheHits++
           else if (input.cache === "miss") day.cacheMisses++
-          if (!input.answered) return
+          if (!input.answered && !spent) return
           const price = cost ?? 0
           if (input.ref) {
             const model = `${input.ref.providerID}/${input.ref.id}`
             const sum = day.perModel[model] ?? { requests: 0, tokens: 0, costUsd: 0 }
-            day.perModel[model] = { requests: sum.requests + 1, tokens: sum.tokens + totalTokens(tokens), costUsd: sum.costUsd + price }
+            day.perModel[model] = { requests: sum.requests + (input.answered ? 1 : 0), tokens: sum.tokens + totalTokens(tokens), costUsd: sum.costUsd + price }
           }
           day.tokens = addTokens(day.tokens, tokens)
           day.costUsd += price
@@ -672,7 +681,7 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
       const at = now()
       if (input.app !== undefined && !APP_NAME_PATTERN.test(input.app))
         return { status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: "`app` must be an app name from the keys configuration" }
-      if (input.user !== undefined && sanitizeEndUser(input.user) === undefined)
+      if (input.user !== undefined && validEndUser(input.user) === undefined)
         return { status: 400, kind: "invalid_request", code: "invalid_user", param: "user", message: "`user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-`" }
       const range = resolveRange(input, at)
       if (isPlugError(range)) return range
@@ -699,7 +708,7 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
       }
 
       const names = [...new Set([...byApp.keys(), ...(input.app === undefined ? [] : [input.app])])].sort()
-      const apps: Record<string, UsageAppReport> = {}
+      const apps = nullRecord<UsageAppReport>()
       const appTotals: DayRecord[] = []
       for (const app of names) {
         const rows = (byApp.get(app) ?? []).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
@@ -727,6 +736,13 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
     stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
       let served: ServedModel | undefined
       let cache: "hit" | "miss" | undefined
+      // The host's usage for the run when it ends without a finish (client gone, timeout, stop sequence): see `CallContext.onRunUsage`.
+      let running: PlugUsage | undefined
+      let ended = false
+      const charge = (usage: PlugUsage | undefined) => {
+        const ref = served ? parseModelRef(served.model) : request.ref
+        recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered: false, ...(usage ? { usage } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
+      }
       const forward: CallContext = {
         ...context,
         onServed: (value) => {
@@ -736,6 +752,11 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
         onCache: (result) => {
           cache = result
           context.onCache?.(result)
+        },
+        onRunUsage: (value) => {
+          // Reported after the run's own record (a client that left, whose host step ended in its settle window): charged on its own.
+          if (ended) charge(value)
+          else running = value
         },
       }
       const events = inner.stream(request, forward)
@@ -764,8 +785,11 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
             yield event
           }
         } finally {
+          ended = true
           const ref = served ? parseModelRef(served.model) : request.ref
-          recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered, ...(cache ? { cache } : {}), ...(usage ? { usage } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
+          // A run that never reached its finish still spent what the host reported: it is charged, not left out.
+          const spent = usage ?? running
+          recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered, ...(cache ? { cache } : {}), ...(spent ? { usage: spent } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
         }
       })()
     },

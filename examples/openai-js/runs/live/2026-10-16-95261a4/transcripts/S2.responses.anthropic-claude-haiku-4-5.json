@@ -1,0 +1,254 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "input": "What is the weather in Paris? Use the tool.",
+          "max_output_tokens": 1024,
+          "model": "anthropic/claude-haiku-4-5",
+          "store": false,
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-1>",
+          "error": null,
+          "id": "<id-2>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "response",
+          "output": [
+            {
+              "arguments": "{\"city\":\"Paris\"}",
+              "call_id": "<id-3>",
+              "id": "<id-4>",
+              "name": "get_weather",
+              "status": "completed",
+              "type": "function_call"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 599,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 69,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 668
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=599; output=69; cache_read=0; cache_write=0; cost_usd=0.000944"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            },
+            {
+              "arguments": "{\"city\":\"Paris\"}",
+              "call_id": "<id-3>",
+              "id": "<id-4>",
+              "name": "get_weather",
+              "status": "completed",
+              "type": "function_call"
+            },
+            {
+              "call_id": "<id-3>",
+              "output": "{\"temp_c\":18,\"sky\":\"cloudy\"}",
+              "type": "function_call_output"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "anthropic/claude-haiku-4-5",
+          "store": false,
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "created_at": "<time-2>",
+          "error": null,
+          "id": "<id-6>",
+          "incomplete_details": null,
+          "instructions": null,
+          "max_output_tokens": 1024,
+          "metadata": {},
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "response",
+          "output": [
+            {
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "The weather in Paris is currently:\n- **Temperature**: 18°C (approximately 64°F)\n- **Conditions**: Cloudy\n\nIt's a mild day with cloudy skies in Paris.",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-7>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
+            }
+          ],
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": false,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ],
+          "top_p": null,
+          "truncation": "disabled",
+          "usage": {
+            "input_tokens": 692,
+            "input_tokens_details": {
+              "cached_tokens": 0
+            },
+            "output_tokens": 49,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 741
+          },
+          "user": null
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-5>",
+          "x-plugboard-usage": "input=692; output=49; cache_read=0; cache_write=0; cost_usd=0.000937"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

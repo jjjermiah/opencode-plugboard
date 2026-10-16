@@ -11,4 +11,4 @@ Check the connection before you start Claude Code:
 claude -p "reply with exactly: pong"
 ```
 
-Not run against plugboard yet. This is the check that should print `pong`.
+Manual probe, 2026-10-16, not an example run and not recorded under `runs/`. `claude -p` with `ANTHROPIC_BASE_URL` at the isolated dev server (plugboard v0.37.0) and `ANTHROPIC_MODEL=fast` printed `pong`, with `stop_reason` `end_turn` and one turn. Its stderr warned `unrecognized_model` for `fast`. The probe used the `fast` alias. On main v0.41.0, `fast` is `[opencode-go/glm-5.3-flash, anthropic/claude-haiku-4-5]`, so a Go 429 falls through to Haiku; the probe's served model is not recorded.

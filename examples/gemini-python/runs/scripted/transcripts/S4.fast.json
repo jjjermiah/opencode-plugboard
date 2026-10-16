@@ -1,0 +1,109 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "What is the weather in Paris? Use the tool."
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 1024
+          },
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "description": "Current weather for a city",
+                  "name": "get_weather",
+                  "parameters_json_schema": {
+                    "properties": {
+                      "city": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "city"
+                    ],
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/fast:streamGenerateContent?alt=sse"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "functionCall": {
+                            "args": {
+                              "city": "Paris"
+                            },
+                            "name": "get_weather"
+                          }
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "fast",
+                "responseId": "<id-1>"
+              }
+            },
+            {
+              "data": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": ""
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "fast",
+                "responseId": "<id-1>",
+                "usageMetadata": {
+                  "candidatesTokenCount": 7,
+                  "promptTokenCount": 11,
+                  "totalTokenCount": 18
+                }
+              }
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

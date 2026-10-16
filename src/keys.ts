@@ -63,6 +63,8 @@ export interface CreatedKey {
 export interface KeyStore {
   /** The digests of the loaded runtime keys, as `[app, digest]`. Reads storage once; a failed read answers with what is loaded. */
   digests(): Promise<ReadonlyArray<readonly [string, Buffer]>>
+  /** The apps the loaded runtime keys belong to, each once. Synchronous: call after `digests()` (every authenticated request does). */
+  appNames(): ReadonlyArray<string>
   /** Config keys and runtime keys, without key values. */
   list(config: Readonly<Record<string, string>>): Promise<ReadonlyArray<KeyListing>>
   /** A new random key for `app`. The caller checks the app name and that the config has no key for it. */
@@ -131,6 +133,10 @@ export function createKeyStore(deps: KeyStoreDeps): KeyStore {
         logError("keys.load_failed", { error: errorMessage(error) })
       }
       return [...state.keys.values()].map((record) => [record.app, record.digest] as const)
+    },
+
+    appNames() {
+      return [...new Set([...state.keys.values()].map((record) => record.app))]
     },
 
     async list(config) {

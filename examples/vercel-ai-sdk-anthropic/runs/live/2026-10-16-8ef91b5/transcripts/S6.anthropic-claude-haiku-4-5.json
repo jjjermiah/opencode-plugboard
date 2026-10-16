@@ -1,0 +1,65 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "Estimate: 2 boiled eggs and a slice of toast.",
+                  "type": "text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "output_config": {
+            "format": {
+              "schema": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "type": "json_schema"
+            }
+          }
+        },
+        "headers": {
+          "accept": "*/*",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "message": "output_config.format: structured outputs are not supported",
+            "type": "invalid_request_error"
+          },
+          "type": "error"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 400
+      }
+    }
+  ]
+}

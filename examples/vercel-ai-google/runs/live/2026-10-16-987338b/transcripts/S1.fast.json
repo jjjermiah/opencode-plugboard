@@ -1,0 +1,62 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "Reply with exactly: pong"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 1024
+          }
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/fast:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "pong"
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "fast",
+          "responseId": "<id-2>",
+          "usageMetadata": {
+            "candidatesTokenCount": 3,
+            "promptTokenCount": 17,
+            "thoughtsTokenCount": 18,
+            "totalTokenCount": 38
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "opencode-go/glm-5.3-flash",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=17; output=21; cache_read=0; cache_write=0; cost_usd=0.000013"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

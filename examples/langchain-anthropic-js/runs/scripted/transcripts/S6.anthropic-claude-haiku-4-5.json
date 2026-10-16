@@ -1,0 +1,84 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "stream": false,
+          "tool_choice": {
+            "name": "record_meal",
+            "type": "tool"
+          },
+          "tools": [
+            {
+              "description": "A function available to call.",
+              "input_schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "name": "record_meal"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "id": "<id-1>",
+              "input": {
+                "calories": 180,
+                "protein_g": 13
+              },
+              "name": "record_meal",
+              "type": "tool_use"
+            }
+          ],
+          "id": "<id-2>",
+          "model": "anthropic/claude-haiku-4-5",
+          "role": "assistant",
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "input_tokens": 11,
+            "output_tokens": 7
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

@@ -16,6 +16,24 @@ def run(client, model):
     }
 
 
+def responses_finish_reason(response) -> str:
+    """The Responses API has no finish_reason. A function call means `tool_calls`, a completed answer `stop`."""
+    if any(item.type == "function_call" for item in response.output):
+        return "tool_calls"
+    return "stop" if response.status == "completed" else response.status
+
+
+def run_responses(client, model):
+    # region snippet-responses
+    response = client.responses.create(model=model, input="Reply with exactly: pong", max_output_tokens=1024)
+    # endregion snippet-responses
+    return {
+        "text": response.output_text,
+        "finish_reason": responses_finish_reason(response),
+        "usage": response.usage.model_dump(exclude_none=True) if response.usage else None,
+    }
+
+
 if __name__ == "__main__":
     from openai import OpenAI
 
