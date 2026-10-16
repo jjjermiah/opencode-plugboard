@@ -7,7 +7,6 @@
  */
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
-import { StopScan } from "../stop.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -35,8 +34,6 @@ export interface OpenAiExchange {
    * stripped from the content (`unfence`).
    */
   readonly jsonObject?: boolean
-  /** The request's `stop`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). Not applied to structured output. */
-  readonly stop?: ReadonlyArray<string>
   /** The caller's `json_schema`, checked against a text answer when the model skipped the respond call (`textFallback`). */
   readonly structuredSchema?: Readonly<Record<string, unknown>>
   /** Option `reasoningOutput` (since 0.36.0): reasoning text is returned, not dropped. Never in structured output. */
@@ -339,16 +336,9 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
 
-  // Not structured output: a stop sequence in the answer ends it (src/stop.ts).
-  const scan = exchange.structuredTool === undefined ? new StopScan(exchange.stop ?? []) : undefined
   for await (const event of events) {
-    if (event.type === "text-delta") {
-      text += scan ? scan.push(event.text) : event.text
-      if (scan?.matched !== undefined) {
-        finish = "stop"
-        break
-      }
-    } else if (event.type === "reasoning-delta") reasoning += event.text
+    if (event.type === "text-delta") text += event.text
+    else if (event.type === "reasoning-delta") reasoning += event.text
     else if (event.type === "tool-call") calls.push(event)
     else if (event.type === "finish") {
       usage = event.usage ?? usage
@@ -364,7 +354,6 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
     const error = failure ?? noFinish()
     return { status: error.status, body: encodeError(error), retryAfterSeconds: error.retryAfterSeconds }
   }
-  if (scan) text += scan.finish()
 
   const answer = calls.find((call) => structured.isAnswer(exchange, call))
   const others = calls.filter((call) => !structured.isAnswer(exchange, call))
@@ -460,11 +449,8 @@ export async function streamCompletion(
     started = true
     chunk({ role: "assistant", content: "" })
   }
-  // A stop sequence in the answer ends it; the text is held back until it is ruled out (src/stop.ts). Structured output has none.
-  const holdback = exchange.structuredTool === undefined ? new StopScan(exchange.stop ?? []) : undefined
   const send = (text: string) => {
-    const out = holdback ? holdback.push(text) : text
-    if (out.length > 0) chunk({ content: out })
+    if (text.length > 0) chunk({ content: text })
   }
   // json_object: text that opens with a backtick may be a fenced answer, so it waits (as `pending`)
   // until a tool call or the finish shows the whole text; anything else streams as it comes. A
@@ -480,10 +466,6 @@ export async function streamCompletion(
   }
 
   for await (const event of events) {
-    if (holdback?.matched !== undefined) {
-      finish = "stop"
-      break
-    }
     if (event.type === "error") {
       failure = event.error
       break
@@ -495,12 +477,10 @@ export async function streamCompletion(
       continue
     }
     if (event.type === "reasoning-delta") {
-      // Not in structured output: its content is the answer's arguments. Like a tool call, reasoning cannot be a stop sequence.
+      // Not in structured output: its content is the answer's arguments.
       if (exchange.reasoningOutput && exchange.structuredTool === undefined && event.text.length > 0) {
         flush()
-        const rest = holdback?.release() ?? ""
         start()
-        if (rest.length > 0) chunk({ content: rest })
         chunk(reasoningFields(event.text))
       }
       continue
@@ -531,23 +511,10 @@ export async function streamCompletion(
       }
       continue
     }
-    if (event.type !== "text-delta") {
-      flush()
-      if (holdback?.matched !== undefined) {
-        finish = "stop"
-        break
-      }
-      const rest = holdback?.release() ?? ""
-      if (rest.length > 0) chunk({ content: rest })
-    }
+    if (event.type !== "text-delta") flush()
     start()
-    if (event.type === "text-delta") {
-      send(event.text)
-      if (holdback?.matched !== undefined) {
-        finish = "stop"
-        break
-      }
-    } else {
+    if (event.type === "text-delta") send(event.text)
+    else {
       // Tool calls arrive whole, so each goes out as one chunk with the next index.
       chunk({ tool_calls: [{ index: calls++, id: event.id, type: "function", function: { name: event.name, arguments: args(event.input) } }] })
     }
@@ -567,10 +534,6 @@ export async function streamCompletion(
   }
   flush()
   start()
-  if (holdback) {
-    const rest = holdback.finish()
-    if (rest.length > 0) chunk({ content: rest })
-  }
   if (held && isStructured) chunk({ content: structured.content(held) })
   if (fallback !== undefined) chunk({ content: fallback })
   chunk({}, finishReason(finish!, calls, isStructured))

@@ -28,7 +28,7 @@ import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
 import type { RouteHost } from "../openai/route.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
-import { appGeneration, dropRejected, stopOf } from "../openai/sampling.js"
+import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
 import { parseGeminiRequest } from "./request.js"
 import { encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk } from "./response.js"
@@ -159,8 +159,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     response.setHeader(DROPPED_HEADER, info.dropped)
   }
   const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
-  // The stop sequences the answer is matched on (#390): the caller's, else the app's default. The model never gets them.
-  const exchange = { ...parsed.exchange, stop: stopOf(appPolicy(host.options, app), parsed.request.generation) ?? [] }
+  const { exchange } = parsed
   // The answer names the model it runs on: the app's pin, else the caller's (#261).
   exchange.model = requested.model
 

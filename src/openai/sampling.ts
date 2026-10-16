@@ -85,18 +85,13 @@ export interface Sampled {
 export function appGeneration(policy: AppPolicy | undefined, generation: PlugGeneration): PlugGeneration {
   const defaults = policy?.sampling
   const cap = policy?.maxOutputTokens
-  if (defaults === undefined && cap === undefined && generation.stop === undefined) return generation
+  if (defaults === undefined && cap === undefined) return generation
   const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = { ...generation }
   if (defaults)
     for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined) out[key] = defaults[key] as never
   if (cap !== undefined) out.maxTokens = out.maxTokens === undefined ? cap : Math.min(out.maxTokens, cap)
-  // Stop sequences are plugboard's, not the model's: a provider stop also ends the stream inside reasoning (#390). The route matches them on the answer (`stopOf`, src/stop.ts).
-  delete out.stop
   return out
 }
-
-/** The stop sequences the answer is matched on: the caller's, else the app's default (`apps.<name>.sampling.stop`). Same rule as `appGeneration`. */
-export const stopOf = (policy: AppPolicy | undefined, generation: PlugGeneration): ReadonlyArray<string> | undefined => generation.stop ?? policy?.sampling?.stop
 
 /** `generation` without the parameters the model is known to reject, and which ones those were. */
 export function dropRejected(ref: ModelRef, generation: PlugGeneration): Sampled {

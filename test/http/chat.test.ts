@@ -9,6 +9,7 @@ import { CATALOG, ev, gate, until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { sseData, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
+import { withStopSequences } from "../../src/stop.js"
 
 const logs = captureLogs()
 let server: RouteServer | undefined
@@ -19,7 +20,7 @@ afterEach(async () => {
 
 async function route(script: Script, options: Record<string, unknown> = {}) {
   const caller = new FakeModelCaller(script)
-  server = await startRoute({ caller, options })
+  server = await startRoute({ caller: withStopSequences(caller), options })
   return caller
 }
 
@@ -350,15 +351,19 @@ describe("reasoningOutput (since 0.36.0): tool calls, stop sequences and per-app
     expect(deltasOf(sseData(text))).toContainEqual({ reasoning_content: "r", reasoning: "r" })
   })
 
-  test("SSE: text held back for a possible stop sequence is released before reasoning arrives", async () => {
-    await route([ev.text("ab E"), ev.reasoning("r"), ev.finish("stop")], { reasoningOutput: true })
+  test("SSE: text held back for a possible stop sequence is not released by reasoning (#390): the whole text still arrives", async () => {
+    await route([ev.text("ab E"), ev.reasoning("r"), ev.text("ND"), ev.finish("stop")], { reasoningOutput: true })
     const text = await (await server!.open(streamed({ stop: ["END"] }))).ended
     const deltas = deltasOf(sseData(text))
-    expect(contentOf(sseData(text))).toBe("ab E")
-    const reasoning = deltas.findIndex((delta: any) => delta.reasoning_content === "r")
-    expect(reasoning).toBeGreaterThan(-1)
-    // The held-back tail is flushed before the reasoning delta, so the content before it is all of the text so far.
-    expect(deltas.slice(0, reasoning).map((delta: any) => delta.content ?? "").join("")).toBe("ab E")
+    // "ab END" is a sequence that spans the reasoning, so the answer ends before it.
+    expect(contentOf(sseData(text))).toBe("ab ")
+    expect(deltas.some((delta: any) => delta.reasoning_content === "r")).toBe(true)
+  })
+
+  test("SSE: text held back for a possible stop sequence reaches the client when no sequence follows, after the reasoning", async () => {
+    await route([ev.text("ab E"), ev.reasoning("r"), ev.text(" more"), ev.finish("stop")], { reasoningOutput: true })
+    const text = await (await server!.open(streamed({ stop: ["END"] }))).ended
+    expect(contentOf(sseData(text))).toBe("ab E more")
   })
 
   test("per app: apps.<name>.reasoningOutput false drops reasoning while the global switch is on", async () => {

@@ -88,10 +88,10 @@ describe("the context hook", () => {
     expect(run(event()).system.at(-1)).toEqual({ type: "text", text: instruction })
   })
 
-  test("generation options are merged into the host's options", () => {
+  test("generation options are merged into the host's options; stop sequences are not (#390)", () => {
     const { run } = hook(plugRequest({ generation: { maxTokens: 9, temperature: 0.2, topP: 0.5, stop: ["END"], presencePenalty: 1, frequencyPenalty: -1 } }))
-    expect(run(event()).options).toEqual({ keep: true, maxTokens: 9, temperature: 0.2, topP: 0.5, stop: ["END"], presencePenalty: 1, frequencyPenalty: -1 })
-    expect(run(event({ options: undefined })).options).toEqual({ maxTokens: 9, temperature: 0.2, topP: 0.5, stop: ["END"], presencePenalty: 1, frequencyPenalty: -1 })
+    expect(run(event()).options).toEqual({ keep: true, maxTokens: 9, temperature: 0.2, topP: 0.5, presencePenalty: 1, frequencyPenalty: -1 })
+    expect(run(event({ options: undefined })).options).toEqual({ maxTokens: 9, temperature: 0.2, topP: 0.5, presencePenalty: 1, frequencyPenalty: -1 })
   })
 
   test("#275 a caller cache breakpoint on a text, image or tool result becomes the host's ephemeral cache hint; a block without one has none", () => {

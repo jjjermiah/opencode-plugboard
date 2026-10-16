@@ -1,146 +1,162 @@
 /**
- * #149 A caller stop sequence in the answer ends it, and is removed from it, on Chat Completions,
- * legacy completions and Gemini, as Anthropic Messages does (#145). The held-back tail keeps a
- * streamed sequence from reaching the client. Structured output keeps its text as it is.
- *
- * #390 The sequence ends the answer wherever it occurs in the answer text (not only at the end),
- * whatever the finish reason, and a tool call after it is not read: the model was stopped there.
+ * #149, #390 Caller stop sequences on the answer text (src/stop.ts). `withStopSequences` scans the text the
+ * model streams: the first sequence ends the answer, the sequence and what follows are not sent, the host run
+ * is interrupted (`CallContext.stopAnswer`), and the finish is passed on with the usage of the run. Reasoning
+ * and tool calls never end the answer. Structured output has no text to scan and passes through.
  */
 import { describe, expect, test } from "bun:test"
-import { completionsCodec } from "../../src/completions/response.js"
-import { runGenerate, type GeminiExchange } from "../../src/gemini/response.js"
-import { collectCompletion, streamCompletion, type OpenAiExchange } from "../../src/openai/response.js"
-import { StopScan, stopAt } from "../../src/stop.js"
-import { ev, events } from "../support/fixtures.js"
+import type { PlugEvent, PlugRequest } from "../../src/contract.js"
+import { StopScan, stopAt, withStopSequences } from "../../src/stop.js"
+import { collect, ev, plugRequest } from "../support/fixtures.js"
+import { FakeModelCaller } from "../support/model-caller.js"
 
-/** The `data:` payloads of a stream, parsed; `[DONE]` is dropped. */
-function frames(chunks: string[]): Array<Record<string, any>> {
-  return chunks
-    .join("")
-    .split("\n\n")
-    .filter((frame) => frame.startsWith("data: ") && frame !== "data: [DONE]")
-    .map((frame) => JSON.parse(frame.slice("data: ".length)))
+/** The events the wrapped model caller yields for `script`, with the caller so a test can see what it was handed. */
+function through(script: PlugEvent[], stop?: string[], extra: Partial<PlugRequest> = {}) {
+  const fake = new FakeModelCaller(script)
+  const request = plugRequest({ generation: stop ? { stop } : {}, ...extra })
+  const out = collect(withStopSequences(fake).stream(request, { app: "test", signal: new AbortController().signal }))
+  return { fake, out }
 }
 
-const chatExchange = (stop?: string[], extra: Partial<OpenAiExchange> = {}): OpenAiExchange => ({ model: "test/echo", stream: false, includeUsage: false, ...(stop ? { stop } : {}), ...extra })
+const textOf = (events: PlugEvent[]) => events.flatMap((event) => (event.type === "text-delta" ? [event.text] : [])).join("")
+const finishOf = (events: PlugEvent[]) => events.find((event) => event.type === "finish")
+const usage = { inputTokens: 10, outputTokens: 500 }
 
-describe("#149 the shared stop helper", () => {
-  test("stopAt: the earliest sequence in the text; the longer one where two start together", () => {
+describe("#390 the shared stop helpers", () => {
+  test("stopAt: the earliest sequence in the text, and the longer one where two start together", () => {
     expect(stopAt("Answer: 4 ###", ["#", "###"])).toEqual({ index: 10, stop: "###" })
-    expect(stopAt("Hello END and END", ["END"])).toEqual({ index: 6, stop: "END" })
-    expect(stopAt("nothing here", ["END"])).toBeUndefined()
+    expect(stopAt("END of it", ["END"])).toEqual({ index: 0, stop: "END" })
+    expect(stopAt("Hello", ["END"])).toBeUndefined()
+    expect(stopAt("abEND cEND", ["cEND", "END"])).toEqual({ index: 2, stop: "END" })
   })
 
-  test("StopScan: a sequence split across pushes is held back, then cut", () => {
+  test("StopScan: a sequence split across pushes is held back, then found and cut", () => {
     const scan = new StopScan(["END"])
-    const sent = [scan.push("Hel"), scan.push("lo EN"), scan.push("D"), scan.push("ignored")]
+    const sent = [scan.push("Hel"), scan.push("lo EN"), scan.push("D more")]
     expect(sent.join("")).toBe("Hello ")
     expect(scan.matched).toBe("END")
-    expect(scan.finish()).toBe("")
-  })
-
-  test("StopScan: a sequence in the middle of the text ends it there", () => {
-    const scan = new StopScan(["END"])
-    expect(scan.push("END of it")).toBe("")
-    expect(scan.matched).toBe("END")
-  })
-
-  test("StopScan: text that only looks like the start of a sequence is sent at the finish", () => {
-    const scan = new StopScan(["END"])
-    expect(scan.push("EN")).toBe("")
-    expect(scan.finish()).toBe("EN")
-    expect(scan.matched).toBeUndefined()
+    expect(scan.push("never sent")).toBe("")
   })
 
   test("StopScan: without stop sequences every chunk passes through at once", () => {
     const scan = new StopScan([])
     expect(scan.push("abc")).toBe("abc")
-    expect(scan.finish()).toBe("")
     expect(scan.matched).toBeUndefined()
   })
-
-  test("StopScan: release sends the held text unchanged (before a tool call or reasoning)", () => {
-    const scan = new StopScan(["END"])
-    expect(scan.push("Hello EN")).toBe("Hello")
-    expect(scan.release()).toBe(" EN")
-    expect(scan.finish()).toBe("")
-  })
 })
 
-describe("#149 Chat Completions removes a caller stop sequence", () => {
-  test("a JSON answer that ends on the sequence: the text without it, finish_reason stop", async () => {
-    const { body } = await collectCompletion(events(ev.text("Hello END"), ev.finish("stop")), chatExchange(["END"]))
-    expect((body as any).choices[0]).toMatchObject({ message: { content: "Hello " }, finish_reason: "stop" })
+describe("#390 withStopSequences on the answer text", () => {
+  test("a sequence at the end: the text before it, finish stop with the sequence, the usage of the run", async () => {
+    const { out } = through([ev.text("Hello END"), ev.finish("stop", usage)], ["END"])
+    const events = await out
+    expect(textOf(events)).toBe("Hello ")
+    expect(finishOf(events)).toEqual({ type: "finish", reason: "stop", usage, stopSequence: "END" })
   })
 
-  test("a streamed answer: the sequence split across deltas never reaches the client", async () => {
-    const chunks: string[] = []
-    await streamCompletion(events(ev.text("Hel"), ev.text("lo EN"), ev.text("D"), ev.finish("stop")), chatExchange(["END"], { stream: true }), (chunk) => chunks.push(chunk))
-    const content = frames(chunks).map((frame) => frame.choices[0].delta.content ?? "").join("")
-    expect(content).toBe("Hello ")
-    expect(frames(chunks).at(-1)!.choices[0].finish_reason).toBe("stop")
+  test("a sequence in the middle ends the answer there: nothing after it is sent", async () => {
+    const { out } = through([ev.text("END of it"), ev.finish("stop", usage)], ["END"])
+    const events = await out
+    expect(textOf(events)).toBe("")
+    expect(finishOf(events)).toMatchObject({ reason: "stop", stopSequence: "END", usage })
   })
 
-  test("#390 a sequence in the middle of the answer ends it there: the text before it, finish_reason stop", async () => {
-    const { body } = await collectCompletion(events(ev.text("END of it"), ev.finish("stop")), chatExchange(["END"]))
-    expect((body as any).choices[0]).toMatchObject({ message: { content: null }, finish_reason: "stop" })
+  test("a sequence split across deltas is held back, then cut", async () => {
+    const { out } = through([ev.text("Hel"), ev.text("lo EN"), ev.text("D more"), ev.finish("stop")], ["END"])
+    expect(textOf(await out)).toBe("Hello ")
   })
 
-  test("#390 a length finish that ends on the sequence: the sequence still ends the answer", async () => {
-    const { body } = await collectCompletion(events(ev.text("Hello END"), ev.finish("length")), chatExchange(["END"]))
-    expect((body as any).choices[0]).toMatchObject({ message: { content: "Hello " }, finish_reason: "stop" })
+  test("the longest sequence wins", async () => {
+    const { out } = through([ev.text("Answer: 4 ###"), ev.finish("stop")], ["#", "###"])
+    const events = await out
+    expect(textOf(events)).toBe("Answer: 4 ")
+    expect(finishOf(events)).toMatchObject({ stopSequence: "###" })
   })
 
-  test("#390 a tool call after the sequence is not read: the model was stopped at the sequence", async () => {
-    const { body } = await collectCompletion(events(ev.text("Hello END"), ev.call("c1", "lookup", { q: 1 }), ev.finish("stop")), chatExchange(["END"]))
-    expect((body as any).choices[0].message).toMatchObject({ content: "Hello " })
-    expect((body as any).choices[0].message.tool_calls).toBeUndefined()
+  test("reasoning between two text chunks does not reset a partial match", async () => {
+    const { out } = through([ev.text("Hel"), ev.text("EN"), ev.reasoning("still thinking"), ev.text("D"), ev.finish("stop")], ["END"])
+    const events = await out
+    expect(textOf(events)).toBe("Hel")
+    expect(finishOf(events)).toMatchObject({ stopSequence: "END" })
   })
 
-  test("streamed text before a tool call is released in full, not held", async () => {
-    const chunks: string[] = []
-    await streamCompletion(events(ev.text("Hi EN"), ev.call("c1", "lookup", { q: 1 }), ev.finish("stop")), chatExchange(["END"], { stream: true }), (chunk) => chunks.push(chunk))
-    const content = frames(chunks).map((frame) => frame.choices[0].delta.content ?? "").join("")
-    expect(content).toBe("Hi EN")
-  })
-})
-
-describe("#149 legacy completions removes a caller stop sequence", () => {
-  const codec = (stop: string[]) => completionsCodec({ model: "test/echo", stream: false, includeUsage: false, perPrompt: 1, stop })
-
-  test("a JSON answer: the text without the sequence", async () => {
-    const result = await codec(["END"]).collect(events(ev.text("Hello END"), ev.finish("stop")), 0)
-    expect((result.body as any).choices[0]).toMatchObject({ text: "Hello ", finish_reason: "stop" })
+  test("reasoning that quotes the sequence is passed through and never ends the answer", async () => {
+    const { out } = through([ev.reasoning('reply "Answer", then END'), ev.text("Answer"), ev.finish("stop", usage)], ["END"])
+    const events = await out
+    expect(events.filter((event) => event.type === "reasoning-delta")).toHaveLength(1)
+    expect(textOf(events)).toBe("Answer")
+    expect(finishOf(events)).toEqual({ type: "finish", reason: "stop", usage })
   })
 
-  test("a streamed answer: the sequence is held back and removed", async () => {
-    const chunks: string[] = []
-    await codec(["END"]).streamChoice(events(ev.text("Hello E"), ev.text("ND"), ev.finish("stop")), (chunk) => chunks.push(chunk), { id: "cmpl-x", created: 1, index: 0 })
-    const text = frames(chunks).map((frame) => frame.choices[0].text).join("")
-    expect(text).toBe("Hello ")
-  })
-})
-
-describe("#149 Gemini removes a caller stop sequence", () => {
-  const gemini = (stop?: string[], extra: Partial<GeminiExchange> = {}): GeminiExchange => ({ model: "test/echo", stream: false, ...(stop ? { stop } : {}), ...extra })
-  const textOf = (response: object | undefined) => ((response as any).candidates[0].content.parts as Array<{ text?: string }>).map((part) => part.text ?? "").join("")
-
-  test("a plain stop: the text without the sequence, finishReason STOP", async () => {
-    const run = await runGenerate(events(ev.text("Hello END"), ev.finish("stop")), gemini(["END"]), () => {})
-    expect(textOf(run.response)).toBe("Hello ")
-    expect((run.response as any).candidates[0].finishReason).toBe("STOP")
+  test("reasoning after the sequence is not sent either", async () => {
+    const { out } = through([ev.text("A END"), ev.reasoning("late"), ev.finish("stop")], ["END"])
+    expect((await out).some((event) => event.type === "reasoning-delta")).toBe(false)
   })
 
-  test("a streamed answer: the sequence split across chunks never reaches the client", async () => {
-    const emitted: Array<{ candidates: Array<{ content: { parts: Array<{ text?: string }> } }> }> = []
-    await runGenerate(events(ev.text("Hel"), ev.text("lo EN"), ev.text("D"), ev.finish("stop")), gemini(["END"], { stream: true }), (chunk) => emitted.push(JSON.parse(JSON.stringify(chunk))))
-    const streamed = emitted.flatMap((chunk) => chunk.candidates[0]!.content.parts.map((part) => part.text ?? "")).join("")
-    expect(streamed).toBe("Hello ")
+  test("a finish that is not a stop is still a stop when the answer contains the sequence: the sequence ends it", async () => {
+    const { out } = through([ev.text("Hello END"), ev.finish("length", usage)], ["END"])
+    const events = await out
+    expect(textOf(events)).toBe("Hello ")
+    expect(finishOf(events)).toEqual({ type: "finish", reason: "stop", usage, stopSequence: "END" })
   })
 
-  test("#390 a length finish that ends on the sequence: the sequence still ends the answer", async () => {
-    const run = await runGenerate(events(ev.text("Hello END"), ev.finish("length")), gemini(["END"]), () => {})
-    expect(textOf(run.response)).toBe("Hello ")
-    expect((run.response as any).candidates[0].finishReason).toBe("STOP")
+  test("no sequence in the answer: the text and the finish come through unchanged", async () => {
+    const { out } = through([ev.text("Hello"), ev.finish("length", usage)], ["END"])
+    const events = await out
+    expect(textOf(events)).toBe("Hello")
+    expect(finishOf(events)).toEqual({ type: "finish", reason: "length", usage })
+  })
+
+  test("without stop sequences nothing changes", async () => {
+    const script = [ev.text("Hello END"), ev.finish("stop", usage)]
+    const { out } = through(script)
+    expect(await out).toEqual(script)
+  })
+
+  test("a tool call before the sequence: the text before the call is sent, the call is kept, the finish is stop with the sequence", async () => {
+    const { out } = through([ev.text("Let me look"), ev.call("c1", "lookup", { q: 1 }), ev.text(" then END"), ev.finish("stop", usage)], ["END"])
+    const events = await out
+    expect(events.filter((event) => event.type === "tool-call")).toHaveLength(1)
+    expect(textOf(events)).toBe("Let me look then ")
+    expect(finishOf(events)).toMatchObject({ reason: "stop", stopSequence: "END" })
+  })
+
+  test("a tool call after the sequence is not sent: the model was stopped there", async () => {
+    const { out } = through([ev.text("Hi END"), ev.call("c1", "lookup", { q: 1 }), ev.finish("stop")], ["END"])
+    expect((await out).some((event) => event.type === "tool-call")).toBe(false)
+  })
+
+  test("text held back before a tool call is released before the call", async () => {
+    const { out } = through([ev.text("Hi EN"), ev.call("c1", "lookup", { q: 1 }), ev.finish("stop")], ["END"])
+    const events = await out
+    expect(textOf(events)).toBe("Hi EN")
+    expect(events.findIndex((event) => event.type === "tool-call")).toBeGreaterThan(0)
+  })
+
+  test("the caller's stop signal aborts only when a sequence matched", async () => {
+    const matched = through([ev.text("A END"), ev.finish("stop")], ["END"])
+    await matched.out
+    expect(matched.fake.call.context.stopAnswer?.aborted).toBe(true)
+    const plain = through([ev.text("A"), ev.finish("stop")], ["END"])
+    await plain.out
+    expect(plain.fake.call.context.stopAnswer?.aborted).toBe(false)
+  })
+
+  test("the model is read to its finish after a match: the stream is not cut by the wrapper", async () => {
+    const script = [ev.text("A END"), ev.text("never sent"), ev.finish("stop", usage)]
+    const { fake, out } = through(script, ["END"])
+    await out
+    expect(fake.call.yielded).toBe(script.length)
+  })
+
+  test("structured output has no text to scan and passes through unchanged", async () => {
+    const script = [ev.call("respond", "respond", { city: "END" }), ev.finish("stop", usage)]
+    const { out } = through(script, ["END"], { structuredTool: "respond" })
+    expect(await out).toEqual(script)
+  })
+
+  test("an error event passes through as it is", async () => {
+    const error = { status: 500, kind: "server", message: "boom" } as const
+    const { out } = through([ev.text("A END"), { type: "error", error }], ["END"])
+    expect((await out).at(-1)).toEqual({ type: "error", error })
   })
 })

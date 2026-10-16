@@ -99,7 +99,7 @@ A message object: `id` (`msg_...`), `type: "message"`, `role: "assistant"`, `mod
 | `max_tokens` | The model hit the token limit. |
 | `refusal` | The provider filtered the content. |
 
-`stop_reason: "stop_sequence"` is returned when the answer text contains one of the request's `stop_sequences`. The answer ends at the first one: the text before it is returned, the sequence is removed and given as `stop_sequence`, and nothing after it is produced. Reasoning is never matched (#390).
+`stop_reason: "stop_sequence"` is returned when the answer text contains one of the request's `stop_sequences`. The answer ends at the first one: the text before it is returned, the sequence is removed and given as `stop_sequence`, and nothing after it is produced. Reasoning is never matched (#390). A tool call before the sequence makes the turn a tool turn: `stop_reason` is `tool_use` and `stop_sequence` is `null`, as Anthropic reports a turn that ended on a call. `usage` is the usage of the run, also after a match.
 
 `usage` has `input_tokens`, `output_tokens` (including reasoning), `cache_read_input_tokens` and `cache_creation_input_tokens`. As in Anthropic's API, `input_tokens` excludes the cached tokens that the other two fields report. The `x-plugboard-session` header works as on Chat Completions, and every response carries a `request-id` header.
 

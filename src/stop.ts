@@ -1,13 +1,15 @@
 /**
  * Caller stop sequences, applied by plugboard to the answer text (#145, #149, #390).
  *
- * The sequences are not sent to the model (`appGeneration` in src/openai/sampling.ts). A provider that
- * stops at one also stops inside reasoning, where the model may quote the prompt (#390), so the
- * answer would end before it started. Here the answer text is scanned as it arrives. The first
- * sequence ends the answer: the text before it is sent, the sequence and what follows are not, and
- * the route stops reading so the host run is interrupted. Reasoning and tool calls never pass through
- * the scan. Anthropic reports the sequence as `stop_sequence`; the other routes leave it out.
+ * The sequences are not sent to the model (the host hook drops them, src/session/context.ts). A provider
+ * that stopped at one would also stop inside reasoning, where the model may quote the prompt (#390), so the
+ * answer would end before it started. `withStopSequences` scans the answer text as it streams instead. The
+ * first sequence ends the answer: the text before it is sent, the sequence and what follows are not, the host
+ * run is interrupted (`CallContext.stopAnswer`), and the finish is passed on with the usage of the run, so
+ * the spend is counted. Reasoning and tool calls never end the answer. A tool call before the sequence makes
+ * the turn a tool turn, as Anthropic reports it.
  */
+import type { CallContext, ModelCaller, PlugEvent, PlugRequest } from "./contract.js"
 
 /** Where the earliest of `stops` starts in `text`, and which one (the longer one where two start together). */
 export function stopAt(text: string, stops: ReadonlyArray<string>): { readonly index: number; readonly stop: string } | undefined {
@@ -22,9 +24,9 @@ export function stopAt(text: string, stops: ReadonlyArray<string>): { readonly i
 }
 
 /**
- * Streamed answer text, scanned as it arrives. The last `size` characters (the longest sequence) are
- * held back until later text shows whether they start a sequence. Once a sequence is found,
- * `matched` is set and nothing more is sent.
+ * Streamed answer text, scanned as it arrives. The last `size` characters (the longest sequence) are held
+ * back until later text shows whether they start a sequence. Once a sequence is found, `matched` is set and
+ * nothing more is sent.
  */
 export class StopScan {
   private held = ""
@@ -56,20 +58,59 @@ export class StopScan {
     return out
   }
 
-  /** Everything still held, unchanged. Used before a tool call or reasoning, which cannot end the answer. */
+  /** Everything still held, unchanged, before a tool call: a held prefix that did not complete a sequence is answer text. */
   release(): string {
     const out = this.found === undefined ? this.held : ""
     this.held = ""
     return out
   }
 
-  /** The end of the text: the held text, cut at a sequence it contains. */
+  /** The end of the text: the held text that is left, unless a sequence was found. */
   finish(): string {
-    const text = this.found === undefined ? this.held : ""
+    const out = this.found === undefined ? this.held : ""
     this.held = ""
-    const hit = stopAt(text, this.stops)
-    if (hit === undefined) return text
-    this.found = hit.stop
-    return text.slice(0, hit.index)
+    return out
+  }
+}
+
+/**
+ * The model caller with the caller's stop sequences applied to the answer text (`request.generation.stop`, which
+ * carries the app's `sampling.stop` default too). Structured output has no text to scan: it is a tool call whose
+ * arguments are the answer, so it passes through unchanged.
+ */
+export function withStopSequences(inner: ModelCaller): ModelCaller {
+  return {
+    stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
+      const stops = request.generation.stop
+      if (stops === undefined || stops.length === 0 || request.structuredTool !== undefined) return inner.stream(request, context)
+      const stopping = new AbortController()
+      return answer(inner.stream(request, { ...context, stopAnswer: stopping.signal }), stops, stopping)
+    },
+  }
+}
+
+async function* answer(events: AsyncIterable<PlugEvent>, stops: ReadonlyArray<string>, stopping: AbortController): AsyncGenerator<PlugEvent> {
+  const scan = new StopScan(stops)
+  // The stream is read to its finish even after a match: the host's finish carries the usage of the run (#390).
+  for await (const event of events) {
+    if (event.type === "text-delta") {
+      if (scan.matched !== undefined) continue
+      const out = scan.push(event.text)
+      if (out.length > 0) yield { type: "text-delta", text: out }
+      if (scan.matched !== undefined) stopping.abort()
+    } else if (event.type === "tool-call") {
+      if (scan.matched !== undefined) continue
+      const rest = scan.release()
+      if (rest.length > 0) yield { type: "text-delta", text: rest }
+      yield event
+    } else if (event.type === "reasoning-delta") {
+      if (scan.matched === undefined) yield event
+    } else if (event.type === "finish" && event.reason !== "error") {
+      const rest = scan.finish()
+      if (rest.length > 0) yield { type: "text-delta", text: rest }
+      const sequence = scan.matched
+      if (sequence === undefined) yield event
+      else yield { type: "finish", reason: "stop", ...(event.usage ? { usage: event.usage } : {}), stopSequence: sequence }
+    } else yield event
   }
 }

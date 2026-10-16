@@ -37,7 +37,7 @@ import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
-import { appGeneration, dropRejected, stopOf } from "../openai/sampling.js"
+import { appGeneration, dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { parseMessagesRequest } from "./request.js"
 import { estimateTokens } from "./tokens.js"
@@ -155,8 +155,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     }
     const model: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, model)
-    // The stop sequences the answer is matched on (#390): the caller's, else the app's default. The model never gets them.
-    const exchange = { ...parsed.exchange, stop: stopOf(appPolicy(host.options, auth.app), parsed.request.generation) ?? [] }
+    const { exchange } = parsed
     // The answer names the model it runs on: the app's pin, else the caller's (#261).
     exchange.model = requested.model
 
