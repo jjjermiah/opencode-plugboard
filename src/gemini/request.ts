@@ -120,6 +120,15 @@ const toolParameters = (declaration: JsonObject): JsonObject | undefined => {
 
 const dataUrl = (mimeType: string, data: string) => `data:${mimeType};base64,${data}`
 
+/**
+ * URL-safe base64 (`-` and `_`, which the google-genai Python SDK sends for bytes) -> standard base64 (`+` and `/`),
+ * padded when the input has no padding. Anything else is left as is for the base64 check to reject.
+ */
+const standardBase64 = (data: string): string => {
+  const standard = data.replace(/-/g, "+").replace(/_/g, "/")
+  return data.includes("=") ? standard : standard + "=".repeat((4 - (standard.length % 4)) % 4)
+}
+
 const textOf = (value: unknown, param: string): string | PlugError => {
   if (typeof value === "string") return value
   if (!isRecord(value)) return bad("Expected a string or a content object with text parts", param)
@@ -212,12 +221,13 @@ const parseContents = (raw: unknown): PlugMessage[] | PlugError => {
         })
       } else if (inline !== undefined) {
         if (role === "model") return unsupported("inlineData is not supported in a model turn", `${at}.inlineData`)
-        if (!isRecord(inline) || typeof inline.data !== "string" || typeof inline.mimeType !== "string")
+        const mimeType = isRecord(inline) ? field(inline, "mimeType") : undefined
+        if (!isRecord(inline) || typeof inline.data !== "string" || typeof mimeType !== "string")
           return bad("inlineData needs mimeType and base64 data", `${at}.inlineData`)
-        const url = dataUrl(inline.mimeType, inline.data)
-        const problem = inline.mimeType.toLowerCase().startsWith("image/") ? imageProblem(url) : undefined
+        const url = dataUrl(mimeType, standardBase64(inline.data))
+        const problem = mimeType.toLowerCase().startsWith("image/") ? imageProblem(url) : undefined
         if (problem) return bad(problem, `${at}.inlineData`, "invalid_image")
-        parts.push({ type: "media", url, mediaType: inline.mimeType })
+        parts.push({ type: "media", url, mediaType: mimeType })
       } else if (file !== undefined) {
         if (role === "model") return unsupported("fileData is not supported in a model turn", `${at}.fileData`)
         const uri = isRecord(file) ? field(file, "fileUri") : undefined
