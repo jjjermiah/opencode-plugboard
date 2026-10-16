@@ -331,3 +331,16 @@ describe("#391 a host retry before any output moves a fallback chain on", () => 
     expect(types.at(-1)).toBe("finish")
   })
 })
+
+/** #391: a status past 511 is not an HTTP status a client can read (Cloudflare's 520 to 527): it is answered as 502. */
+describe("#391 an upstream 520 is answered as a 502", () => {
+  test("a 520 that reaches the caller is answered as 502 provider_unavailable, not 520", async () => {
+    const events = await play(host.stepFailed({ type: "provider.internal", status: 520, message: "upstream 520" }))
+    expect(events).toEqual([{ type: "error", error: { status: 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" } }])
+  })
+
+  test("other upstream 5xx statuses in the standard range keep their status", async () => {
+    const events = await play(host.stepFailed({ type: "provider.internal", status: 503, message: "x" }))
+    expect(events).toMatchObject([{ type: "error", error: { status: 503, code: "provider_unavailable" } }])
+  })
+})

@@ -224,7 +224,8 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
     if (AUTH_FAILURE.test(detail)) return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
     if (status === 404) return { status, kind: "not_found", code: "provider_rejected_request", message: "The model provider rejected the request" }
     if (status !== undefined && status < 500) return { status, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the request" }
-    return { status: status ?? 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" }
+    // A status past 511 is not a standard HTTP status (Cloudflare uses 520 to 527): the client gets 502, the gateway class (#391).
+    return { status: status !== undefined && status <= 511 ? status : 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" }
   }
   return { status: 502, kind: "server", code: "model_run_failed", message: fallback }
 }

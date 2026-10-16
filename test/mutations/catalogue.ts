@@ -708,6 +708,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/collector.test.ts"],
   },
   {
+    id: "upstream-520-passed-through",
+    invariant: "errors",
+    file: "src/session/events.ts",
+    find: "status: status !== undefined && status <= 511 ? status : 502,",
+    replace: "status: status ?? 502,",
+    tests: ["test/session/collector.test.ts"],
+  },
+  {
     id: "fallback-next-flag-always-set",
     invariant: "fallback",
     file: "src/fallback.ts",
