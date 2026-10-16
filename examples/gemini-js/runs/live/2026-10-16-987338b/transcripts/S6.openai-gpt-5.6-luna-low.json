@@ -1,0 +1,79 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "Estimate: 2 boiled eggs and a slice of toast."
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 1024,
+            "responseJsonSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "calories": {
+                  "type": "number"
+                },
+                "protein_g": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "calories",
+                "protein_g"
+              ],
+              "type": "object"
+            },
+            "responseMimeType": "application/json"
+          }
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/openai/gpt-5.6-luna%23low:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "{\"calories\":240,\"protein_g\":16}"
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "openai/gpt-5.6-luna#low",
+          "responseId": "<id-2>",
+          "usageMetadata": {
+            "candidatesTokenCount": 25,
+            "promptTokenCount": 81,
+            "thoughtsTokenCount": 39,
+            "totalTokenCount": 145
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=81; output=64; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
