@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import type { PlugRequest } from "../../src/contract.js"
-import { installSessionHooks } from "../../src/session/context.js"
+import { installSessionHooks, replaysSignedThinking } from "../../src/session/context.js"
 import type { ContextHookEvent, HostToolDescriptor } from "../../src/session/host.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { captureLogs } from "../support/logs.js"
@@ -153,6 +153,29 @@ describe("the context hook", () => {
       }),
     )
     expect(run(event()).messages as unknown).toEqual([{ role: "assistant", content: [{ type: "text", text: "done" }] }])
+  })
+
+  test("#386 signed reasoning replays to a Copilot Claude model; other Copilot models and other providers' Claude ids get none", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [{ role: "assistant", content: [{ type: "reasoning", text: "plan", signature: "sig_1" }, { type: "text", text: "done" }] }],
+      }),
+    )
+    expect(run(event({ model: { providerID: "github-copilot", id: "claude-haiku-5.5" } })).messages as unknown).toEqual([
+      { role: "assistant", content: [{ type: "reasoning", text: "plan", providerMetadata: { anthropic: { signature: "sig_1" } } }, { type: "text", text: "done" }] },
+    ])
+    for (const model of [{ providerID: "github-copilot", id: "gpt-5.2" }, { providerID: "openrouter", id: "claude-haiku-5.5" }]) {
+      expect(run(event({ model })).messages as unknown).toEqual([{ role: "assistant", content: [{ type: "text", text: "done" }] }])
+    }
+  })
+
+  test("#386 the replay gate: anthropic, and Copilot's claude-* models only", () => {
+    expect(replaysSignedThinking({ providerID: "anthropic", id: "claude-opus-4-5" })).toBe(true)
+    expect(replaysSignedThinking({ providerID: "github-copilot", id: "claude-haiku-5.5" })).toBe(true)
+    expect(replaysSignedThinking({ providerID: "github-copilot", id: "gpt-5.2" })).toBe(false)
+    expect(replaysSignedThinking({ providerID: "github-copilot" })).toBe(false)
+    expect(replaysSignedThinking({ providerID: "openrouter", id: "anthropic/claude-haiku-5.5" })).toBe(false)
+    expect(replaysSignedThinking(undefined)).toBe(false)
   })
 
   test("caller images are the host-built media parts of the prompt files, in order", () => {

@@ -418,8 +418,8 @@ export interface HostToolDescriptor {
  */
 export interface ContextHookEvent {
   readonly sessionID: string
-  /** The model this call runs on (the host's `model.ref`); read to decide whether signed reasoning is replayed (#374). */
-  readonly model?: { readonly providerID: string }
+  /** The model this call runs on (the host's `model.ref`); read to decide whether signed reasoning is replayed (#374, #386). */
+  readonly model?: { readonly providerID: string; readonly id?: string }
   system: unknown[]
   messages?: Array<{ content?: unknown }>
   options?: Record<string, unknown>
