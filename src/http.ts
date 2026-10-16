@@ -116,6 +116,11 @@ export function beginRequest(
       request.socket?.destroy()
     }, graceMs)
     graceTimer.unref?.()
+    // A stream committed before the deadline ends with its error frame, then the route ends it. Close the socket once that
+    // is flushed (a half-close the client answers), so a keep-alive client never reuses it and the grace is not needed (#441).
+    response.once("finish", () => {
+      if (!request.socket?.destroyed) request.socket?.end()
+    })
   }
   timer = setTimeout(onDeadline, Math.min(Math.max(timeoutMs, 1), MAX_TIMER_MS))
   timer.unref?.()
