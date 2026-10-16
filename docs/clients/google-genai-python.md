@@ -2,7 +2,7 @@
 
 <ExampleResult example="gemini-python" />
 
-Tested: `google-genai` 2.31.0, live run [`2026-10-16-987338b`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/gemini-python/runs/live/2026-10-16-987338b) at plugboard 0.37.0 (`987338b`): partial. Every scenario passes except S5, the image, which hits [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401): the SDK sends `inlineData` as `mime_type`, and plugboard reads only `mimeType`. The code below is the example's snippets.
+Tested: `google-genai` 2.31.0, live run [`2026-10-16-v0.41.0-29-g2d6aac1`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/gemini-python/runs/live/2026-10-16-v0.41.0-29-g2d6aac1) at plugboard 0.41.0: pass. The SDK's `inlineData` (`mime_type`, URL-safe base64) works since [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401) and [#409](https://github.com/jjjermiah/opencode-plugboard/issues/409) were fixed. The code below is the example's snippets.
 
 ## Setup
 
@@ -33,7 +33,7 @@ The snippets use `client` (above) and `model`, `"fast"` in the examples.
 
 ## Image
 
-Inline bytes go through `Part.from_bytes`. This is the scenario that hits #401 until plugboard reads `mime_type` as well as `mimeType`.
+Inline bytes go through `Part.from_bytes`.
 
 <<< @/../examples/gemini-python/image.py#snippet
 

@@ -1,0 +1,89 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "Reply with exactly: pong"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "generationConfig": {
+            "candidateCount": 1,
+            "maxOutputTokens": 1024,
+            "temperature": 0.7
+          },
+          "safetySettings": []
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/fast:streamGenerateContent?alt=sse"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": "pong"
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "anthropic/claude-haiku-4-5",
+                "responseId": "<id-2>"
+              }
+            },
+            {
+              "data": {
+                "candidates": [
+                  {
+                    "content": {
+                      "parts": [
+                        {
+                          "text": ""
+                        }
+                      ],
+                      "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                  }
+                ],
+                "modelVersion": "anthropic/claude-haiku-4-5",
+                "responseId": "<id-2>",
+                "usageMetadata": {
+                  "candidatesTokenCount": 5,
+                  "promptTokenCount": 29,
+                  "totalTokenCount": 34
+                }
+              }
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

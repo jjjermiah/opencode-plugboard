@@ -1,6 +1,6 @@
 # gemini-python · scripted
 
-Verdict: **partial** · google-genai 2.31.0 on python 3 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
+Verdict: **pass** · google-genai 2.31.0 on python 3 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
@@ -12,9 +12,9 @@ Verdict: **partial** · google-genai 2.31.0 on python 3 · models: fast, anthrop
 | S2 | openai/gpt-5.6-luna#low | yes | pass | 5/5 |
 | S3 | fast | yes | pass | 4/4 |
 | S4 | fast | yes | pass | 3/3 |
-| S5 | fast | yes | gap |  |
-| S5 | anthropic/claude-haiku-4-5 | yes | gap |  |
-| S5 | openai/gpt-5.6-luna#low | yes | gap |  |
+| S5 | fast | yes | pass | 1/1 |
+| S5 | anthropic/claude-haiku-4-5 | yes | pass | 1/1 |
+| S5 | openai/gpt-5.6-luna#low | yes | pass | 1/1 |
 | S6 | fast | yes | pass | 3/3 |
 | S6 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
 | S6 | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
@@ -39,30 +39,6 @@ not checked, call id present: Gemini function calls carry no id (Google's API); 
 ### S4 on fast: pass
 
 not checked, call id present: Gemini function calls carry no id (Google's API); the call is paired with its result by name, so there is nothing to check
-
-### S5 on fast: gap
-
-the Python SDK sends inlineData as mime_type, which plugboard rejects with 400 INVALID_ARGUMENT (#401)
-
-```text
-ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'inlineData needs mimeType and base64 data', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.BadRequest', 'fieldViolations': [{'field': 'contents[0].parts[1].inlineData', 'description': 'inlineData needs mimeType and base64 data'}]}]}}
-```
-
-### S5 on anthropic/claude-haiku-4-5: gap
-
-the Python SDK sends inlineData as mime_type, which plugboard rejects with 400 INVALID_ARGUMENT (#401)
-
-```text
-ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'inlineData needs mimeType and base64 data', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.BadRequest', 'fieldViolations': [{'field': 'contents[0].parts[1].inlineData', 'description': 'inlineData needs mimeType and base64 data'}]}]}}
-```
-
-### S5 on openai/gpt-5.6-luna#low: gap
-
-the Python SDK sends inlineData as mime_type, which plugboard rejects with 400 INVALID_ARGUMENT (#401)
-
-```text
-ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'inlineData needs mimeType and base64 data', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.BadRequest', 'fieldViolations': [{'field': 'contents[0].parts[1].inlineData', 'description': 'inlineData needs mimeType and base64 data'}]}]}}
-```
 
 ### E1 on fast: pass
 

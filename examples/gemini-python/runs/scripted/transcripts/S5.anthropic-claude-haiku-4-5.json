@@ -32,27 +32,32 @@
       },
       "response": {
         "body": {
-          "error": {
-            "code": 400,
-            "details": [
-              {
-                "@type": "type.googleapis.com/google.rpc.BadRequest",
-                "fieldViolations": [
+          "candidates": [
+            {
+              "content": {
+                "parts": [
                   {
-                    "description": "inlineData needs mimeType and base64 data",
-                    "field": "contents[0].parts[1].inlineData"
+                    "text": "red"
                   }
-                ]
-              }
-            ],
-            "message": "inlineData needs mimeType and base64 data",
-            "status": "INVALID_ARGUMENT"
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "anthropic/claude-haiku-4-5",
+          "responseId": "<id-1>",
+          "usageMetadata": {
+            "candidatesTokenCount": 7,
+            "promptTokenCount": 11,
+            "totalTokenCount": 18
           }
         },
         "headers": {
           "content-type": "application/json"
         },
-        "status": 400
+        "status": 200
       }
     }
   ]

@@ -2,7 +2,7 @@
 
 <ExampleResult example="vercel-ai-google" />
 
-Tested: `@ai-sdk/google` 4.0.98 with `ai` 7.0.137 and `zod` 4.6.6, live run [`2026-10-16-987338b`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/vercel-ai-google/runs/live/2026-10-16-987338b) at plugboard 0.37.0 (`987338b`): pass. The code below is the example's snippets. The OpenAI-shaped route through `@ai-sdk/openai-compatible` is on [Vercel AI SDK](vercel-ai-sdk.md).
+Tested: `@ai-sdk/google` 4.0.98 with `ai` 7.0.137 and `zod` 4.6.6, live run [`2026-10-16-v0.41.0-29-g2d6aac1`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/vercel-ai-google/runs/live/2026-10-16-v0.41.0-29-g2d6aac1) at plugboard 0.41.0: pass. The code below is the example's snippets. The OpenAI-shaped route through `@ai-sdk/openai-compatible` is on [Vercel AI SDK](vercel-ai-sdk.md).
 
 ## Setup
 

@@ -47,12 +47,6 @@ def main() -> None:
             "E1": lambda model: errors.run_wrong_key(BASE_URL, wire(model)),
             "E2": lambda model: errors.run_unknown_model(client, wire(model)),
         },
-        gaps={
-            "S5": {
-                "note": "the Python SDK sends inlineData as mime_type, which plugboard rejects with 400 INVALID_ARGUMENT",
-                "issue": "#401",
-            }
-        },
         unobserved={
             "S2": {"call id present": CALL_ID},
             "S4": {"call id present": CALL_ID},

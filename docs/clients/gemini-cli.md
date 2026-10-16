@@ -2,7 +2,7 @@
 
 <ExampleResult example="gemini-cli" />
 
-Tested: `@google/gemini-cli` 0.64.0, live run [`2026-10-16-987338b`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/gemini-cli/runs/live/2026-10-16-987338b) at plugboard 0.37.0 (`987338b`): pass. Headless only: no login, no browser. The code below is the example's snippets.
+Tested: `@google/gemini-cli` 0.64.0, live run [`2026-10-16-v0.41.0-29-g2d6aac1`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/gemini-cli/runs/live/2026-10-16-v0.41.0-29-g2d6aac1) at plugboard 0.41.0: pass. Headless only: no login, no browser. The code below is the example's snippets.
 
 ## Setup
 

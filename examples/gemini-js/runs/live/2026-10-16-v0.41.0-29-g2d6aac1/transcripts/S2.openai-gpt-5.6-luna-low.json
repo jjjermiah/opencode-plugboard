@@ -1,0 +1,192 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "What is the weather in Paris? Use the tool."
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 1024
+          },
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "description": "Current weather for a city",
+                  "name": "get_weather",
+                  "parametersJsonSchema": {
+                    "properties": {
+                      "city": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "city"
+                    ],
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/openai/gpt-5.6-luna%23low:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "functionCall": {
+                      "args": {
+                        "city": "Paris"
+                      },
+                      "name": "get_weather"
+                    }
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "openai/gpt-5.6-luna#low",
+          "responseId": "<id-2>",
+          "usageMetadata": {
+            "candidatesTokenCount": 18,
+            "promptTokenCount": 53,
+            "totalTokenCount": 71
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=53; output=18; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "What is the weather in Paris? Use the tool."
+                }
+              ],
+              "role": "user"
+            },
+            {
+              "parts": [
+                {
+                  "functionCall": {
+                    "args": {
+                      "city": "Paris"
+                    },
+                    "name": "get_weather"
+                  }
+                }
+              ],
+              "role": "model"
+            },
+            {
+              "parts": [
+                {
+                  "functionResponse": {
+                    "name": "get_weather",
+                    "response": {
+                      "sky": "cloudy",
+                      "temp_c": 18
+                    }
+                  }
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 1024
+          },
+          "tools": [
+            {
+              "functionDeclarations": [
+                {
+                  "description": "Current weather for a city",
+                  "name": "get_weather",
+                  "parametersJsonSchema": {
+                    "properties": {
+                      "city": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "city"
+                    ],
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/openai/gpt-5.6-luna%23low:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "Paris: 18°C and cloudy."
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "openai/gpt-5.6-luna#low",
+          "responseId": "<id-4>",
+          "usageMetadata": {
+            "candidatesTokenCount": 12,
+            "promptTokenCount": 93,
+            "totalTokenCount": 105
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "openai/gpt-5.6-luna#low",
+          "x-plugboard-session": "<id-3>",
+          "x-plugboard-usage": "input=93; output=12; cache_read=0; cache_write=0"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

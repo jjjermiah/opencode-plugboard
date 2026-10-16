@@ -2,7 +2,7 @@
 
 <ExampleResult example="langchain-google-genai" />
 
-Tested: `langchain-google-genai` 4.4.2, live run [`2026-10-16-987338b`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain-google-genai/runs/live/2026-10-16-987338b) at plugboard 0.37.0 (`987338b`): partial. S5, the image, hits [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401): LangChain sends `inlineData` as `mime_type`, which plugboard rejects. The code below is the example's snippets.
+Tested: `langchain-google-genai` 4.4.2, live run [`2026-10-16-v0.41.0-29-g2d6aac1`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain-google-genai/runs/live/2026-10-16-v0.41.0-29-g2d6aac1) at plugboard 0.41.0: pass. The image request works since [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401) was fixed (LangChain sends `inlineData` as `mime_type`). The code below is the example's snippets.
 
 ## Setup
 

@@ -1,0 +1,79 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "Estimate: 2 boiled eggs and a slice of toast."
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 1024,
+            "responseJsonSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "calories": {
+                  "type": "number"
+                },
+                "protein_g": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "calories",
+                "protein_g"
+              ],
+              "type": "object"
+            },
+            "responseMimeType": "application/json"
+          }
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1beta/models/fast:generateContent"
+      },
+      "response": {
+        "body": {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "{\"calories\":155,\"protein_g\":10}"
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0
+            }
+          ],
+          "modelVersion": "anthropic/claude-haiku-4-5",
+          "responseId": "<id-2>",
+          "usageMetadata": {
+            "candidatesTokenCount": 83,
+            "promptTokenCount": 641,
+            "totalTokenCount": 724
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=641; output=83; cache_read=0; cache_write=0; cost_usd=0.001056"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

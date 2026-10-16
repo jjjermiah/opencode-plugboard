@@ -37,12 +37,6 @@ def main() -> None:
             "E2": lambda model: errors.run_unknown_model(chat_model, model),
         },
         na={"S7": NO_LIST},
-        gaps={
-            "S5": {
-                "note": "LangChain sends inlineData as mime_type, which plugboard rejects with 400 INVALID_ARGUMENT",
-                "issue": "#401",
-            }
-        },
         unobserved={
             "E1": {"code is invalid_api_key": "Google's error body names the status UNAUTHENTICATED, not invalid_api_key; the status 401 is checked"},
             "E2": {"code is model_not_found": "Google's error body names the status NOT_FOUND, not model_not_found; the status 404 is checked"},

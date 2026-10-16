@@ -228,33 +228,48 @@
       "transcript": "transcripts/S4.fast.json"
     },
     {
-      "checks": [],
-      "error": "ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'inlineData needs mimeType and base64 data', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.BadRequest', 'fieldViolations': [{'field': 'contents[0].parts[1].inlineData', 'description': 'inlineData needs mimeType and base64 data'}]}]}}",
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "error": null,
       "id": "S5",
       "model": "fast",
-      "note": "the Python SDK sends inlineData as mime_type, which plugboard rejects with 400 INVALID_ARGUMENT (#401)",
+      "note": null,
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S5.fast.json"
     },
     {
-      "checks": [],
-      "error": "ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'inlineData needs mimeType and base64 data', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.BadRequest', 'fieldViolations': [{'field': 'contents[0].parts[1].inlineData', 'description': 'inlineData needs mimeType and base64 data'}]}]}}",
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "error": null,
       "id": "S5",
       "model": "anthropic/claude-haiku-4-5",
-      "note": "the Python SDK sends inlineData as mime_type, which plugboard rejects with 400 INVALID_ARGUMENT (#401)",
+      "note": null,
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S5.anthropic-claude-haiku-4-5.json"
     },
     {
-      "checks": [],
-      "error": "ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'inlineData needs mimeType and base64 data', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.BadRequest', 'fieldViolations': [{'field': 'contents[0].parts[1].inlineData', 'description': 'inlineData needs mimeType and base64 data'}]}]}}",
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "error": null,
       "id": "S5",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "the Python SDK sends inlineData as mime_type, which plugboard rejects with 400 INVALID_ARGUMENT (#401)",
+      "note": null,
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S5.openai-gpt-5.6-luna-low.json"
     },
     {
@@ -382,5 +397,5 @@
   ],
   "schema": 1,
   "target": "scripted",
-  "verdict": "partial"
+  "verdict": "pass"
 }
