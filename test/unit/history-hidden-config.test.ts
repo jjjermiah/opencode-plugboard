@@ -3,7 +3,7 @@ import { parseOptions } from "../../src/config.js"
 
 const KEY = "sk-plug-bot-test-key-0123456789"
 
-describe("option history.hidden (since 0.29.0, #337)", () => {
+describe("option history.hidden (since 0.30.0, #337)", () => {
   test("off by default: no hidden flag on the global history or any app", () => {
     const options = parseOptions({ keys: { bot: KEY } })
     expect(options.history.hidden).toBeUndefined()
