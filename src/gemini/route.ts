@@ -19,7 +19,7 @@ import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { appPolicy, bodyLimits, historyTemplate, requestedModel } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
-import { listAvailableModels, resolveModel } from "../models.js"
+import { effortUnavailable, listAvailableModels, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
@@ -151,6 +151,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
+  if (effortUnavailable(catalog, ref, requested.effort)) response.setHeader(THINKING_HEADER, "unavailable")
   // Sampling parameters the model is known to reject are dropped and reported, before any response bytes.
   const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
   const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined

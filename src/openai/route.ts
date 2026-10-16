@@ -54,7 +54,7 @@ import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, logError, logRequest, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
-import { filterByCapability, listAvailableModels, parseCapability, resolveModel } from "../models.js"
+import { effortUnavailable, filterByCapability, listAvailableModels, parseCapability, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
@@ -419,6 +419,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(response, ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
+    if (effortUnavailable(catalog, ref, requested.effort)) response.setHeader(THINKING_HEADER, "unavailable")
     // Sampling parameters the model is known to reject are dropped and reported (header and log), before any response bytes.
     const generation = appGeneration(appPolicy(host.options, auth.app), parsed.request.generation)
     const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined
