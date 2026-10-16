@@ -293,9 +293,9 @@ describe("the context hook keeps the server tools (#82)", () => {
     expect(event.tools?.task).toBeUndefined()
   })
 
-  // Known bug #417: `applyContext` in `src/session/context.ts` overwrites `session.messages` with
-  // `request.messages` on every step, dropping the server tool call and result that step 1 appended.
-  test.failing("#417 serverTools: applyContext preserves step 1's server tool call and result on step 2", () => {
+  // #417: `applyContext` keeps what the host appended after the caller transcript (the server tool call and
+  // result of step 1), so step 2 can answer from the result.
+  test("#417 serverTools: applyContext preserves step 1's server tool call and result on step 2", () => {
     const run = hook(plugRequest({ messages: [{ role: "user", content: [{ type: "text", text: "Read inside.txt once." }] }] }), ["read", "glob", "grep"])
     const step1: ContextHookEvent = {
       sessionID: "ses_1",
@@ -318,6 +318,17 @@ describe("the context hook keeps the server tools (#82)", () => {
     run(step2)
 
     expect(JSON.stringify(step2.messages)).toContain("SURFACE_INSIDE_7391")
+  })
+
+  test("#417 a later step carries the caller transcript once, then the message the host appended, by identity", () => {
+    const run = hook(plugRequest({ messages: [{ role: "user", content: [{ type: "text", text: "Read inside.txt once." }] }] }), ["read"])
+    const step1: ContextHookEvent = { sessionID: "ses_1", system: ["host"], messages: [{ content: [{ type: "text", text: "placeholder" }] }], tools: { ...seeds(), read: { description: "Read", input: {} } } }
+    run(step1)
+    const call = { content: [{ type: "tool-call", id: "call_1", name: "read", input: { path: "inside.txt" } }] }
+    const step2: ContextHookEvent = { sessionID: "ses_1", system: ["host"], messages: [...(step1.messages ?? []), call], tools: { ...seeds(), read: { description: "Read", input: {} } } }
+    run(step2)
+    expect(step2.messages).toHaveLength(2)
+    expect(step2.messages?.[1]).toBe(call)
   })
 })
 
