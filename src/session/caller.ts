@@ -62,6 +62,12 @@ export interface SessionCallerDeps {
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
 const CLEANUP_TIMEOUT_MS = 30_000
 
+/**
+ * After a stop sequence ended the answer (`CallContext.stopAnswer`, #390), how long the host may take to end the interrupted run
+ * before the stream closes with the usage counted so far (the collector's running total).
+ */
+const STOP_DRAIN_MS = 5_000
+
 const failure = (status: number, message: string, code: string): PlugEvent => ({
   type: "error",
   error: { status, kind: status >= 500 ? "server" : "invalid_request", message, code },
@@ -313,6 +319,14 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         collector?.cancel()
         interrupt()
       }
+      // A stop sequence ended the answer (#390): interrupt the host run and keep the stream open until its finish carries the usage.
+      let drain: ReturnType<typeof setTimeout> | undefined
+      const onStopAnswer = () => {
+        interrupt()
+        if (drain !== undefined) return
+        drain = setTimeout(() => collector?.finishNow(), STOP_DRAIN_MS)
+        drain.unref?.()
+      }
 
       try {
         // 1. Prompt files: images become data URLs (http(s) ones are fetched once).
@@ -365,6 +379,9 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
               }
             : {}),
         })
+
+        context.stopAnswer?.addEventListener("abort", onStopAnswer, { once: true })
+        if (context.stopAnswer?.aborted) onStopAnswer()
 
         // 3c. Prompt-cache affinity (#80): under an anchor the request session is its child, so the provider cache key
         // stays the anchor's id across requests (src/session/affinity.ts). `history.hidden` (#337) uses the same parent
@@ -469,6 +486,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
       } finally {
         context.signal.removeEventListener("abort", onAbort)
+        context.stopAnswer?.removeEventListener("abort", onStopAnswer)
+        clearTimeout(drain)
         if (sessionID && collector) {
           // The response may be over (consumer left early, error, timeout, a failed step) while the
           // host keeps running the session: interrupt unless it reported the end of the execution

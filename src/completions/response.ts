@@ -8,7 +8,6 @@
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
 import type { ChoiceCodec } from "../openai/fanout.js"
 import { args, encodeError, structuredMissing, textFallback, unfence, type CollectedChoice, type StreamChoice, type StreamResult } from "../openai/response.js"
-import { StopHoldback, stripStopTail } from "../stop.js"
 
 /** What the encoders need besides the model events; the request decoder produces it, the model call never sees it. */
 export interface CompletionsExchange {
@@ -21,8 +20,6 @@ export interface CompletionsExchange {
   readonly perPrompt: number
   /** `echo`: each prompt, written ahead of the text of its choices. */
   readonly echo?: ReadonlyArray<string>
-  /** The request's `stop`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). */
-  readonly stop?: ReadonlyArray<string>
   /** `response_format: json_schema`: the name of the forced tool whose input is the answer (`respond`). The answer is its arguments as text. */
   readonly structuredTool?: string
   /** The caller's `json_schema`: a text answer is taken when the model skipped the call and its text is that JSON (`textFallback`). */
@@ -93,7 +90,6 @@ async function settle(events: AsyncIterable<PlugEvent>, exchange: CompletionsExc
     if (fallback === undefined) return structuredMissing()
     return { text: fallback, reason: finish, usage, fallback: true }
   }
-  if (finish === "stop") text = stripStopTail(text, exchange.stop ?? []).text
   return { text: exchange.jsonObject ? unfence(text) : text, reason: finish, usage }
 }
 
@@ -152,8 +148,6 @@ async function streamText(
     chunk("", FINISH_REASONS[settled.reason])
     return { started, ...(settled.usage ? { usage: settled.usage } : {}) }
   }
-  // A stop sequence is held back until the finish decides it (src/stop.ts).
-  const holdback = new StopHoldback(exchange.stop ?? [])
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
@@ -168,15 +162,12 @@ async function streamText(
       else finish = event.reason
     } else if (event.type === "text-delta" && event.text.length > 0) {
       start()
-      const out = holdback.push(event.text)
-      if (out.length > 0) chunk(out)
+      chunk(event.text)
     }
   }
   failure ??= finish ? undefined : noFinish()
   if (failure) return { failure, started }
   start()
-  const rest = holdback.finish(finish === "stop").text
-  if (rest.length > 0) chunk(rest)
   chunk("", FINISH_REASONS[finish!])
   return { started, ...(usage ? { usage } : {}) }
 }

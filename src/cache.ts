@@ -145,7 +145,7 @@ export function cachedCaller(
         if (hit.policy) context.onPolicy?.(hit.policy)
         for (const event of hit.events) {
           if (context.signal.aborted) return
-          yield event.type === "finish" ? { type: "finish", reason: event.reason, usage: { inputTokens: 0, outputTokens: 0 } } : event
+          yield event.type === "finish" ? { type: "finish", reason: event.reason, usage: { inputTokens: 0, outputTokens: 0 }, ...(event.stopSequence === undefined ? {} : { stopSequence: event.stopSequence }) } : event
         }
         return
       }
@@ -179,7 +179,11 @@ export function cachedCaller(
         } else if (event.type === "finish") {
           // Stored before the event is handed on, so a consumer that stops reading at `finish` still fills the cache.
           if (storable && CACHEABLE_FINISH.has(event.reason) && recorded.length > 0 && !context.signal.aborted)
-            store.set(key, { events: [...recorded, { type: "finish", reason: event.reason }], ...(served ? { served } : {}), ...(policy?.length ? { policy } : {}) })
+            store.set(key, {
+              events: [...recorded, { type: "finish", reason: event.reason, ...(event.stopSequence === undefined ? {} : { stopSequence: event.stopSequence }) }],
+              ...(served ? { served } : {}),
+              ...(policy?.length ? { policy } : {}),
+            })
         } else storable = false
         yield event
       }
