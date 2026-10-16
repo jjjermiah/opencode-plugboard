@@ -18,6 +18,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **First-event deadline for fallback chains** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.37.0). A fallback chain could not help when its first target hung: on aihub every ChatGPT model failed upstream with HTTP 520, and a request to one hung for more than 90 seconds with no event and no failure. Option `fallbackAfterMs` sets a deadline for each target that is not the last. A target that has produced no model event within it is aborted (its OpenCode session is interrupted and retired, not left running) and the next target is tried. It is reported like any other fallback: `x-plugboard-fallbacks`, the `model.fallback` log line with reason `first_event_deadline`, and `plugboard_fallbacks_total`. The last target has no first-event deadline and is bounded only by `requestTimeoutMs`. Off by default. Global only, because a list entry is a plain model string.
 
+### Fixed
+
+- **Signed thinking replays to Copilot Claude** ([#386](https://github.com/jjjermiah/opencode-plugboard/issues/386), since 0.37.0). Replay of a client's signed `thinking` blocks was gated on the provider being `anthropic`, so Copilot's Claude models got the history without their earlier reasoning, even though Copilot serves Claude on the Anthropic messages route with the same `anthropic` metadata key. The gate now also admits `github-copilot` models whose id starts with `claude-`. The hook event carries only the model's provider and id, not its route, so plugboard cannot ask which route a model uses. The other Copilot routes (chat completions, responses) do not read that key, so a signature sent to them is dropped. Other Copilot models stay out.
+
 ## [0.36.0] - 2026-10-13: Show Your Work
 
 **Full diff:** [v0.35.0...v0.36.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...v0.36.0)
