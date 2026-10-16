@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P390-chat-usage-always",
+    invariant: "#390",
+    file: "src/openai/response.ts",
+    find: "      usage: encodeUsage(usage ?? {}),",
+    replace: "      ...(usage ? { usage: encodeUsage(usage) } : {}),",
+    tests: ["test/unit/openai-response.test.ts"],
+  },
+  {
     id: "P390-no-settle-window",
     invariant: "#390",
     file: "src/session/caller.ts",
