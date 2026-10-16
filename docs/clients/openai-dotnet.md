@@ -1,6 +1,6 @@
 # .NET (openai-dotnet)
 
-Verified: run, 2026-10-13. `examples/openai-dotnet` (the `OpenAI` NuGet package 2.14.0, .NET SDK 8.0.423) ran twice against plugboard with model `fast`: a text call, a stream and one tool round trip all passed. The client construction was checked against the official README, "Using a custom base URL and API key" (<https://github.com/openai/openai-dotnet>). Not in `docs/compatibility.md` yet: there is no scripted test for it.
+Verified: run, 2026-10-13. `examples/openai-dotnet` (the `OpenAI` NuGet package 2.14.0, .NET SDK 8.0.423) ran twice against plugboard with model `fast`: a text call, a stream and one tool round trip all passed. The client construction was checked against the official README, "Using a custom base URL and API key" (<https://github.com/openai/openai-dotnet>). The scripted run is in CI (`examples` job, committed under `runs/scripted/`), see [compatibility.md](../compatibility.md#client-examples-in-ci).
 
 openai-dotnet is the official OpenAI .NET library, generated from the OpenAI OpenAPI spec. It covers Chat Completions, the Responses API, streaming and tool calls.
 

@@ -279,7 +279,7 @@ jobs:
           # never report and auto-merge would wait forever. Start every workflow that reports a required check on the branch.
           for wf in ci.yml commits.yml codeql.yml; do
             gh workflow run "$wf" --ref "$BRANCH" \
-              || echo "::warning::could not start $wf on $BRANCH; push an empty commit to start it"
+              || echo "::warning::could not start $wf on $BRANCH; the pull request has no $wf check. Start it by hand: gh workflow run $wf --ref $BRANCH"
           done
           if [ "$FAILED" = true ]; then
             bash .github/scripts/breakage-issue.sh "$LATEST" "$RUN_URL"

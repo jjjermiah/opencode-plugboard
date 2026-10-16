@@ -1,0 +1,2468 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$source": "https://www.npmjs.com/package/@anthropic-ai/sdk/v/0.133.0",
+ "$retrieved": "2026-10-15",
+ "roots": [
+  "Message",
+  "MessageTokensCount",
+  "ErrorResponse",
+  "RawMessageStreamEvent",
+  "RawMessageStartEvent",
+  "RawContentBlockStartEvent",
+  "RawContentBlockDeltaEvent",
+  "RawContentBlockStopEvent",
+  "RawMessageDeltaEvent",
+  "RawMessageStopEvent"
+ ],
+ "$defs": {
+  "Message": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "container": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/Container"
+      }
+     ]
+    },
+    "content": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ContentBlock"
+     }
+    },
+    "diagnostics": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/Diagnostics"
+      }
+     ]
+    },
+    "model": {
+     "$ref": "#/$defs/Model"
+    },
+    "role": {
+     "const": "assistant"
+    },
+    "stop_details": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/RefusalStopDetails"
+      }
+     ]
+    },
+    "stop_reason": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "const": "tool_use"
+      },
+      {
+       "const": "refusal"
+      },
+      {
+       "const": "end_turn"
+      },
+      {
+       "const": "max_tokens"
+      },
+      {
+       "const": "stop_sequence"
+      },
+      {
+       "const": "pause_turn"
+      },
+      {
+       "const": "model_context_window_exceeded"
+      }
+     ]
+    },
+    "stop_sequence": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "message"
+    },
+    "usage": {
+     "$ref": "#/$defs/Usage"
+    }
+   },
+   "required": [
+    "id",
+    "container",
+    "content",
+    "diagnostics",
+    "model",
+    "role",
+    "stop_details",
+    "stop_reason",
+    "stop_sequence",
+    "type",
+    "usage"
+   ]
+  },
+  "Container": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "expires_at": {
+     "type": "string"
+    },
+    "skills": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/ContainerSkill"
+       }
+      }
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "expires_at",
+    "skills"
+   ]
+  },
+  "ContainerSkill": {
+   "type": "object",
+   "properties": {
+    "skill_id": {
+     "type": "string"
+    },
+    "type": {
+     "type": "string",
+     "enum": [
+      "anthropic",
+      "custom"
+     ]
+    },
+    "version": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "skill_id",
+    "type",
+    "version"
+   ]
+  },
+  "ContentBlock": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/TextBlock"
+    },
+    {
+     "$ref": "#/$defs/ThinkingBlock"
+    },
+    {
+     "$ref": "#/$defs/RedactedThinkingBlock"
+    },
+    {
+     "$ref": "#/$defs/ToolUseBlock"
+    },
+    {
+     "$ref": "#/$defs/ServerToolUseBlock"
+    },
+    {
+     "$ref": "#/$defs/WebSearchToolResultBlock"
+    },
+    {
+     "$ref": "#/$defs/WebFetchToolResultBlock"
+    },
+    {
+     "$ref": "#/$defs/CodeExecutionToolResultBlock"
+    },
+    {
+     "$ref": "#/$defs/BashCodeExecutionToolResultBlock"
+    },
+    {
+     "$ref": "#/$defs/TextEditorCodeExecutionToolResultBlock"
+    },
+    {
+     "$ref": "#/$defs/ToolSearchToolResultBlock"
+    },
+    {
+     "$ref": "#/$defs/ContainerUploadBlock"
+    }
+   ]
+  },
+  "TextBlock": {
+   "type": "object",
+   "properties": {
+    "citations": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/TextCitation"
+       }
+      }
+     ]
+    },
+    "text": {
+     "type": "string"
+    },
+    "type": {
+     "const": "text"
+    }
+   },
+   "required": [
+    "citations",
+    "text",
+    "type"
+   ]
+  },
+  "TextCitation": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/CitationCharLocation"
+    },
+    {
+     "$ref": "#/$defs/CitationPageLocation"
+    },
+    {
+     "$ref": "#/$defs/CitationContentBlockLocation"
+    },
+    {
+     "$ref": "#/$defs/CitationsWebSearchResultLocation"
+    },
+    {
+     "$ref": "#/$defs/CitationsSearchResultLocation"
+    }
+   ]
+  },
+  "CitationCharLocation": {
+   "type": "object",
+   "properties": {
+    "cited_text": {
+     "type": "string"
+    },
+    "document_index": {
+     "type": "number"
+    },
+    "document_title": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "end_char_index": {
+     "type": "number"
+    },
+    "file_id": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "start_char_index": {
+     "type": "number"
+    },
+    "type": {
+     "const": "char_location"
+    }
+   },
+   "required": [
+    "cited_text",
+    "document_index",
+    "document_title",
+    "end_char_index",
+    "file_id",
+    "start_char_index",
+    "type"
+   ]
+  },
+  "CitationPageLocation": {
+   "type": "object",
+   "properties": {
+    "cited_text": {
+     "type": "string"
+    },
+    "document_index": {
+     "type": "number"
+    },
+    "document_title": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "end_page_number": {
+     "type": "number"
+    },
+    "file_id": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "start_page_number": {
+     "type": "number"
+    },
+    "type": {
+     "const": "page_location"
+    }
+   },
+   "required": [
+    "cited_text",
+    "document_index",
+    "document_title",
+    "end_page_number",
+    "file_id",
+    "start_page_number",
+    "type"
+   ]
+  },
+  "CitationContentBlockLocation": {
+   "type": "object",
+   "properties": {
+    "cited_text": {
+     "type": "string"
+    },
+    "document_index": {
+     "type": "number"
+    },
+    "document_title": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "end_block_index": {
+     "type": "number"
+    },
+    "file_id": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "start_block_index": {
+     "type": "number"
+    },
+    "type": {
+     "const": "content_block_location"
+    }
+   },
+   "required": [
+    "cited_text",
+    "document_index",
+    "document_title",
+    "end_block_index",
+    "file_id",
+    "start_block_index",
+    "type"
+   ]
+  },
+  "CitationsWebSearchResultLocation": {
+   "type": "object",
+   "properties": {
+    "cited_text": {
+     "type": "string"
+    },
+    "encrypted_index": {
+     "type": "string"
+    },
+    "title": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "web_search_result_location"
+    },
+    "url": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "cited_text",
+    "encrypted_index",
+    "title",
+    "type",
+    "url"
+   ]
+  },
+  "CitationsSearchResultLocation": {
+   "type": "object",
+   "properties": {
+    "cited_text": {
+     "type": "string"
+    },
+    "end_block_index": {
+     "type": "number"
+    },
+    "search_result_index": {
+     "type": "number"
+    },
+    "source": {
+     "type": "string"
+    },
+    "start_block_index": {
+     "type": "number"
+    },
+    "title": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "search_result_location"
+    }
+   },
+   "required": [
+    "cited_text",
+    "end_block_index",
+    "search_result_index",
+    "source",
+    "start_block_index",
+    "title",
+    "type"
+   ]
+  },
+  "ThinkingBlock": {
+   "type": "object",
+   "properties": {
+    "signature": {
+     "type": "string"
+    },
+    "thinking": {
+     "type": "string"
+    },
+    "type": {
+     "const": "thinking"
+    }
+   },
+   "required": [
+    "signature",
+    "thinking",
+    "type"
+   ]
+  },
+  "RedactedThinkingBlock": {
+   "type": "object",
+   "properties": {
+    "data": {
+     "type": "string"
+    },
+    "type": {
+     "const": "redacted_thinking"
+    }
+   },
+   "required": [
+    "data",
+    "type"
+   ]
+  },
+  "ToolUseBlock": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "caller": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DirectCaller"
+      },
+      {
+       "$ref": "#/$defs/ServerToolCaller"
+      },
+      {
+       "$ref": "#/$defs/ServerToolCaller20260120"
+      }
+     ]
+    },
+    "input": {},
+    "name": {
+     "type": "string"
+    },
+    "type": {
+     "const": "tool_use"
+    },
+    "toolset_name": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "caller",
+    "input",
+    "name",
+    "type"
+   ]
+  },
+  "DirectCaller": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "const": "direct"
+    }
+   },
+   "required": [
+    "type"
+   ]
+  },
+  "ServerToolCaller": {
+   "type": "object",
+   "properties": {
+    "tool_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "code_execution_20250825"
+    }
+   },
+   "required": [
+    "tool_id",
+    "type"
+   ]
+  },
+  "ServerToolCaller20260120": {
+   "type": "object",
+   "properties": {
+    "tool_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "code_execution_20260120"
+    }
+   },
+   "required": [
+    "tool_id",
+    "type"
+   ]
+  },
+  "ServerToolUseBlock": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "caller": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DirectCaller"
+      },
+      {
+       "$ref": "#/$defs/ServerToolCaller"
+      },
+      {
+       "$ref": "#/$defs/ServerToolCaller20260120"
+      }
+     ]
+    },
+    "input": {},
+    "name": {
+     "type": "string",
+     "enum": [
+      "web_search",
+      "web_fetch",
+      "code_execution",
+      "bash_code_execution",
+      "text_editor_code_execution",
+      "tool_search_tool_regex",
+      "tool_search_tool_bm25"
+     ]
+    },
+    "type": {
+     "const": "server_tool_use"
+    }
+   },
+   "required": [
+    "id",
+    "caller",
+    "input",
+    "name",
+    "type"
+   ]
+  },
+  "WebSearchToolResultBlock": {
+   "type": "object",
+   "properties": {
+    "caller": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DirectCaller"
+      },
+      {
+       "$ref": "#/$defs/ServerToolCaller"
+      },
+      {
+       "$ref": "#/$defs/ServerToolCaller20260120"
+      }
+     ]
+    },
+    "content": {
+     "$ref": "#/$defs/WebSearchToolResultBlockContent"
+    },
+    "tool_use_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "web_search_tool_result"
+    }
+   },
+   "required": [
+    "caller",
+    "content",
+    "tool_use_id",
+    "type"
+   ]
+  },
+  "WebSearchToolResultBlockContent": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/WebSearchToolResultError"
+    },
+    {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/WebSearchResultBlock"
+     }
+    }
+   ]
+  },
+  "WebSearchToolResultError": {
+   "type": "object",
+   "properties": {
+    "error_code": {
+     "$ref": "#/$defs/WebSearchToolResultErrorCode"
+    },
+    "type": {
+     "const": "web_search_tool_result_error"
+    }
+   },
+   "required": [
+    "error_code",
+    "type"
+   ]
+  },
+  "WebSearchToolResultErrorCode": {
+   "type": "string",
+   "enum": [
+    "invalid_tool_input",
+    "unavailable",
+    "max_uses_exceeded",
+    "too_many_requests",
+    "query_too_long",
+    "request_too_large"
+   ]
+  },
+  "WebSearchResultBlock": {
+   "type": "object",
+   "properties": {
+    "encrypted_content": {
+     "type": "string"
+    },
+    "page_age": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "type": {
+     "const": "web_search_result"
+    },
+    "url": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "encrypted_content",
+    "page_age",
+    "title",
+    "type",
+    "url"
+   ]
+  },
+  "WebFetchToolResultBlock": {
+   "type": "object",
+   "properties": {
+    "caller": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/DirectCaller"
+      },
+      {
+       "$ref": "#/$defs/ServerToolCaller"
+      },
+      {
+       "$ref": "#/$defs/ServerToolCaller20260120"
+      }
+     ]
+    },
+    "content": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/WebFetchToolResultErrorBlock"
+      },
+      {
+       "$ref": "#/$defs/WebFetchBlock"
+      }
+     ]
+    },
+    "tool_use_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "web_fetch_tool_result"
+    }
+   },
+   "required": [
+    "caller",
+    "content",
+    "tool_use_id",
+    "type"
+   ]
+  },
+  "WebFetchToolResultErrorBlock": {
+   "type": "object",
+   "properties": {
+    "error_code": {
+     "$ref": "#/$defs/WebFetchToolResultErrorCode"
+    },
+    "type": {
+     "const": "web_fetch_tool_result_error"
+    }
+   },
+   "required": [
+    "error_code",
+    "type"
+   ]
+  },
+  "WebFetchToolResultErrorCode": {
+   "type": "string",
+   "enum": [
+    "invalid_tool_input",
+    "unavailable",
+    "max_uses_exceeded",
+    "too_many_requests",
+    "url_too_long",
+    "url_not_allowed",
+    "url_not_in_prior_context",
+    "url_not_accessible",
+    "unsupported_content_type",
+    "content_too_large"
+   ]
+  },
+  "WebFetchBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "$ref": "#/$defs/DocumentBlock"
+    },
+    "retrieved_at": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "web_fetch_result"
+    },
+    "url": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "content",
+    "retrieved_at",
+    "type",
+    "url"
+   ]
+  },
+  "DocumentBlock": {
+   "type": "object",
+   "properties": {
+    "citations": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/CitationsConfig"
+      }
+     ]
+    },
+    "source": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Base64PDFSource"
+      },
+      {
+       "$ref": "#/$defs/PlainTextSource"
+      }
+     ]
+    },
+    "title": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "document"
+    }
+   },
+   "required": [
+    "citations",
+    "source",
+    "title",
+    "type"
+   ]
+  },
+  "CitationsConfig": {
+   "type": "object",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "enabled"
+   ]
+  },
+  "Base64PDFSource": {
+   "type": "object",
+   "properties": {
+    "data": {
+     "type": "string"
+    },
+    "media_type": {
+     "const": "application/pdf"
+    },
+    "type": {
+     "const": "base64"
+    }
+   },
+   "required": [
+    "data",
+    "media_type",
+    "type"
+   ]
+  },
+  "PlainTextSource": {
+   "type": "object",
+   "properties": {
+    "data": {
+     "type": "string"
+    },
+    "media_type": {
+     "const": "text/plain"
+    },
+    "type": {
+     "const": "text"
+    }
+   },
+   "required": [
+    "data",
+    "media_type",
+    "type"
+   ]
+  },
+  "CodeExecutionToolResultBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "$ref": "#/$defs/CodeExecutionToolResultBlockContent"
+    },
+    "tool_use_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "code_execution_tool_result"
+    }
+   },
+   "required": [
+    "content",
+    "tool_use_id",
+    "type"
+   ]
+  },
+  "CodeExecutionToolResultBlockContent": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/CodeExecutionToolResultError"
+    },
+    {
+     "$ref": "#/$defs/CodeExecutionResultBlock"
+    },
+    {
+     "$ref": "#/$defs/EncryptedCodeExecutionResultBlock"
+    }
+   ]
+  },
+  "CodeExecutionToolResultError": {
+   "type": "object",
+   "properties": {
+    "error_code": {
+     "$ref": "#/$defs/CodeExecutionToolResultErrorCode"
+    },
+    "type": {
+     "const": "code_execution_tool_result_error"
+    }
+   },
+   "required": [
+    "error_code",
+    "type"
+   ]
+  },
+  "CodeExecutionToolResultErrorCode": {
+   "type": "string",
+   "enum": [
+    "invalid_tool_input",
+    "unavailable",
+    "too_many_requests",
+    "execution_time_exceeded"
+   ]
+  },
+  "CodeExecutionResultBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/CodeExecutionOutputBlock"
+     }
+    },
+    "return_code": {
+     "type": "number"
+    },
+    "stderr": {
+     "type": "string"
+    },
+    "stdout": {
+     "type": "string"
+    },
+    "type": {
+     "const": "code_execution_result"
+    }
+   },
+   "required": [
+    "content",
+    "return_code",
+    "stderr",
+    "stdout",
+    "type"
+   ]
+  },
+  "CodeExecutionOutputBlock": {
+   "type": "object",
+   "properties": {
+    "file_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "code_execution_output"
+    }
+   },
+   "required": [
+    "file_id",
+    "type"
+   ]
+  },
+  "EncryptedCodeExecutionResultBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/CodeExecutionOutputBlock"
+     }
+    },
+    "encrypted_stdout": {
+     "type": "string"
+    },
+    "return_code": {
+     "type": "number"
+    },
+    "stderr": {
+     "type": "string"
+    },
+    "type": {
+     "const": "encrypted_code_execution_result"
+    }
+   },
+   "required": [
+    "content",
+    "encrypted_stdout",
+    "return_code",
+    "stderr",
+    "type"
+   ]
+  },
+  "BashCodeExecutionToolResultBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/BashCodeExecutionToolResultError"
+      },
+      {
+       "$ref": "#/$defs/BashCodeExecutionResultBlock"
+      }
+     ]
+    },
+    "tool_use_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "bash_code_execution_tool_result"
+    }
+   },
+   "required": [
+    "content",
+    "tool_use_id",
+    "type"
+   ]
+  },
+  "BashCodeExecutionToolResultError": {
+   "type": "object",
+   "properties": {
+    "error_code": {
+     "$ref": "#/$defs/BashCodeExecutionToolResultErrorCode"
+    },
+    "type": {
+     "const": "bash_code_execution_tool_result_error"
+    }
+   },
+   "required": [
+    "error_code",
+    "type"
+   ]
+  },
+  "BashCodeExecutionToolResultErrorCode": {
+   "type": "string",
+   "enum": [
+    "invalid_tool_input",
+    "unavailable",
+    "too_many_requests",
+    "execution_time_exceeded",
+    "output_file_too_large"
+   ]
+  },
+  "BashCodeExecutionResultBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/BashCodeExecutionOutputBlock"
+     }
+    },
+    "return_code": {
+     "type": "number"
+    },
+    "stderr": {
+     "type": "string"
+    },
+    "stdout": {
+     "type": "string"
+    },
+    "type": {
+     "const": "bash_code_execution_result"
+    }
+   },
+   "required": [
+    "content",
+    "return_code",
+    "stderr",
+    "stdout",
+    "type"
+   ]
+  },
+  "BashCodeExecutionOutputBlock": {
+   "type": "object",
+   "properties": {
+    "file_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "bash_code_execution_output"
+    }
+   },
+   "required": [
+    "file_id",
+    "type"
+   ]
+  },
+  "TextEditorCodeExecutionToolResultBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/TextEditorCodeExecutionToolResultError"
+      },
+      {
+       "$ref": "#/$defs/TextEditorCodeExecutionViewResultBlock"
+      },
+      {
+       "$ref": "#/$defs/TextEditorCodeExecutionCreateResultBlock"
+      },
+      {
+       "$ref": "#/$defs/TextEditorCodeExecutionStrReplaceResultBlock"
+      }
+     ]
+    },
+    "tool_use_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "text_editor_code_execution_tool_result"
+    }
+   },
+   "required": [
+    "content",
+    "tool_use_id",
+    "type"
+   ]
+  },
+  "TextEditorCodeExecutionToolResultError": {
+   "type": "object",
+   "properties": {
+    "error_code": {
+     "$ref": "#/$defs/TextEditorCodeExecutionToolResultErrorCode"
+    },
+    "error_message": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "text_editor_code_execution_tool_result_error"
+    }
+   },
+   "required": [
+    "error_code",
+    "error_message",
+    "type"
+   ]
+  },
+  "TextEditorCodeExecutionToolResultErrorCode": {
+   "type": "string",
+   "enum": [
+    "invalid_tool_input",
+    "unavailable",
+    "too_many_requests",
+    "execution_time_exceeded",
+    "file_not_found"
+   ]
+  },
+  "TextEditorCodeExecutionViewResultBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "type": "string"
+    },
+    "file_type": {
+     "type": "string",
+     "enum": [
+      "text",
+      "image",
+      "pdf"
+     ]
+    },
+    "num_lines": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "start_line": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "total_lines": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "type": {
+     "const": "text_editor_code_execution_view_result"
+    }
+   },
+   "required": [
+    "content",
+    "file_type",
+    "num_lines",
+    "start_line",
+    "total_lines",
+    "type"
+   ]
+  },
+  "TextEditorCodeExecutionCreateResultBlock": {
+   "type": "object",
+   "properties": {
+    "is_file_update": {
+     "type": "boolean"
+    },
+    "type": {
+     "const": "text_editor_code_execution_create_result"
+    }
+   },
+   "required": [
+    "is_file_update",
+    "type"
+   ]
+  },
+  "TextEditorCodeExecutionStrReplaceResultBlock": {
+   "type": "object",
+   "properties": {
+    "lines": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     ]
+    },
+    "new_lines": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "new_start": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "old_lines": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "old_start": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "type": {
+     "const": "text_editor_code_execution_str_replace_result"
+    }
+   },
+   "required": [
+    "lines",
+    "new_lines",
+    "new_start",
+    "old_lines",
+    "old_start",
+    "type"
+   ]
+  },
+  "ToolSearchToolResultBlock": {
+   "type": "object",
+   "properties": {
+    "content": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ToolSearchToolResultError"
+      },
+      {
+       "$ref": "#/$defs/ToolSearchToolSearchResultBlock"
+      }
+     ]
+    },
+    "tool_use_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "tool_search_tool_result"
+    }
+   },
+   "required": [
+    "content",
+    "tool_use_id",
+    "type"
+   ]
+  },
+  "ToolSearchToolResultError": {
+   "type": "object",
+   "properties": {
+    "error_code": {
+     "$ref": "#/$defs/ToolSearchToolResultErrorCode"
+    },
+    "error_message": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "tool_search_tool_result_error"
+    }
+   },
+   "required": [
+    "error_code",
+    "error_message",
+    "type"
+   ]
+  },
+  "ToolSearchToolResultErrorCode": {
+   "type": "string",
+   "enum": [
+    "invalid_tool_input",
+    "unavailable",
+    "too_many_requests",
+    "execution_time_exceeded"
+   ]
+  },
+  "ToolSearchToolSearchResultBlock": {
+   "type": "object",
+   "properties": {
+    "tool_references": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ToolReferenceBlock"
+     }
+    },
+    "type": {
+     "const": "tool_search_tool_search_result"
+    }
+   },
+   "required": [
+    "tool_references",
+    "type"
+   ]
+  },
+  "ToolReferenceBlock": {
+   "type": "object",
+   "properties": {
+    "tool_name": {
+     "type": "string"
+    },
+    "type": {
+     "const": "tool_reference"
+    }
+   },
+   "required": [
+    "tool_name",
+    "type"
+   ]
+  },
+  "ContainerUploadBlock": {
+   "type": "object",
+   "properties": {
+    "file_id": {
+     "type": "string"
+    },
+    "type": {
+     "const": "container_upload"
+    }
+   },
+   "required": [
+    "file_id",
+    "type"
+   ]
+  },
+  "Diagnostics": {
+   "type": "object",
+   "properties": {
+    "cache_miss_reason": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/CacheMissModelChanged"
+      },
+      {
+       "$ref": "#/$defs/CacheMissSystemChanged"
+      },
+      {
+       "$ref": "#/$defs/CacheMissToolsChanged"
+      },
+      {
+       "$ref": "#/$defs/CacheMissMessagesChanged"
+      },
+      {
+       "$ref": "#/$defs/CacheMissPreviousMessageNotFound"
+      },
+      {
+       "$ref": "#/$defs/CacheMissUnavailable"
+      }
+     ]
+    }
+   },
+   "required": [
+    "cache_miss_reason"
+   ]
+  },
+  "CacheMissModelChanged": {
+   "type": "object",
+   "properties": {
+    "cache_missed_input_tokens": {
+     "type": "number"
+    },
+    "type": {
+     "const": "model_changed"
+    }
+   },
+   "required": [
+    "cache_missed_input_tokens",
+    "type"
+   ]
+  },
+  "CacheMissSystemChanged": {
+   "type": "object",
+   "properties": {
+    "cache_missed_input_tokens": {
+     "type": "number"
+    },
+    "type": {
+     "const": "system_changed"
+    }
+   },
+   "required": [
+    "cache_missed_input_tokens",
+    "type"
+   ]
+  },
+  "CacheMissToolsChanged": {
+   "type": "object",
+   "properties": {
+    "cache_missed_input_tokens": {
+     "type": "number"
+    },
+    "type": {
+     "const": "tools_changed"
+    }
+   },
+   "required": [
+    "cache_missed_input_tokens",
+    "type"
+   ]
+  },
+  "CacheMissMessagesChanged": {
+   "type": "object",
+   "properties": {
+    "cache_missed_input_tokens": {
+     "type": "number"
+    },
+    "type": {
+     "const": "messages_changed"
+    }
+   },
+   "required": [
+    "cache_missed_input_tokens",
+    "type"
+   ]
+  },
+  "CacheMissPreviousMessageNotFound": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "const": "previous_message_not_found"
+    }
+   },
+   "required": [
+    "type"
+   ]
+  },
+  "CacheMissUnavailable": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "const": "unavailable"
+    }
+   },
+   "required": [
+    "type"
+   ]
+  },
+  "Model": {
+   "anyOf": [
+    {
+     "const": "claude-haiku-5-5"
+    },
+    {
+     "const": "claude-sonnet-5-5"
+    },
+    {
+     "const": "claude-fable-5-1"
+    },
+    {
+     "const": "claude-opus-5-5"
+    },
+    {
+     "const": "claude-mythos-5-1"
+    },
+    {
+     "const": "claude-sonnet-5"
+    },
+    {
+     "const": "claude-fable-5"
+    },
+    {
+     "const": "claude-mythos-5"
+    },
+    {
+     "const": "claude-opus-5"
+    },
+    {
+     "const": "claude-opus-4-8"
+    },
+    {
+     "const": "claude-opus-4-7"
+    },
+    {
+     "const": "claude-mythos-preview"
+    },
+    {
+     "const": "claude-opus-4-6"
+    },
+    {
+     "const": "claude-sonnet-4-6"
+    },
+    {
+     "const": "claude-haiku-4-5"
+    },
+    {
+     "const": "claude-haiku-4-5-20251001"
+    },
+    {
+     "const": "claude-opus-4-5"
+    },
+    {
+     "const": "claude-opus-4-5-20251101"
+    },
+    {
+     "const": "claude-sonnet-4-5"
+    },
+    {
+     "const": "claude-sonnet-4-5-20250929"
+    },
+    {
+     "type": "string"
+    }
+   ]
+  },
+  "RefusalStopDetails": {
+   "type": "object",
+   "properties": {
+    "category": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "const": "cyber"
+      },
+      {
+       "const": "bio"
+      },
+      {
+       "const": "frontier_llm"
+      },
+      {
+       "const": "reasoning_extraction"
+      },
+      {
+       "const": "general_harms"
+      }
+     ]
+    },
+    "explanation": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "refusal"
+    }
+   },
+   "required": [
+    "category",
+    "explanation",
+    "type"
+   ]
+  },
+  "Usage": {
+   "type": "object",
+   "properties": {
+    "cache_creation": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/CacheCreation"
+      }
+     ]
+    },
+    "cache_creation_input_tokens": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "cache_read_input_tokens": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "inference_geo": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "input_tokens": {
+     "type": "number"
+    },
+    "output_tokens": {
+     "type": "number"
+    },
+    "output_tokens_details": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/OutputTokensDetails"
+      }
+     ]
+    },
+    "server_tool_use": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/ServerToolUsage"
+      }
+     ]
+    },
+    "service_tier": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "const": "standard"
+      },
+      {
+       "const": "priority"
+      },
+      {
+       "const": "batch"
+      }
+     ]
+    }
+   },
+   "required": [
+    "cache_creation",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+    "inference_geo",
+    "input_tokens",
+    "output_tokens",
+    "output_tokens_details",
+    "server_tool_use",
+    "service_tier"
+   ]
+  },
+  "CacheCreation": {
+   "type": "object",
+   "properties": {
+    "ephemeral_1h_input_tokens": {
+     "type": "number"
+    },
+    "ephemeral_5m_input_tokens": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "ephemeral_1h_input_tokens",
+    "ephemeral_5m_input_tokens"
+   ]
+  },
+  "OutputTokensDetails": {
+   "type": "object",
+   "properties": {
+    "thinking_tokens": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "thinking_tokens"
+   ]
+  },
+  "ServerToolUsage": {
+   "type": "object",
+   "properties": {
+    "web_fetch_requests": {
+     "type": "number"
+    },
+    "web_search_requests": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "web_fetch_requests",
+    "web_search_requests"
+   ]
+  },
+  "MessageTokensCount": {
+   "type": "object",
+   "properties": {
+    "input_tokens": {
+     "type": "number"
+    }
+   },
+   "required": [
+    "input_tokens"
+   ]
+  },
+  "ErrorResponse": {
+   "type": "object",
+   "properties": {
+    "error": {
+     "$ref": "#/$defs/ErrorObject"
+    },
+    "request_id": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    },
+    "type": {
+     "const": "error"
+    }
+   },
+   "required": [
+    "error",
+    "request_id",
+    "type"
+   ]
+  },
+  "ErrorObject": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/InvalidRequestError"
+    },
+    {
+     "$ref": "#/$defs/AuthenticationError"
+    },
+    {
+     "$ref": "#/$defs/BillingError"
+    },
+    {
+     "$ref": "#/$defs/PermissionError"
+    },
+    {
+     "$ref": "#/$defs/NotFoundError"
+    },
+    {
+     "$ref": "#/$defs/RateLimitError"
+    },
+    {
+     "$ref": "#/$defs/GatewayTimeoutError"
+    },
+    {
+     "$ref": "#/$defs/APIErrorObject"
+    },
+    {
+     "$ref": "#/$defs/OverloadedError"
+    }
+   ]
+  },
+  "InvalidRequestError": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "invalid_request_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "AuthenticationError": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "authentication_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "BillingError": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "billing_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "PermissionError": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "permission_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "NotFoundError": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "not_found_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "RateLimitError": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "rate_limit_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "GatewayTimeoutError": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "timeout_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "APIErrorObject": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "api_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "OverloadedError": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "overloaded_error"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "RawMessageStreamEvent": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/RawMessageStartEvent"
+    },
+    {
+     "$ref": "#/$defs/RawMessageDeltaEvent"
+    },
+    {
+     "$ref": "#/$defs/RawMessageStopEvent"
+    },
+    {
+     "$ref": "#/$defs/RawContentBlockStartEvent"
+    },
+    {
+     "$ref": "#/$defs/RawContentBlockDeltaEvent"
+    },
+    {
+     "$ref": "#/$defs/RawContentBlockStopEvent"
+    }
+   ]
+  },
+  "RawMessageStartEvent": {
+   "type": "object",
+   "properties": {
+    "message": {
+     "$ref": "#/$defs/Message"
+    },
+    "type": {
+     "const": "message_start"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ]
+  },
+  "RawMessageDeltaEvent": {
+   "type": "object",
+   "properties": {
+    "delta": {
+     "$ref": "#/$defs/Delta"
+    },
+    "type": {
+     "const": "message_delta"
+    },
+    "usage": {
+     "$ref": "#/$defs/MessageDeltaUsage"
+    }
+   },
+   "required": [
+    "delta",
+    "type",
+    "usage"
+   ]
+  },
+  "Delta": {
+   "type": "object",
+   "properties": {
+    "container": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/Container"
+      }
+     ]
+    },
+    "stop_details": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/RefusalStopDetails"
+      }
+     ]
+    },
+    "stop_reason": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "const": "tool_use"
+      },
+      {
+       "const": "refusal"
+      },
+      {
+       "const": "end_turn"
+      },
+      {
+       "const": "max_tokens"
+      },
+      {
+       "const": "stop_sequence"
+      },
+      {
+       "const": "pause_turn"
+      },
+      {
+       "const": "model_context_window_exceeded"
+      }
+     ]
+    },
+    "stop_sequence": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "string"
+      }
+     ]
+    }
+   },
+   "required": [
+    "container",
+    "stop_details",
+    "stop_reason",
+    "stop_sequence"
+   ]
+  },
+  "MessageDeltaUsage": {
+   "type": "object",
+   "properties": {
+    "cache_creation_input_tokens": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "cache_read_input_tokens": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "input_tokens": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "type": "number"
+      }
+     ]
+    },
+    "output_tokens": {
+     "type": "number"
+    },
+    "output_tokens_details": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/OutputTokensDetails"
+      }
+     ]
+    },
+    "server_tool_use": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/ServerToolUsage"
+      }
+     ]
+    }
+   },
+   "required": [
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+    "input_tokens",
+    "output_tokens",
+    "output_tokens_details",
+    "server_tool_use"
+   ]
+  },
+  "RawMessageStopEvent": {
+   "type": "object",
+   "properties": {
+    "type": {
+     "const": "message_stop"
+    }
+   },
+   "required": [
+    "type"
+   ]
+  },
+  "RawContentBlockStartEvent": {
+   "type": "object",
+   "properties": {
+    "content_block": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/TextBlock"
+      },
+      {
+       "$ref": "#/$defs/ThinkingBlock"
+      },
+      {
+       "$ref": "#/$defs/RedactedThinkingBlock"
+      },
+      {
+       "$ref": "#/$defs/ToolUseBlock"
+      },
+      {
+       "$ref": "#/$defs/ServerToolUseBlock"
+      },
+      {
+       "$ref": "#/$defs/WebSearchToolResultBlock"
+      },
+      {
+       "$ref": "#/$defs/WebFetchToolResultBlock"
+      },
+      {
+       "$ref": "#/$defs/CodeExecutionToolResultBlock"
+      },
+      {
+       "$ref": "#/$defs/BashCodeExecutionToolResultBlock"
+      },
+      {
+       "$ref": "#/$defs/TextEditorCodeExecutionToolResultBlock"
+      },
+      {
+       "$ref": "#/$defs/ToolSearchToolResultBlock"
+      },
+      {
+       "$ref": "#/$defs/ContainerUploadBlock"
+      }
+     ]
+    },
+    "index": {
+     "type": "number"
+    },
+    "type": {
+     "const": "content_block_start"
+    }
+   },
+   "required": [
+    "content_block",
+    "index",
+    "type"
+   ]
+  },
+  "RawContentBlockDeltaEvent": {
+   "type": "object",
+   "properties": {
+    "delta": {
+     "$ref": "#/$defs/RawContentBlockDelta"
+    },
+    "index": {
+     "type": "number"
+    },
+    "type": {
+     "const": "content_block_delta"
+    }
+   },
+   "required": [
+    "delta",
+    "index",
+    "type"
+   ]
+  },
+  "RawContentBlockDelta": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/TextDelta"
+    },
+    {
+     "$ref": "#/$defs/InputJSONDelta"
+    },
+    {
+     "$ref": "#/$defs/CitationsDelta"
+    },
+    {
+     "$ref": "#/$defs/ThinkingDelta"
+    },
+    {
+     "$ref": "#/$defs/SignatureDelta"
+    }
+   ]
+  },
+  "TextDelta": {
+   "type": "object",
+   "properties": {
+    "text": {
+     "type": "string"
+    },
+    "type": {
+     "const": "text_delta"
+    }
+   },
+   "required": [
+    "text",
+    "type"
+   ]
+  },
+  "InputJSONDelta": {
+   "type": "object",
+   "properties": {
+    "partial_json": {
+     "type": "string"
+    },
+    "type": {
+     "const": "input_json_delta"
+    }
+   },
+   "required": [
+    "partial_json",
+    "type"
+   ]
+  },
+  "CitationsDelta": {
+   "type": "object",
+   "properties": {
+    "citation": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/CitationCharLocation"
+      },
+      {
+       "$ref": "#/$defs/CitationPageLocation"
+      },
+      {
+       "$ref": "#/$defs/CitationContentBlockLocation"
+      },
+      {
+       "$ref": "#/$defs/CitationsWebSearchResultLocation"
+      },
+      {
+       "$ref": "#/$defs/CitationsSearchResultLocation"
+      }
+     ]
+    },
+    "type": {
+     "const": "citations_delta"
+    }
+   },
+   "required": [
+    "citation",
+    "type"
+   ]
+  },
+  "ThinkingDelta": {
+   "type": "object",
+   "properties": {
+    "thinking": {
+     "type": "string"
+    },
+    "type": {
+     "const": "thinking_delta"
+    }
+   },
+   "required": [
+    "thinking",
+    "type"
+   ]
+  },
+  "SignatureDelta": {
+   "type": "object",
+   "properties": {
+    "signature": {
+     "type": "string"
+    },
+    "type": {
+     "const": "signature_delta"
+    }
+   },
+   "required": [
+    "signature",
+    "type"
+   ]
+  },
+  "RawContentBlockStopEvent": {
+   "type": "object",
+   "properties": {
+    "index": {
+     "type": "number"
+    },
+    "type": {
+     "const": "content_block_stop"
+    }
+   },
+   "required": [
+    "index",
+    "type"
+   ]
+  }
+ }
+}
