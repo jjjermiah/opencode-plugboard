@@ -4,7 +4,7 @@
  * plugboard has no tokenizer, and the host does not expose the provider's counter, so the count is an estimate, not
  * the provider's exact number. It is calibrated against live counts (#412): the provider's own `usage.input_tokens`
  * (Claude) or `promptTokenCount` (Gemini) for the same request, measured on Claude Haiku 4.5 and Gemini 3.x. The
- * profile is picked by the model id: a Gemini model gets the Gemini profile, any other the Claude one.
+ * profile is picked by the model id: a Gemini model gets the Gemini profile, a Claude 5.x model the Claude 5 profile (#412), any other the Claude one.
  *
  * Claude: characters / 5 for Latin text, one token per CJK character, a fixed cost per message, per tool-call and
  * tool-result block, and a preamble of about 530 tokens once tools are declared (the tool-use framing), plus about
@@ -40,6 +40,14 @@ interface Profile {
 
 const CLAUDE: Profile = { charsPerToken: 5, cjkTokens: 1, request: 21, message: 4, toolBlock: 35, toolPreamble: 534, perTool: 40, unreadableImage: MEDIA_TOKENS }
 const GEMINI: Profile = { charsPerToken: 5, cjkTokens: 0.67, request: 0, message: 0, toolBlock: 0, toolPreamble: 0, perTool: 0, flatImage: 1090, unreadableImage: 1090 }
+/**
+ * Claude 5.x (#412): its tokenizer packs Latin text into about 2.5 characters per token, not 5, and its tool framing is
+ * smaller, with a larger fixed request cost. Fitted to `claude-sonnet-5-5` (the 2026-10-16 measurements on the issue).
+ */
+const CLAUDE_5: Profile = { charsPerToken: 2.55, cjkTokens: 1, request: 45, message: 4, toolBlock: 35, toolPreamble: 370, perTool: 40, unreadableImage: MEDIA_TOKENS }
+
+/** The profile for a model id: Gemini, Claude 5.x (`claude-<family>-5-...`), or the Claude 4.x profile for every other id. */
+const profileOf = (model: string): Profile => (/gemini/i.test(model) ? GEMINI : /claude-[a-z]+-5(?:-|$)/i.test(model) ? CLAUDE_5 : CLAUDE)
 
 /** CJK ideographs, kana, hangul, and the full-width punctuation that goes with them. */
 const CJK = /[\u3000-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/g
@@ -124,7 +132,7 @@ const partTokens = (part: PlugPart, profile: Profile): number => {
  * is picked from the id; see the header of this file.
  */
 export function estimateTokens(request: Pick<PlugRequest, "system" | "messages" | "tools">, model = ""): number {
-  const profile = /gemini/i.test(model) ? GEMINI : CLAUDE
+  const profile = profileOf(model)
   let tokens = profile.request + textTokens(request.system.join(""), profile)
   for (const message of request.messages) {
     if (message.role !== "tool") tokens += profile.message

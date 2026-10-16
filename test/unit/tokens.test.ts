@@ -172,3 +172,14 @@ describe("#412 the token estimate", () => {
     expect(estimateTokens(turn(media(pngUrl(1024, 768))), "gemini-3.8-flash")).toBe(1090)
   })
 })
+
+describe("#412 a Claude 5.x model has its own profile", () => {
+  test("the fixed request cost and the characters per token follow the family, not the id's tail", () => {
+    expect(estimateTokens(plugRequest({ messages: [] }), "claude-sonnet-5-5")).toBe(45)
+    expect(estimateTokens(plugRequest({ messages: [] }), "claude-haiku-5-5")).toBe(45)
+    expect(estimateTokens(plugRequest({ messages: [] }), "claude-haiku-4-5")).toBe(21)
+    const long = turn(text("a".repeat(2550)))
+    expect(estimateTokens(long, "claude-sonnet-5-5")).toBeCloseTo(45 + 4 + 1000, 6)
+    expect(estimateTokens(long, "claude-haiku-4-5")).toBeCloseTo(21 + 4 + 510, 6)
+  })
+})
