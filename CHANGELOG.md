@@ -14,11 +14,106 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.44.0] - 2026-10-16: Tools That Remember
+
+**Full diff:** [v0.43.0...v0.44.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...v0.44.0)
+
 ### Fixed
 
 - **`tool_choice: "none"` offers no server tool without `tools`** ([#421](https://github.com/jjjermiah/opencode-plugboard/issues/421)). A trusted app's `serverTools` were still offered when a caller sent `tool_choice: "none"` and no `tools` array. The Chat Completions, Responses, Messages and Gemini request decoders dropped the choice in that case. Now `none` reaches the session and means no tools, server tools included (since 0.44.0).
 - **A server tool's result reaches the next step** ([#417](https://github.com/jjjermiah/opencode-plugboard/issues/417)). A trusted app's `serverTools` ran, but the next step lost the call and its result, so the model asked for the same tool again until the step cap failed the request with 502 `server_tool_steps_exceeded`. Each step now keeps the tool call and result the host appended, after the caller's transcript, so the model answers from the result (since 0.44.0).
 - **An app name is at most 255 characters** ([#418](https://github.com/jjjermiah/opencode-plugboard/issues/418)). The admin route minted a runtime key for an app name of any length, but every call with that key then failed with 502 `backend_failed`. The app's directory is named after the app, and a file name takes at most 255 bytes. The admin route now refuses a longer name with 400 `invalid_app`, and the config refuses it at load (since 0.44.0).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (7 commits)</summary>
+
+#### Fixes
+
+**fix: keep tool_choice none when the caller sends no tools** ([`6fc8bbe`](https://github.com/jjjermiah/opencode-plugboard/commit/6fc8bbe4102aa7ccf63730990e90dd78fb5ede46))
+
+With tool_choice "none" and no tools array, the four request decoders (Chat Completions, Responses, Messages and Gemini) dropped the choice. Each one gated toolChoice on tools.length > 0. The session then saw no choice, so remapSeedTools and sessionRequest still offered the app's serverTools. "none" must mean no tools at all, server tools included.
+
+Decision: keep the gate for every other choice (auto, required, a named tool), so "tool_choice without tools is left out" still holds. Only "none" is kept without tools. The same rule covers Messages {type: none}, Gemini functionCallingConfig NONE and Responses "none".
+
+Rejected: dropping serverTools in applyContext when the choice is missing. That would fix one reader of toolChoice and leave the decoders wrong for every other reader.
+
+Validation: decoder tests for the four dialects and the route test in test/http/invariant-surfaces-r2.test.ts (flipped from test.failing) were red before the fix and green after. Full bun test: 2897 pass, 126 skip, 0 fail.
+
+Closes #421
+
+**fix: keep a server tool's call and result on later steps** ([`a0a0206`](https://github.com/jjjermiah/opencode-plugboard/commit/a0a0206fc5b58b6dba40bf494cb8fbec24b9318b))
+
+A trusted app's serverTools run inside the host session. The host calls the context hook once per step, and applyContext replaced session.messages with the caller's transcript each time. Step 1's server tool call and its result were dropped, so the model asked for the same tool again. Every step ran the tool once more until maxServerToolSteps was reached, and the request failed with 502 server_tool_steps_exceeded. The live report reads three successful read calls and then the cap.
+
+Decision: the context hook records how many messages the caller transcript took (RequestState.callerMessages). On a later step it keeps the host's messages from that index on, which are the tool calls and results the host appended, and puts them after the caller transcript. The first step has no record, so it is unchanged. The caller transcript is still rewritten on every step, and the appended messages are kept by identity, not copied.
+
+Rejected: keeping the whole previous session.messages array. That would repeat the caller transcript on each step, and the rewrite would have to be undone. Rejected: a module-level map from session ID to count. The count belongs with the request state, which the store already releases.
+
+Validation: the test.failing in test/session/server-tools.test.ts is now a plain test and was red before this change. A new test checks that a later step carries the caller transcript once, then the appended message by identity. Full bun test: 3024 tests, 0 fail. The live two-step read is in the PR body.
+
+Closes #417
+
+**fix: refuse app names over 255 characters at key creation and config load** ([`2401844`](https://github.com/jjjermiah/opencode-plugboard/commit/2401844b035895b7e022f72d714d2f5805bbc051))
+
+An app name of any length matched APP_NAME_PATTERN, so the admin route minted a runtime key for a 300-character name (201). Every call with that key then failed with 502 backend_failed. ensureAppDir names the app's directory after the app, and a file name takes at most 255 bytes (NAME_MAX on Linux and ext4). A 255-character name worked, a 300-character one did not.
+
+Decision: APP_NAME_MAX = 255 and isAppName(), the pattern plus the length, in config.ts. The config checks (keys and apps) and the admin route use it. The message names the limit, so a refused name says why. The admin route answers 400 invalid_app, the same code as a bad pattern.
+
+Rejected: 63 characters, the DNS label limit suggested in the issue. It is not the limit that breaks here, and it would refuse names that work today. Not checked: the session title, which the issue also names. The 255 boundary matches the directory name limit, which is the path that fails here. Stored key records with a long name are left as they are: the key store already treats an unreadable record as no key.
+
+Validation: a boundary test in test/http/admin.test.ts (255 mints, 256 gets 400 invalid_app and nothing is minted) and 256-character rows in the config and apps tables. All were red before the change. Full bun test green.
+
+Closes #418
+
+**fix: continue a server-tool run from the host's messages, not the caller's** ([`a10374a`](https://github.com/jjjermiah/opencode-plugboard/commit/a10374a2b3a4cb4506e6e3df37cf1d17fd95e4d0))
+
+The review of #448 found that the first #417 fix sliced the host's messages at the caller's message count. The host does not pass back the caller's array. It reloads the session every step, so its messages are the stored prompt, then each earlier call and result. The slice only lined up for a caller transcript of exactly one message, so a system prompt plus history dropped the call and result again and the run looped to the cap.
+
+Decision: the first context call of a request records how many messages the host had (RequestState.hostMessages). A later call keeps the host messages after that index and puts them after the rewritten caller transcript. The continuation is gated on apps with serverTools, so an untrusted app and a caller-tool-only request keep today's behaviour, and the host's synthetic continue or retry messages are not sent to them.
+
+Rejected: recording the caller length, the first fix. It is the bug. Rejected: keeping the first host message by identity. It fails when the host stores more than one prompt message.
+
+Tests: unit tests build step 2 and step 3 as fresh host-shaped arrays with caller transcripts of 1, 2, 3 and 5 messages, and check identity of the appended calls and results. An untrusted app keeps the old behaviour. A route test drives a multi-message request through a fake host that reloads the session each step, with a stub model that asks for read until its history holds the result. It returns one server call and the answer. The test.failing that already existed is still a plain test.
+
+Also .github/floors/test-count-floors.json, ratcheted by the validate run.
+
+**fix: keep tool_choice none for an app with tools false** ([`cba0c09`](https://github.com/jjjermiah/opencode-plugboard/commit/cba0c097cbc6fef2b3737eeacb0d32254fc0ac06))
+
+applyToolPolicy dropped the tool choice for an app with tools: false, and none was among the choices dropped. With no choice, the session offered the app's serverTools. The same hole #421 closed for requests without tools, reached through the app's tools option.
+
+Decision: keep none in that branch. It refers to no tool, so it stays, and the server tools stay out with it. Named and auto choices are still dropped, as before.
+
+Also: plugboard's app name checks go through isAppName (config.ts), so the length cap from #418 applies to the request route, the usage query and the key store, not only to the config and the admin route. docs/configuration.md states the 255 character limit.
+
+Validation: a session request test for tools: false with tool_choice none (it offers no server tool). The tests run green; the red run before this change was not repeated, the failing path was read in the code. Full validate with mutations green.
+
+#### CI and tooling
+
+**ci: wait for a running CI run before the release preflight** ([`ef13629`](https://github.com/jjjermiah/opencode-plugboard/commit/ef136291e15e5b526655d37c50c53b9aa1878a37))
+
+The release preflight refused to start while the newest CI run on main's commit was queued or in progress ("Wait for it to finish"). A release then meant someone had to watch the run and start the script again. The script is a foreground tool, so it can wait.
+
+What changed: waitForMainCi() in .github/scripts/release.ts polls the newest ci.yml push run on origin/main's commit every 20 seconds while it is queued or in progress, up to 40 minutes (MAIN_CI_TIMEOUT_MS). A completed run is judged as before: success proceeds, anything else stops the script with the conclusion and the run URL, and nothing is committed or pushed. No run, or a gh failure, still refuses at once. Dry runs keep the one-shot check, so the preview does not block. docs/releasing.md says the same.
+
+Decision: poll, do not block on a single gh call. gh run watch would need the run id and would not cover a run that has not appeared yet.
+
+Rejected: a longer timeout or no timeout. A stuck run would hold the release terminal indefinitely, and the bound is what lets the wait fail on red.
+
+Validation: no committed test, because release.ts runs at module top level and the repo has none for it; the existing release checks were rehearsed the same way, outside the repo. Throwaway origin, stub gh: a queued run that completes with success proceeds past the preflight and pushes the release branch; a queued run that completes with failure stops with "concluded failure" and pushes nothing. Before the change, the queued run stopped the script at once. The 40 minute timeout branch was not exercised.
+
+**ci: release preflight retries transient gh errors and waits for a new run** ([`822d215`](https://github.com/jjjermiah/opencode-plugboard/commit/822d2159b8e9c18f9dda66e6d76ca19fe251301d))
+
+Review of #448 found two gaps in the preflight wait. A single failing gh run list ended a 40 minute wait, and a commit just pushed to main had no run for a short while, which still refused at once.
+
+What changed: waitForMainCi() tolerates up to three consecutive gh failures before it refuses, and gives a commit with no run listed two minutes to get one. The timeout message derives its minutes from MAIN_CI_TIMEOUT_MS. The wait logs only when the run's status changes, not every poll. The dry run says "warning:" and "A --push run waits for it", since a real run now waits. The header comment and docs/releasing.md describe the behaviour.
+
+Validation: throwaway origin and a stub gh. A flaky first gh call that then succeeds with a green run: it retried, and the release branch was pushed. A red run stops with "concluded failure" and pushes nothing. A green run pushes the branch. The two-minute no-run path and the 40 minute timeout were not rehearsed.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.43.0] - 2026-10-16: Names, Not Placeholders
 
@@ -7792,7 +7887,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...HEAD
+[0.44.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...v0.43.0
 [0.42.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...v0.41.0
