@@ -34,10 +34,10 @@ afterEach(async () => {
 })
 
 /** A route answering every call with 10 input and 5 output tokens, and a usage recorder when `usage` is set. */
-async function start({ usage = false, options }: { usage?: boolean; options?: Record<string, unknown> } = {}): Promise<RouteServer> {
+async function start({ usage = false, options, catalog }: { usage?: boolean; options?: Record<string, unknown>; catalog?: typeof CATALOG } = {}): Promise<RouteServer> {
   recorder = usage ? createUsageRecorder({ state: createUsageState(), storage: new FakeStorage(), loadCatalog: async () => CATALOG, retentionDays: 90 }) : undefined
   const caller = withUsage(new FakeModelCaller(() => [ev.text("hi"), ev.finish("stop", { inputTokens: 10, outputTokens: 5 })]), recorder)
-  server = await startRoute({ caller, ...(options ? { options } : {}), ...(recorder ? { usage: recorder } : {}) })
+  server = await startRoute({ caller, ...(options ? { options } : {}), ...(catalog ? { catalog } : {}), ...(recorder ? { usage: recorder } : {}) })
   return server
 }
 
@@ -123,7 +123,11 @@ describe("end user names an object inherits: the shared counters and the routes 
   })
 
   test("#57 a metrics or usage write that throws neither changes the answer nor stops the access log", async () => {
-    const srv = await start({ usage: true, options: { metrics: true } })
+    const srv = await start({
+      usage: true,
+      options: { metrics: true, models: ["test/*", "openai/*"] },
+      catalog: [...CATALOG, { providerID: "openai", id: "gpt-5.5", variants: [] }] as typeof CATALOG,
+    })
     const boom = () => {
       throw new Error("metrics down")
     }
@@ -131,9 +135,13 @@ describe("end user names an object inherits: the shared counters and the routes 
     const reply = await srv.send(chat("alice"))
     expect(reply.status).toBe(200)
     expect(logs.of("request")[0]!.fields).toMatchObject({ status: "200", user: "alice", outcome: "ok" })
+    // A request that drops a parameter also reaches the `dropped` write, which throws here too.
+    const dropping = await srv.send({ method: "POST", path: "/v1/chat/completions", body: { model: "openai/gpt-5.5", messages: [{ role: "user", content: "hi" }], user: "alice", temperature: 0.2, top_p: 0.5, max_tokens: 9 } })
+    expect(dropping.status).toBe(200)
+    expect(dropping.headers["x-plugboard-dropped-params"]).toBeDefined()
     expect(logs.of("metrics.record_failed").length).toBeGreaterThan(0)
     expect(logs.of("metrics.record_failed")[0]!.level).toBe("error")
-    await until(async () => ((await recorder!.query({ app: "default" })) as UsageReport).totals.requests === 1, 1_000, "usage still recorded")
+    await until(async () => ((await recorder!.query({ app: "default" })) as UsageReport).totals.requests === 2, 1_000, "usage still recorded")
   })
 })
 
