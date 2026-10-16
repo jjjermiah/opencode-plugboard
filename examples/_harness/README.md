@@ -84,6 +84,7 @@ Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `trans
 - Ids are replaced by placeholders numbered by first appearance in each file, so one id keeps one placeholder across turns. A GET of a models route keeps its model ids.
 - `http://127.0.0.1:<port>` becomes `<plugboard>`, error text included.
 - The writer refuses any file that contains the app key. Live runs use only the prompts in `scenarios.json`.
+- **Gemini CLI session context** (`normaliseSessionContext`, applied to request bodies only): the CLI's `<session_context>` block carries today's date, the operating system and the temp dir and workspace. Inside that block, the date becomes `<date>`, the OS `<os>`, the temp dir `<temp-dir>` and the workspace `<workspace>`. Anywhere in a request, the CLI's fixed home and workspace paths (`plugboard-gemini-cli-home`, `plugboard-gemini-cli-workspace` under the temp dir) become `<gemini-cli-home>` and `<gemini-cli-workspace>`, because the CLI repeats the home path in its system prompt. Nothing else changes. Tested in `test/unit/examples-normalise.test.ts`.
 
 ## Adding an example
 

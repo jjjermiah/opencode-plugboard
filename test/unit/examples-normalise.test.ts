@@ -7,7 +7,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Exchange } from "../../examples/_harness/capture.ts"
-import { canonicalJson, normaliseTranscript, parseFrames, redactPath } from "../../examples/_harness/normalise.ts"
+import { canonicalJson, normaliseSessionContext, normaliseSessionContextValue, normaliseTranscript, parseFrames, redactPath } from "../../examples/_harness/normalise.ts"
 import { verdictOf, writeRun, type RunSummary, type ScenarioRow } from "../../examples/_harness/render.ts"
 
 const exchange = (overrides: Partial<Exchange>): Exchange => ({
@@ -110,6 +110,59 @@ describe("SSE and files", () => {
 
   test("canonical JSON sorts keys at every depth, indents two spaces and ends with a newline", () => {
     expect(canonicalJson({ b: 1, a: { d: 2, c: [{ z: 1, y: 2 }] } })).toBe('{\n  "a": {\n    "c": [\n      {\n        "y": 2,\n        "z": 1\n      }\n    ],\n    "d": 2\n  },\n  "b": 1\n}\n')
+  })
+})
+
+describe("Gemini CLI session context", () => {
+  const block = [
+    "<session_context>",
+    "This is the Gemini CLI. We are setting up the context for our chat.",
+    "Today's date is Thursday, October 15, 2026 (formatted according to the user's locale).",
+    "My operating system is: darwin",
+    "The project's temporary directory is: /var/folders/xn/abc/T/plugboard-gemini-cli-home/.gemini/tmp/x",
+    "- **Workspace Directories:**",
+    "  - /Users/someone/work/plugboard-gemini-cli-workspace",
+    "</session_context>",
+  ].join("\n")
+
+  test("replaces the date, OS, temp dir and workspace inside the block with fixed placeholders", () => {
+    const out = normaliseSessionContext(`Preamble with 2026-10-15 and darwin.\n${block}\nAfter.`)
+    expect(out).toBe(
+      [
+        "Preamble with 2026-10-15 and darwin.",
+        "<session_context>",
+        "This is the Gemini CLI. We are setting up the context for our chat.",
+        "Today's date is <date> (formatted according to the user's locale).",
+        "My operating system is: <os>",
+        "The project's temporary directory is: <temp-dir>",
+        "- **Workspace Directories:**",
+        "  - <workspace>",
+        "</session_context>",
+        "After.",
+      ].join("\n"),
+    )
+  })
+
+  test("two runs on different days and machines give the same text", () => {
+    const other = block.replace("Thursday, October 15, 2026", "Friday, October 16, 2026").replace("darwin", "linux").replace("/var/folders/xn/abc/T", "/tmp")
+    expect(normaliseSessionContext(other)).toBe(normaliseSessionContext(block))
+  })
+
+  test("leaves text outside the block alone, and text without the block unchanged", () => {
+    expect(normaliseSessionContext("Today's date is 2026-10-15 and darwin")).toBe("Today's date is 2026-10-15 and darwin")
+  })
+
+  test("replaces the CLI's home and workspace paths wherever they appear in the request text", () => {
+    const prompt = "Memory at (/var/folders/xn/T/plugboard-gemini-cli-home/.gemini/GEMINI.md) and /tmp/plugboard-gemini-cli-workspace/x"
+    expect(normaliseSessionContext(prompt)).toBe("Memory at (<gemini-cli-home>/.gemini/GEMINI.md) and <gemini-cli-workspace>/x")
+  })
+
+  test("applies to every string of a parsed body and keeps its structure", () => {
+    const body = { contents: [{ parts: [{ text: block }, { text: "Reply with exactly: pong" }] }], n: 3 }
+    const out = normaliseSessionContextValue(body) as typeof body
+    expect(out.contents[0]!.parts[0]!.text).toContain("My operating system is: <os>")
+    expect(out.contents[0]!.parts[1]!.text).toBe("Reply with exactly: pong")
+    expect(out.n).toBe(3)
   })
 })
 
