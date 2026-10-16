@@ -4,12 +4,13 @@ This file lists third-party material in the repository and the terms that cover 
 
 ## Vendored schema fixtures
 
-`test/fixtures/specs/vendor.ts` writes two fixtures. Each keeps only the schemas reachable from its response roots, drops documentation keys, and rewrites `$ref`s. Each file records its source URL and retrieval date in `$source` and `$retrieved`.
+`test/fixtures/specs/vendor.ts` writes two fixtures, and `test/fixtures/specs/vendor-anthropic.ts` derives a third from the Anthropic SDK's types. Each keeps only the schemas reachable from its response roots, drops documentation keys, and rewrites `$ref`s. Each file records its source URL and retrieval date in `$source` and `$retrieved`.
 
 | Fixture | Derived from | Retrieved | Terms |
 | --- | --- | --- | --- |
 | `test/fixtures/specs/openai.json` | `openapi.yaml` in [openai/openai-openapi](https://github.com/openai/openai-openapi), `https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml` | 2026-10-11 | MIT, below |
 | `test/fixtures/specs/gemini.json` | Google API discovery document, `https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta` | 2026-10-11 | Unclear, see below |
+| `test/fixtures/specs/anthropic.json` | Type declarations of `@anthropic-ai/sdk` 0.133.0 (`resources/messages/messages.d.ts`, `resources/shared.d.ts`), https://www.npmjs.com/package/@anthropic-ai/sdk/v/0.133.0 | 2026-10-15 | MIT, below |
 
 ### openai/openai-openapi (MIT)
 
@@ -37,6 +38,20 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+```
+
+### @anthropic-ai/sdk (MIT)
+
+Source: https://github.com/anthropics/anthropic-sdk-typescript (the package's `LICENSE`, as shipped in version 0.133.0).
+
+```
+Copyright 2023 Anthropic, PBC.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ### Google API discovery document (terms unclear)

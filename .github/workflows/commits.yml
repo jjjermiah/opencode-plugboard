@@ -43,10 +43,16 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_HEAD: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           if [ "$EVENT" = pull_request ]; then
             from=$PR_BASE
             to=$PR_HEAD
+          elif [ "$EVENT" = workflow_dispatch ]; then
+            # host-bump.yml starts this on its branch. A dispatch has no base, and the push range would be the whole history since the cutoff,
+            # so lint what the branch adds to the default branch: from the merge base to the branch head.
+            to=$PUSH_HEAD
+            from=$(git merge-base "origin/$DEFAULT_BRANCH" "$to" 2>/dev/null || true)
           else
             from=$PUSH_BEFORE
             to=$PUSH_HEAD
