@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.42.0] - 2026-10-16: Loose Ends Tied
+
+**Full diff:** [v0.41.0...v0.42.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...v0.42.0)
+
 ### Added
 
 - **Examples for five more Chat Completions clients** ([#105](https://github.com/jjjermiah/opencode-plugboard/issues/105)). LlamaIndex, Semantic Kernel, Haystack, Mastra and async-openai now run through the examples harness. Each scripted run is byte-identical across two runs. Each has a live run against the dev server, served build `git describe` v0.41.0-32-g9852300 (main); `fast` was served by its second chain entry, `anthropic/claude-haiku-4-5`. The scripted model now answers Semantic Kernel's prefixed tool name (`weather-get_weather`). Mastra's stream usage check is unobserved, because Mastra sends no `stream_options`. S5 to S7 and E1/E2 were not run for these clients. Still open: Cline/Roo, Msty, Raycast and Home Assistant (GUI, or they need a Home Assistant instance), and LangChain4j and Spring AI (no JDK on the machine that ran this).
@@ -27,6 +33,394 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - **Empty stop strings get a 400 that names `stop`; a thinking signature rejection names the signature** ([#424](https://github.com/jjjermiah/opencode-plugboard/issues/424)). `stop: ""` and a list with an empty entry are refused before the model call with `param: "stop"` (Gemini: `generationConfig.stopSequences`). A whitespace stop such as `\n` is matched in the answer text. When a provider rejects a replayed thinking block's signature, the 400 says the signature was rejected, without the provider's text (since 0.42.0).
 - **A Responses answer cut by `max_output_tokens` has an incomplete message item** ([#425](https://github.com/jjjermiah/opencode-plugboard/issues/425)). The item open at the cut is `status: incomplete`, in the stream and in the final response, next to `status: incomplete` on the response (since 0.42.0).
 - **Items of a `store: false` Responses answer cannot be referenced** ([#426](https://github.com/jjjermiah/opencode-plugboard/issues/426)). plugboard no longer keeps their output items, so an `item_reference` to them is the 400 `item_not_found` (since 0.42.0).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (27 commits)</summary>
+
+#### Features
+
+**feat(examples): add Google GenAI JS and Python SDK examples** ([`987338b`](https://github.com/jjjermiah/opencode-plugboard/commit/987338ba7337bc8921b1f54401cb6401db0df362))
+
+The Gemini clients listed in #103 had no example. This adds examples/gemini-js (@google/genai 2.30.0) and examples/gemini-python (google-genai 2.31.0). Each runs S1 to S7 and the two error paths through the harness, and the scripted runs are committed.
+
+The SDKs build the URL, and a bare # starts a fragment, so the runners send the variant as %23. A / goes as it is, because the route decodes the segment. Gemini calls carry no id and errors name UNAUTHENTICATED or NOT_FOUND rather than invalid_api_key or model_not_found, so those checks are marked unobserved with the reason and the status is still checked.
+
+The Python SDK sends inlineData as mime_type, which plugboard rejects. That row is a gap pointing at #401 until it is fixed.
+
+Validation: the gemini-js scripted run passes. The gemini-python scripted run is partial, with only the S5 gap.
+
+Refs #103
+
+**feat(examples): add Gemini client examples and pages** ([`5f1e08c`](https://github.com/jjjermiah/opencode-plugboard/commit/5f1e08ccc0afc959e30137c15742736fba96ffe1))
+
+The Gemini clients listed in #103 had no runnable example. This adds five: the Google GenAI JS SDK (gemini-js), the Google GenAI Python SDK (gemini-python), LangChain's ChatGoogleGenerativeAI (langchain-google-genai), the Vercel AI SDK's Google provider (vercel-ai-google) and the Gemini CLI run headless (gemini-cli). Each runs S1 to S7 and the error paths through the harness, with pinned dependencies, a scripted run committed and rerun for determinism, and a live run against the isolated dev server at 987338b. Each has a client page under docs/clients and a sidebar entry, and docs/gemini.md now points at them.
+
+Two model-id rules came out of the runs. The SDKs build the URL and treat a bare
+# as a fragment, so a variant goes as %23 (the runners do it). The Vercel
+provider adds the models/ prefix only to ids without a /, so an id with a / goes as %2F there. Plugboard is correct in both cases; the examples and docs/gemini.md say so.
+
+Two rows are gaps, not passes. The Python SDK and LangChain send inlineData as mime_type, which plugboard rejects (#401), so S5 is a gap there. The Gemini CLI runs its own built-in tools, so the custom-tool, structured, image and model list scenarios are not applicable to it, and its countTokens calls did not fire in a headless one-shot run.
+
+Refs #103
+
+**feat(examples): run five more Chat Completions clients through the harness** ([`7a7856d`](https://github.com/jjjermiah/opencode-plugboard/commit/7a7856d222730e2e06c5d6109faf024506398d18))
+
+The compat matrix (see the issue for #105) lists Chat Completions clients beyond the first eight. Five of the headless ones had a copyable script but no harness runner, so no scripted or live record. This wires them in, the same way as the other examples: a runner that marks each scenario, scripted output committed and checked twice for determinism, and a live run against the isolated dev server.
+
+What:
+- llamaindex: run.py (pyproject and uv.lock, llama-index-llms-openai-like 0.8.1). S1 to S4. S3 usage left unchecked, because stream_chat sends no include_usage.
+- semantic-kernel: run.py (semantic-kernel 1.45.0). S1 to S4. S2 and S4 are gaps on the scripted target only, see below.
+- haystack: run.py (haystack-ai 3.4.0). S1 to S4. S3 asks for stream_options through generation_kwargs, since Haystack does not send it by default.
+- mastra: run.ts (bun, @mastra/core 1.78.0, zod 4.6.7). S1 to S4. The runner maps Mastra's tool-calls step name to tool_calls for the observation; the wire is still checked by the harness.
+- async-openai: src/bin/runner.rs and run.sh (relay), async-openai pinned to =0.42.2. S1 to S4 with include_usage on S3.
+- Snippet regions in each copyable file, docs sections on the five client pages, examples/README index regenerated, CHANGELOG bullet.
+
+Decisions:
+- Semantic Kernel prefixes every plugin function on the wire (weather-get_weather). The scripted model answers only get_weather, and the client has no plugin-free registration (plugin_name=None and "" both fail in 1.45.0). Rather than change the shared scripted model, S2 and S4 are gaps on the scripted target only (gaps keyed by target), and the live run checks them normally. Live passes both.
+- Scenarios S5 to S7 and E1/E2 are not in these five runners yet. They are left out rather than marked n/a, because n/a means the client lacks the feature. Listed as follow-ups.
+- The async-openai runner is a second binary (src/bin/runner.rs), not a change to src/main.rs, so the copyable demo keeps its own prompts and URL.
+- Mastra's agent.ts keeps its bare-id note; the runner uses plugboard/<id>.
+
+Not done, and why:
+- Cline/Roo, Msty, Raycast: GUI clients, no headless run.
+- Home Assistant: needs a Home Assistant instance.
+- LangChain4j and Spring AI: no JDK on the machine that ran this.
+- Mastra, Haystack, Semantic Kernel and async-openai were not in the issue's list; they already had example directories, so they were wired rather than added.
+
+Validation:
+- Scripted, two runs each, git diff --exit-code clean: llamaindex pass, haystack pass, mastra pass, async-openai pass, semantic-kernel partial (S2, S4 gaps as above).
+- Live against the isolated dev server at plugboard ef5be0e: all five pass. Runs in examples/<client>/runs/live/2026-10-16-ef5be0e.
+- bun run typecheck: root, tui and examples/_harness pass. -p test fails with two errors in test/compat/clients.ts, a file this change does not touch; not checked on main.
+- bun test: 2675 pass, 0 fail, 126 skipped (live suites need a server).
+- coverage gates and coverage-manifest pass; check-pack and smoke-pack pass; docs:build passes; check-regions passes.
+- bun examples/_harness/run.ts all --target scripted: exit 0, git diff --exit-code examples/ clean.
+
+Refs #105
+
+**feat(examples): record the Gemini client live runs on main 0.41.0** ([`c39f79f`](https://github.com/jjjermiah/opencode-plugboard/commit/c39f79fbdbf2d7d2df7922e007d7183704709bbb))
+
+Main 0.41.0 fixed the Python SDK's inlineData (#401 and #409), so the image scenario now passes for gemini-python and langchain-google-genai. Their S5 gaps are removed and both scripted runs are regenerated; the scripted output is the same on a second run.
+
+The five Gemini examples have new live runs on the isolated dev server at plugboard 0.41.0, labelled with the git describe of this branch (2026-10-16-v0.41.0-29-g2d6aac1). All five pass, with no quota-caused row. Each run has a REPORT.md that notes the fast alias falls through to Haiku when the Go provider returns 429, because the harness does not record the served model.
+
+The client pages cite the new runs and no longer describe #401 as open, and the CHANGELOG bullet says the image requests now pass on 0.41.0. The examples index is regenerated.
+
+Refs #103
+
+**feat(examples): fix review findings on the five harness runs** ([`0d0149b`](https://github.com/jjjermiah/opencode-plugboard/commit/0d0149b6a7e538ba03f850f58aeae6bd2d19ebd3))
+
+Review findings on the five-client PR, fixed here:
+
+- The Semantic Kernel tool gap was keyed by target. The scripted model now answers a tool named *-get_weather with the name the client sent, so SK's S2 and S4 pass scripted. The gap, its verdict and its docs paragraph are gone.
+- Mastra's S3 usage check passed with no usage requested on the wire. Mastra's stream() sends no stream_options, so the check is unobserved with the reason.
+- The live records were labelled ef5be0e, which is not the build the shared server runs. They are rerun against the dev server, served build v0.41.0 (main, git describe v0.41.0-32-g9852300), with PLUGBOARD_COMMIT=9852300 because the checkout is the PR branch. The ef5be0e records are removed. Each live run has a REPORT.md with the label, the fallback and the scenarios not run.
+
+Checks: every scripted run was run twice and the outputs were byte-identical, and no other example's scripted output changed. The earlier tsc -p test failure came from a polluted root node_modules (a stray bun add), not from the branch: a clean frozen install passes here, and so does origin/main.
+
+Refs #105
+
+#### Fixes
+
+**fix(examples): pin the Gemini CLI example's session context for scripted runs** ([`a043a1a`](https://github.com/jjjermiah/opencode-plugboard/commit/a043a1abb961e357ccc26620db880b0515931ba9))
+
+The CLI puts its project temp dir, its workspace listing and today's date into a <session_context> block on the wire. The first scripted runs of gemini-cli differed between two runs on the same day, because the temp dir was a random per-run home and the workspace listing included the example's own run folders.
+
+This pins the HOME and workspace to fixed paths under the temp dir, empties the workspace each run, and turns off the directory tree with context.includeDirectoryTree. Two same-day scripted runs now match byte for byte.
+
+Not fixed: the date in the context. The CLI writes "Today's date is ..." and has no setting to turn it off, so a committed scripted run for gemini-cli matches only on the day it was made. This needs a harness decision (redact the session_context block, or leave gemini-cli out of the scripted set); see the PR.
+
+Refs #103
+
+**fix(examples): normalise the Gemini CLI session context in scripted transcripts** ([`99cc82b`](https://github.com/jjjermiah/opencode-plugboard/commit/99cc82b13ca023eb556dddf6eb17cf9b58decfab))
+
+The CLI writes today's date, the operating system, its temp dir and its workspace into a <session_context> block on the wire, and repeats its home path in its system prompt. Those differ by day and by machine, so a committed scripted run matched only on the machine and day it was made, and CI's run failed.
+
+The harness now replaces those values with fixed placeholders when it writes a request body, inside the session context block only (plus the CLI's fixed home and workspace paths anywhere in a request). Nothing else in any transcript changes. The normaliser is tested in test/unit/examples-normalise.test.ts, and the rule is documented in examples/_harness/README.md under Redaction.
+
+Two same-day regenerations of the gemini-cli scripted run are byte-identical, and no other example's scripted run changed.
+
+Refs #103
+
+**fix(examples): address review of the Responses examples** ([`4b47129`](https://github.com/jjjermiah/opencode-plugboard/commit/4b4712920404d2e86228f1dd29432e2b048ab596))
+
+Review of the Responses examples (issue 104) found five things to fix and some nits. This commit changes what the examples and their records say; the runs are regenerated in the next commit.
+
+What changed:
+- vercel-ai-sdk: the store: false call has its own snippet-store-false region, so the docs page no longer imports a ternary that names an undefined variable. The default S2 region is unchanged.
+- vercel-ai-sdk README: store-false claim reworded. Both S2 rows send the same shape (no item_reference, because S2 has no assistant text turn to replay). The item_reference path is described as a multi-turn case that is documented, not run.
+- openai-agents-js: S4 (streamed tool call), S5 (image), E1 and E2 are written. finish_reason is read from the provider response status (providerData, and the response_done event for streams), not fixed to stop. S3 reads the status from its last event.
+- langchain-js: the auto variant's finish_reason checks move from gap to unobserved, the same limitation langchain-python records (issue 104).
+- codex-cli README: session-specific sentence cut to "not run".
+- Removed the openai-python, openai-js, vercel-ai-sdk, langchain-python and openai-agents-js live runs labelled 8ef91b5. Their version label was wrong (the server ran 0.37.0 build, not 8ef91b5's package version).
+
+Validation: openai-agents-js, vercel-ai-sdk and langchain-js pass scripted runs and typecheck (bunx tsc --noEmit). Full validation and the live reruns follow in the next commit.
+
+Refs issue 104
+
+**fix(examples): normalise the Gemini CLI checkout path in scripted transcripts** ([`0b5f1a6`](https://github.com/jjjermiah/opencode-plugboard/commit/0b5f1a66bc3c6810a427f1805bf9bd828a6de565))
+
+The CLI lists its built-in skills by absolute path in its system prompt. That path starts at the checkout, which is /Users/... on a laptop and /home/runner/work/... on CI, so the CI examples job still failed after the session-context rule landed.
+
+The normaliser now replaces only the checkout prefix of a path that runs through examples/gemini-cli/ with <checkout>. The rest of the path stays. It is tested in test/unit/examples-normalise.test.ts. Two same-day regenerations of the gemini-cli scripted run are identical, and no transcript outside gemini-cli changed.
+
+Validated: the full scripted run passed on this commit. Not yet validated: the typecheck and the full test suite, which must run before a push.
+
+Refs #103
+
+**fix(http): close the connection of a 504 so the next request is not cut** ([`d50413a`](https://github.com/jjjermiah/opencode-plugboard/commit/d50413a4835235f449b7e32cb83bcd097edfda8b))
+
+After a request timed out, the route wrote a 504 and the client kept the socket for its next request. The deadline had also armed a grace timer that destroys the socket after 2 s, so that next request was cut about 2 s in (#422). The grace timer is only cleared once the socket is gone, so a kept-alive socket was always cut.
+
+What changed: `beginRequest`'s deadline handler sets `Connection: close` on the response when no headers have gone out yet. Every route then answers its 504 with `connection: close`, and the client opens a new connection. The responses, completions and gemini routes sent a plain 504 and hit the bug; the OpenAI and Messages routes already passed `close` on their timeout error.
+
+Rejected: cancelling the grace timer when the response finishes. The grace timer exists for a response that never flushes to a client that stopped reading, and `finish` can fire before the bytes are out on some runtimes, so that would leave such sockets open.
+
+Known limit: a stream that already committed its 200 before the deadline keeps its socket, and the grace timer still cuts it. That case is not a 504 status. It is left for a follow-up.
+
+Checked: test/http/transport.test.ts reproduces it with a keep-alive agent. Before the change the second request fails with `socket hang up` (ECONNRESET); after it, both requests succeed.
+
+Closes #422
+
+**fix(openai): open every n > 1 chat stream choice in index order before content** ([`d1d1df6`](https://github.com/jjjermiah/opencode-plugboard/commit/d1d1df666dcf7c8fe51dab993758b336d6fdbf8f))
+
+With `n: 2` and `stream: true`, the first chunk of a Chat Completions stream could carry `choices[0].index = 1`, because each choice wrote its own role chunk at its first content. The OpenAI Python SDK's `chat.completions.stream()` helper builds its choice list by appending in arrival order, so index 1 first raises an IndexError (#423).
+
+What changed: the fan-out opens choices itself. `serveChoices` gives each choice an `open` callback through `StreamChoice`, and the encoder calls it before its first chunk instead of writing its own role. Opening choice k first opens every lower index, so the role chunks go out in index order whichever choice answers first, and each is written once. The chat codec supplies the role chunk through a new optional `opening` hook; completions has none and is unchanged. The single-choice stream path does not pass a choice and keeps its lazy role chunk.
+
+Rejected: writing every role chunk up front when the stream commits. That would commit the stream before any model event, so a failure before output would stop getting its HTTP status. Rejected: buffering content until every choice has spoken, which would hold back the stream.
+
+Checked: test/http/fanout.test.ts runs choice 1 first and checks the helper's arrival-order rule and the first two chunks. With the opener disabled the test fails with `Expected: 0, Received: 1`.
+
+Closes #423
+
+**fix(openai): refuse empty stop strings and name a rejected thinking signature** ([`c97c36c`](https://github.com/jjjermiah/opencode-plugboard/commit/c97c36c480111f520afceb495f168509cbf1f884))
+
+Two opaque 400s came back as `provider_rejected_request` with no reason (#424). An empty stop string (`stop: ""`, or a list with an empty entry) matches everywhere, so it reached the model path and the caller got no pointer to `stop`. A replayed thinking block whose signature a provider refused got the generic provider message, so the caller could not tell that the signature was the part rejected.
+
+What changed: the OpenAI parser refuses an empty stop sequence with a 400 on `stop` before any model call, and the Gemini parser does the same on `generationConfig.stopSequences`. A provider 400 or 422 (or one with no status) whose text names a signature is now classed as `provider_rejected_request` with the message "The model provider rejected the signature of a replayed thinking block". The provider's text is not sent; it is still logged once as `model.failed`, as for every class.
+
+Whitespace stops: `\n` already reached the matcher, and `stopAt` already finds it in answer text. The new HTTP test pins that a newline stop passes and ends the answer before the newline. Unverified: I could not reproduce the opaque 400 for `\n` in-process, so the live check on the dev server decides whether the whitespace half of #424 is fixed.
+
+Rejected: sending stop sequences to the host, which would change what the provider sees. Rejected: accepting an empty stop as a no-op, because the caller would get no answer cut where it asked.
+
+Checked: test/http/stop-sequences.test.ts (the 400 before the model call, with the caller never called), test/unit/gemini-request.test.ts and test/session/collector.test.ts (the signature message, with no provider text in the event).
+
+Closes #424
+
+**fix(responses): mark the message item a cut answer leaves open as incomplete** ([`6c414d1`](https://github.com/jjjermiah/opencode-plugboard/commit/6c414d1f92f02df3a848418b10da2287a4fea4b7))
+
+A Responses answer cut by `max_output_tokens` had `status: incomplete` on the response and `incomplete_details.reason: max_output_tokens`, but its last output item still said `status: completed` (#425). OpenAI's Responses API marks the item the cut left open as `incomplete`, so a client reading the item cannot tell it was cut.
+
+What changed: `runResponse` now computes the cut before it closes the open items. When the finish is `length` (`max_output_tokens`) or `content-filter`, the open message item and the open reasoning item close with `status: incomplete`, in the `response.output_item.done` event and in the final response's `output`. `closeMessage` takes the status as an argument, defaulting to `completed`, so an answer that ends normally, or closes early for a tool call, is unchanged. The failure path keeps its own closing and is not changed here.
+
+Rejected: marking only the message item and leaving reasoning `completed`. The reasoning item is open at the same cut, so the same rule applies to it.
+
+Checked: test/unit/responses-response.test.ts runs a cut answer and checks the done event and the response output. Against the old code it fails with the item status `completed`. The Responses unit and HTTP files pass, 59 tests.
+
+Closes #425
+
+**fix(responses): keep no output items of a store:false answer for item_reference** ([`a2159a9`](https://github.com/jjjermiah/opencode-plugboard/commit/a2159a9df333bb0f76011c6fe010ac44f7f9eef8))
+
+An answer sent with `store: false` still had its output items kept in the per-app store, so a later request could refer to them with `item_reference` and get a 200 (#426). OpenAI keeps nothing for `store: false`, so a reference to its items is a 404 or 400.
+
+What changed: the route reads the request's `store` and skips `rememberAnswer` when it is `false`, on both the JSON path and the streamed path. A reference to such an item is then the existing 400 `item_not_found`. The envelope still echoes `store: false` for every request, as before: the wire snapshots in test/types pin that for a request with no `store`, so changing it is a follow-up.
+
+The same commit also carries the shared files of this batch of red-team fixes: the CHANGELOG Fixed bullets for #422 to #426, the mutation catalogue entries for each new guard (P422 to P426), the ratcheted coverage and test-count floors, and the docs that changed (docs/responses.md, docs/architecture.md, docs/clients/codex-cli.md).
+
+Rejected: rejecting `item_reference` by the app's request instead of not storing. Not storing is what OpenAI does and costs nothing extra.
+
+Checked: test/http/responses.test.ts covers a JSON and a streamed store:false answer, each referenced and refused with 400 item_not_found. The P426 mutation (drop the check on the stream path) was killed only after the streamed test was added. Final runs on this branch: full suite 2995 tests, 0 fail; mutations 139 of 139 killed; typecheck, coverage gate, manifest, pack, docs build and the scripted examples all pass.
+
+Closes #426
+
+**fix(session): match a thinking signature rejection only when it names thinking** ([`29ed359`](https://github.com/jjjermiah/opencode-plugboard/commit/29ed359ab5d0b01eecef2fbd1dc5050cd237f2d2))
+
+The classifier for a refused replayed thinking signature matched any provider 400 whose text contained the word "signature" (#424). Review on the pull request pointed out that this also catches unrelated signature errors and labels them as a refused replayed thinking block, which tells the caller the wrong thing.
+
+What changed: the pattern now needs "signature" within 60 characters of "thinking" or "reasoning" on either side. Anthropic's real text for a bad replayed signature ("Invalid `signature` in `thinking` block") still matches, and the existing collector case for it still passes. A new test covers an unrelated signature error ("Invalid request signature"), which keeps the generic provider_rejected_request message. The mutation P424-signature-rejection-named still targets the unchanged guard line.
+
+Rejected: a broader list of phrases. The thinking or reasoning window is the narrowest rule that covers the case the message is for.
+
+Checked: test/session/collector.test.ts, test/http/stop-sequences.test.ts and test/unit/gemini-request.test.ts pass (185 tests). Full chain on this commit: typecheck, bun test (0 fail), coverage gate with ratchet, manifest, pack and smoke-pack, docs build, scripted examples, and mutations 139 of 139 killed. The live probe of the bogus replayed signature returned the same 400 message on the earlier build.
+
+Refs #424
+
+#### Tests
+
+**test(examples): raise the unit test-count floor for the session-context normaliser tests** ([`85691ab`](https://github.com/jjjermiah/opencode-plugboard/commit/85691ab9604f82c1dec9fb6dbaa61fa10c6fadfe))
+
+The coverage ratchet raised the unit floor from 1362 to 1368 for the six new normaliser tests. Floors only move up, so this is the ratchet's value, not a weakened gate.
+
+Refs #103
+
+**test(tests): add round 2 invariant regression suite for surfaces** ([`eb7567f`](https://github.com/jjjermiah/opencode-plugboard/commit/eb7567fc4037958fb4d3001e6383442deb852a6c))
+
+Add HTTP and session-caller regression tests covering the four round 2 configuration areas: serverTools allowlists and permission ordering, remoteImages SSRF address and redirect validation, keyless loopback Host and Origin refusals, and response cache isolation across apps, sampling parameters and reasoningOutput.
+
+The two mismatches reproduced on the isolated server stay as test.failing entries pointing at #417 (context hook drops server tool results on step 2) and #421 (tool_choice none without caller tools still offers serverTools).
+
+Refs #408
+Refs #417
+Refs #421
+
+**test(tests): address PR #428 review findings and re-ratchet floors** ([`aed8810`](https://github.com/jjjermiah/opencode-plugboard/commit/aed8810276f0a099d6df24d997e358775643b400))
+
+Move session-layer serverTools checks (outside-directory permission ordering, unlisted tool stripping, prompt-injection resistance, and #417 step 2 context preservation) into test/session/server-tools.test.ts and assert the exact permission list and last-star index so trailing deny rules fail the test.
+
+Move octal, dotted-hex and shorthand IPv4 address rows and streamed oversize body coverage into test/session/media.test.ts, trim overlapping cases in test/http/invariant-surfaces-r2.test.ts, use test.each for cache key variants without mutating tool_choice, split the #278 end-user cache tests, assert JSON error codes directly, drop stale line-number comments, and re-ratchet test count floors on top of origin/main.
+
+Refs #408
+Refs #417
+Refs #421
+
+**test(examples): raise the unit test-count floor after the merge with main 0.41.0** ([`4d821a2`](https://github.com/jjjermiah/opencode-plugboard/commit/4d821a25f33021bdb070545e2e0c752bcb58040f))
+
+The coverage ratchet raised the unit floor from 1406 to 1412 on the merged tree. Floors only move up, so this is the ratchet's value, not a weakened gate.
+
+Refs #103
+
+**test(tests): count only a fetch's own hits in the maxItems media test** ([`fa4507a`](https://github.com/jjjermiah/opencode-plugboard/commit/fa4507a226f8934139ad6a4c5f57b7a72eb1205c))
+
+The maxItems test in test/session/media.test.ts counted every request the loopback server saw against one shared `hits` counter. The hang test before it aborts a fetch after 1 ms, so its request can reach the server after that test has ended, and then land inside the maxItems window. CI then failed with `Expected: 13, Received: 14` on the OpenCode 2.0.30 host job (#434).
+
+What changed: the maxItems test now fetches its own route, /max-items.png, and counts hits per path with a `served` map. The test also reproduces the race on purpose: it sends a /hang request that the server sees before the maxItems fetch runs, and waits until it arrives. Against the old global counter that run fails with `Expected: 15, Received: 16`, which is the reproduction.
+
+Rejected: making the hang test wait for its request to land before it ends. The request may never arrive, because the 1 ms timeout can fire first, so that wait would hang or stay racy.
+
+Checked: the media test file passes three runs in a row on this branch.
+
+Closes #434
+
+#### Docs
+
+**docs(examples): add Anthropic Messages client examples** ([`06f71b0`](https://github.com/jjjermiah/opencode-plugboard/commit/06f71b0cc899b06943d55c2c04f656ea6041a850))
+
+Adds runnable examples for the Anthropic Messages clients listed in #102: the Anthropic Python SDK (anthropic 1.15.0), the Anthropic TypeScript SDK (@anthropic-ai/sdk 0.135.0), LangChain ChatAnthropic in Python (langchain-anthropic 1.7.6) and JS (@langchain/anthropic 1.5.12), and the Vercel AI SDK's Anthropic provider (@ai-sdk/anthropic 4.0.81).
+
+Each example follows examples/_harness/README.md: nine scenarios from _shared/scenarios.json (S1 to S7, E1, E2), exact pins with a lockfile, a runner, a scripted run that is byte-identical across two runs, and a live run against the isolated dev server at 127.0.0.1:4010 at plugboard 8ef91b5. Each has a docs page that imports its snippet regions.
+
+Decisions:
+- The Messages route speaks Anthropic's error envelope: errors carry error.type and no error.code. E1 and E2 read the type and are gaps, because the shared check expects OpenAI's code vocabulary.
+- GET /v1/models ignores x-api-key, which the Anthropic SDKs send. S7 is a gap for the two SDKs; filed as #399. The LangChain and Vercel examples list models with a Bearer key, which the route accepts.
+- Structured output is a forced tool. Plugboard refuses output_config.format by design (docs/messages.md), and the Vercel provider sends it for claude-haiku-4-5, so that row is a gap.
+- Claude Code has no runner. CI has no claude binary, and a runner would break the scripted job. One manual `claude -p` probe against the dev server printed pong (stop_reason end_turn).
+- Pydantic-ai's Anthropic model (in #102) is not covered.
+
+Validation:
+- bun run typecheck: pass.
+- bun test: 2675 pass, 0 fail, 126 live skipped.
+- coverage ratchet, coverage-manifest, check-pack, smoke-pack: pass.
+- bun run docs:build: pass.
+- examples/_harness/run.ts all --target scripted: exit 0; the new scripted runs are identical across two runs; no other example's committed output changed.
+- live: five runs against 127.0.0.1:4010 at 8ef91b5, each partial with only the gaps above. No key in any written file.
+
+Refs #102
+
+**docs(examples): cover the Responses API in the client examples** ([`22b47df`](https://github.com/jjjermiah/opencode-plugboard/commit/22b47df356e50eaba790f6e979a83bdd44ceb9f9))
+
+The issue 104 list names the clients that should exercise /v1/responses. Before this change, openai-python and openai-js ran only Chat Completions, LangChain Python pinned use_responses_api=False, the Vercel AI SDK ran only store: true, and there was no JS Agents SDK example.
+
+What changed:
+- openai-python, openai-js: a `responses` variant on S1, S2, S3, S5 and S6 (responses.create, responses.stream, responses.parse, output_text, input_image, text.format json_schema). S2 replays the whole history with store: false.
+- openai-python, openai-js: S2 `responses-previous-id` runs previous_response_id. Plugboard refuses it by design (400 unsupported_parameter, docs/responses.md), so it is a gap (issue 104).
+- vercel-ai-sdk: S2 `responses-store-false`, openai(id) with store: false.
+- langchain-python: a `responses` variant (use_responses_api=True) on S1, S2, S3, S5 and S6. LangChain exposes no finish_reason on that route, so those checks are `unobserved`, the same limitation as langchain-js. S6 joins the text blocks the Responses path returns.
+- openai-agents-js: new example, the Agents SDK for JS on the Responses API (S1, S2, S3, S6), pinned to @openai/agents 0.20.0.
+- codex-cli README: states that codex is not installed here, so `codex exec` was not run.
+
+Decisions:
+- A `responses` variant is added beside `chat`, not in place of it, so each row keeps its meaning across runs.
+- A plugboard refusal is recorded as a gap naming #104, not as a failure, because it is documented behaviour.
+- finish_reason that LangChain does not expose is `unobserved`, not a gap. The gap label is for a known incompatibility, and this is a limit of the client.
+
+Validation:
+- Scripted: `bun examples/_harness/run.ts all --target scripted` exits 0 twice, and `git diff --exit-code examples/` is clean after the second run.
+- Live against the isolated dev server (plugboard 8ef91b5, 0.37.0): openai-python partial (only the previous-id gap), openai-js partial (same), vercel-ai-sdk pass, langchain-python pass (finish_reason unobserved), openai-agents-js pass. Runs under runs/live/2026-10-16-8ef91b5.
+- bun run typecheck, bun test on the examples unit tests (30 pass), bun run docs:build, examples-index --check, check-regions all pass.
+
+Not verified: Codex CLI live (not installed), n8n on the Responses path beyond S1 (needs Docker, not run here), the Vercel item_reference 400 after expiry (documented, not triggered), and the Agents SDK streamed tool call and image rows (not written yet).
+
+Refs #104
+
+**docs(examples): document Responses rows and add the openai-agents-js page** ([`b3c958f`](https://github.com/jjjermiah/opencode-plugboard/commit/b3c958f2e0db7eee9d9e57d652a933614077d2f3))
+
+Client pages for openai-python, openai-js, vercel-ai-sdk and langchain-python now import the Responses snippets. A new openai-agents-js page is in the sidebar. The langchain-python responses_model is a snippet region.
+
+Live runs for the five examples are under runs/live/2026-10-16-b41c376, labelled as the commit b41c376 (package.json 0.37.0, git describe v0.37.0-17). Every failing row is the fast model, which returned 429 from the upstream provider. Compatibility rows and the README references to removed run directories are not done yet; this commit is local only.
+
+Refs issue 104
+
+**docs(examples): fix the Responses review findings and record live runs** ([`829132a`](https://github.com/jjjermiah/opencode-plugboard/commit/829132abb8846c1fa0ab7e52e3278a9fbd4c7ad9))
+
+The review of the Responses examples asked for these changes. This commit finishes them.
+
+What changed:
+- Client pages for openai-python, openai-js, vercel-ai-sdk and langchain-python now import the Responses snippets. A new openai-agents-js page is in the sidebar, and the compatibility page has a row for it.
+- vercel-ai-sdk: the store: false call has its own snippet region, and the README and docs page describe what the transcripts show: both S2 rows send the same shape, and item_reference is the multi-turn case, documented and not run.
+- openai-agents-js: S4 (streamed tool call), S5 (image), E1 and E2 are written. finish_reason comes from the provider response status, not a fixed stop; streams read it from the response_done event.
+- langchain-js: the auto variant's finish_reason checks are unobserved, not a gap.
+- Live records are regenerated on the shared dev server at main 95261a4 (git describe v0.41.0-4-g95261a4, plugboard 0.41.0). The records from 8ef91b5 and b41c376 are removed; those labels were wrong or superseded.
+
+Live results (runs/live/2026-10-16-95261a4):
+- Every row on anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low passes, in all five examples.
+- Every failing row is on fast. The provider returned 429 (quota), so those rows say nothing about plugboard. The harness runs each example's fixed model list and has no model selection, so fast is in the record.
+- openai-python and openai-js: the previous_response_id refusal is a gap (400 unsupported_parameter), as documented.
+
+Validation (BROWSER=true):
+- Scripted, all examples, run twice: byte-identical (git diff empty).
+- Typecheck: pass. Full bun test: 2979 tests, 0 fail. docs:build: pass.
+- examples-index --check and check-regions: pass.
+
+Not done, left as follow-ups:
+- The previous-id gap is still unconditional: any failure on that row is labelled a gap. Asserting the 400 needs harness support.
+- S6 for Responses reads the raw create result only for the parse call; it is not compared to the raw result.
+- The compatibility page lists only the agents-js row; the Responses variants of the other clients are on their own pages.
+
+Refs issue 104
+
+**docs(examples): rerun live records with the fast fallback** ([`5d07029`](https://github.com/jjjermiah/opencode-plugboard/commit/5d070292c7d90f9c647e69fa916a83d701acaa9d))
+
+The dev server's fast alias now falls back from opencode-go/glm-5.3-flash to anthropic/claude-haiku-4-5. A Go quota 429 is served by Haiku (x-plugboard-model: anthropic/claude-haiku-4-5, x-plugboard-fallbacks: 1).
+
+The live records from the earlier 95261a4 run failed on fast with a quota 429. They are replaced here with reruns of the six examples this PR touches, on the same main commit (95261a4, git describe v0.41.0-4-g95261a4, plugboard 0.41.0):
+
+- openai-agents-js: pass (16 pass, S7 n/a)
+- openai-python: partial (only the S2 responses-previous-id gap, 3 rows)
+- openai-js: partial (same gap, 3 rows)
+- vercel-ai-sdk: pass (48 pass)
+- langchain-python: pass (30 pass)
+- langchain-js: pass (23 pass)
+
+The harness does not record the served model, so each run has a REPORT.md that says fast was served through the fallback chain and that a fast row is not attributed to Go or Haiku. The example READMEs and the client pages say the same.
+
+The README and docs lines that called fast a 429 failure are updated. The compatibility row for the Agents SDK (JS) now reads from this run.
+
+Refs issue 104
+
+**docs(examples): address #415 review on the Anthropic clients** ([`63da3b4`](https://github.com/jjjermiah/opencode-plugboard/commit/63da3b4e2a9b191a4b0f33b27151a67d4dc27a9d))
+
+- E1/E2 code checks are unobserved in the five Anthropic runners; the status checks stay enforced. Follow-up: #427.
+- Vercel S6 sets structuredOutputMode "jsonTool" and passes on haiku.
+- Adds examples/pydantic-ai-anthropic (AnthropicModel), docs page, index entry.
+- Live records on main v0.41.0 (v0.41.0-13-g7e1fdcb): partial (S7 only) for the two SDKs and pydantic-ai; pass for Vercel and both LangChain examples. The fast alias falls back to Haiku on a Go 429, noted in each REPORT.md.
+- Removes my earlier b41c376 records: their fast rows failed on quota.
+- 8ef91b5 records keep REPORT.md label notes (server ran 0.37.0).
+- Claude Code README: dated manual claude -p probe result.
+- Root README client rows; CI typechecks the TS Anthropic examples.
+
+Refs #102
+
+#### CI and tooling
+
+**chore(examples): typecheck the Gemini CLI example like the other TypeScript examples** ([`6c36e84`](https://github.com/jjjermiah/opencode-plugboard/commit/6c36e84c34fbad1e5e99482a5537834e8922d8b3))
+
+The gemini-cli example had TypeScript files but no tsconfig, no typecheck script and no TypeScript dev dependencies, so nothing checked it. This adds the same tsconfig and the same pinned @types/bun 1.4.2 and typescript 7.0.2 as gemini-js, with a typecheck script, and locks them. The example type checks clean with bun run typecheck. Its scripted output does not change.
+
+Refs #103
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.41.0] - 2026-10-16: Gemini Pictures Welcome
 
@@ -7234,7 +7628,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...HEAD
+[0.42.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...v0.42.0
 [0.41.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...v0.39.0
