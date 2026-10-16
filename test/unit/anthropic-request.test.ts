@@ -266,6 +266,10 @@ describe("#4 parseMessagesRequest: tools, sampling and thinking", () => {
     expect(parse(body({ tools: [tool("a")], tool_choice: choice })).request.toolChoice).toEqual(expected as never)
   })
 
+  test("#421 tool_choice none without tools is kept, so the session offers no server tool", () => {
+    expect(parse(body({ tool_choice: { type: "none" } })).request.toolChoice).toBe("none")
+  })
+
   test("custom tools map to neutral tools; type custom is accepted", () => {
     expect(parse(body({ tools: [tool("a", { type: "custom", description: "A" })] })).request.tools).toEqual([{ name: "a", description: "A", parameters: { type: "object" } }])
   })

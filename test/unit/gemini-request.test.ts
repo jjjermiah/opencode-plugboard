@@ -236,6 +236,10 @@ describe("parseGeminiRequest: tools, tool config and structured output", () => {
     expect(parsed.request.tools.map((tool) => tool.name)).toEqual(offered)
   })
 
+  test("#421 functionCallingConfig NONE without tools is kept, so the session offers no server tool", () => {
+    expect(parse(body({ toolConfig: { functionCallingConfig: { mode: "NONE" } } })).request.toolChoice).toBe("none")
+  })
+
   test("an object responseSchema forces the respond tool with the converted schema", () => {
     const parsed = parse(body({ generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { a: { type: "STRING", nullable: true } }, propertyOrdering: ["a"] } } }))
     expect(parsed.request.tools).toEqual([{ name: "respond", description: expect.any(String), parameters: { type: "object", properties: { a: { type: ["string", "null"] } } } }])

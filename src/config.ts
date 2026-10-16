@@ -319,6 +319,10 @@ export interface Budgets {
 }
 
 export const APP_NAME_PATTERN = /^[a-z0-9-]+$/
+/** The longest app name (#418): the app's directory under the data root is named after it, and a file name takes at most 255 bytes. */
+export const APP_NAME_MAX = 255
+/** Whether `name` is an app name: APP_NAME_PATTERN and at most APP_NAME_MAX characters (ASCII, so bytes). */
+export const isAppName = (name: string): boolean => APP_NAME_PATTERN.test(name) && name.length <= APP_NAME_MAX
 export const DEFAULT_APP = "default"
 /** Model steps that may run server tools per request when `maxServerToolSteps` is not set. */
 export const DEFAULT_SERVER_TOOL_STEPS = 8
@@ -612,7 +616,7 @@ function parseApps(
   const entries: Array<[string, AppPolicy]> = []
   for (const [app, value] of Object.entries(isRecord(raw) ? raw : {})) {
     const at = `plugboard \`apps.${app}\``
-    if (app !== DEFAULT_APP && !APP_NAME_PATTERN.test(app)) throw new Error(`plugboard app name \`${app}\` must match ${APP_NAME_PATTERN} (or be \`${DEFAULT_APP}\`)`)
+    if (app !== DEFAULT_APP && !isAppName(app)) throw new Error(`plugboard app name \`${app}\` must match ${APP_NAME_PATTERN} and be at most ${APP_NAME_MAX} characters (or be \`${DEFAULT_APP}\`)`)
     if (!isRecord(value)) throw new Error(`${at} must be an object`)
     for (const field of Object.keys(value))
       if (!APP_KNOWN.has(field)) throw new Error(`Unknown plugboard option \`apps.${app}.${field}\` (known: ${[...APP_KNOWN].join(", ")})`)
@@ -1038,7 +1042,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const appOfKey = new Map<string, string>()
   for (const [app, key] of mergedKeys(input.keys, input.apps)) {
     if (app === DEFAULT_APP) throw new Error(`plugboard key name \`${DEFAULT_APP}\` is reserved for keyless loopback use`)
-    if (!APP_NAME_PATTERN.test(app)) throw new Error(`plugboard key name \`${app}\` must match ${APP_NAME_PATTERN}`)
+    if (!isAppName(app)) throw new Error(`plugboard key name \`${app}\` must match ${APP_NAME_PATTERN} and be at most ${APP_NAME_MAX} characters`)
     if (typeof key !== "string" || key.length === 0)
       throw new Error(`plugboard key \`${app}\` must be a non-empty string (is its {env:VAR} set?)`)
     // Two apps sharing a key value would be indistinguishable: the last one would win silently.

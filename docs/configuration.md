@@ -10,7 +10,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | --- | --- | --- |
 | `listen.host` | `127.0.0.1` | Interface to bind. A non-loopback host without `keys` refuses to start, and serves plain HTTP. See [Remote access](remote-access.md). |
 | `listen.port` | `4010` | Port to bind. |
-| `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+`. `default` is reserved. |
+| `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+` and are at most 255 characters. `default` is reserved. |
 | `adminKey` | none | A key that reads every app's usage at `GET /plugboard/usage` and manages app keys at runtime under `/plugboard/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
 | `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools?, maxN?, history?, serverTools?, maxServerToolSteps? }`: per-app model scope, system prompt, tool policy and OpenCode tools the app may run. See [Apps and keys](#apps-and-keys). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
@@ -567,7 +567,7 @@ curl -H "Authorization: Bearer $ADMIN_KEY" -H "content-type: application/json" -
 Rules:
 
 - Without `adminKey` these paths are 404. Any credential other than the admin key is 401.
-- The app name follows the config rule (`[a-z0-9-]+`, and not `default`). An app that already has a key in `keys` is 409: change that key in the config. An app with `apps.<name>.serverTools` is 409 `app_has_server_tools` (#197): a runtime key would run OpenCode tools, so its key lives in the config only.
+- The app name follows the config rule (`[a-z0-9-]+`, at most 255 characters, and not `default`). An app that already has a key in `keys` is 409: change that key in the config. An app with `apps.<name>.serverTools` is 409 `app_has_server_tools` (#197): a runtime key would run OpenCode tools, so its key lives in the config only.
 - A config key cannot be revoked through the API (409). Remove it from `keys` and reload.
 - A runtime key is stored under the plugin's host storage as the SHA-256 of the key, not as the key. Its `id` is the first 8 hex characters of that digest. Runtime keys survive a config reload and a server restart.
 - A runtime key names its app on every request that presents it. It does not make a keyless server require a key: with no config keys, a request without a key stays the app `default`. Deleting the last runtime key therefore never opens or closes access by itself.

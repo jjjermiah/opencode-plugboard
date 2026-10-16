@@ -20,7 +20,7 @@ The script refuses when the working tree is dirty, the branch is not `main`, loc
 
 ### The release rule
 
-- A release is cut only from a fully green `main`. `--push` refuses before it commits anything unless the newest CI run on `origin/main`'s commit has completed and passed.
+- A release is cut only from a fully green `main`. `--push` refuses before it commits anything unless the newest CI run on `origin/main`'s commit has completed and passed. A run that is still queued or in progress is waited for in the foreground, up to 40 minutes, then judged the same way. A commit with no run listed yet gets two minutes for one. A failing `gh` call is retried: three consecutive failures stop the release.
 - The release pull request merges only when every check on it is green. `--push` watches all of them (the advisory benchmark aside) and merges nothing while one fails, is pending, or has not reported.
 - The tag goes only on a commit whose own CI run passed. The checks on the pull request ran on the pull request head. The merge commit is a new commit, so the script waits for the `ci.yml` push run on it and tags only when that run succeeds.
 - The GitHub release appears only after npm has the version. The `release` job of the Publish run needs the `publish` and `attest` jobs, so a publish that fails leaves no release.

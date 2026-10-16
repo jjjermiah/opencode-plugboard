@@ -14,7 +14,11 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`tool_choice: "none"` offers no server tool without `tools`** ([#421](https://github.com/jjjermiah/opencode-plugboard/issues/421)). A trusted app's `serverTools` were still offered when a caller sent `tool_choice: "none"` and no `tools` array. The Chat Completions, Responses, Messages and Gemini request decoders dropped the choice in that case. Now `none` reaches the session and means no tools, server tools included (since 0.44.0).
+- **A server tool's result reaches the next step** ([#417](https://github.com/jjjermiah/opencode-plugboard/issues/417)). A trusted app's `serverTools` ran, but the next step lost the call and its result, so the model asked for the same tool again until the step cap failed the request with 502 `server_tool_steps_exceeded`. Each step now keeps the tool call and result the host appended, after the caller's transcript, so the model answers from the result (since 0.44.0).
+- **An app name is at most 255 characters** ([#418](https://github.com/jjjermiah/opencode-plugboard/issues/418)). The admin route minted a runtime key for an app name of any length, but every call with that key then failed with 502 `backend_failed`. The app's directory is named after the app, and a file name takes at most 255 bytes. The admin route now refuses a longer name with 400 `invalid_app`, and the config refuses it at load (since 0.44.0).
 
 ## [0.43.0] - 2026-10-16: Names, Not Placeholders
 

@@ -270,7 +270,17 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   session.system = requestSystem(request, state.prelude ?? [], policy).map(text)
   // Signed reasoning goes back only where `replaysSignedThinking` allows it; every other model gets the history without it.
   const replayReasoning = replaysSignedThinking(session.model)
-  session.messages = toHostMessages(request.messages, replayReasoning).map((message) => ({ ...message, content: message.content.map(swap) }))
+  const caller = toHostMessages(request.messages, replayReasoning).map((message) => ({ ...message, content: message.content.map(swap) }))
+  // A server-tool run (#417): the host reloads the session on every step, so its messages are the stored prompt, then the tool
+  // calls and results of the steps before. The first call records how many the host had; a later call keeps the ones after
+  // that index and puts them after the caller transcript. Only apps with serverTools continue this way.
+  const host = session.messages ?? []
+  let appended: typeof host = []
+  if ((policy?.serverTools?.length ?? 0) > 0) {
+    if (state.hostMessages === undefined) state.hostMessages = host.length
+    else appended = host.slice(state.hostMessages)
+  }
+  session.messages = [...caller, ...appended]
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 
   const missingTools = remapSeedTools(session, request, policy?.serverTools ?? [])

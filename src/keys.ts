@@ -15,7 +15,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto"
-import { APP_NAME_PATTERN } from "./config.js"
+import { isAppName } from "./config.js"
 import { errorMessage, logError } from "./log.js"
 import type { StoragePort } from "./session/host.js"
 
@@ -87,7 +87,7 @@ function parseRecord(id: string, raw: string | undefined): RuntimeKey | undefine
   try {
     const value = JSON.parse(raw ?? "") as { app?: unknown; digest?: unknown; createdAt?: unknown }
     const digest = typeof value.digest === "string" && /^[0-9a-f]{64}$/.test(value.digest) ? Buffer.from(value.digest, "hex") : undefined
-    if (typeof value.app !== "string" || !APP_NAME_PATTERN.test(value.app) || digest === undefined || typeof value.createdAt !== "string") throw new Error("shape")
+    if (typeof value.app !== "string" || !isAppName(value.app) || digest === undefined || typeof value.createdAt !== "string") throw new Error("shape")
     if (keyIdOf(digest) !== id) throw new Error("id")
     return { id, app: value.app, digest, createdAt: value.createdAt }
   } catch {

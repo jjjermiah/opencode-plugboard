@@ -12,7 +12,7 @@
 //
 // main is protected (a ruleset requires a pull request and the CI checks), so the script never
 // commits to main or pushes it. --push does this, from a clean main that equals origin/main and whose
-// newest CI run passed (docs/releasing.md):
+// newest CI run passed, waited for while it runs (docs/releasing.md):
 //   1. commits the release on release/vX.Y.Z and pushes that branch,
 //   2. opens a pull request into main, with the release notes as its body,
 //   3. watches every check on that pull request (the advisory benchmark aside). A check that fails
@@ -92,6 +92,13 @@ const CHECKS_GRACE_MS = 10 * 60_000
 // The ci.yml run on the merge commit: its wait, and the poll.
 const MERGE_CI_TIMEOUT_MS = 45 * 60_000
 const MERGE_CI_POLL_MS = 20_000
+// The preflight's wait for a CI run on main that is queued or in progress, and how often it looks.
+const MAIN_CI_TIMEOUT_MS = 40 * 60_000
+const MAIN_CI_POLL_MS = 20_000
+// A just-pushed main commit may have no CI run listed for a short while: wait this long for one. gh may fail transiently:
+// this many consecutive failures are tolerated before the preflight refuses.
+const MAIN_CI_NO_RUN_MS = 2 * 60_000
+const MAIN_CI_GH_FAILURES = 3
 // The checks that must have reported before the release can merge: the required checks of the main
 // ruleset (docs/releasing.md). A check that never appears is not a pass.
 const EXPECTED_CHECKS = ["CI passed", "Lint commit messages", "Analyze (javascript-typescript)"]
@@ -156,9 +163,40 @@ function latestCiRun(sha: string): { run?: CiRun; problem?: string } {
 function ciProblemOn(sha: string): string | undefined {
   const { run, problem } = latestCiRun(sha)
   if (!run) return problem
-  if (run.status !== "completed") return `the newest CI run for ${sha.slice(0, 7)} is ${run.status} (${run.url}). Wait for it to finish.`
+  if (run.status !== "completed") return `the newest CI run for ${sha.slice(0, 7)} is ${run.status} (${run.url}). A --push run waits for it.`
   if (run.conclusion !== "success") return `the newest CI run for ${sha.slice(0, 7)} concluded ${run.conclusion} (${run.url}).`
   return undefined
+}
+
+// The preflight on main. A run that is queued or in progress is waited for in the foreground, up to MAIN_CI_TIMEOUT_MS,
+// then judged as ciProblemOn judges a finished run. A commit with no run listed gets MAIN_CI_NO_RUN_MS to get one. A gh
+// failure is retried: MAIN_CI_GH_FAILURES consecutive failures refuse.
+async function waitForMainCi(sha: string): Promise<string | undefined> {
+  const start = Date.now()
+  let ghFailures = 0
+  let shown = ""
+  for (;;) {
+    const { run, problem } = latestCiRun(sha)
+    if (run) {
+      ghFailures = 0
+      if (run.status === "completed") {
+        return run.conclusion === "success" ? undefined : `the newest CI run for ${sha.slice(0, 7)} concluded ${run.conclusion} (${run.url}).`
+      }
+      if (Date.now() - start > MAIN_CI_TIMEOUT_MS) {
+        return `the newest CI run for ${sha.slice(0, 7)} is still ${run.status} after ${MAIN_CI_TIMEOUT_MS / 60_000} minutes (${run.url}).`
+      }
+      if (run.status !== shown) console.log(`waiting for ${run.url}: ${run.status}`)
+      shown = run.status
+    } else if (problem?.startsWith("gh run list failed")) {
+      ghFailures++
+      if (ghFailures > MAIN_CI_GH_FAILURES) return problem
+      console.log(`waiting: ${problem} (failure ${ghFailures} of ${MAIN_CI_GH_FAILURES})`)
+    } else {
+      ghFailures = 0
+      if (Date.now() - start > MAIN_CI_NO_RUN_MS) return problem
+    }
+    await Bun.sleep(MAIN_CI_POLL_MS)
+  }
 }
 
 // Returns the pull request URL once its head is `sha`, the commit this run fetched or pushed. Right after a push
@@ -465,7 +503,7 @@ if (dryRun) {
   fetchOrigin("-q", "origin", "main")
   const mainSha = tryGit("rev-parse", "--verify", "-q", "origin/main")
   const ci = mainSha ? ciProblemOn(mainSha) : "origin/main is not known locally (git fetch origin main)."
-  console.log(ci ? `warning (would refuse with --push): ${ci}` : `CI on origin/main ${mainSha.slice(0, 7)} is green`)
+  console.log(ci ? `warning: ${ci}` : `CI on origin/main ${mainSha.slice(0, 7)} is green`)
   if (push) {
     console.log(`dry run: would create ${releaseBranch} and commit "${commitSubject}", push it, open a pull request into main, wait until every check on it passes (the advisory benchmark aside; a failure stops there with the pull request open), merge that exact commit, wait for the CI run on the merge commit, and tag the merge commit as ${tag} only if that run succeeded, then push the tag${watch ? ", then watch the release" : ""}`)
   } else {
@@ -483,8 +521,9 @@ if (!existsSync(".git")) fail("run this from the repository root")
 // ride along in it, so refuse until the two agree.
 fetchOrFail("origin", "main")
 if (git("rev-parse", "main") !== git("rev-parse", "origin/main")) fail("local main differs from origin/main. Pull or push it first, so the release pull request carries only the release.")
-// A release is cut only from a green main: the newest CI run on origin/main's commit must have passed.
-const mainCiProblem = ciProblemOn(git("rev-parse", "origin/main"))
+// A release is cut only from a green main: the newest CI run on origin/main's commit must have passed. A run still
+// queued or in progress is waited for, up to 40 minutes.
+const mainCiProblem = await waitForMainCi(git("rev-parse", "origin/main"))
 if (mainCiProblem) fail(`${mainCiProblem} Nothing was committed or pushed.`)
 
 let prUrl: string
