@@ -445,6 +445,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           stopTurn: interrupt,
           requestID,
           app,
+          ...(context.fallbackNext ? { failFastRetry: true } : {}),
           // The collector sees the match in the text it emits, so calls queued behind it are already after it (#390 review).
           ...(request.structuredTool === undefined ? { stopSequences: request.generation.stop ?? [], onStopAnswer } : {}),
           ...(request.parallelToolCalls === false ? { singleToolCall: true } : {}),

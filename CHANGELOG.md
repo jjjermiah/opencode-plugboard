@@ -14,7 +14,17 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **First-event deadline for fallback chains** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.40.0). A fallback chain could not help when its first target hung: a provider that fails upstream with HTTP 520 kept the host retrying, and a request to that target hung for more than 90 seconds with no event and no failure. Option `fallbackAfterMs` sets a deadline for each target that is not the last. A target that has produced no model event within it is aborted (its OpenCode session is interrupted and retired, not left running) and the next target is tried. It is reported like any other fallback: `x-plugboard-fallbacks`, the `model.fallback` log line with reason `first_event_deadline`, and `plugboard_fallbacks_total`. The last target has no first-event deadline and is bounded only by `requestTimeoutMs`. Off by default. Global only, because a list entry is a plain model string. It is refused at load unless it is below `requestTimeoutMs` and below each app's `requestTimeoutMs`. Silence before the first event counts against it, including the setup of the attempt and an app's `serverTools` runs; read the rule in [configuration](docs/configuration.md#aliases-and-fallbacks) before setting it.
+
+### Changed
+
+- **A host retry before any output moves a fallback chain on at once** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.40.0). OpenCode retries a failed provider call itself, after a wait of up to about 84 seconds for an upstream 520. For an alias list with a target after the failing one, that wait now ends the attempt at once with reason `provider_retry`, so the chain falls through in seconds. The last target keeps the host's retries. This applies with or without `fallbackAfterMs`, so a rate limit that the host would retry also moves on at once: a change for alias lists that used to wait. Retries after output has been sent are unchanged, because the answer is committed.
+
+### Fixed
+
+- **An upstream HTTP 520 is answered as 502** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.40.0). A status that reached the client unchanged could be 520 to 527, which are not HTTP statuses (Cloudflare uses them). Such a status is answered as 502 `provider_unavailable`, the gateway class. Statuses 500 to 511 and the 4xx ones are unchanged.
 
 ## [0.39.0] - 2026-10-16: Fair Shares for Everyone
 

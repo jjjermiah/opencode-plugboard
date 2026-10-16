@@ -147,6 +147,8 @@ export function bus(sessionID: string) {
     usage: (tokens: HostTokens) => envelope("session.usage.updated", { tokens }),
     stepEnded: (finish = "stop", tokens?: HostTokens) => envelope("session.step.ended", { finish, ...(tokens ? { tokens } : {}) }),
     stepFailed: (error: HostError, finish?: string) => envelope("session.step.failed", { error, ...(finish ? { finish } : {}) }),
+    /** The host waits, then runs the model step again (OpenCode 2.0.27 `session.retry.scheduled`). */
+    retryScheduled: (error: HostError, attempt = 1) => envelope("session.retry.scheduled", { error, attempt, at: 0, assistantMessageID: "msg_1" }),
     executionSucceeded: () => envelope("session.execution.succeeded"),
     executionFailed: (error: HostError = { type: "unknown" }) => envelope("session.execution.failed", { error }),
     executionInterrupted: () => envelope("session.execution.interrupted"),

@@ -225,7 +225,8 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
     if (AUTH_FAILURE.test(detail)) return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
     if (status === 404) return { status, kind: "not_found", code: "provider_rejected_request", message: "The model provider rejected the request" }
     if (status !== undefined && status < 500) return { status, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the request" }
-    return { status: status ?? 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" }
+    // A status past 511 is not a standard HTTP status (Cloudflare uses 520 to 527): the client gets 502, the gateway class (#391).
+    return { status: status !== undefined && status <= 511 ? status : 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" }
   }
   return { status: 502, kind: "server", code: "model_run_failed", message: fallback }
 }
@@ -237,6 +238,11 @@ export interface CollectorHooks {
   readonly stopTurn: () => void
   /** The request's id, for the log line that carries a failure's raw host text. */
   readonly requestID?: string
+  /**
+   * A fallback target follows this call (`CallContext.fallbackNext`). A retry the host schedules before any output then
+   * fails the call at once with `provider_retry`, so the chain moves on; otherwise the host's retries run (#391).
+   */
+  readonly failFastRetry?: boolean
   /** The app, for the `server_tool.call` log lines. */
   readonly app?: string
   /** The app's `serverTools` (option `apps`): OpenCode runs these calls, the caller never sees them. */
@@ -274,6 +280,8 @@ export class RequestCollector {
   private lateStepCalls = 0
   private serverSteps = 0
   private usage?: RawUsage
+  /** True once any output event (not an error) was emitted: the answer is committed and no retry may restart it. */
+  private anyEmitted = false
   private finished = false
   /** A stop sequence ended the answer and the run was interrupted for it (`markStopped`). */
   private stopped = false
@@ -489,6 +497,15 @@ export class RequestCollector {
         if (error?.type === "aborted" && this.wasCancelled) return this.end()
         return this.failFromHost(error, "Model step failed")
       }
+      case "session.retry.scheduled": {
+        // The host waits, then runs the model step again (OpenCode 2.0.27 `session.retry.scheduled`). Before any output, a
+        // call with a fallback target after it is not made to wait: the retry is a failure now, and the chain moves on (#391).
+        const error = item.error as RawError | undefined
+        const failFast = this.hooks.failFastRetry === true && !this.anyEmitted
+        log("provider.retry_scheduled", { requestID: this.hooks.requestID, type: error?.type ?? "unknown", status: error?.status ?? 0, attempt: Number(item.attempt ?? 0), failFast })
+        if (failFast) this.abort({ status: 503, kind: "server", code: "provider_retry", message: "The model provider failed; the next target is tried" })
+        return
+      }
       case "session.execution.failed":
         this.reported()
         this.executionDone = true
@@ -631,6 +648,7 @@ export class RequestCollector {
   }
 
   private emit(event: PlugEvent): void {
+    if (event.type !== "error") this.anyEmitted = true
     // Errors are always queued: they are how an overflow is reported.
     if (this.queue.push(event, sizeOf(event), event.type === "error")) return
     // The consumer is not keeping up: drop what waits, fail this request only, and stop the turn.
