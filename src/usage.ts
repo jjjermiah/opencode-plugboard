@@ -438,7 +438,10 @@ export interface RequestUsage {
   readonly user?: string
 }
 
-/** One model call, when it ended. `answered` when its stream finished with an answer; `cache` when the response cache applied. */
+/**
+ * One model call, when it ended. `answered` when its stream finished with an answer; `cache` when the response cache applied.
+ * `usage` is what the host spent: charged even when the call was not answered (a run cut short, see `CallContext.onRunUsage`).
+ */
 export interface CallUsage {
   readonly app: string
   /** The model that answered, or the requested one when there was no fallback chain. */
@@ -633,23 +636,23 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
     },
 
     call(input) {
-      if (!input.answered && input.cache === undefined) return
+      if (!input.answered && input.cache === undefined && input.usage === undefined) return
       const at = now()
       const tokens = input.usage ? tokenBreakdown(input.usage) : { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0 }
       void (async () => {
-        // A cache hit spent no tokens and is not priced; an answer that spent tokens is priced from the catalog.
-        const spent = input.answered && input.cache !== "hit" && totalTokens(tokens) > 0
+        // A cache hit spent no tokens and is not priced. Tokens the host reported are charged whether or not the call was answered.
+        const spent = input.cache !== "hit" && totalTokens(tokens) > 0
         const cost = spent && input.ref ? await priceOf(input.ref, tokens) : undefined
         const unpriced = spent && cost === undefined
         record(input.app, at, (day) => {
           if (input.cache === "hit") day.cacheHits++
           else if (input.cache === "miss") day.cacheMisses++
-          if (!input.answered) return
+          if (!input.answered && !spent) return
           const price = cost ?? 0
           if (input.ref) {
             const model = `${input.ref.providerID}/${input.ref.id}`
             const sum = day.perModel[model] ?? { requests: 0, tokens: 0, costUsd: 0 }
-            day.perModel[model] = { requests: sum.requests + 1, tokens: sum.tokens + totalTokens(tokens), costUsd: sum.costUsd + price }
+            day.perModel[model] = { requests: sum.requests + (input.answered ? 1 : 0), tokens: sum.tokens + totalTokens(tokens), costUsd: sum.costUsd + price }
           }
           day.tokens = addTokens(day.tokens, tokens)
           day.costUsd += price
@@ -733,6 +736,13 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
     stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
       let served: ServedModel | undefined
       let cache: "hit" | "miss" | undefined
+      // The host's usage for the run when it ends without a finish (client gone, timeout, stop sequence): see `CallContext.onRunUsage`.
+      let running: PlugUsage | undefined
+      let ended = false
+      const charge = (usage: PlugUsage | undefined) => {
+        const ref = served ? parseModelRef(served.model) : request.ref
+        recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered: false, ...(usage ? { usage } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
+      }
       const forward: CallContext = {
         ...context,
         onServed: (value) => {
@@ -742,6 +752,11 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
         onCache: (result) => {
           cache = result
           context.onCache?.(result)
+        },
+        onRunUsage: (value) => {
+          // Reported after the run's own record (a client that left, whose host step ended in its settle window): charged on its own.
+          if (ended) charge(value)
+          else running = value
         },
       }
       const events = inner.stream(request, forward)
@@ -770,8 +785,11 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
             yield event
           }
         } finally {
+          ended = true
           const ref = served ? parseModelRef(served.model) : request.ref
-          recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered, ...(cache ? { cache } : {}), ...(usage ? { usage } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
+          // A run that never reached its finish still spent what the host reported: it is charged, not left out.
+          const spent = usage ?? running
+          recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered, ...(cache ? { cache } : {}), ...(spent ? { usage: spent } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
         }
       })()
     },

@@ -280,6 +280,9 @@ export class RequestCollector {
   private executionDone = false
   private wasCancelled = false
   private settled = false
+  private reportHook: (() => void) | undefined
+  /** The host was stopped because the client left (a tool call or a step that asks for more): once. */
+  private leftStopped = false
 
   constructor(private readonly hooks: CollectorHooks) {
     this.stopScan = hooks.stopSequences !== undefined && hooks.stopSequences.length > 0 ? new StopScan(hooks.stopSequences) : undefined
@@ -310,9 +313,25 @@ export class RequestCollector {
     return this.wasCancelled
   }
 
+  /** The host's usage for the run so far (the last `session.usage.updated` or step token record), or undefined before any. */
+  get spent(): PlugUsage | undefined {
+    return toUsage(this.usage)
+  }
+
   /** The request's events, in order. Ends when the collector is terminal. */
   events(): AsyncIterable<PlugEvent> {
     return this.queue
+  }
+
+  /** Calls `done` once, when the host reports the end of a step or of the execution: the usage of the run is final from then on. */
+  whenReported(done: () => void): void {
+    this.reportHook = done
+  }
+
+  private reported(): void {
+    const hook = this.reportHook
+    this.reportHook = undefined
+    hook?.()
   }
 
   /** Mark the request cancelled by its owner (client gone or timed out) and close the stream without a terminal event. */
@@ -374,6 +393,11 @@ export class RequestCollector {
         const name = String(item.name ?? this.toolNames.get(id) ?? "")
         if (this.finished) {
           if (this.hooks.serverTools?.has(name)) this.lateServerCall(id, name)
+          // A client that left mid-run (the settle window): no tool runs for it, and the run is stopped at once (no further step).
+          if (this.wasCancelled && !this.executionDone && !this.leftStopped) {
+            this.leftStopped = true
+            this.hooks.stopTurn()
+          }
           return
         }
         // After a match no tool runs: the answer is complete, and the run ends at once (#390 review).
@@ -416,6 +440,7 @@ export class RequestCollector {
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         return
       case "session.step.ended": {
+        this.reported()
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         // After a match the step is the last one: no server tools are run and no next step starts (#390 review).
         // A plain end leaves the host to finish the run itself; a pending client tool call needs the interrupt.
@@ -430,6 +455,12 @@ export class RequestCollector {
         // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
         if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
         const reason = toFinish(item.finish)
+        // A client that left mid-run: a step that asks for another (server tools, or a finish that is not a plain stop) is stopped at
+        // once, so no further step starts. A client tool call already stopped the run above (`calls` is non-empty then).
+        if (this.wasCancelled && !this.executionDone && !this.leftStopped && this.calls.size === 0 && (reason !== "stop" || serverCalls > 0)) {
+          this.leftStopped = true
+          this.hooks.stopTurn()
+        }
         if (this.calls.size === 0 && serverCalls > 0) return this.serverStepEnded(reason)
         if (this.calls.size === 0 && reason === "stop") this.settled = true
         this.finishWith(withCalls(reason, this.calls.size > 0))
@@ -440,6 +471,7 @@ export class RequestCollector {
         if (isPlugError(item.error)) this.abort(item.error)
         return
       case "session.step.failed": {
+        this.reported()
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         // Assumed invariant: `error` is the host's `SessionError` (RawError shape).
         const error = item.error as RawError | undefined
@@ -458,6 +490,7 @@ export class RequestCollector {
         return this.failFromHost(error, "Model step failed")
       }
       case "session.execution.failed":
+        this.reported()
         this.executionDone = true
         this.logUnfinishedServerCalls()
         if (!this.finished) this.failFromHost(item.error as RawError | undefined, "Session execution failed")
@@ -465,6 +498,7 @@ export class RequestCollector {
         return
       case "session.execution.interrupted":
       case "session.execution.succeeded":
+        this.reported()
         this.executionDone = true
         this.logUnfinishedServerCalls()
         if (!this.finished) {

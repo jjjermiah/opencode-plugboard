@@ -59,9 +59,11 @@ export interface SessionCallerDeps {
   readonly historyHidden?: boolean
   /** The global `requestTimeoutMs` (the route's deadline; an app's own value wins). Absent: no deadline to keep clear of (#390). */
   readonly requestTimeoutMs?: number
-  /** Test seams for the stop timers (#390): defaults are `STOP_SETTLE_MS` and `STOP_DRAIN_MS`. */
-  readonly stopSettleMs?: number
+  /** Test seams for the settle timers (#390): defaults are `SETTLE_MS` and `STOP_DRAIN_MS`. */
+  readonly settleMs?: number
   readonly stopDrainMs?: number
+  /** Called once for a run whose usage the host never reported (`reason` `disconnect`, see `settleMs`). Counted, never estimated. */
+  readonly onUsageMissing?: (app: string) => void
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
@@ -72,8 +74,11 @@ const CLEANUP_TIMEOUT_MS = 30_000
  * interrupted. The host reports a step's usage only when the step finishes: an interrupted step has none (OpenCode 2.0.27 publishes
  * `session.step.failed` without tokens), so the step is let to finish. The model writes what follows the sequence meanwhile; nothing
  * of it reaches the caller.
+ *
+ * The same window is given to a client that left mid-run (`settleMs`, option `apps.<name>.settleMs`): nobody waits for it, and the
+ * usage the host reports inside it is recorded when it arrives.
  */
-const STOP_SETTLE_MS = 2_000
+const SETTLE_MS = 2_000
 
 /** After the interrupt, how long the host may take to report the end before the stream closes with the usage counted so far. */
 const STOP_DRAIN_MS = 5_000
@@ -328,26 +333,36 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           void port.interrupt(sessionID).catch((error) => logError("session.interrupt_failed", { requestID, app, error: describeError(error) }))
         }
       }
+      // Time left before the request deadline (the route's own timeout, from this request's start) minus a margin: a window never
+      // runs past it, so a complete answer near the deadline finishes before the 504 fires (#390 review).
+      const roomLeft = (): number => {
+        const timeout = policy?.requestTimeoutMs ?? deps.requestTimeoutMs
+        return timeout === undefined ? Infinity : Math.max(0, startedAt + timeout - STOP_DEADLINE_MARGIN_MS - Date.now())
+      }
+      // The window a client that left gets: the app's `settleMs` (0 = interrupt at once), else the seam, else the default.
+      const disconnectWindow = (): number => Math.min(policy?.settleMs ?? deps.settleMs ?? SETTLE_MS, roomLeft())
+      // Only a client that left gets the window. A timeout or a cancel by plugboard (a sibling choice of `n` failed) is interrupted at once.
+      const interruptAtOnce = () => {
+        const kind = (context.signal.reason as { kind?: unknown } | undefined)?.kind
+        return kind === "timeout" || kind === "cancelled"
+      }
+      let stopFired = false
       const onAbort = () => {
         collector?.cancel()
-        interrupt()
+        if (!collector || stopFired || interruptAtOnce() || disconnectWindow() === 0) interrupt()
       }
-      // A stop sequence ended the answer (#390): let the host finish the step for up to `STOP_SETTLE_MS` (its usage comes with the
+      // A stop sequence ended the answer (#390): let the host finish the step for up to `SETTLE_MS` (its usage comes with the
       // finish), then interrupt it, and close with the running usage if the host still has not ended it `STOP_DRAIN_MS` later.
       let settle: ReturnType<typeof setTimeout> | undefined
       let drain: ReturnType<typeof setTimeout> | undefined
-      let stopFired = false
       const onStopAnswer = () => {
         collector?.markStopped()
         // Called by the collector (the match in its text) and by the stop wrapper (the same match): once.
         if (stopFired) return
         stopFired = true
-        // The app's `stopSettleMs` (0 = interrupt at once), else the seam for tests, else the default (#390 review).
-        const configured = policy?.stopSettleMs ?? deps.stopSettleMs ?? STOP_SETTLE_MS
-        // The window never runs past the request deadline (the route's own timeout, from this request's start) minus a margin: a
-        // complete answer near the deadline finishes as stop before the 504 fires (#390 review).
-        const timeout = policy?.requestTimeoutMs ?? deps.requestTimeoutMs
-        const room = timeout === undefined ? Infinity : Math.max(0, startedAt + timeout - STOP_DEADLINE_MARGIN_MS - Date.now())
+        // The app's `settleMs` (0 = interrupt at once), else the seam for tests, else the default (#390 review).
+        const configured = policy?.settleMs ?? deps.settleMs ?? SETTLE_MS
+        const room = roomLeft()
         const settleMs = Math.min(configured, room)
         if (settleMs === 0) interrupt()
         else {
@@ -356,6 +371,36 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
         drain = setTimeout(() => collector?.finishNow(), Math.min(settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS), room))
         drain.unref?.()
+      }
+
+      // Resolves true when the host reports the end of a step or of the execution (its usage is final then) within `ms`.
+      const reportedWithin = (run: RequestCollector, ms: number): Promise<boolean> =>
+        new Promise<boolean>((resolve) => {
+          if (run.executionEnded || run.turnSettled) return resolve(true)
+          const timer = setTimeout(() => resolve(false), ms)
+          timer.unref?.()
+          run.whenReported(() => {
+            clearTimeout(timer)
+            resolve(true)
+          })
+        })
+      // The client left: give the host `windowMs` to end its step, then interrupt it and give it `STOP_DRAIN_MS` to report. Nothing
+      // waits for this (the response is over). A run with no usage reported at all is counted as missing, and nothing is charged.
+      const settleAfterDisconnect = (run: RequestCollector, windowMs: number) => {
+        void (async () => {
+          try {
+            if (!(await reportedWithin(run, windowMs))) {
+              interrupt()
+              await reportedWithin(run, deps.stopDrainMs ?? STOP_DRAIN_MS)
+            }
+            if (run.spent === undefined) {
+              logWarn("request.usage_missing", { requestID, app, reason: "disconnect" })
+              deps.onUsageMissing?.(app)
+            } else context.onRunUsage?.(run.spent)
+          } catch (error) {
+            logError("request.usage_settle_failed", { requestID, app, error: describeError(error) })
+          }
+        })()
       }
 
       try {
@@ -521,13 +566,19 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         context.stopAnswer?.removeEventListener("abort", onStopAnswer)
         clearTimeout(settle)
         clearTimeout(drain)
+        // A client that left mid-run gets its window (see `disconnectWindow`): the usage is recorded when the host reports it, later.
+        // A finish already emitted ends the run for the caller: its usage is charged now, not again later (no double charge).
+        const waiting = sessionID !== undefined && collector !== undefined && promptStarted && context.signal.aborted && !interruptAtOnce() && !stopFired && finish === undefined && !collector.executionEnded && !collector.turnSettled && !interruptRequested && disconnectWindow() > 0
+        if (waiting && collector) settleAfterDisconnect(collector, disconnectWindow())
+        // What the host has spent on the run so far: the usage record charges it when the run ends without a finish (timeout).
+        else if (collector?.spent) context.onRunUsage?.(collector.spent)
         if (sessionID && collector) {
           // The response may be over (consumer left early, error, timeout, a failed step) while the
           // host keeps running the session: interrupt unless it reported the end of the execution
           // or the step ended plainly (the runner stops by itself), and only if no interrupt went
           // out yet (the tool-calls path asked at the step end already).
           if (!collector.terminal) collector.cancel()
-          if (!collector.executionEnded && !collector.turnSettled && !interruptRequested) interrupt()
+          if (!waiting && !collector.executionEnded && !collector.turnSettled && !interruptRequested) interrupt()
           // The response ends here, the host execution may not have: the guard is kept until it does.
           if (promptStarted) sessions.retire(sessionID, { timeoutMs: CLEANUP_TIMEOUT_MS, onTimeout: interrupt })
           else sessions.release(sessionID)

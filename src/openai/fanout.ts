@@ -173,7 +173,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
   if (scope.signal.aborted) throw scope.signal.reason
 
   const group = new AbortController()
-  const cancel = () => group.abort(new RequestAborted("disconnected"))
+  const cancel = () => group.abort(new RequestAborted("cancelled"))
   const gscope = groupScope(scope, AbortSignal.any([scope.signal, group.signal]))
   /** History record ids as the callers report them, in choice order, for the response header (comma separated). */
   const records: Array<string | undefined> = []

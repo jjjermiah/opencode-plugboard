@@ -14,7 +14,14 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Usage of a cut-short run is counted in usage and budgets** (since 0.39.0). A run that ended without its finish, because the caller left or the request timed out after the host had reported usage, was not recorded, so its tokens and cost did not count toward `budgets`. The usage the host reported is now recorded and charged on every route, stream and non-stream. A client that left is given the app's `settleMs` window (default 2000 ms) for its step to end: nothing waits for it, and the usage the host reports inside the window is charged when it arrives. A tool call or a further step inside the window stops the run at once, so no tool runs and no step starts for a client that left. A request timeout or a cancel by plugboard itself interrupts at once. A finish that was already yielded is charged once. A run whose host reported no usage is counted in `plugboard_usage_missing_total{reason="disconnect"}`.
+- **One app's large uploads no longer use up the request-body room of the others** (since 0.39.0). Request bodies were read under one process-wide limit, so one app's large, slow uploads could make every other app's requests fail with 503 `server_busy`. With several apps each app holds a share of `limits.maxBodyBytesInFlight` in proportion to its largest body. The budget is unset by default and then grows with the apps (max of 128 MiB and the sum of the apps' largest bodies), so an upgrade with several apps and no setting keeps working. A set budget that cannot hold one largest body per app is refused at load, and a runtime key for a new app that would not fit is refused with 409 `body_budget_insufficient`. `limits.bodyReadTimeoutMs` is now an idle timer, so a body may take longer as long as its bytes keep arriving, and the new `limits.bodyReadMaxMs` bounds the whole body (5 minutes by default). Both answer 408.
+
+### Changed
+
+- **`apps.<name>.stopSettleMs` is renamed `apps.<name>.settleMs`** (since 0.39.0), because it now also applies to a client that left. Its first release was 0.38.0, so this breaks that option. The metric `plugboard_stop_usage_missing_total{app}` is renamed `plugboard_usage_missing_total{app,reason}`: dashboards that read the old name need updating. `limits.bodyReadTimeoutMs` restarts with every chunk (it was the whole body's deadline in 0.38.0), so slow uploads are admitted longer: that is intended, and the total is now `limits.bodyReadMaxMs`.
 
 ## [0.38.0] - 2026-10-16: Stops Where It Should
 
