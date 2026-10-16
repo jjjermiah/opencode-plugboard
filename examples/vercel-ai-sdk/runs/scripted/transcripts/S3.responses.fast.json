@@ -48,7 +48,7 @@
                     "summary": null
                   },
                   "status": "in_progress",
-                  "store": false,
+                  "store": true,
                   "temperature": null,
                   "text": {
                     "format": {
@@ -86,7 +86,7 @@
                     "summary": null
                   },
                   "status": "in_progress",
-                  "store": false,
+                  "store": true,
                   "temperature": null,
                   "text": {
                     "format": {
@@ -244,7 +244,7 @@
                     "summary": null
                   },
                   "status": "completed",
-                  "store": false,
+                  "store": true,
                   "temperature": null,
                   "text": {
                     "format": {
