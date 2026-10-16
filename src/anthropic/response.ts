@@ -67,8 +67,16 @@ const encodeUsage = (usage: PlugUsage | undefined) => {
     output_tokens: usage?.outputTokens ?? 0,
     cache_creation_input_tokens: write,
     cache_read_input_tokens: read,
+    output_tokens_details: null,
+    server_tool_use: null,
   }
 }
+
+/**
+ * A Message's usage: the counts above plus `cache_creation`, `inference_geo` and `service_tier`, which the SDK's `Usage` type
+ * requires (null when plugboard has no value). message_delta carries the narrower `MessageDeltaUsage`, so it takes `encodeUsage` alone.
+ */
+const encodeMessageUsage = (usage: PlugUsage | undefined) => ({ ...encodeUsage(usage), cache_creation: null, inference_geo: null, service_tier: null })
 
 const STOP_REASON: Record<Exclude<PlugFinish, "error">, string> = {
   stop: "end_turn",
@@ -143,7 +151,10 @@ export async function runMessage(
     content,
     stop_reason: null,
     stop_sequence: null,
-    usage: encodeUsage(undefined),
+    container: null,
+    diagnostics: null,
+    stop_details: null,
+    usage: encodeMessageUsage(undefined),
     ...extra,
   })
   const start = () => {
@@ -245,8 +256,8 @@ export async function runMessage(
   const reason = finish === "stop" && calls > 0 ? "tool-calls" : (finish ?? "stop")
   const sequence = calls === 0 ? (matched ?? null) : null
   const stopReason = sequence !== null ? "stop_sequence" : STOP_REASON[reason as Exclude<PlugFinish, "error">]
-  const final = message({ stop_reason: stopReason, stop_sequence: sequence, usage: encodeUsage(usage) })
-  emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: sequence }, usage: final.usage })
+  const final = message({ stop_reason: stopReason, stop_sequence: sequence, usage: encodeMessageUsage(usage) })
+  emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: sequence, container: null, stop_details: null }, usage: encodeUsage(usage) })
   emit({ type: "message_stop" })
   return { started, message: final }
 }

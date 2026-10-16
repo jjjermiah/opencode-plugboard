@@ -22,8 +22,9 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     expect(message).toMatchObject({ content: [{ type: "text", text: "Hello" }], stop_reason: "end_turn", stop_sequence: null })
     expect(message.id).toMatch(/^msg_[0-9a-f]{32}$/)
     // input_tokens excludes the cached parts, which are reported on their own.
-    expect(message.usage).toEqual({ input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3 })
-    expect(emitted.at(-2)).toMatchObject({ delta: { stop_reason: "end_turn" }, usage: message.usage })
+    expect(message.usage).toEqual({ input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3, cache_creation: null, inference_geo: null, service_tier: null, output_tokens_details: null, server_tool_use: null })
+    // message_delta carries the narrower MessageDeltaUsage: the same counts, without cache_creation, inference_geo and service_tier.
+    expect(emitted.at(-2)).toMatchObject({ delta: { stop_reason: "end_turn" }, usage: { input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3, output_tokens_details: null, server_tool_use: null } })
   })
 
   test("#203 message_start carries zero usage, because the host reports counts at the end; message_delta carries the real ones", async () => {

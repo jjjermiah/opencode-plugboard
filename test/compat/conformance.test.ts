@@ -199,8 +199,6 @@ describe("#107 Gemini responses conform to the vendored discovery schemas", () =
   })
 })
 
-/** Anthropic fields the SDK's types require that plugboard does not send yet: the Message's nullable fields (test/types/generate.ts GAPS). */
-const MESSAGE_GAPS = ["container", "diagnostics", "stop_details", "cache_creation", "inference_geo", "output_tokens_details", "server_tool_use", "service_tier"]
 /** The SDK's error body carries request_id; plugboard sends it as the request-id header instead. */
 const ERROR_GAPS = ["request_id"]
 /** The stream event each SSE frame name maps to: the frame's name is its `type` (checked below). */
@@ -244,15 +242,15 @@ async function withRoute<T>(script: Script, run: (route: RouteServer) => Promise
 }
 
 describe("#107 Anthropic responses conform to the schemas derived from the SDK types", () => {
-  test("#107 POST /v1/messages (one answer) is a Message, with the SDK fields plugboard does not send waived", async () => {
+  test("#107 POST /v1/messages (one answer) is a Message, with every field the SDK types require", async () => {
     const reply = await server.send(messagesPost({ model: "fast", max_tokens: 64, messages: [{ role: "user", content: tag("text") }] }))
     expect(reply.status).toBe(200)
-    expectConforms("anthropic", "Message", reply.json(), MESSAGE_GAPS)
+    expectConforms("anthropic", "Message", reply.json(), [])
   })
 
   test("#107 every event of a text stream is its SDK stream event, in Anthropic's order", async () => {
     const reply = await server.send(messagesPost({ model: "fast", max_tokens: 64, stream: true, messages: [{ role: "user", content: tag("stream") }] }))
-    const names = expectAnthropicStream(reply.text, MESSAGE_GAPS)
+    const names = expectAnthropicStream(reply.text, [])
     expect(names[0]).toBe("message_start")
     expect(names.at(-1)).toBe("message_stop")
     expect(names).toContain("content_block_delta")
@@ -262,7 +260,7 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
     const signed: PlugEvent = { type: "reasoning-delta", text: THINKING, signature: "sig_conformance" }
     await withRoute([signed, ev.text(TEXT), ev.finish("stop", USAGE)], async (route) => {
       const reply = await route.send(messagesPost({ model: "fast", max_tokens: 2048, thinking: { type: "enabled", budget_tokens: 1024 }, stream: true, messages: [{ role: "user", content: tag("thinking") }] }))
-      expectAnthropicStream(reply.text, MESSAGE_GAPS)
+      expectAnthropicStream(reply.text, [])
       const deltas = parseSse(reply.text).map((frame) => JSON.parse(frame.data!)).filter((data) => data.type === "content_block_delta").map((data) => data.delta.type)
       expect(deltas).toEqual(expect.arrayContaining(["thinking_delta", "signature_delta"]))
     })
@@ -273,9 +271,9 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
     await withRoute([ev.call("call_1", "weather", { city: "Oslo" }), ev.finish("tool-calls", USAGE)], async (route) => {
       const one = await route.send(messagesPost({ model: "fast", max_tokens: 64, tools, messages: [{ role: "user", content: tag("tools") }] }))
       expect(one.status).toBe(200)
-      expectConforms("anthropic", "Message", one.json(), MESSAGE_GAPS)
+      expectConforms("anthropic", "Message", one.json(), [])
       const streamed = await route.send(messagesPost({ model: "fast", max_tokens: 64, tools, stream: true, messages: [{ role: "user", content: tag("tools") }] }))
-      expectAnthropicStream(streamed.text, MESSAGE_GAPS)
+      expectAnthropicStream(streamed.text, [])
       expect(streamed.text).toContain("input_json_delta")
     })
   })
@@ -297,7 +295,7 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
   test("#107 an error mid-stream ends the stream with an error event that is an ErrorResponse", async () => {
     await withRoute([ev.text("Hel"), ev.error({ status: 500, kind: "server", message: "upstream failed" })], async (route) => {
       const reply = await route.send(messagesPost({ model: "fast", max_tokens: 8, stream: true, messages: [{ role: "user", content: tag("stream") }] }))
-      const names = expectAnthropicStream(reply.text, MESSAGE_GAPS)
+      const names = expectAnthropicStream(reply.text, [])
       expect(names.at(-1)).toBe("error")
       expect(names).not.toContain("message_stop")
     })
@@ -316,20 +314,20 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
     expect(violations(exact("anthropic", "Message"), { ...message, content: [{ ...message.content[0], invented: true }] })).toContain("additional")
   })
 
-  test.failing("#107 gap (#406): a Message omits the SDK's nullable fields (container, diagnostics, stop_details, usage details), which plugboard does not send", async () => {
+  test("#406 a Message carries the SDK's nullable fields (container, diagnostics, stop_details, usage details), with null when there is no value", async () => {
     const reply = await server.send(messagesPost({ model: "fast", max_tokens: 64, messages: [{ role: "user", content: tag("text") }] }))
     expectConforms("anthropic", "Message", reply.json())
   })
 
   test("#405 a text block carries citations, which the SDK requires (null when there are none)", async () => {
     const reply = await server.send(messagesPost({ model: "fast", max_tokens: 64, messages: [{ role: "user", content: tag("text") }] }))
-    expectConforms("anthropic", "Message", reply.json(), MESSAGE_GAPS)
+    expectConforms("anthropic", "Message", reply.json(), [])
   })
 
   test("#404 a tool_use block carries caller, which the SDK requires", async () => {
     await withRoute([ev.call("call_1", "weather", { city: "Oslo" }), ev.finish("tool-calls", USAGE)], async (route) => {
       const reply = await route.send(messagesPost({ model: "fast", max_tokens: 64, tools: [{ name: "weather", input_schema: { type: "object", properties: { city: { type: "string" } } } }], messages: [{ role: "user", content: tag("tools") }] }))
-      expectConforms("anthropic", "Message", reply.json(), MESSAGE_GAPS)
+      expectConforms("anthropic", "Message", reply.json(), [])
     })
   })
 })

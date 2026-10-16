@@ -18,6 +18,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **A Messages `tool_use` block carries `caller`** ([#404](https://github.com/jjjermiah/opencode-plugboard/issues/404)). The `@anthropic-ai/sdk` types make `caller` required on a tool_use block. Plugboard sends `"caller": {"type": "direct"}` on each tool call, in the stream and in the final message (since 0.43.0).
 - **A Messages text block carries `citations`** ([#405](https://github.com/jjjermiah/opencode-plugboard/issues/405)). The SDK types require `citations` on a text block, `null` when there are none. Plugboard sends `"citations": null` on each text block, in the stream and in the final message (since 0.43.0).
+- **Messages answers carry the nullable fields the SDK types require** ([#406](https://github.com/jjjermiah/opencode-plugboard/issues/406)). The Message has `container`, `diagnostics` and `stop_details`, and its usage has `cache_creation`, `inference_geo`, `output_tokens_details`, `server_tool_use` and `service_tier`. plugboard sends `null` where it has no value. The message_delta event carries `container` and `stop_details` in its delta, and `output_tokens_details` and `server_tool_use` in its usage (since 0.43.0).
 
 ## [0.42.0] - 2026-10-16: Loose Ends Tied
 
