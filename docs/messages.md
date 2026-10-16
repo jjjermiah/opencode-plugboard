@@ -43,7 +43,7 @@ Define the aliases in the plugboard `aliases` option (for example `"claude-sonne
 | `tool_choice` | `auto`, `any`, `none`, `{"type":"tool","name":"..."}`. `disable_parallel_tool_use: true` keeps only the first tool call of the answer, as `parallel_tool_calls: false` does on Chat Completions; the response carries `x-plugboard-parallel-tools: limited`. |
 | `temperature`, `top_p` | Passed to the model, minus the ones the model is known to reject (see below). |
 | `top_k` | Ignored. Plugboard has no `top_k` option. The response header `x-plugboard-dropped-params` lists it. |
-| `stop_sequences` | Passed to the model. |
+| `stop_sequences` | Matched by plugboard on the answer text, and not sent to the model (#390). |
 | `thinking`, `output_config.effort` | `thinking` is validated like Anthropic does (`budget_tokens` at least 1024 and below `max_tokens`). It picks a model variant when the model has one and the id carries none: `output_config.effort` names the variant directly, otherwise `budget_tokens` up to 4096 means `low`, up to 16384 `medium`, above that `high`. A model without that variant is called as is. With `enabled` or `adaptive` thinking, the model's reasoning text comes back as `thinking` blocks. |
 | `stream` | The standard event sequence, below. |
 | `metadata`, `service_tier`, `context_management`, `container` | Accepted and ignored. |
@@ -99,7 +99,7 @@ A message object: `id` (`msg_...`), `type: "message"`, `role: "assistant"`, `mod
 | `max_tokens` | The model hit the token limit. |
 | `refusal` | The provider filtered the content. |
 
-`stop_reason: "stop_sequence"` is returned when the answer text ends with one of the request's `stop_sequences`. That sequence is removed from the text and given as `stop_sequence`. The host reports only that the turn stopped, so a sequence the provider ended on without returning it shows as `end_turn`, with `stop_sequence` `null`.
+`stop_reason: "stop_sequence"` is returned when the answer text contains one of the request's `stop_sequences`. The answer ends at the first one: the text before it is returned, the sequence is removed and given as `stop_sequence`, and nothing after it is produced. Reasoning is never matched (#390). A tool call before the sequence makes the turn a tool turn: `stop_reason` is `tool_use` and `stop_sequence` is `null`, as Anthropic reports a turn that ended on a call. `usage` is the usage of the run, also after a match.
 
 `usage` has `input_tokens`, `output_tokens` (including reasoning), `cache_read_input_tokens` and `cache_creation_input_tokens`. As in Anthropic's API, `input_tokens` excludes the cached tokens that the other two fields report. The `x-plugboard-session` header works as on Chat Completions, and every response carries a `request-id` header.
 

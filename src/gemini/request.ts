@@ -446,7 +446,6 @@ export function parseGeminiRequest(model: string, stream: boolean, body: unknown
       stream,
       ...(respond ? { structuredTool: RESPOND_TOOL, ...(format.schema ? { structuredSchema: format.schema } : {}), ...(format.wrap ? { wrapped: true } : {}), ...(withCallerTools ? { callerTools: true } : {}) } : {}),
       ...(format.instruction ? { jsonObject: true } : {}),
-      ...(generation.stop ? { stop: generation.stop } : {}),
     },
     ...(reasoningEffort ? { reasoningEffort } : {}),
   }

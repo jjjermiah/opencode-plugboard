@@ -24,6 +24,7 @@ import { appHistoryLimits, parseOptions } from "./src/config.js"
 import { personaOf } from "./src/models.js"
 import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
+import { withStopSequences } from "./src/stop.js"
 import { withBudgets } from "./src/budgets.js"
 import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
@@ -103,7 +104,8 @@ export default Plugin.define({
             // Budgets sit outside the limiter, so a budget refusal never takes a slot (src/budgets.ts).
             withBudgets(
               withLimits(
-                withFallbacks(createSessionCaller(callerDeps), {
+                // Stop sequences are applied to the answer where the host run ends, so a cached answer is the one cut (src/stop.ts).
+                withFallbacks(withStopSequences(createSessionCaller(callerDeps)), {
                   options,
                   loadCatalog: servingCatalog,
                   onFallback: (app) => {

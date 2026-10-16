@@ -468,6 +468,13 @@ export class RequestCollector {
   }
 
   /**
+   * Finish now with the usage counted so far: the host did not end a run that a stop sequence interrupted (#390). No-op once terminal.
+   */
+  finishNow(): void {
+    this.finishWith("stop")
+  }
+
+  /**
    * A step that ran only server tools: the runner starts the next step with their results. The cap is
    * checked on each such step; past it the request fails and the turn is stopped.
    */
