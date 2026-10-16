@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Anthropic Messages client examples** ([#102](https://github.com/jjjermiah/opencode-plugboard/issues/102)). Runnable examples for the Anthropic Python and TypeScript SDKs, LangChain `ChatAnthropic` (Python and JS), the Vercel AI SDK's `@ai-sdk/anthropic` provider and pydantic-ai's `AnthropicModel`, each with a scripted run and a live run against the isolated dev server. Required rows pass except S7 (`GET /v1/models`, which refuses `x-api-key`, [#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)) for the two Anthropic SDKs and pydantic-ai. The LangChain and Vercel examples list models with a raw `fetch` or `httpx` call, not the client, so their S7 row is not a client check. The error-code checks are not observed (Messages errors carry `error.type`, no `error.code`). Claude Code has a manual `claude -p` probe only, not an example run.
 
 ## [0.41.0] - 2026-10-16: Gemini Pictures Welcome
 

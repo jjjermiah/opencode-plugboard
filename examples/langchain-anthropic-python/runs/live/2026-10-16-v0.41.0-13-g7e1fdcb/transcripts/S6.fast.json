@@ -1,0 +1,85 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "tool_choice": {
+            "name": "Meal",
+            "type": "tool"
+          },
+          "tools": [
+            {
+              "description": "",
+              "input_schema": {
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "name": "Meal"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "id": "<id-2>",
+              "input": {
+                "calories": 155,
+                "protein_g": 13
+              },
+              "name": "Meal",
+              "type": "tool_use"
+            }
+          ],
+          "id": "<id-3>",
+          "model": "anthropic/claude-haiku-4-5",
+          "role": "assistant",
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "input_tokens": 613,
+            "output_tokens": 79
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=613; output=79; cache_read=0; cache_write=0; cost_usd=0.001008"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

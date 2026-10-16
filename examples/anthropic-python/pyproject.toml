@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-anthropic-python"
+version = "0.1.0"
+description = "The Anthropic Python SDK (anthropic) on plugboard's Messages route: S1 to S7 and the error paths. Exact pins, locked in uv.lock."
+requires-python = ">=3.12"
+# Exact pin: the direct dependency. uv.lock pins everything else.
+dependencies = ["anthropic==1.15.0"]
