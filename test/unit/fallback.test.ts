@@ -349,4 +349,25 @@ describe("#391 fallbackAfterMs: the first-event deadline", () => {
     expect(r.events.filter((e) => e.type === "text-delta").map((e) => (e as { text: string }).text).join("")).toBe("hello")
     expect(r.events.at(-1)).toMatchObject({ type: "finish" })
   })
+
+  test("an abandoned attempt is cancelled by plugboard, not left by a client: the caller sees reason kind cancelled, so it gets no settle window (#391)", async () => {
+    const reasons: unknown[] = []
+    let calls = 0
+    const caller: ModelCaller = {
+      stream(_request, context) {
+        const hangs = calls++ === 0
+        return (async function* () {
+          if (hangs) {
+            await until(context.signal)
+            reasons.push((context.signal.reason as { kind?: unknown } | undefined)?.kind)
+            return
+          }
+          yield* [ev.text("hi"), ev.finish()]
+        })()
+      },
+    }
+    const events = await collect(withFallbacks(caller, { options: timedOptions, loadCatalog: async () => CATALOG }).stream(plugRequest({ model: "chain", ref: resolveModel(timedOptions, "chain", CATALOG) as never }), { app: "app1", signal: new AbortController().signal }))
+    expect(reasons).toEqual(["cancelled"])
+    expect(events.at(-1)).toMatchObject({ type: "finish" })
+  })
 })

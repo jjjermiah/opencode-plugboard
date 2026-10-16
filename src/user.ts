@@ -4,9 +4,11 @@
  * request log line and the per-user usage counts. It never names a path: a value is only ever a
  * string key in a record.
  *
- * A value is kept only when it is trimmed and at most 64 characters of `A-Z a-z 0-9 . _ @ : -`.
- * Anything else is dropped, and the response says so with `x-plugboard-user-dropped: 1`. A blank
- * value is no user at all (neither kept nor reported).
+ * A value is kept only when it is trimmed and at most 64 characters of `A-Z a-z 0-9 . _ @ : -`, and
+ * it is not a reserved name: `__proto__`, `prototype`, `constructor` or `_other` (the usage store's
+ * overflow slot). Anything else is dropped, and the response says so with `x-plugboard-user-dropped: 1`.
+ * A blank value is no user at all (neither kept nor reported). The `?user=` filter of the usage query
+ * checks the charset and length only (`validEndUser`), so a name an older version stored stays queryable.
  *
  * Pure: no node imports, so the request decoders (`request.ts` files) can use it (I20).
  */
@@ -15,11 +17,23 @@ export const USER_DROPPED_HEADER = "x-plugboard-user-dropped"
 
 const END_USER = /^[A-Za-z0-9._@:-]{1,64}$/
 
-/** The user id to keep, or undefined when the value is absent, blank or not allowed. */
-export function sanitizeEndUser(raw: unknown): string | undefined {
+/**
+ * Names no end user may take: the keys an object inherits (a value like `__proto__` once corrupted the shared usage counters)
+ * and `_other`, the overflow slot of the usage store (`src/usage.ts`). Refused like any other invalid value.
+ */
+const RESERVED_END_USERS: ReadonlySet<string> = new Set(["__proto__", "prototype", "constructor", "_other"])
+
+/** The trimmed value when it matches the charset and length rule, else undefined. Reserved names pass: see `sanitizeEndUser`. */
+export function validEndUser(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined
   const trimmed = raw.trim()
   return END_USER.test(trimmed) ? trimmed : undefined
+}
+
+/** The user id to keep, or undefined when the value is absent, blank, reserved or not allowed. */
+export function sanitizeEndUser(raw: unknown): string | undefined {
+  const user = validEndUser(raw)
+  return user === undefined || RESERVED_END_USERS.has(user) ? undefined : user
 }
 
 /** True when the caller sent a value that is not kept. Absent and blank values are not dropped. */

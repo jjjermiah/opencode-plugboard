@@ -5,6 +5,14 @@ import { matchGeminiRoute } from "../../src/gemini/route.js"
 import { testOptions } from "../support/fixtures.js"
 
 const options = testOptions({ maxTools: 3 })
+
+// #390 review: a client value with no usable toString is a 400, never a thrown TypeError (show, src/client-value.ts).
+test("gemini: a functionCallingConfig mode with a null toString is a 400, not a crash", () => {
+  const body = { contents: [{ role: "user", parts: [{ text: "hi" }] }], toolConfig: { functionCallingConfig: { mode: { toString: null } } } }
+  const result = parseGeminiRequest("test/echo", false, body, options)
+  expect(isPlugError(result)).toBe(true)
+  expect(result).toMatchObject({ status: 400, message: expect.stringContaining('"object"') })
+})
 const user = (...parts: unknown[]) => ({ role: "user", parts })
 const modelTurn = (...parts: unknown[]) => ({ role: "model", parts })
 const body = (extra: Record<string, unknown> = {}) => ({ contents: [user({ text: "hi" })], ...extra })

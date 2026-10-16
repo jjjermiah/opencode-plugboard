@@ -40,7 +40,7 @@ export interface PlugboardOptions {
    */
   readonly fallbacks: Readonly<Record<string, ReadonlyArray<string>>>
   /**
-   * Option `fallbackAfterMs` (since 0.38.0, #391): when a target of a list alias has produced no model event within
+   * Option `fallbackAfterMs` (since 0.40.0, #391): when a target of a list alias has produced no model event within
    * this many ms, its attempt is aborted and the next target is tried. The last target is bounded only by the request
    * deadline. Absent (the default): no first-event deadline. Global only: a list entry is a plain string. Must be below
    * `requestTimeoutMs` and below each `apps.<name>.requestTimeoutMs` (refused at load otherwise).
@@ -206,6 +206,11 @@ export interface AppPolicy {
    */
   readonly maxOutputTokens?: number
   /**
+   * How long the host may finish its step after a stop sequence matched, or after the client left mid-run, before it is interrupted (option `apps.<name>.settleMs`,
+   * since 0.38.0, #390). 0 interrupts at once and the usage of the step is then lost. Absent: 2000 ms.
+   */
+  readonly settleMs?: number
+  /**
    * Option `apps.<name>.reasoningOutput` (since 0.36.0): this app's reasoning switch. Absent: the global `reasoningOutput`. Look the
    * effective value up with `reasoningOutputFor`.
    */
@@ -247,11 +252,12 @@ export interface Limits {
   readonly apps?: Readonly<Record<string, LimitCaps>>
   /**
    * Bytes of request bodies buffered at once, across every request in the process (`readJsonBody` in
-   * `src/http.ts`). A body that would go over it is refused with 503 `server_busy` before it is read. Not per app.
+   * `src/http.ts`). A body that would go over it is refused with 503 `server_busy` before it is read. One app may hold at most half of it.
    */
   readonly maxBodyBytesInFlight?: number
   /** Milliseconds a request body may take to arrive in full; a slower one is refused with 408. */
   readonly bodyReadTimeoutMs?: number
+  readonly bodyReadMaxMs?: number
   /**
    * The largest request body any app may send (since 0.32.0, #258), 1 to 33554432. Absent: 32 MiB. It is the ceiling for
    * `apps.<name>.maxBodyBytes`-style caps in `limits.apps`, and a body over it is refused with 413 before it is read.
@@ -262,13 +268,27 @@ export interface Limits {
 /** The bounds `readJsonBody` applies before it buffers a request body (see `bodyLimits`). */
 export interface BodyLimits {
   readonly maxBytesInFlight: number
+  /** The app this request is of, and the bytes that app may hold of the budget (`bodyLimits`). Absent: no split. */
+  readonly app?: string
+  readonly appShare?: number
+  /** No new bytes for this long (idle), then 408 (`limits.bodyReadTimeoutMs`). */
   readonly readTimeoutMs: number
+  /** The whole body must be complete within this long, then 408 (`limits.bodyReadMaxMs`). Absent: `BODY_LIMIT_DEFAULTS.readCeilingMs`. */
+  readonly readCeilingMs?: number
   /** The largest body this request may send: `limits.apps.<name>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB (#258). Absent: 32 MiB. */
   readonly maxBodyBytes?: number
 }
 
-/** Defaults of `limits.maxBodyBytesInFlight` (128 MiB) and `limits.bodyReadTimeoutMs` (30 s). */
-export const BODY_LIMIT_DEFAULTS: BodyLimits & { readonly maxBodyBytes: number } = { maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, maxBodyBytes: 32 * 1024 * 1024 }
+/**
+ * Defaults of `limits.maxBodyBytesInFlight` (128 MiB), `limits.bodyReadTimeoutMs` (30 s idle) and `limits.bodyReadMaxMs` (5 min
+ * in total: 10 MiB on a 2 Mbit/s link takes about 42 s, a full 32 MiB about 2 min).
+ */
+export const BODY_LIMIT_DEFAULTS: BodyLimits & { readonly maxBodyBytes: number; readonly readCeilingMs: number } = {
+  maxBytesInFlight: 128 * 1024 * 1024,
+  readTimeoutMs: 30_000,
+  readCeilingMs: 300_000,
+  maxBodyBytes: 32 * 1024 * 1024,
+}
 
 /** What a budget counts: HTTP requests on the model routes (refusals by `limits` or budgets left out), tokens, or cost in USD. */
 export type BudgetMetric = "requests" | "tokens" | "costUsd"
@@ -317,7 +337,7 @@ const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
 const MAX_RETENTION_DAYS = 3650
-const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs", "maxBodyBytes"])
+const LIMITS_KNOWN = new Set(["maxConcurrent", "perApp", "apps", "maxBodyBytesInFlight", "bodyReadTimeoutMs", "bodyReadMaxMs", "maxBodyBytes"])
 /** The hard cap of one request body (32 MiB). `limits.maxBodyBytes` and `limits.apps.<name>.maxBodyBytes` cannot go above it. */
 const BODY_HARD_CAP = 32 * 1024 * 1024
 const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
@@ -461,7 +481,7 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader", "reasoningOutput"])
+const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader", "reasoningOutput", "settleMs"])
 
 /**
  * Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hidden` (since 0.29.0, #337).
@@ -635,6 +655,7 @@ function parseApps(
     // A deadline may be longer or shorter than the global one (#257); it is checked against the same ceiling as the global option.
     const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
     const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
+    const settleMs = value.settleMs === undefined ? undefined : positiveInt(value.settleMs, `apps.${app}.settleMs`, 0, MAX_TIMER_MS)
     const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
     const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, value.models as string[] | undefined, context)
     const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
@@ -656,13 +677,14 @@ function parseApps(
       ...(endpoints === undefined ? {} : { endpoints }),
       ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
       ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+      ...(settleMs === undefined ? {} : { settleMs }),
       ...(sampling === undefined ? {} : { sampling }),
       ...(model === undefined ? {} : { model }),
       ...(userHeader === undefined ? {} : { userHeader }),
       ...(reasoningOutput === undefined ? {} : { reasoningOutput }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined || reasoningOutput !== undefined)
+    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined || reasoningOutput !== undefined || settleMs !== undefined)
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -722,6 +744,16 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
   for (const [app, caps] of Object.entries(apps))
     if (caps.maxBodyBytes !== undefined && caps.maxBodyBytes > (maxBodyBytes ?? BODY_HARD_CAP))
       throw new Error(`plugboard option \`limits.apps.${app}.maxBodyBytes\` cannot be above \`limits.maxBodyBytes\` (or ${BODY_HARD_CAP} when that is unset)`)
+  // An explicit budget must hold one body of its largest size per configured app (`bodyRequirement`). Unset, it grows with the apps.
+  if (raw.maxBodyBytesInFlight !== undefined && Object.keys(keys).length > 1) {
+    const cap = positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER)
+    const globalMax = maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
+    const need = Object.keys(keys).reduce((sum, app) => sum + (apps[app]?.maxBodyBytes ?? globalMax), 0)
+    if (cap < need)
+      throw new Error(
+        `plugboard option \`limits.maxBodyBytesInFlight\` (${cap}) must be at least ${need}: each of the ${Object.keys(keys).length} apps needs room for one body of its largest size (\`limits.maxBodyBytes\`, or \`limits.apps.<name>.maxBodyBytes\`). Unset it to let it grow with the apps`,
+      )
+  }
   return {
     ...(maxBodyBytes === undefined ? {} : { maxBodyBytes }),
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, "limits.maxConcurrent", 0, MAX_LIMIT) }),
@@ -731,22 +763,58 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
       ? {}
       : { maxBodyBytesInFlight: positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER) }),
     ...(raw.bodyReadTimeoutMs === undefined ? {} : { bodyReadTimeoutMs: positiveInt(raw.bodyReadTimeoutMs, "limits.bodyReadTimeoutMs", 0, MAX_TIMER_MS) }),
+    ...(raw.bodyReadMaxMs === undefined ? {} : { bodyReadMaxMs: positiveInt(raw.bodyReadMaxMs, "limits.bodyReadMaxMs", 0, MAX_TIMER_MS) }),
   }
 }
 
 /**
- * The body limits in force for a request of `app` (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`, and the largest body:
- * `limits.apps.<app>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB, #258), or the defaults. `app` is absent before a
- * credential is read; the global cap applies then.
+ * The apps that hold shares of the body budget: the apps of the configured keys and of the runtime keys, each app once however
+ * many keys it has (the default app when there are none, which is keyless).
  */
-export function bodyLimits(options: Pick<PlugboardOptions, "limits">, app?: string): BodyLimits {
+export function bodyApps(options: Pick<PlugboardOptions, "keys">, runtimeApps: ReadonlyArray<string> = []): string[] {
+  const names = new Set([...Object.keys(options.keys ?? {}), ...runtimeApps])
+  return names.size === 0 ? [DEFAULT_APP] : [...names]
+}
+
+/** The largest body an app may send: `limits.apps.<name>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB. */
+export function bodyCapOf(options: Pick<PlugboardOptions, "limits">, app: string): number {
+  return options.limits?.apps?.[app]?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
+}
+
+/** The budget the apps need for one body each, at their largest sizes: the sum of `bodyCapOf` over `apps`. */
+export function bodyRequirement(options: Pick<PlugboardOptions, "limits">, apps: ReadonlyArray<string>): number {
+  return apps.reduce((sum, app) => sum + bodyCapOf(options, app), 0)
+}
+
+/**
+ * The body budget in force (`limits.maxBodyBytesInFlight`). Set, it is kept as it is (and `parseOptions` and the admin key API
+ * refuse a set value below `bodyRequirement`). Unset, it is max(128 MiB, `bodyRequirement`), so every app can always send one
+ * body of its largest size: an upgrade with several apps and no setting keeps working.
+ */
+export function bodyBudget(options: Pick<PlugboardOptions, "limits">, apps: ReadonlyArray<string>): number {
+  return options.limits?.maxBodyBytesInFlight ?? Math.max(BODY_LIMIT_DEFAULTS.maxBytesInFlight, bodyRequirement(options, apps))
+}
+
+/**
+ * The body limits in force for a request of `app` (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`, `limits.bodyReadMaxMs`,
+ * and the largest body, #258). With several apps the budget is split in proportion to each app's largest body, so every app's share
+ * holds one body of its largest size (`bodyRequirement` fits the budget). `runtimeApps` are the apps of the runtime keys. One app has
+ * the whole budget.
+ */
+export function bodyLimits(options: Pick<PlugboardOptions, "limits" | "keys">, app?: string, runtimeApps: ReadonlyArray<string> = []): BodyLimits {
+  const apps = bodyApps(options, runtimeApps)
+  const budget = bodyBudget(options, apps)
+  const split = apps.length > 1 && app !== undefined
   const own = app !== undefined && options.limits?.apps && Object.hasOwn(options.limits.apps, app) ? options.limits.apps[app] : undefined
   return {
-    maxBytesInFlight: options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight,
+    maxBytesInFlight: budget,
+    ...(split ? { app, appShare: Math.floor((budget * bodyCapOf(options, app)) / bodyRequirement(options, apps)) } : {}),
     readTimeoutMs: options.limits?.bodyReadTimeoutMs ?? BODY_LIMIT_DEFAULTS.readTimeoutMs,
+    readCeilingMs: options.limits?.bodyReadMaxMs ?? BODY_LIMIT_DEFAULTS.readCeilingMs,
     maxBodyBytes: own?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes,
   }
 }
+
 
 /**
  * The refusal for `app` calling `endpoint` (#268): 403 `endpoint_forbidden` when `apps.<app>.endpoints` is set and does not

@@ -65,9 +65,9 @@ describe("parseOptions: defaults", () => {
   test("#156 the body limits are kept when set, and default to 128 MiB in flight and 30 s when not", () => {
     expect(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }).limits).toEqual({ maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 })
     // `maxBodyBytes` (#258) is the largest body, 32 MiB unless `limits.maxBodyBytes` or the app's own cap lowers it.
-    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({ maxBytesInFlight: 1024, readTimeoutMs: 500, maxBodyBytes: 33_554_432 })
-    expect(bodyLimits(parseOptions({ limits: { maxConcurrent: 2 } }))).toEqual({ maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, maxBodyBytes: 33_554_432 })
-    expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000, maxBodyBytes: 33_554_432 })
+    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({ maxBytesInFlight: 1024, readTimeoutMs: 500, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
+    expect(bodyLimits(parseOptions({ limits: { maxConcurrent: 2 } }))).toEqual({ maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
+    expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
   })
 
   test("#158 history keeps 30 days by default; maxAgeDays 0 is the explicit opt-out to no age limit", () => {
@@ -269,7 +269,7 @@ describe("#258 limits.maxBodyBytes and limits.apps.<name>.maxBodyBytes", () => {
 
   test("the app cap is kept in limits.apps and does not change the other app limits", () => {
     const limits = bodyLimits(parseOptions({ keys: { widget: "k-widget" }, limits: { apps: { widget: { maxBodyBytes: 1000, maxConcurrent: 2 } } } }), "widget")
-    expect(limits).toEqual({ maxBytesInFlight: 128 * MIB, readTimeoutMs: 30_000, maxBodyBytes: 1000 })
+    expect(limits).toEqual({ maxBytesInFlight: 128 * MIB, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 1000 })
   })
 
   test.each([

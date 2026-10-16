@@ -358,7 +358,8 @@ describe("server calls after the request ended (#196)", () => {
     const run = collectorRun()
     run.collector.cancel()
     run.send(run.host.toolCalled("s1", "websearch", { query: "secret query" }), run.host.stepEnded("tool-calls"))
-    expect(run.stops()).toBe(1)
+    // The call stops the run at once (a client that left gets no tool run); the late step stops it again (#196).
+    expect(run.stops()).toBe(2)
     const lines = logs.of("server_tool.after_request")
     expect(lines).toHaveLength(1)
     expect(lines[0]!.fields).toMatchObject({ requestID: "req_1", app: "app", tool: "websearch", lateCalls: "1" })
@@ -370,15 +371,16 @@ describe("server calls after the request ended (#196)", () => {
     run.collector.cancel()
     run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolCalled("s1", "websearch", {}), run.host.stepEnded("tool-calls"))
     run.send(run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
-    expect(run.stops()).toBe(2)
+    // One stop for the first call (at once), then one per late step that ran a call (#196).
+    expect(run.stops()).toBe(3)
     expect(logs.of("server_tool.after_request")).toHaveLength(2)
   })
 
-  test("a caller call after the request ended is ignored: no log, no stop", async () => {
+  test("a caller call after the request ended stops the run at once: no tool runs for a client that left, and it is not logged as a server call", async () => {
     const run = collectorRun()
     run.collector.cancel()
     run.send(run.host.toolCalled("c1", "lookup", {}), run.host.stepEnded("tool-calls"))
-    expect(run.stops()).toBe(0)
+    expect(run.stops()).toBe(1)
     expect(logs.of("server_tool.after_request")).toHaveLength(0)
   })
 

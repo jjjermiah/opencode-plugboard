@@ -18,6 +18,7 @@
 import type { ServerResponse } from "node:http"
 import type { PlugboardOptions } from "./config.js"
 import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest, ServedModel } from "./contract.js"
+import { RequestAborted } from "./http.js"
 import { debugEnabled, log, logDebug, logWarn } from "./log.js"
 import { fallbackRefs, refToString } from "./models.js"
 import { dropRejected } from "./openai/sampling.js"
@@ -130,7 +131,8 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     const timer = deadlineAbort
       ? setTimeout(() => {
           timedOut = true
-          deadlineAbort.abort()
+          // Cancelled by plugboard, not by a client that left: the caller interrupts the attempt at once and gives it no settle window (#391).
+          deadlineAbort.abort(new RequestAborted("cancelled"))
         }, deadline)
       : undefined
     const signal = deadlineAbort ? AbortSignal.any([context.signal, deadlineAbort.signal]) : context.signal

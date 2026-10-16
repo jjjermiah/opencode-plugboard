@@ -78,7 +78,8 @@ describe("collectCompletion: the JSON body", () => {
       choices: [{ index: 0, message: { role: "assistant", content: "Hello", refusal: null }, logprobs: null, finish_reason: "stop" }],
     })
     expect(body.id).toMatch(/^chatcmpl-[0-9a-f]{29}$/)
-    expect(body).not.toHaveProperty("usage")
+    // A chat answer always carries usage (#390): zeros when the host reported none for the run.
+    expect(body).toMatchObject({ usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } })
   })
 
   test("reasoning is dropped: Chat Completions has no field for it", async () => {
@@ -200,6 +201,11 @@ describe("streamCompletion: SSE frames", () => {
     const { frames } = await stream({ ...plain, includeUsage: true }, ev.text("x"), ev.finish("stop", { inputTokens: 2, outputTokens: 3 }))
     expect(frames.slice(0, -1).every((frame) => frame.usage === null)).toBe(true)
     expect(frames.at(-1)).toMatchObject({ choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } })
+  })
+
+  test("#390 include_usage with no usage reported from the host: the final usage chunk still carries zeros", async () => {
+    const { frames } = await stream({ ...plain, includeUsage: true }, ev.text("x"), ev.finish("stop"))
+    expect(frames.at(-1)).toMatchObject({ choices: [], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } })
   })
 
   test("without include_usage no usage field appears", async () => {
