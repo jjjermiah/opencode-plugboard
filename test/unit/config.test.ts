@@ -90,6 +90,7 @@ describe("parseOptions: every rejection names the option", () => {
     ["keys that are not an object", { keys: ["k"] }, /`keys` must be an object/],
     ["the reserved app name default", { keys: { default: "k" } }, /reserved/],
     ["an app name with capitals", { keys: { MyApp: "k" } }, /must match/],
+    ["an app name longer than 255 characters (#418)", { keys: { ["x".repeat(256)]: "k" } }, /at most 255 characters/],
     ["an empty key (unset {env:VAR})", { keys: { app: "" } }, /non-empty string/],
     ["a key that is not a string", { keys: { app: 1 } }, /non-empty string/],
     ["two apps sharing one key", { keys: { a: "same", b: "same" } }, /`a` and `b` have the same value/],

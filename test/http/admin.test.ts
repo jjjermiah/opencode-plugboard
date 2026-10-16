@@ -94,6 +94,19 @@ describe("the body budget and the admin key API (since 0.39.0)", () => {
   })
 })
 
+describe("#418 an app name is at most 255 characters, the longest file name a filesystem takes", () => {
+  test("a 255-character name mints a key; a 256-character name is refused with 400 invalid_app and mints nothing", async () => {
+    const srv = await start()
+    const created = await srv.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "x".repeat(255) } })
+    expect(created.status).toBe(201)
+    const refused = await srv.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "x".repeat(256) } })
+    expect(refused.status).toBe(400)
+    expect(refused.json()).toMatchObject({ code: "invalid_app", status: 400 })
+    expect(JSON.stringify(refused.json())).toContain("255")
+    expect((await srv.send({ path: "/plugboard/admin/keys", headers: bearer(ADMIN) })).json().keys).toHaveLength(2)
+  })
+})
+
 describe("#55 admin routes: create, list, revoke", () => {
   test("#55 GET lists the config key and no runtime keys on a fresh server", async () => {
     const srv = await start()
