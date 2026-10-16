@@ -22,8 +22,9 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     expect(message).toMatchObject({ content: [{ type: "text", text: "Hello" }], stop_reason: "end_turn", stop_sequence: null })
     expect(message.id).toMatch(/^msg_[0-9a-f]{32}$/)
     // input_tokens excludes the cached parts, which are reported on their own.
-    expect(message.usage).toEqual({ input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3 })
-    expect(emitted.at(-2)).toMatchObject({ delta: { stop_reason: "end_turn" }, usage: message.usage })
+    expect(message.usage).toEqual({ input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3, cache_creation: null, inference_geo: null, service_tier: null, output_tokens_details: null, server_tool_use: null })
+    // message_delta carries the narrower MessageDeltaUsage: the same counts, without cache_creation, inference_geo and service_tier.
+    expect(emitted.at(-2)).toMatchObject({ delta: { stop_reason: "end_turn" }, usage: { input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3, output_tokens_details: null, server_tool_use: null } })
   })
 
   test("#203 message_start carries zero usage, because the host reports counts at the end; message_delta carries the real ones", async () => {
@@ -45,7 +46,7 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig_abc" }
     const { types, message } = await run(plain, ev.reasoning("hmm"), signed, ev.text("answer"), ev.finish())
     expect(types).not.toContain("signature_delta")
-    expect(message.content).toEqual([{ type: "text", text: "answer" }])
+    expect(message.content).toEqual([{ type: "text", text: "answer", citations: null }])
   })
 
   test("a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use", async () => {
@@ -59,7 +60,7 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
       ["content_block_stop", 1],
     ])
     expect(emitted.find((event) => event.type === "content_block_delta" && event.index === 1)).toMatchObject({ delta: { type: "input_json_delta", partial_json: '{"path":"a"}' } })
-    expect(message.content[1]).toEqual({ type: "tool_use", id: "toolu_call_1", name: "read", input: { path: "a" } })
+    expect(message.content[1]).toEqual({ type: "tool_use", id: "toolu_call_1", name: "read", caller: { type: "direct" }, input: { path: "a" } })
     expect(message.stop_reason).toBe("tool_use")
   })
 
@@ -80,10 +81,10 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
 
   test("reasoning becomes a thinking block only when thinking was asked for", async () => {
     const on = await run(thinking, ev.reasoning("hmm"), ev.text("answer"), ev.finish())
-    expect(on.message.content).toEqual([{ type: "thinking", thinking: "hmm", signature: "" }, { type: "text", text: "answer" }])
+    expect(on.message.content).toEqual([{ type: "thinking", thinking: "hmm", signature: "" }, { type: "text", text: "answer", citations: null }])
     expect(on.emitted.find((event) => event.type === "content_block_delta")).toMatchObject({ delta: { type: "thinking_delta", thinking: "hmm" } })
     const off = await run(plain, ev.reasoning("hmm"), ev.text("answer"), ev.finish())
-    expect(off.message.content).toEqual([{ type: "text", text: "answer" }])
+    expect(off.message.content).toEqual([{ type: "text", text: "answer", citations: null }])
   })
 
   test.each([
@@ -157,6 +158,6 @@ describe("#153 a stream keeps no aggregate", () => {
 
   test("a non-streamed answer keeps its content for the JSON body", async () => {
     const { message } = await run({ ...plain, stream: false }, ev.text("Hi"), ev.finish("stop"))
-    expect(message.content).toEqual([{ type: "text", text: "Hi" }])
+    expect(message.content).toEqual([{ type: "text", text: "Hi", citations: null }])
   })
 })

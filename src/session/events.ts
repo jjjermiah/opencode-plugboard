@@ -22,6 +22,8 @@ import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type Plug
 import { log, logError, logWarn } from "../log.js"
 import type { BusEvent } from "./host.js"
 import { StopScan } from "../stop.js"
+import { placeholderAliases, placeholderRewriter } from "../tool-placeholders.js"
+import { rememberReasoning } from "../reasoning-replay.js"
 import { FAILURE_EVENT } from "./state.js"
 
 /** At most this many events may wait for a slow consumer, and at most this many (estimated) bytes of them. */
@@ -265,6 +267,8 @@ export interface CollectorHooks {
   readonly stopSequences?: ReadonlyArray<string>
   /** Called once, when a stop sequence matches the text (`stopSequences`). The owner starts the settle window. */
   readonly onStopAnswer?: () => void
+  /** The request's tool names, caller and server tools: the ids the model may name them by are rewritten only for these (#411). */
+  readonly toolNames?: readonly string[]
 }
 
 interface ServerCall {
@@ -278,6 +282,11 @@ export class RequestCollector {
   private readonly stopScan: StopScan | undefined
   private readonly emittedText = new Map<number, number>()
   private readonly toolNames = new Map<string, string>()
+  /** Reasoning text with this request's placeholder ids named by their tool names (#411). */
+  private readonly reasoningNames: ReturnType<typeof placeholderRewriter>
+  /** The open reasoning block as the host sent it, and as it was emitted: the difference is what a replay restores (#411). */
+  private reasoningRaw = ""
+  private reasoningSent = ""
   private readonly calls = new Set<string>()
   private readonly serverCalls = new Map<string, ServerCall>()
   private stepServerCalls = 0
@@ -300,6 +309,7 @@ export class RequestCollector {
   private leftStopped = false
 
   constructor(private readonly hooks: CollectorHooks) {
+    this.reasoningNames = placeholderRewriter(placeholderAliases(hooks.toolNames ?? []))
     this.stopScan = hooks.stopSequences !== undefined && hooks.stopSequences.length > 0 ? new StopScan(hooks.stopSequences) : undefined
   }
 
@@ -364,6 +374,7 @@ export class RequestCollector {
     switch (item.type) {
       case "session.text.delta": {
         if (this.finished) return
+        this.endReasoningText()
         const ordinal = Number(item.ordinal ?? 0)
         const delta = String(item.delta ?? "")
         this.emittedText.set(ordinal, (this.emittedText.get(ordinal) ?? 0) + delta.length)
@@ -379,6 +390,7 @@ export class RequestCollector {
       }
       case "session.text.ended": {
         if (this.finished) return
+        this.endReasoningText()
         // Deltas are live-only; if any were missed, the ended event carries the full text.
         const ordinal = Number(item.ordinal ?? 0)
         const full = String(item.text ?? "")
@@ -389,7 +401,10 @@ export class RequestCollector {
       }
       case "session.reasoning.delta": {
         if (this.finished) return
-        const delta = String(item.delta ?? "")
+        const raw = String(item.delta ?? "")
+        this.reasoningRaw += raw
+        const delta = this.reasoningNames.push(raw)
+        this.reasoningSent += delta
         if (delta.length > 0) this.emit({ type: "reasoning-delta", text: delta })
         return
       }
@@ -397,6 +412,7 @@ export class RequestCollector {
         // The block's provider metadata carries the provider's signature (#146). It goes out as an empty-text reasoning-delta.
         if (this.finished) return
         const signature = signatureOf(item.state)
+        this.endReasoningText(signature)
         if (signature !== undefined) this.emit({ type: "reasoning-delta", text: "", signature })
         return
       }
@@ -406,6 +422,7 @@ export class RequestCollector {
       case "session.tool.called": {
         const id = String(item.id)
         const name = String(item.name ?? this.toolNames.get(id) ?? "")
+        this.endReasoningText()
         if (this.finished) {
           if (this.hooks.serverTools?.has(name)) this.lateServerCall(id, name)
           // A client that left mid-run (the settle window): no tool runs for it, and the run is stopped at once (no further step).
@@ -547,12 +564,14 @@ export class RequestCollector {
 
   /** Close the stream without a terminal event (client gone). */
   end(): void {
+    this.endReasoningText()
     this.finished = true
     this.queue.close()
   }
 
   private finishWith(reason: PlugFinish): void {
     if (this.finished) return
+    this.endReasoningText()
     this.emit({ type: "finish", reason, usage: toUsage(this.usage) })
     this.end()
   }
@@ -650,8 +669,28 @@ export class RequestCollector {
 
   private fail(error: PlugError): void {
     if (this.finished) return
+    this.endReasoningText()
     this.emit({ type: "error", error })
     this.end()
+  }
+
+  /**
+   * The reasoning text held back for a placeholder id goes out now: at the end of a reasoning block, and before any
+   * text, tool call, step end, failure or finish (#411). A block that ends with a signature and was rewritten is kept
+   * under that signature, so a replay can restore the text the provider signed (`reasoning-replay.ts`).
+   */
+  private endReasoningText(signature?: string): void {
+    if (this.finished) return
+    const rest = this.reasoningNames.flush()
+    if (rest.length > 0) {
+      this.reasoningSent += rest
+      this.emit({ type: "reasoning-delta", text: rest })
+    }
+    if (signature !== undefined && this.reasoningRaw.length > 0 && this.reasoningRaw !== this.reasoningSent) {
+      rememberReasoning(signature, this.reasoningRaw)
+    }
+    this.reasoningRaw = ""
+    this.reasoningSent = ""
   }
 
   private emit(event: PlugEvent): void {

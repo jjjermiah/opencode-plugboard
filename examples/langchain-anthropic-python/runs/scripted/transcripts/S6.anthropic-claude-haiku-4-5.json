@@ -47,8 +47,12 @@
       },
       "response": {
         "body": {
+          "container": null,
           "content": [
             {
+              "caller": {
+                "type": "direct"
+              },
               "id": "<id-1>",
               "input": {
                 "calories": 180,
@@ -58,17 +62,24 @@
               "type": "tool_use"
             }
           ],
+          "diagnostics": null,
           "id": "<id-2>",
           "model": "anthropic/claude-haiku-4-5",
           "role": "assistant",
+          "stop_details": null,
           "stop_reason": "tool_use",
           "stop_sequence": null,
           "type": "message",
           "usage": {
+            "cache_creation": null,
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": 0,
+            "inference_geo": null,
             "input_tokens": 11,
-            "output_tokens": 7
+            "output_tokens": 7,
+            "output_tokens_details": null,
+            "server_tool_use": null,
+            "service_tier": null
           }
         },
         "headers": {

@@ -47,7 +47,7 @@ export PLUGBOARD_KEY_MY_APP=choose-a-long-random-string
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.26.0",
+      "package": "opencode-plugboard@0.42.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
         "models": ["anthropic/claude-sonnet-4-6", "github-copilot/*", "opencode-go/glm-5.3-flash"],
@@ -419,7 +419,7 @@ A server shared by a Discord bot, n8n, Open WebUI and a coding agent, with most 
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.26.0",
+      "package": "opencode-plugboard@0.42.0",
       "options": {
         // Reachable from the LAN. Non-loopback hosts refuse to start without keys.
         "listen": { "host": "192.0.2.10", "port": 4010 },
@@ -542,7 +542,7 @@ The protocol-level results are in the [compatibility matrix][compatibility]. It 
 - **Stop sequences** are removed from the answer when they end it, on the Anthropic, OpenAI and Gemini routes. The host reports only that the turn stopped, so a sequence the provider ended on without returning it is not removed.
 - **Anthropic structured outputs** (`output_config.format`) are refused with a 400. Use `json_schema` on the OpenAI or Gemini endpoints, or a forced tool call on `/v1/messages` ([recipe](https://jjjermiah.github.io/opencode-plugboard/messages#structured-extraction-with-a-forced-tool)).
 - **Gemini `candidateCount` above 1** is refused. The OpenAI endpoints serve `n`.
-- **Gemini model ids with a `/`** sent by the AI SDK's Google provider or LangChain's `google-genai` lack the `models/` prefix and get a 401. The `@google/genai` SDK works.
+- **Gemini model ids with a `/`** sent by the AI SDK's Google provider or LangChain's `google-genai` lack the `models/` prefix and get a 404 `NOT_FOUND` that names the expected path (`POST /v1beta/models/{model}:generateContent`). The `@google/genai` SDK works.
 - **Tools with `json_schema`** in one request return the caller's tool calls, not the schema answer ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)).
 - **State is per server.** Limits, the cache and usage live in one OpenCode server process. Two servers do not share them, and a restart clears limits and the cache.
 - **Token counts and costs are estimates.**

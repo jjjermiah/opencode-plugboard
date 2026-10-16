@@ -433,7 +433,7 @@ const anthropicMessages: Client = {
   cases: {
     text: async (target) => {
       const message = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("text") }] })
-      expect(message.content as unknown).toEqual([{ type: "text", text: TEXT }])
+      expect(message.content as unknown).toEqual([{ type: "text", text: TEXT, citations: null }])
     },
     stream: async (target) => {
       const stream = anthropic(target).messages.stream({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("stream") }] })
@@ -447,7 +447,7 @@ const anthropicMessages: Client = {
       expect(use.input).toEqual({ city: "Oslo" })
       messages.push({ role: "assistant", content: first.content }, { role: "user", content: [{ type: "tool_result", tool_use_id: use.id, content: "sunny" }] })
       const second = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages, tools: [anthropicTool] })
-      expect(second.content as unknown).toEqual([{ type: "text", text: TOOL_ANSWER }])
+      expect(second.content as unknown).toEqual([{ type: "text", text: TOOL_ANSWER, citations: null }])
     },
     "parallel-tools": async (target) => {
       const messages: Anthropic.MessageParam[] = [{ role: "user", content: tag("parallel-tools") }]
@@ -455,7 +455,7 @@ const anthropicMessages: Client = {
       const uses = first.content.filter((block) => block.type === "tool_use")
       expect(uses).toHaveLength(2)
       messages.push({ role: "assistant", content: first.content }, { role: "user", content: uses.map((use) => ({ type: "tool_result" as const, tool_use_id: use.id, content: "ok" })) })
-      expect((await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages, tools: [anthropicTool] })).content as unknown).toEqual([{ type: "text", text: PARALLEL_ANSWER }])
+      expect((await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages, tools: [anthropicTool] })).content as unknown).toEqual([{ type: "text", text: PARALLEL_ANSWER, citations: null }])
     },
     image: async (target) => {
       const message = await anthropic(target).messages.create({
@@ -463,7 +463,7 @@ const anthropicMessages: Client = {
         max_tokens: 100,
         messages: [{ role: "user", content: [{ type: "text", text: tag("image") }, { type: "image", source: { type: "base64", media_type: "image/png", data: PNG_BASE64 } }] }],
       })
-      expect(message.content as unknown).toEqual([{ type: "text", text: "image: image/png" }])
+      expect(message.content as unknown).toEqual([{ type: "text", text: "image: image/png", citations: null }])
     },
     structured: {
       gap: "output_config.format (structured outputs) is refused with a 400; plugboard maps json_schema only on the OpenAI and Gemini endpoints",
@@ -489,7 +489,7 @@ const anthropicMessages: Client = {
         max_tokens: 100,
         messages: [{ role: "user", content: tag("multi-turn") }, { role: "assistant", content: TEXT }, { role: "user", content: "Again?" }],
       })
-      expect(message.content as unknown).toEqual([{ type: "text", text: MULTI_TURN_ANSWER }])
+      expect(message.content as unknown).toEqual([{ type: "text", text: MULTI_TURN_ANSWER, citations: null }])
     },
     thinking: async (target) => {
       const message = await anthropic(target).messages.create({
@@ -501,7 +501,7 @@ const anthropicMessages: Client = {
       // plugboard sends an empty signature (src/anthropic/response.ts, #146); the SDK only needs a string, so the case accepts any.
       expect(message.content as unknown).toEqual([
         { type: "thinking", thinking: THINKING, signature: expect.any(String) },
-        { type: "text", text: TEXT },
+        { type: "text", text: TEXT, citations: null },
       ])
     },
     // The model's answer ends with the sequence; plugboard removes it and reports it (#145).
@@ -509,7 +509,7 @@ const anthropicMessages: Client = {
       const message = await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, stop_sequences: ["END"], messages: [{ role: "user", content: tag("stop-sequence") }] })
       expect(message.stop_reason).toBe("stop_sequence")
       expect(message.stop_sequence).toBe("END")
-      expect(message.content as unknown).toEqual([{ type: "text", text: TEXT }])
+      expect(message.content as unknown).toEqual([{ type: "text", text: TEXT, citations: null }])
     },
     // An estimate (src/anthropic/tokens.ts): the case checks it is a positive count, not its value (#143).
     "count-tokens": async (target) => {
@@ -521,10 +521,10 @@ const anthropicMessages: Client = {
         max_tokens: 100,
         messages: [{ role: "user", content: [{ type: "text", text: tag("document") }, { type: "document", source: { type: "base64", media_type: "application/pdf", data: PDF_BASE64 } }] }],
       })
-      expect(message.content as unknown).toEqual([{ type: "text", text: "document: application/pdf" }])
+      expect(message.content as unknown).toEqual([{ type: "text", text: "document: application/pdf", citations: null }])
     },
     "model-id": async (target) => {
-      expect((await anthropic(target).messages.create({ model: CATALOG_ID, max_tokens: 100, messages: [{ role: "user", content: tag("model-id") }] })).content as unknown).toEqual([{ type: "text", text: TEXT }])
+      expect((await anthropic(target).messages.create({ model: CATALOG_ID, max_tokens: 100, messages: [{ role: "user", content: tag("model-id") }] })).content as unknown).toEqual([{ type: "text", text: TEXT, citations: null }])
     },
     "stream-usage": async (target) => {
       const stream = anthropic(target).messages.stream({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("stream-usage") }] })

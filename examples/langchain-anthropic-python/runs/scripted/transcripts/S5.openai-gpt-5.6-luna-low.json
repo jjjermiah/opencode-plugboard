@@ -35,23 +35,32 @@
       },
       "response": {
         "body": {
+          "container": null,
           "content": [
             {
+              "citations": null,
               "text": "red",
               "type": "text"
             }
           ],
+          "diagnostics": null,
           "id": "<id-1>",
           "model": "openai/gpt-5.6-luna#low",
           "role": "assistant",
+          "stop_details": null,
           "stop_reason": "end_turn",
           "stop_sequence": null,
           "type": "message",
           "usage": {
+            "cache_creation": null,
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": 0,
+            "inference_geo": null,
             "input_tokens": 11,
-            "output_tokens": 7
+            "output_tokens": 7,
+            "output_tokens_details": null,
+            "server_tool_use": null,
+            "service_tier": null
           }
         },
         "headers": {

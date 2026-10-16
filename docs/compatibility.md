@@ -99,10 +99,6 @@ Four clients run against the scripted fake in the `examples` CI job, through `bu
 
 Anthropic publishes no machine-readable Messages spec, so `anthropic.json` is generated from the pinned SDK's types by `test/fixtures/specs/vendor-anthropic.ts`. Run it by hand when the SDK is bumped. The SDK's stream union has no `ping` event, so a keep-alive is checked as `{"type": "ping"}` exactly, the same as the SDK's own type check (#132).
 
-Open Anthropic gaps, each a `test.failing` case:
-
-- **Message and usage nullable fields** (#406): `container`, `diagnostics`, `stop_details`, and the usage fields `cache_creation`, `inference_geo`, `output_tokens_details`, `server_tool_use`, `service_tier`.
-- **Text block citations** (#405): `citations` is required, `null` when there are none.
-- **tool_use caller** (#404): `caller` is required on a tool_use block.
+No Anthropic gap is open. The Message and usage fields the SDK types require are sent, `null` where plugboard has no value.
 
 The schemas are upstream definitions, not a live provider's. A passing check shows plugboard's shape matches the type. It does not show what Anthropic sends. The live provider matrix is tracked in #99.

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { parseMessagesRequest, type ParsedMessages } from "../../src/anthropic/request.js"
 import { isPlugError } from "../../src/contract.js"
+import { rememberReasoning } from "../../src/reasoning-replay.js"
 import { testOptions } from "../support/fixtures.js"
 
 const options = testOptions({ maxTools: 2 })
@@ -18,6 +19,19 @@ const body = (extra: Record<string, unknown> = {}) => ({ model: "test/echo", max
 const tool = (name: string, extra: Record<string, unknown> = {}) => ({ name, input_schema: { type: "object" }, ...extra })
 const toolUse = (id: string, name: string, input: unknown = {}) => ({ type: "tool_use", id, name, input })
 const image = (source: unknown) => ({ type: "image", source })
+
+describe("#411 a signed thinking block replays the text it was signed for", () => {
+  test("a block whose text plugboard rewrote replays the original text, with its signature", () => {
+    rememberReasoning("sig_replay", "call mcp_TZ2V0X3dlYXRoZXI")
+    const { request } = parse(body({ messages: [user(), assistant([{ type: "thinking", thinking: "call get_weather", signature: "sig_replay" }, { type: "text", text: "ok" }])] }))
+    expect(request.messages[1]!.content[0]).toEqual({ type: "reasoning", text: "call mcp_TZ2V0X3dlYXRoZXI", signature: "sig_replay" })
+  })
+
+  test("a signature plugboard does not hold replays the text as received", () => {
+    const { request } = parse(body({ messages: [user(), assistant([{ type: "thinking", thinking: "call get_weather", signature: "sig_not_remembered" }, { type: "text", text: "ok" }])] }))
+    expect(request.messages[1]!.content[0]).toEqual({ type: "reasoning", text: "call get_weather", signature: "sig_not_remembered" })
+  })
+})
 
 describe("#275 cache_control on content blocks", () => {
   test("an ephemeral breakpoint on a text, image or tool_result block is carried as a caller breakpoint; ttl 1h is carried as cacheTtl, any other ttl is the 5-minute default", () => {

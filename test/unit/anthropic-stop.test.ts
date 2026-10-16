@@ -23,7 +23,7 @@ async function run(list: PlugEvent[], stop?: string[], stream = false) {
     .filter((event) => event.type === "content_block_delta")
     .map((event) => (event.delta as { text?: string }).text ?? "")
     .join("")
-  const delta = emitted.find((event) => event.type === "message_delta") as unknown as { delta: { stop_reason: string; stop_sequence: string | null }; usage: Record<string, number> }
+  const delta = emitted.find((event) => event.type === "message_delta") as unknown as { delta: { stop_reason: string; stop_sequence: string | null; container: null; stop_details: null }; usage: Record<string, number> }
   return {
     result,
     emitted,
@@ -39,8 +39,8 @@ describe("#145 a stop sequence is reported and removed", () => {
     const { message, delta, streamed } = await run([ev.text("Hello END"), ev.finish("stop")], ["END"])
     expect(message!.stop_reason).toBe("stop_sequence")
     expect(message!.stop_sequence).toBe("END")
-    expect(message!.content).toEqual([{ type: "text", text: "Hello " }])
-    expect(delta).toEqual({ stop_reason: "stop_sequence", stop_sequence: "END" })
+    expect(message!.content).toEqual([{ type: "text", text: "Hello ", citations: null }])
+    expect(delta).toEqual({ stop_reason: "stop_sequence", stop_sequence: "END", container: null, stop_details: null })
     expect(streamed).toBe("Hello ")
   })
 
@@ -53,20 +53,20 @@ describe("#145 a stop sequence is reported and removed", () => {
   test("the longest matching sequence wins", async () => {
     const { message } = await run([ev.text("Answer: 4 ###"), ev.finish("stop")], ["#", "###"])
     expect(message!.stop_sequence).toBe("###")
-    expect(message!.content).toEqual([{ type: "text", text: "Answer: 4 " }])
+    expect(message!.content).toEqual([{ type: "text", text: "Answer: 4 ", citations: null }])
   })
 
   test("a stream without any stop sequence is unchanged: end_turn, all text sent", async () => {
     const { message, delta, streamed } = await run([ev.text("Hello END"), ev.finish("stop")])
     expect(message!.stop_reason).toBe("end_turn")
     expect(message!.stop_sequence).toBeNull()
-    expect(delta).toEqual({ stop_reason: "end_turn", stop_sequence: null })
+    expect(delta).toEqual({ stop_reason: "end_turn", stop_sequence: null, container: null, stop_details: null })
     expect(streamed).toBe("Hello END")
   })
 
   test("#390 a sequence in the middle of the answer ends it there", async () => {
     const { delta, streamed } = await run([ev.text("Hello END of it"), ev.finish("stop")], ["END"], true)
-    expect(delta).toEqual({ stop_reason: "stop_sequence", stop_sequence: "END" })
+    expect(delta).toEqual({ stop_reason: "stop_sequence", stop_sequence: "END", container: null, stop_details: null })
     expect(streamed).toBe("Hello ")
   })
 
@@ -79,7 +79,7 @@ describe("#145 a stop sequence is reported and removed", () => {
   test("#390 a length finish whose answer contains the sequence: the sequence still ends it", async () => {
     const { message } = await run([ev.text("Hello END"), ev.finish("length")], ["END"])
     expect(message!.stop_reason).toBe("stop_sequence")
-    expect(message!.content).toEqual([{ type: "text", text: "Hello " }])
+    expect(message!.content).toEqual([{ type: "text", text: "Hello ", citations: null }])
   })
 })
 
@@ -88,7 +88,7 @@ describe("#390 a tool call before the sequence: the turn ended on the call", () 
     const { message, delta } = await run([ev.text("Let me look"), ev.call("c1", "lookup", { q: 1 }), ev.text(" END"), ev.finish("stop")], ["END"])
     expect(message!.stop_reason).toBe("tool_use")
     expect(message!.stop_sequence).toBeNull()
-    expect(delta).toEqual({ stop_reason: "tool_use", stop_sequence: null })
+    expect(delta).toEqual({ stop_reason: "tool_use", stop_sequence: null, container: null, stop_details: null })
     // The answer text after the call is sent as it comes; the sequence is cut from it.
     expect(message!.content.map((block) => block.type)).toEqual(["text", "tool_use", "text"])
   })

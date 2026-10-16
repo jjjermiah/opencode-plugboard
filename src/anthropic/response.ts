@@ -38,6 +38,9 @@ const newId = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll("-
 /** Host call ids are not always Anthropic-shaped; `toolu_` plus the id with unsafe characters replaced. */
 const toolId = (id: string) => (/^toolu_[A-Za-z0-9_-]+$/.test(id) ? id : `toolu_${id.replace(/[^A-Za-z0-9_-]/g, "_")}`)
 
+/** Every tool call plugboard returns is one the model made directly (not from a server tool), as Anthropic reports it. */
+const DIRECT_CALLER = () => ({ type: "direct" as const })
+
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
 /** Tool input must be a JSON object; a string is parsed, anything else becomes `{}`. */
@@ -64,8 +67,16 @@ const encodeUsage = (usage: PlugUsage | undefined) => {
     output_tokens: usage?.outputTokens ?? 0,
     cache_creation_input_tokens: write,
     cache_read_input_tokens: read,
+    output_tokens_details: null,
+    server_tool_use: null,
   }
 }
+
+/**
+ * A Message's usage: the counts above plus `cache_creation`, `inference_geo` and `service_tier`, which the SDK's `Usage` type
+ * requires (null when plugboard has no value). message_delta carries the narrower `MessageDeltaUsage`, so it takes `encodeUsage` alone.
+ */
+const encodeMessageUsage = (usage: PlugUsage | undefined) => ({ ...encodeUsage(usage), cache_creation: null, inference_geo: null, service_tier: null })
 
 const STOP_REASON: Record<Exclude<PlugFinish, "error">, string> = {
   stop: "end_turn",
@@ -140,7 +151,10 @@ export async function runMessage(
     content,
     stop_reason: null,
     stop_sequence: null,
-    usage: encodeUsage(undefined),
+    container: null,
+    diagnostics: null,
+    stop_details: null,
+    usage: encodeMessageUsage(undefined),
     ...extra,
   })
   const start = () => {
@@ -159,7 +173,7 @@ export async function runMessage(
     emit({ type: "content_block_stop", index: open.index })
     // A thinking block carries the provider's signature when the host reported one (#146); otherwise it is empty. Plugboard drops
     // thinking blocks it receives, so a replayed block never reaches a provider with an empty signature.
-    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: open.signature ?? "" })
+    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text, citations: null } : { type: "thinking", thinking: open.text, signature: open.signature ?? "" })
     open = undefined
   }
   /** The provider's signature for the open thinking block (#146): a `signature_delta` before the block stops. */
@@ -178,7 +192,7 @@ export async function runMessage(
       emit({
         type: "content_block_start",
         index: open.index,
-        content_block: kind === "text" ? { type: "text", text: "" } : { type: "thinking", thinking: "", signature: "" },
+        content_block: kind === "text" ? { type: "text", text: "", citations: null } : { type: "thinking", thinking: "", signature: "" },
       })
       ping()
     }
@@ -196,11 +210,11 @@ export async function runMessage(
     const index = nextIndex++
     const toolUseId = toolId(call.id)
     const input = toolInput(call.input)
-    emit({ type: "content_block_start", index, content_block: { type: "tool_use", id: toolUseId, name: call.name, input: {} } })
+    emit({ type: "content_block_start", index, content_block: { type: "tool_use", id: toolUseId, name: call.name, caller: DIRECT_CALLER(), input: {} } })
     ping()
     emit({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } })
     emit({ type: "content_block_stop", index })
-    if (aggregate) content.push({ type: "tool_use", id: toolUseId, name: call.name, input })
+    if (aggregate) content.push({ type: "tool_use", id: toolUseId, name: call.name, caller: DIRECT_CALLER(), input })
     calls++
   }
 
@@ -242,8 +256,8 @@ export async function runMessage(
   const reason = finish === "stop" && calls > 0 ? "tool-calls" : (finish ?? "stop")
   const sequence = calls === 0 ? (matched ?? null) : null
   const stopReason = sequence !== null ? "stop_sequence" : STOP_REASON[reason as Exclude<PlugFinish, "error">]
-  const final = message({ stop_reason: stopReason, stop_sequence: sequence, usage: encodeUsage(usage) })
-  emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: sequence }, usage: final.usage })
+  const final = message({ stop_reason: stopReason, stop_sequence: sequence, usage: encodeMessageUsage(usage) })
+  emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: sequence, container: null, stop_details: null }, usage: encodeUsage(usage) })
   emit({ type: "message_stop" })
   return { started, message: final }
 }
