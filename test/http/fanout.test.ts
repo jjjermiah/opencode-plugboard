@@ -77,6 +77,28 @@ describe("#58 chat completions with n > 1, streaming", () => {
     expect(text.match(/\[DONE\]/g)).toHaveLength(1)
   })
 
+  test("#423 every choice opens with its role chunk, in index order, before any content, even when choice 1 answers first", async () => {
+    const release = gate()
+    await route((_request, call) => (call === 0 ? [{ wait: release.promise }, ev.text("A1"), ev.finish()] : [ev.text("B1"), ev.finish()]))
+    const stream = await server!.open(chat({ n: 2, stream: true }))
+    await stream.waitFor((text) => text.includes('"B1"'))
+    release.open()
+    const chunks = sseData(await stream.ended)
+    // The openai-python stream helper keeps choices in arrival order and indexes them by `index`: a new index must be the next one.
+    const known = new Set<number>()
+    for (const chunk of chunks)
+      for (const choice of chunk.choices) {
+        if (known.has(choice.index)) continue
+        expect(choice.index).toBe(known.size)
+        known.add(choice.index)
+      }
+    expect(chunks.slice(0, 2).map((chunk) => [chunk.choices[0].index, chunk.choices[0].delta])).toEqual([
+      [0, { role: "assistant", content: "" }],
+      [1, { role: "assistant", content: "" }],
+    ])
+    expect(chunks.findIndex((chunk) => chunk.choices[0].delta.content === "B1")).toBeGreaterThan(1)
+  })
+
   test("include_usage: one final chunk with the summed usage", async () => {
     await route((_request, call) => [ev.text("x"), ev.finish("stop", usage(5, call + 1))])
     const chunks = sseData(await (await server!.open(chat({ n: 2, stream: true, stream_options: { include_usage: true } }))).ended)

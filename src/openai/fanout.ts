@@ -32,6 +32,7 @@ import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type Reque
 import {
   STRUCTURED_FALLBACK_HEADER,
   chatUsageChunk,
+  roleChunk,
   collectCompletion,
   encodeError,
   streamCompletion,
@@ -54,6 +55,8 @@ export interface ChoiceCodec {
   collect(events: AsyncIterable<PlugEvent>, index: number): Promise<CollectedChoice>
   /** One choice of the shared stream: this choice's chunks only (see `StreamChoice`). */
   streamChoice(events: AsyncIterable<PlugEvent>, write: (chunk: string) => void, choice: StreamChoice): Promise<StreamResult>
+  /** The chunk that opens one choice before its first chunk (chat's role delta). Absent: no opening chunk. */
+  opening?(choice: StreamChoice): object
   /** The final chunk with the summed usage (`include_usage`). */
   usageChunk(choice: Omit<StreamChoice, "index">, usage: PlugUsage): object
   /** Echo the served model of an alias with fallbacks as the response model. Used for a single call only: with several choices the body keeps the requested model. */
@@ -67,6 +70,7 @@ export const chatCodec = (exchange: OpenAiExchange): ChoiceCodec => ({
   idPrefix: "chatcmpl-",
   collect: (events) => collectCompletion(events, exchange),
   streamChoice: (events, write, choice) => streamCompletion(events, exchange, write, choice),
+  opening: (choice) => roleChunk(exchange, choice),
   usageChunk: (choice, usage) => chatUsageChunk(exchange.model, choice.id, choice.created, usage),
   setModel: (model) => void (exchange.model = model),
 })
@@ -244,11 +248,23 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
 
   const sse = sseWriter(response, scope.signal)
   const shared = { id: `${codec.idPrefix}${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`, created: Math.floor(Date.now() / 1000) }
+  // Each choice opens with its role chunk before its first chunk, in index order (#423). Opening a choice opens every
+  // lower index first, so the openers go out in order whichever choice answers first; a choice that never writes is opened only by a later one.
+  const opening = codec.opening
+  const opened = new Set<number>()
+  const openUpTo = (index: number) => {
+    if (opening === undefined) return
+    for (let next = 0; next <= index; next++) {
+      if (opened.has(next)) continue
+      opened.add(next)
+      sse.write(`data: ${JSON.stringify(opening({ ...shared, index: next }))}\n\n`)
+    }
+  }
   const channels = calls.map(() => channel<PlugEvent>())
   let failure: PlugError | undefined
   let usage: PlugUsage | undefined
   const runs = channels.map((events, index) =>
-    codec.streamChoice(events, sse.write, { ...shared, index }).then((result) => {
+    codec.streamChoice(events, sse.write, { ...shared, index, ...(opening === undefined ? {} : { open: () => openUpTo(index) }) }).then((result) => {
       if (result.failure && !failure) {
         failure = result.failure
         cancel()

@@ -71,6 +71,11 @@ export interface StreamChoice {
   readonly id: string
   readonly created: number
   readonly index: number
+  /**
+   * Called before this choice writes its first chunk. The fan-out writes the opening chunks (the role delta) of every
+   * choice up to this one, in index order (#423). Absent: the encoder writes its own role chunk.
+   */
+  readonly open?: () => void
 }
 
 const ERROR_TYPES: Record<PlugErrorKind, string> = {
@@ -399,6 +404,19 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
   }
 }
 
+/** One chunk of a chat stream: the shared envelope around one choice's `delta`. */
+const chatChunk = (exchange: OpenAiExchange, id: string, created: number, index: number, delta: Record<string, unknown>, finish: string | null = null) => ({
+  id,
+  object: "chat.completion.chunk",
+  created,
+  model: exchange.model,
+  choices: [{ index, delta, finish_reason: finish, logprobs: null }],
+  ...(exchange.includeUsage ? { usage: null } : {}),
+})
+
+/** The opening chunk of one choice of a fanned-out stream: its role delta, before any content (#423). */
+export const roleChunk = (exchange: OpenAiExchange, choice: StreamChoice): object => chatChunk(exchange, choice.id, choice.created, choice.index, { role: "assistant", content: "" })
+
 /** The final chunk of a stream with `include_usage`: no choices, the totals. */
 export const chatUsageChunk = (model: string, id: string, created: number, usage: PlugUsage): object => ({
   id,
@@ -425,15 +443,7 @@ export async function streamCompletion(
   const created = choice?.created ?? now()
   const index = choice?.index ?? 0
   const frame = (value: object) => write(`data: ${JSON.stringify(value)}\n\n`)
-  const chunk = (delta: Record<string, unknown>, finish: string | null = null) =>
-    frame({
-      id,
-      object: "chat.completion.chunk",
-      created,
-      model: exchange.model,
-      choices: [{ index, delta, finish_reason: finish, logprobs: null }],
-      ...(exchange.includeUsage ? { usage: null } : {}),
-    })
+  const chunk = (delta: Record<string, unknown>, finish: string | null = null) => frame(chatChunk(exchange, id, created, index, delta, finish))
 
   let started = false
   let calls = 0
@@ -448,7 +458,8 @@ export async function streamCompletion(
   const start = () => {
     if (started) return
     started = true
-    chunk({ role: "assistant", content: "" })
+    if (choice?.open) choice.open()
+    else chunk({ role: "assistant", content: "" })
   }
   const send = (text: string) => {
     if (text.length > 0) chunk({ content: text })
