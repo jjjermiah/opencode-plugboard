@@ -6,6 +6,8 @@ Plugboard is stateless, as on the other endpoints: every request carries the who
 
 Tested, 2026-10-11, `@google/genai` 2.28.0 (JS SDK): against a fake model caller (plain, streamed and function-calling chat, JSON output, image input, `models.list` and `models.get`, errors, `apiVersion: "v1"`), and live on OpenCode 2.0.26 with `opencode-go/glm-5.3-flash` (alias `fast`), `anthropic/claude-haiku-5-5` and `openai/gpt-5.6-luna%23low`: text, stream, a function-calling round trip, JSON schema, parallel calls in a stream and in `ai.chats`, and an array schema. Run through the example clients on 2026-10-16 (live, plugboard 0.41.0): the Google GenAI JS and Python SDKs, LangChain's `ChatGoogleGenerativeAI`, the Vercel AI SDK's Google provider and the headless Gemini CLI, all passing. Each has a page under [clients](clients/google-genai-js.md). The Python SDK and LangChain image requests needed [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401), fixed in 0.41.0.
 
+The tested paragraph above covers the JS SDK only. The Python SDK was not run against the tests above, and its inline image requests failed until [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401) and [#409](https://github.com/jjjermiah/opencode-plugboard/issues/409), both fixed in 0.41.0. Its runs are in the [Google GenAI Python](clients/google-genai-python.md) example.
+
 ```ts
 import { GoogleGenAI } from "@google/genai"
 
