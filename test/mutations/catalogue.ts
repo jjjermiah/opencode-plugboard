@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P390-interrupt-stop-is-error",
+    invariant: "#390",
+    file: "src/session/events.ts",
+    find: '        if (error?.type === "aborted" && this.stopped) return this.finishWith("stop")',
+    replace: "",
+    tests: ["test/session/caller.test.ts", "test/session/collector.test.ts"],
+  },
+  {
     id: "P390-stop-sent-to-model",
     invariant: "#390",
     file: "src/session/context.ts",

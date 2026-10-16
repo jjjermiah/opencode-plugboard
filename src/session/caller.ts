@@ -322,6 +322,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       // A stop sequence ended the answer (#390): interrupt the host run and keep the stream open until its finish carries the usage.
       let drain: ReturnType<typeof setTimeout> | undefined
       const onStopAnswer = () => {
+        collector?.markStopped()
         interrupt()
         if (drain !== undefined) return
         drain = setTimeout(() => collector?.finishNow(), STOP_DRAIN_MS)

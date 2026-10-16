@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { CallContext, PlugEvent, PlugRequest } from "../../src/contract.js"
 import { setLogLevel } from "../../src/log.js"
 import { createSessionCaller, type SessionCallerDeps } from "../../src/session/caller.js"
+import { withStopSequences } from "../../src/stop.js"
 import { ensureAppDir } from "../../src/session/history.js"
 import { REQUEST_PERMISSIONS } from "../../src/session/seeds.js"
 import { createSessionStore } from "../../src/session/state.js"
@@ -295,6 +296,32 @@ describe("#390 a stop sequence ends the answer: the run is interrupted and the s
     }
     expect(run.port.interrupted).toEqual(["ses_1"])
     expect(seen.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } })
+  })
+})
+
+describe("#390 the host's interrupt of a stop-sequence run ends the answer with finish stop", () => {
+  test("OpenCode 2.0.27 answers an interrupt with an aborted step failure (no tokens) and execution.interrupted: the answer ends with stop and the running usage", async () => {
+    const run = setup()
+    run.port.script.interrupt = async (sessionID) => {
+      run.sessions.dispatch(bus(sessionID).stepFailed({ type: "aborted", message: "Step interrupted" }))
+      run.sessions.dispatch(bus(sessionID).executionInterrupted())
+    }
+    run.answer((id) => [bus(id).usage({ input: 10, output: 500 }), bus(id).textDelta("alpha END beta")])
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(events).toEqual([
+      { type: "text-delta", text: "alpha " },
+      { type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 }, stopSequence: "END" },
+    ])
+  })
+
+  test("any other step failure still surfaces as an error while the answer is being read", async () => {
+    const run = setup()
+    run.port.script.interrupt = async (sessionID) => {
+      run.sessions.dispatch(bus(sessionID).stepFailed({ type: "unknown", message: "boom" }))
+    }
+    run.answer((id) => [bus(id).textDelta("alpha END beta")])
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(events.at(-1)).toMatchObject({ type: "error" })
   })
 })
 

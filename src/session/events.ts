@@ -266,6 +266,8 @@ export class RequestCollector {
   private serverSteps = 0
   private usage?: RawUsage
   private finished = false
+  /** A stop sequence ended the answer and the run was interrupted for it (`markStopped`). */
+  private stopped = false
   private executionDone = false
   private wasCancelled = false
   private settled = false
@@ -421,6 +423,7 @@ export class RequestCollector {
         // The host can run another step after a failed one; the response is over, the turn must be too.
         if (!this.executionDone && error?.type !== "aborted") this.hooks.stopTurn()
         if (this.calls.size > 0 && error?.type === "aborted") return this.finishWith("tool-calls")
+        if (error?.type === "aborted" && this.stopped) return this.finishWith("stop")
         if (item.finish === "content-filter") return this.finishWith("content-filter")
         if (error?.type === "aborted" && this.wasCancelled) return this.end()
         return this.failFromHost(error, "Model step failed")
@@ -438,7 +441,7 @@ export class RequestCollector {
         if (!this.finished) {
           if (this.calls.size > 0) this.finishWith("tool-calls")
           else if (this.wasCancelled) this.end()
-          else if (item.type === "session.execution.succeeded") this.finishWith("stop")
+          else if (item.type === "session.execution.succeeded" || this.stopped) this.finishWith("stop")
           else this.fail({ status: 500, kind: "server", message: "Request was interrupted before the model finished" })
         }
         this.end()
@@ -472,6 +475,14 @@ export class RequestCollector {
    */
   finishNow(): void {
     this.finishWith("stop")
+  }
+
+  /**
+   * A stop sequence ended the answer, so the host run is being interrupted on purpose (#390). The host then reports the
+   * interrupt as an aborted step failure (OpenCode 2.0.27, `Step interrupted`), which is the expected end, not an error.
+   */
+  markStopped(): void {
+    this.stopped = true
   }
 
   /**

@@ -43,6 +43,21 @@ describe("#390 finishNow: a run a stop sequence interrupted ends with the usage 
     expect(events.filter((event) => event.type === "finish")).toEqual([{ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } }])
   })
 
+  test("after markStopped, the host's aborted step failure ends the run with stop and the usage counted so far", async () => {
+    const run = setup()
+    run.collector.markStopped()
+    run.send(host.usage({ input: 10, output: 500 }), host.stepFailed({ type: "aborted", message: "Step interrupted" }), host.executionInterrupted())
+    const events = await run.drain()
+    expect(events).toEqual([{ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } }])
+  })
+
+  test("without markStopped, an aborted step failure is still an error", async () => {
+    const run = setup()
+    run.send(host.stepFailed({ type: "aborted", message: "Step interrupted" }))
+    const events = await run.drain()
+    expect(events.at(-1)).toMatchObject({ type: "error" })
+  })
+
   test("after the run ended on its own, finishNow changes nothing", async () => {
     const run = setup()
     run.send(host.textDelta("Hi"), host.stepEnded("stop", { input: 3, output: 4 }))
