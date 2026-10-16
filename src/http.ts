@@ -340,6 +340,7 @@ export const PROBLEM_CODES: ReadonlySet<string> = new Set([
   "config_key",
   "app_has_server_tools",
   "app_has_config_key",
+  "body_budget_insufficient",
   "not_ready",
   "body_read_timeout",
   "request_body_too_large",

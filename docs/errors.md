@@ -115,6 +115,10 @@ The request body is over the body cap: `limits.maxBodyBytes` (32 MiB by default)
 
 Too many request bodies are being read at once (`limits.maxBodyBytesInFlight`), or this app already holds its share of it (see `maxBodyBytesInFlight` in [Configuration](configuration.md)). Retry after the `Retry-After` delay.
 
+### body_budget_insufficient {#body-budget-insufficient}
+
+The admin key API refused to create a key for a new app: the set `limits.maxBodyBytesInFlight` cannot hold one body of the largest size for every app, this one included. Raise the budget, or unset it to let it grow with the apps. Nothing was created.
+
 ### timeout {#timeout}
 
 The request ran past `requestTimeoutMs`. Raise that option, or ask for less work per request.

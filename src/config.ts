@@ -737,14 +737,14 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
   for (const [app, caps] of Object.entries(apps))
     if (caps.maxBodyBytes !== undefined && caps.maxBodyBytes > (maxBodyBytes ?? BODY_HARD_CAP))
       throw new Error(`plugboard option \`limits.apps.${app}.maxBodyBytes\` cannot be above \`limits.maxBodyBytes\` (or ${BODY_HARD_CAP} when that is unset)`)
-  // With several app keys each app's share of the budget (`bodyLimits`) must hold one body of the largest size.
-  if (Object.keys(keys).length > 1) {
-    const cap = raw.maxBodyBytesInFlight === undefined ? BODY_LIMIT_DEFAULTS.maxBytesInFlight : positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER)
-    const largest = maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
-    const count = Object.keys(keys).length
-    if (Math.floor(cap / count) < largest)
+  // An explicit budget must hold one body of its largest size per configured app (`bodyRequirement`). Unset, it grows with the apps.
+  if (raw.maxBodyBytesInFlight !== undefined && Object.keys(keys).length > 1) {
+    const cap = positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER)
+    const globalMax = maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
+    const need = Object.keys(keys).reduce((sum, app) => sum + (apps[app]?.maxBodyBytes ?? globalMax), 0)
+    if (cap < need)
       throw new Error(
-        `plugboard option \`limits.maxBodyBytesInFlight\` (${cap}) is split across ${count} app keys, so each app gets ${Math.floor(cap / count)} bytes, less than \`limits.maxBodyBytes\` (${largest}): raise it to at least ${count * largest}`,
+        `plugboard option \`limits.maxBodyBytesInFlight\` (${cap}) must be at least ${need}: each of the ${Object.keys(keys).length} apps needs room for one body of its largest size (\`limits.maxBodyBytes\`, or \`limits.apps.<name>.maxBodyBytes\`). Unset it to let it grow with the apps`,
       )
   }
   return {
@@ -761,25 +761,53 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
 }
 
 /**
- * The body limits in force for a request of `app` (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`, and the largest body:
- * `limits.apps.<app>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB, #258), or the defaults. `app` is absent before a
- * credential is read; the global cap applies then.
+ * The apps that hold shares of the body budget: the apps of the configured keys and of the runtime keys, each app once however
+ * many keys it has (the default app when there are none, which is keyless).
  */
-export function bodyLimits(options: Pick<PlugboardOptions, "limits"> & Partial<Pick<PlugboardOptions, "keys">>, app?: string): BodyLimits {
+export function bodyApps(options: Pick<PlugboardOptions, "keys">, runtimeApps: ReadonlyArray<string> = []): string[] {
+  const names = new Set([...Object.keys(options.keys ?? {}), ...runtimeApps])
+  return names.size === 0 ? [DEFAULT_APP] : [...names]
+}
+
+/** The largest body an app may send: `limits.apps.<name>.maxBodyBytes`, else `limits.maxBodyBytes`, else 32 MiB. */
+export function bodyCapOf(options: Pick<PlugboardOptions, "limits">, app: string): number {
+  return options.limits?.apps?.[app]?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
+}
+
+/** The budget the apps need for one body each, at their largest sizes: the sum of `bodyCapOf` over `apps`. */
+export function bodyRequirement(options: Pick<PlugboardOptions, "limits">, apps: ReadonlyArray<string>): number {
+  return apps.reduce((sum, app) => sum + bodyCapOf(options, app), 0)
+}
+
+/**
+ * The body budget in force (`limits.maxBodyBytesInFlight`). Set, it is kept as it is (and `parseOptions` and the admin key API
+ * refuse a set value below `bodyRequirement`). Unset, it is max(128 MiB, `bodyRequirement`), so every app can always send one
+ * body of its largest size: an upgrade with several apps and no setting keeps working.
+ */
+export function bodyBudget(options: Pick<PlugboardOptions, "limits">, apps: ReadonlyArray<string>): number {
+  return options.limits?.maxBodyBytesInFlight ?? Math.max(BODY_LIMIT_DEFAULTS.maxBytesInFlight, bodyRequirement(options, apps))
+}
+
+/**
+ * The body limits in force for a request of `app` (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`, `limits.bodyReadMaxMs`,
+ * and the largest body, #258). With several apps the budget is split in proportion to each app's largest body, so every app's share
+ * holds one body of its largest size (`bodyRequirement` fits the budget). `runtimeApps` are the apps of the runtime keys. One app has
+ * the whole budget.
+ */
+export function bodyLimits(options: Pick<PlugboardOptions, "limits" | "keys">, app?: string, runtimeApps: ReadonlyArray<string> = []): BodyLimits {
+  const apps = bodyApps(options, runtimeApps)
+  const budget = bodyBudget(options, apps)
+  const split = apps.length > 1 && app !== undefined
   const own = app !== undefined && options.limits?.apps && Object.hasOwn(options.limits.apps, app) ? options.limits.apps[app] : undefined
-  const budget = options.limits?.maxBodyBytesInFlight ?? BODY_LIMIT_DEFAULTS.maxBytesInFlight
-  // With several app keys the budget is split evenly: each app may hold `budget / keys` bytes of bodies, so no other app can take
-  // the room it needs for one body of the largest size (`parseLimits` refuses a split that would leave less). One key or none: no split.
-  const keys = Object.keys(options.keys ?? {}).length
-  const split = keys > 1 && app !== undefined
   return {
     maxBytesInFlight: budget,
-    ...(split ? { app, appShare: Math.floor(budget / keys) } : {}),
+    ...(split ? { app, appShare: Math.floor((budget * bodyCapOf(options, app)) / bodyRequirement(options, apps)) } : {}),
     readTimeoutMs: options.limits?.bodyReadTimeoutMs ?? BODY_LIMIT_DEFAULTS.readTimeoutMs,
     readCeilingMs: options.limits?.bodyReadMaxMs ?? BODY_LIMIT_DEFAULTS.readCeilingMs,
     maxBodyBytes: own?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes,
   }
 }
+
 
 /**
  * The refusal for `app` calling `endpoint` (#268): 403 `endpoint_forbidden` when `apps.<app>.endpoints` is set and does not

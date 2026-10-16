@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { request as httpRequest, type ClientRequest, type IncomingMessage, type ServerResponse } from "node:http"
-import { bodyLimits, parseOptions, type BodyLimits } from "../../src/config.js"
+import { bodyApps, bodyLimits, parseOptions, type BodyLimits } from "../../src/config.js"
 import { BodyError, bodyPlugError, readJsonBody, sendError, sendJson } from "../../src/http.js"
 import { listen, type Loopback } from "../support/loopback.js"
 
@@ -143,9 +143,38 @@ describe("the config split of the body budget", () => {
     expect(bodyLimits(options, "a").appShare).toBeUndefined()
   })
 
-  test("a split that would leave an app less than the largest body is refused at load, with the figure to raise it to", () => {
-    expect(() => parseOptions({ keys, limits: { maxBodyBytesInFlight: 100, maxBodyBytes: 60 } })).toThrow(
-      "is split across 2 app keys, so each app gets 50 bytes, less than `limits.maxBodyBytes` (60): raise it to at least 120",
-    )
+  test("an explicit budget below the apps' largest bodies is refused at load, with the figure to raise it to", () => {
+    expect(() => parseOptions({ keys, limits: { maxBodyBytesInFlight: 100, maxBodyBytes: 60 } })).toThrow("must be at least 120: each of the 2 apps needs room")
+  })
+})
+
+const MIB = 1024 * 1024
+const six = Object.fromEntries(["a1", "a2", "a3", "a4", "a5", "a6"].map((app, i) => [app, String.fromCharCode(98 + i).repeat(40)]))
+
+describe("the default budget grows with the apps (since 0.39.0)", () => {
+  test("six apps with defaults load, and each of them admits a 32 MiB body", async () => {
+    const options = parseOptions({ keys: six })
+    const limits = bodyLimits(options, "a1")
+    expect(limits.maxBytesInFlight).toBe(192 * MIB)
+    expect(limits.appShare).toBe(32 * MIB)
+    // Six uploads of 32 MiB, declared and held at once: each app is admitted its body; a seventh from one app is over its share.
+    const { port, send } = await serve(limits, byHeader)
+    const clients = ["a1", "a2", "a3", "a4", "a5", "a6"].map((app) => openPost(port, { "content-type": "application/json", "content-length": 32 * MIB, "x-app": app }))
+    const replies = clients.map(replyOf)
+    for (const client of clients) client.write("{")
+    const answered = await Promise.race([...replies.map((reply) => reply.then(() => "answered")), wait(100).then(() => "none")])
+    expect(answered).toBe("none")
+    expect((await send({ method: "POST", body: bodyOf(100), headers: { "content-length": 100, "x-app": "a1" } })).status).toBe(503)
+    for (const client of clients) client.destroy()
+  })
+
+  test("an explicit cap below the apps' requirement fails at load: 6 apps need 192 MiB", () => {
+    expect(() => parseOptions({ keys: six, limits: { maxBodyBytesInFlight: 100 * MIB } })).toThrow(`must be at least ${192 * MIB}`)
+  })
+
+  test("several keys of one app count as one app in the split", () => {
+    const options = parseOptions({ keys: { a: "a".repeat(40), b: "b".repeat(40) } })
+    expect(bodyApps(options, ["a", "a"])).toEqual(["a", "b"])
+    expect(bodyLimits(options, "a", ["a", "a"]).appShare).toBe(64 * MIB)
   })
 })

@@ -9,7 +9,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, authenticateUsage, bodyLimits, type PlugboardOptions } from "../config.js"
+import { APP_NAME_PATTERN, DEFAULT_APP, appPolicy, authenticateUsage, bodyApps, bodyLimits, bodyRequirement, type PlugboardOptions } from "../config.js"
 import { isPlugError, type PlugError } from "../contract.js"
 import { checkJsonContentType, readJsonBody, sendJson, sendProblem, type RequestScope } from "../http.js"
 import type { KeyStore } from "../keys.js"
@@ -53,7 +53,7 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
     info.route = "POST /plugboard/admin/keys"
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
-    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options))
+    const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, undefined, keys.appNames()))
     const app = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as { app?: unknown }).app : undefined
     if (typeof app !== "string" || app === DEFAULT_APP || !APP_NAME_PATTERN.test(app))
       return fail({ status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: `\`app\` must match ${APP_NAME_PATTERN} and must not be \`${DEFAULT_APP}\`` })
@@ -62,6 +62,20 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
       return fail({ status: 409, kind: "invalid_request", code: "app_has_server_tools", param: "app", message: `App ${app} runs OpenCode tools (option \`apps.${app}.serverTools\`); a runtime key would give the same power, so none is minted. Set the key in the plugboard config` })
     if (Object.hasOwn(host.options.keys, app))
       return fail({ status: 409, kind: "invalid_request", code: "app_has_config_key", param: "app", message: `App ${app} already has a key in the plugboard config; edit \`keys\` to change it` })
+    // An explicit body budget must still hold one body of its largest size per app, this one included (`bodyRequirement`). Unset, it grows.
+    const runtimeApps = keys.appNames()
+    const budget = host.options.limits?.maxBodyBytesInFlight
+    if (budget !== undefined && !runtimeApps.includes(app)) {
+      const need = bodyRequirement(host.options, bodyApps(host.options, [...runtimeApps, app]))
+      if (need > budget)
+        return fail({
+          status: 409,
+          kind: "invalid_request",
+          code: "body_budget_insufficient",
+          param: "app",
+          message: `Adding app ${app} needs ${need} bytes of request-body budget (one largest body per app), but \`limits.maxBodyBytesInFlight\` is ${budget}. Raise it, or unset it to let it grow with the apps`,
+        })
+    }
     const created = await keys.create(app, host.options.keys)
     logAudit("admin.key_created", { id: created.id, app })
     // The key value is shown once: a cache or a log of this response must not keep it.
