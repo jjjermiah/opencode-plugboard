@@ -32,10 +32,12 @@ class WeatherPlugin:
         return '{"city": "%s", "forecast": "sunny", "celsius": 24}' % city
 
 
+# region snippet
 def make_service() -> OpenAIChatCompletion:
     # The client is passed in; do not also pass api_key or base_url to the service (they conflict).
     client = AsyncOpenAI(base_url=BASE, api_key=KEY)
     return OpenAIChatCompletion(ai_model_id="fast", async_client=client)
+# endregion snippet
 
 
 def user(text: str) -> ChatHistory:

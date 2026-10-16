@@ -19,6 +19,7 @@ const weather = createTool({
   execute: async () => ({ temp_c: 18, sky: "cloudy" }),
 });
 
+// #region snippet
 const agent = new Agent({
   id: "plugboard-agent",
   name: "Plugboard",
@@ -26,6 +27,7 @@ const agent = new Agent({
   model: { id: MODEL, url: URL, apiKey: KEY },
   tools: { get_weather: weather },
 });
+// #endregion snippet
 
 const check = (name: string, ok: boolean, detail = "") => {
   console.log(`${name}: ${ok ? "pass" : "fail"} ${detail}`.trimEnd());

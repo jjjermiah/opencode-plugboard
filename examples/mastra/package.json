@@ -1,0 +1,13 @@
+{
+  "name": "plugboard-example-mastra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun agent.ts",
+    "run": "bun run.ts"
+  },
+  "dependencies": {
+    "@mastra/core": "1.78.0",
+    "zod": "4.6.7"
+  }
+}

@@ -35,6 +35,7 @@ def main() -> int:
     results = []
     chunks: list[str] = []
 
+    # region snippet
     generator = OpenAIChatGenerator(
         model="fast",
         api_base_url=URL,
@@ -49,6 +50,7 @@ def main() -> int:
     pipe.add_component("prompt", prompt)
     pipe.add_component("llm", generator)
     pipe.connect("prompt.prompt", "llm.messages")
+    # endregion snippet
 
     out = pipe.run({"prompt": {"question": "Reply with exactly: pong"}})
     text = out["llm"]["replies"][0].text or ""

@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-semantic-kernel"
+version = "0.1.0"
+description = "Semantic Kernel (Python) against plugboard: text, stream, a manual tool round trip and a streamed tool call. Pins as in docs/clients/semantic-kernel.md."
+requires-python = ">=3.10"
+# Exact pin: the version chat.py and docs/clients/semantic-kernel.md record.
+dependencies = ["semantic-kernel==1.45.0"]
