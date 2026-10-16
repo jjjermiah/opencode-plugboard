@@ -1,6 +1,6 @@
 # langchain-anthropic-js · scripted
 
-Verdict: **partial** · @langchain/anthropic 1.5.12 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
+Verdict: **pass** · @langchain/anthropic 1.5.12 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
@@ -19,20 +19,16 @@ Verdict: **partial** · @langchain/anthropic 1.5.12 on bun 1 · models: fast, an
 | S6 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
 | S6 | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
 | S7 | - | yes | pass | 3/3 |
-| E1 | fast | no | gap | 1/2 |
-| E2 | nope | no | gap | 1/2 |
+| E1 | fast | no | pass | 1/1 |
+| E2 | nope | no | pass | 1/1 |
 
 ## Failures, gaps and unchecked items
 
-### E1 on fast: gap
+### E1 on fast: pass
 
-Messages errors use Anthropic's error.type, not an error.code (#102)
+not checked, code is invalid_api_key: Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)
 
-Failed checks: code is invalid_api_key
+### E2 on nope: pass
 
-### E2 on nope: gap
-
-Messages errors use Anthropic's error.type, not an error.code (#102)
-
-Failed checks: code is model_not_found
+not checked, code is model_not_found: Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)
 

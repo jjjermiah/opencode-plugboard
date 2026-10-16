@@ -1,5 +1,5 @@
 // The error observations for E1 and E2. ChatAnthropic throws the Anthropic SDK's APIError, which carries the HTTP status and
-// the parsed body. Messages errors carry Anthropic's error.type; there is no error.code (see the gap in run.ts).
+// the parsed body. Messages errors carry Anthropic's error.type; there is no error.code (see unobserved in run.ts).
 import { ChatAnthropic } from "@langchain/anthropic"
 
 export async function errorObservations(attempt: () => Promise<unknown>): Promise<{ status: number | null; code: string | null }> {

@@ -1,5 +1,6 @@
-// S6, structured output: Output.object with a zod schema. The Anthropic provider has no response_format switch: the
-// result is checked against the schema the SDK sends.
+// S6, structured output: Output.object with a zod schema. The provider answers it with a tool named `json` (tool_choice any),
+// not with output_config.format, which plugboard refuses. structuredOutputMode "jsonTool" forces that path for every model:
+// the default "auto" picks output_config.format for claude-haiku-4-5.
 import { generateText, Output } from "ai"
 import { z } from "zod"
 import { client, type Client } from "./providers.ts"
@@ -9,7 +10,13 @@ const PROMPT = "Estimate: 2 boiled eggs and a slice of toast."
 
 export async function run(model: string, make: Client = client) {
   // #region snippet
-  const { output } = await generateText({ model: make(model), output: Output.object({ schema: Meal }), prompt: PROMPT, maxOutputTokens: 1024 })
+  const { output } = await generateText({
+    model: make(model),
+    output: Output.object({ schema: Meal }),
+    prompt: PROMPT,
+    maxOutputTokens: 1024,
+    providerOptions: { anthropic: { structuredOutputMode: "jsonTool" } },
+  })
   // #endregion snippet
   const keys: string[] = Object.keys(output)
   return {

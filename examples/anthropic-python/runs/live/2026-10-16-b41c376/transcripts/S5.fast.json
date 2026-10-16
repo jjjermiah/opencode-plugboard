@@ -1,0 +1,52 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": [
+                {
+                  "source": {
+                    "data": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4nO3NMQ0AAAzDsPLHODAj0X6Wcse5ZNr2DgAAAAAAAAAAAIo9tPVwLraRYtkAAAAASUVORK5CYII=",
+                    "media_type": "image/png",
+                    "type": "base64"
+                  },
+                  "type": "image"
+                },
+                {
+                  "text": "What color is this image? One word.",
+                  "type": "text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "message": "The model provider is rate limiting requests; retry later",
+            "type": "rate_limit_error"
+          },
+          "type": "error"
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 429
+      }
+    }
+  ]
+}

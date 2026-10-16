@@ -14,7 +14,7 @@ export async function run(model: string) {
     await generateText({ model: wrong(model), prompt: PROMPT, maxRetries: 0 })
   } catch (error) {
     if (!APICallError.isInstance(error)) throw error
-    // Messages errors carry Anthropic's error.type; there is no error.code (see the gap in run.ts).
+    // Messages errors carry Anthropic's error.type; there is no error.code (see unobserved in run.ts).
     const body = JSON.parse(error.responseBody ?? "{}") as { error?: { code?: string; type?: string } }
     return { status: error.statusCode ?? null, code: body.error?.code ?? body.error?.type ?? null }
   }

@@ -35,10 +35,13 @@ def main() -> None:
             "E1": wrong_key.run,
             "E2": lambda model: unknown_model.run(),
         },
+        # The error code is not on the Messages wire (src/anthropic/response.ts:112), so the shared code checks are not observed.
+        # The status checks stay enforced.
+        unobserved={
+            "E1": {"code is invalid_api_key": "Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)"},
+            "E2": {"code is model_not_found": "Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)"},
+        },
         gaps={
-            # Messages errors carry Anthropic's error.type and no error.code, so the shared code check cannot pass (wrong_key.py).
-            "E1": {"note": "Messages errors use Anthropic's error.type, not an error.code", "issue": "#102"},
-            "E2": {"note": "Messages errors use Anthropic's error.type, not an error.code", "issue": "#102"},
             # The SDK's models.list sends x-api-key, which GET /v1/models refuses (#399).
             "S7": {"note": "GET /v1/models ignores x-api-key, which the SDK sends", "issue": "#399"},
         },

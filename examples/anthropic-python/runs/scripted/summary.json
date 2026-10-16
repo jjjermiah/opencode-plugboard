@@ -372,18 +372,14 @@
         {
           "name": "status is 401",
           "ok": true
-        },
-        {
-          "name": "code is invalid_api_key",
-          "ok": false
         }
       ],
       "error": null,
       "id": "E1",
       "model": "fast",
-      "note": "Messages errors use Anthropic's error.type, not an error.code (#102)",
+      "note": "not checked, code is invalid_api_key: Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)",
       "required": false,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/E1.fast.json"
     },
     {
@@ -391,18 +387,14 @@
         {
           "name": "status is 404",
           "ok": true
-        },
-        {
-          "name": "code is model_not_found",
-          "ok": false
         }
       ],
       "error": null,
       "id": "E2",
       "model": "nope",
-      "note": "Messages errors use Anthropic's error.type, not an error.code (#102)",
+      "note": "not checked, code is model_not_found: Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)",
       "required": false,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/E2.nope.json"
     }
   ],

@@ -11,4 +11,4 @@ Check the connection before you start Claude Code:
 claude -p "reply with exactly: pong"
 ```
 
-Not run against plugboard yet. This is the check that should print `pong`.
+Manual probe, 2026-10-16, not an example run and not recorded under `runs/`. `claude -p` with `ANTHROPIC_BASE_URL` at the isolated dev server (plugboard v0.37.0) and `ANTHROPIC_MODEL=fast` printed `pong`, with `stop_reason` `end_turn` and one turn. Its stderr warned `unrecognized_model` for `fast`. The probe used the `fast` alias, which has since run out of quota on that server.

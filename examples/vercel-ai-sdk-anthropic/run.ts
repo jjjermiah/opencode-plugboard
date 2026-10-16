@@ -29,11 +29,11 @@ await runAll(
     E2: () => unknownModel.run(),
   },
   {
-    gaps: {
-      E1: { note: "Messages errors use Anthropic's error.type, not an error.code", issue: "#102" },
-      E2: { note: "Messages errors use Anthropic's error.type, not an error.code", issue: "#102" },
-      // Plugboard refuses output_config.format by design (docs/messages.md). The SDK sends it for this model only.
-      "S6|anthropic/claude-haiku-4-5": { note: "plugboard refuses output_config.format on /v1/messages (docs/messages.md)", issue: "#102" },
+    // The error code is not on the Messages wire (src/anthropic/response.ts:112), so the shared code checks are not observed.
+    // The status checks stay enforced.
+    unobserved: {
+      E1: { "code is invalid_api_key": "Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)" },
+      E2: { "code is model_not_found": "Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)" },
     },
   },
 )

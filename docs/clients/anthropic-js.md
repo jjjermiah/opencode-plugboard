@@ -2,7 +2,7 @@
 
 <ExampleResult example="anthropic-js" />
 
-Tested: `@anthropic-ai/sdk` 0.135.0 on Bun 1.4.2. The example runs S1 to S7 and the two error paths on plugboard's Messages route (`POST /v1/messages`). The live run at plugboard `8ef91b5` is `partial`: every required row passes except S7, and the two error rows are gaps. The run and its transcripts are in [`examples/anthropic-js/runs/live`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/anthropic-js/runs/live/2026-10-16-8ef91b5).
+Tested: `@anthropic-ai/sdk` 0.135.0 on Bun 1.4.2. The example runs S1 to S7 and the two error paths on plugboard's Messages route (`POST /v1/messages`). The scripted run has every required row passing except S7, a gap ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)). The live run at plugboard `b41c376` (v0.37.0) passes on `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. Its `fast` rows failed on upstream quota, so that record's verdict is `fail` ([record](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/anthropic-js/runs/live/2026-10-16-b41c376)).
 
 Point the SDK at plugboard's base URL without the `/v1`. The SDK adds `/v1/messages` itself:
 
@@ -31,5 +31,5 @@ Plugboard refuses `output_config.format` (see [Messages](../messages.md)). Use a
 ## Gotchas
 
 - `client.models.list()` sends `x-api-key`, and `GET /v1/models` answers 401 to it. Tracked in [#399](https://github.com/jjjermiah/opencode-plugboard/issues/399). With `Authorization: Bearer` the list works.
-- Messages errors carry `error.type` (`authentication_error`, `not_found_error`) and no `error.code`. The example records the type, so the shared `code` check in E1 and E2 is a gap, not a pass.
+- Messages errors carry `error.type` (`authentication_error`, `not_found_error`) and no `error.code`. The example checks the status and does not check the code, because the wire has none.
 - The Messages API reports `end_turn` and `tool_use`. The example maps them to the `stop` and `tool_calls` the other examples use.

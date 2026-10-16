@@ -1,6 +1,6 @@
 # vercel-ai-sdk-anthropic · scripted
 
-Verdict: **partial** · @ai-sdk/anthropic 4.0.81 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
+Verdict: **pass** · @ai-sdk/anthropic 4.0.81 on bun 1 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
@@ -16,31 +16,19 @@ Verdict: **partial** · @ai-sdk/anthropic 4.0.81 on bun 1 · models: fast, anthr
 | S5 | anthropic/claude-haiku-4-5 | yes | pass | 1/1 |
 | S5 | openai/gpt-5.6-luna#low | yes | pass | 1/1 |
 | S6 | fast | yes | pass | 3/3 |
-| S6 | anthropic/claude-haiku-4-5 | yes | gap |  |
+| S6 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
 | S6 | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
 | S7 | - | yes | pass | 3/3 |
-| E1 | fast | no | gap | 1/2 |
-| E2 | nope | no | gap | 1/2 |
+| E1 | fast | no | pass | 1/1 |
+| E2 | nope | no | pass | 1/1 |
 
 ## Failures, gaps and unchecked items
 
-### S6 on anthropic/claude-haiku-4-5: gap
+### E1 on fast: pass
 
-plugboard refuses output_config.format on /v1/messages (docs/messages.md) (#102)
+not checked, code is invalid_api_key: Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)
 
-```text
-AI_APICallError: output_config.format: structured outputs are not supported
-```
+### E2 on nope: pass
 
-### E1 on fast: gap
-
-Messages errors use Anthropic's error.type, not an error.code (#102)
-
-Failed checks: code is invalid_api_key
-
-### E2 on nope: gap
-
-Messages errors use Anthropic's error.type, not an error.code (#102)
-
-Failed checks: code is model_not_found
+not checked, code is model_not_found: Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)
 

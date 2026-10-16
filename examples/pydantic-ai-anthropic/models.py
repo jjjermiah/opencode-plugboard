@@ -1,0 +1,26 @@
+"""S7, list models. The Anthropic client under the provider lists GET /v1/models. It sends x-api-key, which that route refuses
+(#399), so the scenario is a gap in run.py."""
+
+import asyncio
+import json
+
+from anthropic import AsyncAnthropic
+
+from llm import make_client
+
+
+async def run(client: AsyncAnthropic, _model):
+    # region snippet
+    page = await client.models.list(limit=100)
+    # endregion snippet
+    ids = [model.id for model in page.data]
+    return {
+        "model_ids": ids,
+        "has_fast": "fast" in ids,
+        "has_claude": any(i.startswith("anthropic/claude") for i in ids),
+        "has_gpt_low": any(i.endswith("#low") for i in ids),
+    }
+
+
+if __name__ == "__main__":
+    print(json.dumps(asyncio.run(run(make_client(), "-"))))

@@ -1,0 +1,59 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": true,
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "input_schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "name": "get_weather"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "message": "The model provider is rate limiting requests; retry later",
+            "type": "rate_limit_error"
+          },
+          "type": "error"
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 429
+      }
+    }
+  ]
+}

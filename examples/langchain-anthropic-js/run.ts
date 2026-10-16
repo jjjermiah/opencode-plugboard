@@ -29,9 +29,11 @@ await runAll(
     E2: () => unknownModel.run(),
   },
   {
-    gaps: {
-      E1: { note: "Messages errors use Anthropic's error.type, not an error.code", issue: "#102" },
-      E2: { note: "Messages errors use Anthropic's error.type, not an error.code", issue: "#102" },
+    // The error code is not on the Messages wire (src/anthropic/response.ts:112), so the shared code checks are not observed.
+    // The status checks stay enforced.
+    unobserved: {
+      E1: { "code is invalid_api_key": "Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)" },
+      E2: { "code is model_not_found": "Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)" },
     },
   },
 )

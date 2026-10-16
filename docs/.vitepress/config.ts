@@ -70,6 +70,7 @@ export default defineConfig({
           { text: "LangChain JS (Anthropic)", link: "/clients/langchain-anthropic-js" },
           { text: "Anthropic Python SDK", link: "/clients/anthropic-python" },
           { text: "Anthropic TypeScript SDK", link: "/clients/anthropic-js" },
+          { text: "pydantic-ai (Anthropic)", link: "/clients/pydantic-ai-anthropic" },
           { text: "pydantic-ai", link: "/clients/pydantic-ai" },
           { text: "OpenAI Agents SDK", link: "/clients/openai-agents" },
           { text: "Go (go-openai)", link: "/clients/go-openai" },

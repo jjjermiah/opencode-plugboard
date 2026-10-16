@@ -13,7 +13,7 @@ export async function run(model: string) {
     await wrong.messages.create({ model, max_tokens: 1024, messages: [{ role: "user", content: PROMPT }] })
   } catch (error) {
     if (!(error instanceof Anthropic.APIError)) throw error
-    // Messages errors carry Anthropic's error.type; there is no error.code (see the gap in run.ts).
+    // Messages errors carry Anthropic's error.type; there is no error.code (see unobserved in run.ts).
     const body = error.error as { error?: { code?: string; type?: string } } | undefined
     return { status: error.status ?? null, code: body?.error?.code ?? body?.error?.type ?? null }
   }

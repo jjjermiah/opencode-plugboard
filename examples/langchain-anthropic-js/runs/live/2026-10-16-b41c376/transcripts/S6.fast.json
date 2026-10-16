@@ -1,0 +1,67 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": false,
+          "tool_choice": {
+            "name": "record_meal",
+            "type": "tool"
+          },
+          "tools": [
+            {
+              "description": "A function available to call.",
+              "input_schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "name": "record_meal"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "message": "The model provider is rate limiting requests; retry later",
+            "type": "rate_limit_error"
+          },
+          "type": "error"
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 429
+      }
+    }
+  ]
+}

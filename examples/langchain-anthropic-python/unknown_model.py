@@ -12,7 +12,7 @@ def run():
     try:
         chat_model("nope").invoke(PROMPT)
     except APIStatusError as error:
-        # Messages errors carry Anthropic's error.type; there is no error.code (see the gap in run.py).
+        # Messages errors carry Anthropic's error.type; there is no error.code (see unobserved in run.py).
         inner = error.body.get("error", {}) if isinstance(error.body, dict) else {}
         return {"status": error.status_code, "code": inner.get("code") or inner.get("type")}
     # endregion snippet
