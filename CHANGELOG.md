@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- **Anthropic Messages examples** ([#102](https://github.com/jjjermiah/opencode-plugboard/issues/102)). Runnable examples for the Anthropic Python SDK, the Anthropic TypeScript SDK, LangChain `ChatAnthropic` (Python and JS) and the Vercel AI SDK's `@ai-sdk/anthropic` provider, each with a scripted run and a live run against the isolated dev server. Every client is `partial`: the required scenarios pass, and the gaps are the Messages error envelope (no `error.code`), `GET /v1/models` refusing `x-api-key` ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)), and the refused `output_config.format` on one model. Claude Code was run once by hand with `claude -p` and printed `pong`; it has no example run yet. Pydantic-ai's Anthropic model is not covered.
+
 ### Fixed
 
 - **Signed thinking replays to Copilot Claude** ([#386](https://github.com/jjjermiah/opencode-plugboard/issues/386), since 0.37.0). Replay of a client's signed `thinking` blocks was gated on the provider being `anthropic`, so Copilot's Claude models got the history without their earlier reasoning, even though Copilot serves Claude on the Anthropic messages route with the same `anthropic` metadata key. The gate now also admits `github-copilot` models whose id starts with `claude-`. The hook event carries only the model's provider and id, not its route, so plugboard cannot ask which route a model uses. The other Copilot routes (chat completions, responses) do not read that key, so a signature sent to them is dropped. Other Copilot models stay out.

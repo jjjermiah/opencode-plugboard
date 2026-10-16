@@ -1,0 +1,19 @@
+{
+  "name": "plugboard-example-langchain-anthropic-js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LangChain JS ChatAnthropic (@langchain/anthropic) on plugboard's Messages route: S1 to S7 and the error paths. Exact pins, locked in bun.lock.",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "1.5.12",
+    "@langchain/core": "1.2.17",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

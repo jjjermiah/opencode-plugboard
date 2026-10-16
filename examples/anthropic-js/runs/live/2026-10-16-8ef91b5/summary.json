@@ -1,0 +1,435 @@
+{
+  "client": {
+    "name": "@anthropic-ai/sdk",
+    "runtime": {
+      "name": "bun",
+      "version": "1"
+    },
+    "version": "0.135.0"
+  },
+  "date": "2026-10-16",
+  "example": "anthropic-js",
+  "models": [
+    "fast",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-5.6-luna#low",
+    "nope"
+  ],
+  "opencode": "2.0.29",
+  "plugboard": {
+    "commit": "8ef91b5",
+    "version": "0.37.0"
+  },
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 999,
+      "error": null,
+      "id": "S1",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 624,
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.anthropic-claude-haiku-4-5.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1543,
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.openai-gpt-5.6-luna-low.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 2177,
+      "error": null,
+      "id": "S2",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1779,
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.anthropic-claude-haiku-4-5.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 4479,
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.openai-gpt-5.6-luna-low.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage chunk present when requested",
+          "ok": true
+        },
+        {
+          "name": "stream ended normally",
+          "ok": true
+        }
+      ],
+      "duration_ms": 865,
+      "error": null,
+      "id": "S3",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S3.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "streamed get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1875,
+      "error": null,
+      "id": "S4",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S4.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1579,
+      "error": null,
+      "id": "S5",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S5.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 623,
+      "error": null,
+      "id": "S5",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S5.anthropic-claude-haiku-4-5.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1474,
+      "error": null,
+      "id": "S5",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S5.openai-gpt-5.6-luna-low.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1345,
+      "error": null,
+      "id": "S6",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1049,
+      "error": null,
+      "id": "S6",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.anthropic-claude-haiku-4-5.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 2738,
+      "error": null,
+      "id": "S6",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.openai-gpt-5.6-luna-low.json"
+    },
+    {
+      "checks": [],
+      "duration_ms": 5,
+      "error": "Error: 401 {\"error\":{\"message\":\"Missing or invalid API key\",\"type\":\"authentication_error\",\"param\":null,\"code\":\"invalid_api_key\"}}",
+      "id": "S7",
+      "model": "-",
+      "note": "GET /v1/models ignores x-api-key, which the SDK sends (#399)",
+      "required": true,
+      "status": "gap",
+      "transcript": "transcripts/S7.none.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "status is 401",
+          "ok": true
+        },
+        {
+          "name": "code is invalid_api_key",
+          "ok": false
+        }
+      ],
+      "duration_ms": 11,
+      "error": null,
+      "id": "E1",
+      "model": "fast",
+      "note": "Messages errors use Anthropic's error.type, not an error.code (#102)",
+      "required": false,
+      "status": "gap",
+      "transcript": "transcripts/E1.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "status is 404",
+          "ok": true
+        },
+        {
+          "name": "code is model_not_found",
+          "ok": false
+        }
+      ],
+      "duration_ms": 6,
+      "error": null,
+      "id": "E2",
+      "model": "nope",
+      "note": "Messages errors use Anthropic's error.type, not an error.code (#102)",
+      "required": false,
+      "status": "gap",
+      "transcript": "transcripts/E2.nope.json"
+    }
+  ],
+  "schema": 1,
+  "target": "live",
+  "verdict": "partial"
+}

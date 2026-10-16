@@ -1,0 +1,88 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "tool_choice": {
+            "name": "Meal",
+            "type": "tool"
+          },
+          "tools": [
+            {
+              "description": "",
+              "input_schema": {
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "name": "Meal"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "text": "I'll estimate the nutritional content of 2 boiled eggs and a slice of toast.\n\n**2 boiled eggs:** ~140 calories, ~12g protein\n**1 slice of toast:** ~80 calories, ~3g protein\n\n**Total: ~220 calories, ~15g protein**",
+              "type": "text"
+            },
+            {
+              "id": "<id-2>",
+              "input": {
+                "calories": 220,
+                "protein_g": 15
+              },
+              "name": "Meal",
+              "type": "tool_use"
+            }
+          ],
+          "id": "<id-3>",
+          "model": "anthropic/claude-haiku-4-5",
+          "role": "assistant",
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "input_tokens": 613,
+            "output_tokens": 147
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=613; output=147; cache_read=0; cache_write=0; cost_usd=0.001348"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

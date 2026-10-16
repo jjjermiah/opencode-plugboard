@@ -15,6 +15,8 @@
   "instructor": "Instructor extracting a validated Pydantic object, in TOOLS mode, JSON_SCHEMA mode and as a partial stream",
   "jan": "Jan Agent: a `jan config set` script for the OpenAI-compatible route, and a per-project `agent.toml.example`",
   "kilo-code": "Kilo Code CLI provider block for plugboard's Chat Completions route",
+  "langchain-anthropic-js": "LangChain JS `ChatAnthropic` (`@langchain/anthropic`) on plugboard's Messages route: the same scenarios, with a forced tool for structured output",
+  "langchain-anthropic-python": "LangChain Python `ChatAnthropic` (`langchain-anthropic`) on plugboard's Messages route: the same scenarios, with a forced tool for structured output",
   "langchain-js": "LangChain JS (`@langchain/openai`): the same scenarios, with a `chat` and an `auto` variant",
   "langchain-python": "LangChain (`langchain-openai`'s `ChatOpenAI`): chat, tools, streaming, images, structured output, models and the error paths",
   "langfuse": "Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off",
@@ -27,6 +29,8 @@
   "open-webui": "Open WebUI in Docker, pointed at plugboard on the host, with the plugboard options it needs; driven over its HTTP API",
   "openai-agents": "The OpenAI Agents SDK on the Responses API and on Chat Completions: text, stream, tool and structured output. Run with `uv run`",
   "openai-dotnet": "The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard",
+  "anthropic-js": "The Anthropic TypeScript SDK (`@anthropic-ai/sdk`) on plugboard's Messages route: chat, tools, streaming, images, structured output as a forced tool, models and the error paths",
+  "anthropic-python": "The Anthropic Python SDK (`anthropic`) on plugboard's Messages route: chat, tools, streaming, images, structured output as a forced tool, models and the error paths",
   "openai-js": "The OpenAI JS SDK: the same scenarios in TypeScript",
   "openai-python": "The OpenAI Python SDK: chat, tools, streaming, images, structured output, models and the error paths",
   "promptfoo": "promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check",
@@ -36,6 +40,7 @@
   "sillytavern": "SillyTavern in Docker; the plugboard endpoint and key are set in its UI",
   "smolagents": "smolagents `OpenAIModel` with text, streaming and a `ToolCallingAgent`. A PEP 723 script (needs `smolagents[openai]`)",
   "tool-bot": "The tool-call round trip: plugboard returns `tool_calls`, your code runs the tool and sends the result back. Bun and the `openai` SDK, about 50 lines",
+  "vercel-ai-sdk-anthropic": "The Vercel AI SDK's Anthropic provider (`@ai-sdk/anthropic`) on plugboard's Messages route: chat, tools, streaming, structured output, images, models and errors",
   "vercel-ai-sdk": "The Vercel AI SDK (`ai` 7) through its three ways in: `createOpenAICompatible`, `openai.chat(id)` and `openai(id)` on `/v1/responses`. Chat, tools, streaming, structured output, images, models and errors",
   "zed": "Zed `settings.json` for an OpenAI-compatible and an Anthropic-compatible provider"
 }

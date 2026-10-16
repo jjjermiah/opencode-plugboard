@@ -1,0 +1,43 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "Reply with exactly: pong",
+                  "type": "text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "*/*",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "message": "Missing or invalid API key",
+            "type": "authentication_error"
+          },
+          "type": "error"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 401
+      }
+    }
+  ]
+}
