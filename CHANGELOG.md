@@ -17,6 +17,11 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Added
 
 - **Examples for five more Chat Completions clients** ([#105](https://github.com/jjjermiah/opencode-plugboard/issues/105)). LlamaIndex, Semantic Kernel, Haystack, Mastra and async-openai now run through the examples harness. Each scripted run is byte-identical across two runs, and each has a live run against the dev server at plugboard `ef5be0e`. Semantic Kernel's two tool scenarios are gaps on the scripted target only, because the client sends tool names with a plugin prefix that the scripted model does not answer. Still open: Cline/Roo, Msty, Raycast and Home Assistant (GUI, or they need a Home Assistant instance), and LangChain4j and Spring AI (no JDK on the machine that ran this).
+### Fixed
+
+- **Stop sequences apply to the answer text, not the reasoning** ([#390](https://github.com/jjjermiah/opencode-plugboard/issues/390), since 0.38.0). A reasoning model that quoted the prompt in its reasoning could end with no answer: `fast` (glm-5.3-flash) matched `END` inside its reasoning, the provider stopped there, and the client got an empty answer with `finish_reason` `stop` (2 of 8 calls on the dev server, 0 of 8 without the stop). Plugboard no longer sends stop sequences to the model. It scans the answer text as it streams, on every route, and the first sequence ends the answer: the text before it is returned, the sequence is removed, the host run is interrupted, and reasoning is never matched. The app's `sampling.stop` default applies the same way, Responses included (Responses has no stop parameter of its own).
+
+  Behaviour changes with it. A sequence anywhere in the answer ends it, not only at the end. A sequence ends the answer under `length` too. A tool call after the sequence is not sent. A tool call before it makes the turn a tool turn (`tool_use` on Messages, `tool_calls` on Chat Completions), with no `stop_sequence`. The usage of the run is counted after a match: the response waits for the host to end the interrupted run (at most 5 seconds, then the usage counted so far), so a stop request is billed and reported like any other. The response cache keys on the stop sequences, so a stop request is never answered from a no-stop entry.
 
 ## [0.37.0] - 2026-10-15: Copilot Thinks Too
 
