@@ -14,10 +14,67 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.46.0] - 2026-10-16: Honest Counts
+
+**Full diff:** [v0.45.0...v0.46.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...v0.46.0)
+
 ### Fixed
 
 - A thinking request on a model that lists no variant for its budget ran without thinking and said nothing. Claude Haiku 4.5 lists only `high` and `max`, so a `budget_tokens` of 1500 (effort `low`) was silently ignored. Now a requested effort runs on the nearest variant at or above it, else the model's highest one, on Messages, Responses, Chat Completions and Gemini `thinkingConfig` alike. A model with no thinking variant at all still runs without thinking, and the Messages answer says so with the new `x-plugboard-thinking: unavailable` header (since 0.46.0). [#410](https://github.com/jjjermiah/opencode-plugboard/issues/410)
 - `count_tokens` and Gemini `countTokens` were off by up to 9 times with tools and 13 times with images, and undercounted CJK text by about four times. The estimate is now calibrated against live provider counts for Claude Haiku 4.5 and Gemini 3.x: tool-use framing and a per-tool cost, a fixed cost per request and message, one token per CJK character on Claude, and Anthropic's `width * height / 750` for each image from its header (a flat cost on Gemini). Chat Completions and Responses still have no count endpoint. [#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Fixes
+
+**fix(anthropic): calibrate the count_tokens estimate against live provider counts** ([`e899f29`](https://github.com/jjjermiah/opencode-plugboard/commit/e899f293c8b7018d763ffab26ea5e704e7da939e))
+
+What changed: count_tokens (Anthropic) and countTokens (Gemini) now estimate from counts measured against the providers, not from characters / 4 plus a flat 1600 per image.
+
+The Claude profile (any model id without "gemini") counts about five characters per token, one token per CJK character, 21 tokens per request, 4 per message, 35 per tool_use or tool_result block, and once tools are declared a 534-token tool-use preamble plus 40 per tool. An image costs Anthropic's width * height / 750 after its downscaling, read from the PNG, GIF, WebP or JPEG header; an unreadable one costs 1600.
+
+The Gemini profile (a model id containing "gemini") counts about five characters per token, 0.67 per CJK character, and a flat 1090 per image.
+
+Why: the red-team issue measured a count of 75 against 668 real tokens with two tools, and 1602 against 122 for a small PNG. Measured on claude-haiku-4-5 through the dev server, the old estimate was 5 against 29 for one line, 100 against 705 with two tools, 154 against 1033 for a tool transcript, 90 against 404 for CJK text, and 1604 against 35 to 1552 for images from 32 to 1568 pixels a side. The profile was fitted to those numbers; its live check is in the PR body.
+
+Decisions: an estimate, not the provider's count endpoint, because the host exposes none. The profile is picked by the model id, since the two providers charge images and CJK text differently. Chat Completions and Responses still have no count endpoint.
+
+Rejected: raising the one constant. A single chars-per-token figure cannot fit both the tool preamble and the image cost, which differ by an order of magnitude.
+
+Validation: unit tests for each term of the estimate and for the PNG header reader; the existing count route tests move to the new numbers (same behaviour, arithmetic in the comments). Live before and after numbers are in the PR body.
+
+Refs #412
+
+**fix(anthropic): run a requested thinking effort on the nearest variant the model has** ([`b7e23fc`](https://github.com/jjjermiah/opencode-plugboard/commit/b7e23fc38a1c362de8e0cb8270ac50b9eda79cd5))
+
+What changed: resolveModel picks a variant for a requested effort in three steps: the variant of that name, else the nearest one at or above it, else the model's highest one (effortVariant in src/models.ts). A thinking budget of 1500 is effort "low", and claude-haiku-4-5 lists only high and max, so the request now runs on high instead of silently without thinking. The same rule now applies to Responses and Chat Completions reasoning_effort and to Gemini thinkingConfig, since they share resolveModel.
+
+A model with no thinking variant at all still runs without thinking. Messages now answers x-plugboard-thinking: unavailable in that case (thinkingUnavailable), listed in the CORS exposed headers and documented in messages.md, gemini.md and configuration.md.
+
+Decisions: "none" and names outside minimal, low, medium, high, xhigh, max only match exactly, so a request for no thinking is never turned on. The header is set only on Messages, where the caller asked for thinking by name; Chat, Responses and Gemini ignore an unavailable effort silently, as before. That is a follow-up, not part of this change.
+
+Rejected: mapping the budget to a fixed variant in effortOfBudget. The table is only a hint, and the model's own list decides, so the nearest-variant rule in the resolver is the one place that holds for every front-end.
+
+Validation: unit tests for effortVariant (table), resolveModel with a Haiku-shaped catalog, and thinkingUnavailable; HTTP tests for the high variant on a 1500 budget, the header on a model with no thinking variant, and no header without thinking. The old test that expected max to be ignored now expects the highest variant. Live check on the dev server is in the PR body.
+
+Refs #410
+
+#### Tests
+
+**test(anthropic): cover the image header readers and raise the floors (#412)** ([`aab0c34`](https://github.com/jjjermiah/opencode-plugboard/commit/aab0c3442a210d720b11a44fa28bd18f91a8798e))
+
+The image size readers for GIF, WebP (lossy, lossless, extended) and JPEG were not covered, so line coverage fell below the floor (98.5% against 98.7%) and function coverage below 94.9%. Each format now has a header test, the JPEG one passing a restart marker, a fill byte, an application segment and a table segment before the frame header, and an unknown format, a missing frame header and a truncated PNG are checked to have no size.
+
+The try/catch around the reads is gone: every read is already length-checked, so nothing in the reader can throw. Ratcheted with test-gates --ratchet: the floors only go up, and the new test counts and coverage are committed with the tests.
+
+Refs #412
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.45.0] - 2026-10-16: Clean Endings
 
@@ -7973,7 +8030,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...HEAD
+[0.46.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...v0.45.0
 [0.44.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...v0.44.0
 [0.43.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...v0.43.0
