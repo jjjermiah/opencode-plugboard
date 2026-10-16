@@ -43,6 +43,8 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
 
   const parsed = parseResponsesRequest(body, host.options, (itemId) => findItem(app, itemId))
   if (isPlugError(parsed)) return fail(parsed)
+  // `store: false` keeps nothing for retrieval, so its output items cannot be referenced later (#426).
+  const keeps = (body as { store?: unknown }).store !== false
   const catalog = await scope.race(host.loadCatalog())
   const requested = requestedModel(host.options, app, parsed.request.model, parsed.reasoningEffort)
   const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
@@ -88,7 +90,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   if (exchange.stream) {
     const sse = sseWriter(response, scope.signal)
     const run = await runResponse(sse.paced(events), exchange, (event) => sse.write(sseFrame(event)), () => sse.started)
-    if (run.response && !run.failure) rememberAnswer(app, run.response)
+    if (keeps && run.response && !run.failure) rememberAnswer(app, run.response)
     if (!sse.started && !response.headersSent) {
       if (!scope.signal.aborted || scope.timedOut) fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
     } else {
@@ -100,7 +102,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
 
   const run = await runResponse(events, exchange, () => {})
   if (run.failure || !run.response) return fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
-  rememberAnswer(app, run.response)
+  if (keeps) rememberAnswer(app, run.response)
   if (run.structuredFallback) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
   sendJson(response, 200, run.response)
 }

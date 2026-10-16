@@ -57,4 +57,4 @@ A copyable version is in [examples/codex-cli/](https://github.com/jjjermiah/open
 - Plugboard keeps no conversation. `previous_response_id` and `conversation` are rejected with 400 `unsupported_parameter`. This page assumes Codex resends the whole conversation on each turn, as the issue that asked for it states. That was not checked against Codex's source. If a turn fails with a 400 that names `previous_response_id`, this is the cause.
 - Plugboard accepts only `function` tools. A tool Codex sends with type `custom` (a freeform tool) is refused with 400. Which tool types Codex sends depends on the model, and was not checked. A live run should confirm a file edit goes through.
 - Hosted tools (`web_search`, `file_search`, `code_interpreter`, and the like) are refused with 400. They run on OpenAI's side, which plugboard does not reach.
-- `store`, `include` and `parallel_tool_calls` are accepted and ignored. The response always reports `store: false`.
+- `include` and `parallel_tool_calls` are accepted and ignored. `store: false` keeps nothing, so its output items cannot be referenced later (#426). The response always reports `store: false`.
