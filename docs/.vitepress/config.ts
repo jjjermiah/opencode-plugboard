@@ -73,6 +73,7 @@ export default defineConfig({
           { text: "pydantic-ai (Anthropic)", link: "/clients/pydantic-ai-anthropic" },
           { text: "pydantic-ai", link: "/clients/pydantic-ai" },
           { text: "OpenAI Agents SDK", link: "/clients/openai-agents" },
+          { text: "OpenAI Agents SDK (JS)", link: "/clients/openai-agents-js" },
           { text: "Go (go-openai)", link: "/clients/go-openai" },
           { text: ".NET (openai-dotnet)", link: "/clients/openai-dotnet" },
           { text: "Rust (async-openai)", link: "/clients/async-openai" },

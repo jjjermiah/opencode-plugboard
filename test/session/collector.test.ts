@@ -33,6 +33,51 @@ function setup() {
   }
 }
 
+describe("#390 the window after a match (review #429): the answer is complete, so the run ends at once", () => {
+  test("before any match, a non-aborted host failure is still an error", async () => {
+    const run = setup()
+    run.send(host.stepFailed({ type: "provider.rate-limit", message: "slow down" }))
+    expect((await run.drain()).at(-1)).toMatchObject({ type: "error" })
+  })
+
+  test("after a match, a non-aborted host failure finishes as stop with the usage so far, and is logged", async () => {
+    const run = setup()
+    run.collector.markStopped()
+    run.send(host.usage({ input: 10, output: 40 }), host.stepFailed({ type: "provider.rate-limit", message: "slow down" }))
+    expect(await run.drain()).toEqual([{ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 40 } }])
+    expect(logs.of("request.stop_step_failed")).toHaveLength(1)
+  })
+
+  test("after a match, a client tool call ends the run at once: no tool-call event, the host is interrupted now", async () => {
+    const run = setup()
+    run.collector.markStopped()
+    run.send(host.toolCalled("c1", "lookup", { q: 1 }))
+    expect(run.stops).toBe(1)
+    expect(await run.drain()).toEqual([{ type: "finish", reason: "stop", usage: undefined }])
+  })
+
+  test("after a match, a server tool call runs no tool and starts no next step", async () => {
+    let stops = 0
+    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3 })
+    const store = createSessionStore()
+    store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
+    collector.markStopped()
+    store.dispatch(host.toolCalled("s1", "web", {}))
+    store.dispatch(host.stepEnded("tool-calls"))
+    const events = await collect(collector.events())
+    expect(stops).toBe(1)
+    expect(events).toEqual([{ type: "finish", reason: "stop", usage: undefined }])
+  })
+
+  test("after a match, a plain step end finishes as stop with the step's usage, and does not interrupt the host", async () => {
+    const run = setup()
+    run.collector.markStopped()
+    run.send(host.textDelta("Hi"), host.stepEnded("stop", { input: 3, output: 4 }))
+    expect(run.stops).toBe(0)
+    expect((await run.drain()).at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 3, outputTokens: 4 } })
+  })
+})
+
 describe("#390 finishNow: a run a stop sequence interrupted ends with the usage counted so far", () => {
   test("no host end arrives: the collector finishes with the running usage, then ignores the late end", async () => {
     const run = setup()
@@ -41,6 +86,21 @@ describe("#390 finishNow: a run a stop sequence interrupted ends with the usage 
     run.send(host.stepEnded("stop", { input: 10, output: 900 }))
     const events = await run.drain()
     expect(events.filter((event) => event.type === "finish")).toEqual([{ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } }])
+  })
+
+  test("after markStopped, the host's aborted step failure ends the run with stop and the usage counted so far", async () => {
+    const run = setup()
+    run.collector.markStopped()
+    run.send(host.usage({ input: 10, output: 500 }), host.stepFailed({ type: "aborted", message: "Step interrupted" }), host.executionInterrupted())
+    const events = await run.drain()
+    expect(events).toEqual([{ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } }])
+  })
+
+  test("without markStopped, an aborted step failure is still an error", async () => {
+    const run = setup()
+    run.send(host.stepFailed({ type: "aborted", message: "Step interrupted" }))
+    const events = await run.drain()
+    expect(events.at(-1)).toMatchObject({ type: "error" })
   })
 
   test("after the run ended on its own, finishNow changes nothing", async () => {
@@ -306,5 +366,60 @@ describe("in-process failures and bounds", () => {
     const chunk = "x".repeat(1024 * 1024)
     for (let i = 0; i < 9; i++) run.send(host.textDelta(chunk))
     expect((await run.drain()).map((event) => event.type)).toEqual(["error"])
+  })
+})
+
+/** #391: a host retry before any output fails the call at once when a fallback target follows; the last target keeps the host's retries. */
+describe("#391 a host retry before any output moves a fallback chain on", () => {
+  const upstream520 = { type: "provider.internal", status: 520, message: "upstream 520" }
+  function failFast(failFastRetry: boolean) {
+    let stops = 0
+    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", failFastRetry })
+    const store = createSessionStore()
+    store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
+    return { collector, store, get stops() { return stops } }
+  }
+
+  test("with a target after it, the retry is a provider_retry error at once and the turn is stopped", async () => {
+    const run = failFast(true)
+    run.store.dispatch(host.retryScheduled(upstream520))
+    const events = await collect(run.collector.events())
+    expect(events).toEqual([{ type: "error", error: { status: 503, kind: "server", code: "provider_retry", message: "The model provider failed; the next target is tried" } }])
+    expect(run.stops).toBe(1)
+  })
+
+  test("without a target after it, the retry is left to the host: nothing is emitted and the turn goes on", async () => {
+    const run = failFast(false)
+    run.store.dispatch(host.retryScheduled(upstream520))
+    run.store.dispatch(host.textDelta("hi"))
+    run.store.dispatch(host.stepEnded("stop"))
+    expect((await collect(run.collector.events())).map((event) => event.type)).toEqual(["text-delta", "finish"])
+    expect(run.stops).toBe(0)
+  })
+
+  test.each([
+    ["text", () => host.textDelta("partial")],
+    ["reasoning", () => host.reasoningDelta("thinking")],
+  ])("after %s output a retry is not a failure: the answer is committed", async (_name, first) => {
+    const run = failFast(true)
+    run.store.dispatch(first())
+    run.store.dispatch(host.retryScheduled(upstream520))
+    run.store.dispatch(host.stepEnded("stop"))
+    const types = (await collect(run.collector.events())).map((event) => event.type)
+    expect(types).not.toContain("error")
+    expect(types.at(-1)).toBe("finish")
+  })
+})
+
+/** #391: a status past 511 is not an HTTP status a client can read (Cloudflare's 520 to 527): it is answered as 502. */
+describe("#391 an upstream 520 is answered as a 502", () => {
+  test("a 520 that reaches the caller is answered as 502 provider_unavailable, not 520", async () => {
+    const events = await play(host.stepFailed({ type: "provider.internal", status: 520, message: "upstream 520" }))
+    expect(events).toEqual([{ type: "error", error: { status: 502, kind: "server", code: "provider_unavailable", message: "The model provider is unavailable or returned an error" } }])
+  })
+
+  test("other upstream 5xx statuses in the standard range keep their status", async () => {
+    const events = await play(host.stepFailed({ type: "provider.internal", status: 503, message: "x" }))
+    expect(events).toMatchObject([{ type: "error", error: { status: 503, code: "provider_unavailable" } }])
   })
 })

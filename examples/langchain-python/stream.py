@@ -13,11 +13,11 @@ def run(client, model):
     full = reduce(operator.add, chunks)
     # endregion snippet
     # Without usage the stream still carries the text.
-    plain = "".join(str(chunk.content) for chunk in client(model, stream_usage=False).stream(PROMPT))
+    plain = "".join(chunk.text for chunk in client(model, stream_usage=False).stream(PROMPT))
     if "pong" not in plain.lower():
         raise AssertionError(f"stream without usage gave {plain!r}")
     return {
-        "text": str(full.content),
+        "text": full.text,  # the text of every content block; the Responses path returns a list of blocks
         "finish_reason": full.response_metadata.get("finish_reason"),
         "usage": full.usage_metadata,
         "done": True,  # LangChain stops reading only after the server's [DONE], so the loop ending means it came

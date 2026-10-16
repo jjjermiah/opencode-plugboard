@@ -13,6 +13,13 @@ async function run(exchange: ResponsesExchange, ...list: PlugEvent[]) {
   return { ...result, response: result.response as any, emitted, types: emitted.map((event) => event.type) }
 }
 
+describe("#390 review: the Responses object always carries usage, zeros when the host reported none", () => {
+  test("a completed response without host usage has usage with zeros", async () => {
+    const { response } = await run(plain, ev.text("Hi"), ev.finish("stop"))
+    expect(response.usage).toMatchObject({ input_tokens: 0, output_tokens: 0, total_tokens: 0 })
+  })
+})
+
 describe("runResponse: event order", () => {
   test("a text answer: created, in_progress, item and part added, deltas, done events, completed", async () => {
     const { types, emitted, response } = await run(plain, ev.text("Hel"), ev.text("lo"), ev.finish("stop"))

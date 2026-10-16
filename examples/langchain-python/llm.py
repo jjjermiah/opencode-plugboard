@@ -22,3 +22,12 @@ def chat_model(model, **overrides):
     settings.update(overrides)
     return ChatOpenAI(**settings)
     # endregion snippet
+
+
+# region snippet-responses
+def responses_model(model, **overrides):
+    """The same client on the Responses API (`/v1/responses`). Set explicitly: LangChain also switches on its own for gpt-5.6 ids."""
+    return chat_model(model, use_responses_api=True, **overrides)
+
+
+# endregion snippet-responses

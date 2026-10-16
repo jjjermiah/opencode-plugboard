@@ -4,6 +4,14 @@ import { isPlugError } from "../../src/contract.js"
 import { testOptions } from "../support/fixtures.js"
 
 const options = testOptions({ maxTools: 2 })
+
+// #390 review: a client value with no usable toString is a 400, never a thrown TypeError (show, src/client-value.ts).
+test("anthropic: a user block whose type has a null toString is a 400, not a crash", () => {
+  const body = { model: "test/echo", max_tokens: 8, messages: [{ role: "user", content: [{ type: { toString: null } }] }] }
+  const result = parseMessagesRequest(body, options)
+  expect(isPlugError(result)).toBe(true)
+  expect(result).toMatchObject({ status: 400, message: expect.stringContaining('"object"') })
+})
 const user = (content: unknown = "hi") => ({ role: "user", content })
 const assistant = (content: unknown) => ({ role: "assistant", content })
 const body = (extra: Record<string, unknown> = {}) => ({ model: "test/echo", max_tokens: 100, messages: [user()], ...extra })
