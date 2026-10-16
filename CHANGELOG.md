@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.40.0] - 2026-10-16: Quick to Move On
+
+**Full diff:** [v0.39.0...v0.40.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...v0.40.0)
+
 ### Added
 
 - **First-event deadline for fallback chains** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.40.0). A fallback chain could not help when its first target hung: a provider that fails upstream with HTTP 520 kept the host retrying, and a request to that target hung for more than 90 seconds with no event and no failure. Option `fallbackAfterMs` sets a deadline for each target that is not the last. A target that has produced no model event within it is aborted (its OpenCode session is interrupted and retired, not left running) and the next target is tried. It is reported like any other fallback: `x-plugboard-fallbacks`, the `model.fallback` log line with reason `first_event_deadline`, and `plugboard_fallbacks_total`. The last target has no first-event deadline and is bounded only by `requestTimeoutMs`. Off by default. Global only, because a list entry is a plain model string. It is refused at load unless it is below `requestTimeoutMs` and below each app's `requestTimeoutMs`. Silence before the first event counts against it, including the setup of the attempt and an app's `serverTools` runs; read the rule in [configuration](docs/configuration.md#aliases-and-fallbacks) before setting it.
@@ -25,6 +31,68 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Fixed
 
 - **An upstream HTTP 520 is answered as 502** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.40.0). A status that reached the client unchanged could be 520 to 527, which are not HTTP statuses (Cloudflare uses them). Such a status is answered as 502 `provider_unavailable`, the gateway class. Statuses 500 to 511 and the 4xx ones are unchanged.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (4 commits)</summary>
+
+#### Features
+
+**feat(fallback): add fallbackAfterMs, a first-event deadline for fallback chains** ([`9090202`](https://github.com/jjjermiah/opencode-plugboard/commit/9090202b12559b1d9643dae62e49af831186b808))
+
+A list alias could not help when its first target hung. A provider that fails upstream with HTTP 520 kept the host retrying, and a request to that target hung for more than 90 seconds with no event and no failure. The chain only retries a failure that arrives before the first event, so a target that never answers blocked the whole request until requestTimeoutMs.
+
+Option fallbackAfterMs (global, optional, off by default) sets a deadline for each target that is not the last. When a target has produced no model event within it, the chain aborts that attempt and tries the next target with reason first_event_deadline. The attempt's signal is AbortSignal.any of the request signal and the deadline, so the existing caller cleanup runs: the OpenCode session is interrupted and retired, not left running. The timer is cleared at the first event, so an answer that arrives in time is never aborted. The last target is bounded only by requestTimeoutMs, as before.
+
+Reported like any other fallback: x-plugboard-fallbacks, the model.fallback log line with the reason, and plugboard_fallbacks_total. Nothing new in the metrics labels.
+
+Decisions: the option is global only. A list entry is a plain model string, so a per-target deadline would need a new entry shape; that is a larger change and can come later if one deadline does not fit every provider. Rejected: a deadline on the whole attempt (a slow but progressing stream would be cut), and an abort without a reason (the log would not say why the target was skipped).
+
+Validation: fake-host unit tests cover a target that never emits, a target that emits just before the deadline, two hangs before a third answers, and a slow last target. Config tests cover the bounds. The mutation fallback-first-event-deadline-does-not-abort is killed. Live check on an isolated OpenCode server built from this branch, with two loopback fake upstreams (one never answers): the alias hang answered from fast after 2.07 s with x-plugboard-fallbacks: 1, the aborted session ended interrupted, and no request guard was left.
+
+Refs #391
+
+**feat(fallback): fail over at once on a host retry before any output** ([`5179d81`](https://github.com/jjjermiah/opencode-plugboard/commit/5179d81467f3324510084dbb4aaac97379f4e4fe))
+
+When a provider fails with a retryable error before any output (an upstream HTTP 520, a rate limit), OpenCode 2.0.27 schedules its own retries: up to 10 more calls, about 84 seconds of waiting for a 520. Plugboard ignored the session.retry.scheduled event, so an alias list with a next target waited out the whole schedule before it fell through (#391).
+
+Now, for an attempt that has a target after it, the event before any output fails the attempt at once with reason provider_retry, and the chain moves on within seconds. The session caller reads the new CallContext.fallbackNext flag that the chain sets, and passes it to RequestCollector as failFastRetry. The collector emits an error with code provider_retry and stops the turn, so the attempt's OpenCode session is interrupted and retired like any other failed attempt. The last target gets no flag and keeps the host's retries.
+
+Decisions: the behaviour is on for every alias list, with or without fallbackAfterMs, and it also covers rate limits the host would retry. That is a change for lists that used to wait, so the CHANGELOG says so. A retry after output has been sent is left alone, because the answer is committed and a restart would repeat text. To know whether a target follows, the chain now resolves the targets before the first attempt, one uncached model.list host call per list-alias request. Rejected: reading the retry event's delay and waiting less (the host would still run another step); treating it as a failure only when fallbackAfterMs is set (the 520 case needs no timer).
+
+Validation: collector tests cover a retry with a target after it, without one, and after text or reasoning output. Fallback tests cover the fall-through, the flag on each attempt (true, true, false), and a last-target retry standing as the answer. Mutations provider-retry-ignored, provider-retry-after-output, output-not-recorded-for-retry and next-flag-always-set are killed.
+
+Refs #391
+
+#### Fixes
+
+**fix(fallback): answer the review of the first-event deadline** ([`a893a5e`](https://github.com/jjjermiah/opencode-plugboard/commit/a893a5e1bd5959a7a94d9ea9fd0709a34f95ecf3))
+
+The review of #392 asked for tests, docs and a load-time bound for fallbackAfterMs. This commit covers those; the two follow-ups for #391 come in their own commits.
+
+- Tests: a target that streams reasoning first, and one that streams text first, are not aborted when their stream runs past the deadline, and the whole answer arrives. Removing the timer clear now fails a test (mutation fallback-first-event-deadline-never-cleared). The early event moves to 50 ms of a 400 ms deadline, so a slow runner cannot push it past.
+- Docs: configuration.md defines "no event". Any plugboard event stops the clock. Silence includes the setup of the attempt (image fetches, a cold Location, creating the session), hidden reasoning before the answer, and, for an app with serverTools, the time an OpenCode tool runs. A deadline that fires during a tool call can make the next target run the tool again. The deadline is not a hard bound.
+- Load: fallbackAfterMs at or past requestTimeoutMs, or past an app's own requestTimeoutMs, is refused at load, because that deadline ends the request first. The budget of the whole chain (fallbackAfterMs times the targets that are not last) is documented.
+- Small fixes: the fallbacks line in config.ts keeps its indent; the loadCatalog comment says the catalog is read once per chain request. The CHANGELOG entry no longer names a private host.
+
+Rejected: clamping the value to requestTimeoutMs silently. A value that cannot fire should fail at load, not change behaviour. Still open: a per-target or per-app fallbackAfterMs, since a provider's silent-thinking time differs.
+
+Refs #391
+
+**fix(session): answer an upstream status past 511 as a 502** ([`e09a0ec`](https://github.com/jjjermiah/opencode-plugboard/commit/e09a0ec3c08b99203c90cb1a137ed553a6a61a67))
+
+An upstream status that the host passed through reached the client unchanged: a provider that fails with HTTP 520 (Cloudflare uses 520 to 527) made plugboard answer 520, which is not an HTTP status a client can read. The mapping in toPlugError used the upstream status as-is for every 5xx it did not classify.
+
+Now a status of 512 or more is answered as 502 provider_unavailable, the gateway class, and the message is the same fixed text as before. Statuses 500 to 511 pass through as they did, and the 4xx mappings are untouched. The raw host text still goes only to the log (I13).
+
+Decisions: the cut is 511, the last standard 5xx code, so every status the standard defines is kept. Rejected: mapping every 5xx to 502 (it would turn a provider's 503 overload, which the client can act on, into a generic gateway error). This matters for the fallback chain too: 502 with provider_unavailable is retryable, so a chain treats a 520 the same way whatever its status number.
+
+Validation: collector tests cover a 520 reaching the caller (502, code provider_unavailable) and a 503 that keeps its status. Mutation upstream-520-passed-through is killed.
+
+Closes #391
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.39.0] - 2026-10-16: Fair Shares for Everyone
 
@@ -7113,7 +7181,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...HEAD
+[0.40.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...v0.37.0
