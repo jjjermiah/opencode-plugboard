@@ -40,7 +40,7 @@ export interface PlugboardOptions {
    */
   readonly fallbacks: Readonly<Record<string, ReadonlyArray<string>>>
   /**
-   * Option `fallbackAfterMs` (since 0.37.0, #391): when a target of a list alias has produced no model event within
+   * Option `fallbackAfterMs` (since 0.38.0, #391): when a target of a list alias has produced no model event within
    * this many ms, its attempt is aborted and the next target is tried. The last target is bounded only by the request
    * deadline. Absent (the default): no first-event deadline. Global only: a list entry is a plain string. Must be below
    * `requestTimeoutMs` and below each `apps.<name>.requestTimeoutMs` (refused at load otherwise).

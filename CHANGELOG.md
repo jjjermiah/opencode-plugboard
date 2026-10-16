@@ -16,17 +16,60 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Added
 
-- **First-event deadline for fallback chains** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.37.0). A fallback chain could not help when its first target hung: a provider that fails upstream with HTTP 520 kept the host retrying, and a request to that target hung for more than 90 seconds with no event and no failure. Option `fallbackAfterMs` sets a deadline for each target that is not the last. A target that has produced no model event within it is aborted (its OpenCode session is interrupted and retired, not left running) and the next target is tried. It is reported like any other fallback: `x-plugboard-fallbacks`, the `model.fallback` log line with reason `first_event_deadline`, and `plugboard_fallbacks_total`. The last target has no first-event deadline and is bounded only by `requestTimeoutMs`. Off by default. Global only, because a list entry is a plain model string. It is refused at load unless it is below `requestTimeoutMs` and below each app's `requestTimeoutMs`. Silence before the first event counts against it, including the setup of the attempt and an app's `serverTools` runs; read the rule in [configuration](docs/configuration.md#aliases-and-fallbacks) before setting it.
+- **First-event deadline for fallback chains** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.38.0). A fallback chain could not help when its first target hung: a provider that fails upstream with HTTP 520 kept the host retrying, and a request to that target hung for more than 90 seconds with no event and no failure. Option `fallbackAfterMs` sets a deadline for each target that is not the last. A target that has produced no model event within it is aborted (its OpenCode session is interrupted and retired, not left running) and the next target is tried. It is reported like any other fallback: `x-plugboard-fallbacks`, the `model.fallback` log line with reason `first_event_deadline`, and `plugboard_fallbacks_total`. The last target has no first-event deadline and is bounded only by `requestTimeoutMs`. Off by default. Global only, because a list entry is a plain model string. It is refused at load unless it is below `requestTimeoutMs` and below each app's `requestTimeoutMs`. Silence before the first event counts against it, including the setup of the attempt and an app's `serverTools` runs; read the rule in [configuration](docs/configuration.md#aliases-and-fallbacks) before setting it.
 
 ### Changed
 
-- **A host retry before any output moves a fallback chain on at once** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.37.0). OpenCode retries a failed provider call itself, after a wait of up to about 84 seconds for an upstream 520. For an alias list with a target after the failing one, that wait now ends the attempt at once with reason `provider_retry`, so the chain falls through in seconds. The last target keeps the host's retries. This applies with or without `fallbackAfterMs`, so a rate limit that the host would retry also moves on at once: a change for alias lists that used to wait. Retries after output has been sent are unchanged, because the answer is committed.
+- **A host retry before any output moves a fallback chain on at once** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.38.0). OpenCode retries a failed provider call itself, after a wait of up to about 84 seconds for an upstream 520. For an alias list with a target after the failing one, that wait now ends the attempt at once with reason `provider_retry`, so the chain falls through in seconds. The last target keeps the host's retries. This applies with or without `fallbackAfterMs`, so a rate limit that the host would retry also moves on at once: a change for alias lists that used to wait. Retries after output has been sent are unchanged, because the answer is committed.
 
 ### Fixed
 
-- **An upstream HTTP 520 is answered as 502** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.37.0). A status that reached the client unchanged could be 520 to 527, which are not HTTP statuses (Cloudflare uses them). Such a status is answered as 502 `provider_unavailable`, the gateway class. Statuses 500 to 511 and the 4xx ones are unchanged.
+- **An upstream HTTP 520 is answered as 502** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.38.0). A status that reached the client unchanged could be 520 to 527, which are not HTTP statuses (Cloudflare uses them). Such a status is answered as 502 `provider_unavailable`, the gateway class. Statuses 500 to 511 and the 4xx ones are unchanged.
+
+## [0.37.0] - 2026-10-15: Copilot Thinks Too
+
+**Full diff:** [v0.36.0...v0.37.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...v0.37.0)
+
+### Fixed
 
 - **Signed thinking replays to Copilot Claude** ([#386](https://github.com/jjjermiah/opencode-plugboard/issues/386), since 0.37.0). Replay of a client's signed `thinking` blocks was gated on the provider being `anthropic`, so Copilot's Claude models got the history without their earlier reasoning, even though Copilot serves Claude on the Anthropic messages route with the same `anthropic` metadata key. The gate now also admits `github-copilot` models whose id starts with `claude-`. The hook event carries only the model's provider and id, not its route, so plugboard cannot ask which route a model uses. The other Copilot routes (chat completions, responses) do not read that key, so a signature sent to them is dropped. Other Copilot models stay out.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Fixes
+
+**fix(session): replay signed thinking to Copilot Claude models** ([`86a4818`](https://github.com/jjjermiah/opencode-plugboard/commit/86a4818bd46d4a3f2f41c8c2f8560409699c2c3d))
+
+Replay of a client's signed thinking blocks was gated on the request's provider being `anthropic` (#374). Copilot's Claude models were excluded, but Copilot serves Claude on the Anthropic messages route with the same `anthropic` providerMetadata key (github-copilot/models.ts in OpenCode v2.0.27 picks that route when a model lists /v1/messages), so the signature replays there as well.
+
+Decision: the context hook event carries only model.providerID and model.id (the Model.Ref), not the route, package or protocol, so plugboard cannot ask which route a model uses. The gate is replaysSignedThinking(): provider `anthropic`, or provider `github-copilot` with an id starting `claude-`. Copilot's chat-completions and responses converters read only the copilot providerOptions and skip reasoning without an item id, so an anthropic-keyed signature is not sent on those routes even if a Claude model were served there. Other Copilot models stay out.
+
+Rejected: an explicit list of Copilot Claude model ids (it goes stale with each new model); exposing the route on the hook event (needs an OpenCode change, out of scope here).
+
+Validation: typecheck; bun test 2675 pass, 0 fail (live tests skipped); coverage ratchet raised test/session floor 351 to 353; mutations 88 of 88 killed, with two new P386 entries. Live, on an isolated server built from this branch, github-copilot/claude-haiku-5.5, a two-turn thinking plus record_answer tool round trip: turn 1 returns a signed thinking block (signature 932 bytes); turn 2 with the real signature returns 200; the same history with a forged same-length signature returns 400 from the provider; a control with thinking stripped returns 200. The same script on main (old gate) returns 200 for the forged signature, so the difference is the gate.
+
+Closes #386
+
+#### Docs
+
+**docs(config): state that apps.<name>.maxN must not exceed maxN** ([`e6f7017`](https://github.com/jjjermiah/opencode-plugboard/commit/e6f7017bd1ecbba98eec4b758ea44ad9173c9e5e))
+
+The two maxN rows said the per-app cap cannot be higher than the global one, but not what happens when it is. Source: parseApps in src/config.ts checks apps.<name>.maxN with positiveInt against the global maxN as the upper bound, so a larger per-app value throws while the options load and the plugin stops. Both rows now say so: the global row names the per-app rule, and the per-app row says it is a load error. The advice for letting one app take a larger n (raise the global maxN, then lower it for the other apps) is unchanged.
+
+Rejected: clamping the per-app value to the global one. The code already fails loudly at config time, and a silent clamp would hide a config mistake.
+
+Docs only. No behaviour change.
+
+#### Dependencies
+
+**build(deps): support opencode 2.0.29** ([`17db836`](https://github.com/jjjermiah/opencode-plugboard/commit/17db83617f02ebaa0e0cbce9e749ecfdecaf2ce5))
+
+OpenCode published @opencode/plugin 2.0.29. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.36.0] - 2026-10-13: Show Your Work
 
@@ -6720,7 +6763,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...v0.34.0

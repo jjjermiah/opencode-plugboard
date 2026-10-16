@@ -1,6 +1,6 @@
 # Langfuse
 
-Verified: run, 2026-10-13. `examples/langfuse` (langfuse 4.17.0, openai 3.29.0, Python 3.12, run with `uv run`) ran against plugboard with model `fast`: a text call, a stream and one tool round trip all passed. Langfuse tracing was off, because no Langfuse server or keys were available here, so the traces were not checked in a Langfuse instance. The config was checked against the Langfuse OpenAI (Python) integration page, <https://langfuse.com/integrations/model-providers/openai-py>. Not in `docs/compatibility.md` yet: there is no scripted test for it.
+Verified: run, 2026-10-13. `examples/langfuse` (langfuse 4.17.0, openai 3.29.0, Python 3.12, run with `uv run`) ran against plugboard with model `fast`: a text call, a stream and one tool round trip all passed. Langfuse tracing was off, because no Langfuse server or keys were available here, so the traces were not checked in a Langfuse instance. The config was checked against the Langfuse OpenAI (Python) integration page, <https://langfuse.com/integrations/model-providers/openai-py>. The scripted run is in CI (`examples` job, committed under `runs/scripted/`), see [compatibility.md](../compatibility.md#client-examples-in-ci).
 
 Langfuse is an LLM observability platform. It is not an OpenAI library. Its Python SDK ships a drop-in OpenAI wrapper that records each call as a trace while it sends the request to whatever `base_url` you give it. Here the wrapper sends to plugboard, and plugboard is the only model endpoint.
 
