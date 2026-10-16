@@ -90,6 +90,13 @@ describe("runResponse: event order", () => {
     expect(response).toMatchObject({ status: "incomplete", incomplete_details: { reason: wire } })
   })
 
+  test("#425 an answer cut by max_output_tokens has an incomplete message item, in the stream and in the response", async () => {
+    const { emitted, response } = await run(plain, ev.text("cut"), ev.finish("length"))
+    const done = emitted.find((event: any) => event.type === "response.output_item.done") as any
+    expect(done.item).toMatchObject({ type: "message", status: "incomplete" })
+    expect(response.output[0]).toMatchObject({ type: "message", status: "incomplete" })
+  })
+
   test("an empty answer still opens and completes the response", async () => {
     const { types, response } = await run(plain, ev.finish())
     expect(types).toEqual(["response.created", "response.in_progress", "response.completed"])
