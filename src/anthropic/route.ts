@@ -142,7 +142,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     if (path === COUNT_TOKENS) {
       const counted = await scope.race(sessionRequest(host.session, auth.app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, auth.app), scope.signal))
       if (isPlugError(counted)) return fail(counted)
-      return sendJson(response, 200, { input_tokens: estimateTokens(counted) })
+      return sendJson(response, 200, { input_tokens: estimateTokens(counted, ref.id) })
     }
     // Sampling parameters the model is known to reject are dropped; `top_k` has no neutral
     // equivalent and is always dropped. Both are reported before any response bytes.

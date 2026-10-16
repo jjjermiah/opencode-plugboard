@@ -79,7 +79,7 @@ describe("#4 the route", () => {
     await server!.close()
     await route([ev.finish()], { apps: { default: { system: "P".repeat(400), systemMode: "prepend" } } })
     const withPolicy = (await server!.send({ ...messages(), path: "/v1/messages/count_tokens" })).json().input_tokens
-    expect(withPolicy - plain).toBe(100)
+    expect(withPolicy - plain).toBe(80)
   })
 
   test("#275 a caller's cache_control breakpoint reaches the model call; the request is still answered", async () => {
@@ -243,9 +243,9 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const port = new FakeSessionPort()
     port.skills.set("invoice-parser", "S".repeat(400))
     await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, port)
-    // ceil((400 skill characters + 2 for "hi") / 4)
-    expect((await countOf("invoice-parser")).body).toEqual({ input_tokens: 101 })
-    expect((await countOf("test/echo")).body).toEqual({ input_tokens: 1 })
+    // 21 request + 4 message + (400 skill characters + 2 for "hi") / 5, rounded up
+    expect((await countOf("invoice-parser")).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 402 / 5) })
+    expect((await countOf("test/echo")).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 2 / 5) })
   })
 
   test("an agent's prompt replaces the caller's system prompt in the count", async () => {
@@ -253,8 +253,8 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     port.agents.set("review", { system: "A".repeat(400) })
     await countServerWith({ models: ["test/*"], agents: [{ name: "review", model: "test/echo" }] }, port)
     const system = "C".repeat(800)
-    expect((await countOf("agent/review", { system })).body).toEqual({ input_tokens: 101 })
-    expect((await countOf("test/echo", { system })).body).toEqual({ input_tokens: 201 })
+    expect((await countOf("agent/review", { system })).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 402 / 5) })
+    expect((await countOf("test/echo", { system })).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 802 / 5) })
   })
 
   test("a skill missing from the app directory is the 404 the request would get", async () => {
@@ -271,11 +271,11 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
     await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
     const headers = { "x-api-key": "secret" }
-    // ceil((2 for "hi" + name + description + JSON schema characters) / 4)
-    expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil((2 + "websearch".length + 200 + JSON.stringify(input).length) / 4) })
+    // 21 request + 4 message + 534 tool preamble + 40 per tool + (2 for "hi" + name + description + JSON schema characters) / 5
+    expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 534 + 40 + (2 + "websearch".length + 200 + JSON.stringify(input).length) / 5) })
     // tool_choice is kept only with a caller tool (src/anthropic/request.ts). `none` offers no caller tool and no server tool.
     const caller = { name: "lookup", description: "Looks up", input_schema: { type: "object" } }
-    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({ input_tokens: 1 })
+    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 2 / 5) })
   })
 
   test("a named tool choice counts only that caller tool, its steering sentence, and the server tools", async () => {
@@ -288,8 +288,9 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const fetch = { name: "fetch", description: "Fetches", input_schema: { type: "object" } }
     const steering = "You must respond by calling the `fetch` tool."
     const chars = 2 + steering.length + "fetch".length + "Fetches".length + JSON.stringify(fetch.input_schema).length + "websearch".length + 200 + JSON.stringify(input).length
+    // Two tools (fetch and websearch): the preamble and 40 per tool, on top of the characters
     expect((await countOf("test/echo", { tools: [lookup, fetch], tool_choice: { type: "tool", name: "fetch" } }, { "x-api-key": "secret" })).body).toEqual({
-      input_tokens: Math.ceil(chars / 4),
+      input_tokens: Math.ceil(21 + 4 + 534 + 2 * 40 + chars / 5),
     })
   })
 

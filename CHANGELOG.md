@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- `count_tokens` and Gemini `countTokens` were off by up to 9 times with tools and 13 times with images, and undercounted CJK text by about four times. The estimate is now calibrated against live provider counts for Claude Haiku 4.5 and Gemini 3.x: tool-use framing and a per-tool cost, a fixed cost per request and message, one token per CJK character on Claude, and Anthropic's `width * height / 750` for each image from its header (a flat cost on Gemini). Chat Completions and Responses still have no count endpoint. [#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)
 
 ## [0.45.0] - 2026-10-16: Clean Endings
 

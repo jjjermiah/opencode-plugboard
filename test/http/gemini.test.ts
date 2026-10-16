@@ -96,7 +96,7 @@ describe("routes", () => {
     await server!.close()
     await route([ev.finish()], { apps: { default: { system: "P".repeat(400), systemMode: "prepend" } } })
     const withPolicy = (await server!.send(generate("/v1beta/models/fast:countTokens"))).json().totalTokens
-    expect(withPolicy - plain).toBe(100)
+    expect(withPolicy - plain).toBe(80)
   })
 
   test("the /v1/models/{model}:generateContent spelling works too, and is logged by route label", async () => {
@@ -316,9 +316,9 @@ describe("#201 countTokens counts the persona, skill and server tools the sessio
     const port = new FakeSessionPort()
     port.skills.set("invoice-parser", "S".repeat(400))
     await countServerWith({ models: ["test/*"], aliases: { fast: "test/echo", "invoice-parser": "skill:invoice-parser@test/echo" } }, port)
-    // ceil((400 skill characters + 2 for "hi") / 4)
-    expect((await server!.send(count("invoice-parser"))).json()).toEqual({ totalTokens: 101 })
-    expect((await server!.send(count("fast"))).json()).toEqual({ totalTokens: 1 })
+    // 21 request + 4 message + (400 skill characters + 2 for "hi") / 5, rounded up (the echo model gets the Claude profile)
+    expect((await server!.send(count("invoice-parser"))).json()).toEqual({ totalTokens: Math.ceil(21 + 4 + 402 / 5) })
+    expect((await server!.send(count("fast"))).json()).toEqual({ totalTokens: Math.ceil(21 + 4 + 2 / 5) })
   })
 
   test("a skill missing from the app directory is the 404 the request would get", async () => {
@@ -334,8 +334,8 @@ describe("#201 countTokens counts the persona, skill and server tools the sessio
     const input = { type: "object", properties: { q: { type: "string" } } }
     port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
     await countServerWith({ aliases: { fast: "test/echo" }, keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
-    // ceil((2 for "hi" + name + description + JSON schema characters) / 4)
+    // 21 request + 4 message + 534 tool preamble + 40 per tool + (2 for "hi" + name + description + JSON schema characters) / 5
     const reply = await server!.send(count("fast", { "x-goog-api-key": "secret" }))
-    expect(reply.json()).toEqual({ totalTokens: Math.ceil((2 + "websearch".length + 200 + JSON.stringify(input).length) / 4) })
+    expect(reply.json()).toEqual({ totalTokens: Math.ceil(21 + 4 + 534 + 40 + (2 + "websearch".length + 200 + JSON.stringify(input).length) / 5) })
   })
 })

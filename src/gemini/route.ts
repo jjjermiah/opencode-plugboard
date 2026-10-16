@@ -126,7 +126,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     // An estimate, not the provider's count (see src/anthropic/tokens.ts). The request as the session sends it: the app's policy, persona and server tools count too (#201).
     const counted = await scope.race(sessionRequest(host.session, app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, app), scope.signal))
     if (isPlugError(counted)) return fail(counted)
-    return sendJson(response, 200, { totalTokens: estimateTokens(counted) })
+    return sendJson(response, 200, { totalTokens: estimateTokens(counted, ref.id) })
   }
 
   if (match.op === "list" || match.op === "get") {
