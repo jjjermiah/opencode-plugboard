@@ -33,6 +33,51 @@ function setup() {
   }
 }
 
+describe("#390 the window after a match (review #429): the answer is complete, so the run ends at once", () => {
+  test("before any match, a non-aborted host failure is still an error", async () => {
+    const run = setup()
+    run.send(host.stepFailed({ type: "provider.rate-limit", message: "slow down" }))
+    expect((await run.drain()).at(-1)).toMatchObject({ type: "error" })
+  })
+
+  test("after a match, a non-aborted host failure finishes as stop with the usage so far, and is logged", async () => {
+    const run = setup()
+    run.collector.markStopped()
+    run.send(host.usage({ input: 10, output: 40 }), host.stepFailed({ type: "provider.rate-limit", message: "slow down" }))
+    expect(await run.drain()).toEqual([{ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 40 } }])
+    expect(logs.of("request.stop_step_failed")).toHaveLength(1)
+  })
+
+  test("after a match, a client tool call ends the run at once: no tool-call event, the host is interrupted now", async () => {
+    const run = setup()
+    run.collector.markStopped()
+    run.send(host.toolCalled("c1", "lookup", { q: 1 }))
+    expect(run.stops).toBe(1)
+    expect(await run.drain()).toEqual([{ type: "finish", reason: "stop", usage: undefined }])
+  })
+
+  test("after a match, a server tool call runs no tool and starts no next step", async () => {
+    let stops = 0
+    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3 })
+    const store = createSessionStore()
+    store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
+    collector.markStopped()
+    store.dispatch(host.toolCalled("s1", "web", {}))
+    store.dispatch(host.stepEnded("tool-calls"))
+    const events = await collect(collector.events())
+    expect(stops).toBe(1)
+    expect(events).toEqual([{ type: "finish", reason: "stop", usage: undefined }])
+  })
+
+  test("after a match, a plain step end finishes as stop with the step's usage, and does not interrupt the host", async () => {
+    const run = setup()
+    run.collector.markStopped()
+    run.send(host.textDelta("Hi"), host.stepEnded("stop", { input: 3, output: 4 }))
+    expect(run.stops).toBe(0)
+    expect((await run.drain()).at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 3, outputTokens: 4 } })
+  })
+})
+
 describe("#390 finishNow: a run a stop sequence interrupted ends with the usage counted so far", () => {
   test("no host end arrives: the collector finishes with the running usage, then ignores the late end", async () => {
     const run = setup()

@@ -331,12 +331,19 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       // finish), then interrupt it, and close with the running usage if the host still has not ended it `STOP_DRAIN_MS` later.
       let settle: ReturnType<typeof setTimeout> | undefined
       let drain: ReturnType<typeof setTimeout> | undefined
+      let stopFired = false
       const onStopAnswer = () => {
         collector?.markStopped()
-        if (settle !== undefined) return
-        const settleMs = deps.stopSettleMs ?? STOP_SETTLE_MS
-        settle = setTimeout(interrupt, settleMs)
-        settle.unref?.()
+        // Called by the collector (the match in its text) and by the stop wrapper (the same match): once.
+        if (stopFired) return
+        stopFired = true
+        // The app's `stopSettleMs` (0 = interrupt at once), else the seam for tests, else the default (#390 review).
+        const settleMs = policy?.stopSettleMs ?? deps.stopSettleMs ?? STOP_SETTLE_MS
+        if (settleMs === 0) interrupt()
+        else {
+          settle = setTimeout(interrupt, settleMs)
+          settle.unref?.()
+        }
         drain = setTimeout(() => collector?.finishNow(), settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS))
         drain.unref?.()
       }
@@ -383,6 +390,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           stopTurn: interrupt,
           requestID,
           app,
+          // The collector sees the match in the text it emits, so calls queued behind it are already after it (#390 review).
+          ...(request.structuredTool === undefined ? { stopSequences: request.generation.stop ?? [], onStopAnswer } : {}),
           ...(request.parallelToolCalls === false ? { singleToolCall: true } : {}),
           ...(policy?.serverTools
             ? {

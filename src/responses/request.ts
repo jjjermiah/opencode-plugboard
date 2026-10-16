@@ -10,6 +10,7 @@
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { show } from "../client-value.js"
 import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import {
@@ -41,9 +42,6 @@ const RESPOND_TOOL = "respond"
 const JSON_OBJECT_INSTRUCTION = "Respond with a single valid JSON object only."
 
 const isRecord = (value: unknown): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value)
-
-/** A client value in an error message: primitives as they are, objects as `object` (String() of an object can throw, #390 property test). */
-const show = (value: unknown): string => (typeof value === "object" && value !== null) || typeof value === "function" ? "object" : String(value)
 
 const bad = (message: string, param?: string, code?: string): PlugError => ({
   status: 400,
