@@ -33,3 +33,11 @@ The snippet uses `Meal`, a zod `strictObject` with `calories` and `protein_g`, a
 - Set `supportsStructuredOutputs: true`. Without it the SDK sends `response_format: json_object` with no schema anywhere, the model guesses the keys, and `Output.object` throws `NoObjectGeneratedError`.
 - `@ai-sdk/openai`: the default `openai(id)` calls `/v1/responses`, which plugboard serves (see [Responses API](../responses.md)). The 2026-10-11 record failed every scenario on it with a 404 (`No route for POST /v1/responses`), because the route did not exist yet. The 2026-10-13 live run passes all 45 rows on it, the same as on `openai.chat(id)` and `createOpenAICompatible`. Multi-turn chats work with the default `store: true`: plugboard keeps the output items of recent answers and resolves the `item_reference`s the SDK sends back (#147). `providerOptions: { openai: { store: false } }` also works and sends the earlier turns in full. `openai.chat(id)` still works if you prefer Chat Completions.
 - The SDK has no model list call. `GET /v1/models` with `fetch` works.
+
+## Store off
+
+`openai(id)` sends `store: true` by default, so a multi-turn chat replays earlier answers as `item_reference` items. Plugboard resolves those only while it holds the answer (one hour, the last 1000 per app). With `providerOptions: { openai: { store: false } }` the SDK sends the earlier turns in full instead. The example's `responses-store-false` row of the tool-call scenario passes on the same wire shape; it does not replay an `item_reference`.
+
+The snippet uses `client` and `model`, and `tool`, `generateText` and `isStepCount` from `ai`, with `z` from `zod`.
+
+<<< @/../examples/vercel-ai-sdk/tools.ts#snippet-store-false

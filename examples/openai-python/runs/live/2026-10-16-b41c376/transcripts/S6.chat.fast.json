@@ -1,0 +1,65 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "Estimate: 2 boiled eggs and a slice of toast.",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "response_format": {
+            "json_schema": {
+              "name": "Meal",
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calories": {
+                    "title": "Calories",
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "title": "Protein G",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "title": "Meal",
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "json_schema"
+          },
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "The model provider is rate limiting requests; retry later",
+            "param": null,
+            "type": "rate_limit_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 429
+      }
+    }
+  ]
+}

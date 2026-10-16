@@ -1,0 +1,124 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "Reply with exactly: pong",
+                  "type": "input_text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "The model provider is rate limiting requests; retry later",
+            "param": null,
+            "type": "rate_limit_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 429
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "Reply with exactly: pong",
+                  "type": "input_text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "The model provider is rate limiting requests; retry later",
+            "param": null,
+            "type": "rate_limit_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-2>"
+        },
+        "status": 429
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "Reply with exactly: pong",
+                  "type": "input_text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "The model provider is rate limiting requests; retry later",
+            "param": null,
+            "type": "rate_limit_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-3>"
+        },
+        "status": 429
+      }
+    }
+  ]
+}

@@ -1,0 +1,685 @@
+{
+  "client": {
+    "name": "openai",
+    "runtime": {
+      "name": "python",
+      "version": "3"
+    },
+    "version": "3.29.0"
+  },
+  "date": "2026-10-16",
+  "example": "openai-python",
+  "models": [
+    "fast",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-5.6-luna#low",
+    "nope"
+  ],
+  "opencode": "2.0.29",
+  "plugboard": {
+    "commit": "b41c376",
+    "version": "0.37.0"
+  },
+  "scenarios": [
+    {
+      "checks": [],
+      "duration_ms": 1297,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S1",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S1.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [],
+      "duration_ms": 1197,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S1",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S1.responses.fast.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 559,
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.chat.anthropic-claude-haiku-4-5.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 849,
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.responses.anthropic-claude-haiku-4-5.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1632,
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.chat.openai-gpt-5.6-luna-low.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "duration_ms": 2330,
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.responses.openai-gpt-5.6-luna-low.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [],
+      "duration_ms": 572,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S2",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S2.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [],
+      "duration_ms": 266,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S2",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S2.responses.fast.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [],
+      "duration_ms": 746,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S2",
+      "model": "fast",
+      "note": "previous_response_id is refused: plugboard is stateless, send the full input (docs/responses.md) (#104)",
+      "required": true,
+      "status": "gap",
+      "transcript": "transcripts/S2.responses-previous-id.fast.json",
+      "variant": "responses-previous-id"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1916,
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.chat.anthropic-claude-haiku-4-5.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1819,
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.responses.anthropic-claude-haiku-4-5.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [],
+      "duration_ms": 900,
+      "error": "BadRequestError: Error code: 400 - {'error': {'message': 'previous_response_id is not supported: plugboard is stateless, send the full conversation in input', 'type': 'invalid_request_error', 'param': 'previous_response_id', 'code': 'unsupported_parameter'}}",
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "previous_response_id is refused: plugboard is stateless, send the full input (docs/responses.md) (#104)",
+      "required": true,
+      "status": "gap",
+      "transcript": "transcripts/S2.responses-previous-id.anthropic-claude-haiku-4-5.json",
+      "variant": "responses-previous-id"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 3437,
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.chat.openai-gpt-5.6-luna-low.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "duration_ms": 4238,
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.responses.openai-gpt-5.6-luna-low.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [],
+      "duration_ms": 3527,
+      "error": "BadRequestError: Error code: 400 - {'error': {'message': 'previous_response_id is not supported: plugboard is stateless, send the full conversation in input', 'type': 'invalid_request_error', 'param': 'previous_response_id', 'code': 'unsupported_parameter'}}",
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "previous_response_id is refused: plugboard is stateless, send the full input (docs/responses.md) (#104)",
+      "required": true,
+      "status": "gap",
+      "transcript": "transcripts/S2.responses-previous-id.openai-gpt-5.6-luna-low.json",
+      "variant": "responses-previous-id"
+    },
+    {
+      "checks": [
+        {
+          "name": "stream ended normally",
+          "ok": false
+        }
+      ],
+      "duration_ms": 280,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S3",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S3.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "stream ended normally",
+          "ok": false
+        }
+      ],
+      "duration_ms": 432,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S3",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S3.responses.fast.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [],
+      "duration_ms": 248,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S4",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S4.fast.json"
+    },
+    {
+      "checks": [],
+      "duration_ms": 357,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S5",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S5.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [],
+      "duration_ms": 163,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S5",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S5.responses.fast.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 492,
+      "error": null,
+      "id": "S5",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S5.chat.anthropic-claude-haiku-4-5.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 697,
+      "error": null,
+      "id": "S5",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S5.responses.anthropic-claude-haiku-4-5.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 3029,
+      "error": null,
+      "id": "S5",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S5.chat.openai-gpt-5.6-luna-low.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer says red",
+          "ok": true
+        }
+      ],
+      "duration_ms": 1969,
+      "error": null,
+      "id": "S5",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S5.responses.openai-gpt-5.6-luna-low.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [],
+      "duration_ms": 14026,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S6",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S6.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [],
+      "duration_ms": 268,
+      "error": "RateLimitError: Error code: 429 - {'error': {'message': 'The model provider is rate limiting requests; retry later', 'type': 'rate_limit_error', 'param': None, 'code': 'rate_limited'}}",
+      "id": "S6",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "fail",
+      "transcript": "transcripts/S6.responses.fast.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 5022,
+      "error": null,
+      "id": "S6",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.chat.anthropic-claude-haiku-4-5.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 3491,
+      "error": null,
+      "id": "S6",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.responses.anthropic-claude-haiku-4-5.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 9413,
+      "error": null,
+      "id": "S6",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.chat.openai-gpt-5.6-luna-low.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "calories is a number",
+          "ok": true
+        },
+        {
+          "name": "protein_g is a number",
+          "ok": true
+        },
+        {
+          "name": "no extra keys",
+          "ok": true
+        }
+      ],
+      "duration_ms": 5667,
+      "error": null,
+      "id": "S6",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S6.responses.openai-gpt-5.6-luna-low.json",
+      "variant": "responses"
+    },
+    {
+      "checks": [
+        {
+          "name": "fast listed",
+          "ok": true
+        },
+        {
+          "name": "claude listed",
+          "ok": true
+        },
+        {
+          "name": "gpt low variant listed",
+          "ok": true
+        }
+      ],
+      "duration_ms": 41,
+      "error": null,
+      "id": "S7",
+      "model": "-",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S7.none.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "status is 401",
+          "ok": true
+        },
+        {
+          "name": "code is invalid_api_key",
+          "ok": true
+        }
+      ],
+      "duration_ms": 3,
+      "error": null,
+      "id": "E1",
+      "model": "fast",
+      "note": null,
+      "required": false,
+      "status": "pass",
+      "transcript": "transcripts/E1.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "status is 404",
+          "ok": true
+        },
+        {
+          "name": "code is model_not_found",
+          "ok": true
+        }
+      ],
+      "duration_ms": 160,
+      "error": null,
+      "id": "E2",
+      "model": "nope",
+      "note": null,
+      "required": false,
+      "status": "pass",
+      "transcript": "transcripts/E2.nope.json"
+    }
+  ],
+  "schema": 1,
+  "target": "live",
+  "verdict": "fail"
+}

@@ -1,0 +1,49 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "What color is this image? One word.",
+                  "type": "input_text"
+                },
+                {
+                  "detail": "auto",
+                  "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4nO3NMQ0AAAzDsPLHODAj0X6Wcse5ZNr2DgAAAAAAAAAAAIo9tPVwLraRYtkAAAAASUVORK5CYII=",
+                  "type": "input_image"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "fast"
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "The model provider is rate limiting requests; retry later",
+            "param": null,
+            "type": "rate_limit_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 429
+      }
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "What is the weather in Paris? Use the tool.",
+                  "type": "input_text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "fast",
+          "stream": true,
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "The model provider is rate limiting requests; retry later",
+            "param": null,
+            "type": "rate_limit_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 429
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "What is the weather in Paris? Use the tool.",
+                  "type": "input_text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "fast",
+          "stream": true,
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "The model provider is rate limiting requests; retry later",
+            "param": null,
+            "type": "rate_limit_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-2>"
+        },
+        "status": 429
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "What is the weather in Paris? Use the tool.",
+                  "type": "input_text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "max_output_tokens": 1024,
+          "model": "fast",
+          "stream": true,
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Current weather for a city",
+              "name": "get_weather",
+              "parameters": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "code": "rate_limited",
+            "message": "The model provider is rate limiting requests; retry later",
+            "param": null,
+            "type": "rate_limit_error"
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-session": "<id-3>"
+        },
+        "status": 429
+      }
+    }
+  ]
+}
