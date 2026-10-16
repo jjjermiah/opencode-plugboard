@@ -28,6 +28,14 @@ export interface Mutation {
 
 export const MUTATIONS: readonly Mutation[] = [
   {
+    id: "P390-deadline-clamp-off",
+    invariant: "#390",
+    file: "src/session/caller.ts",
+    find: "Math.min(settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS), room)",
+    replace: "settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS)",
+    tests: ["test/session/caller.test.ts"],
+  },
+  {
     id: "P390-tool-in-window-runs",
     invariant: "#390",
     file: "src/session/events.ts",
@@ -63,8 +71,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "P390-settle-option-ignored",
     invariant: "#390",
     file: "src/session/caller.ts",
-    find: "const settleMs = policy?.stopSettleMs ?? deps.stopSettleMs ?? STOP_SETTLE_MS",
-    replace: "const settleMs = deps.stopSettleMs ?? STOP_SETTLE_MS",
+    find: "const configured = policy?.stopSettleMs ?? deps.stopSettleMs ?? STOP_SETTLE_MS",
+    replace: "const configured = deps.stopSettleMs ?? STOP_SETTLE_MS",
     tests: ["test/session/caller.test.ts"],
   },
   {

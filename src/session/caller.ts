@@ -57,6 +57,8 @@ export interface SessionCallerDeps {
   readonly affinity?: Affinity
   /** Global `history.hidden` (since 0.29.0, #337); an app's `apps.<name>.history.hidden` overrides it. Absent: off. */
   readonly historyHidden?: boolean
+  /** The global `requestTimeoutMs` (the route's deadline; an app's own value wins). Absent: no deadline to keep clear of (#390). */
+  readonly requestTimeoutMs?: number
   /** Test seams for the stop timers (#390): defaults are `STOP_SETTLE_MS` and `STOP_DRAIN_MS`. */
   readonly stopSettleMs?: number
   readonly stopDrainMs?: number
@@ -75,6 +77,9 @@ const STOP_SETTLE_MS = 2_000
 
 /** After the interrupt, how long the host may take to report the end before the stream closes with the usage counted so far. */
 const STOP_DRAIN_MS = 5_000
+
+/** Kept clear of the request deadline when a stop match is near it: the answer must finish before the route answers 504 (#390 review). */
+const STOP_DEADLINE_MARGIN_MS = 250
 
 const failure = (status: number, message: string, code: string): PlugEvent => ({
   type: "error",
@@ -338,13 +343,18 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (stopFired) return
         stopFired = true
         // The app's `stopSettleMs` (0 = interrupt at once), else the seam for tests, else the default (#390 review).
-        const settleMs = policy?.stopSettleMs ?? deps.stopSettleMs ?? STOP_SETTLE_MS
+        const configured = policy?.stopSettleMs ?? deps.stopSettleMs ?? STOP_SETTLE_MS
+        // The window never runs past the request deadline (the route's own timeout, from this request's start) minus a margin: a
+        // complete answer near the deadline finishes as stop before the 504 fires (#390 review).
+        const timeout = policy?.requestTimeoutMs ?? deps.requestTimeoutMs
+        const room = timeout === undefined ? Infinity : Math.max(0, startedAt + timeout - STOP_DEADLINE_MARGIN_MS - Date.now())
+        const settleMs = Math.min(configured, room)
         if (settleMs === 0) interrupt()
         else {
           settle = setTimeout(interrupt, settleMs)
           settle.unref?.()
         }
-        drain = setTimeout(() => collector?.finishNow(), settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS))
+        drain = setTimeout(() => collector?.finishNow(), Math.min(settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS), room))
         drain.unref?.()
       }
 

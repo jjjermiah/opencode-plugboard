@@ -378,6 +378,18 @@ describe("#390 the host's interrupt of a stop-sequence run ends the answer with 
     expect(events.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 7, outputTokens: undefined }, stopSequence: "END" })
   })
 
+  test("#390 a stop match close to the request deadline finishes as stop before the deadline, not after the settle window", async () => {
+    // The deadline is 400 ms from the start; the window (2 s) and the drain (5 s) would both run past it. The window is clamped to the
+    // time left, minus a margin, so the answer ends as stop before the route's 504 fires.
+    const run = setup({ requestTimeoutMs: 400, stopSettleMs: 2000, stopDrainMs: 5000 })
+    run.answer((id) => [bus(id).usage({ input: 4 }), bus(id).textDelta("alpha END beta")])
+    const started = Date.now()
+    const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
+    expect(Date.now() - started).toBeLessThan(400)
+    expect(run.port.interrupted).toEqual(["ses_1"])
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "stop", stopSequence: "END", usage: { inputTokens: 4 } })
+  })
+
   test("apps.<name>.stopSettleMs 0 interrupts at once, so a step that never finishes is cut before the window", async () => {
     const run = setup({ stopDrainMs: 200, apps: { app: { stopSettleMs: 0 } } as never })
     run.port.script.interrupt = async (sessionID) => {

@@ -76,6 +76,7 @@ export default Plugin.define({
         promptCache: options.promptCache,
         affinity: createAffinity({ storage: createStoragePort(ctx) }),
         historyHidden: options.history.hidden,
+        requestTimeoutMs: options.requestTimeoutMs,
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
       }
