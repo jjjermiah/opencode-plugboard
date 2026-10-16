@@ -10,9 +10,9 @@ from llm import make_client
 
 async def run(client: AsyncAnthropic, _model):
     # region snippet
-    page = await client.models.list(limit=100)
+    models = client.models.list(limit=100)
     # endregion snippet
-    ids = [model.id for model in page.data]
+    ids = [model.id async for model in models]  # every page
     return {
         "model_ids": ids,
         "has_fast": "fast" in ids,

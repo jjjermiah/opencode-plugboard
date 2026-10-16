@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- `GET /v1/models` with `anthropic-version` pages like Anthropic's list. It honours `limit` (default 20, from 1 to 1000), `after_id` and `before_id`, and `has_more` says whether the page's direction has models left. Before, `?limit=2` returned all 388 models on a real deployment, so the SDKs' `models.list()` got one page and no paging. The cost: a caller that reads only the first page now gets 20 models, not the whole catalog. Iterate the list (the SDKs do this for you) to get all of them. An unknown cursor, both cursors, or a limit outside 1 to 1000 is a 400. The OpenAI list is not paged. Since 0.48.0 ([#457](https://github.com/jjjermiah/opencode-plugboard/issues/457)).
 
 ## [0.47.0] - 2026-10-16: Speaks Anthropic Fluently
 
