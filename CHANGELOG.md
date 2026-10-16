@@ -14,10 +14,71 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.48.0] - 2026-10-16: Turning the Pages
+
+**Full diff:** [v0.47.0...v0.48.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...v0.48.0)
+
 ### Fixed
 
 - `GET /v1/models` with `anthropic-version` pages like Anthropic's list. It honours `limit` (default 20, from 1 to 1000), `after_id` and `before_id`, and `has_more` says whether the page's direction has models left. Before, `?limit=2` returned all 388 models on a real deployment, so the SDKs' `models.list()` got one page and no paging. The cost: a caller that reads only the first page now gets 20 models, not the whole catalog. Iterate the list (the SDKs do this for you) to get all of them. An unknown cursor, both cursors, or a limit outside 1 to 1000 is a 400. The OpenAI list is not paged. Since 0.48.0 ([#457](https://github.com/jjjermiah/opencode-plugboard/issues/457)).
 - The `count_tokens` estimate for Claude 5.x counts long prose closer to what the provider bills. A dense prose turn without tools counted 24 percent low on `claude-sonnet-5-5` (0.76 of real). The Claude 5.x rate for prose drops from 3.38 to 3.1 characters per token. Short turns and tool requests move little. Chat Completions and Responses have no count endpoint, by design. Since 0.48.0 ([#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Fixes
+
+**fix(anthropic): page GET /v1/models with limit, after_id and before_id** ([`c351026`](https://github.com/jjjermiah/opencode-plugboard/commit/c3510264452fa875056019d9a8fad00cedea135a))
+
+Since 0.47.0 GET /v1/models with anthropic-version answered Anthropic's list shape but ignored every paging parameter. ?limit=2 returned all 388 models on a real deployment with has_more false. The Anthropic SDKs auto-paginate models.list() through after_id, so they only ever saw the full catalog by accident.
+
+What changed: the Anthropic list now honours limit (default 20, whole numbers from 1 to 1000, as Anthropic documents), after_id (the page after that model) and before_id (the page before it). has_more reports whether the page's direction has models left, and first_id and last_id are the cursors for the next page in each direction. The list keeps catalog order, because the cursors only need to be stable within one catalog.
+
+Decisions: an invalid limit, both cursors together, or a cursor that is not a listed model is a 400 invalid_request. Anthropic's reference does not say what it returns for those, so these are our choices. The OpenAI list is not paged: it has no paging parameters and its clients never send anthropic-version.
+
+Cost, stated in the changelog: a caller that reads only the first page now gets 20 models, not the whole catalog. The SDK iterators walk every page. The examples anthropic-python, anthropic-js and pydantic-ai-anthropic used to read page one only, so they now iterate the list. Their scripted catalogs have three models, so their transcripts did not change. The paging over the real catalog is checked live on the dev server, see the pull request.
+
+Rejected: returning the whole catalog on one page with a large default. It hides the cursor contract from the SDKs and makes limit meaningless.
+
+Validation: test/http/models-anthropic.test.ts gains nine #457 cases over a 45-model catalog (default page, a full walk with after_id, before_id in reverse, limit 1000, out-of-range limits, bad cursors, OpenAI unpaged). They failed before this change (4 failing on the old route) and pass after it. bun test test/http/models-anthropic.test.ts: 12 pass, 0 fail.
+
+Closes #457
+
+**fix(anthropic): count dense Claude 5.x prose closer to the provider's input** ([`4ba7176`](https://github.com/jjjermiah/opencode-plugboard/commit/4ba717623dddad826b76ca748ba7ebc2254439c0))
+
+The count_tokens estimate for claude-sonnet-5-5 ran 24 percent low on long prose with no tools (585 counted, 770 real on the hub, 0.76). The 5.x profile charged 3.38 characters per token for Latin text, fitted to the 2072-character turn of the earlier refit (c762c0a / 2d73407). The hub's prose tokenizes denser than that turn, so the rate was too high for it.
+
+What changed: CLAUDE_5.charsPerToken goes from 3.38 to 3.1. Nothing else in the profile moves: the fixed request cost (35), the message cost, the tool framing (299) and the per-tool cost (40) stay as fitted, so short turns and tool requests barely change.
+
+Why 3.1: the window is set by two measurements. The hub's long no-tool row (about 1846 characters, 770 real) needs a rate at or below 3.2 to count at 80 percent or more of real. A prose sample of about 1770 characters that measured 525 real on the dev server (1.07 at 3.38) stays within 20 percent only at or above about 2.94. 3.1 sits in that window: offline, the hub row counts about 0.82 and the prose sample about 1.16 (both within 20 percent), the hub long-with-tool row about 0.88, and the two-tool and three-turn shapes about 1.05 and 1.07.
+
+Rejected: a single factor on every 5.x count. It would move the tool cases, which the hub table already has within 20 percent. Rejected: a per-model table, the same reason as in 0.47.0.
+
+Not reproduced: my own long prose on the dev server (live, before this change) reads 1.00 under 3.38, not 0.76. The hub text was not available, so the 0.76 row is taken from the issue, and the 3.1 rate is fitted to that number. The live confirmation runs on my shapes, not the hub's, so this commit is a Refs, not a Closes, for #412.
+
+Checked: test/unit/tokens.test.ts (the #412 case now expects 3.1; it fails against 3.38), the whole token file passes (20 tests). The live shape measurements, before and after, are in the pull request body.
+
+Refs #412
+
+#### Tests
+
+**test(examples): check the error type on both the OpenAI and Messages wires** ([`d864871`](https://github.com/jjjermiah/opencode-plugboard/commit/d86487163ba4e3a475095e11b4cf2b12e6b6f589))
+
+The shared E1 and E2 scenarios checked the error code only. The Messages wire has error.type and no error.code, so the Anthropic examples had to mark the code checks unobserved, and a Gemini error has neither: only a status name. The error type is the one identity all of them share, because OpenAI and Messages use the same two strings (authentication_error and not_found_error, src/openai/response.ts and src/anthropic/response.ts).
+
+What changed: examples/_shared/scenarios.json adds an "error type" check to E1 (authentication_error) and E2 (not_found_error), reading the observation "type". Every E1/E2 runner reports that observation: the OpenAI and Messages runners read error.type from the body or the SDK error, and the Gemini runners map Google's status (UNAUTHENTICATED, NOT_FOUND) to the same two values through a per-wire table. The Anthropic code checks stay unobserved, because a Messages error has no code; the type check now carries the identity they used to miss. The harness README names the type check. All scripted runs were regenerated; the four shapes checked twice produce identical bytes. examples/README.md index and the region check are current.
+
+Decision: no new check kind in the three evaluators. The evaluators already apply "equals" to any observed path, so a shared check on "type" needs no new code and no schema change. The per-wire map lives in each runner, where the wire format is known. Rejected: a neutral check kind that reads "type" or "status" itself, because it moves the wire knowledge into the evaluator for no gain. This does not match the issue's literal wording, so it stays a Refs.
+
+Validation: bun test for the examples harness, normaliser and index tests (46 pass, 0 fail). scripted regen: 18 summaries changed (E1/E2 rows and their check lists), all required scenarios pass. openai-python and openai-js were already partial at HEAD on an optional gap, unchanged. sillytavern and zed have no runnable scripted runner at HEAD and are not touched.
+
+Refs #427
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.47.0] - 2026-10-16: Speaks Anthropic Fluently
 
@@ -8170,7 +8231,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...HEAD
+[0.48.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...v0.46.0
 [0.45.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...v0.45.0
