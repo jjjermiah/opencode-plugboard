@@ -167,6 +167,14 @@ describe("event mapping", () => {
     ])
   })
 
+  test("#385 a redacted reasoning block's opaque payload is carried on an empty reasoning-delta at its end", async () => {
+    // The host keeps the start state of a redacted block, which holds `redactedData` and no signature.
+    expect(await play(host.reasoningEnded({ redactedData: "opaque_1" }), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "", redactedData: "opaque_1" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
   test("#146 a reasoning block without a signature in its metadata emits nothing at its end", async () => {
     expect(await play(host.reasoningDelta("think"), host.reasoningEnded({}), host.stepEnded("stop"))).toEqual([{ type: "reasoning-delta", text: "think" }, expect.objectContaining({ type: "finish" })])
   })

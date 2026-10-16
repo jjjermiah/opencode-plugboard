@@ -1,5 +1,4 @@
-"""S7, list models. The Anthropic client under the provider lists GET /v1/models. It sends x-api-key, which that route refuses
-(#399), so the scenario is a gap in run.py."""
+"""S7, list models. The Anthropic client under the provider lists GET /v1/models with x-api-key (#399 fixed it there)."""
 
 import asyncio
 import json

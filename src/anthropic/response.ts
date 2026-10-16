@@ -7,6 +7,7 @@
  * no-op `emit`. Thinking blocks are produced only when the request asked for thinking.
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
+import type { ListedModel } from "../models.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -119,6 +120,20 @@ const errorType = (error: PlugError): string => {
 /** `{"type":"error","error":{"type","message"}}`: the body of every error on this route, and the data of a stream `error` event. */
 export const encodeError = (error: PlugError) => ({ type: "error", error: { type: errorType(error), message: error.message } })
 
+/** One model as Anthropic's `GET /v1/models/{id}` (and each `data` entry) names it. An unknown release date is the epoch. */
+export const encodeModel = ({ id, model }: ListedModel) => {
+  const released = model.released === undefined ? NaN : new Date(model.released).getTime()
+  return { type: "model", id, display_name: model.name ?? id, created_at: new Date(Number.isNaN(released) ? 0 : released).toISOString() }
+}
+
+/** `GET /v1/models` in Anthropic's list shape. The whole catalog is one page, so `has_more` is false. */
+export const encodeModelPage = (models: ReadonlyArray<ListedModel>) => ({
+  data: models.map(encodeModel),
+  has_more: false,
+  first_id: models[0]?.id ?? null,
+  last_id: models.at(-1)?.id ?? null,
+})
+
 /** SSE frame of one stream event: `event: <type>` then `data: <json>`. */
 export const sseFrame = (event: MessagesStreamEvent): string => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
 
@@ -182,6 +197,16 @@ export async function runMessage(
     open.signature = signature
     emit({ type: "content_block_delta", index: open.index, delta: { type: "signature_delta", signature } })
   }
+  /** A redacted thinking block (#385): the provider's opaque payload, one whole block with no deltas, as the API sends it. */
+  const redacted = (data: string) => {
+    start()
+    close()
+    const index = nextIndex++
+    emit({ type: "content_block_start", index, content_block: { type: "redacted_thinking", data } })
+    ping()
+    emit({ type: "content_block_stop", index })
+    if (aggregate) content.push({ type: "redacted_thinking", data })
+  }
   const text = (chunk: string) => delta("text", chunk)
   const delta = (kind: "text" | "thinking", text: string) => {
     if (text.length === 0) return
@@ -234,8 +259,11 @@ export async function runMessage(
     }
     if (event.type === "reasoning-delta") {
       if (exchange.thinking) {
-        delta("thinking", event.text)
-        if (event.signature !== undefined) sign(event.signature)
+        if (event.redactedData !== undefined) redacted(event.redactedData)
+        else {
+          delta("thinking", event.text)
+          if (event.signature !== undefined) sign(event.signature)
+        }
       }
     } else if (event.type === "text-delta") text(event.text)
     else toolCall(event)

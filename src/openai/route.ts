@@ -54,11 +54,12 @@ import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, logError, logRequest, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
-import { filterByCapability, listAvailableModels, parseCapability, resolveModel } from "../models.js"
+import { effortUnavailable, filterByCapability, listAvailableModels, parseCapability, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { authenticateRequest, isMessagesPath, serveMessages } from "../anthropic/route.js"
+import { encodeModel, encodeModelPage } from "../anthropic/response.js"
 import { serveCompletions } from "../completions/route.js"
 import { serveResponses } from "../responses/route.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
@@ -99,6 +100,8 @@ export interface RouteHost {
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
+/** `GET /v1/models` and `GET /v1/models/{id}` read credentials as the Messages route does, so `x-api-key` works there too (#399). */
+const isModelsRead = (method: string | undefined, path: string) => method === "GET" && (path === "/v1/models" || path.startsWith(MODEL_PREFIX))
 const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status"]
 /** The endpoint family of each OpenAI route (`apps.<name>.endpoints`, #268). Gemini and `/v1/models/{id}` are classified where they are matched. */
 const ENDPOINT_BY_ROUTE: Readonly<Record<string, Endpoint>> = {
@@ -211,8 +214,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     try {
       const url = new URL(request.url ?? "/", "http://127.0.0.1")
       const path = url.pathname
-      const auth = isMessagesPath(path)
-        ? await authenticateRequest(host, request)
+      const auth =
+        isMessagesPath(path) || isModelsRead(request.method, path)
+          ? await authenticateRequest(host, request)
         : authenticate(
             liveOptions(host.options),
             path === "/v1beta" || path.startsWith("/v1beta/") ? geminiAuthorization(request, url) : request.headers.authorization,
@@ -330,7 +334,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but the probes and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
-    const auth = authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
+    const auth = isModelsRead(request.method, path)
+      ? await authenticateRequest(host, request)
+      : authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
 
@@ -375,7 +381,12 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       if (requested !== null && capability === undefined)
         return fail(response, { status: 400, kind: "invalid_request", code: "invalid_capability", param: "capability", message: "capability must be vision or tools" })
       const listed = listAvailableModels(host.options, await scope.race(host.loadCatalog()), auth.app)
-      if (modelId === undefined) return sendJson(response, 200, encodeModelList(capability ? filterByCapability(listed, capability) : listed))
+      // The Anthropic SDKs send `anthropic-version`; they read Anthropic's list shape, everything else keeps OpenAI's (#399).
+      const anthropic = request.headers["anthropic-version"] !== undefined
+      if (modelId === undefined) {
+        const models = capability ? filterByCapability(listed, capability) : listed
+        return sendJson(response, 200, anthropic ? encodeModelPage(models) : encodeModelList(models))
+      }
       const item = listed.find((m) => m.id === modelId)
       if (!item) {
         return fail(response, {
@@ -387,7 +398,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         })
       }
       info.model = item.id
-      return sendJson(response, 200, (encodeModelList([item]) as { data: object[] }).data[0])
+      return sendJson(response, 200, anthropic ? encodeModel(item) : (encodeModelList([item]) as { data: object[] }).data[0])
     }
 
     const unsupported = checkJsonContentType(request)
@@ -408,6 +419,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(response, ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
+    if (effortUnavailable(catalog, ref, requested.effort)) response.setHeader(THINKING_HEADER, "unavailable")
     // Sampling parameters the model is known to reject are dropped and reported (header and log), before any response bytes.
     const generation = appGeneration(appPolicy(host.options, auth.app), parsed.request.generation)
     const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined

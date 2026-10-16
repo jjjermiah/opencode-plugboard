@@ -54,6 +54,21 @@ function signatureOf(state: unknown): string | undefined {
   return undefined
 }
 
+/**
+ * A redacted reasoning block's opaque payload from the host's provider state (#385), or undefined. The host publishes the
+ * state the same way as the signature (`publish-llm-event.ts`), with `redactedData` in place of `signature`.
+ */
+function redactedDataOf(state: unknown): string | undefined {
+  if (typeof state !== "object" || state === null) return undefined
+  const direct = (state as { redactedData?: unknown }).redactedData
+  if (typeof direct === "string" && direct.length > 0) return direct
+  for (const value of Object.values(state)) {
+    const data = typeof value === "object" && value !== null ? (value as { redactedData?: unknown }).redactedData : undefined
+    if (typeof data === "string" && data.length > 0) return data
+  }
+  return undefined
+}
+
 /** Rough size of an event's payload, for the queue's byte bound. */
 function sizeOf(event: PlugEvent): number {
   switch (event.type) {
@@ -414,6 +429,9 @@ export class RequestCollector {
         const signature = signatureOf(item.state)
         this.endReasoningText(signature)
         if (signature !== undefined) this.emit({ type: "reasoning-delta", text: "", signature })
+        // A redacted block has no text and no signature, only its opaque payload (#385).
+        const redactedData = redactedDataOf(item.state)
+        if (redactedData !== undefined) this.emit({ type: "reasoning-delta", text: "", redactedData })
         return
       }
       case "session.tool.input.started":

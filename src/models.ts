@@ -147,6 +147,17 @@ export function thinkingUnavailable(catalog: ReadonlyArray<CatalogModel>, ref: M
   return model !== undefined && !model.variants.some((variant) => EFFORT_ORDER.includes(variant))
 }
 
+/** The response header that says a requested thinking did not apply (#410). Every front-end that takes an effort sends it. */
+export const THINKING_HEADER = "x-plugboard-thinking"
+
+/**
+ * True when a requested reasoning effort cannot apply: the request asked for thinking (`none` asks for none) and the model
+ * it resolves to has no thinking variant. The caller then sets `THINKING_HEADER` to `unavailable`.
+ */
+export function effortUnavailable(catalog: ReadonlyArray<CatalogModel>, ref: ModelRef, effort: string | undefined): boolean {
+  return effort !== undefined && effort !== "none" && thinkingUnavailable(catalog, ref)
+}
+
 function own(map: Readonly<Record<string, string>>, key: string): string | undefined {
   return Object.hasOwn(map, key) ? map[key] : undefined
 }

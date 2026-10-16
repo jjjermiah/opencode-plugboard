@@ -13,7 +13,7 @@ import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { appPolicy, historyTemplate, reasoningOutputFor, requestedModel } from "../config.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
-import { resolveModel } from "../models.js"
+import { effortUnavailable, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
@@ -50,6 +50,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
   if (isPlugError(ref)) return fail(ref)
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
+  if (effortUnavailable(catalog, ref, requested.effort)) response.setHeader(THINKING_HEADER, "unavailable")
   const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
   const call: PlugRequest = { ...parsed.request, model: requested.model, generation, ref }
   reportParallelTools(response, call)

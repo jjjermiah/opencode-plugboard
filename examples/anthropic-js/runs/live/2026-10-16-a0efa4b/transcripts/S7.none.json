@@ -1,0 +1,2356 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": "",
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01"
+        },
+        "method": "GET",
+        "path": "/v1/models?limit=100"
+      },
+      "response": {
+        "body": {
+          "data": [
+            {
+              "created_at": "2026-10-13T00:00:00.000Z",
+              "display_name": "Gemini 4 Argon",
+              "id": "github-copilot/gemini-4-argon",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-13T00:00:00.000Z",
+              "display_name": "Gemini 4 Argon",
+              "id": "github-copilot/gemini-4-argon#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-13T00:00:00.000Z",
+              "display_name": "Gemini 4 Argon",
+              "id": "github-copilot/gemini-4-argon#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-13T00:00:00.000Z",
+              "display_name": "Gemini 4 Argon",
+              "id": "github-copilot/gemini-4-argon#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-13T00:00:00.000Z",
+              "display_name": "Gemini 4 Argon Contributor",
+              "id": "opencode-go/gemini-4-argon-contributor",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-13T00:00:00.000Z",
+              "display_name": "Gemini 4 Argon Contributor",
+              "id": "opencode-go/gemini-4-argon-contributor#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-13T00:00:00.000Z",
+              "display_name": "Gemini 4 Argon Contributor",
+              "id": "opencode-go/gemini-4-argon-contributor#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-13T00:00:00.000Z",
+              "display_name": "Gemini 4 Argon Contributor",
+              "id": "opencode-go/gemini-4-argon-contributor#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "anthropic/claude-haiku-5-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "anthropic/claude-haiku-5-5#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "anthropic/claude-haiku-5-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "anthropic/claude-haiku-5-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "anthropic/claude-haiku-5-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "anthropic/claude-haiku-5-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "anthropic/claude-haiku-5-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "github-copilot/claude-haiku-5.5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "github-copilot/claude-haiku-5.5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "github-copilot/claude-haiku-5.5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "github-copilot/claude-haiku-5.5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "github-copilot/claude-haiku-5.5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "github-copilot/claude-haiku-5.5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "opencode-go/claude-haiku-5-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "opencode-go/claude-haiku-5-5#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "opencode-go/claude-haiku-5-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "opencode-go/claude-haiku-5-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "opencode-go/claude-haiku-5-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "opencode-go/claude-haiku-5-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-07T00:00:00.000Z",
+              "display_name": "Claude Haiku 5.5",
+              "id": "opencode-go/claude-haiku-5-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-05T00:00:00.000Z",
+              "display_name": "Beam Free",
+              "id": "opencode-go/beam-free",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-05T00:00:00.000Z",
+              "display_name": "Beam Free",
+              "id": "opencode-go/beam-free#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-05T00:00:00.000Z",
+              "display_name": "Beam Free",
+              "id": "opencode-go/beam-free#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-05T00:00:00.000Z",
+              "display_name": "Beam Free",
+              "id": "opencode-go/beam-free#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-05T00:00:00.000Z",
+              "display_name": "Beam Free",
+              "id": "opencode-go/beam-free#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-10-05T00:00:00.000Z",
+              "display_name": "Beam Free",
+              "id": "opencode-go/beam-free#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "github-copilot/gpt-6.1-sol",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "github-copilot/gpt-6.1-sol#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "github-copilot/gpt-6.1-sol#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "github-copilot/gpt-6.1-sol#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "github-copilot/gpt-6.1-sol#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "github-copilot/gpt-6.1-sol#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "github-copilot/gpt-6.1-sol#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "openai/gpt-6.1-sol",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "openai/gpt-6.1-sol#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "openai/gpt-6.1-sol#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "openai/gpt-6.1-sol#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "openai/gpt-6.1-sol#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-29T00:00:00.000Z",
+              "display_name": "GPT-6.1 Sol",
+              "id": "openai/gpt-6.1-sol#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "anthropic/claude-sonnet-5-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "anthropic/claude-sonnet-5-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "anthropic/claude-sonnet-5-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "anthropic/claude-sonnet-5-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "anthropic/claude-sonnet-5-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "anthropic/claude-sonnet-5-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "github-copilot/claude-sonnet-5.5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "github-copilot/claude-sonnet-5.5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "github-copilot/claude-sonnet-5.5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "github-copilot/claude-sonnet-5.5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "github-copilot/claude-sonnet-5.5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-28T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5.5",
+              "id": "github-copilot/claude-sonnet-5.5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-25T00:00:00.000Z",
+              "display_name": "LongCat 2.5 Preview Free",
+              "id": "opencode-go/longcat-2.5-preview-free",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-23T00:00:00.000Z",
+              "display_name": "Space Bunny",
+              "id": "opencode-go/space-bunny",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-23T00:00:00.000Z",
+              "display_name": "Space Bunny",
+              "id": "opencode-go/space-bunny#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-23T00:00:00.000Z",
+              "display_name": "Space Bunny",
+              "id": "opencode-go/space-bunny#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-23T00:00:00.000Z",
+              "display_name": "Space Bunny",
+              "id": "opencode-go/space-bunny#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-23T00:00:00.000Z",
+              "display_name": "Space Bunny",
+              "id": "opencode-go/space-bunny#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-23T00:00:00.000Z",
+              "display_name": "Space Bunny",
+              "id": "opencode-go/space-bunny#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "anthropic/claude-opus-5-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "anthropic/claude-opus-5-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "anthropic/claude-opus-5-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "anthropic/claude-opus-5-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "anthropic/claude-opus-5-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "anthropic/claude-opus-5-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "github-copilot/gpt-6-luna",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "github-copilot/gpt-6-luna#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "github-copilot/gpt-6-luna#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "github-copilot/gpt-6-luna#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "github-copilot/gpt-6-luna#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "github-copilot/gpt-6-luna#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "github-copilot/gpt-6-luna#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "github-copilot/claude-opus-5.5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "github-copilot/claude-opus-5.5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "github-copilot/claude-opus-5.5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "github-copilot/claude-opus-5.5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "github-copilot/claude-opus-5.5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "Claude Opus 5.5",
+              "id": "github-copilot/claude-opus-5.5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "github-copilot/gpt-6-sol",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "github-copilot/gpt-6-sol#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "github-copilot/gpt-6-sol#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "github-copilot/gpt-6-sol#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "github-copilot/gpt-6-sol#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "github-copilot/gpt-6-sol#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "github-copilot/gpt-6-sol#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "MiMo-V2.6-Pro",
+              "id": "opencode-go/mimo-v2.6-pro",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "MiMo-V2.6-Flash",
+              "id": "opencode-go/mimo-v2.6-flash",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "opencode-go/gpt-6-luna",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "opencode-go/gpt-6-luna#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "opencode-go/gpt-6-luna#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "opencode-go/gpt-6-luna#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "opencode-go/gpt-6-luna#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "opencode-go/gpt-6-luna#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "opencode-go/gpt-6-luna#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "openai/gpt-6-luna",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "openai/gpt-6-luna#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "openai/gpt-6-luna#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "openai/gpt-6-luna#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "openai/gpt-6-luna#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "openai/gpt-6-luna#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Luna",
+              "id": "openai/gpt-6-luna#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "openai/gpt-6-sol",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "openai/gpt-6-sol#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "openai/gpt-6-sol#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "openai/gpt-6-sol#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "openai/gpt-6-sol#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "openai/gpt-6-sol#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-22T00:00:00.000Z",
+              "display_name": "GPT-6 Sol",
+              "id": "openai/gpt-6-sol#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "github-copilot/grok-4.7",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "github-copilot/grok-4.7#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "github-copilot/grok-4.7#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "github-copilot/grok-4.7#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "github-copilot/grok-4.7#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "opencode-go/grok-4.7",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "opencode-go/grok-4.7#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "opencode-go/grok-4.7#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "opencode-go/grok-4.7#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-21T00:00:00.000Z",
+              "display_name": "Grok 4.7",
+              "id": "opencode-go/grok-4.7#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-16T00:00:00.000Z",
+              "display_name": "Step 5 Preview",
+              "id": "opencode-go/step-5-preview",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-16T00:00:00.000Z",
+              "display_name": "Step 5 Preview",
+              "id": "opencode-go/step-5-preview#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-16T00:00:00.000Z",
+              "display_name": "Step 5 Preview",
+              "id": "opencode-go/step-5-preview#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-16T00:00:00.000Z",
+              "display_name": "Step 5 Preview",
+              "id": "opencode-go/step-5-preview#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-10T00:00:00.000Z",
+              "display_name": "DeepSeek V4.1 Flash",
+              "id": "opencode-go/deepseek-v4.1-flash",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-10T00:00:00.000Z",
+              "display_name": "DeepSeek V4.1 Flash",
+              "id": "opencode-go/deepseek-v4.1-flash#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-10T00:00:00.000Z",
+              "display_name": "DeepSeek V4.1 Flash",
+              "id": "opencode-go/deepseek-v4.1-flash#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-10T00:00:00.000Z",
+              "display_name": "DeepSeek V4.1 Flash",
+              "id": "opencode-go/deepseek-v4.1-flash#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "github-copilot/gpt-6-astra",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "github-copilot/gpt-6-astra#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "github-copilot/gpt-6-astra#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "github-copilot/gpt-6-astra#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "github-copilot/gpt-6-astra#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "github-copilot/gpt-6-astra#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "openai/gpt-6-astra",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "openai/gpt-6-astra#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "openai/gpt-6-astra#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "openai/gpt-6-astra#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "openai/gpt-6-astra#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-04T00:00:00.000Z",
+              "display_name": "GPT-6 Astra",
+              "id": "openai/gpt-6-astra#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Gemini 3.8 Flash",
+              "id": "github-copilot/gemini-3.8-flash",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Gemini 3.8 Flash",
+              "id": "github-copilot/gemini-3.8-flash#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Gemini 3.8 Flash",
+              "id": "github-copilot/gemini-3.8-flash#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Gemini 3.8 Flash",
+              "id": "github-copilot/gemini-3.8-flash#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Muse Spark 1.3 Contributor",
+              "id": "opencode-go/muse-spark-1.3-contributor",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Muse Spark 1.3 Contributor",
+              "id": "opencode-go/muse-spark-1.3-contributor#minimal",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Muse Spark 1.3 Contributor",
+              "id": "opencode-go/muse-spark-1.3-contributor#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Muse Spark 1.3 Contributor",
+              "id": "opencode-go/muse-spark-1.3-contributor#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Muse Spark 1.3 Contributor",
+              "id": "opencode-go/muse-spark-1.3-contributor#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-02T00:00:00.000Z",
+              "display_name": "Muse Spark 1.3 Contributor",
+              "id": "opencode-go/muse-spark-1.3-contributor#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-01T00:00:00.000Z",
+              "display_name": "Claude Fable 5.1",
+              "id": "anthropic/claude-fable-5-1",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-01T00:00:00.000Z",
+              "display_name": "Claude Fable 5.1",
+              "id": "anthropic/claude-fable-5-1#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-01T00:00:00.000Z",
+              "display_name": "Claude Fable 5.1",
+              "id": "anthropic/claude-fable-5-1#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-01T00:00:00.000Z",
+              "display_name": "Claude Fable 5.1",
+              "id": "anthropic/claude-fable-5-1#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-01T00:00:00.000Z",
+              "display_name": "Claude Fable 5.1",
+              "id": "anthropic/claude-fable-5-1#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-09-01T00:00:00.000Z",
+              "display_name": "Claude Fable 5.1",
+              "id": "anthropic/claude-fable-5-1#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-28T00:00:00.000Z",
+              "display_name": "Hy4 preview",
+              "id": "opencode-go/hy4-preview",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-28T00:00:00.000Z",
+              "display_name": "Hy4 preview",
+              "id": "opencode-go/hy4-preview#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-28T00:00:00.000Z",
+              "display_name": "Hy4 preview",
+              "id": "opencode-go/hy4-preview#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "GLM-5.3-Flash",
+              "id": "opencode-go/glm-5.3-flash",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "GLM-5.3-Flash",
+              "id": "opencode-go/glm-5.3-flash#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "GLM-5.3-Flash",
+              "id": "opencode-go/glm-5.3-flash#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "GLM-5.3-Flash",
+              "id": "opencode-go/glm-5.3-flash#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "Qwen3.8 Flash",
+              "id": "opencode-go/qwen3.8-flash",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "Qwen3.8 Flash",
+              "id": "opencode-go/qwen3.8-flash#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "Qwen3.8 Flash",
+              "id": "opencode-go/qwen3.8-flash#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "Qwen3.8 Flash",
+              "id": "opencode-go/qwen3.8-flash#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "Qwen3.8 Flash",
+              "id": "opencode-go/qwen3.8-flash#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-14T00:00:00.000Z",
+              "display_name": "GLM-5.3",
+              "id": "opencode-go/glm-5.3",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-14T00:00:00.000Z",
+              "display_name": "GLM-5.3",
+              "id": "opencode-go/glm-5.3#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-14T00:00:00.000Z",
+              "display_name": "GLM-5.3",
+              "id": "opencode-go/glm-5.3#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-14T00:00:00.000Z",
+              "display_name": "GLM-5.3",
+              "id": "opencode-go/glm-5.3#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-13T00:00:00.000Z",
+              "display_name": "Gemini 3.7 Flash",
+              "id": "github-copilot/gemini-3.7-flash",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-13T00:00:00.000Z",
+              "display_name": "Gemini 3.7 Flash",
+              "id": "github-copilot/gemini-3.7-flash#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-13T00:00:00.000Z",
+              "display_name": "Gemini 3.7 Flash",
+              "id": "github-copilot/gemini-3.7-flash#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-13T00:00:00.000Z",
+              "display_name": "Gemini 3.7 Flash",
+              "id": "github-copilot/gemini-3.7-flash#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-12T00:00:00.000Z",
+              "display_name": "Grok 4.6",
+              "id": "github-copilot/grok-4.6",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-12T00:00:00.000Z",
+              "display_name": "Grok 4.6",
+              "id": "github-copilot/grok-4.6#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-12T00:00:00.000Z",
+              "display_name": "Grok 4.6",
+              "id": "github-copilot/grok-4.6#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-12T00:00:00.000Z",
+              "display_name": "Grok 4.6",
+              "id": "github-copilot/grok-4.6#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-12T00:00:00.000Z",
+              "display_name": "Grok 4.6",
+              "id": "github-copilot/grok-4.6#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-11T00:00:00.000Z",
+              "display_name": "MAI-Code-1.1-Flash",
+              "id": "github-copilot/mai-code-1.1-flash",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-11T00:00:00.000Z",
+              "display_name": "MAI-Code-1.1-Flash",
+              "id": "github-copilot/mai-code-1.1-flash#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-11T00:00:00.000Z",
+              "display_name": "MAI-Code-1.1-Flash",
+              "id": "github-copilot/mai-code-1.1-flash#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-11T00:00:00.000Z",
+              "display_name": "MAI-Code-1.1-Flash",
+              "id": "github-copilot/mai-code-1.1-flash#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-05T00:00:00.000Z",
+              "display_name": "Muse Spark 1.2 Contributor",
+              "id": "opencode-go/muse-spark-1.2-contributor",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-05T00:00:00.000Z",
+              "display_name": "Muse Spark 1.2 Contributor",
+              "id": "opencode-go/muse-spark-1.2-contributor#minimal",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-05T00:00:00.000Z",
+              "display_name": "Muse Spark 1.2 Contributor",
+              "id": "opencode-go/muse-spark-1.2-contributor#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-05T00:00:00.000Z",
+              "display_name": "Muse Spark 1.2 Contributor",
+              "id": "opencode-go/muse-spark-1.2-contributor#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-05T00:00:00.000Z",
+              "display_name": "Muse Spark 1.2 Contributor",
+              "id": "opencode-go/muse-spark-1.2-contributor#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-05T00:00:00.000Z",
+              "display_name": "Muse Spark 1.2 Contributor",
+              "id": "opencode-go/muse-spark-1.2-contributor#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-03T00:00:00.000Z",
+              "display_name": "Qwen3.8 Max",
+              "id": "opencode-go/qwen3.8-max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-03T00:00:00.000Z",
+              "display_name": "Qwen3.8 Max",
+              "id": "opencode-go/qwen3.8-max#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-03T00:00:00.000Z",
+              "display_name": "Qwen3.8 Max",
+              "id": "opencode-go/qwen3.8-max#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-03T00:00:00.000Z",
+              "display_name": "Qwen3.8 Max",
+              "id": "opencode-go/qwen3.8-max#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-03T00:00:00.000Z",
+              "display_name": "Qwen3.8 Max",
+              "id": "opencode-go/qwen3.8-max#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "anthropic/claude-opus-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "anthropic/claude-opus-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "anthropic/claude-opus-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "anthropic/claude-opus-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "anthropic/claude-opus-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "anthropic/claude-opus-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "github-copilot/claude-opus-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "github-copilot/claude-opus-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "github-copilot/claude-opus-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "github-copilot/claude-opus-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "github-copilot/claude-opus-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-24T00:00:00.000Z",
+              "display_name": "Claude Opus 5",
+              "id": "github-copilot/claude-opus-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-16T00:00:00.000Z",
+              "display_name": "Kimi K3",
+              "id": "opencode-go/kimi-k3",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-16T00:00:00.000Z",
+              "display_name": "Kimi K3",
+              "id": "opencode-go/kimi-k3#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "github-copilot/gpt-5.6-luna",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "github-copilot/gpt-5.6-luna#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "github-copilot/gpt-5.6-luna#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "github-copilot/gpt-5.6-luna#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "github-copilot/gpt-5.6-luna#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "github-copilot/gpt-5.6-luna#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "github-copilot/gpt-5.6-luna#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "github-copilot/gpt-5.6-terra",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "github-copilot/gpt-5.6-terra#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "github-copilot/gpt-5.6-terra#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "github-copilot/gpt-5.6-terra#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "github-copilot/gpt-5.6-terra#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "github-copilot/gpt-5.6-terra#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "github-copilot/gpt-5.6-terra#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "github-copilot/gpt-5.6-sol",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "github-copilot/gpt-5.6-sol#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "github-copilot/gpt-5.6-sol#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "github-copilot/gpt-5.6-sol#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "github-copilot/gpt-5.6-sol#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "github-copilot/gpt-5.6-sol#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "github-copilot/gpt-5.6-sol#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "opencode-go/gpt-5.6-luna",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "opencode-go/gpt-5.6-luna#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "opencode-go/gpt-5.6-luna#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "opencode-go/gpt-5.6-luna#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "opencode-go/gpt-5.6-luna#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "opencode-go/gpt-5.6-luna#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "opencode-go/gpt-5.6-luna#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "openai/gpt-5.6-luna",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "openai/gpt-5.6-luna#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "openai/gpt-5.6-luna#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "openai/gpt-5.6-luna#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "openai/gpt-5.6-luna#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "openai/gpt-5.6-luna#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Luna",
+              "id": "openai/gpt-5.6-luna#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "openai/gpt-5.6-terra",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "openai/gpt-5.6-terra#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "openai/gpt-5.6-terra#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "openai/gpt-5.6-terra#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "openai/gpt-5.6-terra#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "openai/gpt-5.6-terra#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Terra",
+              "id": "openai/gpt-5.6-terra#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "openai/gpt-5.6-sol",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "openai/gpt-5.6-sol#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "openai/gpt-5.6-sol#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "openai/gpt-5.6-sol#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "openai/gpt-5.6-sol#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "openai/gpt-5.6-sol#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-09T00:00:00.000Z",
+              "display_name": "GPT-5.6 Sol",
+              "id": "openai/gpt-5.6-sol#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-08T00:00:00.000Z",
+              "display_name": "Grok 4.5",
+              "id": "github-copilot/grok-4.5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-08T00:00:00.000Z",
+              "display_name": "Grok 4.5",
+              "id": "github-copilot/grok-4.5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-08T00:00:00.000Z",
+              "display_name": "Grok 4.5",
+              "id": "github-copilot/grok-4.5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-08T00:00:00.000Z",
+              "display_name": "Grok 4.5",
+              "id": "github-copilot/grok-4.5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-06T00:00:00.000Z",
+              "display_name": "Hy3",
+              "id": "opencode-go/hy3",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-06T00:00:00.000Z",
+              "display_name": "Hy3",
+              "id": "opencode-go/hy3#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-06T00:00:00.000Z",
+              "display_name": "Hy3",
+              "id": "opencode-go/hy3#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-07-06T00:00:00.000Z",
+              "display_name": "Hy3",
+              "id": "opencode-go/hy3#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-30T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "github-copilot/claude-sonnet-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-30T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "github-copilot/claude-sonnet-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-30T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "github-copilot/claude-sonnet-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-30T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "github-copilot/claude-sonnet-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-30T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "github-copilot/claude-sonnet-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-30T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "github-copilot/claude-sonnet-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-30T00:00:00.000Z",
+              "display_name": "LongCat-2.0",
+              "id": "opencode-go/longcat-2.0",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "anthropic/claude-sonnet-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "anthropic/claude-sonnet-5#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "anthropic/claude-sonnet-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "anthropic/claude-sonnet-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "anthropic/claude-sonnet-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "anthropic/claude-sonnet-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 5",
+              "id": "anthropic/claude-sonnet-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-13T00:00:00.000Z",
+              "display_name": "GLM-5.2",
+              "id": "opencode-go/glm-5.2",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-13T00:00:00.000Z",
+              "display_name": "GLM-5.2",
+              "id": "opencode-go/glm-5.2#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-13T00:00:00.000Z",
+              "display_name": "GLM-5.2",
+              "id": "opencode-go/glm-5.2#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-12T00:00:00.000Z",
+              "display_name": "Kimi K2.7 Code",
+              "id": "opencode-go/kimi-k2.7-code",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-07T00:00:00.000Z",
+              "display_name": "Claude Fable 5",
+              "id": "anthropic/claude-fable-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-07T00:00:00.000Z",
+              "display_name": "Claude Fable 5",
+              "id": "anthropic/claude-fable-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-07T00:00:00.000Z",
+              "display_name": "Claude Fable 5",
+              "id": "anthropic/claude-fable-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-07T00:00:00.000Z",
+              "display_name": "Claude Fable 5",
+              "id": "anthropic/claude-fable-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-07T00:00:00.000Z",
+              "display_name": "Claude Fable 5",
+              "id": "anthropic/claude-fable-5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-07T00:00:00.000Z",
+              "display_name": "Claude Fable 5",
+              "id": "anthropic/claude-fable-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-02T00:00:00.000Z",
+              "display_name": "Qwen3.7 Plus",
+              "id": "opencode-go/qwen3.7-plus",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-02T00:00:00.000Z",
+              "display_name": "Qwen3.7 Plus",
+              "id": "opencode-go/qwen3.7-plus#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-02T00:00:00.000Z",
+              "display_name": "Qwen3.7 Plus",
+              "id": "opencode-go/qwen3.7-plus#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-06-02T00:00:00.000Z",
+              "display_name": "Qwen3.7 Plus",
+              "id": "opencode-go/qwen3.7-plus#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-31T00:00:00.000Z",
+              "display_name": "MiniMax-M3",
+              "id": "opencode-go/minimax-m3",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-31T00:00:00.000Z",
+              "display_name": "MiniMax-M3",
+              "id": "opencode-go/minimax-m3#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-31T00:00:00.000Z",
+              "display_name": "MiniMax-M3",
+              "id": "opencode-go/minimax-m3#thinking",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-28T00:00:00.000Z",
+              "display_name": "Claude Opus 4.8",
+              "id": "anthropic/claude-opus-4-8",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-28T00:00:00.000Z",
+              "display_name": "Claude Opus 4.8",
+              "id": "anthropic/claude-opus-4-8#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-28T00:00:00.000Z",
+              "display_name": "Claude Opus 4.8",
+              "id": "anthropic/claude-opus-4-8#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-28T00:00:00.000Z",
+              "display_name": "Claude Opus 4.8",
+              "id": "anthropic/claude-opus-4-8#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-28T00:00:00.000Z",
+              "display_name": "Claude Opus 4.8",
+              "id": "anthropic/claude-opus-4-8#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-05-28T00:00:00.000Z",
+              "display_name": "Claude Opus 4.8",
+              "id": "anthropic/claude-opus-4-8#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-24T00:00:00.000Z",
+              "display_name": "DeepSeek V4 Pro (New)",
+              "id": "opencode-go/deepseek-v4-pro",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-24T00:00:00.000Z",
+              "display_name": "DeepSeek V4 Pro (New)",
+              "id": "opencode-go/deepseek-v4-pro#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-24T00:00:00.000Z",
+              "display_name": "DeepSeek V4 Pro (New)",
+              "id": "opencode-go/deepseek-v4-pro#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "github-copilot/gpt-5.5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "github-copilot/gpt-5.5#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "github-copilot/gpt-5.5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "github-copilot/gpt-5.5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "github-copilot/gpt-5.5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "github-copilot/gpt-5.5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "openai/gpt-5.5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "openai/gpt-5.5#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "openai/gpt-5.5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "openai/gpt-5.5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "openai/gpt-5.5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-23T00:00:00.000Z",
+              "display_name": "GPT-5.5",
+              "id": "openai/gpt-5.5#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-22T00:00:00.000Z",
+              "display_name": "MiMo V2.5",
+              "id": "opencode-go/mimo-v2.5",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-22T00:00:00.000Z",
+              "display_name": "MiMo V2.5 Pro",
+              "id": "opencode-go/mimo-v2.5-pro",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-14T00:00:00.000Z",
+              "display_name": "Claude Opus 4.7",
+              "id": "anthropic/claude-opus-4-7",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-14T00:00:00.000Z",
+              "display_name": "Claude Opus 4.7",
+              "id": "anthropic/claude-opus-4-7#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-14T00:00:00.000Z",
+              "display_name": "Claude Opus 4.7",
+              "id": "anthropic/claude-opus-4-7#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-14T00:00:00.000Z",
+              "display_name": "Claude Opus 4.7",
+              "id": "anthropic/claude-opus-4-7#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-14T00:00:00.000Z",
+              "display_name": "Claude Opus 4.7",
+              "id": "anthropic/claude-opus-4-7#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-04-14T00:00:00.000Z",
+              "display_name": "Claude Opus 4.7",
+              "id": "anthropic/claude-opus-4-7#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-17T00:00:00.000Z",
+              "display_name": "GPT-5.4 mini",
+              "id": "github-copilot/gpt-5.4-mini",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-17T00:00:00.000Z",
+              "display_name": "GPT-5.4 mini",
+              "id": "github-copilot/gpt-5.4-mini#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-17T00:00:00.000Z",
+              "display_name": "GPT-5.4 mini",
+              "id": "github-copilot/gpt-5.4-mini#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-17T00:00:00.000Z",
+              "display_name": "GPT-5.4 mini",
+              "id": "github-copilot/gpt-5.4-mini#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-17T00:00:00.000Z",
+              "display_name": "GPT-5.4 mini",
+              "id": "github-copilot/gpt-5.4-mini#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-17T00:00:00.000Z",
+              "display_name": "GPT-5.4 mini",
+              "id": "github-copilot/gpt-5.4-mini#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-05T00:00:00.000Z",
+              "display_name": "GPT-5.4",
+              "id": "github-copilot/gpt-5.4",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-05T00:00:00.000Z",
+              "display_name": "GPT-5.4",
+              "id": "github-copilot/gpt-5.4#none",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-05T00:00:00.000Z",
+              "display_name": "GPT-5.4",
+              "id": "github-copilot/gpt-5.4#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-05T00:00:00.000Z",
+              "display_name": "GPT-5.4",
+              "id": "github-copilot/gpt-5.4#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-05T00:00:00.000Z",
+              "display_name": "GPT-5.4",
+              "id": "github-copilot/gpt-5.4#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-03-05T00:00:00.000Z",
+              "display_name": "GPT-5.4",
+              "id": "github-copilot/gpt-5.4#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-17T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.6",
+              "id": "anthropic/claude-sonnet-4-6",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-17T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.6",
+              "id": "anthropic/claude-sonnet-4-6#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-17T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.6",
+              "id": "anthropic/claude-sonnet-4-6#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-17T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.6",
+              "id": "anthropic/claude-sonnet-4-6#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-17T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.6",
+              "id": "anthropic/claude-sonnet-4-6#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-05T00:00:00.000Z",
+              "display_name": "GPT-5.3 Codex",
+              "id": "github-copilot/gpt-5.3-codex",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-05T00:00:00.000Z",
+              "display_name": "GPT-5.3 Codex",
+              "id": "github-copilot/gpt-5.3-codex#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-05T00:00:00.000Z",
+              "display_name": "GPT-5.3 Codex",
+              "id": "github-copilot/gpt-5.3-codex#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-05T00:00:00.000Z",
+              "display_name": "GPT-5.3 Codex",
+              "id": "github-copilot/gpt-5.3-codex#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-05T00:00:00.000Z",
+              "display_name": "GPT-5.3 Codex",
+              "id": "github-copilot/gpt-5.3-codex#xhigh",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-04T00:00:00.000Z",
+              "display_name": "Claude Opus 4.6",
+              "id": "anthropic/claude-opus-4-6",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-04T00:00:00.000Z",
+              "display_name": "Claude Opus 4.6",
+              "id": "anthropic/claude-opus-4-6#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-04T00:00:00.000Z",
+              "display_name": "Claude Opus 4.6",
+              "id": "anthropic/claude-opus-4-6#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-04T00:00:00.000Z",
+              "display_name": "Claude Opus 4.6",
+              "id": "anthropic/claude-opus-4-6#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-02-04T00:00:00.000Z",
+              "display_name": "Claude Opus 4.6",
+              "id": "anthropic/claude-opus-4-6#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-11-24T00:00:00.000Z",
+              "display_name": "Claude Opus 4.5 (latest)",
+              "id": "anthropic/claude-opus-4-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-11-24T00:00:00.000Z",
+              "display_name": "Claude Opus 4.5 (latest)",
+              "id": "anthropic/claude-opus-4-5#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-11-24T00:00:00.000Z",
+              "display_name": "Claude Opus 4.5 (latest)",
+              "id": "anthropic/claude-opus-4-5#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-11-24T00:00:00.000Z",
+              "display_name": "Claude Opus 4.5 (latest)",
+              "id": "anthropic/claude-opus-4-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-11-24T00:00:00.000Z",
+              "display_name": "Claude Opus 4.5",
+              "id": "anthropic/claude-opus-4-5-20251101",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-11-24T00:00:00.000Z",
+              "display_name": "Claude Opus 4.5",
+              "id": "anthropic/claude-opus-4-5-20251101#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-11-24T00:00:00.000Z",
+              "display_name": "Claude Opus 4.5",
+              "id": "anthropic/claude-opus-4-5-20251101#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-11-24T00:00:00.000Z",
+              "display_name": "Claude Opus 4.5",
+              "id": "anthropic/claude-opus-4-5-20251101#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5 (latest)",
+              "id": "anthropic/claude-haiku-4-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5 (latest)",
+              "id": "anthropic/claude-haiku-4-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5 (latest)",
+              "id": "anthropic/claude-haiku-4-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5",
+              "id": "anthropic/claude-haiku-4-5-20251001",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5",
+              "id": "anthropic/claude-haiku-4-5-20251001#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5",
+              "id": "anthropic/claude-haiku-4-5-20251001#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5 (latest)",
+              "id": "github-copilot/claude-haiku-4.5",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5 (latest)",
+              "id": "github-copilot/claude-haiku-4.5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-10-15T00:00:00.000Z",
+              "display_name": "Claude Haiku 4.5 (latest)",
+              "id": "github-copilot/claude-haiku-4.5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-09-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.5 (latest)",
+              "id": "anthropic/claude-sonnet-4-5",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-09-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.5 (latest)",
+              "id": "anthropic/claude-sonnet-4-5#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-09-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.5 (latest)",
+              "id": "anthropic/claude-sonnet-4-5#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-09-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.5",
+              "id": "anthropic/claude-sonnet-4-5-20250929",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-09-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.5",
+              "id": "anthropic/claude-sonnet-4-5-20250929#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-09-29T00:00:00.000Z",
+              "display_name": "Claude Sonnet 4.5",
+              "id": "anthropic/claude-sonnet-4-5-20250929#max",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-08-07T00:00:00.000Z",
+              "display_name": "GPT-5 Mini",
+              "id": "github-copilot/gpt-5-mini",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-08-07T00:00:00.000Z",
+              "display_name": "GPT-5 Mini",
+              "id": "github-copilot/gpt-5-mini#low",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-08-07T00:00:00.000Z",
+              "display_name": "GPT-5 Mini",
+              "id": "github-copilot/gpt-5-mini#medium",
+              "type": "model"
+            },
+            {
+              "created_at": "2025-08-07T00:00:00.000Z",
+              "display_name": "GPT-5 Mini",
+              "id": "github-copilot/gpt-5-mini#high",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "GLM-5.3-Flash",
+              "id": "fast",
+              "type": "model"
+            },
+            {
+              "created_at": "2026-08-26T00:00:00.000Z",
+              "display_name": "GLM-5.3-Flash",
+              "id": "agent/plan",
+              "type": "model"
+            }
+          ],
+          "first_id": "github-copilot/gemini-4-argon",
+          "has_more": false,
+          "last_id": "agent/plan"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
