@@ -1,6 +1,6 @@
 # pydantic-ai-anthropic · scripted
 
-Verdict: **partial** · pydantic-ai-slim 2.55.0 on python 3 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
+Verdict: **pass** · pydantic-ai-slim 2.55.0 on python 3 · models: fast, anthropic/claude-haiku-4-5, openai/gpt-5.6-luna#low, nope
 
 | Scenario | Model | Required | Status | Checks |
 | --- | --- | --- | --- | --- |
@@ -18,19 +18,11 @@ Verdict: **partial** · pydantic-ai-slim 2.55.0 on python 3 · models: fast, ant
 | S6 | fast | yes | pass | 3/3 |
 | S6 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
 | S6 | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
-| S7 | - | yes | gap |  |
+| S7 | - | yes | pass | 3/3 |
 | E1 | fast | no | pass | 1/1 |
 | E2 | nope | no | pass | 1/1 |
 
 ## Failures, gaps and unchecked items
-
-### S7 on -: gap
-
-GET /v1/models ignores x-api-key, which the SDK sends (#399)
-
-```text
-AuthenticationError: Error code: 401 - {'error': {'message': 'Missing or invalid API key', 'type': 'authentication_error', 'param': None, 'code': 'invalid_api_key'}}
-```
 
 ### E1 on fast: pass
 

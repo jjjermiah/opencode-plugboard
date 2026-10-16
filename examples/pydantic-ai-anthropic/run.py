@@ -59,10 +59,6 @@ def main() -> None:
             "E1": {"code is invalid_api_key": "Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)"},
             "E2": {"code is model_not_found": "Messages errors carry error.type and no error.code (src/anthropic/response.ts:112)"},
         },
-        gaps={
-            # The SDK's models.list sends x-api-key, which GET /v1/models refuses (#399).
-            "S7": {"note": "GET /v1/models ignores x-api-key, which the SDK sends", "issue": "#399"},
-        },
     )
 
 
