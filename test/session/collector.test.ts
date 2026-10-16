@@ -33,6 +33,25 @@ function setup() {
   }
 }
 
+describe("#390 finishNow: a run a stop sequence interrupted ends with the usage counted so far", () => {
+  test("no host end arrives: the collector finishes with the running usage, then ignores the late end", async () => {
+    const run = setup()
+    run.send(host.textDelta("Hello"), host.usage({ input: 10, output: 500 }))
+    run.collector.finishNow()
+    run.send(host.stepEnded("stop", { input: 10, output: 900 }))
+    const events = await run.drain()
+    expect(events.filter((event) => event.type === "finish")).toEqual([{ type: "finish", reason: "stop", usage: { inputTokens: 10, outputTokens: 500 } }])
+  })
+
+  test("after the run ended on its own, finishNow changes nothing", async () => {
+    const run = setup()
+    run.send(host.textDelta("Hi"), host.stepEnded("stop", { input: 3, output: 4 }))
+    run.collector.finishNow()
+    const events = await run.drain()
+    expect(events.at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 3, outputTokens: 4 } })
+  })
+})
+
 async function play(...events: BusEnvelope[]): Promise<PlugEvent[]> {
   const run = setup()
   run.send(...events)

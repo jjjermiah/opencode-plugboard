@@ -171,7 +171,7 @@ export type PlugEvent =
   // `signature` marks the end of a reasoning block: an empty-text event carrying the provider's signature for it (#146).
   | { readonly type: "reasoning-delta"; readonly text: string; readonly signature?: string }
   | { readonly type: "tool-call"; readonly id: string; readonly name: string; readonly input: unknown }
-  | { readonly type: "finish"; readonly reason: PlugFinish; readonly usage?: PlugUsage }
+  | { readonly type: "finish"; readonly reason: PlugFinish; readonly usage?: PlugUsage; readonly stopSequence?: string }
   | { readonly type: "error"; readonly error: PlugError }
 
 export type PlugErrorKind = "invalid_request" | "authentication" | "permission" | "not_found" | "rate_limit" | "server" | "timeout"
@@ -205,6 +205,11 @@ export interface CallContext {
   readonly app: string
   /** Aborted on client disconnect or timeout. */
   readonly signal: AbortSignal
+  /**
+   * Aborted when a caller stop sequence ended the answer (#390, src/stop.ts). The session caller then interrupts the host run
+   * and keeps the stream open until its finish, so the usage of the run is counted.
+   */
+  readonly stopAnswer?: AbortSignal
   /** Called once, before the first event, with the id of the history record this call writes (if any). */
   readonly onRecord?: (recordID: string, directory?: string) => void
   /**
