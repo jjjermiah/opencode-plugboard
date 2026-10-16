@@ -164,6 +164,15 @@ describe("#57 GET /plugboard/usage: users", () => {
     expect(alice.apps.default.totals.requests).toBe(3)
   })
 
+  test("#57 ?user= takes a stored or reserved name by charset and length: _other, prototype, constructor and __proto__ answer 200", async () => {
+    const srv = await start({ usage: true })
+    for (const user of ["_other", "prototype", "constructor", "__proto__"]) {
+      const reply = await srv.send({ path: `/plugboard/usage?user=${user}` })
+      expect({ user, status: reply.status }).toEqual({ user, status: 200 })
+    }
+    expect((await srv.send({ path: "/plugboard/usage?user=a%20b" })).status).toBe(400)
+  })
+
   test("#57 a user filter that is not a user is a 400 naming the parameter", async () => {
     const srv = await start({ usage: true })
     const reply = await srv.send({ path: "/plugboard/usage?user=a%20b" })

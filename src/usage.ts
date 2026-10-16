@@ -30,7 +30,7 @@ import { errorMessage, log, logError } from "./log.js"
 import type { Outcome } from "./metrics.js"
 import { parseModelRef } from "./models.js"
 import type { StoragePort } from "./session/host.js"
-import { sanitizeEndUser } from "./user.js"
+import { validEndUser } from "./user.js"
 
 /** Upper bounds of the latency buckets in ms; one more bucket holds everything above the last. */
 export const LATENCY_BOUNDS_MS: ReadonlyArray<number> = [100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000, 120_000, 300_000, 600_000]
@@ -678,7 +678,7 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
       const at = now()
       if (input.app !== undefined && !APP_NAME_PATTERN.test(input.app))
         return { status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: "`app` must be an app name from the keys configuration" }
-      if (input.user !== undefined && sanitizeEndUser(input.user) === undefined)
+      if (input.user !== undefined && validEndUser(input.user) === undefined)
         return { status: 400, kind: "invalid_request", code: "invalid_user", param: "user", message: "`user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-`" }
       const range = resolveRange(input, at)
       if (isPlugError(range)) return range

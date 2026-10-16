@@ -16,8 +16,8 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Security
 
-- A crafted end-user value could corrupt shared counters and make later requests fail; fixed (since 0.38.0).
-- A metrics or usage write that fails no longer changes a request's answer or stops its access log (since 0.38.0).
+- **A crafted end-user value could corrupt shared counters** (since 0.38.0). Later requests could fail until restart, and usage stopped recording. Per-user records no longer resolve inherited names, and the reserved names (`__proto__`, `prototype`, `constructor`, `_other`) are refused as end users. The `?user=` filter still accepts them, so a name an older version stored stays queryable.
+- **A metrics or usage write that fails no longer changes a request's answer** (since 0.38.0). The failure is logged once, with the write's name, and the access log line is still written.
 
 ### Fixed
 

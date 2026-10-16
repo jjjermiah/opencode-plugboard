@@ -141,4 +141,17 @@ describe("#57 end user: per-user usage", () => {
     expect(filtered.apps.app!.totals.requests).toBe(2)
     expect(await rec.query({ user: "a b" })).toMatchObject({ status: 400, code: "invalid_user", param: "user" })
   })
+
+  test("#57 the user filter queries a name a stored record can hold: _other and the reserved names pass by charset and length", async () => {
+    // A day an older version wrote can hold these as users; the filter must still reach them (the sanitizer refuses them on input).
+    const rec = recorder()
+    for (const user of ["prototype", "_other", "constructor", "__proto__"]) rec.request({ app: "app", route: "POST /v1/chat/completions", status: 200, outcome: "ok", ms: 1, user })
+    await report(rec, 4)
+    for (const user of ["prototype", "_other", "constructor", "__proto__"]) {
+      const filtered = (await rec.query({ app: "app", user })) as UsageReport
+      expect(Object.keys(filtered.apps.app!.users!)).toEqual([user])
+      expect(filtered.apps.app!.users![user]).toEqual({ requests: 1, tokens: 0, costUsd: 0 })
+    }
+    expect(await rec.query({ user: "" })).toMatchObject({ status: 400, code: "invalid_user", param: "user" })
+  })
 })
