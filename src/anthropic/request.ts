@@ -45,7 +45,7 @@ const bad = (message: string): PlugError => ({ status: 400, kind: "invalid_reque
 /** Anthropic's own minimum for `thinking.budget_tokens`. */
 const MIN_THINKING_BUDGET = 1024
 
-/** Budget ranges -> the variant names OpenCode models commonly offer (`low`, `medium`, `high`). Unknown names are ignored by the resolver. */
+/** Budget ranges -> the variant names OpenCode models commonly offer (`low`, `medium`, `high`). A model without that variant gets the nearest one above it (`effortVariant`, #410). */
 const effortOfBudget = (budget: number) => (budget <= 4096 ? "low" : budget <= 16384 ? "medium" : "high")
 
 const MEDIA_TYPE = /^[\w.+-]+\/[\w.+-]+$/

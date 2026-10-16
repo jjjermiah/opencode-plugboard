@@ -30,7 +30,7 @@ import {
   type RequestScope,
 } from "../http.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { resolveModel } from "../models.js"
+import { resolveModel, thinkingUnavailable } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
@@ -47,6 +47,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
+/** `unavailable` when a request asks for thinking and the model it resolves to has no thinking variant (#410). */
+const THINKING_HEADER = "x-plugboard-thinking"
 const MESSAGES = "/v1/messages"
 /** The 400 `parseThinking` gives when the budget is not below `max_tokens` (src/anthropic/request.ts). */
 const BUDGET_REFUSAL = "thinking.budget_tokens: must be less than max_tokens"
@@ -153,6 +155,8 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
       info.dropped = dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
     }
+    // A thinking request on a model with no thinking variant runs without thinking: say so (#410).
+    if (parsed.exchange.thinking && thinkingUnavailable(catalog, ref)) response.setHeader(THINKING_HEADER, "unavailable")
     const model: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, model)
     const { exchange } = parsed

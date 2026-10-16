@@ -3,7 +3,7 @@
  * stream, on the same route, deadline and model caller as the OpenAI front-ends.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import { CATALOG, ev, gate } from "../support/fixtures.js"
+import { CATALOG, ev, gate, model } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { parseSse, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
@@ -305,5 +305,37 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const refused: PlugError = { status: 503, kind: "server", code: "backend_unavailable", message: "Not ready" }
     await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, new FakeSessionPort(), async () => refused)
     expect((await countOf("invoice-parser")).status).toBe(503)
+  })
+})
+
+describe("#410 a thinking budget that maps to no variant of the model", () => {
+  /** A thinking request for `budget` tokens on a model with `variants`; the caller sees the ref the request runs on. */
+  async function thinking(variants: string[], budget: number) {
+    const caller = new FakeModelCaller([ev.finish()])
+    const catalog = [model("anthropic", "claude-haiku-4-5", { variants })]
+    server = await startRoute({ caller, options: { models: ["anthropic/*"] }, catalog })
+    const reply = await server!.send(messages({ model: "anthropic/claude-haiku-4-5", max_tokens: 20000, thinking: { type: "enabled", budget_tokens: budget } }))
+    return { reply, ref: caller.call.request.ref }
+  }
+
+  test("a budget of 1500 on Haiku 4.5 (high and max only) runs on high, with no unavailable header", async () => {
+    const { reply, ref } = await thinking(["high", "max"], 1500)
+    expect(reply.status).toBe(200)
+    expect(ref).toMatchObject({ providerID: "anthropic", id: "claude-haiku-4-5", variant: "high" })
+    expect(reply.headers).not.toHaveProperty("x-plugboard-thinking")
+  })
+
+  test("a model with no thinking variant runs without thinking and says so in x-plugboard-thinking", async () => {
+    const { reply, ref } = await thinking(["fast"], 1500)
+    expect(reply.status).toBe(200)
+    expect(ref.variant).toBeUndefined()
+    expect(reply.headers["x-plugboard-thinking"]).toBe("unavailable")
+  })
+
+  test("a request without thinking never gets the header", async () => {
+    const caller = new FakeModelCaller([ev.finish()])
+    server = await startRoute({ caller, options: { models: ["anthropic/*"] }, catalog: [model("anthropic", "claude-haiku-4-5", { variants: ["fast"] })] })
+    const reply = await server!.send(messages({ model: "anthropic/claude-haiku-4-5" }))
+    expect(reply.headers).not.toHaveProperty("x-plugboard-thinking")
   })
 })
