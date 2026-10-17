@@ -1,5 +1,5 @@
 /**
- * Stored Responses (since 0.50.0): the answers `POST /v1/responses` keeps with `store` on (the default), so
+ * Stored Responses (since 0.51.0): the answers `POST /v1/responses` keeps with `store` on (the default), so
  * `previous_response_id`, `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` and
  * `GET /v1/responses/{id}/input_items` work as they do on OpenAI.
  *

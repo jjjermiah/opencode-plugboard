@@ -7,7 +7,7 @@ The OpenAI JS SDK against plugboard: plain chat, a tool round trip, streaming (r
 | File | Scenario | What the snippet does |
 | --- | --- | --- |
 | `chat.ts` | S1 | one non-streamed chat call; `runResponses`, one `responses.create` call read through `output_text` |
-| `tools.ts` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id; `runResponses` sends the whole history back with `store: false`; `runResponsesPreviousId` sends `previous_response_id` instead (since 0.50.0, see below) |
+| `tools.ts` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id; `runResponses` sends the whole history back with `store: false`; `runResponsesPreviousId` sends `previous_response_id` instead (since 0.51.0, see below) |
 | `stream.ts` | S3 | raw stream without usage, then with `include_usage`, and the stream helper that must agree with the second; `runResponses` streams `responses.stream` events and checks the final response |
 | `stream_tools.ts` | S4 | streamed tool call, arguments accumulated across deltas |
 | `image.ts` | S5 | a red PNG as a data URL in a multi-part message; `runResponses` as an `input_image` part |
@@ -57,7 +57,7 @@ bun examples/_harness/run.ts openai-js --target live       # the isolated server
 
 ## Known gaps
 
-`S2 (responses-previous-id)` was a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)) until 0.50.0: plugboard now keeps each answer made with `store` on and continues from it with `previous_response_id` ([responses.md](../../docs/responses.md#stored-responses-since-0-50-0)). The scripted run passes it; the live run of the Responses rows, `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0), predates it and still records the refusal. Every other row passes on both targets. That live run's `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`); `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`).
+`S2 (responses-previous-id)` was a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)) until 0.51.0: plugboard now keeps each answer made with `store` on and continues from it with `previous_response_id` ([responses.md](../../docs/responses.md#stored-responses-since-0-51-0)). The scripted run passes it; the live run of the Responses rows, `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0), predates it and still records the refusal. Every other row passes on both targets. That live run's `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`); `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`).
 
 Before the Responses variants, all 17 checks passed for `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. The live run is `runs/live/2026-10-13-50219b1/`, on the isolated server at the main checkout's commit `50219b1` (plugboard 0.27.0). It ran the ChatGPT model without a quota error, and `models.retrieve` passes there, so the 2026-10-11 gotcha above is resolved. `runs/live/2026-10-13-c97ac66/` is an earlier run at `c97ac66` (0.26.0), before S3 gained its without-usage call; it is kept as recorded.
 

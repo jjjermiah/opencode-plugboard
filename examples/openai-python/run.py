@@ -25,7 +25,7 @@ from openai import OpenAI  # noqa: E402
 
 # Chat Completions (`chat`) and the Responses API (`responses`) run side by side on the scenarios that have both.
 APIS = ["chat", "responses"]
-# previous_response_id continues a stored response (docs/responses.md, since 0.50.0).
+# previous_response_id continues a stored response (docs/responses.md, since 0.51.0).
 PREVIOUS_ID = "responses-previous-id"
 
 

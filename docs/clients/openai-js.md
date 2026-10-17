@@ -42,7 +42,7 @@ The snippet uses `client`, `model`, and `zodResponseFormat` from `openai/helpers
 
 ## Responses API
 
-The same scenarios on `client.responses` (`/v1/responses`), as the `responses` variant of the example. Each turn can send the whole conversation in `input`, or continue a stored answer with `previous_response_id` (since 0.50.0).
+The same scenarios on `client.responses` (`/v1/responses`), as the `responses` variant of the example. Each turn can send the whole conversation in `input`, or continue a stored answer with `previous_response_id` (since 0.51.0).
 
 Text. The snippet uses `client` and `model`.
 
@@ -69,4 +69,4 @@ Structured output with `responses.parse` and `zodTextFormat`, then the raw `text
 Gotchas (Responses):
 
 - The Responses API has no `finish_reason`. The example maps it from the response: `tool_calls` if a function call is in the output, else `stop` when the status is `completed`.
-- `previous_response_id` works since 0.50.0: plugboard keeps each answer made with `store` on, per app. Before 0.50.0 it was refused with a 400 `unsupported_parameter`, and the recorded live run still shows that. See [Responses API](../responses.md#stored-responses-since-0-50-0).
+- `previous_response_id` works since 0.51.0: plugboard keeps each answer made with `store` on, per app. Before 0.51.0 it was refused with a 400 `unsupported_parameter`, and the recorded live run still shows that. See [Responses API](../responses.md#stored-responses-since-0-51-0).

@@ -21,7 +21,7 @@ Plugboard replaces OpenCode's prompt, messages and tools with the caller's. The 
 
 ## Known gaps
 
-- **Server-side conversation state is on Responses only (since 0.50.0).** Chat Completions, Messages, Gemini and legacy completions carry the whole conversation in every request. On Responses, `previous_response_id` works: an answer made with `store` on (the default) is kept per app on the host storage, for the app's `history.maxAgeDays` (30 days when unset or `0`), and survives a restart. `conversation` is refused. The output items of recent answers are also kept in memory for an hour, so `item_reference`s resolve; a restart clears that memory. See [Responses](responses.md#stored-responses-since-0-50-0).
+- **Server-side conversation state is on Responses only (since 0.51.0).** Chat Completions, Messages, Gemini and legacy completions carry the whole conversation in every request. On Responses, `previous_response_id` works: an answer made with `store` on (the default) is kept per app on the host storage, for the app's `history.maxAgeDays` (30 days when unset or `0`), and survives a restart. `conversation` is refused. The output items of recent answers are also kept in memory for an hour, so `item_reference`s resolve; a restart clears that memory. See [Responses](responses.md#stored-responses-since-0-51-0).
 - **Gemini model ids with `/` or `#`** are awkward in SDK URLs. Give clients an alias. See [Gemini](gemini.md#model-names).
 - **State is per server.** Limits, the response cache and anchors live in one OpenCode server process. Two servers do not share them, and a restart clears limits and the cache.
 - **Token counts and costs are estimates.** Plugboard has no tokenizer.

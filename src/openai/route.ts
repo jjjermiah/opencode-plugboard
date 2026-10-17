@@ -96,7 +96,7 @@ export interface RouteHost {
   readonly keys?: KeyStore
   /** The session port, persona lookup and backend gate that `count_tokens` and `countTokens` read the prompt through (#201). Absent: the count covers the caller's request and the app's policy. */
   readonly session?: SessionPromptDeps
-  /** Stored Responses (src/responses/state.ts, since 0.50.0): behind `previous_response_id` and `GET`/`DELETE /v1/responses/{id}`. */
+  /** Stored Responses (src/responses/state.ts, since 0.51.0): behind `previous_response_id` and `GET`/`DELETE /v1/responses/{id}`. */
   readonly responses: ResponseStore
 }
 

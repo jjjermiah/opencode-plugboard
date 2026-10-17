@@ -16,14 +16,104 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ### Added
 
+- Stored Responses, so `previous_response_id` works (since 0.51.0, [#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)). An answer made with `store` on, which is the default, is kept per app in the plugin's host storage: every input item the model saw (each with an id, `item_reference`s replaced by the item they name) and the response object. A request with `previous_response_id` gets that response's input and output ahead of its own `input`, so chains of chains work. `instructions` do not carry over, as on OpenAI. A streamed answer is stored before its closing event goes out, so it can be retrieved at once. Three routes join it: `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` (answers `{id, object: "response.deleted", deleted: true}`) and `GET /v1/responses/{id}/input_items` with `limit` (1 to 100, default 20), `order` and `after`. They use OpenAI's error body, and they count as the `responses` endpoint for `apps.<name>.endpoints`. Another app's id is the same 404 as an unknown, deleted or expired one, so isolation between apps holds (new invariant I32). Records survive a restart. They are kept for the app's `history.maxAgeDays`, or 30 days when that is unset or `0`: a stored response is a whole conversation, so it is never kept forever, and there is no new option. Each app keeps at most 1000 responses and 128 MiB, oldest first, and an answer over 8 MiB stored is answered but not kept (`responses.store_skipped` in the log). `store: false` keeps nothing, as before. No id and no body is logged. `conversation` is still refused, and its message now points at `previous_response_id`. The `item_reference` memory (one hour, in the process) is unchanged, except that a `DELETE` also clears the response's items from it. The openai-python and openai-js `responses-previous-id` scenario is no longer a gap.
+
+## [0.50.0] - 2026-10-17: Every Shape, Every Count
+
+**Full diff:** [v0.49.0...v0.50.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...v0.50.0)
+
+### Added
+
 - Anthropic structured outputs on `POST /v1/messages`. `output_config.format` with `{"type": "json_schema", "schema": {...}}` used to be refused with a 400. It is now answered the way Anthropic does: the JSON is one `text` block with `stop_reason` `end_turn`, and a stream sends it as one `text_delta`. It uses the path Chat Completions `json_schema` uses, a forced `respond` tool with the same rules. A text answer that is the schema's JSON is taken when the model skips the tool (a non-streamed response carries `x-plugboard-structured-fallback: text`). A turn with no answer is a 502 in Messages' error shape. With caller tools, a call to one of them wins. A `tool_choice` that names a tool and a tool named `respond` are 400s. `count_tokens` counts the same request. The schema is not enforced, so validate the answer. The forced-tool recipe still works. Since 0.50.0.
 - Gemini `generationConfig.candidateCount` above 1 is served instead of refused (since 0.50.0). Each candidate is one model call through the same fan-out as `n` on Chat Completions, under the same caps: `maxN` and `apps.<name>.maxN`. Above the cap the answer is a 400 `INVALID_ARGUMENT` on `generationConfig.candidateCount` that names the option. The response has `candidates` in order, each with its `index`, and `usageMetadata` summed over the calls. A stream, as SSE or as a JSON array, interleaves the candidates with their `index` and ends with one chunk of summed usage. If one candidate fails, the request fails and the others are cancelled. The response cache is bypassed, as for `n`.
 - Gemini `streamGenerateContent` without `alt=sse` is served (since 0.50.0). Without `alt` (or with `alt=json`) the response is `application/json`: one JSON array, `[`, the chunks separated by commas, `]`, written as the model answers. It carries the same chunks as the SSE stream. An error after the first chunk is the last element of the array, so the array stays valid JSON. Another `alt` value is still a 400.
-- Stored Responses, so `previous_response_id` works (since 0.50.0, [#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)). An answer made with `store` on, which is the default, is kept per app in the plugin's host storage: every input item the model saw (each with an id, `item_reference`s replaced by the item they name) and the response object. A request with `previous_response_id` gets that response's input and output ahead of its own `input`, so chains of chains work. `instructions` do not carry over, as on OpenAI. A streamed answer is stored before its closing event goes out, so it can be retrieved at once. Three routes join it: `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` (answers `{id, object: "response.deleted", deleted: true}`) and `GET /v1/responses/{id}/input_items` with `limit` (1 to 100, default 20), `order` and `after`. They use OpenAI's error body, and they count as the `responses` endpoint for `apps.<name>.endpoints`. Another app's id is the same 404 as an unknown, deleted or expired one, so isolation between apps holds (new invariant I32). Records survive a restart. They are kept for the app's `history.maxAgeDays`, or 30 days when that is unset or `0`: a stored response is a whole conversation, so it is never kept forever, and there is no new option. Each app keeps at most 1000 responses and 128 MiB, oldest first, and an answer over 8 MiB stored is answered but not kept (`responses.store_skipped` in the log). `store: false` keeps nothing, as before. No id and no body is logged. `conversation` is still refused, and its message now points at `previous_response_id`. The `item_reference` memory (one hour, in the process) is unchanged, except that a `DELETE` also clears the response's items from it. The openai-python and openai-js `responses-previous-id` scenario is no longer a gap.
 
 ### Docs
 
 - The Gemini page lost both refusals and gained notes on several candidates and on the JSON array stream, including what the array form is based on. The APIs page no longer lists `candidateCount` as a known gap.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (5 commits)</summary>
+
+#### Features
+
+**feat(anthropic): answer output_config.format as structured output** ([`49ba93d`](https://github.com/jjjermiah/opencode-plugboard/commit/49ba93df4bf091877e98b406cb2d9c50f1c76645))
+
+Messages refused output_config.format with a 400, so a client that sends it (the Vercel provider does for claude-haiku-4-5, and so do the Anthropic SDK helpers) could not get structured output at all. The only route was the forced-tool recipe in docs/messages.md.
+
+The decoder now turns {"type": "json_schema", "schema": {...}} into the same forced `respond` tool Chat Completions json_schema uses, marks the request structuredTool, and puts the schema on the exchange. The encoder returns the tool input as one text block with stop_reason end_turn (the model ends on the respond call, which is mapped away), and a stream sends it as a single text_delta. The rules mirror Chat Completions:
+
+- a text answer that is the schema's JSON is taken when the model skips the tool, with x-plugboard-structured-fallback on a non-streamed reply;
+- no call and no matching text is a 502 structured_output_missing, in Messages' error shape (an error event once a stream has committed);
+- with caller tools the choice is required and a caller tool call wins; tool_choice none leaves only respond;
+- a tool_choice naming a tool, and a caller tool named respond, are 400s.
+
+count_tokens needed no code: the respond tool is part of the request, so it is counted like the request. A test pins that against the equivalent forced-tool request.
+
+Rejected: wrapping a non-object schema the way Gemini does. Anthropic's examples are objects and Chat Completions passes the schema as is, so this does the same. Also rejected: dropping the forced-tool recipe, which still works and stays in the docs as an alternative.
+
+Tests: decoder and encoder unit tests, HTTP tests for streamed and non-streamed answers, the fallback, the 502 and count_tokens, a conformance check that the Message and stream events match the SDK types, and the Anthropic SDK compat row, which was a gap and now passes. Four mutation entries cover the new guards. The live cells for Messages json and tools-json now send output_config.format.
+
+**feat(gemini): serve candidateCount above 1 and the default JSON-array stream** ([`bf1aa0a`](https://github.com/jjjermiah/opencode-plugboard/commit/bf1aa0ae423e94b83c608a1f9284375f9a922dce))
+
+Both were refused with a 400. Gemini clients that sample several candidates, or read the REST stream without alt=sse, could not use plugboard.
+
+candidateCount above 1:
+- The decoder reads generationConfig.candidateCount and checks it against maxN (or apps.<name>.maxN), as n is checked. Above the cap: 400 INVALID_ARGUMENT on generationConfig.candidateCount, code too_many_choices, message naming the option.
+- The route fans out through serveChoices (src/openai/fanout.ts) with a Gemini ChoiceCodec. The codec adds three optional members: encodeError, merge and wire. Without them the OpenAI forms apply, so Chat Completions and /v1/completions are unchanged.
+- JSON: candidates in order with index 0..n-1, usageMetadata summed over the calls. Stream: candidate chunks interleave with their index and one responseId. Each candidate ends with its own finishReason chunk without usage, then one chunk with only the summed usageMetadata. One failing candidate fails the request and cancels the rest.
+- The response cache is bypassed, as for n.
+
+streamGenerateContent without alt=sse (or alt=json):
+- Same events and chunks as the SSE path, framed as one JSON array: "[", chunks separated by commas, "]". An error after the first chunk is the last element, so the array stays valid. A newline is the keepalive. Another alt value is still a 400.
+- StreamWire (src/http.ts) carries content type, keepalive, frame and end. sseWriter takes it as an optional fourth argument.
+- Basis: a Google AI developer forum report shows the endpoint answering with a JSON array and an error as an array element. Not checked against Google's live server. The SDKs always send alt=sse, so none exercises this form. A failure before any output stays a plain error object with its HTTP status, not an array holding it.
+
+Rejected: routing candidateCount 1 through the fan-out (changes the single path for no gain), and a separate fan-out for Gemini (would copy the cancellation and interleave logic).
+
+Tests: unit (decoder cap, wires, candidate run), HTTP (array stream, fan-out JSON and streams as SSE and array, caps, per-app cap, failure, hang-up, cache bypass), conformance of the new bodies and chunks against the vendored Gemini schema, the @google/genai compat scenario n is now a plain pass, the coverage manifest, and six mutation entries.
+
+Validation: typecheck, test, manifest, pack, docs, examples and mutations pass.
+
+#### Docs
+
+**docs(readme): drop the restart and warm-up step from the front door** ([`bda992c`](https://github.com/jjjermiah/opencode-plugboard/commit/bda992cfe0351a71613cd65c0e2d1953f7828241))
+
+The README's install section ended with an export and an opencode api call to wake the plugin. The owner found it off-putting on the front page. The full steps, including the warm-up after a restart, stay on the Install page of the docs site. Also moves the example pin from 0.48.0 to the current 0.49.0.
+
+Validation: docs only; README renders as before minus the block.
+
+**docs(clients): say Anthropic structured outputs work from 0.50.0** ([`d063e65`](https://github.com/jjjermiah/opencode-plugboard/commit/d063e65aebe0fa45a68bf1125155eff8ab764ce0))
+
+Five client pages still said plugboard refuses output_config.format. #469 serves it (unreleased, since 0.50.0), so the pages now say it is answered from 0.50.0, refused before, and that the examples' forced-tool or jsonTool mode keeps working on every version. The Vercel Anthropic default mode is marked expected to work, not tested: the example was not rerun with it.
+
+Validation: docs build passes.
+
+#### CI and tooling
+
+**ci: raise the OpenSSF Scorecard (vulnerabilities, packaging, provenance, pinning)** ([`6128ac7`](https://github.com/jjjermiah/opencode-plugboard/commit/6128ac73e9dc8b4c55647c1a393fad8a4264cabb))
+
+Four Scorecard checks were costing points: Vulnerabilities 0 (137 advisories), Packaging -1, Signed-Releases 8 and Pinned-Dependencies 9.
+
+Vulnerabilities. osv-scanner 2.7.0 over the whole tree found 138 advisories (Scorecard shows 137): 121 in examples/aider, the rest in the root bun.lock (esbuild, seroval, vite), examples/async-openai, examples/dspy, examples/llamaindex, examples/mastra and examples/semantic-kernel. Fixed:
+- root: vite 6.4.3 through "overrides" (vitepress 1.6.4 asks for vite 5, and vite 5 has no fixed release; this also lifts esbuild), solid-js 1.9.17 (depends on seroval 1.6). The docs build passes.
+- examples/aider: override-dependencies lift aiohttp, anyio, fsspec, gitpython, idna, multidict, pillow, pygments, python-dotenv, requests, soupsieve, starlette and urllib3 past aider-chat 0.86.2's exact pins.
+- examples/semantic-kernel: werkzeug 3.1.9 (openapi-core caps it below 3.1.2).
+- examples/async-openai: rustls 0.23.46. Not fixable, ignored per example with osv-scanner.toml, each entry with a reason and an expiry of 2027-01-17:
+- aider-chat 0.86.2 (2), diskcache 5.6.3 (dspy and aider), nltk 3.10.3 (llamaindex), sprintf-js 1.0.3 (mastra): no fixed release exists.
+- litellm 1.81.10 in aider (24): fixes start at 1.82.0 and Aider refuses to start with any litellm that adds PermissionDeniedError (1.81.16 already does), so it cannot move. Every advisory is in the litellm proxy server; Aider calls only the SDK. The shipped package's own dependencies had no advisories. The scripted examples still pass and no transcript changed. After: 0 with the ignores, 30 without (osv-scanner scan source --no-ignore).
+
+Packaging. Scorecard's npm matcher needs actions/setup-node with registry-url https://registry.npmjs.org and a run step matching npm.*publish in the same job. publish.yml had the publish but no registry-url. Added it; npm trusted publishing keeps working because npm exchanges the OIDC token itself. setup-node's placeholder NODE_AUTH_TOKEN is kept away from the read-only npm commands (NPM_CONFIG_USERCONFIG=/dev/null).
+
+Signed-Releases. The attest job also writes <tarball>.intoto.jsonl, the bundle's DSSE envelope on one line (the signed SLSA provenance v1 statement), checks that its subject is the tarball by name and sha256, and the release job attaches it. The tarball, SBOM and Sigstore bundle are unchanged.
+
+Pinned-Dependencies. Scorecard counts an npm install as pinned only for `npm ci` or a git URL with a commit hash. publish.yml now fetches npm 11.21.0 with `npm pack` and checks its sha512 integrity before running it, instead of `npm install -g npm@11.21.0`. opencode-release.yml fetches the newest CLI with `npm pack` and tar instead of `npm install`; its version is meant to float. Rejected: a committed package-lock.json run with `npm ci` (npm's bundled dependencies would then count against Vulnerabilities).
+
+Validation: bun run validate passes typecheck, test, manifest, pack and docs; the examples step ran every example with no transcript change; actionlint is clean. Scorecard itself reads the default branch, so the new scores show after the merge and the next release.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.49.0] - 2026-10-17: No Phantom Calls
 
@@ -8392,7 +8482,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...HEAD
+[0.50.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...v0.47.0

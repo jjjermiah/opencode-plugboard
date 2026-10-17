@@ -1,0 +1,67 @@
+name: Review gate
+
+# One automated review per pull request head, posted by a GitHub App, so the main ruleset can require 1 approving
+# review although the repository has one maintainer. Setup and the proof procedure: docs/review-bot.md.
+#
+# It runs after CI, Commits or CodeQL completes (workflow_run), so the code that runs is always the default branch's.
+# It never checks out or runs pull request code: .github/scripts/review-gate.ts reads the diff and the description
+# through the API. A fork is skipped here and again in the script. Nothing runs until the App and its secrets exist.
+on:
+  # zizmor: ignore[dangerous-triggers] -- nothing from the pull request is checked out or run; the script reads the diff through the API and treats it as data
+  workflow_run:
+    # The names in `name:` of ci.yml, commits.yml and codeql.yml. The last of them to finish finds every required check
+    # green and reviews; the earlier ones find a check pending and stop. All three are required checks of the ruleset.
+    workflows: [CI, Commits, CodeQL]
+    types: [completed]
+
+permissions: {}
+
+# One review decision at a time per commit: two of the three runs can finish together and both see green.
+concurrency:
+  group: review-gate-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    name: Review gate
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      # Only the yes or no leaves this expression; a step reads the secrets themselves through its own env.
+      REVIEW_CONFIGURED: ${{ vars.REVIEW_APP_CLIENT_ID != '' && secrets.REVIEW_APP_PRIVATE_KEY != '' && secrets.REVIEW_LLM_API_KEY != '' }}
+    steps:
+      - name: Not configured, skipping
+        if: env.REVIEW_CONFIGURED != 'true'
+        run: echo "::notice title=Review gate::skipped, the App is not set up (see docs/review-bot.md). Needs the variable REVIEW_APP_CLIENT_ID and the secrets REVIEW_APP_PRIVATE_KEY and REVIEW_LLM_API_KEY."
+      # No ref: a workflow_run job checks out the default branch, which is where this script is trusted. Only the script is fetched.
+      - name: Check out the review script from the default branch
+        if: env.REVIEW_CONFIGURED == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/review-gate.ts
+          sparse-checkout-cone-mode: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: env.REVIEW_CONFIGURED == 'true'
+        with:
+          bun-version: 1.4.2
+      - name: Create the App installation token
+        if: env.REVIEW_CONFIGURED == 'true'
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-contents: read
+          permission-checks: read
+      - name: Review the pull request
+        if: env.REVIEW_CONFIGURED == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REVIEW_LLM_API_KEY: ${{ secrets.REVIEW_LLM_API_KEY }}
+          REVIEW_LLM_MODEL: ${{ vars.REVIEW_LLM_MODEL }}
+        run: bun .github/scripts/review-gate.ts

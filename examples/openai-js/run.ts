@@ -19,7 +19,7 @@ emitClient("openai", version)
 
 // Chat Completions (`chat`) and the Responses API (`responses`) run side by side on the scenarios that have both.
 const APIS = ["chat", "responses"]
-// previous_response_id continues a stored response (docs/responses.md, since 0.50.0).
+// previous_response_id continues a stored response (docs/responses.md, since 0.51.0).
 const PREVIOUS_ID = "responses-previous-id"
 const byApi = (chatRun: (model: string) => Promise<Observations>, responsesRun: (model: string) => Promise<Observations>) => (model: string, variant?: string) =>
   variant === "chat" ? chatRun(model) : responsesRun(model)

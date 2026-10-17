@@ -2,7 +2,7 @@
 
 `POST /v1/responses` is served next to Chat Completions, with the same keys, model ids, aliases and limits. Use it when a client only speaks Responses: the Vercel AI SDK's `openai(id)`, `@langchain/openai` for ids such as `gpt-5.6*`, the n8n OpenAI Chat Model node with "Use Responses API" on, the `openai` SDK's `client.responses.create`.
 
-A request can carry the whole conversation in `input`, as Chat Completions does with `messages`, or continue an earlier answer with `previous_response_id` (since 0.50.0). Plugboard keeps each answer made with `store` on, which is the default, so `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` and `GET /v1/responses/{id}/input_items` work too. See [Stored responses](#stored-responses-since-0-50-0).
+A request can carry the whole conversation in `input`, as Chat Completions does with `messages`, or continue an earlier answer with `previous_response_id` (since 0.51.0). Plugboard keeps each answer made with `store` on, which is the default, so `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` and `GET /v1/responses/{id}/input_items` work too. See [Stored responses](#stored-responses-since-0-51-0).
 
 Tested: `openai` (JS SDK), `ai` 7.0.137 with `@ai-sdk/openai` 4.0.91 (`openai(id)`, 17 of 17 scenarios) and `@langchain/openai` 1.6.2 with `openai/gpt-5.6-luna#low`, 2026-10-11. n8n was not re-run on this path.
 
@@ -30,7 +30,7 @@ console.log(r.output_text)
 | `parallel_tool_calls: false` | Keeps only the first tool call of the answer, and the response carries `x-plugboard-parallel-tools: limited`. The response echoes the value it received (`true` unless the request sent `false`). |
 | `include`, `metadata`, `user`, `service_tier`, `prompt_cache_key`, `safety_identifier`, `max_tool_calls`, `stream_options` | Accepted and ignored. |
 | `store` | On by default, as on OpenAI: the answer is kept for `previous_response_id` and the stored-response routes. `store: false` keeps nothing: the answer is not retrievable, cannot be chained from, and a later `item_reference` to its items is a 400 `item_not_found` (#426). The response echoes the value you sent (`true` when you leave it out, as OpenAI does; #442). |
-| `previous_response_id` | The id of a stored response of the same app (since 0.50.0). Its input and output come first, then your `input`. `instructions` do not carry over. An unknown id is a 404. See below. |
+| `previous_response_id` | The id of a stored response of the same app (since 0.51.0). Its input and output come first, then your `input`. `instructions` do not carry over. An unknown id is a 404. See below. |
 
 ## What is rejected
 
@@ -73,7 +73,7 @@ response.completed                   (or response.incomplete / response.failed),
 
 Tool calls arrive whole from the model, so each call is a single `function_call_arguments.delta` holding the full arguments, as in Chat Completions. A structured answer (`json_schema`) is one `output_text.delta`. Its text is held back until the turn ends (#173), so the stream commits with the first output event (the keepalive comments start then) and a missing answer is a `response.failed` event after that. Without a respond call the answer is taken from the final text when it is the JSON the schema asks for, the same small check as Chat Completions (`x-plugboard-structured-fallback: text`, non-streamed responses only). Any other turn without the call is a 502 `structured_output_missing` for every finish reason, or a `response.failed` once a stream has started.
 
-## Stored responses (since 0.50.0)
+## Stored responses (since 0.51.0)
 
 With `store` on (the default), plugboard keeps each completed or incomplete answer, per app: every input item the model saw, and the response object. A failed answer is not kept.
 
