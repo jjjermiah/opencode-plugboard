@@ -207,6 +207,7 @@ export default defineConfig({
           { text: "Architecture", link: "/architecture" },
           { text: "Development", link: "/development" },
           { text: "Releasing", link: "/releasing" },
+          { text: "Review bot", link: "/review-bot" },
           { text: "Packaging", link: "/packaging" },
           { text: "Security", link: "/security" },
           { text: "Security reviews", link: "/security-reviews" },
