@@ -1,0 +1,44 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "Reply with exactly: pong",
+                  "type": "text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "nope",
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages?beta=true"
+      },
+      "response": {
+        "body": {
+          "error": {
+            "message": "Model nope is not available",
+            "type": "not_found_error"
+          },
+          "type": "error"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 404
+      }
+    }
+  ]
+}

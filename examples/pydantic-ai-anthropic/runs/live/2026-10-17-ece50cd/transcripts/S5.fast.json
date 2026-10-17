@@ -1,0 +1,78 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "What color is this image? One word.",
+                  "type": "text"
+                },
+                {
+                  "source": {
+                    "data": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4nO3NMQ0AAAzDsPLHODAj0X6Wcse5ZNr2DgAAAAAAAAAAAIo9tPVwLraRYtkAAAAASUVORK5CYII=",
+                    "media_type": "image/png",
+                    "type": "base64"
+                  },
+                  "type": "image"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": false
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages?beta=true"
+      },
+      "response": {
+        "body": {
+          "container": null,
+          "content": [
+            {
+              "citations": null,
+              "text": "Red.",
+              "type": "text"
+            }
+          ],
+          "diagnostics": null,
+          "id": "<id-2>",
+          "model": "anthropic/claude-haiku-4-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": null,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": null,
+            "input_tokens": 39,
+            "output_tokens": 5,
+            "output_tokens_details": null,
+            "server_tool_use": null,
+            "service_tier": null
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=39; output=5; cache_read=0; cache_write=0; cost_usd=0.000064"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
