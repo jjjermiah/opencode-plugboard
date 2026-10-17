@@ -26,4 +26,4 @@ Tested: `@langchain/anthropic` 1.5.12 with `@langchain/core` 1.2.17 on Bun 1.4.2
 
 - The stop reason of a streamed answer arrives on the last chunk, in `additional_kwargs.stop_reason`, not in `response_metadata`. The example reads it there. The Python `ChatAnthropic` puts it in `response_metadata` instead.
 - Messages errors carry `error.type` and no `error.code`. The example checks the status and does not check the code, because the wire has none.
-- `GET /v1/models` ignores `x-api-key` ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)). `ChatAnthropic` has no model list call; the example's `models.ts` lists with a raw `fetch` and a Bearer key, not through the client, so S7 is not a client check.
+- `GET /v1/models` accepts `x-api-key` since 0.47.0 ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)). `ChatAnthropic` has no model list call; the example's `models.ts` lists with a raw `fetch` and a Bearer key, not through the client, so S7 is not a client check.

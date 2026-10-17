@@ -26,4 +26,4 @@ Tested: `langchain-anthropic` 1.7.6 on Python 3.13. The example runs S1 to S7 an
 
 - The stop reason of a streamed answer is on the last chunk, in `response_metadata.stop_reason`. The JS `ChatAnthropic` puts it in `additional_kwargs` instead.
 - Messages errors carry `error.type` and no `error.code`. The example checks the status and does not check the code, because the wire has none.
-- `GET /v1/models` ignores `x-api-key` ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)). `ChatAnthropic` has no model list call; the example's `models.py` lists with a raw `httpx` call and a Bearer key, not through the client, so S7 is not a client check.
+- `GET /v1/models` accepts `x-api-key` since 0.47.0 ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)). `ChatAnthropic` has no model list call; the example's `models.py` lists with a raw `httpx` call and a Bearer key, not through the client, so S7 is not a client check.

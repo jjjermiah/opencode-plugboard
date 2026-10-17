@@ -1,6 +1,32 @@
 # Configuration
 
-Options, models, keys and errors. For install and a first call, see the [README](https://github.com/jjjermiah/opencode-plugboard#readme).
+Every option, with its syntax, default and edge cases. This is the reference: to learn a feature, start with its [guide](guides/apps-and-keys.md). For install and a first call, see [Install](install.md).
+
+## By task
+
+The sections below, grouped the way the guides are.
+
+**Apps and keys** ([guide](guides/apps-and-keys.md)): [Apps and keys](#apps-and-keys), [Per-app policy](#per-app-policy-apps), [Endpoint names](#endpoint-names-since-0-26-0), [Admin keys](#admin-keys), [Which key opens which route](#which-key-opens-which-route), [End users](#end-users).
+
+**Models, aliases and fallbacks** ([guide](guides/models-and-aliases.md)): [Models](#models), [Reasoning output](#reasoning-output), [Model ids in UIs](#model-ids-in-uis), [Aliases and fallbacks](#aliases-and-fallbacks), [Skills and agents](#skills-and-agents), [Permission model](#permission-model).
+
+### Limits, budgets and caching
+
+[Guide](guides/limits-budgets-and-caching.md). [Concurrency and rate limits](#concurrency-and-rate-limits), [Request bodies](#request-bodies), [Budgets](#budgets), [Response cache](#response-cache), [Prompt-cache affinity](#prompt-cache-affinity).
+
+### Tools, structured output and images
+
+[Guide](guides/tools-output-and-images.md). [Request fields and behaviours](#request-fields-and-behaviours), [Remote image limits](#remote-image-limits-since-0-26-0), [Cost of the seed pool](#cost-of-the-seed-pool), server tools in [Per-app policy](#per-app-policy-apps).
+
+### History, usage and monitoring
+
+[Guide](guides/history-usage-and-monitoring.md). [Hidden app sessions](#hidden-app-sessions-since-0-30-0), [Usage statistics](#usage-statistics), [Dashboard](#dashboard), [Session links](#session-links), [Operating](#operating). See also [History](history.md).
+
+### Serving other machines
+
+[Guide](guides/serving-other-machines.md). `listen` in [Options](#options), [Reverse proxies](#reverse-proxies-since-0-26-0), [Browser origins](#browser-origins-since-0-26-0), [Reloads and restarts](#reloads-and-restarts). See also [Remote access](remote-access.md) and [Warm-up](warm-up.md).
+
+**Errors**: [Limits and errors](#limits-and-errors) lists every error code of the model routes.
 
 ## Options
 
@@ -12,7 +38,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.port` | `4010` | Port to bind. |
 | `keys` | none | Map of app name to API key. The app name groups that app's history sessions. Names match `[a-z0-9-]+` and are at most 255 characters. `default` is reserved. |
 | `adminKey` | none | A key that reads every app's usage at `GET /plugboard/usage` and manages app keys at runtime under `/plugboard/admin/keys`. It must differ from every app key. It is not an app key: it cannot call the model routes. Without it the admin paths are 404. See [Usage statistics](#usage-statistics) and [Admin keys](#admin-keys). |
-| `apps` | none | Map of app name to `{ key?, models?, system?, systemMode?, tools?, maxTools?, maxN?, history?, serverTools?, maxServerToolSteps? }`: per-app model scope, system prompt, tool policy and OpenCode tools the app may run. See [Apps and keys](#apps-and-keys). |
+| `apps` | none | Map of app name to its own settings: key, model scope or pinned model, system prompt, tool policy, OpenCode tools it may run, endpoints, caps, sampling defaults, history and more. See [Per-app policy](#per-app-policy-apps). |
 | `models` | none (required) | Allowlist of models callers may use. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model, since 0.20.0). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
 | `agents` (since 0.20.0) | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
@@ -29,7 +55,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `listen.trustProxy` (since 0.26.0) | none | The reverse proxies whose forwarded headers are read: `true` (loopback only), or a list of IP addresses and CIDR ranges such as `["127.0.0.1", "10.0.0.0/8"]`. Headers from any other peer are ignored. See [Reverse proxies](#reverse-proxies-since-0-26-0). |
 | `cors` (since 0.26.0) | none | Browser origins that may call plugboard: `{ "origins": ["https://chat.example.net"], "allowPrivateNetwork": false }`. Each origin is `http(s)://host[:port]`; `"*"` alone needs `keys`. See [Browser origins](#browser-origins-since-0-26-0). |
 | `requireKeys` (since 0.26.0) | `false` | Makes a keyless server impossible. With `true`, `keys` must be set (otherwise the plugin refuses to load), and every request needs a key, loopback included. `/healthz` and `/readyz` stay open. Absent or `false`: keyless loopback works as before. Use it on a shared machine, where loopback is not a security boundary.
-| `keepAlive` (since 0.26.0) | `true` | Keeps OpenCode's Location for this plugin warm, so the server's 60-minute idle eviction does not close plugboard's listener. Every 30 minutes the plugin creates one child session under a parent it keeps, both titled `plugboard keep-alive` and both in its own Location, and removes the child the previous tick created. The parent stays one row in the session lists; the children are hidden under it. It never prompts them. The create is the durable session event the eviction timer counts; a rename is not (since 0.33.0, #350: 0.26.0 to 0.32.0 renamed one session, which did not hold the Location). `false` turns the loop off, and then an idle server stops serving until something touches it again (see [Operating](#operating) and `docs/warm-up.md`). Only the process's one loop runs. |
+| `keepAlive` (since 0.26.0) | `true` | Keeps OpenCode's Location for this plugin warm, so the server's 60-minute idle eviction does not close plugboard's listener. Every 30 minutes the plugin creates one child session under a parent it keeps, both titled `plugboard keep-alive` and both in its own Location, and removes the child the previous tick created. The parent stays one row in the session lists; the children are hidden under it. It never prompts them. The create is the durable session event the eviction timer counts; a rename is not (since 0.33.0, #350: 0.26.0 to 0.32.0 renamed one session, which did not hold the Location). `false` turns the loop off, and then an idle server stops serving until something touches it again (see [Operating](#operating) and [Warm-up](warm-up.md)). Only the process's one loop runs. |
 | `metrics` | `false` | Serve Prometheus metrics at `GET /plugboard/metrics`. Without `adminKey` it uses the same authentication as `/v1`, and any app key reads every app's series. With `adminKey` set, only the admin key reads it: an app key gets 403 `admin_key_required`. See [Operating](#operating). |
 | `modelIds` | `canonical` | Ids `/v1/models` lists: `canonical` (`provider/model#variant`), `slugs` (UI-safe `provider--model__variant`) or `both`. Requests accept either spelling. See [Model ids in UIs](#model-ids-in-uis). |
 | `limits` | none (unlimited) | Caps on model calls in flight, and calls started per minute per app: `{ maxConcurrent, perApp: { maxConcurrent, requestsPerMinute }, apps: { <name>: { ... } } }`. A call over a cap gets 429 at once. See [Concurrency and rate limits](#concurrency-and-rate-limits). Also `maxBodyBytesInFlight` and `bodyReadTimeoutMs` (since 0.21.0) and `bodyReadMaxMs` (since 0.39.0) bound request bodies, and `maxBodyBytes` with `apps.<name>.maxBodyBytes` (since 0.32.0) cap the size of one body, see [Request bodies](#request-bodies). |
@@ -78,8 +104,6 @@ A web page in a browser runs on its own origin and calls plugboard from there. O
 - An allowed origin's answer also carries `Access-Control-Expose-Headers` (since 0.27.0, #314): the `x-plugboard-*` response headers (`x-plugboard-request-id`, `x-plugboard-session`, `x-plugboard-session-url`, `x-plugboard-model`, `x-plugboard-fallbacks`, `x-plugboard-usage`, `x-plugboard-policy`, `x-plugboard-server-tools`, `x-plugboard-parallel-tools`, `x-plugboard-dropped-params`, `x-plugboard-thinking` (since 0.46.0), `x-plugboard-cache`, `x-plugboard-affinity`, `x-plugboard-user-dropped`, `x-plugboard-structured-fallback`) and `retry-after`. A page can read them with `response.headers.get(...)`.
 - `allowPrivateNetwork: true` adds `Access-Control-Allow-Private-Network: true` when the preflight asks for it (Private Network Access). Off by default.
 - `"*"` echoes `*` for any origin. It must stand alone and needs `keys`: a wildcard never sits in front of a keyless endpoint.
-
-The responses do not expose the `x-plugboard-*` headers to a browser script, because `Access-Control-Expose-Headers` is not set.
 
 ### Remote image limits (since 0.26.0)
 
@@ -644,7 +668,9 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 
 Provider errors map to an OpenAI error body with the provider's status, including a provider's own rejection of a sampling parameter (ChatGPT models reject `temperature`, for example). Once a stream has started, a failure arrives as an `error` event followed by `[DONE]`. A client that disconnects, SSE included, interrupts the request. Calls over a cap in `limits` get 429 instead (see [Concurrency and rate limits](#concurrency-and-rate-limits)). Sampling parameters a model is known to reject are dropped instead, see `dropUnsupportedParams`.
 
-Supported request fields: messages with system, developer, user text and images (a `file` content part must be a PDF given as a `data:application/pdf;base64,...` URL; any other file data is a 400 `invalid_file`), assistant `tool_calls` and tool results; `tools`, `tool_choice`, `response_format` (`json_object`, `json_schema`), `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `presence_penalty`, `frequency_penalty`, `reasoning_effort`, `n` (up to `maxN`), and streaming with a final usage chunk (`stream_options.include_usage`). The legacy `POST /v1/completions` is served too: see [completions](completions.md).
+### Request fields and behaviours
+
+The Chat Completions request fields are listed on [Chat Completions](chat-completions.md). In short: messages with system, developer, user text and images (a `file` content part must be a PDF given as a `data:application/pdf;base64,...` URL; any other file data is a 400 `invalid_file`), assistant `tool_calls` and tool results; `tools`, `tool_choice`, `response_format` (`json_object`, `json_schema`), `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `stop`, `presence_penalty`, `frequency_penalty`, `reasoning_effort`, `n` (up to `maxN`), and streaming with a final usage chunk (`stream_options.include_usage`). The legacy `POST /v1/completions` is served too: see [completions](completions.md).
 
 Behaviours worth knowing:
 
@@ -652,7 +678,7 @@ Behaviours worth knowing:
 - `tool_choice` `auto` and `none` work as expected. `required` and a named function are applied as an instruction to the model, because the OpenCode session API has no tool-choice control. A model can still answer in text.
 - `response_format` `json_schema` works through a `respond` tool the model is instructed to call, and the arguments come back as the message content. The provider does not enforce the schema, so validate the result. `json_object` adds a system instruction instead and carries no schema, so name the keys in your prompt; weak models may still ignore them.
 - A model that answers in text instead of calling `respond` still counts when its final text is the JSON the schema asks for (#170; the same on Responses and Gemini, #173). The check is deliberately small: the top-level `type`, the top-level `required` keys, and the `type` of each top-level property. Anything else in the schema is not checked. Such an answer carries `x-plugboard-structured-fallback: text` on a non-streamed response. A streamed one cannot carry it, because the headers are sent before the answer is known. Text that does not match is a 502 `structured_output_missing`.
-- A request that carries both `tools` and a `json_schema` response format is changing: it will return the caller's tool calls ([#34](https://github.com/jjjermiah/opencode-plugboard/issues/34)). Don't rely on the current behaviour for that combination.
+- A request that carries both `tools` and a `json_schema` response format offers the model both: it may call one of the caller's tools, which come back as `tool_calls`, or give the schema answer (#34). `tool_choice: none` leaves only the schema answer, and a `tool_choice` that names a tool is refused with 400 `unsupported_parameter`.
 - A streamed tool call arrives as one delta carrying the whole arguments string.
 
 ## Operating

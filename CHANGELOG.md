@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Docs
+
+- The README is a short front door: what plugboard is, install, one request, what it serves, and links. Everything it used to hold moved to the docs site, which now reads in order: get started (landing page, install, connect your app), six task guides (apps and keys; models, aliases and fallbacks; limits, budgets and caching; tools, structured output and images; history, usage and monitoring; serving other machines), the clients grouped by kind, the reference, and the project pages. New pages: Chat Completions, APIs and known gaps, response headers (every `x-plugboard-*` header), security, and a clients overview. The configuration reference opens with a map of its sections by task. Stale statements were fixed along the way: the Anthropic model list works with `x-api-key` since 0.47.0, `tools` with `json_schema` lets the model choose, usage is written on every change, and the CI host matrix. Old page paths still work.
 
 ## [0.48.0] - 2026-10-16: Turning the Pages
 

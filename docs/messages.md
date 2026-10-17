@@ -4,7 +4,7 @@
 
 Plugboard is stateless: every request carries the whole conversation in `messages`.
 
-Tested with `@anthropic-ai/sdk` 0.133.0 against a fake model caller (plain, streamed and tool-loop calls, errors, both auth headers). Claude Code and the Python SDK were not run against it.
+The Anthropic Python and TypeScript SDKs, LangChain, pydantic-ai, the Vercel AI SDK and Claude Code all run against it: see their [client pages](clients/index.md).
 
 ```ts
 import Anthropic from "@anthropic-ai/sdk"

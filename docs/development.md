@@ -9,9 +9,19 @@ bun install
 bun run typecheck
 ```
 
+Before a pull request, run the whole local chain in one foreground command: typecheck, tests with the coverage gates, the coverage manifest, the package checks, the docs build and the scripted examples.
+
+```sh
+bun run validate                   # about 7 minutes; logs in .agents/validate/<step>.log
+bun run validate --mutations       # also the mutation run, after touching a guard
+bun run validate --skip examples   # while iterating
+```
+
+After you push, `bun run pr-wait <number>` waits for every check the main branch requires and prints one verdict.
+
 The `/plugboard` TUI page loads from `dist/tui.js` when the package is installed from npm, and from `tui.ts` (which re-exports it) when it is configured by local path. Run `bun run build:tui` once after a change to `src/tui.tsx`, before you test the TUI page against a local checkout. `bun run typecheck` and `bun test` do not need the build. See [packaging.md](packaging.md) for why the file is compiled.
 
-The type check is also the host-compatibility gate: it fails when the `@opencode/plugin` types change shape. The devDependencies are pinned to the newest host (`@opencode/plugin` 2.0.27 with `effect` 4.0.1). The peer range `>=2.0.26 <2.1` allows 2.0.x patch releases; CI runs the typecheck and tests against 2.0.26 (with `effect` 4.0.0-rc.112) and 2.0.27, and the other releases in the range are not tested.
+The type check is also the host-compatibility gate: it fails when the `@opencode/plugin` types change shape. The devDependencies are pinned to a recent host (`@opencode/plugin` 2.0.30 with `effect` 4.0.1), and a weekly workflow opens a pull request for each new host release. The peer range `>=2.0.26 <2.1` allows 2.0.x patch releases. CI picks three hosts from the range with `.github/scripts/host-versions.ts` (the oldest, a middle one and the newest published) and runs the typecheck and tests against each; the other releases are not tested.
 
 ## Isolated server
 
