@@ -30,7 +30,7 @@ Each client page has the config, a chat, a tool call, structured output and what
 | --- | --- |
 | An SDK in your language | [SDKs](clients/index.md#sdks): [OpenAI Python](clients/openai-python.md), [OpenAI JS](clients/openai-js.md), [Anthropic Python](clients/anthropic-python.md), [Anthropic JS](clients/anthropic-js.md), [Google GenAI JS](clients/google-genai-js.md), [Go](clients/go-openai.md), [.NET](clients/openai-dotnet.md), [Rust](clients/async-openai.md) |
 | An agent framework | [Agent frameworks](clients/index.md#agent-frameworks): [LangChain](clients/langchain-python.md), [LlamaIndex](clients/llamaindex.md), [CrewAI](clients/crewai.md), [pydantic-ai](clients/pydantic-ai.md), [Vercel AI SDK](clients/vercel-ai-sdk.md) |
-| A chat app | [Chat apps](clients/index.md#chat-apps): [Open WebUI](clients/open-webui.md), [LibreChat](clients/librechat.md), [n8n](clients/n8n.md), [Chatbox](clients/chatbox.md) |
+| A chat app | [Chat apps](clients/index.md#chat-apps-and-automation): [Open WebUI](clients/open-webui.md), [LibreChat](clients/librechat.md), [n8n](clients/n8n.md), [Chatbox](clients/chatbox.md) |
 | A coding tool | [Coding tools](clients/index.md#coding-tools): [Claude Code](clients/claude-code.md), [Codex CLI](clients/codex-cli.md), [OpenCode](clients/opencode.md), [Cline](clients/cline.md), [Aider](clients/aider.md) |
 | An evaluation or tracing tool | [Evaluation and observability](clients/index.md#evaluation-and-observability): [promptfoo](clients/promptfoo.md), [lm-evaluation-harness](clients/lm-eval.md), [Langfuse](clients/langfuse.md) |
 | A self-hosted app such as Karakeep or Mealie | [Self-hosted apps](self-hosted.md) |
