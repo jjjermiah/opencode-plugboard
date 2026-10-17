@@ -49,8 +49,6 @@ export function naReason(endpoint: Endpoint, scenario: Scenario): string | null 
       return "legacy completions: text_completion has no tool_calls field (docs/completions.md)"
     if (scenario === "image") return "legacy completions: the prompt is a string, no image input (docs/completions.md)"
   }
-  if (endpoint === "messages" && scenario === "tools-json")
-    return "Messages structured output is a forced tool; output_config.format is not supported (docs/messages.md)"
   return null
 }
 
@@ -129,12 +127,9 @@ function messagesBody(scenario: Scenario, model: string, stream: boolean): Req {
           ]
         : [user(promptFor(scenario))]
   const body: Record<string, unknown> = { model, messages, max_tokens: MAX_TOKENS, stream }
-  if (scenario === "tool-call" || scenario === "tool-result")
-    body.tools = [{ name: WEATHER.name, description: WEATHER.description, input_schema: WEATHER.parameters }]
-  if (scenario === "json") {
-    body.tools = [{ name: "answer", description: "Answer the question.", input_schema: ANSWER }]
-    body.tool_choice = { type: "tool", name: "answer" }
-  }
+  if (hasTools(scenario)) body.tools = [{ name: WEATHER.name, description: WEATHER.description, input_schema: WEATHER.parameters }]
+  if (scenario === "json") body.output_config = { format: { type: "json_schema", schema: ANSWER } }
+  if (scenario === "tools-json") body.output_config = { format: { type: "json_schema", schema: CITY } }
   return { path: PATHS.messages, body }
 }
 
@@ -189,7 +184,7 @@ const jsonOf = (text: string): any => {
 }
 
 /** Read a complete (non-stream) body. */
-export function readAnswer(endpoint: Endpoint, scenario: Scenario, body: any): Answer {
+export function readAnswer(endpoint: Endpoint, body: any): Answer {
   const answer: Answer = { text: "", calls: [] }
   if (endpoint === "chat") {
     const message = body.choices?.[0]?.message ?? {}
@@ -205,8 +200,6 @@ export function readAnswer(endpoint: Endpoint, scenario: Scenario, body: any): A
       if (block.type === "text") answer.text += block.text
       if (block.type === "tool_use") answer.calls.push({ name: block.name, args: JSON.stringify(block.input) })
     }
-    // Messages carries structured output as a forced tool: its input is the answer.
-    if (scenario === "json" && answer.calls.length === 1) answer.text = answer.calls[0]!.args
   } else if (endpoint === "gemini") {
     for (const part of body.candidates?.[0]?.content?.parts ?? []) {
       if (typeof part.text === "string") answer.text += part.text
@@ -318,7 +311,7 @@ export async function runCell(model: string, endpoint: Endpoint, scenario: Scena
   }
   const body = jsonOf(sent.text)
   if (body === undefined) return fail(`not JSON: ${snippet(sent.text)}`)
-  const answer = readAnswer(endpoint, scenario, body)
+  const answer = readAnswer(endpoint, body)
   const problem = verdict(scenario, answer)
   if (problem) return fail(`${problem}; got ${snippet(answer.text || JSON.stringify(answer.calls) || JSON.stringify(body), 100)}`)
   return { ...base, status: "pass", detail: "ok", sessions, ms }

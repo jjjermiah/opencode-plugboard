@@ -42,6 +42,9 @@ const isRecord = (value: unknown): value is JsonObject => typeof value === "obje
 
 const bad = (message: string): PlugError => ({ status: 400, kind: "invalid_request", message })
 
+/** Name of the forced tool that carries structured output (same as the other front-ends). */
+const RESPOND_TOOL = "respond"
+
 /** Anthropic's own minimum for `thinking.budget_tokens`. */
 const MIN_THINKING_BUDGET = 1024
 
@@ -268,6 +271,25 @@ const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError =
   }
 }
 
+/**
+ * `output_config.format` (`{type: "json_schema", schema}`) -> the `respond` tool, forced unless the caller also sends tools; the
+ * same mapping as `response_format` json_schema in Chat Completions. `null` or absent: no structured output.
+ */
+const parseOutputFormat = (body: JsonObject): PlugTool | undefined | PlugError => {
+  const config = body.output_config
+  if (!isRecord(config) || config.format == null) return undefined
+  const format = config.format
+  if (!isRecord(format)) return bad("output_config.format: must be an object")
+  if (format.type !== "json_schema") return bad(`output_config.format.type: \"${show(format.type)}\" is not supported (use \"json_schema\")`)
+  if (!isRecord(format.schema)) return bad("output_config.format.schema: Field required (a JSON Schema object)")
+  return {
+    name: RESPOND_TOOL,
+    // With caller tools also on offer, this description is what tells the model which call is the final answer.
+    description: "Give your final answer by calling this tool with JSON matching its schema.",
+    parameters: format.schema,
+  }
+}
+
 const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
   const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = {}
   if (typeof body.max_tokens !== "number" || !Number.isInteger(body.max_tokens)) {
@@ -314,7 +336,6 @@ const parseThinking = (body: JsonObject, maxTokens: number): { enabled: boolean;
   const config = body.output_config
   if (config != null) {
     if (!isRecord(config)) return bad("output_config: must be an object")
-    if (config.format != null) return bad("output_config.format: structured outputs are not supported")
     if (config.effort != null) {
       if (typeof config.effort !== "string" || config.effort.length === 0) return bad("output_config.effort: must be a string")
       effort = config.effort
@@ -353,25 +374,42 @@ export function parseMessagesRequest(body: unknown, options: PlugboardOptions): 
   const thinking = parseThinking(body, generation.maxTokens ?? 1)
   if (isPlugError(thinking)) return thinking
 
-  if (tools.length > options.maxTools) return bad(`tools: ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`)
+  const respond = parseOutputFormat(body)
+  if (isPlugError(respond)) return respond
+
   if (toolChoice !== undefined && toolChoice !== "none" && toolChoice !== "auto" && tools.length === 0) return bad("tool_choice: needs at least one tool in tools")
   if (typeof toolChoice === "object" && !tools.some((tool) => tool.name === toolChoice.name))
     return bad(`tool_choice.name: "${toolChoice.name}" is not in tools`)
+  if (respond && tools.some((tool) => tool.name === RESPOND_TOOL))
+    return bad(`tools: a tool named "${RESPOND_TOOL}" collides with output_config.format, which plugboard answers through that name`)
+  // output_config.format + caller tools: the model may call a caller tool or `respond`, so `tool_choice` is `required` (not forced to
+  // `respond`). `tool_choice: none` leaves only `respond`; naming a tool contradicts a structured answer.
+  if (respond && typeof toolChoice === "object") return bad("tool_choice: a tool_choice that names a tool cannot be combined with output_config.format")
+  const withCallerTools = respond !== undefined && tools.length > 0 && toolChoice !== "none"
+  const offered = respond ? (withCallerTools ? [...tools, respond] : [respond]) : tools
+  if (offered.length > options.maxTools) return bad(`tools: ${offered.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`)
+  const forced: PlugToolChoice | undefined = respond ? (withCallerTools ? "required" : { type: "tool", name: RESPOND_TOOL }) : toolChoice
 
   const request: Omit<PlugRequest, "ref"> = {
     ...userField(bodyUserId(body)),
     model: body.model,
     system,
     messages,
-    tools,
-    ...(toolChoice && (tools.length > 0 || toolChoice === "none") ? { toolChoice } : {}),
+    tools: offered,
+    ...(forced && (offered.length > 0 || forced === "none") ? { toolChoice: forced } : {}),
+    ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
     generation,
     // `tool_choice.disable_parallel_tool_use` (#202): one tool call per answer.
     ...(isRecord(body.tool_choice) && body.tool_choice.disable_parallel_tool_use === true ? { parallelToolCalls: false } : {}),
   }
   return {
     request,
-    exchange: { model: body.model, stream: body.stream === true, thinking: thinking.enabled },
+    exchange: {
+      model: body.model,
+      stream: body.stream === true,
+      thinking: thinking.enabled,
+      ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+    },
     ...(thinking.effort ? { reasoningEffort: thinking.effort } : {}),
     topKIgnored: body.top_k != null,
   }

@@ -229,6 +229,86 @@ describe("#4 answers", () => {
   })
 })
 
+describe("output_config.format (structured outputs)", () => {
+  const SCHEMA = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false }
+  const format = { format: { type: "json_schema", schema: SCHEMA } }
+  const structured = (extra: Record<string, unknown> = {}) => messages({ output_config: format, ...extra })
+  const WEATHER = { name: "get_weather", description: "Weather.", input_schema: { type: "object", properties: { city: { type: "string" } } } }
+
+  test("a non-streamed answer is the JSON as a text block with end_turn, and the model call is the forced respond tool", async () => {
+    const caller = await route([ev.call("c1", "respond", { answer: "42" }), ev.finish("tool-calls", { inputTokens: 5, outputTokens: 3 })])
+    const reply = await server!.send(structured())
+    expect(reply.status).toBe(200)
+    expect(reply.json()).toMatchObject({ type: "message", content: [{ type: "text", text: '{"answer":"42"}' }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 3 } })
+    expect(reply.headers).not.toHaveProperty("x-plugboard-structured-fallback")
+    expect(caller.call.request.tools).toEqual([{ name: "respond", description: expect.any(String), parameters: SCHEMA }])
+    expect(caller.call.request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    expect(caller.call.request.structuredTool).toBe("respond")
+  })
+
+  test("a streamed answer is one text_delta of the JSON, then end_turn, with no tool_use block", async () => {
+    await route([ev.call("c1", "respond", { answer: "42" }), ev.finish("tool-calls")])
+    const events = eventsOf(await (await server!.open(structured({ stream: true }))).ended)
+    expect(events.map(({ event }) => event)).toEqual(["message_start", "content_block_start", "ping", "content_block_delta", "content_block_stop", "message_delta", "message_stop"])
+    expect(events[1]!.data.content_block).toMatchObject({ type: "text" })
+    expect(events[3]!.data.delta).toEqual({ type: "text_delta", text: '{"answer":"42"}' })
+    expect(events[5]!.data.delta).toMatchObject({ stop_reason: "end_turn" })
+  })
+
+  test("a text answer that is the schema's JSON is taken, and a non-streamed reply says so in x-plugboard-structured-fallback", async () => {
+    await route([ev.text('```json\n{"answer":"42"}\n```'), ev.finish("stop")])
+    const reply = await server!.send(structured())
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+    expect(reply.json().content).toMatchObject([{ type: "text", text: '{"answer":"42"}' }])
+  })
+
+  test("no respond call and no matching text is a 502 structured_output_missing in Messages' error shape", async () => {
+    await route([ev.text("I refuse"), ev.finish("stop")])
+    const reply = await server!.send(structured())
+    expect(reply.status).toBe(502)
+    expect(reply.json()).toEqual({ type: "error", error: { type: "api_error", message: expect.stringContaining("did not return JSON matching the response schema") } })
+  })
+
+  test("a streamed turn with no answer is committed by its first event, so it ends as an error event with no content and no message_stop", async () => {
+    await route([ev.text("I refuse"), ev.finish("stop")])
+    const events = eventsOf(await (await server!.open(structured({ stream: true }))).ended)
+    expect(events).toEqual([{ event: "error", data: { type: "error", error: { type: "api_error", message: expect.stringContaining("did not return JSON matching the response schema") } } }])
+    expect(logs.of("request.failed")[0]!.fields).toMatchObject({ route: "POST /v1/messages", outcome: "error", error: "structured_output_missing" })
+  })
+
+  test("with caller tools offered, a caller tool call is a normal tool_use turn and the model may choose", async () => {
+    const caller = await route([ev.call("c1", "get_weather", { city: "Oslo" }), ev.finish("tool-calls")])
+    const reply = await server!.send(structured({ tools: [WEATHER] }))
+    expect(reply.json()).toMatchObject({ content: [{ type: "tool_use", name: "get_weather", input: { city: "Oslo" } }], stop_reason: "tool_use" })
+    expect(caller.call.request.tools.map((tool) => tool.name)).toEqual(["get_weather", "respond"])
+    expect(caller.call.request.toolChoice).toBe("required")
+  })
+
+  test.each([
+    ["a tool named respond", { tools: [{ name: "respond", input_schema: { type: "object" } }] }, /collides with output_config\.format/],
+    ["a tool_choice that names a tool", { tools: [WEATHER], tool_choice: { type: "tool", name: "get_weather" } }, /cannot be combined with output_config\.format/],
+    ["a format of another type", { output_config: { format: { type: "json_object" } } }, /output_config\.format\.type/],
+  ])("%s is a 400 invalid_request_error and never reaches the model", async (_name, extra, message) => {
+    const caller = await route([ev.finish()])
+    const reply = await server!.send(structured(extra))
+    expect(reply.status).toBe(400)
+    expect(reply.json()).toEqual({ type: "error", error: { type: "invalid_request_error", message: expect.stringMatching(message) } })
+    expect(caller.calls).toEqual([])
+  })
+
+  test("count_tokens counts the request the model gets: the same as the equivalent request that declares and names the respond tool", async () => {
+    await route([ev.finish()])
+    const count = async (init: SendInit) => (await server!.send({ ...init, path: "/v1/messages/count_tokens" })).json().input_tokens as number
+    const plain = await count(messages())
+    const withFormat = await count(structured())
+    const respond = { name: "respond", description: "Give your final answer by calling this tool with JSON matching its schema.", input_schema: SCHEMA }
+    expect(withFormat).toBeGreaterThan(plain)
+    // The named choice is part of the request the model gets: its steering sentence is counted too.
+    expect(withFormat).toBe(await count(messages({ tools: [respond], tool_choice: { type: "tool", name: "respond" } })))
+  })
+})
+
 describe("#201 count_tokens counts the persona, skill and server tools the session sends", () => {
   /** Starts the route with a session port; the persona lookup reads the options the server parsed. */
   async function countServerWith(options: Record<string, unknown>, port: FakeSessionPort, ensureBackend?: () => Promise<PlugError | undefined>) {

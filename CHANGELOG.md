@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Anthropic structured outputs on `POST /v1/messages`. `output_config.format` with `{"type": "json_schema", "schema": {...}}` used to be refused with a 400. It is now answered the way Anthropic does: the JSON is one `text` block with `stop_reason` `end_turn`, and a stream sends it as one `text_delta`. It uses the path Chat Completions `json_schema` uses, a forced `respond` tool with the same rules. A text answer that is the schema's JSON is taken when the model skips the tool (a non-streamed response carries `x-plugboard-structured-fallback: text`). A turn with no answer is a 502 in Messages' error shape. With caller tools, a call to one of them wins. A `tool_choice` that names a tool and a tool named `respond` are 400s. `count_tokens` counts the same request. The schema is not enforced, so validate the answer. The forced-tool recipe still works. Since 0.50.0.
 
 ## [0.49.0] - 2026-10-17: No Phantom Calls
 

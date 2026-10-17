@@ -465,18 +465,17 @@ const anthropicMessages: Client = {
       })
       expect(message.content as unknown).toEqual([{ type: "text", text: "image: image/png", citations: null }])
     },
-    structured: {
-      gap: "output_config.format (structured outputs) is refused with a 400; plugboard maps json_schema only on the OpenAI and Gemini endpoints",
-      run: async (target) => {
-        const message = await anthropic(target).messages.create({
-          model: MODEL,
-          max_tokens: 100,
-          messages: [{ role: "user", content: tag("structured") }],
-          output_config: { format: { type: "json_schema", schema: STRUCTURED_SCHEMA } },
-        })
-        const block = message.content[0]
-        expect(JSON.parse(block?.type === "text" ? block.text : "")).toEqual(STRUCTURED)
-      },
+    structured: async (target) => {
+      const message = await anthropic(target).messages.create({
+        model: MODEL,
+        max_tokens: 100,
+        messages: [{ role: "user", content: tag("structured") }],
+        output_config: { format: { type: "json_schema", schema: STRUCTURED_SCHEMA } },
+      })
+      expect(message.stop_reason).toBe("end_turn")
+      expect(message.content).toHaveLength(1)
+      const block = message.content[0]
+      expect(JSON.parse(block?.type === "text" ? block.text : "")).toEqual(STRUCTURED)
     },
     error: (target) => expect429(() => anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("error") }] }), Anthropic.APIError),
     usage: async (target) => {
