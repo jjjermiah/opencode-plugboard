@@ -73,6 +73,6 @@ Copyable versions are in [examples/claude-code/](https://github.com/jjjermiah/op
 
 ## Quirks
 
-- Plugboard refuses `output_config.format` (structured outputs) with 400 `invalid_request_error`. Claude Code's own requests were not checked for it.
+- Plugboard answers `output_config.format` (structured outputs) from 0.50.0; older versions refuse it with 400 `invalid_request_error`. Claude Code's own requests were not checked for it.
 - Anthropic server tools (`web_search`, `code_execution` and the like) are refused with 400. Custom tools work.
 - A request that names a model not in `models`, or an alias that is not defined, gets 404 `not_found_error`.

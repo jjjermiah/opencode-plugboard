@@ -24,7 +24,7 @@ The Messages API returns a `tool_use` block. Your code runs the tool and sends a
 
 ## Structured output
 
-Plugboard refuses `output_config.format` (see [Messages](../messages.md)). Use a forced tool: a tool whose `input_schema` is the schema, with `tool_choice` set to that tool. The `input` of the call is the answer.
+Plugboard answers `output_config.format` from 0.50.0 (see [Messages](../messages.md#structured-outputs)); older versions refuse it. The example uses a forced tool, which works on every version: a tool whose `input_schema` is the schema, with `tool_choice` set to that tool. The `input` of the call is the answer.
 
 <<< @/../examples/anthropic-js/structured.ts#snippet
 

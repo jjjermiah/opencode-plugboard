@@ -20,12 +20,12 @@ The SDK runs `execute` and sends the second request. Plugboard only returns the 
 
 ## Structured output
 
-The provider answers `Output.object` through a tool named `json`, with `tool_choice` set to `any`. The default `structuredOutputMode` is `"auto"`, which picks `output_config.format` for `claude-haiku-4-5`. Plugboard refuses that field (see [Messages](../messages.md)), so the snippet sets `structuredOutputMode: "jsonTool"` in `providerOptions`. On the wire the request carries `tool_choice: {"type": "any", "disable_parallel_tool_use": true}` and a tool named `json`.
+The provider answers `Output.object` through a tool named `json`, with `tool_choice` set to `any`. The default `structuredOutputMode` is `"auto"`, which picks `output_config.format` for `claude-haiku-4-5`. Plugboard 0.50.0 and later answer that field (see [Messages](../messages.md#structured-outputs)); older versions refuse it. The snippet sets `structuredOutputMode: "jsonTool"` in `providerOptions`, which works on every version. On the wire the request carries `tool_choice: {"type": "any", "disable_parallel_tool_use": true}` and a tool named `json`.
 
 <<< @/../examples/vercel-ai-sdk-anthropic/structured.ts#snippet
 
 ## Gotchas
 
-- Keep `structuredOutputMode: "jsonTool"` for every model. With the default `"auto"`, `claude-haiku-4-5` gets a 400 (`output_config.format: structured outputs are not supported`).
+- Before 0.50.0, keep `structuredOutputMode: "jsonTool"` for every model: with the default `"auto"`, `claude-haiku-4-5` gets a 400 (`output_config.format: structured outputs are not supported`). From 0.50.0 the default mode is expected to work too; the example has not been rerun with it.
 - The SDK has no model list call. The example lists models with `fetch` and a Bearer key. `x-api-key` also works on `GET /v1/models` since 0.47.0 ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)).
 - Messages errors carry `error.type` and no `error.code`. The example checks the status (401, 404) and does not check the code, because the Messages wire has none.
