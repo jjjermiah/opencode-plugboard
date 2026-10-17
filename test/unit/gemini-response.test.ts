@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { PlugErrorKind, PlugEvent } from "../../src/contract.js"
-import { encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk, type GeminiExchange } from "../../src/gemini/response.js"
+import { arrayWire, encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk, sseWire, type GeminiExchange } from "../../src/gemini/response.js"
 import { listAvailableModels } from "../../src/models.js"
 import { CATALOG, ev, events, testOptions } from "../support/fixtures.js"
 
@@ -155,5 +155,46 @@ describe("#173 runGenerate: a text answer and the 502 for every finish", () => {
 
   test.each(["length", "content-filter"] as const)("#173 a %s finish with no answer is a 502, not a candidate with no content", async (reason) => {
     expect((await run(withSchema, ev.finish(reason))).failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+  })
+})
+
+describe("runGenerate: one candidate of several (candidateCount > 1)", () => {
+  const streamed: GeminiExchange = { model: "fast", stream: true }
+
+  test("chunks carry the candidate's index and the shared responseId; the last chunk has no usage, the run reports it", async () => {
+    const chunks: any[] = []
+    const result = await runGenerate(events(ev.text("x"), ev.finish("stop", { inputTokens: 5, outputTokens: 2 })), streamed, (chunk) => void chunks.push(JSON.parse(JSON.stringify(chunk))), { index: 2, responseId: "shared" })
+    expect(chunks.map((chunk) => [chunk.candidates[0].index, chunk.responseId])).toEqual([
+      [2, "shared"],
+      [2, "shared"],
+    ])
+    expect(chunks.at(-1)).toMatchObject({ candidates: [{ finishReason: "STOP", index: 2 }] })
+    expect(chunks.at(-1)).not.toHaveProperty("usageMetadata")
+    expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 2 })
+  })
+})
+
+describe("stream wires", () => {
+  test("sse: one data frame per chunk, nothing at the end", () => {
+    const wire = sseWire()
+    expect(wire.frame({ a: 1 })).toBe('data: {"a":1}\n\n')
+    expect(wire.end()).toBe("")
+  })
+
+  test("array: [ opens with the first chunk, commas separate, ] closes; the whole text is one JSON array", () => {
+    const wire = arrayWire()
+    const text = wire.keepalive + wire.frame({ a: 1 }) + wire.keepalive + wire.frame({ b: 2 }) + wire.frame({ error: { code: 502 } }) + wire.end()
+    expect(JSON.parse(text)).toEqual([{ a: 1 }, { b: 2 }, { error: { code: 502 } }])
+    expect(text.startsWith("\n[")).toBe(true)
+  })
+
+  test("array: an error with no earlier chunk is a one-element array", () => {
+    const wire = arrayWire()
+    expect(JSON.parse(wire.frame({ error: {} }) + wire.end())).toEqual([{ error: {} }])
+  })
+
+  test("each array wire has its own state", () => {
+    arrayWire().frame({})
+    expect(arrayWire().frame({})).toStartWith("[")
   })
 })

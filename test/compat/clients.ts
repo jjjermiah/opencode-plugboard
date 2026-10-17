@@ -616,13 +616,10 @@ const genaiGemini: Client = {
     "model-id": async (target) => {
       expect((await genai(target).models.generateContent({ model: CATALOG_ID, contents: tag("model-id") })).text).toBe(TEXT)
     },
-    // A candidate count above 1 is refused (src/gemini/request.ts): the scenario is a gap until plugboard serves several candidates.
-    n: {
-      gap: "candidateCount above 1 is refused with a 400 (only one candidate is served); the OpenAI endpoints serve n",
-      run: async (target) => {
-        const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("n"), config: { candidateCount: 2 } })
-        expect(response.candidates).toHaveLength(2)
-      },
+    // candidateCount above 1 is one model call per candidate (src/gemini/route.ts, the shared fan-out), within maxN.
+    n: async (target) => {
+      const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("n"), config: { candidateCount: 2 } })
+      expect(response.candidates).toHaveLength(2)
     },
     "stop-sequence": async (target) => {
       const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("stop-sequence"), config: { stopSequences: ["END"] } })

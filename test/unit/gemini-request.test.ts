@@ -56,8 +56,9 @@ describe("parseGeminiRequest: rejections answer 400 with their param", () => {
     ["a body that is not an object", [], {}],
     ["generationConfig that is not an object", body({ generationConfig: 1 }), { param: "generationConfig" }],
     ["cachedContent (server state)", body({ cachedContent: "cachedContents/1" }), { param: "cachedContent", code: "unsupported_parameter" }],
-    ["candidateCount 2", body({ generationConfig: { candidateCount: 2 } }), { param: "generationConfig.candidateCount", code: "unsupported_parameter" }],
+    ["candidateCount 2 above maxN (default 1)", body({ generationConfig: { candidateCount: 2 } }), { param: "generationConfig.candidateCount", code: "too_many_choices" }],
     ["candidateCount 0", body({ generationConfig: { candidateCount: 0 } }), { param: "generationConfig.candidateCount" }],
+    ["a fractional candidateCount", body({ generationConfig: { candidateCount: 1.5 } }), { param: "generationConfig.candidateCount" }],
     ["responseLogprobs", body({ generationConfig: { responseLogprobs: true } }), { param: "generationConfig.responseLogprobs", code: "unsupported_parameter" }],
     ["an IMAGE response modality", body({ generationConfig: { responseModalities: ["TEXT", "IMAGE"] } }), { param: "generationConfig.responseModalities", code: "unsupported_parameter" }],
     ["missing contents", {}, { param: "contents" }],
@@ -287,6 +288,27 @@ describe("parseGeminiRequest: tools, tool config and structured output", () => {
       "high",
       undefined,
     ])
+  })
+})
+
+describe("parseGeminiRequest: candidateCount (since 0.50.0)", () => {
+  const many = testOptions({ maxN: 3 })
+  const count = (candidateCount: unknown, opts = many, cap?: string) => parseGeminiRequest("fast", false, body({ generationConfig: { candidateCount } }), opts, cap)
+
+  test("absent, null and 1 are one candidate; 2 and 3 are served within maxN", () => {
+    expect(parse(body()).candidates).toBe(1)
+    expect((count(null) as ParsedGemini).candidates).toBe(1)
+    expect([1, 2, 3].map((n) => (count(n) as ParsedGemini).candidates)).toEqual([1, 2, 3])
+  })
+
+  test("snake_case candidate_count is read too", () => {
+    const raw = body({ generationConfig: { candidate_count: 2 } })
+    expect((parseGeminiRequest("fast", false, raw, many) as ParsedGemini).candidates).toBe(2)
+  })
+
+  test("above maxN is too_many_choices, and the message names the option that set the cap", () => {
+    expect(count(4)).toMatchObject({ status: 400, code: "too_many_choices", param: "generationConfig.candidateCount", message: expect.stringContaining("option `maxN`") })
+    expect(count(4, many, "apps.chat.maxN")).toMatchObject({ message: expect.stringContaining("`apps.chat.maxN`") })
   })
 })
 

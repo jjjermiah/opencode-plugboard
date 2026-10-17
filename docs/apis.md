@@ -23,7 +23,6 @@ Plugboard replaces OpenCode's prompt, messages and tools with the caller's. The 
 
 - **No server-side conversation state.** Every request carries the whole conversation. On Responses, `previous_response_id` and `conversation` are refused. The output items of recent answers are kept in memory for an hour, so `item_reference`s resolve; a restart clears them.
 - **Anthropic structured outputs** (`output_config.format`) are refused with a 400. Use a [forced tool call](messages.md#structured-extraction-with-a-forced-tool), or `json_schema` on the OpenAI or Gemini APIs.
-- **Gemini `candidateCount` above 1** is refused. The OpenAI APIs serve `n`.
 - **Gemini model ids with `/` or `#`** are awkward in SDK URLs. Give clients an alias. See [Gemini](gemini.md#model-names).
 - **State is per server.** Limits, the response cache and anchors live in one OpenCode server process. Two servers do not share them, and a restart clears limits and the cache.
 - **Token counts and costs are estimates.** Plugboard has no tokenizer.

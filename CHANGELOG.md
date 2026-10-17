@@ -14,7 +14,14 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Gemini `generationConfig.candidateCount` above 1 is served instead of refused (since 0.50.0). Each candidate is one model call through the same fan-out as `n` on Chat Completions, under the same caps: `maxN` and `apps.<name>.maxN`. Above the cap the answer is a 400 `INVALID_ARGUMENT` on `generationConfig.candidateCount` that names the option. The response has `candidates` in order, each with its `index`, and `usageMetadata` summed over the calls. A stream, as SSE or as a JSON array, interleaves the candidates with their `index` and ends with one chunk of summed usage. If one candidate fails, the request fails and the others are cancelled. The response cache is bypassed, as for `n`.
+- Gemini `streamGenerateContent` without `alt=sse` is served (since 0.50.0). Without `alt` (or with `alt=json`) the response is `application/json`: one JSON array, `[`, the chunks separated by commas, `]`, written as the model answers. It carries the same chunks as the SSE stream. An error after the first chunk is the last element of the array, so the array stays valid JSON. Another `alt` value is still a 400.
+
+### Docs
+
+- The Gemini page lost both refusals and gained notes on several candidates and on the JSON array stream, including what the array form is based on. The APIs page no longer lists `candidateCount` as a known gap.
 
 ## [0.49.0] - 2026-10-17: No Phantom Calls
 
