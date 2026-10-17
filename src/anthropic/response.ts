@@ -8,6 +8,7 @@
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
+import { structuredMissing, textFallback } from "../openai/response.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -18,6 +19,16 @@ export interface MessagesExchange {
   readonly stream: boolean
   /** `thinking` was enabled or adaptive: reasoning text is returned as thinking blocks. */
   readonly thinking: boolean
+  /** Name of the forced tool that carries `output_config.format` output; its input becomes the JSON text of the answer. */
+  readonly structuredTool?: string
+  /** The caller's schema, checked against a text answer when the model skipped the respond call (`textFallback`). */
+  readonly structuredSchema?: Readonly<Record<string, unknown>>
+  /**
+   * The caller's own tools are offered next to the structured tool. A call to any of them is the
+   * response (normal `tool_use`, prose and the structured answer dropped); the structured answer is
+   * the text only when the step called no caller tool.
+   */
+  readonly callerTools?: boolean
 }
 
 /** A stream event as emitted: `type` is also the SSE event name. */
@@ -30,6 +41,8 @@ export interface MessageRun {
   readonly started: boolean
   /** The final message object. */
   readonly message?: object
+  /** The structured answer came from the final text, not the respond call (`textFallback`). */
+  readonly structuredFallback?: boolean
 }
 
 type Block = Record<string, unknown>
@@ -176,6 +189,9 @@ export const encodeModelPage = (models: ReadonlyArray<ListedModel>, hasMore: boo
 /** SSE frame of one stream event: `event: <type>` then `data: <json>`. */
 export const sseFrame = (event: MessagesStreamEvent): string => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
 
+/** The text of a structured answer: the tool input as JSON (a string input is the JSON already). */
+const structuredText = (call: ToolCall): string => (typeof call.input === "string" ? call.input : JSON.stringify(call.input ?? {}))
+
 export async function runMessage(
   events: AsyncIterable<PlugEvent>,
   exchange: MessagesExchange,
@@ -191,6 +207,11 @@ export async function runMessage(
   let started = false
   let pinged = false
   let calls = 0
+  let answered = false
+  /** The text of a structured turn (not emitted): it is the answer only if the respond call never comes. */
+  let collected = ""
+  /** With caller tools offered the structured answer waits for the finish: a caller tool call in the same step replaces it. */
+  let held: ToolCall | undefined
   let finish: Exclude<PlugFinish, "error"> | undefined
   /** The caller's stop sequence that ended the answer, when one did (src/stop.ts). */
   let matched: string | undefined
@@ -304,11 +325,24 @@ export async function runMessage(
           if (event.signature !== undefined) sign(event.signature)
         }
       }
+    } else if (exchange.structuredTool !== undefined) {
+      // Structured mode: only the first answer is content; prose and other tool calls are suppressed, except the caller's own tools when offered.
+      if (event.type === "tool-call" && event.name === exchange.structuredTool) {
+        if (!answered) {
+          answered = true
+          if (exchange.callerTools) held = event
+          else text(structuredText(event))
+        }
+      } else if (event.type === "text-delta") collected += event.text
+      else if (exchange.callerTools) toolCall(event)
     } else if (event.type === "text-delta") text(event.text)
     else toolCall(event)
   }
 
-  failure ??= finish ? undefined : noFinish()
+  const passthrough = exchange.callerTools === true && calls > 0
+  const structuredTurn = exchange.structuredTool !== undefined && !passthrough
+  const fallback = structuredTurn && !answered && exchange.structuredSchema !== undefined ? textFallback(collected, exchange.structuredSchema) : undefined
+  failure ??= finish ? (structuredTurn && !answered && fallback === undefined ? structuredMissing() : undefined) : noFinish()
   if (failure) {
     if (!started) return { failure, started }
     // The stream is already committed: close what is open and end with an `error` event (no `message_stop`).
@@ -316,15 +350,18 @@ export async function runMessage(
     emit(encodeError(failure))
     return { failure, started }
   }
+  if (held && !passthrough) text(structuredText(held))
+  if (fallback !== undefined) text(fallback)
   start()
   close()
   ping()
   // A tool call in the turn makes it a tool turn, as Anthropic reports it: a sequence after the call does not change the reason.
-  const reason = finish === "stop" && calls > 0 ? "tool-calls" : (finish ?? "stop")
-  const sequence = calls === 0 ? (matched ?? null) : null
+  // A structured answer is text to the caller: its turn ends as `end_turn` although the model ended on the respond call.
+  const reason = structuredTurn && finish === "tool-calls" ? "stop" : finish === "stop" && calls > 0 ? "tool-calls" : (finish ?? "stop")
+  const sequence = calls === 0 && !answered ? (matched ?? null) : null
   const stopReason = sequence !== null ? "stop_sequence" : STOP_REASON[reason as Exclude<PlugFinish, "error">]
   const final = message({ stop_reason: stopReason, stop_sequence: sequence, usage: encodeMessageUsage(usage) })
   emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: sequence, container: null, stop_details: null }, usage: encodeUsage(usage) })
   emit({ type: "message_stop" })
-  return { started, message: final }
+  return { started, message: final, ...(fallback !== undefined ? { structuredFallback: true } : {}) }
 }
