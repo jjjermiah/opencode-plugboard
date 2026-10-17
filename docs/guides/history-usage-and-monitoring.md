@@ -39,7 +39,7 @@ A trimmed response:
  "apps": {"discord-bot": {"totals": {"requests": 31}, "models": {"opencode-go/glm-5.3-flash": {"requests": 31}}}}}
 ```
 
-Cost is an estimate at list prices. Use it to compare apps, not as a bill. Counts reach storage every ten seconds, so a restart can lose the last few seconds. One response also reports its own use in `x-plugboard-usage`.
+Cost is an estimate at list prices. Use it to compare apps, not as a bill. Each change is written to storage as it lands, so a restart loses at most a write that was still in flight. One response also reports its own use in `x-plugboard-usage`.
 
 ## Look at it
 

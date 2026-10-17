@@ -44,7 +44,7 @@ const result = await generateText({
 ```
 
   Checked with `ai` 7.0.142 and `anthropic/claude-haiku-4-5`: the answer was `{"title":"Pancakes","servings":4}`. The alias `fast` is not a model the SDK knows, so it already uses a tool and hides the problem until a real id is used.
-- `@ai-sdk/google` with `google("fast")` and a Zod schema works on the first try. A model id with a `/` does not: see the Known gaps section of the README for Gemini ids.
+- `@ai-sdk/google` with `google("fast")` and a Zod schema works on the first try. A model id with a `/` does not: see [Gemini model names](../gemini.md#model-names).
 - The SDK has no model list call. `GET /v1/models` with `fetch` works.
 
 ## Store off

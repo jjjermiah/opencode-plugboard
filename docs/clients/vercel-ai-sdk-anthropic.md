@@ -27,5 +27,5 @@ The provider answers `Output.object` through a tool named `json`, with `tool_cho
 ## Gotchas
 
 - Keep `structuredOutputMode: "jsonTool"` for every model. With the default `"auto"`, `claude-haiku-4-5` gets a 400 (`output_config.format: structured outputs are not supported`).
-- The SDK has no model list call. The example lists models with `fetch` and a Bearer key. `x-api-key` does not work on `GET /v1/models` ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)).
+- The SDK has no model list call. The example lists models with `fetch` and a Bearer key. `x-api-key` also works on `GET /v1/models` since 0.47.0 ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)).
 - Messages errors carry `error.type` and no `error.code`. The example checks the status (401, 404) and does not check the code, because the Messages wire has none.

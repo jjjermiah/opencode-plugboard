@@ -8,7 +8,7 @@ An app that lets you set a base URL, an API key and a model id can use plugboard
 | API key | a key from the plugboard `keys` option, not a provider key |
 | Model | `provider/model[#variant]` or an alias from `aliases` |
 
-Install the plugin pinned to a version in your global OpenCode config, for example `"package": "opencode-plugboard@0.26.0"`. A bare `"opencode-plugboard"` means `latest`, so a cache refresh or `opencode plugin update` can pull a release you have not read. A global plugin runs inside OpenCode in every project, next to your provider logins, so move the pin on purpose after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md). The full config is in the [README](https://github.com/jjjermiah/opencode-plugboard#quick-start).
+Install the plugin pinned to a version in your global OpenCode config, for example `"package": "opencode-plugboard@0.48.0"`. A bare `"opencode-plugboard"` means `latest`, so a cache refresh or `opencode plugin update` can pull a release you have not read. A global plugin runs inside OpenCode in every project, next to your provider logins, so move the pin on purpose after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md). The full setup is in [Install](../install.md).
 
 ```sh
 curl http://localhost:4010/v1/models -H "Authorization: Bearer $PLUGBOARD_KEY"

@@ -28,7 +28,7 @@ curl -N http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY
        "messages": [{"role": "user", "content": "count to three"}]}'
 ```
 
-If the stream fails after it has started, the client gets an `error` event and then `data: [DONE]`.
+Headers go out with the first model event, and a slow model gets a keep-alive comment every 15 seconds. If the stream fails after it has started, the client gets an `error` event and then `data: [DONE]`.
 
 ## Structured output
 
@@ -46,7 +46,7 @@ curl -s http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY
   }' | jq -r '.choices[0].message.content'
 ```
 
-`json_object` also works, but it carries no schema. Name the keys in the prompt. Anthropic-only clients get the same JSON with a forced tool call: see [structured extraction with a forced tool](../messages.md#structured-extraction-with-a-forced-tool). A request with both `tools` and `json_schema` returns the caller's tool calls, not the schema answer.
+`json_object` also works, but it carries no schema. Name the keys in the prompt. Anthropic-only clients get the same JSON with a forced tool call: see [structured extraction with a forced tool](../messages.md#structured-extraction-with-a-forced-tool). With both `tools` and `json_schema`, the model may call one of your tools or give the schema answer.
 
 ## Images
 

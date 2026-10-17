@@ -41,7 +41,7 @@ An app over a ceiling gets 429 `budget_exceeded` until the window resets. The se
 ## Cap the size of one request
 
 - `maxTools` (default 64) caps the tools one request may carry. `maxN` (default 1) caps how many answers one request may ask for with `n`, because each is a full model call.
-- `limits.maxBodyBytes` caps the size of one request body, 32 MiB at most.
+- `limits.maxBodyBytes` caps the size of one request body. The default, 32 MiB, is also the most it can be.
 
 ## Replay repeated answers
 
