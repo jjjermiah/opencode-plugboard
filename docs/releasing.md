@@ -79,8 +79,8 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, examples) run through `workflow_call`, so a release has exactly the same gates as CI. The `CI passed` job must succeed for `publish` to run.
 2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
 3. It builds the release notes from the changelog section and the git history with `.github/scripts/release-notes.ts`. A missing or empty section, a heading without a title, or a previous tag missing from the clone fails here, before anything is published. The checkout uses `fetch-depth: 0` so the tag range is available.
-4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.
-5. The `publish` job packs the tarball once, publishes that exact file, and writes its SBOM. The `attest` job checks that the file's sha256 matches the one the publish job packed, then that its sha512 matches the integrity npm serves for that version, and only then attests it with GitHub build provenance. The `release` job creates the GitHub release, named `v0.3.0: Your Title` (marked as a prerelease when the version has a `-`), with the notes, the tarball, the SBOM and the attestation bundle attached. If the release exists, it attaches the files to it with `--clobber` and leaves the notes alone.
+4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow fetches npm 11.21.0 with `npm pack` and checks the tarball against a sha512 integrity written in `publish.yml` before it uses it. To bump it, change the version and the integrity (`npm view npm@<version> dist.integrity`) together. If the version is already on npm, it skips the publish.
+5. The `publish` job packs the tarball once, publishes that exact file, and writes its SBOM. The `attest` job checks that the file's sha256 matches the one the publish job packed, then that its sha512 matches the integrity npm serves for that version, and only then attests it with GitHub build provenance. The `release` job creates the GitHub release, named `v0.3.0: Your Title` (marked as a prerelease when the version has a `-`), with the notes, the tarball, the SBOM, the attestation bundle and its provenance attached. If the release exists, it attaches the files to it with `--clobber` and leaves the notes alone.
 
 Both writes are safe to retry: re-run the failed run, or "Run workflow" on the tag with `dry_run` unticked.
 
@@ -101,11 +101,12 @@ Every check on the release pull request passed before the merge, and the merge c
 
 ## Release files and how to verify them
 
-Each GitHub release has three files:
+Each GitHub release has four files:
 
 - `opencode-plugboard-X.Y.Z.tgz`: the npm tarball, the same file npm serves.
 - `opencode-plugboard-X.Y.Z.cdx.json`: a CycloneDX SBOM of the production dependencies (`npm sbom --sbom-format cyclonedx --omit dev`).
 - `opencode-plugboard-X.Y.Z.tgz.sigstore.json`: the GitHub build-provenance attestation bundle for the tarball.
+- `opencode-plugboard-X.Y.Z.tgz.intoto.jsonl`: the same attestation as one DSSE envelope per line, holding the signed in-toto statement (SLSA provenance v1) for the tarball. It is the file name OpenSSF Scorecard's Signed-Releases check counts as release provenance. The `attest` job checks that its subject is this tarball's name and sha256 before it is attached. Releases made before it was added (up to 0.49.0) do not have it.
 
 To check a downloaded tarball was built by this repository's Publish workflow:
 

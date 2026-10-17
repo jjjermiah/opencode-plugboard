@@ -5,3 +5,25 @@ description = "Aider (terminal coding tool) against plugboard through its OpenAI
 requires-python = ">=3.12,<3.13"
 # Exact pin: the Aider release the 2026-10-12 record ran. Aider's own dependencies are pinned by uv.lock.
 dependencies = ["aider-chat==0.86.2"]
+
+# aider-chat 0.86.2 pins its dependencies to exact versions that now have published advisories, and it is the last
+# release. These floors lift the transitive packages that have a fix; uv.lock holds the versions that resolve, and the
+# scripted example checks that Aider still runs against them. litellm stays at 1.81.10: Aider refuses to start with any
+# litellm that adds an exception class it does not list (1.81.16 adds PermissionDeniedError). That, aider-chat itself and
+# diskcache (no fixed release) are the advisories left; osv-scanner.toml lists them.
+[tool.uv]
+override-dependencies = [
+  "aiohttp>=3.14.3",
+  "anyio>=4.14.2",
+  "fsspec>=2026.6.0",
+  "gitpython>=3.1.62",
+  "idna>=3.15",
+  "multidict>=6.9.1",
+  "pillow>=12.3.0",
+  "pygments>=2.20.0",
+  "python-dotenv>=1.2.2",
+  "requests>=2.33.0",
+  "soupsieve>=2.9.0",
+  "starlette>=1.3.1",
+  "urllib3>=2.8.0",
+]

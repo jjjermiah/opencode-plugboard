@@ -1,0 +1,6 @@
+# The one advisory left in bun.lock. The example is a dev-only scripted check and ships in no package. The entry expires, so it
+# is looked at again then. Re-check with: osv-scanner scan source --no-ignore -L examples/mastra/bun.lock
+[[IgnoredVulns]]
+id = "GHSA-hp3w-g68c-fv3c"
+ignoreUntil = 2027-01-17
+reason = "sprintf-js 1.0.3 (argparse 1.x, via a @mastra/core dependency), no fixed release. Denial of service through an unbounded precision specifier in format strings the example does not take from input."
