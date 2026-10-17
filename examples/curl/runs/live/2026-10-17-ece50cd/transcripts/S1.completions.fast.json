@@ -1,0 +1,48 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 16,
+          "model": "fast",
+          "prompt": "Reply with exactly: pong"
+        },
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/completions"
+      },
+      "response": {
+        "body": {
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "text": "pong"
+            }
+          ],
+          "created": "<time-1>",
+          "id": "<id-2>",
+          "model": "anthropic/claude-haiku-4-5",
+          "object": "text_completion",
+          "usage": {
+            "completion_tokens": 5,
+            "prompt_tokens": 29,
+            "total_tokens": 34
+          }
+        },
+        "headers": {
+          "content-type": "application/json",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>",
+          "x-plugboard-usage": "input=29; output=5; cache_read=0; cache_write=0; cost_usd=0.000054"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
