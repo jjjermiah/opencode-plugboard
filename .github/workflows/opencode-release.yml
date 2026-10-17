@@ -43,9 +43,13 @@ jobs:
             echo "::error::npm gave no stable CLI version (got: $version)"
             exit 1
           fi
-          npm install --prefix "$RUNNER_TEMP/opencode-cli" --ignore-scripts --no-audit --no-fund \
-            "@opencode/cli-linux-x64@$version"
-          bin="$RUNNER_TEMP/opencode-cli/node_modules/@opencode/cli-linux-x64/bin/opencode"
+          # The newest version is the point of this watch, so it cannot be pinned by hash. `npm pack` plus tar fetches the
+          # package without an install (the package is one binary, with no dependencies and no install scripts).
+          mkdir -p "$RUNNER_TEMP/opencode-cli"
+          tgz=$(npm pack "@opencode/cli-linux-x64@$version" --pack-destination "$RUNNER_TEMP/opencode-cli" --json \
+            | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
+          tar -xzf "$RUNNER_TEMP/opencode-cli/$tgz" -C "$RUNNER_TEMP/opencode-cli"
+          bin="$RUNNER_TEMP/opencode-cli/package/bin/opencode"
           "$bin" --version
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "bin=$bin" >> "$GITHUB_OUTPUT"

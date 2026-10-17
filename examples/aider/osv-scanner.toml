@@ -1,0 +1,144 @@
+# Advisories left in uv.lock after every fixable one was lifted (see pyproject.toml). The example is a dev-only scripted
+# check: it ships in no package, and Aider runs in a throwaway directory against the capture proxy. Each entry expires,
+# so it is looked at again then. Re-check with: osv-scanner scan source --no-ignore -L examples/aider/uv.lock
+
+# aider-chat 0.86.2 is the last Aider release and has no fixed version.
+[[IgnoredVulns]]
+id = "GHSA-7w7m-v5vp-w699"
+ignoreUntil = 2027-01-17
+reason = "aider-chat 0.86.2, no fixed release. Code injection through editor_coder.run, which the example does not use: it runs one --message and exits."
+
+[[IgnoredVulns]]
+id = "GHSA-hchg-qm84-cj9p"
+ignoreUntil = 2027-01-17
+reason = "aider-chat 0.86.2, no fixed release. SSRF through the AWS EC2 metadata endpoint, a Bedrock path the example does not use."
+
+# diskcache 5.6.3 has no fixed version.
+[[IgnoredVulns]]
+id = "GHSA-w8v5-vhqr-4h9v"
+ignoreUntil = 2027-01-17
+reason = "diskcache 5.6.3, no fixed release. Unsafe pickle deserialization needs write access to the cache directory, which is a throwaway directory here."
+
+# litellm stays at 1.81.10: Aider 0.86.2 pins it, and refuses to start with a litellm that adds an exception class it does not
+# list (1.81.16 adds PermissionDeniedError). Every advisory below concerns the litellm proxy server: its admin API, SSO or
+# OIDC login, MCP gateway, guardrails or prompt endpoints. Aider calls only the litellm SDK (litellm.completion) and never
+# starts the proxy, so none of that code runs.
+[[IgnoredVulns]]
+id = "GHSA-3cv6-jpf6-8222"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (authenticated SSRF); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-4g5m-c9r5-49xf"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (OIDC file references); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-4jcj-7x88-m979"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (MCP proxy authentication); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-4xpc-pv4p-pm3w"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (Host header authentication bypass); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-53mr-6c8q-9789"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (configuration endpoint); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-5jmr-gcrj-2c9q"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (Skills archive extraction); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-69x8-hrgq-fjj8"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (password hash exposure in the admin login); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-6wvf-77m9-58rm"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (/prompts/test endpoint); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-72m8-9m7m-h278"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (custom code guardrails); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-7488-6r32-c95q"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (MCP OAuth2 passthrough); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-c693-x898-5g4h"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (MCP OpenAPI spec loader); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-hx8v-g79f-8w5f"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (user_config request parameter); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-j37q-q7p9-vpwm"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (SSO debug flow); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-jjhc-v7c2-5hh6"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (OIDC userinfo cache); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-m2v5-74w2-qhcj"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (admin UI user enumeration); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-mf52-j94g-746m"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (admin key generator sessions); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-p897-vf7j-f5h8"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (BannedKeywords and Azure content safety guardrails); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-qmf3-4767-5fg3"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (M2M JWT handler); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-qrc4-49gv-mv9m"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (internal_user API keys); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-v4p8-mg3p-g94g"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (MCP stdio test endpoints); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-w2mh-qq9q-453x"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (SSO session tokens); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-wpfp-gwwc-vwq6"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (/user/update endpoint); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-wxxx-gvqv-xp7p"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (custom code guardrail sandbox); Aider uses the SDK, and no fixed version works with Aider 0.86.2."
+
+[[IgnoredVulns]]
+id = "GHSA-xqmj-j6mv-4862"
+ignoreUntil = 2027-01-17
+reason = "litellm proxy only (/prompts/test endpoint); Aider uses the SDK, and no fixed version works with Aider 0.86.2."

@@ -2,7 +2,7 @@ name: Publish
 
 # Pushing a v* tag runs the CI gates, publishes to npm with trusted publishing (OIDC, no token),
 # attests the tarball, and creates the GitHub release (named "vX.Y.Z: Title") from the CHANGELOG.md
-# section, with the tarball, its CycloneDX SBOM and the attestation bundle attached. The tag is
+# section, with the tarball, its CycloneDX SBOM, the attestation bundle and its provenance (.intoto.jsonl) attached. The tag is
 # made by `bun run release x.y.z --push` once the release pull request is merged. "Run workflow"
 # with dry_run (the default) exercises everything except the writes: npm publish, the attestation
 # and the GitHub release. See docs/releasing.md.
@@ -111,14 +111,40 @@ jobs:
           echo "Release title: $TAG: $title"
           cat "$RUNNER_TEMP/release/notes.md"
 
+      # registry-url is what OpenSSF Scorecard's Packaging check looks for (setup-node with the npm registry, plus an
+      # `npm publish` step in the same job). setup-node then writes an .npmrc that reads NODE_AUTH_TOKEN, which it sets to a
+      # placeholder: there is no token, and npm publishes through its OIDC trusted-publishing exchange as before. The npm
+      # commands that only read the registry below ignore that .npmrc (NPM_CONFIG_USERCONFIG=/dev/null), so a placeholder
+      # is never sent with them.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
           package-manager-cache: false # never cache in a release build
-      - name: Use npm 11.21.0 (trusted publishing needs 11.5.1 or newer; pinned, not a range)
+
+      # Trusted publishing needs npm 11.5.1 or newer. The tarball is checked against the sha512 integrity below before it
+      # runs, so the npm that publishes is pinned by hash (an `npm install -g npm@x` is pinned by version only). To bump it:
+      # `npm view npm@<version> dist.integrity`.
+      - name: Use npm 11.21.0 (pinned by hash)
+        env:
+          NPM_VERSION: 11.21.0
+          NPM_INTEGRITY: sha512-Zov8KhamNneiLdELtj5YALtNmJW4L4fCLTzjfpzXG2w6MSHcf0UxgdlK5uloCuksWT+7mGUU7wi79cO6RqivPg==
+          NPM_CONFIG_USERCONFIG: /dev/null
         run: |
-          npm install -g npm@11.21.0
-          npm --version
+          dir="$RUNNER_TEMP/npm-cli"
+          mkdir -p "$dir/bin" "$dir/download"
+          tgz=$(npm pack "npm@$NPM_VERSION" --pack-destination "$dir/download" --json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
+          actual="sha512-$(openssl dgst -sha512 -binary "$dir/download/$tgz" | base64 -w0)"
+          if [ "$actual" != "$NPM_INTEGRITY" ]; then
+            echo "::error::the npm $NPM_VERSION tarball integrity is $actual, expected $NPM_INTEGRITY. Not using it."
+            exit 1
+          fi
+          tar -xzf "$dir/download/$tgz" -C "$dir"
+          # npm's own bin/npm wrapper expects npm inside a Node install, so call its entry point directly.
+          printf '#!/bin/sh\nexec node "%s/package/bin/npm-cli.js" "$@"\n' "$dir" > "$dir/bin/npm"
+          chmod +x "$dir/bin/npm"
+          echo "$dir/bin" >> "$GITHUB_PATH"
+          "$dir/bin/npm" --version
 
       # The tarball is packed once, here, and that exact file is what is published, attested and
       # attached to the release. --ignore-scripts because build:tui already ran above.
@@ -155,7 +181,7 @@ jobs:
           args=(--access public)
           case "$VERSION" in *-*) args+=(--tag next) ;; esac
           if [ "$REPO_PRIVATE" != true ]; then args+=(--provenance); fi
-          if [ -n "$(npm view "$name@$VERSION" version 2>/dev/null)" ]; then
+          if [ -n "$(NPM_CONFIG_USERCONFIG=/dev/null npm view "$name@$VERSION" version 2>/dev/null)" ]; then
             echo "$name@$VERSION is already on npm, not publishing it again."
           elif [ "$DRY_RUN" = true ]; then
             npm publish "$TARBALL" "${args[@]}" --dry-run
@@ -241,15 +267,26 @@ jobs:
 
       # The bundle is named after the tarball, so the release asset is recognisable as the
       # tarball's Sigstore bundle (the *.sigstore.json pattern that OpenSSF Scorecard looks for).
-      - name: Name the bundle after the tarball
+      #
+      # The same attestation is also written as <tarball>.intoto.jsonl: the bundle's DSSE envelope on one line, which holds
+      # the signed in-toto statement (SLSA provenance v1) for the tarball. That is the file name Scorecard's Signed-Releases
+      # check counts as release provenance, and slsa-verifier reads this format. It is a re-encoding of the attestation
+      # above, not a second signature. The check below fails the job if the statement is not about this tarball.
+      - name: Name the bundle after the tarball and export its provenance
         if: env.DRY_RUN != 'true'
         env:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          EXPECTED: ${{ needs.publish.outputs.tarball_sha256 }}
         run: |
           tgz=$(ls "$RUNNER_TEMP"/release/*.tgz)
-          mkdir -p "$RUNNER_TEMP/attestation"
-          cp "$BUNDLE" "$RUNNER_TEMP/attestation/$(basename "$tgz").sigstore.json"
-          ls -l "$RUNNER_TEMP/attestation"
+          out="$RUNNER_TEMP/attestation"
+          mkdir -p "$out"
+          cp "$BUNDLE" "$out/$(basename "$tgz").sigstore.json"
+          jq -ce '.dsseEnvelope' "$BUNDLE" > "$out/$(basename "$tgz").intoto.jsonl"
+          test -s "$out/$(basename "$tgz").intoto.jsonl"
+          jq -r '.payload' "$out/$(basename "$tgz").intoto.jsonl" | base64 -d | jq -e --arg sha "$EXPECTED" --arg name "$(basename "$tgz")" \
+            '.predicateType == "https://slsa.dev/provenance/v1" and any(.subject[]; .name == $name and .digest.sha256 == $sha)' > /dev/null
+          ls -l "$out"
 
       - name: Keep the attestation for the release job
         if: env.DRY_RUN != 'true'
@@ -260,7 +297,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Creates the GitHub release with the notes, the tarball, the SBOM and the attestation attached.
+  # Creates the GitHub release with the notes, the tarball, the SBOM, the attestation and its provenance attached.
   # It holds contents: write and nothing else.
   release:
     name: ${{ inputs.dry_run == true && 'Create the release (dry run)' || 'Create the GitHub release' }}
@@ -289,7 +326,7 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/release"
           shopt -s nullglob
-          assets=("$dir"/*.tgz "$dir"/*.cdx.json "$dir"/*.sigstore.json)
+          assets=("$dir"/*.tgz "$dir"/*.cdx.json "$dir"/*.sigstore.json "$dir"/*.intoto.jsonl)
           flags=()
           case "$TAG" in *-*) flags+=(--prerelease) ;; esac
           if [ "$DRY_RUN" = true ]; then
