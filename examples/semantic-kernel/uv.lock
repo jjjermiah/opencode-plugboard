@@ -2044,7 +2044,7 @@ wheels = [
 
 [[package]]
 name = "openapi-core"
-version = "0.19.5"
+version = "0.19.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "isodate" },
@@ -2055,12 +2055,11 @@ dependencies = [
     { name = "openapi-schema-validator" },
     { name = "openapi-spec-validator" },
     { name = "parse" },
-    { name = "typing-extensions" },
     { name = "werkzeug" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b1/35/1acaa5f2fcc6e54eded34a2ec74b479439c4e469fc4e8d0e803fda0234db/openapi_core-0.19.5.tar.gz", hash = "sha256:421e753da56c391704454e66afe4803a290108590ac8fa6f4a4487f4ec11f2d3", size = 103264, upload-time = "2025-03-20T20:17:28.193Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/b9/a769ae516c7f016465b2d9abc6e8dc4d5a1b54c57ab99b3cc95e9587955f/openapi_core-0.19.4.tar.gz", hash = "sha256:1150d9daa5e7b4cacfd7d7e097333dc89382d7d72703934128dcf8a1a4d0df49", size = 109095, upload-time = "2024-09-02T14:10:26.937Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/27/6f/83ead0e2e30a90445ee4fc0135f43741aebc30cca5b43f20968b603e30b6/openapi_core-0.19.5-py3-none-any.whl", hash = "sha256:ef7210e83a59394f46ce282639d8d26ad6fc8094aa904c9c16eb1bac8908911f", size = 106595, upload-time = "2025-03-20T20:17:26.77Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/b3/4534adc8bac68a5d743caa786f1443545faed4d7cc7a5650b2d49255adfc/openapi_core-0.19.4-py3-none-any.whl", hash = "sha256:38e8347b6ebeafe8d3beb588214ecf0171874bb65411e9d4efd23cb011687201", size = 103714, upload-time = "2024-09-02T14:10:25.408Z" },
 ]
 
 [[package]]
