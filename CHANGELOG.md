@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.49.0] - 2026-10-17: No Phantom Calls
+
+**Full diff:** [v0.48.0...v0.49.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...v0.49.0)
+
 ### Fixed
 
 - A tool call reaches the client only when its name is one the request declared. The host can report a call to a name the request never offered, such as garbled text. Plugboard used to pass that on as a `tool_calls` answer, even when the request had no `tools` at all. Now the call is dropped and logged as `tool_call.undeclared` (warn, with the app, the request id and the name cut to 64 characters). An answer left with neither text nor a valid call fails as a failed model run (`model_run_failed`), and an answer with text finishes as `stop`. `tool_calls` is reported only when a valid call is returned. Server tools are unchanged, and every route is covered because the check sits in the session collector. Since 0.49.0 ([#463](https://github.com/jjjermiah/opencode-plugboard/issues/463)).
@@ -21,6 +27,146 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Docs
 
 - The README is a short front door: what plugboard is, install, one request, what it serves, and links. Everything it used to hold moved to the docs site, which now reads in order: get started (landing page, install, connect your app), six task guides (apps and keys; models, aliases and fallbacks; limits, budgets and caching; tools, structured output and images; history, usage and monitoring; serving other machines), the clients grouped by kind, the reference, and the project pages. New pages: Chat Completions, APIs and known gaps, response headers (every `x-plugboard-*` header), security, and a clients overview. The configuration reference opens with a map of its sections by task. Stale statements were fixed along the way: the Anthropic model list works with `x-api-key` since 0.47.0, `tools` with `json_schema` lets the model choose, usage is written on every change, and the CI host matrix. Old page paths still work.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (10 commits)</summary>
+
+#### Fixes
+
+**fix(session): drop tool calls whose name the request did not declare** ([`f2612c6`](https://github.com/jjjermiah/opencode-plugboard/commit/f2612c6a36ff4b21ca53560d323062ae304461bc))
+
+The host can report a tool call to a name the request never offered, such as garbled model text. The session collector passed every such call on as a tool-call event, so a request with no `tools` could get a `tool_calls` answer naming nothing it had declared (#463, seen once in about 20 live requests to `fast`).
+
+What changed: RequestCollector takes the request's caller tools (after the app's tool policy) and drops any call whose name is not one of them. A drop is logged once as `tool_call.undeclared` at warn, with the app, the request id and the name cut to 64 characters, and no other field of the call. When a step or run ends with no valid call and no text after a drop, the request fails with model_run_failed (the existing class for a failed model run). A step that ends tool-calls with no valid call finishes as stop, and the host is stopped before another step. Server tools keep their handling.
+
+Why here: the collector is the one place every route reads host events through, so Chat Completions, legacy completions, Responses, Messages and Gemini are all covered without touching the encoders.
+
+Rejected: checking names in each route encoder (five copies, easy to miss a route); fixing the upstream model (plugboard never sees the raw upstream body, so it cannot confirm the cause).
+
+Validation: bun run validate --mutations passed all 7 steps. New tests fail without the guard (mutation P463-undeclared-call-forwarded, which forwards undeclared calls) and pass with it: test/http/undeclared-tool-calls (non-streamed and streamed, no tools, a different name, mixed text and a garbled call) and test/session/collector.test.ts (#463 block). Existing collector and caller tests now declare the names they emit.
+
+Closes #463
+
+#### Tests
+
+**test(tests): ratchet test count floors for #463** ([`757786e`](https://github.com/jjjermiah/opencode-plugboard/commit/757786e47af14b720af41aa24572b8ff8613a6b1))
+
+`bun run validate` ratcheted the per-layer test-count floors after the new #463 tests were added (test/http and test/session). Committed with the change so CI's floor check passes. No floor was lowered.
+
+Refs #463
+
+#### Docs
+
+**docs(docs): cut the README to a short front door** ([`8df8cad`](https://github.com/jjjermiah/opencode-plugboard/commit/8df8cad3132b434e284face81b01db0897c5b4c8))
+
+The README was 654 lines: quick start, a feature manual, a client table, known gaps, security and a full example. It is also the npm page and the site's landing page, so a new reader met everything at once.
+
+What stays: what plugboard is, the install entry pinned to 0.48.0 (it said 0.42.0), one curl request, the endpoint table, six one-line highlights that link to the guides, and the project links. Everything else moves to the site in the next commits. Each removed section gets a page, listed in the pull request.
+
+Links to the docs site are absolute, because the npm package ships only the README.
+
+**docs(docs): add a landing page, an install page and a connect page** ([`ca35be6`](https://github.com/jjjermiah/opencode-plugboard/commit/ca35be601889c278f80d87cf0c58b586feb16ce3))
+
+The site's front page was the README pasted in with an include. With the README now short, the site needs its own start: what plugboard is, how to install it and call it once, and how to connect an app.
+
+- docs/index.md is a real landing page: hero, six feature cards that link to the guides, how it works, the API table and a reading order.
+- docs/install.md is the install walkthrough from the old README quick start, pinned to 0.48.0, with a table of what a failed first call means.
+- docs/connect.md says which base URL and key header each API takes, and sends readers to a client page by API or by client.
+- config.ts gets a "Get started" sidebar group and a nav entry. Page files keep their paths, so no old link breaks.
+
+The pages these link to (guides, chat completions, apis) come in the next commits.
+
+**docs(docs): add six task guides** ([`fd669e0`](https://github.com/jjjermiah/opencode-plugboard/commit/fd669e07e10f61c5ebfbd451ff71564c45db890e))
+
+Each guide starts with the problem, shows the smallest config that solves it, explains what happens and links to the configuration reference: apps and keys, models and aliases, limits and caching, tools and output, history and monitoring, serving other machines. Built from the old README feature sections. The reference anchors they link to are reorganised in a later commit, and the sidebar entries are not added yet (work halted before that).
+
+**docs(docs): add the reference pages and tell the sidebar as a story** ([`3c4adbe`](https://github.com/jjjermiah/opencode-plugboard/commit/3c4adbedc11be5041f2ab90cb057af337893fc67))
+
+The site had one flat Reference list, one Clients list of about sixty pages, and API pages scattered between them. A new user saw everything at once.
+
+The sidebar now runs in reading order: Get started, Guides, Clients, Reference, Project. Clients are grouped (SDKs, agent frameworks, chat apps and automation, coding tools, evaluation and observability, self-hosted apps) and every group after Get started and Guides starts collapsed. The nav bar follows the same five parts.
+
+New pages fill the links the earlier commits made:
+
+- chat-completions.md: the Chat Completions fields, streaming, tools and structured output, checked against src/openai/request.ts (developer role, four stop sequences, 15 s keep-alive, logprobs refused).
+- apis.md: every API and endpoint, how a request runs, and the known gaps from the old README, with resolved gaps removed (#34, #147 and the stop-sequence one are fixed).
+- headers.md: every x-plugboard-* response header, when it is set and its value, read from the source.
+- security.md: what plugboard guarantees, what the operator must do, and where to report.
+- clients/index.md: the grouped clients overview.
+
+The configuration reference keeps its sections and anchors, so no existing link breaks. It opens with a map of its sections by task, in guide order; the guides' "related options" links land on that map. Moving the sections themselves was rejected: hundreds of long lines to move by hand for the same navigation.
+
+Validation: bun run validate --skip examples,pack passes (typecheck, tests, manifest, docs build). A one-off check of the built site found no link to a missing #anchor apart from five false positives on the clients overview (the anchors exist).
+
+**docs(docs): fix statements that went stale** ([`602ea32`](https://github.com/jjjermiah/opencode-plugboard/commit/602ea324561f4a799c33df572104f2c383917894))
+
+A pass over the docs against the current code and the CHANGELOG.
+
+- Anthropic client pages said GET /v1/models refuses x-api-key and S7 is a gap. Fixed in 0.47.0 (#399); the anthropic-python and anthropic-js live runs on a0efa4b pass S7. The pages now say so and link the new records.
+- messages.md said Claude Code and the Python SDK were never run; both run in the examples now.
+- configuration.md and the tools guide said tools with json_schema returns only the caller's tool calls, or is "changing" (#34). The model may call a caller tool or give the schema answer; tool_choice none leaves only the schema, and a named tool_choice is a 400.
+- configuration.md said the x-plugboard-* headers are not exposed to browsers, contradicting the line above it (exposed since 0.27.0).
+- The history guide said usage reaches storage every ten seconds; it is written on every change since 0.21.2 (#241).
+- development.md named host 2.0.27 and a two-host CI matrix; the pin is 2.0.30 and CI picks the oldest, a middle and the newest host.
+- any-app.md pinned 0.26.0 and pointed at a README section that moved.
+- The apps option row listed only some per-app fields.
+- CHANGELOG: one Docs entry for the restructure.
+
+Validation: docs build passes; the same anchor check finds nothing new.
+
+**docs(examples): record live reruns on main ece50cd, refresh index** ([`3978aa5`](https://github.com/jjjermiah/opencode-plugboard/commit/3978aa540285228171cb5c09aed0d1b46ed3cf42))
+
+Live reruns on main ece50cd (plugboard 0.48.0, served by the dev server after serve-ref.sh main; it was on 0.47.0 before) for the curl, openai-python, openai-js, n8n, pydantic-ai-anthropic and tool-bot examples. curl, n8n, pydantic-ai-anthropic and tool-bot pass now. The older records were stale: the curl S1 fail was intermittent and 12 later plain calls to fast passed, n8n's Responses checks were already unobserved (#343, closed), and pydantic-ai-anthropic's S7 gap was the x-api-key bug fixed in #399.
+
+openai-python and openai-js stay partial. Their only gap is S2 previous_response_id, refused because plugboard is stateless (#104, open). That is a deliberate plugboard limit, not a client one, so the verdict is left as partial.
+
+Filed #463: a tool call the request did not declare is forwarded to the client. The raw upstream body is in the curl 2026-10-12 record; it is not yet known whether plugboard or the upstream model garbled it.
+
+Golden fixtures: examples/curl/runs/scripted (summary and transcripts) is CI-gated by `run.ts all --target scripted` plus git diff, so it already serves as the curl golden set. No new fixtures added.
+
+Validation: examples-index.ts --check passes. The full `bun run validate --skip pack` was started and stopped by a pause before it finished, so it has not passed on this commit.
+
+Refs #7
+
+#### CI and tooling
+
+**ci: approve the runs GitHub holds on host-bump pull requests** ([`82117f8`](https://github.com/jjjermiah/opencode-plugboard/commit/82117f8e0f7594d50b1618f147b6890956fddbfb))
+
+A pull request that GITHUB_TOKEN opens gets its pull_request runs in action_required. The repo's approval policy (first_time_contributors) treats the github-actions bot as a first-time contributor, so the required checks (CI passed, Lint commit messages, Analyze) stay pending until someone approves the runs. #438 hit this: the workflow-dispatched runs on the same SHA passed, the pull_request runs waited, and a person had to approve them before auto-merge fired.
+
+What changed
+- host-bump.yml open-pr: a new step, before the auto-merge step, reads the pull request head SHA, lists the action_required pull_request runs on it (up to six tries, ten seconds apart), and approves each one with POST /repos/{repo}/actions/runs/{id}/approve. A list or approve failure warns and the job continues, so auto-merge and the breakage issue still run. The job already had actions: write.
+- The existing gh workflow run dispatch of ci.yml, commits.yml and codeql.yml stays as it was.
+- The comments in ci.yml, commits.yml and codeql.yml now say the runs are held for approval, not that a token-opened PR starts no workflow.
+- docs/releasing.md: the host bump section says the runs are approved, and no longer that the required checks come from the dispatched runs.
+
+Why this option GitHub's GITHUB_TOKEN docs say a pull_request run from a workflow-created PR waits for approval, and recommend a GitHub App token or a PAT to avoid that. Both need a secret the repo does not have, and the issue asks for a workflow-only change. Approving the runs keeps GITHUB_TOKEN.
+
+Probe (throwaway branch, deleted after): a push-triggered workflow with actions: write called the approve endpoint on a completed run. It got 403 with the body "This workflow run is not waiting for approval", not a permission error, so the token passed the actions: write check. That is evidence, not proof: the first real bump PR is the test.
+
+Rejected
+- Changing the repo approval policy: a repo setting, out of scope here. Left as an option in the report.
+- A GitHub App or PAT for the PR: needs a new secret. Not done here.
+- Dispatching the real bump to test: host-versions reports 2.0.32 against a pin of 2.0.30, so it would open a real PR and enable auto-merge.
+
+Validation
+- bun run validate --skip examples: typecheck, test, manifest, pack and docs all pass.
+- actionlint .github/workflows/*.yml: clean.
+- The approve step, run with a fake gh: approves every run listed; no runs gives a notice; a list failure and an approve failure each warn and exit 0.
+
+Not verified: the approve call succeeding on a real bot PR (only the 403 state check above), and whether auto-merge then lands unattended.
+
+Refs #397
+
+#### Dependencies
+
+**build(deps): support opencode 2.0.32** ([`3122712`](https://github.com/jjjermiah/opencode-plugboard/commit/3122712d80d77c71f48d2b4fb64c6ed489f93ed3))
+
+OpenCode published @opencode/plugin 2.0.32. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.48.0] - 2026-10-16: Turning the Pages
 
@@ -8237,7 +8383,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...HEAD
+[0.49.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...v0.48.0
 [0.47.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...v0.47.0
 [0.46.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...v0.46.0
