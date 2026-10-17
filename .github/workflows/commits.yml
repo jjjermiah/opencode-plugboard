@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  # host-bump.yml starts this on its own pull request (a PR opened with GITHUB_TOKEN starts no workflow).
+  # host-bump.yml approves this on its own pull request (a PR opened with GITHUB_TOKEN holds its pull_request runs for approval).
   workflow_dispatch:
 
 permissions: {}

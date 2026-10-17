@@ -165,7 +165,7 @@ jobs:
       contents: write # push the bump branch
       pull-requests: write # open the PR, set auto-merge
       issues: write # the breakage issue when a gate fails
-      actions: write # start ci.yml and commits.yml on the branch (a token-opened PR starts no workflow)
+      actions: write # approve the bot's pull_request runs, and start ci.yml, commits.yml and codeql.yml on the branch
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -265,6 +265,32 @@ jobs:
           draft: ${{ needs.check.outputs.failed == 'true' }}
           body-path: ${{ runner.temp }}/pr-body.md
 
+      - name: Approve the pull request's runs (GitHub holds them until someone approves)
+        if: steps.pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          # A pull request opened with GITHUB_TOKEN gets its pull_request runs in action_required, and
+          # the repo's approval policy (first_time_contributors) treats the bot as a first-time
+          # contributor. Until a person or token approves them, their required checks stay pending.
+          # Approve them here, on the head commit. A failure warns, so the next steps still run.
+          sha=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
+          ids=""
+          for _ in 1 2 3 4 5 6; do
+            ids=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=pull_request&head_sha=$sha&status=action_required" --jq '.workflow_runs[].id') \
+              || { echo "::warning::could not list the runs on $sha"; exit 0; }
+            if [ -n "$ids" ]; then break; fi
+            sleep 10
+          done
+          if [ -z "$ids" ]; then
+            echo "::notice::No approval-required pull_request run on $sha after a minute."
+          fi
+          for id in $ids; do
+            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/approve" >/dev/null \
+              || echo "::warning::could not approve run $id on $sha. Approve it by hand: Approve workflows to run, in the pull request's merge box."
+          done
+
       - name: Start the checks, then auto-merge, or open the breakage issue
         if: steps.pr.outputs.pull-request-number != ''
         env:
@@ -275,8 +301,9 @@ jobs:
           FAILED: ${{ needs.check.outputs.failed }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          # A pull request opened with GITHUB_TOKEN starts no workflow, so its required checks would
-          # never report and auto-merge would wait forever. Start every workflow that reports a required check on the branch.
+          # Also start every workflow that reports a required check on the branch, so each required
+          # check has a run that does not wait for approval. A failure here warns, and the pull request
+          # then lacks that check: start it by hand.
           for wf in ci.yml commits.yml codeql.yml; do
             gh workflow run "$wf" --ref "$BRANCH" \
               || echo "::warning::could not start $wf on $BRANCH; the pull request has no $wf check. Start it by hand: gh workflow run $wf --ref $BRANCH"
