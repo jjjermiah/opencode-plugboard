@@ -1,0 +1,6 @@
+# The one advisory left in uv.lock. The example is a dev-only scripted check and ships in no package. The entry expires, so it
+# is looked at again then. Re-check with: osv-scanner scan source --no-ignore -L examples/dspy/uv.lock
+[[IgnoredVulns]]
+id = "GHSA-w8v5-vhqr-4h9v"
+ignoreUntil = 2027-01-17
+reason = "diskcache 5.6.3 (a dspy dependency), no fixed release. Unsafe pickle deserialization needs write access to the cache directory, which is local to the run."

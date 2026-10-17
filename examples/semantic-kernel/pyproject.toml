@@ -5,3 +5,9 @@ description = "Semantic Kernel (Python) against plugboard: text, stream, a manua
 requires-python = ">=3.10"
 # Exact pin: the version chat.py and docs/clients/semantic-kernel.md record.
 dependencies = ["semantic-kernel==1.45.0"]
+
+# openapi-core 0.19.5 (a semantic-kernel dependency) caps werkzeug below 3.1.2, and werkzeug 3.1.1 has published
+# advisories. The example never uses the OpenAPI plugin path that needs werkzeug, so the cap is lifted here; uv.lock holds
+# the version that resolves.
+[tool.uv]
+override-dependencies = ["werkzeug>=3.1.9"]
