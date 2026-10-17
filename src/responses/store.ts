@@ -9,6 +9,9 @@
  * key, as the other process-wide state does (docs/architecture.md, I6), so it outlives a plugin
  * generation that is replaced. A reference to an item that was evicted, expired or never returned
  * is a 400 that suggests `store: false`; it is never a guess.
+ *
+ * This is not the stored Responses of `previous_response_id` (src/responses/state.ts, durable, per app, kept for the
+ * app's history retention). A `DELETE /v1/responses/{id}` also drops the answer here (`forgetAnswer`).
  */
 import { LRUCache } from "lru-cache"
 
@@ -39,6 +42,11 @@ export function rememberAnswer(app: string, response: object): void {
   if (typeof id !== "string" || !Array.isArray(output)) return
   const items = output.filter(isItem)
   if (items.length > 0) storeOf(app).set(id, items)
+}
+
+/** Drops one answer's items, so a deleted response cannot be referenced either. */
+export function forgetAnswer(app: string, id: string): void {
+  storeOf(app).delete(id)
 }
 
 /** The output item with this id that the app's recent answers returned, if still held. */

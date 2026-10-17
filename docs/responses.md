@@ -2,7 +2,7 @@
 
 `POST /v1/responses` is served next to Chat Completions, with the same keys, model ids, aliases and limits. Use it when a client only speaks Responses: the Vercel AI SDK's `openai(id)`, `@langchain/openai` for ids such as `gpt-5.6*`, the n8n OpenAI Chat Model node with "Use Responses API" on, the `openai` SDK's `client.responses.create`.
 
-Plugboard is stateless: every request carries the whole conversation in `input`, as Chat Completions does with `messages`. Nothing is stored, so there is no `GET /v1/responses/{id}`.
+A request can carry the whole conversation in `input`, as Chat Completions does with `messages`, or continue an earlier answer with `previous_response_id` (since 0.50.0). Plugboard keeps each answer made with `store` on, which is the default, so `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` and `GET /v1/responses/{id}/input_items` work too. See [Stored responses](#stored-responses-since-0-50-0).
 
 Tested: `openai` (JS SDK), `ai` 7.0.137 with `@ai-sdk/openai` 4.0.91 (`openai(id)`, 17 of 17 scenarios) and `@langchain/openai` 1.6.2 with `openai/gpt-5.6-luna#low`, 2026-10-11. n8n was not re-run on this path.
 
@@ -29,13 +29,14 @@ console.log(r.output_text)
 | `stream` | The standard event sequence, below. |
 | `parallel_tool_calls: false` | Keeps only the first tool call of the answer, and the response carries `x-plugboard-parallel-tools: limited`. The response echoes the value it received (`true` unless the request sent `false`). |
 | `include`, `metadata`, `user`, `service_tier`, `prompt_cache_key`, `safety_identifier`, `max_tool_calls`, `stream_options` | Accepted and ignored. |
-| `store` | `store: false` keeps nothing: the answer's output items are not kept, so a later `item_reference` to them is a 400 `item_not_found` (#426). The response echoes the value you sent (`true` when you leave it out, as OpenAI does; #442). |
+| `store` | On by default, as on OpenAI: the answer is kept for `previous_response_id` and the stored-response routes. `store: false` keeps nothing: the answer is not retrievable, cannot be chained from, and a later `item_reference` to its items is a 400 `item_not_found` (#426). The response echoes the value you sent (`true` when you leave it out, as OpenAI does; #442). |
+| `previous_response_id` | The id of a stored response of the same app (since 0.50.0). Its input and output come first, then your `input`. `instructions` do not carry over. An unknown id is a 404. See below. |
 
 ## What is rejected
 
 A 400 with `code: "unsupported_parameter"` and `param` naming the field:
 
-- `previous_response_id`, `conversation`: need server-side state. Send the full `input` each time.
+- `conversation`: not supported. Use `previous_response_id`, or send the full `input` each time.
 - `item_reference` input items that name no output item plugboard holds (see the Vercel AI SDK note below). Plugboard keeps the output items of recent answers, so a reference to one of them works.
 - `background: true`, `prompt` (stored prompts), `top_logprobs`, `truncation: "auto"`.
 - Tools that are not `function` tools (`web_search`, `file_search`, `code_interpreter`, `computer_use`, `mcp`, `image_generation`, `custom`, ...). They run on OpenAI's servers; plugboard only hands function calls back to you.
@@ -72,8 +73,33 @@ response.completed                   (or response.incomplete / response.failed),
 
 Tool calls arrive whole from the model, so each call is a single `function_call_arguments.delta` holding the full arguments, as in Chat Completions. A structured answer (`json_schema`) is one `output_text.delta`. Its text is held back until the turn ends (#173), so the stream commits with the first output event (the keepalive comments start then) and a missing answer is a `response.failed` event after that. Without a respond call the answer is taken from the final text when it is the JSON the schema asks for, the same small check as Chat Completions (`x-plugboard-structured-fallback: text`, non-streamed responses only). Any other turn without the call is a 502 `structured_output_missing` for every finish reason, or a `response.failed` once a stream has started.
 
+## Stored responses (since 0.50.0)
+
+With `store` on (the default), plugboard keeps each completed or incomplete answer, per app: every input item the model saw, and the response object. A failed answer is not kept.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:4010/v1", api_key="sk-plug-...")
+first = client.responses.create(model="fast", input="My name is Ada.")
+second = client.responses.create(model="fast", input="What is my name?", previous_response_id=first.id)
+client.responses.retrieve(second.id)
+client.responses.input_items.list(second.id, order="asc")
+client.responses.delete(second.id)
+```
+
+- **`previous_response_id`.** The new request's input is the earlier response's input, then its output, then your `input`. Chains of chains work: each stored response holds the whole input it ran on. `instructions` are not carried over (OpenAI's rule): send them again if you want them. `tools`, `text.format` and the other request fields are the request's own too. The response echoes the id in `previous_response_id`. A function call in the earlier output can be answered with a `function_call_output` in your `input`.
+- **`GET /v1/responses/{id}`.** The response object as the caller got it. `stream=true` is a 400 `unsupported_parameter`: a stored response is not replayed. `include` is ignored.
+- **`DELETE /v1/responses/{id}`.** `{"id", "object": "response.deleted", "deleted": true}`. It also drops the response's items from the `item_reference` memory. A response chained from it keeps working, because it holds its own copy of the input.
+- **`GET /v1/responses/{id}/input_items`.** A list object `{object: "list", data, first_id, last_id, has_more}` of every input item the model saw, history included. `limit` is 1 to 100 (default 20), `order` is `desc` (default, newest first) or `asc`, and `after` is an item id: the page starts after it in the listing order. Every item has an `id`: the one the caller sent, or a generated `msg_`, `fc_` or `fco_` one. A bad `limit`, `order` or `after` is a 400 with the parameter named.
+- **One app only.** An app reads, lists, deletes and chains from its own responses. Another app's id is a 404, the same one as an unknown, deleted or expired id, so an id tells another app nothing. Ids are `resp_` plus 32 hex characters (128 bits, 122 of them random), so they cannot be guessed. Errors use OpenAI's body with `invalid_request_error`: `Response with id '...' not found.` On `previous_response_id` the 404 has `code: "previous_response_not_found"` and `param: "previous_response_id"`.
+- **Where it lives and for how long.** In the OpenCode plugin storage, the same place usage and runtime keys use, so it survives a restart. It is kept for the app's history retention: `history.maxAgeDays` (or `apps.<name>.history.maxAgeDays`), 30 days when unset. `maxAgeDays: 0` keeps *sessions* forever, but a stored response is a whole conversation, so `0` keeps these 30 days too. There is no separate option: one number says how long an app's history lives. A response past its age is a 404 at once, and a sweep from request handling deletes it. Each app keeps at most 1000 responses and 128 MiB; the oldest go first. An answer whose stored form is over 8 MiB (large images in the input, say) is answered normally but not kept, and plugboard logs `responses.store_skipped`; chaining from it is a 404. If storage fails, the answer is given and `responses.store_failed` is logged.
+- **Privacy.** A stored response holds the prompts, images and answers of a conversation, in the host's storage. Use `store: false` for anything that must not be kept, and `DELETE` to remove one. Nothing is logged but counts and operation names: never an id or a body.
+
+The model may change between the turns of a chain. What `input_items` lists for a chained response was not checked against OpenAI's live API: plugboard lists the whole input, history included, as OpenAI's reference example ("all items returned from previous requests are included here") shows.
+
 ## Notes
 
-- Multi-turn with the Vercel AI SDK works with its default `store: true`. The SDK replays each earlier assistant output as an `item_reference`, and plugboard resolves it from an in-memory store of the output items it returned (#147): per app, the last 1000 answers, kept for one hour, in the process only and never on disk. A reference to an item the store does not hold (plugboard restarted, the answer expired, or another app's item) is a 400 `item_not_found`. An answer made with `store: false` is not kept, so its items are never in the store (#426). Send the earlier items in full, or set `providerOptions: { openai: { store: false } }`, which sends them in full on every turn. Tool loops work either way (a tool call is replayed as a full `function_call` item).
+- Multi-turn with the Vercel AI SDK works with its default `store: true`. The SDK replays each earlier assistant output as an `item_reference`, and plugboard resolves it from an in-memory store of the output items it returned (#147): per app, the last 1000 answers, kept for one hour, in the process only. That memory is separate from stored responses, which are kept in the host storage. A reference to an item the store does not hold (plugboard restarted, the answer expired, or another app's item) is a 400 `item_not_found`. An answer made with `store: false` is not kept, so its items are never in the store (#426). Send the earlier items in full, or set `providerOptions: { openai: { store: false } }`, which sends them in full on every turn. Tool loops work either way (a tool call is replayed as a full `function_call` item).
 - `@langchain/openai` forces this API for ids containing `gpt-5.6`, `gpt-5.2-pro`, `gpt-5.4-pro`, `gpt-5.5-pro` and `codex`. It works now. LangChain's standard base64 image blocks reach plugboard as Chat-style `image_url` parts, so plugboard accepts that part type here too.
 - Sampling parameters are forwarded as sent and some providers reject them; see the client pages.

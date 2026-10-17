@@ -61,7 +61,8 @@ import { reportUsage } from "../usage-header.js"
 import { authenticateRequest, isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { encodeModel, encodeModelPage, modelPageQuery, pageModels } from "../anthropic/response.js"
 import { serveCompletions } from "../completions/route.js"
-import { serveResponses } from "../responses/route.js"
+import { matchStoredRoute, serveResponses, serveStoredResponse } from "../responses/route.js"
+import type { ResponseStore } from "../responses/state.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import { budgetFor, budgetStatus } from "../budgets.js"
 import type { KeyStore } from "../keys.js"
@@ -95,6 +96,8 @@ export interface RouteHost {
   readonly keys?: KeyStore
   /** The session port, persona lookup and backend gate that `count_tokens` and `countTokens` read the prompt through (#201). Absent: the count covers the caller's request and the app's policy. */
   readonly session?: SessionPromptDeps
+  /** Stored Responses (src/responses/state.ts, since 0.50.0): behind `previous_response_id` and `GET`/`DELETE /v1/responses/{id}`. */
+  readonly responses: ResponseStore
 }
 
 const SESSION_HEADER = "x-plugboard-session"
@@ -240,12 +243,14 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (path === PLUGBOARD_PREFIX || path.startsWith(`${PLUGBOARD_PREFIX}/`)) plugboardErrors.set(response, request.url ?? path)
     const modelId = request.method === "GET" && path.startsWith(MODEL_PREFIX) && path.length > MODEL_PREFIX.length ? decodeSegment(path.slice(MODEL_PREFIX.length)) : undefined
     const gemini = matchGeminiRoute(request.method, path)
+    // The stored-response routes carry an id in the path: they are logged and counted under their template, never with the id.
+    const stored = matchStoredRoute(request.method, path)
     // Any /v1beta path is Google's API, even one that matches no Gemini route (#150): its errors use Google's body.
     const googleShaped = gemini !== undefined || path === "/v1beta" || path.startsWith("/v1beta/")
     if (googleShaped) googleErrors.add(response)
-    const route = gemini?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
+    const route = gemini?.route ?? stored?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
-    info.route = gemini || modelId !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
+    info.route = gemini || stored || modelId !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
     // CORS (#256). An allowed browser origin gets its headers on every answer. Its preflight (OPTIONS with a requested method)
     // is answered here, before authentication, because a preflight carries no credentials; the Host check still runs first.
     if (host.options.cors !== undefined) {
@@ -349,7 +354,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         message: `No Gemini route for ${request.method} ${path}. Expected POST /v1beta/models/{model}:generateContent or POST /v1beta/models/{model}:streamGenerateContent; the path must start with /v1beta/models/. GET /v1beta/models lists the models.`,
       })
 
-    if (!gemini && modelId === undefined && !known(route)) {
+    if (!gemini && !stored && modelId === undefined && !known(route)) {
       return fail(response, {
         status: 404,
         kind: "not_found",
@@ -359,11 +364,14 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     // An app may be limited to some endpoints (#268). Checked after authentication and route existence (I15): a refusal is a 403, never a 404.
-    const endpoint: Endpoint | undefined = gemini ? "gemini" : modelId !== undefined ? "models" : Object.hasOwn(ENDPOINT_BY_ROUTE, route) ? ENDPOINT_BY_ROUTE[route] : undefined
+    const endpoint: Endpoint | undefined = gemini ? "gemini" : stored ? "responses" : modelId !== undefined ? "models" : Object.hasOwn(ENDPOINT_BY_ROUTE, route) ? ENDPOINT_BY_ROUTE[route] : undefined
     const refusal = endpoint === undefined ? undefined : endpointRefusal(host.options, auth.app, endpoint)
     if (refusal) return fail(response, refusal)
 
     if (gemini) return serveGemini(host, { match: gemini, request, url, app: auth.app, response, scope, info })
+
+    // Stored Responses: read or deleted under the caller's own app, never another's (I32).
+    if (stored) return serveStoredResponse(host, { app: auth.app, match: stored, url, response, scope })
 
     if (route === "GET /plugboard/status") {
       const catalog = await optionalCatalog(scope)

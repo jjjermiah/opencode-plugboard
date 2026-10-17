@@ -35,6 +35,7 @@ import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createKeepAliveHost, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
 import { keepAliveIntervalMs, keepAliveLoop } from "./src/keepalive.js"
 import { createKeyStore } from "./src/keys.js"
+import { createResponseStore } from "./src/responses/state.js"
 import { usageHandlers, UsageRpc } from "./src/rpc.js"
 import { createUsageRecorder, withUsage } from "./src/usage.js"
 import { hostVersion } from "./src/version.js"
@@ -144,6 +145,8 @@ export default Plugin.define({
         usage,
         // Runtime app keys (#55): read from storage on the first authentication, cached on the runtime.
         keys: createKeyStore({ state: processKeys(), storage: createStoragePort(ctx) }),
+        // Stored Responses (src/responses/state.ts): read and written from request handling, on the same host storage.
+        responses: createResponseStore({ storage: createStoragePort(ctx) }),
         // The prompt a count reads (persona, server tools): the same port, persona lookup and backend gate as the session caller (#201).
         session: callerDeps,
       })

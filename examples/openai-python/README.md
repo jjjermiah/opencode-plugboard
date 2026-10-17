@@ -7,7 +7,7 @@ The OpenAI Python SDK against plugboard: plain chat, a tool round trip, streamin
 | File | Scenario | What the snippet does |
 | --- | --- | --- |
 | `chat.py` | S1 | one non-streamed chat call; `run_responses`, one `responses.create` call read through `output_text` |
-| `tools.py` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id; `run_responses` sends the whole history back with `store=False`; `run_responses_previous_id` sends `previous_response_id` instead (a gap, see below) |
+| `tools.py` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id; `run_responses` sends the whole history back with `store=False`; `run_responses_previous_id` sends `previous_response_id` instead (since 0.50.0, see below) |
 | `stream.py` | S3 | raw stream with `include_usage`, and the stream helper that must agree with it; `run_responses` streams `responses.stream` events and checks the final response |
 | `stream_tools.py` | S4 | streamed tool call, arguments accumulated across deltas |
 | `image.py` | S5 | a red PNG as a data URL in a multi-part message; `run_responses` as an `input_image` part |
@@ -57,7 +57,7 @@ bun examples/_harness/run.ts openai-python --target live       # the isolated se
 
 ## Known gaps
 
-`S2 (responses-previous-id)` is a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)): plugboard is stateless and refuses `previous_response_id` with a 400 `unsupported_parameter` (see [responses.md](../../docs/responses.md)). Send the whole conversation in `input` instead, as `run_responses` does. Every other row passes on both targets; the live run is `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0). `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`).
+`S2 (responses-previous-id)` was a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)) until 0.50.0: plugboard now keeps each answer made with `store` on and continues from it with `previous_response_id` (see [responses.md](../../docs/responses.md#stored-responses-since-0-50-0)). The scripted run passes it; the live run `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0) predates it and still records the refusal. Every other row passes on both targets. `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`).
 
 ## Historical record
 

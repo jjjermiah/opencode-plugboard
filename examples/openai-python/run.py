@@ -25,12 +25,8 @@ from openai import OpenAI  # noqa: E402
 
 # Chat Completions (`chat`) and the Responses API (`responses`) run side by side on the scenarios that have both.
 APIS = ["chat", "responses"]
-# previous_response_id is refused by plugboard by design (docs/responses.md). Recorded as a gap until the client moves to full input.
+# previous_response_id continues a stored response (docs/responses.md, since 0.50.0).
 PREVIOUS_ID = "responses-previous-id"
-PREVIOUS_ID_GAP = {
-    "note": "previous_response_id is refused: plugboard is stateless, send the full input (docs/responses.md)",
-    "issue": "#104",
-}
 
 
 def by_api(chat_run, responses_run):
@@ -68,7 +64,6 @@ def main() -> None:
             "E2": lambda model: unknown_model.run(client, model),
         },
         variants={"S1": APIS, "S2": [*APIS, PREVIOUS_ID], "S3": APIS, "S5": APIS, "S6": APIS},
-        gaps={f"S2|{PREVIOUS_ID}": PREVIOUS_ID_GAP},
     )
 
 

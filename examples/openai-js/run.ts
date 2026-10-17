@@ -19,7 +19,7 @@ emitClient("openai", version)
 
 // Chat Completions (`chat`) and the Responses API (`responses`) run side by side on the scenarios that have both.
 const APIS = ["chat", "responses"]
-// previous_response_id is refused by plugboard by design (docs/responses.md). Recorded as a gap until the client moves to full input.
+// previous_response_id continues a stored response (docs/responses.md, since 0.50.0).
 const PREVIOUS_ID = "responses-previous-id"
 const byApi = (chatRun: (model: string) => Promise<Observations>, responsesRun: (model: string) => Promise<Observations>) => (model: string, variant?: string) =>
   variant === "chat" ? chatRun(model) : responsesRun(model)
@@ -41,11 +41,5 @@ await runAll(
   },
   {
     variants: { S1: APIS, S2: [...APIS, PREVIOUS_ID], S3: APIS, S5: APIS, S6: APIS },
-    gaps: {
-      [`S2|${PREVIOUS_ID}`]: {
-        note: "previous_response_id is refused: plugboard is stateless, send the full input (docs/responses.md)",
-        issue: "#104",
-      },
-    },
   },
 )

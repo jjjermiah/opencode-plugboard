@@ -5,7 +5,7 @@ Every API uses the same keys, models, aliases, limits, history and usage. Pick t
 | API | Endpoints | Page |
 | --- | --- | --- |
 | OpenAI Chat Completions | `POST /v1/chat/completions` | [Chat Completions](chat-completions.md) |
-| OpenAI Responses | `POST /v1/responses` | [Responses](responses.md) |
+| OpenAI Responses | `POST /v1/responses`, `GET` and `DELETE /v1/responses/{id}`, `GET /v1/responses/{id}/input_items` | [Responses](responses.md) |
 | Anthropic Messages | `POST /v1/messages`, `POST /v1/messages/count_tokens` | [Messages](messages.md) |
 | Gemini | `POST /v1beta/models/{model}:generateContent`, `:streamGenerateContent`, `:countTokens` | [Gemini](gemini.md) |
 | OpenAI legacy completions | `POST /v1/completions` | [Completions](completions.md) |
@@ -21,7 +21,7 @@ Plugboard replaces OpenCode's prompt, messages and tools with the caller's. The 
 
 ## Known gaps
 
-- **No server-side conversation state.** Every request carries the whole conversation. On Responses, `previous_response_id` and `conversation` are refused. The output items of recent answers are kept in memory for an hour, so `item_reference`s resolve; a restart clears them.
+- **Server-side conversation state is on Responses only (since 0.50.0).** Chat Completions, Messages, Gemini and legacy completions carry the whole conversation in every request. On Responses, `previous_response_id` works: an answer made with `store` on (the default) is kept per app on the host storage, for the app's `history.maxAgeDays` (30 days when unset or `0`), and survives a restart. `conversation` is refused. The output items of recent answers are also kept in memory for an hour, so `item_reference`s resolve; a restart clears that memory. See [Responses](responses.md#stored-responses-since-0-50-0).
 - **Gemini model ids with `/` or `#`** are awkward in SDK URLs. Give clients an alias. See [Gemini](gemini.md#model-names).
 - **State is per server.** Limits, the response cache and anchors live in one OpenCode server process. Two servers do not share them, and a restart clears limits and the cache.
 - **Token counts and costs are estimates.** Plugboard has no tokenizer.
