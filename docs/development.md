@@ -17,7 +17,7 @@ bun run validate --mutations       # also the mutation run, after touching a gua
 bun run validate --skip examples   # while iterating
 ```
 
-After you push, `bun run pr-wait <number>` waits for every check the main branch requires and prints one verdict.
+After you push, `bun run pr-wait <number>` waits for every check the main branch requires and prints one verdict. When the ruleset requires an approving review, it also waits for the review bot's approval, and with the up-to-date rule on, a pull request behind `main` is red until its branch is updated (`--merge` does that); see [review-bot.md](review-bot.md#pr-wait-and-release-with-a-required-approval).
 
 The `/plugboard` TUI page loads from `dist/tui.js` when the package is installed from npm, and from `tui.ts` (which re-exports it) when it is configured by local path. Run `bun run build:tui` once after a change to `src/tui.tsx`, before you test the TUI page against a local checkout. `bun run typecheck` and `bun test` do not need the build. See [packaging.md](packaging.md) for why the file is compiled.
 
