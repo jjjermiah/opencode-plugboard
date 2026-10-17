@@ -391,6 +391,7 @@ function collectorRun(maxServerToolSteps = 8, maxServerToolCalls = 16) {
     serverTools: new Set(["websearch"]),
     maxServerToolSteps,
     maxServerToolCalls,
+    callerTools: ["lookup"],
   })
   const store = createSessionStore()
   store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })

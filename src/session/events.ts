@@ -39,6 +39,17 @@ const RESPONSE_OVERFLOW: PlugError = {
 }
 
 /**
+ * The error a request fails with when the model answered nothing usable: its only tool calls named no declared tool and it wrote no text (#463).
+ * The class and code are those of a failed model run (`toPlugError`'s fallback). The text says nothing about the call.
+ */
+const NO_ANSWER: PlugError = {
+  status: 502,
+  kind: "server",
+  code: "model_run_failed",
+  message: "The model returned neither text nor a call to a declared tool",
+}
+
+/**
  * A reasoning block's signature from the host's provider state, or undefined when there is none. The host
  * publishes the state already unwrapped from its provider key (`{ signature }`, publish-llm-event.ts
  * `providerState`); the wrapped form (`{ <provider>: { signature } }`) is accepted too.
@@ -284,6 +295,11 @@ export interface CollectorHooks {
   readonly onStopAnswer?: () => void
   /** The request's tool names, caller and server tools: the ids the model may name them by are rewritten only for these (#411). */
   readonly toolNames?: readonly string[]
+  /**
+   * The request's caller tools, as the request offers them after the app's tool policy. A tool call must name one of them (#463):
+   * any other name is dropped and logged. Server tools are not caller tools (`serverTools`), they keep their own handling.
+   */
+  readonly callerTools: readonly string[]
 }
 
 interface ServerCall {
@@ -303,6 +319,13 @@ export class RequestCollector {
   private reasoningRaw = ""
   private reasoningSent = ""
   private readonly calls = new Set<string>()
+  /** Tool names the request declared (`CollectorHooks.callerTools`). */
+  private readonly callerNames: ReadonlySet<string>
+  /** Calls dropped for a name the request did not declare (#463), by id, and how many. */
+  private readonly dropped = new Set<string>()
+  private undeclared = 0
+  /** True once any text (not reasoning) was emitted: a run whose only calls were dropped, and that wrote no text, fails (#463). */
+  private answered = false
   private readonly serverCalls = new Map<string, ServerCall>()
   private stepServerCalls = 0
   /** Server calls that landed after the request ended (#196), by id, and their count; `lateStepCalls` is the current step's. */
@@ -325,6 +348,7 @@ export class RequestCollector {
 
   constructor(private readonly hooks: CollectorHooks) {
     this.reasoningNames = placeholderRewriter(placeholderAliases(hooks.toolNames ?? []))
+    this.callerNames = new Set(hooks.callerTools)
     this.stopScan = hooks.stopSequences !== undefined && hooks.stopSequences.length > 0 ? new StopScan(hooks.stopSequences) : undefined
   }
 
@@ -466,6 +490,8 @@ export class RequestCollector {
             })
           return
         }
+        // #463: a caller tool call must name a tool the request declared. Any other name never reaches the caller.
+        if (!this.callerNames.has(name)) return this.dropUndeclared(id, name)
         if (this.hooks.singleToolCall && this.calls.size > 0) return
         this.calls.add(id)
         this.emit({ type: "tool-call", id, name, input: item.input })
@@ -512,6 +538,14 @@ export class RequestCollector {
           this.hooks.stopTurn()
         }
         if (this.calls.size === 0 && serverCalls > 0) return this.serverStepEnded(reason)
+        // #463: every call the step made was undeclared and no text was written: nothing to return, so the request fails.
+        if (this.calls.size === 0 && this.undeclared > 0 && !this.answered) return this.abort(NO_ANSWER)
+        // A tool-calls finish needs a valid call (#463). Without one the step is a stop, and no further step runs.
+        if (this.calls.size === 0 && reason === "tool-calls") {
+          // A finished run was already stopped by the branch above (a late call, #196): only a live run is stopped here.
+          if (!this.finished && !this.executionDone) this.hooks.stopTurn()
+          return this.finishWith("stop")
+        }
         if (this.calls.size === 0 && reason === "stop") this.settled = true
         this.finishWith(withCalls(reason, this.calls.size > 0))
         return
@@ -563,6 +597,7 @@ export class RequestCollector {
         if (!this.finished) {
           if (this.calls.size > 0) this.finishWith("tool-calls")
           else if (this.wasCancelled) this.end()
+          else if (this.undeclared > 0 && !this.answered) this.fail(NO_ANSWER)
           else if (item.type === "session.execution.succeeded" || this.stopped) this.finishWith("stop")
           else this.fail({ status: 500, kind: "server", message: "Request was interrupted before the model finished" })
         }
@@ -656,6 +691,17 @@ export class RequestCollector {
     })
   }
 
+  /**
+   * A call to a name the request did not declare is dropped, once per call (#463). The log carries the request, the app and the
+   * name cut to 64 characters, and nothing else from the call.
+   */
+  private dropUndeclared(id: string, name: string): void {
+    if (this.dropped.has(id)) return
+    this.dropped.add(id)
+    this.undeclared++
+    logWarn("tool_call.undeclared", { requestID: this.hooks.requestID, app: this.hooks.app, tool: name.slice(0, 64) })
+  }
+
   /** Server calls the execution ended before they reported back are logged as not ok, once each. */
   private logUnfinishedServerCalls(): void {
     for (const call of this.serverCalls.values()) {
@@ -713,6 +759,7 @@ export class RequestCollector {
 
   private emit(event: PlugEvent): void {
     if (event.type !== "error") this.anyEmitted = true
+    if (event.type === "text-delta" && event.text.length > 0) this.answered = true
     // Errors are always queued: they are how an overflow is reported.
     if (this.queue.push(event, sizeOf(event), event.type === "error")) return
     // The consumer is not keeping up: drop what waits, fail this request only, and stop the turn.

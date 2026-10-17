@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Fixed
+
+- A tool call reaches the client only when its name is one the request declared. The host can report a call to a name the request never offered, such as garbled text. Plugboard used to pass that on as a `tool_calls` answer, even when the request had no `tools` at all. Now the call is dropped and logged as `tool_call.undeclared` (warn, with the app, the request id and the name cut to 64 characters). An answer left with neither text nor a valid call fails as a failed model run (`model_run_failed`), and an answer with text finishes as `stop`. `tool_calls` is reported only when a valid call is returned. Server tools are unchanged, and every route is covered because the check sits in the session collector. Since 0.49.0 ([#463](https://github.com/jjjermiah/opencode-plugboard/issues/463)).
+
 ### Docs
 
 - The README is a short front door: what plugboard is, install, one request, what it serves, and links. Everything it used to hold moved to the docs site, which now reads in order: get started (landing page, install, connect your app), six task guides (apps and keys; models, aliases and fallbacks; limits, budgets and caching; tools, structured output and images; history, usage and monitoring; serving other machines), the clients grouped by kind, the reference, and the project pages. New pages: Chat Completions, APIs and known gaps, response headers (every `x-plugboard-*` header), security, and a clients overview. The configuration reference opens with a map of its sections by task. Stale statements were fixed along the way: the Anthropic model list works with `x-api-key` since 0.47.0, `tools` with `json_schema` lets the model choose, usage is written on every change, and the CI host matrix. Old page paths still work.

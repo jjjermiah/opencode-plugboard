@@ -448,6 +448,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           app,
           // The ids the model may name a tool by are rewritten only for this request's tools (#411).
           toolNames: [...request.tools.map((tool) => tool.name), ...(policy?.serverTools ?? [])],
+          // The caller tools the session offers (after the tool policy): a tool call must name one of them (#463).
+          callerTools: request.tools.map((tool) => tool.name),
           ...(context.fallbackNext ? { failFastRetry: true } : {}),
           // The collector sees the match in the text it emits, so calls queued behind it are already after it (#390 review).
           ...(request.structuredTool === undefined ? { stopSequences: request.generation.stop ?? [], onStopAnswer } : {}),
