@@ -35,6 +35,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import semver from "semver"
 import { changelogBlock, collectCommits } from "./commit-detail.ts"
+import { approvalState, mergeRules, type GhReview } from "./merge-gate.ts"
 
 const PLACEHOLDER = "Nothing yet."
 
@@ -89,6 +90,8 @@ const CHECKS_TIMEOUT_MS = 60 * 60_000
 const CHECKS_POLL_MS = 20_000
 // How long a required check may take to report on the pull request before the release fails.
 const CHECKS_GRACE_MS = 10 * 60_000
+// How long after the checks pass the approving review may take to appear (docs/review-bot.md).
+const APPROVAL_TIMEOUT_MS = 15 * 60_000
 // The ci.yml run on the merge commit: its wait, and the poll.
 const MERGE_CI_TIMEOUT_MS = 45 * 60_000
 const MERGE_CI_POLL_MS = 20_000
@@ -270,6 +273,45 @@ async function mergedCommit(branch: string): Promise<string> {
     if (pr.state === "MERGED" && pr.mergeCommit) return pr.mergeCommit.oid
     if (Date.now() > deadline) fail(`${pr.url} is ${pr.state}, not merged. Nothing is tagged.`)
     await Bun.sleep(5_000)
+  }
+}
+
+// The rest of what the main ruleset asks before a merge, once the checks passed (docs/review-bot.md): an up-to-date
+// branch (strict status checks) and the approving review the review gate posts. Neither is a check, so both are read
+// from the ruleset and the pull request. With no such rule this returns at once. A branch behind main stops the release:
+// updating it moves the head, so the checks and the review start over. A pull request with changes requested stops it too.
+async function waitForMergeGate(branch: string, url: string): Promise<void> {
+  const ruleset = gh("api", "repos/{owner}/{repo}/rules/branches/main")
+  if (!ruleset.ok) {
+    console.log(`warning: could not read the main ruleset (${ruleset.err}); merging without waiting for a review`)
+    return
+  }
+  const rules = mergeRules(JSON.parse(ruleset.out) as Parameters<typeof mergeRules>[0])
+  const start = Date.now()
+  for (;;) {
+    const view = gh("pr", "view", branch, "--json", "headRefOid,mergeStateStatus,reviews")
+    if (view.ok) {
+      const pr = JSON.parse(view.out) as { headRefOid: string; mergeStateStatus: string; reviews: GhReview[] }
+      if (rules.strict && pr.mergeStateStatus === "BEHIND") {
+        fail(`main moved while the checks ran, and the ruleset requires an up-to-date branch: ${url} is behind main. Nothing is merged or tagged. Run gh pr update-branch ${branch}, then bun run release ${version} --title "..." --push --resume from main: it waits for the checks and the review on the new head. See docs/releasing.md.`)
+      }
+      if (rules.approvals === 0) return
+      const approval = approvalState(pr.reviews, pr.headRefOid, rules.approvals)
+      if (approval.state === "approved") {
+        console.log(`${url} has ${rules.approvals} approving review(s) on ${pr.headRefOid.slice(0, 7)}`)
+        return
+      }
+      if (approval.state === "changes-requested") {
+        fail(`changes requested on ${url} by ${approval.by.join(", ")}. Nothing is merged or tagged. Fix it on ${branch} and push, then run bun run release ${version} --title "..." --push --resume from main.`)
+      }
+      console.log(`waiting: ${rules.approvals} approving review(s) needed on ${pr.headRefOid.slice(0, 7)}, have ${approval.have}`)
+    } else {
+      console.log(`waiting: gh pr view ${branch} failed (${view.err || "no output"})`)
+    }
+    if (Date.now() - start > APPROVAL_TIMEOUT_MS) {
+      fail(`${url} has no approving review after 15 minutes. Nothing is merged or tagged. Is the review gate set up (docs/review-bot.md)? Once it is approved, run bun run release ${version} --title "..." --push --resume from main.`)
+    }
+    await Bun.sleep(CHECKS_POLL_MS)
   }
 }
 
@@ -566,6 +608,7 @@ if (resume) {
 // The checks judged below are the ones for headSha: waitForHead returns only once the pull request is at that commit.
 prUrl = await waitForHead(releaseBranch, headSha)
 await waitForChecks(releaseBranch, prUrl)
+await waitForMergeGate(releaseBranch, prUrl)
 
 // Merge only the commit that passed. The switch to main is needed because --delete-branch removes the
 // local release branch, which must not be the one checked out.
