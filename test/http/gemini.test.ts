@@ -8,6 +8,7 @@ import { captureLogs } from "../support/logs.js"
 import { parseSse, sseData, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
 import { FakeSessionPort } from "../support/session.js"
+import { RequestAborted } from "../../src/http.js"
 import { personaOf } from "../../src/models.js"
 
 const logs = captureLogs()
@@ -127,9 +128,9 @@ describe("routes", () => {
     expect(routes).toEqual(["unknown", "unknown"])
   })
 
-  test("streamGenerateContent without alt=sse is a 400 on param alt", async () => {
+  test("streamGenerateContent with an alt other than sse or json is a 400 on param alt", async () => {
     const caller = await route([ev.finish()])
-    const reply = await server!.send(stream(""))
+    const reply = await server!.send(stream("?alt=proto"))
     expect(reply.status).toBe(400)
     expect(reply.json().error.details[0].fieldViolations[0].field).toBe("alt")
     expect(caller.calls).toEqual([])
@@ -337,5 +338,219 @@ describe("#201 countTokens counts the persona, skill and server tools the sessio
     // 21 request + 4 message + 534 tool preamble + 40 per tool + (2 for "hi" + name + description + JSON schema characters) / 5
     const reply = await server!.send(count("fast", { "x-goog-api-key": "secret" }))
     expect(reply.json()).toEqual({ totalTokens: Math.ceil(21 + 4 + 534 + 40 + (2 + "websearch".length + 200 + JSON.stringify(input).length) / 5) })
+  })
+})
+
+/** The streamed JSON array: the whole body is one JSON document. */
+const arrayOf = (text: string): any[] => JSON.parse(text)
+
+describe("streamGenerateContent without alt=sse (since 0.50.0): the default JSON array", () => {
+  const plainStream = () => stream("")
+
+  test("the body is one JSON array of the same chunks as the SSE stream, as application/json", async () => {
+    await route([ev.text("Hel"), ev.text("lo"), ev.finish("stop", { inputTokens: 2, outputTokens: 1 })])
+    const open = await server!.open(plainStream())
+    const text = await open.ended
+    expect(open.status).toBe(200)
+    expect(open.headers["content-type"]).toBe("application/json; charset=utf-8")
+    expect(text).not.toContain("data:")
+    const chunks = arrayOf(text)
+    expect(chunks.map((chunk) => chunk.candidates[0].content.parts[0].text)).toEqual(["Hel", "lo", ""])
+    expect(chunks.at(-1)).toMatchObject({ candidates: [{ finishReason: "STOP", index: 0 }], usageMetadata: { totalTokenCount: 3 }, modelVersion: "fast" })
+  })
+
+  test("the array is written as it goes: the first element is on the wire before the model finishes", async () => {
+    const release = gate()
+    await route([ev.text("A"), { wait: release.promise }, ev.text("B"), ev.finish()])
+    const open = await server!.open(plainStream())
+    const early = await open.waitFor((text) => text.includes('"A"'))
+    // Open: it starts the array and is not yet a complete document.
+    expect(early.trimStart().startsWith("[")).toBe(true)
+    expect(() => JSON.parse(early)).toThrow()
+    release.open()
+    expect(arrayOf(await open.ended)).toHaveLength(3)
+  })
+
+  test("alt=json is the same as no alt", async () => {
+    await route([ev.text("x"), ev.finish()])
+    const open = await server!.open(stream("?alt=json"))
+    expect(open.headers["content-type"]).toBe("application/json; charset=utf-8")
+    expect(arrayOf(await open.ended)).toHaveLength(2)
+  })
+
+  test("alt=sse still streams SSE", async () => {
+    await route([ev.text("x"), ev.finish()])
+    expect((await server!.open(stream("?alt=sse"))).headers["content-type"]).toBe("text/event-stream; charset=utf-8")
+  })
+
+  test("a failure before output keeps its HTTP status and Google's error body", async () => {
+    await route([ev.error({ status: 503, message: "down" })])
+    const reply = await server!.send(plainStream())
+    expect(reply.status).toBe(503)
+    expect(reply.json()).toEqual({ error: { code: 503, message: "down", status: "UNAVAILABLE" } })
+  })
+
+  test("a failure after output ends the array with one error object, still valid JSON", async () => {
+    await route([ev.text("part"), ev.error({ status: 502, message: "died", code: "upstream" })])
+    const chunks = arrayOf(await (await server!.open(plainStream())).ended)
+    expect(chunks.map((chunk) => (chunk.error ? "error" : chunk.candidates[0].content.parts[0].text))).toEqual(["part", "error"])
+    expect(chunks.at(-1)).toEqual({ error: { code: 502, message: "died", status: "INTERNAL" } })
+    expect(logs.of("request.failed")[0]!.fields).toMatchObject({ outcome: "error", error: "upstream" })
+  })
+
+  test("reasoning commits the stream; a later failure is a one-element array holding the error", async () => {
+    const release = gate()
+    await route([ev.reasoning("x"), { wait: release.promise }, ev.error({ message: "died" })])
+    const open = await server!.open(plainStream())
+    expect(open.status).toBe(200)
+    release.open()
+    expect(arrayOf(await open.ended)).toEqual([{ error: { code: 502, message: "died", status: "INTERNAL" } }])
+  })
+})
+
+describe("candidateCount above 1 (since 0.50.0), non-streaming", () => {
+  const usage = (input: number, output: number) => ({ inputTokens: input, outputTokens: output, cacheReadTokens: 1 })
+  const two = { generationConfig: { candidateCount: 2 } }
+  /** A route that answers each call by its number, like the fan-out tests. */
+  async function routeCalls(script: (request: unknown, call: number) => Script, options: Record<string, unknown> = {}) {
+    const caller = new FakeModelCaller(script as never)
+    server = await startRoute({ caller, options: { aliases: { fast: "test/echo" }, maxN: 4, ...options } })
+    return caller
+  }
+
+  test("one model call per candidate; candidates in order with their index, usageMetadata summed, every session id", async () => {
+    const caller = await routeCalls((_request, call) => [{ record: `ses_${call}` }, ev.text(`answer ${call}`), ev.finish("stop", usage(10, call + 1))])
+    const reply = await server!.send(generate(undefined, { generationConfig: { candidateCount: 3 } }))
+    expect(caller.calls).toHaveLength(3)
+    expect(reply.status).toBe(200)
+    const body = reply.json()
+    expect(body.candidates.map((candidate: any) => [candidate.index, candidate.content.parts[0].text, candidate.finishReason])).toEqual([
+      [0, "answer 0", "STOP"],
+      [1, "answer 1", "STOP"],
+      [2, "answer 2", "STOP"],
+    ])
+    expect(body.usageMetadata).toEqual({ promptTokenCount: 30, candidatesTokenCount: 6, totalTokenCount: 36, cachedContentTokenCount: 3 })
+    expect(body.modelVersion).toBe("fast")
+    expect(reply.headers["x-plugboard-session"]).toBe("ses_0,ses_1,ses_2")
+  })
+
+  test("candidateCount 1 is the single call it always was", async () => {
+    const caller = await routeCalls(() => [ev.text("one"), ev.finish()])
+    const reply = await server!.send(generate(undefined, { generationConfig: { candidateCount: 1 } }))
+    expect(caller.calls).toHaveLength(1)
+    expect(reply.json().candidates).toHaveLength(1)
+  })
+
+  test("above maxN is a 400 INVALID_ARGUMENT naming generationConfig.candidateCount and the option, before any model call", async () => {
+    const caller = await routeCalls(() => [ev.finish()], { maxN: 2 })
+    const reply = await server!.send(generate(undefined, { generationConfig: { candidateCount: 3 } }))
+    expect(reply.status).toBe(400)
+    expect(reply.json().error).toMatchObject({
+      status: "INVALID_ARGUMENT",
+      message: expect.stringContaining("option `maxN`"),
+      details: [{ fieldViolations: [{ field: "generationConfig.candidateCount" }] }],
+    })
+    expect(caller.calls).toEqual([])
+  })
+
+  test("apps.<name>.maxN lowers the cap for that app and the message names it; the cap applies to streams too", async () => {
+    const caller = await routeCalls(() => [ev.finish()], { keys: { chat: "k" }, apps: { chat: { maxN: 1 } } })
+    for (const request of [generate(undefined, two, { "x-goog-api-key": "k" }), { ...stream("", { "x-goog-api-key": "k" }), body: { contents: [{ role: "user", parts: [{ text: "hi" }] }], ...two } }]) {
+      const reply = await server!.send(request)
+      expect(reply.status).toBe(400)
+      expect(reply.json().error.message).toContain("`apps.chat.maxN`")
+    }
+    expect(caller.calls).toEqual([])
+  })
+
+  test("one failing candidate fails the request with its status and cancels the others", async () => {
+    const caller = await routeCalls((_request, call) => (call === 1 ? [ev.error({ status: 429, kind: "rate_limit", message: "slow" })] : ["hang"]), { maxN: 3 })
+    const reply = await server!.send(generate(undefined, { generationConfig: { candidateCount: 3 } }))
+    expect(reply.status).toBe(429)
+    expect(reply.json()).toEqual({ error: { code: 429, message: "slow", status: "RESOURCE_EXHAUSTED" } })
+    for (const index of [0, 2]) expect(await caller.calls[index]!.aborted).toBeInstanceOf(RequestAborted)
+  })
+
+  test("a structured answer is per candidate, and the fallback header is set when any candidate used the text", async () => {
+    await routeCalls((_request, call) => (call === 0 ? [ev.call("c1", "respond", { a: 1 }), ev.finish("tool-calls")] : [ev.text('{"a":2}'), ev.finish("stop")]))
+    const reply = await server!.send(generate(undefined, { generationConfig: { candidateCount: 2, responseMimeType: "application/json", responseJsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"] } } }))
+    expect(reply.status).toBe(200)
+    expect(reply.json().candidates.map((candidate: any) => candidate.content.parts[0].text)).toEqual(['{"a":1}', '{"a":2}'])
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+  })
+})
+
+describe("candidateCount above 1 (since 0.50.0), streaming", () => {
+  const usage = (input: number, output: number) => ({ inputTokens: input, outputTokens: output })
+  const two = { generationConfig: { candidateCount: 2 } }
+  const streamTwo = (query: string): SendInit => ({ ...stream(query), body: { contents: [{ role: "user", parts: [{ text: "hi" }] }], ...two } })
+  async function routeCalls(script: (request: unknown, call: number) => Script, options: Record<string, unknown> = {}) {
+    const caller = new FakeModelCaller(script as never)
+    server = await startRoute({ caller, options: { aliases: { fast: "test/echo" }, maxN: 4, ...options } })
+    return caller
+  }
+  const textOf = (chunk: any) => chunk.candidates?.[0]?.content?.parts?.[0]?.text
+
+  test("SSE: candidates interleave under one responseId, each chunk carrying its index; one final usage chunk; no [DONE]", async () => {
+    const release = gate()
+    await routeCalls((_request, call) => (call === 0 ? [ev.text("A1"), { wait: release.promise }, ev.text("A2"), ev.finish("stop", usage(5, 2))] : [ev.text("B1"), ev.finish("stop", usage(5, 1))]))
+    const open = await server!.open(streamTwo("?alt=sse"))
+    await open.waitFor((text) => text.includes('"finishReason":"STOP"'))
+    release.open()
+    const text = await open.ended
+    const chunks = sseData(text)
+    expect(open.headers["content-type"]).toBe("text/event-stream; charset=utf-8")
+    expect(text).not.toContain("[DONE]")
+    const candidates = chunks.filter((chunk) => chunk.candidates)
+    expect(new Set(candidates.map((chunk) => chunk.responseId)).size).toBe(1)
+    const order = candidates.map((chunk) => `${chunk.candidates[0].index}:${textOf(chunk)}`)
+    // Candidate 1 finished while candidate 0 was still waiting.
+    expect(order.indexOf("1:")).toBeLessThan(order.indexOf("0:A2"))
+    expect(order.filter((entry) => entry.startsWith("0:"))).toEqual(["0:A1", "0:A2", "0:"])
+    expect(candidates.filter((chunk) => chunk.candidates[0].finishReason).map((chunk) => chunk.candidates[0].index).sort()).toEqual([0, 1])
+    expect(candidates.some((chunk) => chunk.usageMetadata)).toBe(false)
+    expect(chunks.at(-1)).toEqual({ usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3, totalTokenCount: 13 }, modelVersion: "fast", responseId: candidates[0].responseId })
+  })
+
+  test("array (no alt): the same chunks as one valid JSON array, ending with the summed usage chunk", async () => {
+    await routeCalls((_request, call) => [ev.text(`t${call}`), ev.finish("stop", usage(4, 1))])
+    const open = await server!.open(streamTwo(""))
+    const chunks = arrayOf(await open.ended)
+    expect(open.headers["content-type"]).toBe("application/json; charset=utf-8")
+    expect(chunks.filter((chunk) => textOf(chunk)).map((chunk) => [chunk.candidates[0].index, textOf(chunk)]).sort()).toEqual([
+      [0, "t0"],
+      [1, "t1"],
+    ])
+    expect(chunks.at(-1)).toMatchObject({ usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 2, totalTokenCount: 10 } })
+  })
+
+  test("a failure after the stream committed is one error object, in SSE and in the array; the other candidate is cancelled", async () => {
+    for (const query of ["?alt=sse", ""]) {
+      const caller = await routeCalls((_request, call) => (call === 0 ? [ev.text("A1"), "hang"] : [ev.text("B1"), ev.error({ status: 502, message: "died", code: "upstream" })]))
+      const open = await server!.open(streamTwo(query))
+      const text = await open.ended
+      const chunks = query ? sseData(text) : arrayOf(text)
+      expect(open.status).toBe(200)
+      expect(chunks.at(-1)).toEqual({ error: { code: 502, message: "died", status: "INTERNAL" } })
+      expect(chunks.filter((chunk) => chunk.error)).toHaveLength(1)
+      expect(await caller.calls[0]!.aborted).toBeInstanceOf(RequestAborted)
+      await server!.close()
+      server = undefined
+    }
+  })
+
+  test("a failure before anything was sent keeps its HTTP status", async () => {
+    await routeCalls((_request, call) => (call === 0 ? ["hang"] : [ev.error({ status: 503, message: "down" })]))
+    const reply = await server!.send(streamTwo(""))
+    expect(reply.status).toBe(503)
+    expect(reply.json()).toEqual({ error: { code: 503, message: "down", status: "UNAVAILABLE" } })
+  })
+
+  test("a client that hangs up cancels every candidate", async () => {
+    const caller = await routeCalls(() => [ev.text("x"), "hang"])
+    const open = await server!.open(streamTwo("?alt=sse"))
+    await open.waitFor((text) => text.includes('"x"'))
+    open.destroy()
+    for (const call of [0, 1]) expect(((await caller.calls[call]!.aborted) as RequestAborted).kind).toBe("disconnected")
   })
 })

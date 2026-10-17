@@ -378,6 +378,20 @@ export const sendProblem = (response: ServerResponse, error: PlugError, instance
 }
 
 /**
+ * How a stream is put on the wire when it is not plain SSE with a `[DONE]` frame: the content type and idle
+ * keepalive of the response, one payload as a frame, and what closes the stream (Gemini: SSE without `[DONE]`, or
+ * a streamed JSON array, see `src/gemini/response.ts`). `frame` may keep state (the array's first element).
+ */
+export interface StreamWire {
+  readonly contentType: string
+  /** Written while the stream is idle; must be ignorable between frames. */
+  readonly keepalive: string
+  frame(payload: object): string
+  /** What ends a stream that finished (after the last frame, or after an error frame). */
+  end(): string
+}
+
+/**
  * SSE response writer. Headers go out with the first chunk, so nothing is committed until there
  * is something to send; chunks after the client is gone are dropped. `write` is synchronous (the
  * encoder's contract); backpressure is honoured by `paced`, which holds back the next event while
@@ -389,7 +403,7 @@ export const sendProblem = (response: ServerResponse, error: PlugError, instance
  * HTTP status; after it, the caller must report failures as SSE frames. A tick is skipped while
  * the socket buffer is full, and stops when the client is gone or the scope aborted.
  */
-export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepaliveMs = KEEPALIVE_MS) {
+export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepaliveMs = KEEPALIVE_MS, wire?: Pick<StreamWire, "contentType" | "keepalive">) {
   let started = false
   let blocked = false
   let lastWrite = Date.now()
@@ -405,7 +419,7 @@ export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepal
     if (started || response.destroyed || response.writableEnded) return
     started = true
     response.writeHead(200, {
-      "content-type": "text/event-stream; charset=utf-8",
+      "content-type": wire?.contentType ?? "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
       "x-accel-buffering": "no",
@@ -430,7 +444,7 @@ export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepal
     if (response.destroyed || response.writableEnded || signal?.aborted) return
     const idle = Date.now() - lastWrite
     if (idle < keepaliveMs) return arm(keepaliveMs - idle)
-    if (!blocked) send(": keepalive\n\n")
+    if (!blocked) send(wire?.keepalive ?? ": keepalive\n\n")
     arm(keepaliveMs)
   }
   const beginKeepalive = () => {

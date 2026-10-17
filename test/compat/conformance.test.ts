@@ -197,6 +197,37 @@ describe("#107 Gemini responses conform to the vendored discovery schemas", () =
     expect(reply.status).toBe(200)
     expectConforms("gemini", "CountTokensResponse", reply.json())
   })
+
+  /** A route that allows several candidates; the one shared answer is scripted per call. */
+  async function withCandidates<T>(run: (route: RouteServer) => Promise<T>): Promise<T> {
+    const route = await startRoute({ caller: new FakeModelCaller(() => [ev.text(TEXT), ev.finish("stop", USAGE)]), options: { keys: { conformance: KEY }, aliases: { fast: "test/echo" }, maxN: 3 } })
+    try {
+      return await run(route)
+    } finally {
+      await route.close()
+    }
+  }
+  const candidates = (path: string) => json(path, { contents: [{ role: "user", parts: [{ text: tag("n") }] }], generationConfig: { candidateCount: 3 } })
+
+  test("#107 candidateCount 3 is one GenerateContentResponse with three indexed candidates", async () => {
+    await withCandidates(async (route) => {
+      const reply = await route.send(candidates("/v1beta/models/fast:generateContent"))
+      expect(reply.status).toBe(200)
+      expectConforms("gemini", "GenerateContentResponse", reply.json())
+      expect(reply.json().candidates.map((candidate: { index: number }) => candidate.index)).toEqual([0, 1, 2])
+    })
+  })
+
+  test("#107 every chunk of a multi-candidate stream is a GenerateContentResponse, as SSE and as a JSON array", async () => {
+    await withCandidates(async (route) => {
+      const sse = await route.send(candidates("/v1beta/models/fast:streamGenerateContent?alt=sse"))
+      const frames = parseSse(sse.text).map((frame) => JSON.parse(frame.data!))
+      const array = JSON.parse((await route.send(candidates("/v1beta/models/fast:streamGenerateContent"))).text) as unknown[]
+      for (const chunk of [...frames, ...array]) expectConforms("gemini", "GenerateContentResponse", chunk)
+      expect(frames.length).toBeGreaterThan(3)
+      expect(array.length).toBe(frames.length)
+    })
+  })
 })
 
 /** The SDK's error body carries request_id; plugboard sends it as the request-id header instead. */

@@ -213,6 +213,18 @@ describe("n above 1", () => {
     expect(single.headers["x-plugboard-cache"]).toBe("miss")
     expect(fake.calls).toHaveLength(3)
   })
+
+  test("Gemini candidateCount 2 is the same: every candidate is a fresh call and nothing is stored", async () => {
+    const fake = await cachedRoute(answer)
+    const body = { generationConfig: { candidateCount: 2 } }
+    const first = await server!.send(gemini(body))
+    const second = await server!.send(gemini(body))
+    expect(first.status).toBe(200)
+    expect(first.headers["x-plugboard-cache"]).toBeUndefined()
+    expect(second.headers["x-plugboard-cache"]).toBeUndefined()
+    expect(fake.calls).toHaveLength(4)
+    expect((await server!.send(gemini())).headers["x-plugboard-cache"]).toBe("miss")
+  })
 })
 
 describe("the header", () => {

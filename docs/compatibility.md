@@ -15,26 +15,25 @@ Each official SDK runs the same scenarios against plugboard, in CI on every push
 | openai | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass | pass | n/a | n/a | pass |
 | openai | `POST /v1/completions` | pass | pass | n/a | n/a | n/a | n/a | pass | pass | n/a | n/a | pass | pass | pass | n/a | pass | n/a | n/a | pass | pass | pass | pass |
 | @anthropic-ai/sdk | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
-| @google/genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | gap [1] | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
+| @google/genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | pass | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
 | ai + @ai-sdk/openai (chat) | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
 | ai + @ai-sdk/openai (responses) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
 | ai + @ai-sdk/openai (responses, store: false) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
 | ai + @ai-sdk/openai-compatible | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
 | ai + @ai-sdk/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
-| ai + @ai-sdk/google | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | pass | gap [2] | n/a | n/a | pass |
+| ai + @ai-sdk/google | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | pass | gap [1] | n/a | n/a | pass |
 | @langchain/openai (chat) | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | pass | pass | n/a | n/a | n/a | n/a | pass | n/a | pass | pass |
 | @langchain/openai (responses) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
-| @langchain/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [3] | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
-| @langchain/google-genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | n/a | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | n/a | gap [4] | n/a | n/a | gap [5] |
+| @langchain/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [2] | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
+| @langchain/google-genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | n/a | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | n/a | gap [3] | n/a | n/a | gap [4] |
 | @langchain/openai (completions) | `POST /v1/completions` | pass | pass | n/a | n/a | n/a | n/a | pass | pass | n/a | n/a | pass | pass | n/a | n/a | n/a | n/a | n/a | pass | pass | n/a | pass |
 
-214 pass, 5 gap, 0 fail, 117 n/a, 0 todo.
+215 pass, 4 gap, 0 fail, 117 n/a, 0 todo.
 
-1. @google/genai, n: candidateCount above 1 is refused with a 400 (only one candidate is served); the OpenAI endpoints serve n
-2. ai + @ai-sdk/google, model-id: the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass
-3. @langchain/anthropic, stream-usage: message_start reports input_tokens 0; the real input count arrives only in message_delta, so a client that reads usage from message_start sees 0
-4. @langchain/google-genai, model-id: LangChain's Google class sends the model id without the models/ prefix, so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass
-5. @langchain/google-genai, cancel: the @google/generative-ai SDK that LangChain uses reports the client's abort as an unhandled 'Error reading from the stream'
+1. ai + @ai-sdk/google, model-id: the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass
+2. @langchain/anthropic, stream-usage: message_start reports input_tokens 0; the real input count arrives only in message_delta, so a client that reads usage from message_start sees 0
+3. @langchain/google-genai, model-id: LangChain's Google class sends the model id without the models/ prefix, so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass
+4. @langchain/google-genai, cancel: the @google/generative-ai SDK that LangChain uses reports the client's abort as an unhandled 'Error reading from the stream'
 
 Scenarios:
 

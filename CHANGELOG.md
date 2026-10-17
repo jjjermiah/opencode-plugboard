@@ -17,6 +17,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Added
 
 - Anthropic structured outputs on `POST /v1/messages`. `output_config.format` with `{"type": "json_schema", "schema": {...}}` used to be refused with a 400. It is now answered the way Anthropic does: the JSON is one `text` block with `stop_reason` `end_turn`, and a stream sends it as one `text_delta`. It uses the path Chat Completions `json_schema` uses, a forced `respond` tool with the same rules. A text answer that is the schema's JSON is taken when the model skips the tool (a non-streamed response carries `x-plugboard-structured-fallback: text`). A turn with no answer is a 502 in Messages' error shape. With caller tools, a call to one of them wins. A `tool_choice` that names a tool and a tool named `respond` are 400s. `count_tokens` counts the same request. The schema is not enforced, so validate the answer. The forced-tool recipe still works. Since 0.50.0.
+- Gemini `generationConfig.candidateCount` above 1 is served instead of refused (since 0.50.0). Each candidate is one model call through the same fan-out as `n` on Chat Completions, under the same caps: `maxN` and `apps.<name>.maxN`. Above the cap the answer is a 400 `INVALID_ARGUMENT` on `generationConfig.candidateCount` that names the option. The response has `candidates` in order, each with its `index`, and `usageMetadata` summed over the calls. A stream, as SSE or as a JSON array, interleaves the candidates with their `index` and ends with one chunk of summed usage. If one candidate fails, the request fails and the others are cancelled. The response cache is bypassed, as for `n`.
+- Gemini `streamGenerateContent` without `alt=sse` is served (since 0.50.0). Without `alt` (or with `alt=json`) the response is `application/json`: one JSON array, `[`, the chunks separated by commas, `]`, written as the model answers. It carries the same chunks as the SSE stream. An error after the first chunk is the last element of the array, so the array stays valid JSON. Another `alt` value is still a 400.
+
+### Docs
+
+- The Gemini page lost both refusals and gained notes on several candidates and on the JSON array stream, including what the array form is based on. The APIs page no longer lists `candidateCount` as a known gap.
 
 ## [0.49.0] - 2026-10-17: No Phantom Calls
 

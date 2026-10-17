@@ -1,6 +1,7 @@
 /**
  * The Gemini front-end's half of the route: `GET /v1beta/models`, `GET /v1beta/models/{model}`,
- * `POST /v1beta/models/{model}:generateContent`, `:streamGenerateContent?alt=sse` and `:countTokens` (an estimate, #144) (and the
+ * `POST /v1beta/models/{model}:generateContent`, `:streamGenerateContent` (`?alt=sse` as SSE, else a streamed JSON
+ * array) and `:countTokens` (an estimate, #144) (and the
  * `POST /v1/models/{model}:...` spelling). `src/openai/route.ts` matches the path
  * (`matchGeminiRoute`), checks the origin, authenticates (`geminiAuthorization` supplies the
  * credential) and hands over here; errors on these routes use Google's body (`encodeGeminiError`).
@@ -11,13 +12,14 @@
  *
  * Same flow as the other front-ends: parse, resolve the model, call the ModelCaller, encode. Nothing
  * is committed until the encoder emits its first chunk, so a failure before any output is a real
- * HTTP error even for a stream.
+ * HTTP error even for a stream. `candidateCount` above 1 is one model call per candidate through
+ * the shared fan-out (`src/openai/fanout.ts`), capped by `maxN`.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { appPolicy, bodyLimits, historyTemplate, requestedModel } from "../config.js"
+import { appPolicy, bodyLimits, historyTemplate, maxNFor, maxNOption, requestedModel } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { effortUnavailable, listAvailableModels, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
@@ -27,11 +29,12 @@ import { setSessionLink } from "../session/link.js"
 import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
 import type { RouteHost } from "../openai/route.js"
+import { serveChoices } from "../openai/fanout.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
 import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
 import { parseGeminiRequest } from "./request.js"
-import { encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk } from "./response.js"
+import { arrayWire, encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, geminiCodec, noResponse, runGenerate, sseWire } from "./response.js"
 
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
@@ -116,7 +119,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   if (match.op === "count") {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
-    const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))), host.options)
+    const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))), { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))
     if (isPlugError(parsed)) return fail(parsed)
     const catalog = await scope.race(host.loadCatalog())
     const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
@@ -138,13 +141,17 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     return sendJson(response, 200, encodeGeminiModel(item))
   }
 
-  if (match.stream && url.searchParams.get("alt") !== "sse")
-    return fail({ status: 400, kind: "invalid_request", code: "unsupported_parameter", param: "alt", message: "streamGenerateContent needs the query parameter alt=sse" })
+  // `alt=sse` is SSE; no `alt` (or `alt=json`) is Google's default, a JSON array streamed as it is produced.
+  const alt = url.searchParams.get("alt")
+  if (match.stream && alt !== null && alt !== "sse" && alt !== "json")
+    return fail({ status: 400, kind: "invalid_request", code: "unsupported_parameter", param: "alt", message: "streamGenerateContent takes alt=sse, or no alt for a streamed JSON array" })
+  const wire = alt === "sse" ? sseWire() : arrayWire()
   const unsupported = checkJsonContentType(request)
   if (unsupported) return fail(unsupported)
   const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))
 
-  const parsed = parseGeminiRequest(match.model, match.stream, body, host.options)
+  // The app's own `maxN` is the cap for this request; the decoder checks `candidateCount` against it.
+  const parsed = parseGeminiRequest(match.model, match.stream, body, { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())
   const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
@@ -163,6 +170,10 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const { exchange } = parsed
   // The answer names the model it runs on: the app's pin, else the caller's (#261).
   exchange.model = requested.model
+
+  // candidateCount > 1: one independent call per candidate, merged (src/openai/fanout.ts).
+  if (parsed.candidates > 1)
+    return serveChoices(host, { app, calls: Array.from({ length: parsed.candidates }, () => call), response, scope, info, codec: geminiCodec(exchange, wire) })
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason
@@ -186,23 +197,24 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   )
 
   if (exchange.stream) {
-    const sse = sseWriter(response, scope.signal)
-    const { failure } = await runGenerate(sse.paced(events), exchange, (chunk) => sse.write(sseChunk(chunk)))
+    const sse = sseWriter(response, scope.signal, undefined, wire)
+    const { failure } = await runGenerate(sse.paced(events), exchange, (chunk) => sse.write(wire.frame(chunk)))
     if (!sse.started && !response.headersSent) {
-      if (!scope.signal.aborted || scope.timedOut) fail(failure ?? { status: 502, kind: "server", message: "No response from the model" })
+      if (!scope.signal.aborted || scope.timedOut) fail(failure ?? noResponse())
     } else {
       if (failure) {
         info.failed = failure.code ?? failure.kind
-        // Google ends a failed stream with one error object.
-        sse.write(sseChunk(encodeGeminiError(failure)))
+        // Google ends a failed stream with one error object (the last element of a JSON array).
+        sse.write(wire.frame(encodeGeminiError(failure)))
       }
+      sse.write(wire.end())
       if (!response.writableEnded) response.end()
     }
     return
   }
 
   const run = await runGenerate(events, exchange, () => {})
-  if (run.failure || !run.response) return fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
+  if (run.failure || !run.response) return fail(run.failure ?? noResponse())
   if (run.structuredFallback) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
   sendJson(response, 200, run.response)
 }
