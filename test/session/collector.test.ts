@@ -17,10 +17,13 @@ import { bus, type BusEnvelope, type HostError } from "../support/session.js"
 const logs = captureLogs()
 const host = bus("ses_1")
 
+/** The caller tools the tests below declare: every name a test's tool call uses, so a call to one of them is a valid call (#463). */
+const CALLER_TOOLS = ["lookup", "f", "first", "second", "get_weather"]
+
 /** A collector registered in a fresh store, so events go through `dispatch` exactly as the event pump sends them. */
-function setup(toolNames: readonly string[] = []) {
+function setup(toolNames: readonly string[] = CALLER_TOOLS) {
   let stops = 0
-  const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", toolNames })
+  const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", toolNames, callerTools: toolNames })
   const store = createSessionStore()
   store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
   return {
@@ -60,7 +63,7 @@ describe("#390 the window after a match (review #429): the answer is complete, s
 
   test("after a match, a server tool call runs no tool and starts no next step", async () => {
     let stops = 0
-    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3 })
+    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3, callerTools: [] })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
     collector.markStopped()
@@ -77,6 +80,74 @@ describe("#390 the window after a match (review #429): the answer is complete, s
     run.send(host.textDelta("Hi"), host.stepEnded("stop", { input: 3, output: 4 }))
     expect(run.stops).toBe(0)
     expect((await run.drain()).at(-1)).toEqual({ type: "finish", reason: "stop", usage: { inputTokens: 3, outputTokens: 4 } })
+  })
+})
+
+describe("#463 a tool call must name a declared caller tool: any other name is dropped, and a run with nothing else fails", () => {
+  const NO_ANSWER: PlugEvent = { type: "error", error: { status: 502, kind: "server", code: "model_run_failed", message: "The model returned neither text nor a call to a declared tool" } }
+  const GARBLED = "Realtime-2.5-flash-2025-15‸none…I'm just a language model, so I can't actually play ping pong"
+
+  test("no tools declared: a call to any name is dropped, and a step with nothing else fails the run (never tool-calls)", async () => {
+    const run = setup([])
+    run.send(host.toolCalled("c1", GARBLED, { q: 1 }), host.stepEnded("tool-calls"))
+    expect(await run.drain()).toEqual([NO_ANSWER])
+    expect(run.stops).toBe(1)
+  })
+
+  test("tools declared, but the call names another tool: dropped the same way", async () => {
+    const run = setup(["get_weather"])
+    run.send(host.toolCalled("c1", "lookup", {}), host.stepEnded("tool-calls"))
+    expect(await run.drain()).toEqual([NO_ANSWER])
+  })
+
+  test("mixed: text and a garbled call finish as stop with the text, and no tool call is emitted", async () => {
+    const run = setup([])
+    run.send(host.textDelta("Let me check."), host.toolCalled("c1", GARBLED, {}), host.stepEnded("tool-calls"))
+    expect(await run.drain()).toEqual([
+      { type: "text-delta", text: "Let me check." },
+      { type: "finish", reason: "stop", usage: undefined },
+    ])
+    expect(run.stops).toBe(1)
+  })
+
+  test("reasoning is not an answer: a garbled call after reasoning fails the run", async () => {
+    const run = setup([])
+    run.send(host.reasoningDelta("thinking"), host.toolCalled("c1", GARBLED, {}), host.stepEnded("tool-calls"))
+    const events = await run.drain()
+    expect(events.at(-1)).toEqual(NO_ANSWER)
+    expect(events.some((event) => event.type === "tool-call")).toBe(false)
+  })
+
+  test("the run ends without a step end: a garbled call and no text fails at execution end", async () => {
+    const run = setup([])
+    run.send(host.toolCalled("c1", GARBLED, {}), host.executionSucceeded())
+    expect(await run.drain()).toEqual([NO_ANSWER])
+  })
+
+  test("a step that ends tool-calls with no valid call and text is a stop, and the host is stopped before another step", async () => {
+    const run = setup(["get_weather"])
+    run.send(host.textDelta("ok"), host.stepEnded("tool-calls"))
+    expect((await run.drain()).at(-1)).toEqual({ type: "finish", reason: "stop", usage: undefined })
+    expect(run.stops).toBe(1)
+  })
+
+  test("a declared call is still returned as a tool call (unchanged)", async () => {
+    const run = setup(["get_weather"])
+    run.send(host.toolCalled("c1", "get_weather", { city: "Paris" }), host.stepEnded("tool-calls"))
+    expect(await run.drain()).toEqual([
+      { type: "tool-call", id: "c1", name: "get_weather", input: { city: "Paris" } },
+      { type: "finish", reason: "tool-calls", usage: undefined },
+    ])
+  })
+
+  test("the drop is logged at warn once per call, with the name cut to 64 characters and no call input", async () => {
+    const run = setup([])
+    run.send(host.toolCalled("c1", GARBLED, { secret: "SECRET-463" }), host.toolCalled("c1", GARBLED, { secret: "SECRET-463" }), host.stepEnded("tool-calls"))
+    await run.drain()
+    const lines = logs.of("tool_call.undeclared")
+    expect(lines).toHaveLength(1)
+    expect(lines[0]!.fields.tool).toBe(GARBLED.slice(0, 64))
+    expect(lines[0]!.raw).not.toContain("SECRET-463")
   })
 })
 
@@ -129,7 +200,7 @@ async function playWith(toolNames: readonly string[], ...events: BusEnvelope[]):
 
 describe("#202 a request that asked for one tool call keeps the first and drops the rest", () => {
   const twoCalls = async (singleToolCall: boolean) => {
-    const collector = new RequestCollector({ stopTurn: () => {}, requestID: "req_1", singleToolCall })
+    const collector = new RequestCollector({ stopTurn: () => {}, requestID: "req_1", singleToolCall, callerTools: ["first", "second"] })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
     store.dispatch(host.toolCalled("c1", "first", { a: 1 }))
@@ -225,7 +296,7 @@ describe("event mapping", () => {
   })
 
   test("#411 held reasoning text is flushed by a server tool call, so the next delta does not join the id", async () => {
-    const collector = new RequestCollector({ stopTurn: () => {}, requestID: "req_1", toolNames: ["get_weather"], serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3 })
+    const collector = new RequestCollector({ stopTurn: () => {}, requestID: "req_1", toolNames: ["get_weather"], callerTools: ["get_weather"], serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3 })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
     store.dispatch(host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"))
@@ -484,7 +555,7 @@ describe("#391 a host retry before any output moves a fallback chain on", () => 
   const upstream520 = { type: "provider.internal", status: 520, message: "upstream 520" }
   function failFast(failFastRetry: boolean) {
     let stops = 0
-    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", failFastRetry })
+    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", failFastRetry, callerTools: [] })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
     return { collector, store, get stops() { return stops } }

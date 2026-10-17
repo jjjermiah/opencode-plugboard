@@ -410,7 +410,8 @@ describe("#33 the response and the host execution end separately", () => {
   test("a tool-call turn interrupts once at the step end, and the guard is retired until the execution ends", async () => {
     const run = setup()
     run.answer((id) => [bus(id).toolCalled("c1", "lookup", { q: 1 }), bus(id).stepEnded("tool-calls")])
-    const events = await drain(run.caller.stream(plugRequest(), run.context))
+    // `lookup` is declared (#463): a call to a name the request did not declare is dropped instead.
+    const events = await drain(run.caller.stream(plugRequest({ tools: [{ name: "lookup", description: "lookup", parameters: {} }] }), run.context))
     expect(events).toEqual([{ type: "tool-call", id: "c1", name: "lookup", input: { q: 1 } }, { type: "finish", reason: "tool-calls", usage: undefined }])
     expect(run.port.interrupted).toEqual(["ses_1"])
     expect(run.sessions.lookup("ses_1")).toBeDefined()

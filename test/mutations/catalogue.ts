@@ -828,6 +828,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/http/chat.test.ts", "test/http/transport.test.ts"],
   },
   {
+    id: "P463-undeclared-call-forwarded",
+    invariant: "#463",
+    file: "src/session/events.ts",
+    find: "        if (!this.callerNames.has(name)) return this.dropUndeclared(id, name)",
+    replace: "        if (false) return this.dropUndeclared(id, name)",
+    tests: ["test/http/undeclared-tool-calls.test.ts", "test/session/collector.test.ts"],
+  },
+  {
     id: "I11-session-before-backend-ready",
     invariant: "I11",
     file: "src/session/caller.ts",
