@@ -9,7 +9,7 @@ on:
   pull_request:
   schedule:
     - cron: "41 4 * * 1"
-  # host-bump.yml starts it on its branch: a pull request opened with GITHUB_TOKEN starts no workflow, and the required Analyze check would never report.
+  # host-bump.yml approves it on its branch: a pull request opened with GITHUB_TOKEN holds its pull_request runs for approval, and the required Analyze check would never report until then.
   workflow_dispatch:
 
 permissions: {}
