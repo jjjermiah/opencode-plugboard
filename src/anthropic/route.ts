@@ -39,6 +39,7 @@ import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
 import { appGeneration, dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
+import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
 import { parseMessagesRequest } from "./request.js"
 import { estimateTokens } from "./tokens.js"
 import { encodeError, messagesStatus, runMessage, sseFrame } from "./response.js"
@@ -202,6 +203,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
 
     const run = await runMessage(events, exchange, () => {})
     if (run.failure || !run.message) return fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
+    if (run.structuredFallback) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
     sendJson(response, 200, run.message)
   }
 }

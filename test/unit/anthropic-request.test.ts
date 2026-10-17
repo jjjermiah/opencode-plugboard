@@ -19,6 +19,8 @@ const body = (extra: Record<string, unknown> = {}) => ({ model: "test/echo", max
 const tool = (name: string, extra: Record<string, unknown> = {}) => ({ name, input_schema: { type: "object" }, ...extra })
 const toolUse = (id: string, name: string, input: unknown = {}) => ({ type: "tool_use", id, name, input })
 const image = (source: unknown) => ({ type: "image", source })
+const SCHEMA = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false }
+const format = (schema: unknown = SCHEMA) => ({ type: "json_schema", schema })
 
 describe("#411 a signed thinking block replays the text it was signed for", () => {
   test("a block whose text plugboard rewrote replays the original text, with its signature", () => {
@@ -129,7 +131,16 @@ describe("#4 parseMessagesRequest: rejections are 400s whose message names the f
     ["a thinking budget below 1024", body({ max_tokens: 5000, thinking: { type: "enabled", budget_tokens: 1000 } }), /at least 1024/],
     ["a thinking budget not below max_tokens", body({ max_tokens: 2000, thinking: { type: "enabled", budget_tokens: 2000 } }), /less than max_tokens/],
     ["an unknown thinking type", body({ thinking: { type: "on" } }), /^thinking\.type/],
-    ["output_config.format (structured outputs)", body({ output_config: { format: { type: "json_schema" } } }), /^output_config\.format: structured outputs are not supported/],
+    ["output_config.format that is not an object", body({ output_config: { format: "json" } }), /^output_config\.format: must be an object/],
+    ["output_config.format of another type", body({ output_config: { format: { type: "json_object" } } }), /^output_config\.format\.type: "json_object" is not supported/],
+    ["output_config.format without a schema", body({ output_config: { format: { type: "json_schema" } } }), /^output_config\.format\.schema: Field required/],
+    ["output_config.format with a tool named respond", body({ output_config: { format: format() }, tools: [tool("respond")] }), /^tools: a tool named "respond" collides with output_config\.format/],
+    [
+      "output_config.format with a tool_choice that names a tool",
+      body({ output_config: { format: format() }, tools: [tool("a")], tool_choice: { type: "tool", name: "a" } }),
+      /^tool_choice: a tool_choice that names a tool cannot be combined with output_config\.format/,
+    ],
+    ["output_config.format with a caller tool over maxTools", body({ output_config: { format: format() }, tools: [tool("a"), tool("b")] }), /^tools: 3 tools; plugboard allows 2/],
   ]
   test.each(rejections)("rejects %s", (_name, raw, message) => {
     const parsed = parseMessagesRequest(raw, options)
@@ -302,5 +313,45 @@ describe("#4 parseMessagesRequest: tools, sampling and thinking", () => {
 
   test("the exchange echoes the client's model and stream flag", () => {
     expect(parse(body({ stream: true })).exchange).toEqual({ model: "test/echo", stream: true, thinking: false })
+  })
+})
+
+describe("output_config.format (structured outputs)", () => {
+  test("a json_schema format is the forced respond tool, marked as structured, with the schema on the exchange", () => {
+    const { request, exchange } = parse(body({ output_config: { format: format() } }))
+    expect(request.tools).toEqual([{ name: "respond", description: expect.stringContaining("final answer"), parameters: SCHEMA }])
+    expect(request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    expect(request.structuredTool).toBe("respond")
+    expect(exchange).toEqual({ model: "test/echo", stream: false, thinking: false, structuredTool: "respond", structuredSchema: SCHEMA })
+  })
+
+  test("a null format, or output_config with only an effort, is plain text output", () => {
+    for (const raw of [{ format: null }, { effort: "high" }]) {
+      const { request, exchange } = parse(body({ output_config: raw }))
+      expect(request.tools).toEqual([])
+      expect(request.structuredTool).toBeUndefined()
+      expect(exchange.structuredTool).toBeUndefined()
+    }
+  })
+
+  test("with caller tools the model may call one of them or respond: the choice is required and the exchange says so", () => {
+    const { request, exchange } = parse(body({ output_config: { format: format() }, tools: [tool("a")] }))
+    expect(request.tools.map((t) => t.name)).toEqual(["a", "respond"])
+    expect(request.toolChoice).toBe("required")
+    expect(exchange.callerTools).toBe(true)
+  })
+
+  test("tool_choice any with a caller tool also leaves the model a choice; none leaves only respond", () => {
+    const any = parse(body({ output_config: { format: format() }, tools: [tool("a")], tool_choice: { type: "any" } }))
+    expect(any.request.toolChoice).toBe("required")
+    expect(any.request.tools.map((t) => t.name)).toEqual(["a", "respond"])
+    const none = parse(body({ output_config: { format: format() }, tools: [tool("a")], tool_choice: { type: "none" } }))
+    expect(none.request.tools.map((t) => t.name)).toEqual(["respond"])
+    expect(none.request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    expect(none.exchange.callerTools).toBeUndefined()
+  })
+
+  test("effort and thinking still pick the variant next to a format", () => {
+    expect(parse(body({ output_config: { format: format(), effort: "low" } })).reasoningEffort).toBe("low")
   })
 })

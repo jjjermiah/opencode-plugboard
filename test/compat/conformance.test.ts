@@ -309,6 +309,20 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
     })
   })
 
+  test("output_config.format: the answer is a Message with one text block, and its stream is SDK events with a text_delta", async () => {
+    const output_config = { format: { type: "json_schema", schema: { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] } } }
+    await withRoute([ev.call("call_s", "respond", { answer: "42" }), ev.finish("tool-calls", USAGE)], async (route) => {
+      const one = await route.send(messagesPost({ model: "fast", max_tokens: 64, output_config, messages: [{ role: "user", content: tag("structured") }] }))
+      expect(one.status).toBe(200)
+      expectConforms("anthropic", "Message", one.json(), [])
+      expect(one.json()).toMatchObject({ content: [{ type: "text", text: '{"answer":"42"}' }], stop_reason: "end_turn" })
+      const streamed = await route.send(messagesPost({ model: "fast", max_tokens: 64, output_config, stream: true, messages: [{ role: "user", content: tag("structured") }] }))
+      expectAnthropicStream(streamed.text, [])
+      expect(streamed.text).toContain("text_delta")
+      expect(streamed.text).not.toContain("input_json_delta")
+    })
+  })
+
   test("#107 an error body (401, 400, a provider 429) is an ErrorResponse", async () => {
     const unauthorized = await server.send({ ...messagesPost({ model: "fast", max_tokens: 8, messages: [] }), headers: { ...anthropicAuth, "x-api-key": "nope" } })
     expect(unauthorized.status).toBe(401)

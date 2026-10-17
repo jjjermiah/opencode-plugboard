@@ -96,8 +96,7 @@ export const ROWS: readonly Row[] = [
       stream: at(HTTP + "messages.test.ts", "a stream is Anthropic's named event sequence, with no [DONE]"),
       tools: { tests: [{ file: UNIT + "anthropic-response.test.ts", text: "a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use" }, { file: UNIT + "anthropic-request.test.ts", text: "a tool round trip: tool_use becomes a call" }] },
       images: at(UNIT + "anthropic-request.test.ts", "image and document blocks: base64 becomes a data URL, url passes through, a text document becomes text"),
-      // The structured output request is refused with a 400, and the test pins that refusal.
-      structured: at(UNIT + "anthropic-request.test.ts", "output_config.format (structured outputs)"),
+      structured: at(HTTP + "messages.test.ts", "a non-streamed answer is the JSON as a text block with end_turn", "a streamed answer is one text_delta of the JSON"),
       n: na("the Messages body has no n parameter"),
       errors: at(HTTP + "messages.test.ts", "a model error keeps its status in Anthropic's shape", "#38 a stream failing before output keeps its HTTP status"),
     },
