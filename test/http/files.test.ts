@@ -169,7 +169,7 @@ describe("what is accepted", () => {
     const { server } = await route()
     expect((await upload(server, "alpha", { bytes: Buffer.from("not an image"), name: "x.png", type: "image/png" })).status).toBe(400)
     expect((await upload(server, "alpha", { bytes: Buffer.from("MZ binary\u0000\u0001"), name: "x.exe", type: "application/octet-stream" })).status).toBe(400)
-    expect((await upload(server, "alpha", { bytes: Buffer.from([0xff, 0xfe, 0x00, 0x01]), name: "x.txt", type: "text/plain" })).status).toBe(400)
+    expect((await upload(server, "alpha", { bytes: Buffer.from([0xff, 0xfe, 0x41, 0x42]), name: "x.txt", type: "text/plain" })).status).toBe(400)
     expect((await upload(server, "alpha", { bytes: Buffer.alloc(0), name: "empty.txt", type: "text/plain" })).status).toBe(400)
     expect((await upload(server, "alpha", { bytes: Buffer.from("{broken"), name: "x.json", type: "application/json" })).status).toBe(400)
     const refused = (await upload(server, "alpha", { bytes: Buffer.from("not an image"), name: "x.png", type: "image/png" })).json()

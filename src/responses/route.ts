@@ -73,7 +73,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   if (isPlugError(inlined)) return fail(inlined)
   const inlinedChain = history === undefined ? undefined : inlineFiles("responses", { input: history }, loaded)
   if (inlinedChain !== undefined && isPlugError(inlinedChain)) return fail(inlinedChain)
-  const parsed = parseResponsesRequest(inlined, host.options, (itemId) => findItem(app, itemId), inlinedChain?.input)
+  const parsed = parseResponsesRequest(inlined, host.options, (itemId) => findItem(app, itemId), (inlinedChain as { input: ReadonlyArray<Record<string, unknown>> } | undefined)?.input)
   if (isPlugError(parsed)) return fail(parsed)
   // `store: false` keeps nothing for retrieval, so its output items cannot be referenced later (#426).
   const keeps = (body as { store?: unknown }).store !== false

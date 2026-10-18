@@ -166,7 +166,7 @@ function replacement(api: FileApi, part: Json, id: string, file: InlineFile, kin
  * load under the caller's app; an id missing there is a 404 `file_not_found` (the same for an unknown, deleted, expired or
  * another app's file, I33). A body with no reference is returned as it came, with no copy.
  */
-export function inlineFiles<T>(api: FileApi, body: T, files: ReadonlyMap<string, InlineFile>): T | PlugError {
+export function inlineFiles(api: FileApi, body: unknown, files: ReadonlyMap<string, InlineFile>): unknown {
   const result = mapParts(api, body, (part) => {
     const id = refOf(api, part)
     if (id === undefined) return undefined
@@ -176,7 +176,7 @@ export function inlineFiles<T>(api: FileApi, body: T, files: ReadonlyMap<string,
     if (!isPlugError(out)) ORIGINALS.set(out, part)
     return out
   })
-  return result as T | PlugError
+  return result
 }
 
 /** Responses input items with the parts `inlineFiles` made put back as the references they came from (a stored response keeps `file_id`, not bytes). */

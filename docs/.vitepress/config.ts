@@ -192,6 +192,7 @@ export default defineConfig({
           { text: "Anthropic Messages", link: "/messages" },
           { text: "Gemini", link: "/gemini" },
           { text: "Legacy completions", link: "/completions" },
+          { text: "Files API", link: "/files" },
           { text: "Response headers", link: "/headers" },
           { text: "Errors", link: "/errors" },
           { text: "History", link: "/history" },

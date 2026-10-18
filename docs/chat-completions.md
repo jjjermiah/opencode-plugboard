@@ -16,7 +16,7 @@ Plugboard is stateless: every request carries the whole conversation in `message
 | Field | What plugboard does |
 | --- | --- |
 | `model` | An alias, or `provider/model[#variant]` that `models` allows. |
-| `messages` | `system`, `developer`, `user`, `assistant` and `tool` messages. User content can hold text and images. |
+| `messages` | `system`, `developer`, `user`, `assistant` and `tool` messages. User content can hold text and images. A `file` part takes `file_data` (a PDF data URL) or, since next, a `file_id` from the [Files API](files.md) (an unknown id is a 404). |
 | `stream`, `stream_options.include_usage` | Server-sent events. With `include_usage`, the last chunk carries the usage. |
 | `tools`, `tool_choice`, `parallel_tool_calls` | Tool calls come back to you; plugboard never runs them. `parallel_tool_calls: false` keeps the first call and sets `x-plugboard-parallel-tools: limited`. |
 | `response_format` | `json_schema` or `json_object`. See [structured output](#structured-output). |

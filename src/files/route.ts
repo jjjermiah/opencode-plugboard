@@ -235,7 +235,7 @@ export async function loadFiles(host: RouteHost, app: string, ids: ReadonlyArray
 }
 
 /** The request body with every file it names inlined, or the 404 or 400 to answer with. A body that names no file is returned as it came. */
-export async function inlineRequestFiles<T>(host: RouteHost, app: string, api: FileApi, body: T, scope: RequestScope): Promise<T | PlugError> {
+export async function inlineRequestFiles(host: RouteHost, app: string, api: FileApi, body: unknown, scope: RequestScope): Promise<unknown> {
   const ids = fileRefs(api, body)
   if (ids.length === 0) return body
   const files = await loadFiles(host, app, ids, scope)
