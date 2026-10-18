@@ -4,9 +4,10 @@
  *
  * Pure function: no I/O. The caller sends the whole conversation in `input` each time, which is
  * how history already works. An `item_reference` is resolved through the `resolve` argument (the
- * route passes the per-app store of recent answers, src/responses/store.ts; #147). Anything else that
- * needs server-side state (`previous_response_id`, `conversation`, `background`) or a hosted tool
- * is rejected with 400 `unsupported_parameter` naming the field. The route resolves `model` to a
+ * route passes the per-app store of recent answers, src/responses/store.ts; #147). A
+ * `previous_response_id` is resolved by the route (src/responses/state.ts), which passes the stored
+ * items as `history`. Anything else that needs server-side state (`conversation`, `background`) or a
+ * hosted tool is rejected with 400 `unsupported_parameter` naming the field. The route resolves `model` to a
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
@@ -30,6 +31,8 @@ type JsonObject = Record<string, unknown>
 export interface ParsedResponses {
   /** The model call, minus the model ref the route resolves from `request.model`. */
   readonly request: Omit<PlugRequest, "ref">
+  /** The new `input` as items, with `item_reference`s replaced by the items they name (what a stored response keeps). */
+  readonly inputItems: ReadonlyArray<JsonObject>
   /** Response presentation state for the encoder; never reaches the model call. */
   readonly exchange: ResponsesExchange
   readonly reasoningEffort?: string
@@ -145,9 +148,22 @@ const resolveReference = (item: JsonObject, param: string, resolve: ItemResolver
   return found
 }
 
-const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system: string[]; messages: PlugMessage[] } | PlugError => {
-  if (typeof input === "string") return { system: [], messages: [{ role: "user", content: [{ type: "text", text: input }] }] }
-  if (!Array.isArray(input) || input.length === 0) return bad("input must be a string or a non-empty array of items", "input")
+/** A string `input` as the item list OpenAI treats it as: one user message. */
+const userItem = (text: string): JsonObject => ({ type: "message", role: "user", content: [{ type: "input_text", text }] })
+
+/**
+ * The items of a stored response's chain (`history`: its input, then its output) and the new `input`, as neutral messages.
+ * `resolved` is the new input with its `item_reference`s replaced by the items they name: with `history`, the input the
+ * model saw (src/responses/state.ts).
+ */
+const parseInput = (
+  input: unknown,
+  resolve: ItemResolver | undefined,
+  history: ReadonlyArray<JsonObject> = [],
+): { system: string[]; messages: PlugMessage[]; resolved: JsonObject[] } | PlugError => {
+  const fresh = typeof input === "string" ? [userItem(input)] : input
+  if (!Array.isArray(fresh) || fresh.length === 0) return bad("input must be a string or a non-empty array of items", "input")
+  const resolved: JsonObject[] = []
 
   const system: string[] = []
   const messages: PlugMessage[] = []
@@ -158,11 +174,13 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system
     pending = undefined
   }
 
-  for (const [index, given] of input.entries()) {
+  for (const [position, given] of [...history, ...fresh].entries()) {
+    const index = position - history.length
     const param = `input[${index}]`
     if (!isRecord(given)) return bad("Each input item must be an object", param)
     const item = given.type === "item_reference" ? resolveReference(given, param, resolve) : given
     if (isPlugError(item)) return item
+    if (index >= 0) resolved.push(item)
     const type = item.type ?? (item.role !== undefined ? "message" : undefined)
     switch (type) {
       case "message": {
@@ -224,7 +242,7 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system
   }
   flush()
   if (messages.length === 0) return bad("input has no user, assistant or tool items", "input")
-  return { system, messages }
+  return { system, messages, resolved }
 }
 
 const parseTools = (raw: unknown): PlugTool[] | PlugError => {
@@ -315,16 +333,19 @@ const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
 
 /** Fields that need server-side state or features plugboard does not have. */
 const checkUnsupported = (body: JsonObject): PlugError | undefined => {
-  if (body.previous_response_id != null)
-    return unsupported("previous_response_id is not supported: plugboard is stateless, send the full conversation in input", "previous_response_id")
-  if (body.conversation != null) return unsupported("conversation is not supported: plugboard is stateless", "conversation")
+  if (body.conversation != null)
+    return unsupported("conversation is not supported: continue a stored response with previous_response_id, or send the full conversation in input", "conversation")
   if (body.background === true) return unsupported("background mode is not supported", "background")
   if (body.prompt != null) return unsupported("Stored prompts (prompt) are not supported", "prompt")
   if (body.top_logprobs != null && body.top_logprobs !== 0) return unsupported("top_logprobs is not supported", "top_logprobs")
   if (body.truncation != null && body.truncation !== "disabled") return unsupported('Only truncation "disabled" is supported', "truncation")
 }
 
-export function parseResponsesRequest(body: unknown, options: PlugboardOptions, resolve?: ItemResolver): ParsedResponses | PlugError {
+/**
+ * `history` is the stored response `previous_response_id` named: its input and output items, ahead of the new `input`.
+ * The route looks it up (src/responses/state.ts); this decoder only checks the field's type. `instructions` are never carried over.
+ */
+export function parseResponsesRequest(body: unknown, options: PlugboardOptions, resolve?: ItemResolver, history?: ReadonlyArray<JsonObject>): ParsedResponses | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (body.input == null) return bad("input is required", "input")
@@ -333,8 +354,10 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   if (body.instructions != null && typeof body.instructions !== "string") return bad("instructions must be a string", "instructions")
   if (body.reasoning != null && !isRecord(body.reasoning)) return bad("reasoning must be an object", "reasoning")
   if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
+  if (body.previous_response_id != null && (typeof body.previous_response_id !== "string" || body.previous_response_id.length === 0))
+    return bad("previous_response_id must be the id of a response", "previous_response_id")
 
-  const parsed = parseInput(body.input, resolve)
+  const parsed = parseInput(body.input, resolve, history)
   if (isPlugError(parsed)) return parsed
   const callerTools = parseTools(body.tools)
   if (!Array.isArray(callerTools)) return callerTools
@@ -382,6 +405,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   const text = isRecord(body.text) ? body.text : undefined
   return {
     request,
+    inputItems: parsed.resolved,
     exchange: {
       model: body.model,
       stream: body.stream === true,
@@ -391,7 +415,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
         max_output_tokens: generation.maxTokens ?? null,
         metadata: isRecord(body.metadata) ? body.metadata : {},
         parallel_tool_calls: body.parallel_tool_calls !== false,
-        previous_response_id: null,
+        previous_response_id: typeof body.previous_response_id === "string" ? body.previous_response_id : null,
         reasoning: { effort: reasoningEffort ?? null, summary: null },
         store: body.store !== false,
         temperature: generation.temperature ?? null,

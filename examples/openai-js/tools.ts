@@ -71,7 +71,7 @@ export async function runResponses(client: OpenAI, model: string) {
   return responsesObservations(first, second, call)
 }
 
-/** The same round trip with previous_response_id in place of the replayed history. Plugboard is stateless and refuses it. */
+/** The same round trip with previous_response_id in place of the replayed history. Plugboard keeps the first answer (store is on by default) and continues from it. */
 export async function runResponsesPreviousId(client: OpenAI, model: string) {
   const first = await client.responses.create({ model, input: PROMPT, tools: [responsesTool], max_output_tokens: 1024 })
   const call = first.output.find((item): item is OpenAI.Responses.ResponseFunctionToolCall => item.type === "function_call")

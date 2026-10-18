@@ -39,9 +39,9 @@ describe("POST /v1/responses", () => {
 
   test("a refused stateful field is a 400 before any model call", async () => {
     const caller = await route([ev.finish()])
-    const reply = await server!.send(responses({ previous_response_id: "resp_1" }))
+    const reply = await server!.send(responses({ conversation: "conv_1" }))
     expect(reply.status).toBe(400)
-    expect(reply.json().error).toMatchObject({ code: "unsupported_parameter", param: "previous_response_id" })
+    expect(reply.json().error).toMatchObject({ code: "unsupported_parameter", param: "conversation", message: expect.stringContaining("previous_response_id") })
     expect(caller.calls).toEqual([])
   })
 

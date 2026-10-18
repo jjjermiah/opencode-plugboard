@@ -16,6 +16,8 @@ import { createMetrics, type Metrics } from "../../src/metrics.js"
 import { createOpenAiRoute } from "../../src/openai/route.js"
 import type { UsageRecorder } from "../../src/usage.js"
 import type { KeyStore } from "../../src/keys.js"
+import { createResponseState, createResponseStore, type ResponseStore } from "../../src/responses/state.js"
+import { FakeStorage } from "./usage.js"
 import type { SessionPromptDeps } from "../../src/session/caller.js"
 import type { RuntimeStatus } from "../../src/runtime.js"
 import { CATALOG, testOptions } from "./fixtures.js"
@@ -195,6 +197,8 @@ export interface RouteSetup {
   readonly keys?: KeyStore
   /** The session port behind the count routes' prompt (#201). Absent: the count covers the caller's request alone. */
   readonly session?: SessionPromptDeps
+  /** The stored Responses store (src/responses/state.ts). Defaults to one on a fresh `FakeStorage`; pass your own to share storage across servers (a restart). */
+  readonly responses?: ResponseStore
 }
 
 /** The real OpenAI route behind a loopback listener, with a fake model caller and a fixed catalog. */
@@ -215,6 +219,7 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
     ...(setup.usage ? { usage: setup.usage } : {}),
     ...(setup.keys ? { keys: setup.keys } : {}),
     ...(setup.session ? { session: setup.session } : {}),
+    responses: setup.responses ?? createResponseStore({ storage: new FakeStorage(), state: createResponseState() }),
   })
   return { ...server, options, metrics }
 }

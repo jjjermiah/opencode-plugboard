@@ -18,6 +18,111 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - Contributor tooling for parallel branches, no change for users. `CHANGELOG.md` merges with git's union driver, so two branches that add bullets under `[Unreleased]` no longer conflict in a local merge (GitHub's web merge ignores the attribute). `bun run regen` rebuilds `docs/compatibility.md`, the `examples/README.md` table and the test-count floors after a merge. A new option's version marker is written as the placeholder `(since next)`, which the release script replaces with the released version, and CI fails when one is left in a released changelog section. The scripted Gemini CLI and Aider examples no longer share a temp directory and `~/.aider` with a run in another worktree, which could break two `bun run validate` runs at the same time.
 
+## [0.51.0] - 2026-10-17: Responses Remember
+
+**Full diff:** [v0.50.0...v0.51.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...v0.51.0)
+
+### Added
+
+- Stored Responses, so `previous_response_id` works (since 0.51.0, [#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)). An answer made with `store` on, which is the default, is kept per app in the plugin's host storage: every input item the model saw (each with an id, `item_reference`s replaced by the item they name) and the response object. A request with `previous_response_id` gets that response's input and output ahead of its own `input`, so chains of chains work. `instructions` do not carry over, as on OpenAI. A streamed answer is stored before its closing event goes out, so it can be retrieved at once. Three routes join it: `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` (answers `{id, object: "response.deleted", deleted: true}`) and `GET /v1/responses/{id}/input_items` with `limit` (1 to 100, default 20), `order` and `after`. They use OpenAI's error body, and they count as the `responses` endpoint for `apps.<name>.endpoints`. Another app's id is the same miss as an unknown, deleted or expired one, so isolation between apps holds (new invariant I32): a 404 on the three id routes and, as on OpenAI, a 400 `previous_response_not_found` on `previous_response_id`. The CORS preflight now allows `DELETE`. Records survive a restart. They are kept for the app's `history.maxAgeDays`, or 30 days when that is unset or `0`: a stored response is a whole conversation, so it is never kept forever, and there is no new option. Each app keeps at most 1000 responses and 128 MiB, oldest first, and an answer over 8 MiB stored is answered but not kept (`responses.store_skipped` in the log). `store: false` keeps nothing, as before. No id and no body is logged. `conversation` is still refused, and its message now points at `previous_response_id`. The `item_reference` memory (one hour, in the process) is unchanged, except that a `DELETE` also clears the response's items from it. The openai-python and openai-js `responses-previous-id` scenario is no longer a gap.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (6 commits)</summary>
+
+#### Features
+
+**feat(responses): store responses, previous_response_id and the stored-response routes** ([`08a9848`](https://github.com/jjjermiah/opencode-plugboard/commit/08a9848d450bdc6a5ee56156a2e9ba71f5f5e5c8))
+
+Plugboard refused previous_response_id and kept nothing but the output items of recent answers in memory for item_reference. It now stores each answer made with store on (the default), per app, in the plugin's host storage, and serves OpenAI's stored-response API on top of it.
+
+What changed
+- state.ts (new): the durable store. A record is `responses/<app>/id/<id>` (JSON: createdAt, bytes, input items, response object) plus an index entry `responses/<app>/at/<ms>-<bytes>-<id>` in creation order, so a sweep can trim by age and size without reading any record.
+- previous_response_id: the route loads the stored response of the same app and passes its input and output to the pure decoder as `history`, ahead of the new input. Each stored response holds its whole input, so chains of chains are one lookup. instructions do not carry over (OpenAI's documented rule). An unknown, deleted, expired or other app's id is the same 404 (code previous_response_not_found, param previous_response_id).
+- GET and DELETE /v1/responses/{id} and GET /v1/responses/{id}/input_items (limit 1 to 100 default 20, order desc default, after = item id), with OpenAI's error body (404 invalid_request_error). They count as the responses endpoint for apps.<name>.endpoints and are logged under their templates, never with the id. stream=true on GET is a 400 unsupported_parameter.
+- Input items get ids (the caller's, else msg_, fc_, fco_), and an item_reference in the input is stored as the item it names.
+- A streamed answer's response.completed / response.incomplete frame is held until the record is written, so a client that retrieves on seeing it finds it.
+- conversation stays refused; its message now points at previous_response_id.
+- DELETE also drops the response's items from the in-memory item_reference memory, which is otherwise unchanged (an item id names no response, so the durable keys cannot find it).
+- Architecture invariant I32: the app is the first segment of every storage key and an app name has no slash, so an app can only build keys under its own prefix; ids are resp_ + 122 random bits; no id or body is logged. Mutations I32-* pin the key, both routes, the id shape check, expiry, store: false and the sweep.
+
+Decisions
+- Retention follows history.maxAgeDays (per app or global), 30 days when unset or 0. No new option: one number says how long an app's history lives. 0 means "keep sessions forever" for the session index, but a stored response is a whole conversation with prompts and images, so it gets the 30-day default instead of forever; the count and byte caps would bound it anyway.
+- Bounds per app: 1000 records and 128 MiB; a record over 8 MiB stored is answered but not kept (responses.store_skipped, no ids). A record past its age is a 404 on read at once and deleted; a sweep from request handling (never setup, I3) trims the rest, oldest first, at most every 10 minutes or 50 writes.
+- RouteHost.responses is required, not optional: an optional store made the scripted example server silently 404 every previous id.
+- Rejected: a 400 for an unknown previous_response_id (OpenAI's real status, as far as I know) in favour of the handoff's 404. Rejected: resolving item_reference through the durable store (needs an item index per write).
+
+Tests
+- test/http/responses-stored.test.ts: a chain of 3, tool chain, cross-app 404 on every route, delete then 404, input_items paging and errors, store: false (JSON and stream), retention (default, global, per app, 0), too large, storage failure, restart on shared storage, streaming with previous_response_id, logs carry no id or body.
+- test/unit/responses-state.test.ts: keys, isolation, sweep by age, count and bytes, restart, retentionDaysFor.
+- Conformance: openai.json re-vendored with ResponseItemList (gemini.json left as it was); a chained Response, its GET copy and the input_items list conform.
+- Manifest rows for the three routes; eight I32 mutations.
+- examples: the openai-python and openai-js responses-previous-id scenario is no longer a gap; scripted runs regenerated.
+
+Refs #104
+
+#### Fixes
+
+**fix(responses): unknown previous_response_id is a 400, and CORS allows DELETE** ([`60ac246`](https://github.com/jjjermiah/opencode-plugboard/commit/60ac246a45d7a94b534dbcc4e6a9cea202253948))
+
+OpenAI answers a POST with an unknown previous_response_id with 400 invalid_request_error (code previous_response_not_found, param previous_response_id, message "Previous response with id '<id>' not found."). Plugboard answered 404. It now answers 400, and another app's id gets the byte-identical 400, so isolation (I32) stays indistinguishable. GET, DELETE and input_items on an unknown or foreign id stay 404, which is what OpenAI does there.
+
+The CORS preflight listed GET, POST, OPTIONS, so a browser could not call DELETE /v1/responses/{id}. It now lists DELETE too. A new test sends a DELETE preflight from an allowed origin with a keyed app: 204 without a key, and the real DELETE still 401 without one.
+
+Validation: bun run validate --mutations passes all 7 steps.
+
+Refs #104
+
+#### Tests
+
+**test(responses): ratchet the test-count floors after merging main** ([`58e2ee4`](https://github.com/jjjermiah/opencode-plugboard/commit/58e2ee47e855b9236b693ef0a4e65564fef33957))
+
+The floors file conflicted with main's own ratchet. After the merge, the test gate raised each layer to the combined count of both branches.
+
+Validation: bun run validate --mutations passes all 7 steps (typecheck, test, manifest, pack, docs, examples, mutations).
+
+Refs #104
+
+#### Docs
+
+**docs(site): list the review bot page in the Project sidebar** ([`fd0ce36`](https://github.com/jjjermiah/opencode-plugboard/commit/fd0ce36db97b1dbe4d7742060dd3f4d37767206e))
+
+docs/review-bot.md was reachable only by link. It now sits next to Releasing in the Project group.
+
+Validation: docs build passes in CI.
+
+**docs(examples): regenerate the examples index for the passing Responses rows** ([`e5199f7`](https://github.com/jjjermiah/opencode-plugboard/commit/e5199f7c82bfb7e0ffdf662213352398e3eb0396))
+
+The openai-python and openai-js scripted runs now pass, so their verdict in examples/README.md moved from partial to pass. CI's index check caught the stale table.
+
+Refs #104
+
+#### CI and tooling
+
+**ci(ci): add a review bot so main can require one approval** ([`339d510`](https://github.com/jjjermiah/opencode-plugboard/commit/339d5100e23f9538b26faf81a8441d669f83c7ff))
+
+main cannot require an approving review today: the repository has one maintainer, who cannot approve their own pull requests. The owner chose a dedicated GitHub App plus an LLM API key on GitHub-hosted runners. This adds the workflow, the script, tests and the setup guide. Nothing runs until the App exists.
+
+What changed:
+- .github/workflows/review-gate.yml runs on workflow_run of CI, Commits and CodeQL (completed, success, same-repository only). The last of the three to finish finds every required check green and reviews. Top-level permissions are empty. The App token comes from actions/create-github-app-token (v3.3.0, pinned by SHA) with client-id from vars.REVIEW_APP_CLIENT_ID. Missing variables or secrets skip with a notice, never a failure. Only the script is checked out, from the default branch; pull request code is never checked out, so Dangerous-Workflow stays clean.
+- .github/scripts/review-gate.ts reads the pull request, its diff (diff media type) and AGENTS.md from the base branch through the API. A diff over 200 KB gets a COMMENT. It calls Anthropic Messages (default model claude-sonnet-5-5, vars.REVIEW_LLM_MODEL overrides) for a strict JSON verdict and parses it robustly. It posts one review with commit_id set to the tested head: APPROVE with notes, REQUEST_CHANGES with blockers. A failed call or an unparseable answer posts a COMMENT and never approves. The head is checked again after the model answers, and the required checks are re-read from the API just before an approval.
+- .github/scripts/merge-gate.ts, used by pr-wait.ts and release.ts: when the ruleset requires approvals, both now wait for an approving review on the current head (15 minutes) and stop on changes requested. With strict status checks, pr-wait reports a PR behind main (--merge updates the branch itself) and release stops before merging with the exact commands to update and --resume. With today's ruleset (0 approvals, not strict) behavior is unchanged.
+- docs/review-bot.md: the owner steps (create and install the App, variables and secrets), the proof procedure on a throwaway branch with its own ruleset, the four ruleset fields to flip afterwards, and how pr-wait and release interact. releasing.md and development.md point to it.
+
+Decisions and rejected alternatives:
+- workflow_run over pull_request_target: the script that runs is always the default branch's, and no PR code is needed.
+- Triggering on all three required workflows instead of only CI, because CI can finish before CodeQL; otherwise the approval would never be posted for that head.
+- App permissions: Pull requests rw, Contents read, Checks read (Metadata is implicit). Actions read and commit statuses are not needed because the script reads check runs.
+- Read the diff and rules through the API instead of a checkout; AGENTS.md comes from the base branch so a PR cannot rewrite its own review rules.
+- Judging approvals in merge-gate.ts from the reviews list instead of reviewDecision, whose behavior with rulesets is not documented.
+
+Validation: bun run validate --skip examples (typecheck, test, manifest, pack, docs all pass), 26 review-gate and 6 merge-gate tests, actionlint clean, zizmor clean (one justified ignore for workflow_run). Test-count floors ratcheted by the validate run.
+
+Not verified: the workflow cannot run until the App exists, so the posted review, the App token step, that an App approval counts toward the ruleset, and Dependabot secret handling are unproven. docs/review-bot.md has the procedure.
+
+</details>
+<!-- commit-detail:end -->
+
 ## [0.50.0] - 2026-10-17: Every Shape, Every Count
 
 **Full diff:** [v0.49.0...v0.50.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...v0.50.0)
@@ -8482,7 +8587,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...HEAD
+[0.51.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...v0.49.0
 [0.48.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...v0.48.0

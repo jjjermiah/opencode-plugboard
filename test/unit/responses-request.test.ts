@@ -45,7 +45,6 @@ function parse(raw: unknown): ParsedResponses {
 
 describe("parseResponsesRequest: stateless and hosted features are refused with unsupported_parameter", () => {
   const refusals: Array<[string, Record<string, unknown>, string]> = [
-    ["previous_response_id", { previous_response_id: "resp_1" }, "previous_response_id"],
     ["conversation", { conversation: "conv_1" }, "conversation"],
     ["background mode", { background: true }, "background"],
     ["stored prompts", { prompt: { id: "p" } }, "prompt"],
@@ -66,6 +65,52 @@ describe("parseResponsesRequest: stateless and hosted features are refused with 
 
   test("background false, top_logprobs 0 and truncation disabled are accepted", () => {
     expect(isPlugError(parseResponsesRequest(body({ background: false, top_logprobs: 0, truncation: "disabled" }), options))).toBe(false)
+  })
+
+  test("conversation is refused with a message that points at previous_response_id", () => {
+    expect(parseResponsesRequest(body({ conversation: "conv_1" }), options)).toMatchObject({ message: expect.stringContaining("previous_response_id") })
+  })
+})
+
+describe("previous_response_id: the stored chain is the context ahead of the new input", () => {
+  const earlierInput = { id: "msg_a", type: "message", role: "user", content: [{ type: "input_text", text: "first" }] }
+  const earlierOutput = { id: "msg_b", type: "message", status: "completed", role: "assistant", content: [{ type: "output_text", text: "one", annotations: [] }] }
+
+  test("the history comes first, then the new input, and the echoed object names the previous id", () => {
+    const parsed = parseResponsesRequest(body({ input: "second", previous_response_id: "resp_x" }), options, undefined, [earlierInput, earlierOutput])
+    expect(isPlugError(parsed)).toBe(false)
+    const { request, exchange, inputItems } = parsed as ParsedResponses
+    expect(request.messages.map((m) => m.role)).toEqual(["user", "assistant", "user"])
+    expect(exchange.envelope.previous_response_id).toBe("resp_x")
+    // Only the new input comes back as items: the route keeps the history it already holds.
+    expect(inputItems).toEqual([{ type: "message", role: "user", content: [{ type: "input_text", text: "second" }] }])
+  })
+
+  test("instructions are the request's own: the history carries none", () => {
+    const parsed = parse(body({ instructions: "now", previous_response_id: "resp_x" }))
+    expect(parsed.request.system).toEqual(["now"])
+    expect(parse(body()).request.system).toEqual([])
+  })
+
+  test("a function_call_output answers a call from the history", () => {
+    const call = { id: "fc_1", type: "function_call", status: "completed", call_id: "call_1", name: "weather", arguments: "{}" }
+    const parsed = parseResponsesRequest(body({ input: [fnOutput("call_1", "sunny")], previous_response_id: "resp_x" }), options, undefined, [earlierInput, call])
+    expect((parsed as ParsedResponses).request.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"])
+  })
+
+  test("an error in the new input counts its index from the new input, not the history", () => {
+    expect(parseResponsesRequest(body({ input: [{ type: "web_search_call" }] }), options, undefined, [earlierInput, earlierOutput])).toMatchObject({ param: "input[0].type" })
+  })
+
+  test("a previous_response_id that is not a string is a 400 on that field", () => {
+    expect(parseResponsesRequest(body({ previous_response_id: 5 }), options)).toMatchObject({ status: 400, param: "previous_response_id" })
+    expect(parseResponsesRequest(body({ previous_response_id: "" }), options)).toMatchObject({ status: 400, param: "previous_response_id" })
+  })
+
+  test("item_references in the new input come back resolved, so a stored response keeps the items", () => {
+    const known = new Map([["msg_b", earlierOutput as Record<string, unknown>]])
+    const parsed = parseResponsesRequest(body({ input: [{ type: "item_reference", id: "msg_b" }, message("user", "again")] }), options, (id) => known.get(id))
+    expect((parsed as ParsedResponses).inputItems[0]).toEqual(earlierOutput)
   })
 })
 

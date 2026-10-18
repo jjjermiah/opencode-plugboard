@@ -42,9 +42,21 @@ describe("#256 cors: a preflight from an allowed origin is answered before authe
     const reply = await server!.send(preflight(APP))
     expect(reply.status).toBe(204)
     expect(reply.headers["access-control-allow-origin"]).toBe(APP)
-    expect(reply.headers["access-control-allow-methods"]).toBe("GET, POST, OPTIONS")
+    expect(reply.headers["access-control-allow-methods"]).toBe("GET, POST, DELETE, OPTIONS")
     expect(reply.headers["access-control-allow-headers"]).toBe("authorization, content-type, x-api-key, x-goog-api-key")
     expect(reply.headers.vary).toBe("Origin")
+    expect(caller.calls).toEqual([])
+  })
+
+  test("a DELETE preflight on a stored response from an allowed origin is allowed, and needs no key", async () => {
+    const { caller } = await route({ keys: { app: "secret" }, cors })
+    const path = `/v1/responses/resp_${"a".repeat(32)}`
+    const reply = await server!.send({ method: "OPTIONS", path, headers: { origin: APP, "access-control-request-method": "DELETE" } })
+    expect(reply.status).toBe(204)
+    expect(reply.headers["access-control-allow-origin"]).toBe(APP)
+    expect(reply.headers["access-control-allow-methods"]).toContain("DELETE")
+    // The actual DELETE still needs its key.
+    expect((await server!.send({ method: "DELETE", path, headers: { origin: APP } })).status).toBe(401)
     expect(caller.calls).toEqual([])
   })
 
