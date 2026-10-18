@@ -144,7 +144,7 @@ export const ROWS: readonly Row[] = [
   ),
   read(
     "DELETE /v1/responses/{id}",
-    at(HTTP + "responses-stored.test.ts", "DELETE returns the deleted object, then every route for the id is a 404"),
+    at(HTTP + "responses-stored.test.ts", "DELETE returns the deleted object, then every id route is a 404"),
     at(HTTP + "responses-stored.test.ts", "I32 another app reads, lists and deletes nothing of mine: every route is a 404 and the response survives"),
   ),
   read(

@@ -1,7 +1,7 @@
 /**
  * Stored Responses over loopback HTTP: `previous_response_id`, `GET` and `DELETE /v1/responses/{id}` and
  * `GET /v1/responses/{id}/input_items` (src/responses/state.ts). App isolation is the key invariant (I32): an app
- * reads, chains from and deletes only its own responses, and another app's id is the same 404 as an unknown one.
+ * reads, chains from and deletes only its own responses, and another app's id is the same miss as an unknown one (404 on the id routes, 400 on `previous_response_id`).
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { createResponseState, createResponseStore, type ResponseStore } from "../../src/responses/state.js"
@@ -66,22 +66,24 @@ describe("previous_response_id", () => {
     expect(caller.calls[1]!.request.messages.map((message) => message.role)).toEqual(["user", "assistant", "tool"])
   })
 
-  test("an unknown id is a 404 in OpenAI's shape, before any model call", async () => {
+  test("an unknown id is a 400 in OpenAI's shape, before any model call", async () => {
     const { caller, server } = await route()
-    const reply = await server.send(post({ previous_response_id: `resp_${"0".repeat(32)}` }))
-    expect(reply.status).toBe(404)
-    expect(reply.json().error).toMatchObject({ type: "invalid_request_error", code: "previous_response_not_found", param: "previous_response_id" })
+    const id = `resp_${"0".repeat(32)}`
+    const reply = await server.send(post({ previous_response_id: id }))
+    expect(reply.status).toBe(400)
+    expect(reply.json().error).toMatchObject({ type: "invalid_request_error", code: "previous_response_not_found", param: "previous_response_id", message: `Previous response with id '${id}' not found.` })
     expect(caller.calls).toEqual([])
     // A value that is no id of ours is the same answer: nothing is looked up for it.
-    expect((await server.send(post({ previous_response_id: "../../keys/x" }))).status).toBe(404)
+    expect((await server.send(post({ previous_response_id: "../../keys/x" }))).status).toBe(400)
   })
 
-  test("I32 another app's id is the same 404 as an unknown one, and the owner's chain is untouched", async () => {
+  test("I32 another app's id is the same 404 as an unknown one (a 400 on POST), and the owner's chain is untouched", async () => {
     const { caller, server } = await route({ keys: KEYS })
     const mine = (await server.send(post({ input: "secret" }, "alpha"))).json()
     const theirs = await server.send(post({ previous_response_id: mine.id }, "beta"))
     const unknown = await server.send(post({ previous_response_id: `resp_${"1".repeat(32)}` }, "beta"))
-    expect(theirs.status).toBe(404)
+    expect(theirs.status).toBe(400)
+    expect(unknown.status).toBe(400)
     expect(theirs.json().error.code).toBe("previous_response_not_found")
     expect(theirs.json().error.message.replace(mine.id, "ID")).toBe(unknown.json().error.message.replace(`resp_${"1".repeat(32)}`, "ID"))
     expect(caller.calls).toHaveLength(1)
@@ -121,7 +123,7 @@ describe("store", () => {
     const answer = (await server.send(post({ store: false }))).json()
     expect(answer.store).toBe(false)
     expect((await server.send(read(`/v1/responses/${answer.id}`))).status).toBe(404)
-    expect((await server.send(post({ previous_response_id: answer.id }))).status).toBe(404)
+    expect((await server.send(post({ previous_response_id: answer.id }))).status).toBe(400)
     expect(storage.puts).toEqual([])
     // The default keeps it, and the response says so.
     expect((await server.send(post())).json().store).toBe(true)
@@ -152,17 +154,20 @@ describe("store", () => {
     expect(reply.json().error).toMatchObject({ code: "unsupported_parameter", param: "stream" })
   })
 
-  test("DELETE returns the deleted object, then every route for the id is a 404", async () => {
+  test("DELETE returns the deleted object, then every id route is a 404 and chaining from it a 400", async () => {
     const { server } = await route()
     const answer = (await server.send(post({ input: "q1" }))).json()
     const deleted = await server.send(read(`/v1/responses/${answer.id}`, undefined, "DELETE"))
     expect(deleted.status).toBe(200)
     expect(deleted.json()).toEqual({ id: answer.id, object: "response.deleted", deleted: true })
-    for (const request of [read(`/v1/responses/${answer.id}`), read(`/v1/responses/${answer.id}/input_items`), read(`/v1/responses/${answer.id}`, undefined, "DELETE"), post({ previous_response_id: answer.id })]) {
+    for (const request of [read(`/v1/responses/${answer.id}`), read(`/v1/responses/${answer.id}/input_items`), read(`/v1/responses/${answer.id}`, undefined, "DELETE")]) {
       const reply = await server.send(request)
       expect(reply.status).toBe(404)
       expect(reply.json().error.type).toBe("invalid_request_error")
     }
+    const chained = await server.send(post({ previous_response_id: answer.id }))
+    expect(chained.status).toBe(400)
+    expect(chained.json().error).toMatchObject({ type: "invalid_request_error", code: "previous_response_not_found", param: "previous_response_id" })
   })
 
   test("deleting a response also drops its items from the item_reference memory", async () => {
@@ -322,7 +327,7 @@ describe("retention and size", () => {
     expect((await server.send(read(`/v1/responses/${answer.id}`))).status).toBe(200)
     time.at += 2 * DAY
     expect((await server.send(read(`/v1/responses/${answer.id}`))).status).toBe(404)
-    expect((await server.send(post({ previous_response_id: answer.id }))).status).toBe(404)
+    expect((await server.send(post({ previous_response_id: answer.id }))).status).toBe(400)
     expect([...storage.values.keys()].filter((key) => key.startsWith("responses/"))).toEqual([])
   })
 

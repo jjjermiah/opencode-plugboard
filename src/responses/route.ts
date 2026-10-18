@@ -39,18 +39,18 @@ export interface ResponsesCall {
   readonly info: ServedInfo & { model?: string; failed?: string }
 }
 
-/** The input and output items of the stored response `previous_response_id` names; the same 404 for an unknown, expired, deleted or another app's id. */
+/** The input and output items of the stored response `previous_response_id` names; the same 400 for an unknown, expired, deleted or another app's id (OpenAI answers 400 here; GET, DELETE and input_items answer 404). */
 async function chainOf(host: RouteHost, app: string, body: unknown, days: number): Promise<ReadonlyArray<Record<string, unknown>> | PlugError | undefined> {
   const id = typeof body === "object" && body !== null ? (body as { previous_response_id?: unknown }).previous_response_id : undefined
   if (typeof id !== "string" || id.length === 0) return undefined
   const previous = await host.responses.load(app, id, days)
   if (previous === undefined)
     return {
-      status: 404,
+      status: 400,
       kind: "invalid_request",
       code: "previous_response_not_found",
       param: "previous_response_id",
-      message: `Previous response with id '${id.slice(0, 80)}' not found. Stored responses are kept per app, for the app's history retention, and not for store: false; send the full input instead.`,
+      message: `Previous response with id '${id.slice(0, 80)}' not found.`,
     }
   const output = (previous.response as { output?: unknown }).output
   return [...previous.input, ...(Array.isArray(output) ? (output as Array<Record<string, unknown>>) : [])]

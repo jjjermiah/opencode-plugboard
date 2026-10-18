@@ -263,7 +263,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           const hostError = checkHost(request, host.options)
           if (hostError) return fail(response, hostError)
           response.writeHead(204, {
-            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
             "access-control-allow-headers": "authorization, content-type, x-api-key, x-goog-api-key",
             ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true"
               ? { "access-control-allow-private-network": "true" }
