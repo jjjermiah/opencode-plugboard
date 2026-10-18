@@ -43,12 +43,10 @@ describe("#103 model ids in Gemini URLs", () => {
   test.failing("#103 gap: the @google/genai SDK sends a variant id as is, so the URL is cut at the # and the route misses", async () => {
     // Known gap: the SDK builds the URL as a string; plugboard expects %23 (src/gemini/route.ts). Use an alias for a variant.
     const client = new GoogleGenAI({ apiKey: KEY, httpOptions: { baseUrl: server.url } })
-    const error = await client.models
-      .generateContent({ model: "test/echo#high", contents: tag("model-id") })
-      .then(
-        () => undefined,
-        (caught: unknown) => caught,
-      )
+    const error = await client.models.generateContent({ model: "test/echo#high", contents: tag("model-id") }).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    )
     expect(error).toBeUndefined()
   })
 })

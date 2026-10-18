@@ -69,7 +69,12 @@ describe("key sources", () => {
 describe("routes", () => {
   test("GET /v1beta/models lists models/<id> entries; GET one by id; an unknown one is a Google 404", async () => {
     await route([ev.finish()], { models: ["test/echo"] })
-    expect((await server!.send({ path: "/v1beta/models" })).json().models.map((model: { name: string }) => model.name)).toEqual(["models/test/echo", "models/test/echo#low", "models/test/echo#high", "models/fast"])
+    expect((await server!.send({ path: "/v1beta/models" })).json().models.map((model: { name: string }) => model.name)).toEqual([
+      "models/test/echo",
+      "models/test/echo#low",
+      "models/test/echo#high",
+      "models/fast",
+    ])
     expect((await server!.send({ path: "/v1beta/models/test%2Fecho" })).json()).toMatchObject({ name: "models/test/echo" })
     const missing = await server!.send({ path: "/v1beta/models/ghost" })
     expect(missing.status).toBe(404)
@@ -455,7 +460,10 @@ describe("candidateCount above 1 (since 0.50.0), non-streaming", () => {
 
   test("apps.<name>.maxN lowers the cap for that app and the message names it; the cap applies to streams too", async () => {
     const caller = await routeCalls(() => [ev.finish()], { keys: { chat: "k" }, apps: { chat: { maxN: 1 } } })
-    for (const request of [generate(undefined, two, { "x-goog-api-key": "k" }), { ...stream("", { "x-goog-api-key": "k" }), body: { contents: [{ role: "user", parts: [{ text: "hi" }] }], ...two } }]) {
+    for (const request of [
+      generate(undefined, two, { "x-goog-api-key": "k" }),
+      { ...stream("", { "x-goog-api-key": "k" }), body: { contents: [{ role: "user", parts: [{ text: "hi" }] }], ...two } },
+    ]) {
       const reply = await server!.send(request)
       expect(reply.status).toBe(400)
       expect(reply.json().error.message).toContain("`apps.chat.maxN`")
@@ -473,7 +481,11 @@ describe("candidateCount above 1 (since 0.50.0), non-streaming", () => {
 
   test("a structured answer is per candidate, and the fallback header is set when any candidate used the text", async () => {
     await routeCalls((_request, call) => (call === 0 ? [ev.call("c1", "respond", { a: 1 }), ev.finish("tool-calls")] : [ev.text('{"a":2}'), ev.finish("stop")]))
-    const reply = await server!.send(generate(undefined, { generationConfig: { candidateCount: 2, responseMimeType: "application/json", responseJsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"] } } }))
+    const reply = await server!.send(
+      generate(undefined, {
+        generationConfig: { candidateCount: 2, responseMimeType: "application/json", responseJsonSchema: { type: "object", properties: { a: { type: "number" } }, required: ["a"] } },
+      }),
+    )
     expect(reply.status).toBe(200)
     expect(reply.json().candidates.map((candidate: any) => candidate.content.parts[0].text)).toEqual(['{"a":1}', '{"a":2}'])
     expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
@@ -507,7 +519,12 @@ describe("candidateCount above 1 (since 0.50.0), streaming", () => {
     // Candidate 1 finished while candidate 0 was still waiting.
     expect(order.indexOf("1:")).toBeLessThan(order.indexOf("0:A2"))
     expect(order.filter((entry) => entry.startsWith("0:"))).toEqual(["0:A1", "0:A2", "0:"])
-    expect(candidates.filter((chunk) => chunk.candidates[0].finishReason).map((chunk) => chunk.candidates[0].index).sort()).toEqual([0, 1])
+    expect(
+      candidates
+        .filter((chunk) => chunk.candidates[0].finishReason)
+        .map((chunk) => chunk.candidates[0].index)
+        .sort(),
+    ).toEqual([0, 1])
     expect(candidates.some((chunk) => chunk.usageMetadata)).toBe(false)
     expect(chunks.at(-1)).toEqual({ usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3, totalTokenCount: 13 }, modelVersion: "fast", responseId: candidates[0].responseId })
   })
@@ -517,7 +534,12 @@ describe("candidateCount above 1 (since 0.50.0), streaming", () => {
     const open = await server!.open(streamTwo(""))
     const chunks = arrayOf(await open.ended)
     expect(open.headers["content-type"]).toBe("application/json; charset=utf-8")
-    expect(chunks.filter((chunk) => textOf(chunk)).map((chunk) => [chunk.candidates[0].index, textOf(chunk)]).sort()).toEqual([
+    expect(
+      chunks
+        .filter((chunk) => textOf(chunk))
+        .map((chunk) => [chunk.candidates[0].index, textOf(chunk)])
+        .sort(),
+    ).toEqual([
       [0, "t0"],
       [1, "t1"],
     ])

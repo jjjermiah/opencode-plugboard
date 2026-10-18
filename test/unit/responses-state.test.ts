@@ -148,7 +148,11 @@ describe("retention", () => {
     const latest = answer()
     await store.save("alpha", 7, [user("three")], latest)
     await store.idle()
-    expect(recordKeys(storage, "alpha").map((key) => key.split("/").at(-1)).sort()).toEqual([recent.id, latest.id].sort())
+    expect(
+      recordKeys(storage, "alpha")
+        .map((key) => key.split("/").at(-1))
+        .sort(),
+    ).toEqual([recent.id, latest.id].sort())
     expect(indexKeys(storage, "alpha")).toHaveLength(2)
     // beta never wrote again, so nothing swept it: its record is expired for a reader, and left for its own next sweep.
     expect(recordKeys(storage, "beta")).toHaveLength(1)
@@ -242,4 +246,3 @@ describe("retentionDaysFor", () => {
     expect(retentionDaysFor(testOptions({ keys: { a: "ka" }, history: { maxAgeDays: 0 } }), "a")).toBe(30)
   })
 })
-

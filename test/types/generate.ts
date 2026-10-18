@@ -19,7 +19,11 @@ const GOLDENS: ReadonlyArray<readonly [string, (s: Scenarios) => unknown, string
   ["chatCompletion", (s) => s.chat.completion, "OpenAI.Chat.Completions.ChatCompletion"],
   ["chatCompletionChunks", (s) => s.chat.chunks, "OpenAI.Chat.Completions.ChatCompletionChunk[]"],
   ["chatError", (s) => s.chat.error, "{ error: OpenAI.ErrorObject }"],
-  ["chatModelList", (s) => s.chat.models, "{ object: \"list\"; data: Array<OpenAI.Models.Model & { plugboard: unknown; context_length?: number; max_output_tokens?: number; pricing?: { prompt: string; completion: string; input_cache_read?: string; input_cache_write?: string } }> }"],
+  [
+    "chatModelList",
+    (s) => s.chat.models,
+    '{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown; context_length?: number; max_output_tokens?: number; pricing?: { prompt: string; completion: string; input_cache_read?: string; input_cache_write?: string } }> }',
+  ],
   // `store` and `name` (on function_call_arguments.done) are in OpenAI's API reference but not in the SDK's types.
   ["responsesResponse", (s) => s.responses.response, "OpenAI.Responses.Response & { store: boolean }"],
   [
@@ -30,7 +34,7 @@ const GOLDENS: ReadonlyArray<readonly [string, (s: Scenarios) => unknown, string
   ["completion", (s) => s.completions.completion, "OpenAI.Completions.Completion"],
   ["completionChunks", (s) => s.completions.chunks, "OpenAI.Completions.Completion[]"],
   ["anthropicMessage", (s) => s.messages.message, "Anthropic.Message"],
-  ["anthropicEvents", (s) => s.messages.events, "Array<Anthropic.RawMessageStreamEvent | { type: \"ping\" }>"],
+  ["anthropicEvents", (s) => s.messages.events, 'Array<Anthropic.RawMessageStreamEvent | { type: "ping" }>'],
   ["anthropicError", (s) => s.messages.error, "Anthropic.ErrorResponse"],
   ["geminiResponse", (s) => s.gemini.response, "GeminiResponse"],
   ["geminiChunks", (s) => s.gemini.chunks, "GeminiResponse[]"],

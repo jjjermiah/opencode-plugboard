@@ -36,8 +36,7 @@ export function captureLogs(): CapturedLogs {
   const spies: Array<{ mockRestore(): void }> = []
   beforeEach(() => {
     lines.length = 0
-    for (const level of ["log", "error"] as const)
-      spies.push(spyOn(console, level).mockImplementation((...args: unknown[]) => void lines.push(parse(level, args.map(String).join(" ")))))
+    for (const level of ["log", "error"] as const) spies.push(spyOn(console, level).mockImplementation((...args: unknown[]) => void lines.push(parse(level, args.map(String).join(" ")))))
   })
   afterEach(() => {
     for (const spy of spies.splice(0)) spy.mockRestore()

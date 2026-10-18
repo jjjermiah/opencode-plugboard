@@ -30,10 +30,14 @@ describe.skipIf(!LIVE)("live: isolated OpenCode server (#99)", () => {
     console.log(`live: deleted ${deleted} sessions created by this run; sessionGuards ${(await status()).sessionGuards}`)
   }, CALL_TIMEOUT)
 
-  test("#99 pong gate: a normal prompt through the `fast` alias still answers", async () => {
-    const cell = await runCell("fast", "chat", "text")
-    expect(cell.detail).toBe("ok")
-  }, CALL_TIMEOUT)
+  test(
+    "#99 pong gate: a normal prompt through the `fast` alias still answers",
+    async () => {
+      const cell = await runCell("fast", "chat", "text")
+      expect(cell.detail).toBe("ok")
+    },
+    CALL_TIMEOUT,
+  )
 
   for (const model of LIVE_MODELS) {
     describe(model, () => {
@@ -53,44 +57,48 @@ describe.skipIf(!LIVE)("live: isolated OpenCode server (#99)", () => {
   }
 
   describe("lifecycle", () => {
-    test("#99 a client disconnect mid-stream interrupts the request's session", async () => {
-      const model = LIVE_MODELS[0]!
-      // A long answer, so the stream is still running when the client hangs up. Only the first bytes are read.
-      const body = {
-        model,
-        messages: [{ role: "user", content: "Write a 2000-word essay about the sea." }],
-        max_tokens: 4000,
-        stream: true,
-      }
-      const controller = new AbortController()
-      const response = await fetch(new URL("/v1/chat/completions", LIVE_URL), {
-        method: "POST",
-        headers: { ...authHeaders("chat"), "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      })
-      const ids = recordSessions(response.headers)
-      expect(response.status).toBe(200)
-      const reader = response.body!.getReader()
-      // Wait for the first bytes, then hang up while the model is still writing.
-      const first = await Promise.race([reader.read(), sleep(60_000).then(() => undefined)])
-      // A keepalive comment counts as live output; an error body does not.
-      const firstText = new TextDecoder().decode(first?.value ?? new Uint8Array())
-      expect(firstText.length).toBeGreaterThan(0)
-      expect(firstText).not.toContain("\"error\"")
-      // A stream that already finished would prove nothing: the request must still be in flight.
-      expect((await status()).sessionGuards).toBeGreaterThan(0)
-      controller.abort()
+    test(
+      "#99 a client disconnect mid-stream interrupts the request's session",
+      async () => {
+        const model = LIVE_MODELS[0]!
+        // A long answer, so the stream is still running when the client hangs up. Only the first bytes are read.
+        const body = {
+          model,
+          messages: [{ role: "user", content: "Write a 2000-word essay about the sea." }],
+          max_tokens: 4000,
+          stream: true,
+        }
+        const controller = new AbortController()
+        const response = await fetch(new URL("/v1/chat/completions", LIVE_URL), {
+          method: "POST",
+          headers: { ...authHeaders("chat"), "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        })
+        const ids = recordSessions(response.headers)
+        expect(response.status).toBe(200)
+        const reader = response.body!.getReader()
+        // Wait for the first bytes, then hang up while the model is still writing.
+        const first = await Promise.race([reader.read(), sleep(60_000).then(() => undefined)])
+        // A keepalive comment counts as live output; an error body does not.
+        const firstText = new TextDecoder().decode(first?.value ?? new Uint8Array())
+        expect(firstText.length).toBeGreaterThan(0)
+        expect(firstText).not.toContain('"error"')
+        // A stream that already finished would prove nothing: the request must still be in flight.
+        expect((await status()).sessionGuards).toBeGreaterThan(0)
+        controller.abort()
 
-      const drained = await until(async () => ((await status()).sessionGuards === 0 ? true : undefined), 30_000)
-      expect(drained).toBe(true)
-      const id = ids[0]!
-      const outcome = await until(async () => {
-        const session = await sessionOf(id)
-        return session.outcome === "interrupted" || session.outcome === "succeeded" || session.outcome === "failed" ? session.outcome : undefined
-      }, 30_000)
-      expect(outcome).toBe("interrupted")
-    }, CALL_TIMEOUT)
+        const drained = await until(async () => ((await status()).sessionGuards === 0 ? true : undefined), 30_000)
+        expect(drained).toBe(true)
+        const id = ids[0]!
+        const outcome = await until(async () => {
+          const session = await sessionOf(id)
+          return session.outcome === "interrupted" || session.outcome === "succeeded" || session.outcome === "failed" ? session.outcome : undefined
+        }, 30_000)
+        expect(outcome).toBe("interrupted")
+      },
+      CALL_TIMEOUT,
+    )
 
     // The history of a request is one session. A tool turn is one assistant message: the call, then the
     // answer that follows its result, never two assistant messages for the same turn.
@@ -99,21 +107,29 @@ describe.skipIf(!LIVE)("live: isolated OpenCode server (#99)", () => {
       return (page.data as Array<{ type: string; content?: Array<{ type: string }> }>).filter((message) => message.type === "assistant")
     }
 
-    test("#99 history: a tool-call turn is one clean assistant message with one tool call", async () => {
-      const cell = await runCell(LIVE_MODELS[0]!, "chat", "tool-call")
-      expect(cell.status).toBe("pass")
-      const assistant = await assistantMessages(cell.sessions[0]!)
-      expect(assistant.length).toBe(1)
-      expect(assistant[0]!.content!.filter((part) => part.type === "tool").length).toBe(1)
-    }, CALL_TIMEOUT)
+    test(
+      "#99 history: a tool-call turn is one clean assistant message with one tool call",
+      async () => {
+        const cell = await runCell(LIVE_MODELS[0]!, "chat", "tool-call")
+        expect(cell.status).toBe("pass")
+        const assistant = await assistantMessages(cell.sessions[0]!)
+        expect(assistant.length).toBe(1)
+        expect(assistant[0]!.content!.filter((part) => part.type === "tool").length).toBe(1)
+      },
+      CALL_TIMEOUT,
+    )
 
-    test("#99 history: a tool-result turn is one assistant message, with the answer and no tool call", async () => {
-      const cell = await runCell(LIVE_MODELS[0]!, "chat", "tool-result")
-      expect(cell.status).toBe("pass")
-      const assistant = await assistantMessages(cell.sessions[0]!)
-      expect(assistant.length).toBe(1)
-      expect(assistant[0]!.content!.filter((part) => part.type === "tool").length).toBe(0)
-      expect(assistant[0]!.content!.filter((part) => part.type === "text").length).toBeGreaterThan(0)
-    }, CALL_TIMEOUT)
+    test(
+      "#99 history: a tool-result turn is one assistant message, with the answer and no tool call",
+      async () => {
+        const cell = await runCell(LIVE_MODELS[0]!, "chat", "tool-result")
+        expect(cell.status).toBe("pass")
+        const assistant = await assistantMessages(cell.sessions[0]!)
+        expect(assistant.length).toBe(1)
+        expect(assistant[0]!.content!.filter((part) => part.type === "tool").length).toBe(0)
+        expect(assistant[0]!.content!.filter((part) => part.type === "text").length).toBeGreaterThan(0)
+      },
+      CALL_TIMEOUT,
+    )
   })
 })

@@ -142,7 +142,12 @@ describe("#75 POST /v1/completions", () => {
     const caller = await route([ev.text(" upon a time"), ev.finish("stop", { inputTokens: 2, outputTokens: 4 })])
     const reply = await server!.send(completions({ max_tokens: 8 }))
     expect(caller.call.request).toMatchObject({ system: [], tools: [], messages: [{ role: "user", content: [{ type: "text", text: "Once" }] }], generation: { maxTokens: 8 } })
-    expect(reply.json()).toMatchObject({ object: "text_completion", model: "test/echo", choices: [{ index: 0, text: " upon a time", finish_reason: "stop", logprobs: null }], usage: { total_tokens: 6 } })
+    expect(reply.json()).toMatchObject({
+      object: "text_completion",
+      model: "test/echo",
+      choices: [{ index: 0, text: " upon a time", finish_reason: "stop", logprobs: null }],
+      usage: { total_tokens: 6 },
+    })
     expect(logs.of("request")[0]!.fields).toMatchObject({ route: "POST /v1/completions", model: "test/echo" })
   })
 
@@ -273,7 +278,11 @@ describe("reasoningOutput with n > 1 (since 0.36.0): each choice keeps its own r
   test("SSE: reasoning deltas carry the choice index they belong to", async () => {
     await route(thinking, { reasoningOutput: true })
     const reply = await server!.send(chat({ n: 2, stream: true }))
-    const deltasOf = (index: number) => sseData(reply.text).flatMap((frame) => frame.choices ?? []).filter((choice: any) => choice.index === index).map((choice: any) => choice.delta)
+    const deltasOf = (index: number) =>
+      sseData(reply.text)
+        .flatMap((frame) => frame.choices ?? [])
+        .filter((choice: any) => choice.index === index)
+        .map((choice: any) => choice.delta)
     for (const index of [0, 1]) {
       const reasoning = deltasOf(index)
         .filter((delta: any) => delta.reasoning_content !== undefined)

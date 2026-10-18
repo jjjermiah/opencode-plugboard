@@ -166,12 +166,7 @@ function own(map: Readonly<Record<string, string>>, key: string): string | undef
  * Alias or `provider/model[#variant]` -> ModelRef. `reasoningEffort` picks a variant when the ref has none: the
  * one of that name, else the nearest at or above it, else the highest (`effortVariant`, #410). Errors: 403 when nothing is allowed, 404 for unknown/not-allowed models.
  */
-export function resolveModel(
-  options: PlugboardOptions,
-  model: string,
-  catalog: ReadonlyArray<CatalogModel>,
-  reasoningEffort?: string,
-): ModelRef | PlugError {
+export function resolveModel(options: PlugboardOptions, model: string, catalog: ReadonlyArray<CatalogModel>, reasoningEffort?: string): ModelRef | PlugError {
   if (options.models.length === 0)
     return {
       status: 403,
@@ -190,12 +185,7 @@ export function resolveModel(
   // An agent runs on the model its `agents` entry names (the allowlist still applies below).
   const target = own(options.aliases, model)
   const persona = personaOf(options, model)
-  let ref =
-    target !== undefined
-      ? parseAliasTarget(target)?.ref
-      : persona?.kind === "agent"
-        ? parseModelRef(options.agents[persona.agent]!)
-        : parseModelRef(fromSlug(model) ?? model)
+  let ref = target !== undefined ? parseAliasTarget(target)?.ref : persona?.kind === "agent" ? parseModelRef(options.agents[persona.agent]!) : parseModelRef(fromSlug(model) ?? model)
   if (!ref) return notAvailable
   if (!ref.variant && reasoningEffort) {
     const { providerID, id } = ref

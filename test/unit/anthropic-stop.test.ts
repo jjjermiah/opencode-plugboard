@@ -23,7 +23,10 @@ async function run(list: PlugEvent[], stop?: string[], stream = false) {
     .filter((event) => event.type === "content_block_delta")
     .map((event) => (event.delta as { text?: string }).text ?? "")
     .join("")
-  const delta = emitted.find((event) => event.type === "message_delta") as unknown as { delta: { stop_reason: string; stop_sequence: string | null; container: null; stop_details: null }; usage: Record<string, number> }
+  const delta = emitted.find((event) => event.type === "message_delta") as unknown as {
+    delta: { stop_reason: string; stop_sequence: string | null; container: null; stop_details: null }
+    usage: Record<string, number>
+  }
   return {
     result,
     emitted,

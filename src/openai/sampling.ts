@@ -87,8 +87,7 @@ export function appGeneration(policy: AppPolicy | undefined, generation: PlugGen
   const cap = policy?.maxOutputTokens
   if (defaults === undefined && cap === undefined) return generation
   const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = { ...generation }
-  if (defaults)
-    for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined) out[key] = defaults[key] as never
+  if (defaults) for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined) out[key] = defaults[key] as never
   if (cap !== undefined) out.maxTokens = out.maxTokens === undefined ? cap : Math.min(out.maxTokens, cap)
   return out
 }

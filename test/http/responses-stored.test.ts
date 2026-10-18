@@ -71,7 +71,12 @@ describe("previous_response_id", () => {
     const id = `resp_${"0".repeat(32)}`
     const reply = await server.send(post({ previous_response_id: id }))
     expect(reply.status).toBe(400)
-    expect(reply.json().error).toMatchObject({ type: "invalid_request_error", code: "previous_response_not_found", param: "previous_response_id", message: `Previous response with id '${id}' not found.` })
+    expect(reply.json().error).toMatchObject({
+      type: "invalid_request_error",
+      code: "previous_response_not_found",
+      param: "previous_response_id",
+      message: `Previous response with id '${id}' not found.`,
+    })
     expect(caller.calls).toEqual([])
     // A value that is no id of ours is the same answer: nothing is looked up for it.
     expect((await server.send(post({ previous_response_id: "../../keys/x" }))).status).toBe(400)
@@ -173,7 +178,12 @@ describe("store", () => {
   test("deleting a response also drops its items from the item_reference memory", async () => {
     const { server } = await route()
     const answer = (await server.send(post())).json()
-    const reference: SendInit = post({ input: [{ type: "item_reference", id: answer.output[0].id }, { role: "user", content: "again" }] })
+    const reference: SendInit = post({
+      input: [
+        { type: "item_reference", id: answer.output[0].id },
+        { role: "user", content: "again" },
+      ],
+    })
     expect((await server.send(reference)).status).toBe(200)
     await server.send(read(`/v1/responses/${answer.id}`, undefined, "DELETE"))
     expect((await server.send(reference)).json().error.code).toBe("item_not_found")
@@ -303,7 +313,16 @@ describe("GET /v1/responses/{id}/input_items", () => {
   test("an item_reference is stored as the item it names", async () => {
     const { server } = await route()
     const first = (await server.send(post())).json()
-    const second = (await server.send(post({ input: [{ type: "item_reference", id: first.output[0].id }, { role: "user", content: "again" }] }))).json()
+    const second = (
+      await server.send(
+        post({
+          input: [
+            { type: "item_reference", id: first.output[0].id },
+            { role: "user", content: "again" },
+          ],
+        }),
+      )
+    ).json()
     const page = (await server.send(read(`/v1/responses/${second.id}/input_items?order=asc`))).json()
     expect(page.data[0]).toMatchObject({ id: first.output[0].id, type: "message", role: "assistant" })
   })

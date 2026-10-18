@@ -76,7 +76,9 @@ describe("#262 the per-step debug lines", () => {
     expect(logs.of("model.first_event")[0]!.fields).toMatchObject({ type: "text-delta" })
     expect(logs.of("model.finished")[0]!.fields).toMatchObject({ finish: "stop", inputTokens: "12", outputTokens: "5" })
     expect(logs.of("model.finished")[0]!.fields.durationMs).toMatch(/^\d+$/)
-    const raw = stepLines().map((line) => line.raw).join("\n")
+    const raw = stepLines()
+      .map((line) => line.raw)
+      .join("\n")
     expect(raw).not.toContain("hello")
     expect(raw).not.toContain("Hi")
     expect(raw).not.toContain("!")
@@ -134,7 +136,10 @@ describe("one request, one kept session", () => {
     const request: PlugRequest = plugRequest({ model: "fast", ref: { providerID: "test", id: "echo", variant: "low" }, system: ["be brief"] })
     const events = await drain(run.caller.stream(request, run.context))
 
-    expect(events).toEqual([{ type: "text-delta", text: "Hi" }, { type: "finish", reason: "stop", usage: undefined }])
+    expect(events).toEqual([
+      { type: "text-delta", text: "Hi" },
+      { type: "finish", reason: "stop", usage: undefined },
+    ])
     const [created] = run.port.created
     expect(created).toMatchObject({
       id: "ses_1",
@@ -178,7 +183,18 @@ describe("one request, one kept session", () => {
   test("data URL images become prompt files named by position", async () => {
     const run = setup()
     run.answer((id) => [bus(id).stepEnded(), bus(id).executionSucceeded()])
-    const request = plugRequest({ messages: [{ role: "user", content: [{ type: "media", url: "data:image/png;base64,AA" }, { type: "text", text: "what?" }, { type: "media", url: "data:image/jpeg;base64,BB" }] }] })
+    const request = plugRequest({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "media", url: "data:image/png;base64,AA" },
+            { type: "text", text: "what?" },
+            { type: "media", url: "data:image/jpeg;base64,BB" },
+          ],
+        },
+      ],
+    })
     await drain(run.caller.stream(request, run.context))
     expect(run.port.prompted[0]!.files).toEqual([
       { uri: "data:image/png;base64,AA", name: "image-1" },
@@ -190,7 +206,9 @@ describe("one request, one kept session", () => {
 describe("failures before anything is created", () => {
   test("an invalid app name is a 400 invalid_app", async () => {
     const run = setup()
-    expect(await drain(run.caller.stream(plugRequest(), { ...run.context, app: "Bad App" }))).toEqual([{ type: "error", error: { status: 400, kind: "invalid_request", message: "Invalid app name: Bad App", code: "invalid_app" } }])
+    expect(await drain(run.caller.stream(plugRequest(), { ...run.context, app: "Bad App" }))).toEqual([
+      { type: "error", error: { status: 400, kind: "invalid_request", message: "Invalid app name: Bad App", code: "invalid_app" } },
+    ])
     expect(run.port.created).toEqual([])
   })
 
@@ -278,7 +296,9 @@ describe("failures before anything is created", () => {
   test("session.create failing is a generic 502 backend_failed; the cause goes to the log", async () => {
     const run = setup()
     run.port.script.create = () => Promise.reject(new Error("db locked at /secret/path"))
-    expect(await drain(run.caller.stream(plugRequest(), run.context))).toEqual([{ type: "error", error: { status: 502, kind: "server", message: "plugboard session backend failed", code: "backend_failed" } }])
+    expect(await drain(run.caller.stream(plugRequest(), run.context))).toEqual([
+      { type: "error", error: { status: 502, kind: "server", message: "plugboard session backend failed", code: "backend_failed" } },
+    ])
     expect(logs.of("request.backend_failed")[0]!.fields.error).toBe("db locked at /secret/path")
   })
 })
@@ -356,7 +376,10 @@ describe("#390 the host's interrupt of a stop-sequence run ends the answer with 
     }
     run.answer((id) => [bus(id).textDelta("alpha END beta")])
     const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
-    expect(events).toEqual([{ type: "text-delta", text: "alpha " }, { type: "finish", reason: "stop", stopSequence: "END" }])
+    expect(events).toEqual([
+      { type: "text-delta", text: "alpha " },
+      { type: "finish", reason: "stop", stopSequence: "END" },
+    ])
     expect(logs.of("request.stop_step_failed")).toHaveLength(1)
   })
 
@@ -367,7 +390,10 @@ describe("#390 the host's interrupt of a stop-sequence run ends the answer with 
     const events = await drain(withStopSequences(run.caller).stream(plugRequest({ generation: { stop: ["END"] } }), run.context))
     expect(Date.now() - started).toBeLessThan(2000)
     expect(run.port.interrupted).toEqual(["ses_1"])
-    expect(events).toEqual([{ type: "text-delta", text: "alpha " }, { type: "finish", reason: "stop", usage: undefined, stopSequence: "END" }])
+    expect(events).toEqual([
+      { type: "text-delta", text: "alpha " },
+      { type: "finish", reason: "stop", usage: undefined, stopSequence: "END" },
+    ])
   })
 
   test("a host that never reports the end after the interrupt is closed by the drain, with the usage counted so far (#390)", async () => {
@@ -412,7 +438,10 @@ describe("#33 the response and the host execution end separately", () => {
     run.answer((id) => [bus(id).toolCalled("c1", "lookup", { q: 1 }), bus(id).stepEnded("tool-calls")])
     // `lookup` is declared (#463): a call to a name the request did not declare is dropped instead.
     const events = await drain(run.caller.stream(plugRequest({ tools: [{ name: "lookup", description: "lookup", parameters: {} }] }), run.context))
-    expect(events).toEqual([{ type: "tool-call", id: "c1", name: "lookup", input: { q: 1 } }, { type: "finish", reason: "tool-calls", usage: undefined }])
+    expect(events).toEqual([
+      { type: "tool-call", id: "c1", name: "lookup", input: { q: 1 } },
+      { type: "finish", reason: "tool-calls", usage: undefined },
+    ])
     expect(run.port.interrupted).toEqual(["ses_1"])
     expect(run.sessions.lookup("ses_1")).toBeDefined()
     run.sessions.dispatch(bus("ses_1").executionInterrupted())

@@ -8,18 +8,7 @@ export const DETAIL_START = "<!-- commit-detail:start -->"
 export const DETAIL_END = "<!-- commit-detail:end -->"
 
 // Display order. Everything a commit can map to is in this list.
-const GROUPS = [
-  "Features",
-  "Fixes",
-  "Security",
-  "Performance",
-  "Refactors",
-  "Tests",
-  "Docs",
-  "CI and tooling",
-  "Dependencies",
-  "Other",
-] as const
+const GROUPS = ["Features", "Fixes", "Security", "Performance", "Refactors", "Tests", "Docs", "CI and tooling", "Dependencies", "Other"] as const
 type Group = (typeof GROUPS)[number]
 
 const BY_TYPE: Record<string, Group> = {
@@ -67,7 +56,7 @@ function groupOf(header: string, type: string | null, scope: string | null): Gro
   if (t && BY_TYPE[t]) return BY_TYPE[t]
   // "Tests: ..." parses with type "Tests"; "docs + changelog: ..." and "Security hardening: ..."
   // do not parse at all, so try the first word of whatever precedes the colon.
-  const word = (t ?? /^([A-Za-z]+)\b[^:]*:\s/.exec(header)?.[1]?.toLowerCase()) ?? ""
+  const word = t ?? /^([A-Za-z]+)\b[^:]*:\s/.exec(header)?.[1]?.toLowerCase() ?? ""
   const mapped = LEGACY_PREFIX[word]
   return mapped ? BY_TYPE[mapped] : "Other"
 }
@@ -76,8 +65,7 @@ function groupOf(header: string, type: string | null, scope: string | null): Gro
 // paragraph as line breaks, so join wrapped lines back into one line per paragraph.
 // Lists, quotes, tables, headings, footers and code fences keep their line structure.
 export function unwrap(text: string): string {
-  const BLOCK =
-    /^\s*([-*+]\s|\d+[.)]\s|>|\||#{1,6}\s)|^(BREAKING[ -]CHANGE|Co-authored-by|Signed-off-by|Refs?): |^(Fixes|Fix|Closes|Close|Refs|Resolves) .*#\d/
+  const BLOCK = /^\s*([-*+]\s|\d+[.)]\s|>|\||#{1,6}\s)|^(BREAKING[ -]CHANGE|Co-authored-by|Signed-off-by|Refs?): |^(Fixes|Fix|Closes|Close|Refs|Resolves) .*#\d/
   const out: string[] = []
   let fenced = false
   let joinable = false
@@ -145,11 +133,7 @@ const plural = (n: number) => `${n} commit${n === 1 ? "" : "s"}`
 export function fullStory(commits: Commit[], repoUrl: string, previous: string | undefined): string {
   if (!commits.length) return ""
   const since = previous ? ` since v${previous}` : ""
-  const parts = [
-    "## The full story",
-    "",
-    `${plural(commits.length)}${since}, grouped by type and oldest first. Each entry is the commit message as written.`,
-  ]
+  const parts = ["## The full story", "", `${plural(commits.length)}${since}, grouped by type and oldest first. Each entry is the commit message as written.`]
   for (const [group, list] of grouped(commits)) {
     parts.push("", "<details>", `<summary>${group} (${list.length})</summary>`, "", list.map((c) => entry(c, repoUrl)).join("\n\n"), "", "</details>")
   }

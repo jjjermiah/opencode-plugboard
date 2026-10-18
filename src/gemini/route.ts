@@ -115,7 +115,12 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const fail = (error: PlugError) => sendError(response, error, encodeGeminiError(error))
 
   if (match.op === "unsupported")
-    return fail({ status: 404, kind: "not_found", code: "method_not_supported", message: `Method ${match.verb} is not supported; plugboard serves generateContent, streamGenerateContent and countTokens` })
+    return fail({
+      status: 404,
+      kind: "not_found",
+      code: "method_not_supported",
+      message: `Method ${match.verb} is not supported; plugboard serves generateContent, streamGenerateContent and countTokens`,
+    })
 
   if (match.op === "count") {
     const unsupported = checkJsonContentType(request)
@@ -177,8 +182,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   exchange.model = requested.model
 
   // candidateCount > 1: one independent call per candidate, merged (src/openai/fanout.ts).
-  if (parsed.candidates > 1)
-    return serveChoices(host, { app, calls: Array.from({ length: parsed.candidates }, () => call), response, scope, info, codec: geminiCodec(exchange, wire) })
+  if (parsed.candidates > 1) return serveChoices(host, { app, calls: Array.from({ length: parsed.candidates }, () => call), response, scope, info, codec: geminiCodec(exchange, wire) })
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason

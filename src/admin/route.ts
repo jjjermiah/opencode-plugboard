@@ -38,8 +38,7 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
   const { path, request, response, scope, info } = call
   const fail = (error: PlugError) => sendProblem(response, error, request.url ?? path)
   const { keys } = host
-  if (host.options.adminKey === undefined || keys === undefined)
-    return fail({ status: 404, kind: "not_found", code: "not_found", message: `No route for ${request.method} ${path}` })
+  if (host.options.adminKey === undefined || keys === undefined) return fail({ status: 404, kind: "not_found", code: "not_found", message: `No route for ${request.method} ${path}` })
 
   const who = authenticateUsage(host.options, request.headers.authorization, await keys.digests())
   if (isPlugError(who) || !who.admin) return fail({ status: 401, kind: "authentication", code: "invalid_api_key", message: "Missing or invalid admin key" })
@@ -56,10 +55,22 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
     const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, undefined, keys.appNames()))
     const app = typeof body === "object" && body !== null && !Array.isArray(body) ? (body as { app?: unknown }).app : undefined
     if (typeof app !== "string" || app === DEFAULT_APP || !isAppName(app))
-      return fail({ status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: `\`app\` must be at most ${APP_NAME_MAX} characters, match the app name pattern, and not be \`${DEFAULT_APP}\`` })
+      return fail({
+        status: 400,
+        kind: "invalid_request",
+        code: "invalid_app",
+        param: "app",
+        message: `\`app\` must be at most ${APP_NAME_MAX} characters, match the app name pattern, and not be \`${DEFAULT_APP}\``,
+      })
     // A runtime key would carry the app's server tools (#197): those apps get their key from the config only.
     if (appPolicy(host.options, app)?.serverTools)
-      return fail({ status: 409, kind: "invalid_request", code: "app_has_server_tools", param: "app", message: `App ${app} runs OpenCode tools (option \`apps.${app}.serverTools\`); a runtime key would give the same power, so none is minted. Set the key in the plugboard config` })
+      return fail({
+        status: 409,
+        kind: "invalid_request",
+        code: "app_has_server_tools",
+        param: "app",
+        message: `App ${app} runs OpenCode tools (option \`apps.${app}.serverTools\`); a runtime key would give the same power, so none is minted. Set the key in the plugboard config`,
+      })
     if (Object.hasOwn(host.options.keys, app))
       return fail({ status: 409, kind: "invalid_request", code: "app_has_config_key", param: "app", message: `App ${app} already has a key in the plugboard config; edit \`keys\` to change it` })
     // An explicit body budget must still hold one body of its largest size per app, this one included (`bodyRequirement`). Unset, it grows.
@@ -91,7 +102,6 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
     logAudit("admin.key_revoked", { id })
     return sendJson(response, 200, { id, revoked: true })
   }
-  if (path === KEYS || id !== undefined)
-    return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}` })
+  if (path === KEYS || id !== undefined) return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}` })
   return fail({ status: 404, kind: "not_found", code: "not_found", message: `No route for ${request.method} ${path}` })
 }

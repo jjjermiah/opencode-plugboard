@@ -71,7 +71,6 @@ const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Mod
 /** SSE frame of one stream event: `event: <type>` then `data: <json>`. */
 export const sseFrame = (event: ResponsesStreamEvent): string => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
 
-
 /**
  * `committed`: whether the transport already committed a 200 stream before any event was emitted
  * (the SSE writer does at the first reasoning event, #49). A failure then still opens the response

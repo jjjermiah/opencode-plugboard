@@ -69,8 +69,20 @@ function property(arbitrary: fc.Arbitrary<unknown>, decode: (body: unknown) => u
 
 describe("#130 Chat Completions decoder", () => {
   const decode = (body: unknown) => parseChatRequest(body, options)
-  const part = fc.record({ type: fc.constantFrom("text", "image_url", "file", "input_audio"), text: often(text), image_url: often(fc.record({ url: often(fc.constantFrom("data:image/png;base64,AA", "https://x.test/a.png")) })), file: fc.record({ file_data: often(fc.string()) }) }, { requiredKeys: ["type"] })
-  const call = fc.record({ id: often(fc.constantFrom("c1", "c2", "")), type: fc.constant("function"), function: fc.record({ name: often(name), arguments: often(fc.constantFrom("{}", '{"a":1}', "not json")) }) })
+  const part = fc.record(
+    {
+      type: fc.constantFrom("text", "image_url", "file", "input_audio"),
+      text: often(text),
+      image_url: often(fc.record({ url: often(fc.constantFrom("data:image/png;base64,AA", "https://x.test/a.png")) })),
+      file: fc.record({ file_data: often(fc.string()) }),
+    },
+    { requiredKeys: ["type"] },
+  )
+  const call = fc.record({
+    id: often(fc.constantFrom("c1", "c2", "")),
+    type: fc.constant("function"),
+    function: fc.record({ name: often(name), arguments: often(fc.constantFrom("{}", '{"a":1}', "not json")) }),
+  })
   const message = fc.oneof(
     { arbitrary: fc.record({ role: fc.constantFrom("system", "developer", "user"), content: often(fc.oneof(text, list(often(part)))) }), weight: 4 },
     { arbitrary: fc.record({ role: fc.constant("assistant"), content: maybe(often(text)), tool_calls: maybe(often(list(often(call), 2))) }), weight: 2 },
@@ -82,7 +94,9 @@ describe("#130 Chat Completions decoder", () => {
       messages: often(fc.array(message, { minLength: 1, maxLength: 4 })),
       tools: maybe(often(list(fc.record({ type: fc.constant("function"), function: fc.record({ name: often(name), description: maybe(often(fc.string())), parameters: maybe(schema) }) })))),
       tool_choice: maybe(often(fc.oneof(fc.constantFrom("auto", "none", "required"), fc.record({ type: fc.constant("function"), function: fc.record({ name: name }) })))),
-      response_format: maybe(often(fc.oneof(fc.record({ type: fc.constantFrom("text", "json_object") }), fc.record({ type: fc.constant("json_schema"), json_schema: fc.record({ name: maybe(fc.string()), schema }) })))),
+      response_format: maybe(
+        often(fc.oneof(fc.record({ type: fc.constantFrom("text", "json_object") }), fc.record({ type: fc.constant("json_schema"), json_schema: fc.record({ name: maybe(fc.string()), schema }) }))),
+      ),
       temperature: maybe(often(number(0, 2))),
       top_p: maybe(often(number(0, 1))),
       max_tokens: maybe(often(fc.integer({ min: 0, max: 1000 }))),
@@ -99,7 +113,10 @@ describe("#130 Chat Completions decoder", () => {
 
 describe("#130 Responses decoder", () => {
   const decode = (body: unknown) => parseResponsesRequest(body, options)
-  const content = fc.record({ type: fc.constantFrom("input_text", "output_text", "input_image", "input_file", "refusal"), text: often(text), image_url: maybe(often(fc.string())), file_data: maybe(often(fc.string())) }, { requiredKeys: ["type"] })
+  const content = fc.record(
+    { type: fc.constantFrom("input_text", "output_text", "input_image", "input_file", "refusal"), text: often(text), image_url: maybe(often(fc.string())), file_data: maybe(often(fc.string())) },
+    { requiredKeys: ["type"] },
+  )
   const item = fc.oneof(
     fc.record({ type: maybe(fc.constant("message")), role: often(fc.constantFrom("system", "developer", "user", "assistant")), content: often(fc.oneof(text, list(often(content)))) }),
     fc.record({ type: fc.constant("function_call"), call_id: often(fc.constantFrom("c1", "c2")), name: often(name), arguments: often(fc.constantFrom("{}", "x")) }),
@@ -129,9 +146,22 @@ describe("#130 Anthropic Messages decoder", () => {
   const decode = (body: unknown) => parseMessagesRequest(body, options)
   const block = fc.oneof(
     { arbitrary: fc.record({ type: fc.constant("text"), text: often(text) }), weight: 4 },
-    fc.record({ type: fc.constantFrom("image", "document"), source: often(fc.record({ type: fc.constantFrom("base64", "url", "text", "file"), media_type: often(fc.constantFrom("image/png", "png")), data: often(fc.string()), url: often(fc.string()) })) }),
-    fc.record({ type: fc.constant("tool_use"), id: often(fc.constantFrom("t1", "t2")), name: often(name), input: maybe(often(fc.dictionary(fc.string(), fc.jsonValue({ maxDepth: 1 }), { maxKeys: 2 }))) }),
-    fc.record({ type: fc.constant("tool_result"), tool_use_id: often(fc.constantFrom("t1", "t2")), content: maybe(often(fc.oneof(text, list(fc.record({ type: fc.constantFrom("text", "image", "audio"), text: often(text) }), 2)))), is_error: maybe(fc.boolean()) }),
+    fc.record({
+      type: fc.constantFrom("image", "document"),
+      source: often(fc.record({ type: fc.constantFrom("base64", "url", "text", "file"), media_type: often(fc.constantFrom("image/png", "png")), data: often(fc.string()), url: often(fc.string()) })),
+    }),
+    fc.record({
+      type: fc.constant("tool_use"),
+      id: often(fc.constantFrom("t1", "t2")),
+      name: often(name),
+      input: maybe(often(fc.dictionary(fc.string(), fc.jsonValue({ maxDepth: 1 }), { maxKeys: 2 }))),
+    }),
+    fc.record({
+      type: fc.constant("tool_result"),
+      tool_use_id: often(fc.constantFrom("t1", "t2")),
+      content: maybe(often(fc.oneof(text, list(fc.record({ type: fc.constantFrom("text", "image", "audio"), text: often(text) }), 2)))),
+      is_error: maybe(fc.boolean()),
+    }),
     fc.record({ type: fc.constantFrom("thinking", "redacted_thinking", "server_tool_use") }),
   )
   const body = fc.record(
@@ -185,10 +215,24 @@ describe("#130 Gemini decoder", () => {
   )
   const body = fc.record(
     {
-      contents: often(fc.array(fc.record({ role: maybe(often(fc.constantFrom("user", "model", "function"))), parts: often(fc.array(often(part), { minLength: 1, maxLength: 3 })) }), { minLength: 1, maxLength: 4 })),
+      contents: often(
+        fc.array(fc.record({ role: maybe(often(fc.constantFrom("user", "model", "function"))), parts: often(fc.array(often(part), { minLength: 1, maxLength: 3 })) }), { minLength: 1, maxLength: 4 }),
+      ),
       systemInstruction: maybe(often(fc.oneof(text, fc.record({ parts: list(fc.record({ text: often(text) }), 2) })))),
-      tools: maybe(often(list(fc.oneof({ arbitrary: fc.record({ functionDeclarations: often(list(fc.record({ name: often(name), parameters: maybe(schema), parametersJsonSchema: maybe(schema) }))) }), weight: 4 }, fc.record({ googleSearch: fc.constant({}) })), 2))),
-      toolConfig: maybe(often(fc.record({ functionCallingConfig: often(fc.record({ mode: maybe(often(fc.constantFrom("AUTO", "ANY", "NONE", "VALIDATED"))), allowedFunctionNames: maybe(often(list(name, 2))) })) }))),
+      tools: maybe(
+        often(
+          list(
+            fc.oneof(
+              { arbitrary: fc.record({ functionDeclarations: often(list(fc.record({ name: often(name), parameters: maybe(schema), parametersJsonSchema: maybe(schema) }))) }), weight: 4 },
+              fc.record({ googleSearch: fc.constant({}) }),
+            ),
+            2,
+          ),
+        ),
+      ),
+      toolConfig: maybe(
+        often(fc.record({ functionCallingConfig: often(fc.record({ mode: maybe(often(fc.constantFrom("AUTO", "ANY", "NONE", "VALIDATED"))), allowedFunctionNames: maybe(often(list(name, 2))) })) })),
+      ),
       generationConfig: maybe(
         often(
           fc.record(

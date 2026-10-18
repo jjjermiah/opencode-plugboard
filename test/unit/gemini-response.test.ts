@@ -17,16 +17,29 @@ async function run(exchange: GeminiExchange, ...list: PlugEvent[]) {
 
 describe("runGenerate: GenerateContentResponse chunks and the aggregated body", () => {
   test("one chunk per piece of output, then a final chunk with finishReason, usage and an empty text part", async () => {
-    const { chunks, parts, response } = await run(plain, ev.reasoning("x"), ev.text("Hel"), ev.text("lo"), ev.finish("stop", { inputTokens: 10, outputTokens: 7, reasoningTokens: 3, cacheReadTokens: 2 }))
+    const { chunks, parts, response } = await run(
+      plain,
+      ev.reasoning("x"),
+      ev.text("Hel"),
+      ev.text("lo"),
+      ev.finish("stop", { inputTokens: 10, outputTokens: 7, reasoningTokens: 3, cacheReadTokens: 2 }),
+    )
     expect(parts).toEqual([{ text: "Hel" }, { text: "lo" }, { text: "" }])
-    expect(chunks.at(-1)).toMatchObject({ candidates: [{ finishReason: "STOP", index: 0 }], modelVersion: "fast", usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, totalTokenCount: 17, cachedContentTokenCount: 2, thoughtsTokenCount: 3 } })
+    expect(chunks.at(-1)).toMatchObject({
+      candidates: [{ finishReason: "STOP", index: 0 }],
+      modelVersion: "fast",
+      usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, totalTokenCount: 17, cachedContentTokenCount: 2, thoughtsTokenCount: 3 },
+    })
     expect(new Set(chunks.map((chunk) => chunk.responseId)).size).toBe(1)
     expect(response).toMatchObject({ candidates: [{ content: { role: "model", parts: [{ text: "Hello" }] }, finishReason: "STOP" }], modelVersion: "fast" })
   })
 
   test("a tool call is a functionCall part with object args; Gemini reports STOP after one", async () => {
     const { response } = await run(plain, ev.call("c1", "weather", { city: "Oslo" }), ev.call("c2", "raw", "not an object"), ev.finish("tool-calls"))
-    expect(response.candidates[0]).toMatchObject({ finishReason: "STOP", content: { parts: [{ functionCall: { name: "weather", args: { city: "Oslo" } } }, { functionCall: { name: "raw", args: { value: "not an object" } } }] } })
+    expect(response.candidates[0]).toMatchObject({
+      finishReason: "STOP",
+      content: { parts: [{ functionCall: { name: "weather", args: { city: "Oslo" } } }, { functionCall: { name: "raw", args: { value: "not an object" } } }] },
+    })
   })
 
   test.each([
@@ -93,7 +106,12 @@ describe("Google error bodies and model entries", () => {
 
   test("an error with a param carries a BadRequest field violation", () => {
     expect(encodeGeminiError({ status: 400, kind: "invalid_request", message: "bad", param: "contents" })).toEqual({
-      error: { code: 400, message: "bad", status: "INVALID_ARGUMENT", details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: "contents", description: "bad" }] }] },
+      error: {
+        code: 400,
+        message: "bad",
+        status: "INVALID_ARGUMENT",
+        details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: "contents", description: "bad" }] }],
+      },
     })
   })
 
@@ -101,7 +119,14 @@ describe("Google error bodies and model entries", () => {
     const listed = listAvailableModels(testOptions({ models: ["test/echo"] }), CATALOG)
     expect(encodeGeminiModelList(listed)).toEqual({
       models: [
-        { name: "models/test/echo", version: "plugboard", displayName: "Echo", description: "test model served by opencode-plugboard", inputTokenLimit: 8192, supportedGenerationMethods: ["generateContent", "streamGenerateContent"] },
+        {
+          name: "models/test/echo",
+          version: "plugboard",
+          displayName: "Echo",
+          description: "test model served by opencode-plugboard",
+          inputTokenLimit: 8192,
+          supportedGenerationMethods: ["generateContent", "streamGenerateContent"],
+        },
         expect.objectContaining({ name: "models/test/echo#low" }),
         expect.objectContaining({ name: "models/test/echo#high" }),
       ],
@@ -163,7 +188,10 @@ describe("runGenerate: one candidate of several (candidateCount > 1)", () => {
 
   test("chunks carry the candidate's index and the shared responseId; the last chunk has no usage, the run reports it", async () => {
     const chunks: any[] = []
-    const result = await runGenerate(events(ev.text("x"), ev.finish("stop", { inputTokens: 5, outputTokens: 2 })), streamed, (chunk) => void chunks.push(JSON.parse(JSON.stringify(chunk))), { index: 2, responseId: "shared" })
+    const result = await runGenerate(events(ev.text("x"), ev.finish("stop", { inputTokens: 5, outputTokens: 2 })), streamed, (chunk) => void chunks.push(JSON.parse(JSON.stringify(chunk))), {
+      index: 2,
+      responseId: "shared",
+    })
     expect(chunks.map((chunk) => [chunk.candidates[0].index, chunk.responseId])).toEqual([
       [2, "shared"],
       [2, "shared"],

@@ -74,7 +74,9 @@ for (;;) {
   }
   if (rules.strict && pr.mergeStateStatus === "BEHIND") {
     if (!merge) {
-      console.log(`pr-wait: red: the PR is behind main and the ruleset requires an up-to-date branch. Run \`gh pr update-branch ${number} -R ${REPO}\` (or merge origin/main and push), or use --merge, which does it.`)
+      console.log(
+        `pr-wait: red: the PR is behind main and the ruleset requires an up-to-date branch. Run \`gh pr update-branch ${number} -R ${REPO}\` (or merge origin/main and push), or use --merge, which does it.`,
+      )
       process.exit(1)
     }
     await gh(["pr", "update-branch", number, "-R", REPO])

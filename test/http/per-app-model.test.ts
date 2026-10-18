@@ -125,14 +125,24 @@ describe("#261 the answer names the pinned model on every route", () => {
 
   test("Messages: x-plugboard-model and the echoed model name the pin", async () => {
     await serving()
-    const reply = await server!.send({ method: "POST", path: "/v1/messages", headers: { "x-api-key": KEYS.widget }, body: { model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: "hi" }] } })
+    const reply = await server!.send({
+      method: "POST",
+      path: "/v1/messages",
+      headers: { "x-api-key": KEYS.widget },
+      body: { model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: "hi" }] },
+    })
     expect(reply.headers["x-plugboard-model"]).toBe(PINNED)
     expect(reply.json().model).toBe(PINNED)
   })
 
   test("Gemini: x-plugboard-model names the pin", async () => {
     await serving()
-    const reply = await server!.send({ method: "POST", path: "/v1beta/models/test%2Fecho:generateContent", headers: bearer(KEYS.widget), body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] } })
+    const reply = await server!.send({
+      method: "POST",
+      path: "/v1beta/models/test%2Fecho:generateContent",
+      headers: bearer(KEYS.widget),
+      body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] },
+    })
     expect(reply.headers["x-plugboard-model"]).toBe(PINNED)
   })
 

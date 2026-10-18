@@ -31,10 +31,7 @@ export interface GhReview {
   readonly author: { readonly login: string } | null
   readonly commit: { readonly oid: string } | null
 }
-export type Approval =
-  | { readonly state: "approved" }
-  | { readonly state: "waiting"; readonly have: number }
-  | { readonly state: "changes-requested"; readonly by: readonly string[] }
+export type Approval = { readonly state: "approved" } | { readonly state: "waiting"; readonly have: number } | { readonly state: "changes-requested"; readonly by: readonly string[] }
 
 /**
  * Each reviewer's latest approving or blocking review counts; a comment does not replace it, a dismissal clears it.

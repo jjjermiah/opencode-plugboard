@@ -36,7 +36,14 @@ describe("runResponse: event order", () => {
       "response.completed",
     ])
     expect(emitted.find((event) => event.type === "response.output_text.done")).toMatchObject({ text: "Hello", output_index: 0, content_index: 0 })
-    expect(response).toMatchObject({ object: "response", status: "completed", model: "fast", store: false, error: null, output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Hello" }] }] })
+    expect(response).toMatchObject({
+      object: "response",
+      status: "completed",
+      model: "fast",
+      store: false,
+      error: null,
+      output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Hello" }] }],
+    })
     expect(response.id).toMatch(/^resp_[0-9a-f]{32}$/)
   })
 
@@ -114,7 +121,12 @@ describe("runResponse: failures", () => {
 
   test("#49 a failure before output on a stream the transport already committed opens the response and fails it", async () => {
     const emitted: ResponsesStreamEvent[] = []
-    const result = await runResponse(events(ev.reasoning("x"), ev.error({ message: "died" })), plain, (event) => void emitted.push(event), () => true)
+    const result = await runResponse(
+      events(ev.reasoning("x"), ev.error({ message: "died" })),
+      plain,
+      (event) => void emitted.push(event),
+      () => true,
+    )
     expect(emitted.map((event) => [event.type, event.sequence_number])).toEqual([
       ["response.created", 0],
       ["response.in_progress", 1],
@@ -213,7 +225,12 @@ describe("#173 runResponse: a text answer and the 502 for every finish", () => {
 
   test("streamed: a missing answer after committed prose ends as response.failed, not a completed answer", async () => {
     const emitted: ResponsesStreamEvent[] = []
-    const result = await runResponse(events(ev.text("prose"), ev.finish("stop")), withSchema, (event) => void emitted.push(event), () => true)
+    const result = await runResponse(
+      events(ev.text("prose"), ev.finish("stop")),
+      withSchema,
+      (event) => void emitted.push(event),
+      () => true,
+    )
     expect(result.failure).toMatchObject({ code: "structured_output_missing" })
     expect(emitted.at(-1)!.type).toBe("response.failed")
   })

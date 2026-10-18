@@ -160,7 +160,7 @@ export function createResponseStore(deps: ResponseStoreDeps): ResponseStore {
 
   /** One sweep per app at a time, off the request (`outsideRequest`): the answer never waits for it. */
   function maybeSweep(app: string, retentionDays: number): void {
-    const entry = (state.apps.get(app) ?? { lastSweep: 0, writes: 0 })
+    const entry = state.apps.get(app) ?? { lastSweep: 0, writes: 0 }
     state.apps.set(app, entry)
     entry.writes++
     if (entry.writes < SWEEP_WRITES && now() - entry.lastSweep < SWEEP_INTERVAL_MS) return

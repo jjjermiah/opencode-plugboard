@@ -232,10 +232,7 @@ export function readBody(request: IncomingMessage, signal: AbortSignal, limits: 
     }
     const armIdle = () => {
       clearTimeout(idle)
-      idle = setTimeout(
-        () => stop(new BodyError(408, `Request body stopped arriving for ${limits.readTimeoutMs} ms (option limits.bodyReadTimeoutMs)`, "body_read_timeout")),
-        limits.readTimeoutMs,
-      )
+      idle = setTimeout(() => stop(new BodyError(408, `Request body stopped arriving for ${limits.readTimeoutMs} ms (option limits.bodyReadTimeoutMs)`, "body_read_timeout")), limits.readTimeoutMs)
       idle.unref?.()
     }
     const ceilingMs = limits.readCeilingMs ?? BODY_LIMIT_DEFAULTS.readCeilingMs
@@ -258,10 +255,7 @@ export function readBody(request: IncomingMessage, signal: AbortSignal, limits: 
       return reject(busy())
     }
     armIdle()
-    ceiling = setTimeout(
-      () => stop(new BodyError(408, `Request body was not complete within ${ceilingMs} ms (option limits.bodyReadMaxMs)`, "body_read_timeout")),
-      ceilingMs,
-    )
+    ceiling = setTimeout(() => stop(new BodyError(408, `Request body was not complete within ${ceilingMs} ms (option limits.bodyReadMaxMs)`, "body_read_timeout")), ceilingMs)
     ceiling.unref?.()
     request.on("data", onData)
     request.on("error", onError)
@@ -556,8 +550,7 @@ function hostAllowed(options: PlugboardOptions, hostHeader: string | undefined):
  */
 export function checkHost(request: IncomingMessage, options: PlugboardOptions): PlugError | undefined {
   if (Object.keys(options.keys).length > 0 && forwardedHost(request, options.listen.trustProxy) !== undefined) return undefined
-  if (!hostAllowed(options, request.headers.host))
-    return { status: 403, kind: "permission", code: "invalid_host", message: "Host header not allowed" }
+  if (!hostAllowed(options, request.headers.host)) return { status: 403, kind: "permission", code: "invalid_host", message: "Host header not allowed" }
 }
 
 /**

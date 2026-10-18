@@ -8,17 +8,14 @@
 import { readFileSync } from "node:fs"
 
 const PACKAGE = "@opencode/plugin"
-const range = (JSON.parse(readFileSync("package.json", "utf8")) as { peerDependencies: Record<string, string> })
-  .peerDependencies[PACKAGE]
+const range = (JSON.parse(readFileSync("package.json", "utf8")) as { peerDependencies: Record<string, string> }).peerDependencies[PACKAGE]
 if (!range) throw new Error(`package.json has no peer range for ${PACKAGE}`)
 
 const run = Bun.spawnSync(["npm", "view", PACKAGE, "versions", "--json"], { stderr: "inherit" })
 if (run.exitCode !== 0) throw new Error(`npm view ${PACKAGE} versions failed with exit code ${run.exitCode}`)
 const published = JSON.parse(run.stdout.toString()) as string[]
 
-const inRange = published
-  .filter((v) => !v.includes("-") && Bun.semver.satisfies(v, range))
-  .sort((a, b) => Bun.semver.order(a, b))
+const inRange = published.filter((v) => !v.includes("-") && Bun.semver.satisfies(v, range)).sort((a, b) => Bun.semver.order(a, b))
 if (!inRange.length) throw new Error(`no published ${PACKAGE} version satisfies ${range}`)
 
 if (process.argv.includes("--latest")) {

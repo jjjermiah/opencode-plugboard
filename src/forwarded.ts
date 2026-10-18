@@ -16,8 +16,7 @@ const HOST_SHAPE = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d{1,5})?$/i
 
 type Ip = ipaddr.IPv4 | ipaddr.IPv6
 
-const TRUST_PROXY_ERROR =
-  "plugboard option `listen.trustProxy` must be `true`, `false`, or a list of IP addresses and CIDR ranges such as `127.0.0.1` or `10.0.0.0/8`"
+const TRUST_PROXY_ERROR = "plugboard option `listen.trustProxy` must be `true`, `false`, or a list of IP addresses and CIDR ranges such as `127.0.0.1` or `10.0.0.0/8`"
 
 /** An address or a CIDR range as `[address, prefix length]`, or undefined when it is neither. */
 function parseEntry(entry: string): [Ip, number] | undefined {
@@ -38,8 +37,7 @@ export function parseTrustProxy(raw: unknown): ReadonlyArray<string> | undefined
   if (raw === undefined || raw === false) return undefined
   if (raw === true) return LOOPBACK_PROXIES
   if (!Array.isArray(raw)) throw new Error(TRUST_PROXY_ERROR)
-  for (const entry of raw)
-    if (typeof entry !== "string" || parseEntry(entry) === undefined) throw new Error(`${TRUST_PROXY_ERROR}; \`${String(entry)}\` is neither`)
+  for (const entry of raw) if (typeof entry !== "string" || parseEntry(entry) === undefined) throw new Error(`${TRUST_PROXY_ERROR}; \`${String(entry)}\` is neither`)
   return raw.length === 0 ? undefined : (raw as string[])
 }
 

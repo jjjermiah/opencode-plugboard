@@ -128,7 +128,15 @@ describe("#142 TUI formats", () => {
     expect(cell("ab", 4, "left")).toBe("ab  ")
     expect(cell("ab", 4, "right")).toBe("  ab")
     expect(cell("abcdef", 4, "left")).toBe("abc…")
-    expect(formatLine(["x", "1"], [{ title: "a", width: 3, align: "left" }, { title: "b", width: 2, align: "right" }])).toBe("x    1")
+    expect(
+      formatLine(
+        ["x", "1"],
+        [
+          { title: "a", width: 3, align: "left" },
+          { title: "b", width: 2, align: "right" },
+        ],
+      ),
+    ).toBe("x    1")
   })
 
   test("bars scale to the share and show at least one block for any positive share", () => {
@@ -185,9 +193,7 @@ describe("#142 TUI rows and totals", () => {
 
 describe("#142 TUI unavailable message", () => {
   test("names the cause and keeps the error text exact", () => {
-    expect(unavailableMessage(new Error("rpc method not found"))).toBe(
-      "Usage is unavailable on this server. Plugboard must be loaded there with usage enabled. (rpc method not found)",
-    )
+    expect(unavailableMessage(new Error("rpc method not found"))).toBe("Usage is unavailable on this server. Plugboard must be loaded there with usage enabled. (rpc method not found)")
     expect(unavailableMessage("plain")).toContain("(plain)")
   })
 })

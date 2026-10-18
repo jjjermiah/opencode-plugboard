@@ -65,9 +65,7 @@ describe("scripted model DSPy answers", () => {
 
 describe("scripted model tool choices", () => {
   test("required with one fillable tool forces it with the meal", () => {
-    const events = answer(
-      plugRequest({ messages: [user(prompt("S6"))], tools: [MEAL_TOOL], toolChoice: "required" }),
-    )
+    const events = answer(plugRequest({ messages: [user(prompt("S6"))], tools: [MEAL_TOOL], toolChoice: "required" }))
     expect(events[0]).toEqual(ev.call("call_scripted_1", "final_result", { calories: 180, protein_g: 13 }))
     expect(events.at(-1)).toMatchObject({ type: "finish", reason: "tool-calls" })
   })
@@ -78,9 +76,7 @@ describe("scripted model tool choices", () => {
   })
 
   test("a named choice forces its tool as before, whatever the schema", () => {
-    const events = answer(
-      plugRequest({ messages: [user(prompt("S2"))], tools: [WEATHER_TOOL], toolChoice: { type: "tool", name: "get_weather" } }),
-    )
+    const events = answer(plugRequest({ messages: [user(prompt("S2"))], tools: [WEATHER_TOOL], toolChoice: { type: "tool", name: "get_weather" } }))
     expect(calls(events)).toEqual([ev.call("call_scripted_1", "get_weather", {})])
   })
 
@@ -91,9 +87,7 @@ describe("scripted model tool choices", () => {
   })
 
   test("required after a tool result does not force again", () => {
-    const events = answer(
-      plugRequest({ messages: [user(prompt("S6")), toolResult], tools: [MEAL_TOOL], toolChoice: "required" }),
-    )
+    const events = answer(plugRequest({ messages: [user(prompt("S6")), toolResult], tools: [MEAL_TOOL], toolChoice: "required" }))
     expect(calls(events)).toEqual([])
   })
 })

@@ -12,7 +12,22 @@ import { ChatOpenAI, OpenAI as OpenAICompletions } from "@langchain/openai"
 import { expect } from "bun:test"
 import { serverSawAbort } from "./abort.js"
 import type { Client, Endpoint, Run, Target } from "./clients.js"
-import { CATALOG_ID, MULTI_TURN_ANSWER, PARALLEL_ANSWER, PNG_BASE64, STREAM_DELTAS, STRUCTURED, STRUCTURED_SCHEMA, TEXT, THINKING, TOOL_ANSWER, USAGE, WEATHER_SCHEMA, tag, type Scenario } from "./scenarios.js"
+import {
+  CATALOG_ID,
+  MULTI_TURN_ANSWER,
+  PARALLEL_ANSWER,
+  PNG_BASE64,
+  STREAM_DELTAS,
+  STRUCTURED,
+  STRUCTURED_SCHEMA,
+  TEXT,
+  THINKING,
+  TOOL_ANSWER,
+  USAGE,
+  WEATHER_SCHEMA,
+  tag,
+  type Scenario,
+} from "./scenarios.js"
 
 const MODEL = "fast"
 const weatherTool = { type: "function" as const, function: { name: "weather", description: "Weather in a city", parameters: WEATHER_SCHEMA } }
@@ -67,7 +82,14 @@ function langchain(name: string, endpoint: Endpoint, make: (target: Target, id?:
       expect((await llm.invoke([new HumanMessage(tag("parallel-tools")), first, ...answers])).text).toBe(PARALLEL_ANSWER)
     },
     image: async (target) => {
-      const reply = await make(target).invoke([new HumanMessage({ content: [{ type: "text", text: tag("image") }, { type: "image_url", image_url: { url: `data:image/png;base64,${PNG_BASE64}` } }] })])
+      const reply = await make(target).invoke([
+        new HumanMessage({
+          content: [
+            { type: "text", text: tag("image") },
+            { type: "image_url", image_url: { url: `data:image/png;base64,${PNG_BASE64}` } },
+          ],
+        }),
+      ])
       expect(reply.text).toBe("image: image/png")
     },
     structured: async (target) => {
@@ -247,7 +269,9 @@ export const LANGCHAIN_CLIENTS: ReadonlyArray<Client> = [
     extra: {
       // The class sends stop sequences from its constructor (`stopSequences`), not from the call's `stop` option.
       "stop-sequence": async (target) => {
-        const reply = await new ChatGoogleGenerativeAI({ model: MODEL, apiKey: target.apiKey, baseUrl: target.origin, apiVersion: "v1beta", maxRetries: 0, stopSequences: ["END"] }).invoke([new HumanMessage(tag("stop-sequence"))])
+        const reply = await new ChatGoogleGenerativeAI({ model: MODEL, apiKey: target.apiKey, baseUrl: target.origin, apiVersion: "v1beta", maxRetries: 0, stopSequences: ["END"] }).invoke([
+          new HumanMessage(tag("stop-sequence")),
+        ])
         expect(reply.text).toBe(TEXT)
       },
     },

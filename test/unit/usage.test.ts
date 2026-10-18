@@ -410,7 +410,10 @@ describe("the model caller seam", () => {
   test("#278 the real response cache under withUsage: the hit counts in cacheHits and adds no tokens or cost", async () => {
     const h = harness()
     const config = { ttlSeconds: 60, maxEntries: 10, maxBytes: 1_000_000 }
-    const cached = withUsage(cachedCaller(new FakeModelCaller([ev.text("hi"), ev.finish("stop", { inputTokens: 100, outputTokens: 10 })]), config, createCacheStore({ ttlMs: 60_000, maxEntries: 10, maxBytes: 1_000_000 })), h.recorder)
+    const cached = withUsage(
+      cachedCaller(new FakeModelCaller([ev.text("hi"), ev.finish("stop", { inputTokens: 100, outputTokens: 10 })]), config, createCacheStore({ ttlMs: 60_000, maxEntries: 10, maxBytes: 1_000_000 })),
+      h.recorder,
+    )
     await collect(cached.stream(plugRequest(), { app: "a", signal: signal() }))
     await collect(cached.stream(plugRequest(), { app: "a", signal: signal() }))
     await tick()

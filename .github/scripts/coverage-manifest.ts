@@ -30,7 +30,9 @@ const table = [
   `${counts}.`,
   ...(gaps.length > 0 ? ["", "Known gaps:", "", ...gaps.map((gap) => `- ${gap}`)] : []),
   "",
-  failures.length > 0 ? `**The manifest and the router disagree:**\n\n${failures.map((failure) => `- ${failure}`).join("\n")}` : "The manifest matches the router: every route has a row, and every cover resolves.",
+  failures.length > 0
+    ? `**The manifest and the router disagree:**\n\n${failures.map((failure) => `- ${failure}`).join("\n")}`
+    : "The manifest matches the router: every route has a row, and every cover resolves.",
   "",
 ].join("\n")
 

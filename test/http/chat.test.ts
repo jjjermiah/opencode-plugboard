@@ -39,7 +39,15 @@ const requestLine = () => {
 describe("what the model caller receives", () => {
   test("the decoded request with the resolved model ref, the app and the request signal", async () => {
     const caller = await route([ev.finish()])
-    await server!.send(chat({ messages: [{ role: "system", content: "s" }, { role: "user", content: "hi" }], temperature: 0.3 }))
+    await server!.send(
+      chat({
+        messages: [
+          { role: "system", content: "s" },
+          { role: "user", content: "hi" },
+        ],
+        temperature: 0.3,
+      }),
+    )
     const { request, context } = caller.call
     expect(request).toEqual({
       model: "test/echo",
@@ -327,7 +335,11 @@ describe("reasoningOutput (since 0.36.0): reasoning on the wire", () => {
 })
 
 describe("reasoningOutput (since 0.36.0): tool calls, stop sequences and per-app overrides on Chat Completions", () => {
-  const contentOf = (frames: any[]) => frames.flatMap((frame) => frame.choices ?? []).map((choice: any) => choice.delta.content ?? "").join("")
+  const contentOf = (frames: any[]) =>
+    frames
+      .flatMap((frame) => frame.choices ?? [])
+      .map((choice: any) => choice.delta.content ?? "")
+      .join("")
   const deltasOf = (frames: any[]) => frames.flatMap((frame) => frame.choices ?? []).map((choice: any) => choice.delta)
 
   test("SSE: reasoning then a tool call: the reasoning deltas come first, the call and tool_calls finish follow", async () => {
@@ -340,7 +352,11 @@ describe("reasoningOutput (since 0.36.0): tool calls, stop sequences and per-app
     expect(deltas[reasoning]).toEqual({ reasoning_content: "need the file", reasoning: "need the file" })
     expect(reasoning).toBeLessThan(call)
     expect(deltas[call].tool_calls[0]).toMatchObject({ id: "c1", function: { name: "read", arguments: '{"path":"a"}' } })
-    expect(sseData(text).flatMap((frame) => frame.choices ?? []).at(-1).finish_reason).toBe("tool_calls")
+    expect(
+      sseData(text)
+        .flatMap((frame) => frame.choices ?? [])
+        .at(-1).finish_reason,
+    ).toBe("tool_calls")
   })
 
   test("SSE: reasoning then a stop sequence in the text: the sequence is cut, the reasoning stays", async () => {

@@ -155,5 +155,4 @@ describe("#254 errors under /plugboard/ are problem+json", () => {
     expect(reply.headers["content-type"]).toBe("application/json")
     expect(Object.keys(reply.json().error).sort()).toEqual(["code", "message", "status"])
   })
-
 })

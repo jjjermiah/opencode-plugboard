@@ -28,7 +28,11 @@ afterAll(() => server.close())
 
 const lastParts = () => caller.calls.at(-1)!.request.messages[0]!.content
 /** The error a call rejects with (the SDKs return lazy promises that `expect(...).rejects` does not await). */
-const rejection = (call: PromiseLike<unknown>) => call.then(() => undefined, (caught: unknown) => caught as { status?: number })
+const rejection = (call: PromiseLike<unknown>) =>
+  call.then(
+    () => undefined,
+    (caught: unknown) => caught as { status?: number },
+  )
 
 describe("openai (files)", () => {
   const client = () => new OpenAI({ baseURL: `${server.url}/v1`, apiKey: KEY, maxRetries: 0 })
@@ -44,10 +48,32 @@ describe("openai (files)", () => {
     const content = await openai.files.content(created.id)
     expect(new Uint8Array(await content.arrayBuffer())).toEqual(bytes(PDF_BASE64))
 
-    const chat = await openai.chat.completions.create({ model: "fast", messages: [{ role: "user", content: [{ type: "text", text: "read it" }, { type: "file", file: { file_id: created.id } }] }] })
+    const chat = await openai.chat.completions.create({
+      model: "fast",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "read it" },
+            { type: "file", file: { file_id: created.id } },
+          ],
+        },
+      ],
+    })
     expect(chat.choices[0]!.message.content).toBe("ok")
     expect(lastParts()[1]).toMatchObject({ type: "media", mediaType: "application/pdf" })
-    const response = await openai.responses.create({ model: "fast", input: [{ role: "user", content: [{ type: "input_text", text: "read it" }, { type: "input_file", file_id: created.id }] }] })
+    const response = await openai.responses.create({
+      model: "fast",
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "read it" },
+            { type: "input_file", file_id: created.id },
+          ],
+        },
+      ],
+    })
     expect(response.output_text).toBe("ok")
     expect(lastParts()[1]).toMatchObject({ type: "media", mediaType: "application/pdf" })
 
@@ -97,7 +123,10 @@ describe("anthropic (beta files)", () => {
       ],
     })
     expect(message.content[0]).toMatchObject({ type: "text", text: "ok" })
-    expect(lastParts().slice(1)).toMatchObject([{ type: "media", mediaType: "image/png" }, { type: "media", mediaType: "application/pdf" }])
+    expect(lastParts().slice(1)).toMatchObject([
+      { type: "media", mediaType: "image/png" },
+      { type: "media", mediaType: "application/pdf" },
+    ])
 
     expect(await anthropic.beta.files.delete(pdf.id)).toEqual({ id: pdf.id, type: "file_deleted" })
     await anthropic.beta.files.delete(image.id)

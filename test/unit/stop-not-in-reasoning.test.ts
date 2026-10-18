@@ -161,7 +161,10 @@ describe("#390 Messages: stop applies to answer text, usage is counted", () => {
       const parsed = ok(parseMessagesRequest(body(stream), options)) as ParsedMessages
       const emitted: MessagesStreamEvent[] = []
       const run = await runMessage(modelRun(quoted, parsed.request), parsed.exchange, (event) => emitted.push(event))
-      const streamed = emitted.filter((event) => event.type === "content_block_delta").map((event) => (event.delta as { text?: string }).text ?? "").join("")
+      const streamed = emitted
+        .filter((event) => event.type === "content_block_delta")
+        .map((event) => (event.delta as { text?: string }).text ?? "")
+        .join("")
       expect(streamed).toBe("Answer")
       if (!stream) expect(run.message).toMatchObject({ content: [{ type: "text", text: "Answer" }], usage: { input_tokens: 10, output_tokens: 500 } })
       const final = emitted.find((event) => event.type === "message_delta") as unknown as { usage: Record<string, number> }
@@ -174,7 +177,10 @@ describe("#390 Messages: stop applies to answer text, usage is counted", () => {
       const parsed = ok(parseMessagesRequest(body(stream), options)) as ParsedMessages
       const emitted: MessagesStreamEvent[] = []
       const run = await runMessage(modelRun(ending, parsed.request), parsed.exchange, (event) => emitted.push(event))
-      const streamed = emitted.filter((event) => event.type === "content_block_delta").map((event) => (event.delta as { text?: string }).text ?? "").join("")
+      const streamed = emitted
+        .filter((event) => event.type === "content_block_delta")
+        .map((event) => (event.delta as { text?: string }).text ?? "")
+        .join("")
       expect(streamed).toBe("Answer ")
       if (!stream) expect(run.message).toMatchObject({ stop_reason: "stop_sequence", stop_sequence: "END", content: [{ type: "text", text: "Answer " }] })
     }

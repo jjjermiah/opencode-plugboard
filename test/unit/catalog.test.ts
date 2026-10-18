@@ -15,15 +15,9 @@ const load = (data: unknown[]) => loadCatalog(spyContext({ directory: "/p", resp
 
 describe("loadCatalog", () => {
   test("disabled models and entries without provider or id are dropped; modelID wins over id", async () => {
-    expect(
-      await load([
-        { providerID: "a", id: "off", enabled: false },
-        { providerID: "a" },
-        { id: "x" },
-        "junk",
-        { providerID: "a", id: "internal", modelID: "public" },
-      ]),
-    ).toEqual([{ providerID: "a", id: "public", variants: [] }])
+    expect(await load([{ providerID: "a", id: "off", enabled: false }, { providerID: "a" }, { id: "x" }, "junk", { providerID: "a", id: "internal", modelID: "public" }])).toEqual([
+      { providerID: "a", id: "public", variants: [] },
+    ])
   })
 
   test("variants may be strings or { id }; duplicates and empties are dropped", async () => {
@@ -38,11 +32,7 @@ describe("loadCatalog", () => {
         name: "Model M",
         capabilities: { tools: true, input: ["text", "image", 3], output: ["text"] },
         limit: { context: 200_000, output: 8_000, input: "x" },
-        cost: [
-          { input: 3, output: 15, cache: { read: 0.3, write: 3.75 } },
-          { input: 6, output: 22.5, tier: { type: "context", size: 200_000 } },
-          { input: "free" },
-        ],
+        cost: [{ input: 3, output: 15, cache: { read: 0.3, write: 3.75 } }, { input: 6, output: 22.5, tier: { type: "context", size: 200_000 } }, { input: "free" }],
         status: "beta",
         family: "m-family",
         time: { released: Date.UTC(2026, 0, 2) },
@@ -77,7 +67,17 @@ describe("loadCatalog", () => {
 describe("#74 /v1/models entries carry the catalog metadata", () => {
   test("cost per million tokens with cache and context tiers, release date as ISO 8601", async () => {
     const catalog = await load([
-      { providerID: "a", id: "m", limit: { context: 1000 }, cost: [{ input: 1, output: 2, cache: { read: 0.1 } }, { input: 2, output: 4, tier: { type: "context", size: 500 } }], time: { released: Date.UTC(2026, 0, 2) }, family: "f" },
+      {
+        providerID: "a",
+        id: "m",
+        limit: { context: 1000 },
+        cost: [
+          { input: 1, output: 2, cache: { read: 0.1 } },
+          { input: 2, output: 4, tier: { type: "context", size: 500 } },
+        ],
+        time: { released: Date.UTC(2026, 0, 2) },
+        family: "f",
+      },
     ])
     const body = encodeModelList(listAvailableModels(testOptions({ models: ["a/*"] }), catalog)) as { data: Array<{ plugboard: unknown }> }
     expect(body.data[0]!.plugboard).toEqual({

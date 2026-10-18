@@ -34,7 +34,10 @@ function liveCell(name: string, run: ExampleRun | null): string {
 
 /** The generated table, without its markers. Rows follow the example directory names. */
 export function renderTable(entries: ExampleEntry[], shows: Record<string, string>): string {
-  const rows = entries.map((entry) => `| [${entry.name}/](${entry.name}/) | ${shows[entry.name] ?? "(no Shows text in examples/_harness/index.json)"} | ${verdictCell(entry.scripted)} | ${liveCell(entry.name, entry.newestLive)} |`)
+  const rows = entries.map(
+    (entry) =>
+      `| [${entry.name}/](${entry.name}/) | ${shows[entry.name] ?? "(no Shows text in examples/_harness/index.json)"} | ${verdictCell(entry.scripted)} | ${liveCell(entry.name, entry.newestLive)} |`,
+  )
   return ["| Example | Shows | Scripted | Newest live run |", "| --- | --- | --- | --- |", ...rows].join("\n")
 }
 

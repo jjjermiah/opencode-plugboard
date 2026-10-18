@@ -8,9 +8,7 @@ import { hasSinceNext, placeholdersInReleased, replaceSinceNext } from "../../.g
 describe("since-next: replacing the placeholder", () => {
   test("the parenthesised form and the sentence-start form become the version", () => {
     const text = "- New option `x` (since next).\n\nSince next, the default is on. Also: Since next it is faster.\n- Since next the flag works."
-    expect(replaceSinceNext(text, "0.51.0")).toBe(
-      "- New option `x` (since 0.51.0).\n\nSince 0.51.0, the default is on. Also: Since 0.51.0 it is faster.\n- Since 0.51.0 the flag works.",
-    )
+    expect(replaceSinceNext(text, "0.51.0")).toBe("- New option `x` (since 0.51.0).\n\nSince 0.51.0, the default is on. Also: Since 0.51.0 it is faster.\n- Since 0.51.0 the flag works.")
   })
 
   test("a real version marker and ordinary prose stay as written", () => {
@@ -20,9 +18,7 @@ describe("since-next: replacing the placeholder", () => {
 
   test("inline code and fenced blocks are left alone, so a doc can show the placeholder", () => {
     const text = ["Write `(since next)` in the notes (since next).", "", "```md", "- Added (since next)", "Since next, x", "```", "", "(since next)"].join("\n")
-    expect(replaceSinceNext(text, "1.2.3")).toBe(
-      ["Write `(since next)` in the notes (since 1.2.3).", "", "```md", "- Added (since next)", "Since next, x", "```", "", "(since 1.2.3)"].join("\n"),
-    )
+    expect(replaceSinceNext(text, "1.2.3")).toBe(["Write `(since next)` in the notes (since 1.2.3).", "", "```md", "- Added (since next)", "Since next, x", "```", "", "(since 1.2.3)"].join("\n"))
   })
 
   test("a tilde fence is code too", () => {
@@ -39,7 +35,24 @@ describe("since-next: replacing the placeholder", () => {
 
 describe("since-next: CI check", () => {
   const changelog = (unreleased: string, released: string) =>
-    ["# Changelog", "", "## [Unreleased]", "", unreleased, "", "## [0.50.0] - 2026-10-17: Title", "", released, "", "## [0.49.0] - 2026-10-16: Older", "", "- old", "", "[Unreleased]: https://example.invalid/compare/v0.50.0...HEAD", ""].join("\n")
+    [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      unreleased,
+      "",
+      "## [0.50.0] - 2026-10-17: Title",
+      "",
+      released,
+      "",
+      "## [0.49.0] - 2026-10-16: Older",
+      "",
+      "- old",
+      "",
+      "[Unreleased]: https://example.invalid/compare/v0.50.0...HEAD",
+      "",
+    ].join("\n")
 
   test("a placeholder under [Unreleased] is fine", () => {
     expect(placeholdersInReleased(changelog("- Added a thing (since next).", "- Released (since 0.50.0)."))).toEqual([])

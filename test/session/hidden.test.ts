@@ -42,9 +42,7 @@ function setup(options: Setup = {}) {
     promptCache: options.promptCache,
   })
   port.script.prompt = async (input) => {
-    queueMicrotask(() =>
-      [bus(input.sessionID).textDelta("Hi"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)),
-    )
+    queueMicrotask(() => [bus(input.sessionID).textDelta("Hi"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)))
   }
   return { port, sessions, caller, storage }
 }

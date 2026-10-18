@@ -144,7 +144,14 @@ describe("#4 answers", () => {
     const reply = await server!.send(messages())
     expect(reply.status).toBe(200)
     expect(reply.headers["x-plugboard-session"]).toBe("ses_9")
-    expect(reply.json()).toMatchObject({ type: "message", role: "assistant", model: "test/echo", content: [{ type: "text", text: "Hi" }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 1 } })
+    expect(reply.json()).toMatchObject({
+      type: "message",
+      role: "assistant",
+      model: "test/echo",
+      content: [{ type: "text", text: "Hi" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 5, output_tokens: 1 },
+    })
   })
 
   test("a model error keeps its status in Anthropic's shape", async () => {

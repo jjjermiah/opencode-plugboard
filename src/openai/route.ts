@@ -24,7 +24,23 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { serveAdmin } from "../admin/route.js"
-import { DEFAULT_APP, appPolicy, authenticate, authenticateUsage, bodyLimits, endpointRefusal, historyTemplate, maxNFor, maxNOption, reasoningOutputFor, requestTimeoutFor, requestTimeoutOption, requestedModel, type Endpoint, type PlugboardOptions } from "../config.js"
+import {
+  DEFAULT_APP,
+  appPolicy,
+  authenticate,
+  authenticateUsage,
+  bodyLimits,
+  endpointRefusal,
+  historyTemplate,
+  maxNFor,
+  maxNOption,
+  reasoningOutputFor,
+  requestTimeoutFor,
+  requestTimeoutOption,
+  requestedModel,
+  type Endpoint,
+  type PlugboardOptions,
+} from "../config.js"
 import { isPlugError, type CatalogModel, type ModelCaller, type PlugError, type PlugRequest } from "../contract.js"
 import { buildDiscovery, buildStatus, readiness, renderDiscoveryHtml, sendText } from "../discovery.js"
 import { PACKAGE_VERSION } from "../version.js"
@@ -228,11 +244,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const auth =
         isMessagesPath(path) || isKeyAnywhere(request.method, path)
           ? await authenticateRequest(host, request)
-        : authenticate(
-            liveOptions(host.options),
-            isGeminiPath(path) ? geminiAuthorization(request, url) : request.headers.authorization,
-            await runtimeDigests(),
-          )
+          : authenticate(liveOptions(host.options), isGeminiPath(path) ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
       return isPlugError(auth) ? undefined : auth.app
     } catch {
       return undefined
@@ -276,9 +288,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           response.writeHead(204, {
             "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
             "access-control-allow-headers": "authorization, content-type, x-api-key, x-goog-api-key",
-            ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true"
-              ? { "access-control-allow-private-network": "true" }
-              : {}),
+            ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true" ? { "access-control-allow-private-network": "true" } : {}),
           })
           response.end()
           return
@@ -345,7 +355,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (route === "GET /plugboard/status") {
       const operator = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
       if (!isPlugError(operator) && operator.admin)
-        return sendJson(response, 200, buildStatus({ options: host.options, runtime: runtimeStatus(), catalog: await optionalCatalog(scope), packageVersion: PACKAGE_VERSION, opencodeVersion: host.opencodeVersion }))
+        return sendJson(
+          response,
+          200,
+          buildStatus({ options: host.options, runtime: runtimeStatus(), catalog: await optionalCatalog(scope), packageVersion: PACKAGE_VERSION, opencodeVersion: host.opencodeVersion }),
+        )
     }
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but the probes and the first-run pages.
@@ -353,11 +367,12 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // A resumable Gemini upload chunk with no key at all is authorized by its upload id (a capability url, as Google's is: google-genai sends
     // no key on the chunks). An unknown id falls through to the usual check, which is a 401 (I15).
     const uploadApp = geminiFiles?.op === "upload" && geminiAuthorization(request, url) === undefined ? uploadSessionApp(url.searchParams.get("upload_id")) : undefined
-    const auth = uploadApp !== undefined
-      ? { app: uploadApp }
-      : isKeyAnywhere(request.method, path)
-        ? await authenticateRequest(host, request)
-        : authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
+    const auth =
+      uploadApp !== undefined
+        ? { app: uploadApp }
+        : isKeyAnywhere(request.method, path)
+          ? await authenticateRequest(host, request)
+          : authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
 
@@ -380,7 +395,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     // An app may be limited to some endpoints (#268). Checked after authentication and route existence (I15): a refusal is a 403, never a 404.
-    const endpoint: Endpoint | undefined = files || geminiFiles ? "files" : gemini ? "gemini" : stored ? "responses" : modelId !== undefined ? "models" : Object.hasOwn(ENDPOINT_BY_ROUTE, route) ? ENDPOINT_BY_ROUTE[route] : undefined
+    const endpoint: Endpoint | undefined =
+      files || geminiFiles ? "files" : gemini ? "gemini" : stored ? "responses" : modelId !== undefined ? "models" : Object.hasOwn(ENDPOINT_BY_ROUTE, route) ? ENDPOINT_BY_ROUTE[route] : undefined
     const refusal = endpoint === undefined ? undefined : endpointRefusal(host.options, auth.app, endpoint)
     if (refusal) return fail(response, refusal)
 
@@ -475,8 +491,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // The answer names the model it runs on: the app's pin, else the caller's (#261).
     exchange.model = requested.model
     // n > 1: one independent call per choice, merged (src/openai/fanout.ts).
-    if (parsed.n > 1)
-      return serveChoices(host, { app: auth.app, calls: Array.from({ length: parsed.n }, () => call), response, scope, info, codec: chatCodec(exchange) })
+    if (parsed.n > 1) return serveChoices(host, { app: auth.app, calls: Array.from({ length: parsed.n }, () => call), response, scope, info, codec: chatCodec(exchange) })
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.
     if (scope.signal.aborted) throw scope.signal.reason
@@ -530,8 +545,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (isPlugError(who)) return fail(response, who)
     const app = url.searchParams.get("app") ?? undefined
     if (!who.admin) {
-      if (app !== undefined && app !== who.app)
-        return fail(response, { status: 403, kind: "permission", code: "app_forbidden", message: "This key cannot read the usage of another app" })
+      if (app !== undefined && app !== who.app) return fail(response, { status: 403, kind: "permission", code: "app_forbidden", message: "This key cannot read the usage of another app" })
       info.app = who.app
     }
     const report = await usage.query({
@@ -609,12 +623,35 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const ms = Date.now() - started
       recorded("requestFinished", () => metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms }))
       recorded("usage", () => {
-        if (info.app !== undefined) host.usage?.request({ app: info.app, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms, ...(info.user === undefined ? {} : { user: info.user }) })
+        if (info.app !== undefined)
+          host.usage?.request({
+            app: info.app,
+            route: info.route,
+            status: response.statusCode,
+            outcome: outcomeLabel(outcome, response.statusCode),
+            ms,
+            ...(info.user === undefined ? {} : { user: info.user }),
+          })
       })
       // Probes and scrapes that succeed are not worth a line each. A readiness probe is never logged: it repeats until the backend is ready.
       const probe = READY_ROUTES.includes(info.route) || ((HEALTH_ROUTES.includes(info.route) || info.route === "GET /plugboard/metrics") && outcome === "ok")
       if (!probe) {
-        const fields = { id, route: info.route, app: info.app, user: info.user, client: info.client, session_url: info.sessionUrl, model: info.model, served: info.served, fallbacks: info.fallbacks, dropped: info.dropped, status: response.statusCode, ms, outcome, error }
+        const fields = {
+          id,
+          route: info.route,
+          app: info.app,
+          user: info.user,
+          client: info.client,
+          session_url: info.sessionUrl,
+          model: info.model,
+          served: info.served,
+          fallbacks: info.fallbacks,
+          dropped: info.dropped,
+          status: response.statusCode,
+          ms,
+          outcome,
+          error,
+        }
         if (outcome === "error" || response.statusCode >= 500) logError("request.failed", fields)
         else logRequest("request", fields)
       }

@@ -18,8 +18,7 @@ import { FakeStorage } from "../support/usage.js"
 const logs = captureLogs()
 
 describe("the host's missing-parent failure", () => {
-  const hostWith = (failure: unknown) =>
-    createSessionPort({ session: { create: () => Effect.fail(failure) } } as unknown as HostContext)
+  const hostWith = (failure: unknown) => createSessionPort({ session: { create: () => Effect.fail(failure) } } as unknown as HostContext)
   const child = { directory: "/app", model: { providerID: "p", id: "m" }, title: "t", metadata: {}, permissions: [], parentID: "ses_gone" }
 
   test("Session.NotFoundError for the parent is a MissingParentError", async () => {
@@ -27,7 +26,9 @@ describe("the host's missing-parent failure", () => {
   })
 
   test("any other host failure passes through unchanged", async () => {
-    const error = await hostWith({ _tag: "Session.BusyError" }).create(child).catch((caught: unknown) => caught)
+    const error = await hostWith({ _tag: "Session.BusyError" })
+      .create(child)
+      .catch((caught: unknown) => caught)
     expect(error).not.toBeInstanceOf(MissingParentError)
     expect(error).toEqual({ _tag: "Session.BusyError" })
   })
@@ -46,9 +47,7 @@ function setup() {
     promptCache: { affinity: "anchor", scope: "app" },
   })
   port.script.prompt = async (input) => {
-    queueMicrotask(() =>
-      [bus(input.sessionID).textDelta("Hi"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)),
-    )
+    queueMicrotask(() => [bus(input.sessionID).textDelta("Hi"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)))
   }
   return { port, sessions, caller }
 }

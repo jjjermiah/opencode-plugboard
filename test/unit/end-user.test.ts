@@ -18,7 +18,7 @@ function recorder(): UsageRecorder {
 /** The app's report once `count` requests are recorded (the recorder writes asynchronously). */
 async function report(rec: UsageRecorder, count: number, user?: string): Promise<UsageReport> {
   let last: UsageReport | undefined
-  await until(async () => ((last = (await rec.query({ app: "app", ...(user === undefined ? {} : { user }) })) as UsageReport).totals.requests >= count), 1_000, `${count} requests`)
+  await until(async () => (last = (await rec.query({ app: "app", ...(user === undefined ? {} : { user }) })) as UsageReport).totals.requests >= count, 1_000, `${count} requests`)
   return last!
 }
 

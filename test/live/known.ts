@@ -4,6 +4,5 @@
  * the entry is removed. The reason says what was observed (see docs/live-matrix.md).
  */
 export const KNOWN: Record<string, string> = {
-  "openai/gpt-5.6-luna#low":
-    "environment, not plugboard: the ChatGPT account hit its usage limit (subscription_sharing_usage_limit_exceeded); now answered as 429 quota_exceeded (#171)",
+  "openai/gpt-5.6-luna#low": "environment, not plugboard: the ChatGPT account hit its usage limit (subscription_sharing_usage_limit_exceeded); now answered as 429 quota_exceeded (#171)",
 }

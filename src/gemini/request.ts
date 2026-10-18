@@ -15,16 +15,7 @@
 import type { PlugboardOptions } from "../config.js"
 import { show } from "../client-value.js"
 import { imageProblem } from "../image.js"
-import {
-  isPlugError,
-  type PlugError,
-  type PlugGeneration,
-  type PlugMessage,
-  type PlugPart,
-  type PlugRequest,
-  type PlugTool,
-  type PlugToolChoice,
-} from "../contract.js"
+import { isPlugError, type PlugError, type PlugGeneration, type PlugMessage, type PlugPart, type PlugRequest, type PlugTool, type PlugToolChoice } from "../contract.js"
 import type { GeminiExchange } from "./response.js"
 
 type JsonObject = Record<string, unknown>
@@ -207,13 +198,10 @@ const parseContents = (raw: unknown): PlugMessage[] | PlugError => {
         parts.push({ type: "tool-call", id, name: call.name, input: args })
       } else if (response !== undefined) {
         if (role === "model") return bad("functionResponse parts belong in a user turn", `${at}.functionResponse`)
-        if (!isRecord(response) || typeof response.name !== "string" || response.name.length === 0)
-          return bad("functionResponse needs a name", `${at}.functionResponse.name`)
+        if (!isRecord(response) || typeof response.name !== "string" || response.name.length === 0) return bad("functionResponse needs a name", `${at}.functionResponse.name`)
         const wanted = typeof response.id === "string" ? response.id : undefined
-        const match =
-          (wanted !== undefined ? calls.find((c) => !c.answered && c.id === wanted) : undefined) ?? calls.find((c) => !c.answered && c.name === response.name)
-        if (!match)
-          return bad(`functionResponse "${response.name}" answers no earlier functionCall of that name (calls are paired by name and order)`, `${at}.functionResponse`)
+        const match = (wanted !== undefined ? calls.find((c) => !c.answered && c.id === wanted) : undefined) ?? calls.find((c) => !c.answered && c.name === response.name)
+        if (!match) return bad(`functionResponse "${response.name}" answers no earlier functionCall of that name (calls are paired by name and order)`, `${at}.functionResponse`)
         match.answered = true
         const body = response.response ?? {}
         // The convention is {output: ...} for a result and {error: ...} for a failure.
@@ -225,8 +213,7 @@ const parseContents = (raw: unknown): PlugMessage[] | PlugError => {
       } else if (inline !== undefined) {
         if (role === "model") return unsupported("inlineData is not supported in a model turn", `${at}.inlineData`)
         const mimeType = isRecord(inline) ? field(inline, "mimeType") : undefined
-        if (!isRecord(inline) || typeof inline.data !== "string" || typeof mimeType !== "string")
-          return bad("inlineData needs mimeType and base64 data", `${at}.inlineData`)
+        if (!isRecord(inline) || typeof inline.data !== "string" || typeof mimeType !== "string") return bad("inlineData needs mimeType and base64 data", `${at}.inlineData`)
         const url = dataUrl(mimeType, standardBase64(inline.data))
         const problem = mimeType.toLowerCase().startsWith("image/") ? imageProblem(url) : undefined
         if (problem) return bad(problem, `${at}.inlineData`, "invalid_image")
@@ -235,7 +222,10 @@ const parseContents = (raw: unknown): PlugMessage[] | PlugError => {
         if (role === "model") return unsupported("fileData is not supported in a model turn", `${at}.fileData`)
         const uri = isRecord(file) ? field(file, "fileUri") : undefined
         if (typeof uri !== "string" || !/^https?:\/\//i.test(uri))
-          return unsupported("fileData needs an http(s) fileUri or a plugboard file (files/<id>, or the uri of an upload to /upload/v1beta/files); gs:// URIs and other Gemini file ids are not supported (send inlineData)", `${at}.fileData.fileUri`)
+          return unsupported(
+            "fileData needs an http(s) fileUri or a plugboard file (files/<id>, or the uri of an upload to /upload/v1beta/files); gs:// URIs and other Gemini file ids are not supported (send inlineData)",
+            `${at}.fileData.fileUri`,
+          )
         const mimeType = isRecord(file) ? field(file, "mimeType") : undefined
         parts.push({ type: "media", url: uri, ...(typeof mimeType === "string" ? { mediaType: mimeType } : {}) })
       } else if (isRecord(part) && Object.keys(part).every((key) => key === "thoughtSignature" || key === "thought_signature" || key === "thought")) {
@@ -275,8 +265,7 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
     const at = `tools[${index}]`
     if (!isRecord(entry)) return bad("Each tool must be an object", at)
     const hosted = HOSTED.find((key) => field(entry, key) !== undefined)
-    if (hosted)
-      return unsupported(`Unsupported tool "${hosted}": only functionDeclarations are supported (Google's built-in tools run on Google's servers)`, `${at}.${hosted}`)
+    if (hosted) return unsupported(`Unsupported tool "${hosted}": only functionDeclarations are supported (Google's built-in tools run on Google's servers)`, `${at}.${hosted}`)
     const declarations = field(entry, "functionDeclarations")
     if (declarations === undefined) {
       const other = Object.keys(entry)[0]
@@ -397,8 +386,7 @@ const checkUnsupported = (body: JsonObject, config: JsonObject): PlugError | und
   if (field(body, "cachedContent") != null) return unsupported("cachedContent is not supported: plugboard is stateless, send the full contents", "cachedContent")
   if (field(config, "responseLogprobs") === true) return unsupported("responseLogprobs is not supported", "generationConfig.responseLogprobs")
   const modalities = field(config, "responseModalities")
-  if (Array.isArray(modalities) && modalities.some((m) => show(m).toUpperCase() !== "TEXT"))
-    return unsupported("Only the TEXT response modality is supported", "generationConfig.responseModalities")
+  if (Array.isArray(modalities) && modalities.some((m) => show(m).toUpperCase() !== "TEXT")) return unsupported("Only the TEXT response modality is supported", "generationConfig.responseModalities")
 }
 
 /** `candidateCount` is how many candidates to return. Each one is a full model call (see `src/openai/fanout.ts`), so it is capped by `maxN`, like `n`. */
@@ -441,14 +429,12 @@ export function parseGeminiRequest(model: string, stream: boolean, body: unknown
   const respond = format.structured
   if (respond && callerTools.some((tool) => tool.name === RESPOND_TOOL))
     return bad(`A tool named "${RESPOND_TOOL}" collides with responseSchema, which plugboard answers through that name`, "tools", "reserved_tool_name")
-  if (respond && typeof toolChoice === "object")
-    return unsupported("Mode ANY with a single allowed function cannot be combined with responseSchema", "toolConfig.functionCallingConfig")
+  if (respond && typeof toolChoice === "object") return unsupported("Mode ANY with a single allowed function cannot be combined with responseSchema", "toolConfig.functionCallingConfig")
   // Same rule as the other front-ends: with caller tools on offer the model may call one of them or
   // `respond`, so the choice is `required`; mode NONE leaves only `respond`.
   const withCallerTools = respond !== undefined && callerTools.length > 0 && toolChoice !== "none"
   const tools = respond ? (withCallerTools ? [...callerTools, respond] : [respond]) : callerTools
-  if (tools.length > options.maxTools)
-    return bad(`Request has ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`, "tools", "too_many_tools")
+  if (tools.length > options.maxTools) return bad(`Request has ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`, "tools", "too_many_tools")
   const forced: PlugToolChoice | undefined = respond ? (withCallerTools ? "required" : { type: "tool", name: RESPOND_TOOL }) : toolChoice
 
   const request: Omit<PlugRequest, "ref"> = {
@@ -467,7 +453,9 @@ export function parseGeminiRequest(model: string, stream: boolean, body: unknown
     exchange: {
       model,
       stream,
-      ...(respond ? { structuredTool: RESPOND_TOOL, ...(format.schema ? { structuredSchema: format.schema } : {}), ...(format.wrap ? { wrapped: true } : {}), ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+      ...(respond
+        ? { structuredTool: RESPOND_TOOL, ...(format.schema ? { structuredSchema: format.schema } : {}), ...(format.wrap ? { wrapped: true } : {}), ...(withCallerTools ? { callerTools: true } : {}) }
+        : {}),
       ...(format.instruction ? { jsonObject: true } : {}),
     },
     ...(reasoningEffort ? { reasoningEffort } : {}),

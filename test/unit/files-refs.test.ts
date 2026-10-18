@@ -30,7 +30,19 @@ describe("fileRefs", () => {
   test("finds each API's reference, once per id, in message order", () => {
     const part = { type: "file", file: { file_id: ID } }
     expect(fileRefs("chat", { messages: [{ role: "user", content: [part, { type: "text", text: "x" }, { type: "file", file: { file_id: OTHER } }, part] }] })).toEqual([ID, OTHER])
-    expect(fileRefs("responses", { input: [{ role: "user", content: [{ type: "input_file", file_id: ID }, { type: "input_image", file_id: OTHER }] }] })).toEqual([ID, OTHER])
+    expect(
+      fileRefs("responses", {
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_file", file_id: ID },
+              { type: "input_image", file_id: OTHER },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([ID, OTHER])
     expect(fileRefs("messages", { messages: [{ role: "user", content: [{ type: "document", source: { type: "file", file_id: ID } }] }] })).toEqual([ID])
     expect(fileRefs("gemini", { contents: [{ parts: [{ fileData: { fileUri: `files/${HEX}` } }, { file_data: { file_uri: `files/${"f".repeat(32)}` } }] }] })).toEqual([ID, OTHER])
   })
@@ -65,7 +77,10 @@ describe("inlineFiles", () => {
   test("Chat: an image is an image_url, a PDF a file_data part, text a text part", () => {
     const body = (id: string) => ({ model: "m", messages: [{ role: "user", content: [{ type: "file", file: { file_id: id, filename: "n.pdf" } }] }] })
     expect(inlineFiles("chat", body(ID), files(png))).toEqual({ model: "m", messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: `data:image/png;base64,${png.base64}` } }] }] })
-    expect(inlineFiles("chat", body(ID), files(pdf))).toEqual({ model: "m", messages: [{ role: "user", content: [{ type: "file", file: { file_data: `data:application/pdf;base64,${pdf.base64}`, filename: "n.pdf" } }] }] })
+    expect(inlineFiles("chat", body(ID), files(pdf))).toEqual({
+      model: "m",
+      messages: [{ role: "user", content: [{ type: "file", file: { file_data: `data:application/pdf;base64,${pdf.base64}`, filename: "n.pdf" } }] }],
+    })
     expect(inlineFiles("chat", body(ID), files(text))).toEqual({ model: "m", messages: [{ role: "user", content: [{ type: "text", text: "plain words" }] }] })
   })
 
@@ -82,11 +97,14 @@ describe("inlineFiles", () => {
   test("Messages: the block keeps its other fields; image takes an image, document a PDF or text", () => {
     const body = (block: object) => ({ messages: [{ role: "user", content: [block] }] })
     const image = { type: "image", cache_control: { type: "ephemeral" }, source: { type: "file", file_id: ID } }
-    expect(inlineFiles("messages", body(image), files(png))).toEqual(body({ type: "image", cache_control: { type: "ephemeral" }, source: { type: "base64", media_type: "image/png", data: png.base64 } }))
+    expect(inlineFiles("messages", body(image), files(png))).toEqual(
+      body({ type: "image", cache_control: { type: "ephemeral" }, source: { type: "base64", media_type: "image/png", data: png.base64 } }),
+    )
     const doc = { type: "document", title: "T", source: { type: "file", file_id: ID } }
     expect(inlineFiles("messages", body(doc), files(pdf))).toEqual(body({ type: "document", title: "T", source: { type: "base64", media_type: "application/pdf", data: pdf.base64 } }))
     expect(inlineFiles("messages", body(doc), files(text))).toEqual(body({ type: "document", title: "T", source: { type: "text", media_type: "text/plain", data: "plain words" } }))
-    for (const wrong of [inlineFiles("messages", body(image), files(pdf)), inlineFiles("messages", body(doc), files(png))]) expect(isPlugError(wrong) && wrong).toMatchObject({ status: 400, code: "invalid_file" })
+    for (const wrong of [inlineFiles("messages", body(image), files(pdf)), inlineFiles("messages", body(doc), files(png))])
+      expect(isPlugError(wrong) && wrong).toMatchObject({ status: 400, code: "invalid_file" })
   })
 
   test("Messages: a tool_result block is rewritten in place", () => {
@@ -134,7 +152,13 @@ describe("inlineFiles", () => {
 
 describe("restoreFileRefs", () => {
   test("puts the reference back where inlineFiles replaced one, and leaves every other item as it is", () => {
-    const item = { role: "user", content: [{ type: "input_text", text: "x" }, { type: "input_file", file_id: ID, filename: "n.pdf" }] }
+    const item = {
+      role: "user",
+      content: [
+        { type: "input_text", text: "x" },
+        { type: "input_file", file_id: ID, filename: "n.pdf" },
+      ],
+    }
     const inlined = inlineFiles("responses", { input: [item, { role: "user", content: "plain" }] }, files(pdf))
     if (isPlugError(inlined)) throw new Error("inlined")
     const items = (inlined as { input: Array<Record<string, unknown>> }).input

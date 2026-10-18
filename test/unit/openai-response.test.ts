@@ -58,7 +58,7 @@ describe("unfence (#50 json_object fences)", () => {
   test.each([
     ["a json fence", '```json\n{"a":1}\n```', '{"a":1}'],
     ["a bare fence", '```\n{"a":1}\n```', '{"a":1}'],
-    ["a fence with surrounding whitespace", '  ```JSON\r\n[1,2]\r\n```  ', "[1,2]"],
+    ["a fence with surrounding whitespace", "  ```JSON\r\n[1,2]\r\n```  ", "[1,2]"],
     ["unfenced JSON", '{"a":1}', '{"a":1}'],
     ["a fence around non-JSON", "```\nhello\n```", "```\nhello\n```"],
     ["prose around a fence", 'Here:\n```json\n{"a":1}\n```', 'Here:\n```json\n{"a":1}\n```'],
@@ -370,13 +370,7 @@ describe("reasoningOutput (since 0.36.0): reasoning on Chat Completions", () => 
 
   test("the stream sends reasoning as deltas under both names, after the role and before the content", async () => {
     const { deltas } = await stream(on, ev.reasoning("hm"), ev.reasoning("mm"), ev.text("Hel"), ev.finish("stop"))
-    expect(deltas).toEqual([
-      { role: "assistant", content: "" },
-      { reasoning_content: "hm", reasoning: "hm" },
-      { reasoning_content: "mm", reasoning: "mm" },
-      { content: "Hel" },
-      {},
-    ])
+    expect(deltas).toEqual([{ role: "assistant", content: "" }, { reasoning_content: "hm", reasoning: "hm" }, { reasoning_content: "mm", reasoning: "mm" }, { content: "Hel" }, {}])
   })
 
   test("a signature-only reasoning event (empty text) sends nothing", async () => {

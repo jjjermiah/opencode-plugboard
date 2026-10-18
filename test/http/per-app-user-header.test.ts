@@ -73,7 +73,12 @@ describe("#272 apps.<name>.userHeader on the wire", () => {
 
   test("Responses reads the header ahead of the body's user, and falls back to the body without it", async () => {
     const caller = await route()
-    const responses = (headers: Record<string, string>): SendInit => ({ method: "POST", path: "/v1/responses", headers: { authorization: `Bearer ${KEYS.bot}`, ...headers }, body: { model: "test/echo", input: "hi", user: "bob" } })
+    const responses = (headers: Record<string, string>): SendInit => ({
+      method: "POST",
+      path: "/v1/responses",
+      headers: { authorization: `Bearer ${KEYS.bot}`, ...headers },
+      body: { model: "test/echo", input: "hi", user: "bob" },
+    })
     await server!.send(responses({ "x-user-id": "alice" }))
     expect(caller.call.request.user).toBe("alice")
     await server!.send(responses({}))
@@ -82,7 +87,12 @@ describe("#272 apps.<name>.userHeader on the wire", () => {
 
   test("legacy completions reads the header ahead of the body's user", async () => {
     const caller = await route()
-    const reply = await server!.send({ method: "POST", path: "/v1/completions", headers: { authorization: `Bearer ${KEYS.bot}`, "x-user-id": "alice" }, body: { model: "test/echo", prompt: "hi", user: "bob" } })
+    const reply = await server!.send({
+      method: "POST",
+      path: "/v1/completions",
+      headers: { authorization: `Bearer ${KEYS.bot}`, "x-user-id": "alice" },
+      body: { model: "test/echo", prompt: "hi", user: "bob" },
+    })
     expect(reply.status).toBe(200)
     expect(caller.call.request.user).toBe("alice")
   })
@@ -146,7 +156,10 @@ describe("#272 apps.<name>.userHeader at load", () => {
     expect(() => parseWith(value)).toThrow(/`apps\.bot\.userHeader` must be a lower case header name of 1 to 64 letters, digits or hyphens/)
   })
 
-  test.each(["authorization", "proxy-authorization", "x-api-key", "api-key", "x-goog-api-key", "x-auth-token", "cookie"])("a credential header (%s) is refused: its value would be logged as the user", (name) => {
-    expect(() => parseWith(name)).toThrow(/`apps\.bot\.userHeader` cannot be .* that header carries a key/)
-  })
+  test.each(["authorization", "proxy-authorization", "x-api-key", "api-key", "x-goog-api-key", "x-auth-token", "cookie"])(
+    "a credential header (%s) is refused: its value would be logged as the user",
+    (name) => {
+      expect(() => parseWith(name)).toThrow(/`apps\.bot\.userHeader` cannot be .* that header carries a key/)
+    },
+  )
 })

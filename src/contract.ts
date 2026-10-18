@@ -192,8 +192,7 @@ export interface PlugError {
 }
 
 /** The one discriminator for `PlugError` values returned in place of a result. */
-export const isPlugError = (value: unknown): value is PlugError =>
-  typeof value === "object" && value !== null && "status" in value && "kind" in value && "message" in value
+export const isPlugError = (value: unknown): value is PlugError => typeof value === "object" && value !== null && "status" in value && "kind" in value && "message" in value
 
 // ---------------------------------------------------------------- caller
 

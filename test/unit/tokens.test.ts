@@ -150,7 +150,17 @@ describe("#412 the token estimate", () => {
   })
 
   test("#374 replayed reasoning counts its text, signature and redacted data", () => {
-    const reasoning = plugRequest({ messages: [{ role: "assistant", content: [{ type: "reasoning", text: "plan", signature: "sig" }, { type: "reasoning", text: "", redactedData: "opaque" }] }] })
+    const reasoning = plugRequest({
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "plan", signature: "sig" },
+            { type: "reasoning", text: "", redactedData: "opaque" },
+          ],
+        },
+      ],
+    })
     // 21 request + 4 message + (4 + 3 + 6) characters / 5, rounded up
     expect(estimateTokens(reasoning)).toBe(Math.ceil(21 + 4 + 13 / 5))
   })

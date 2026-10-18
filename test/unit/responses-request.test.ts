@@ -237,8 +237,15 @@ describe("parseResponsesRequest: input items", () => {
   })
 
   test("#288 input_file data that is not a PDF is a 400 invalid_file, not sent to backend preparation", () => {
-    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "AAAA" }])] }), options)).toMatchObject({ status: 400, code: "invalid_file", param: "input[0].content[0].file_data" })
-    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "data:text/plain;base64,JVBERi0xLjQK" }])] }), options)).toMatchObject({ status: 400, code: "invalid_file" })
+    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "AAAA" }])] }), options)).toMatchObject({
+      status: 400,
+      code: "invalid_file",
+      param: "input[0].content[0].file_data",
+    })
+    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "data:text/plain;base64,JVBERi0xLjQK" }])] }), options)).toMatchObject({
+      status: 400,
+      code: "invalid_file",
+    })
   })
 
   test("adjacent assistant text and function calls become one assistant message, followed by the results", () => {
@@ -246,7 +253,10 @@ describe("parseResponsesRequest: input items", () => {
       body({
         input: [
           message("user", "weather?"),
-          message("assistant", [{ type: "output_text", text: "Checking" }, { type: "refusal", refusal: "x" }]),
+          message("assistant", [
+            { type: "output_text", text: "Checking" },
+            { type: "refusal", refusal: "x" },
+          ]),
           fnCall("c1", "weather", '{"city":"Oslo"}'),
           fnCall("c2", "weather", { city: "Rome" }),
           { type: "reasoning", summary: [] },
@@ -304,7 +314,10 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
     expect(parse(body({})).exchange.envelope.store).toBe(true)
     expect(parse(body({ store: false })).exchange.envelope.store).toBe(false)
     const tools = [fn("a")]
-    expect(parse(body({ instructions: "i", max_output_tokens: 9, temperature: 0.5, top_p: 0.5, metadata: { k: "v" }, parallel_tool_calls: false, tools, tool_choice: "auto", user: "u", store: true })).exchange).toEqual({
+    expect(
+      parse(body({ instructions: "i", max_output_tokens: 9, temperature: 0.5, top_p: 0.5, metadata: { k: "v" }, parallel_tool_calls: false, tools, tool_choice: "auto", user: "u", store: true }))
+        .exchange,
+    ).toEqual({
       model: "test/echo",
       stream: false,
       envelope: {

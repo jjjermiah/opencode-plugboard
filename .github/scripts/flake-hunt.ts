@@ -90,8 +90,7 @@ const flags: Flag[] = []
 for (const [name, { fails, passes }] of outcomes) {
   if (fails.length > 0 && passes.length > 0)
     flags.push({ test: name, kind: "order-dependent", detail: `fails in ${fails.length} of ${fails.length + passes.length} runs (${fails.slice(0, 3).join(", ")}${fails.length > 3 ? ", ..." : ""})` })
-  else if (fails.length > 0)
-    flags.push({ test: name, kind: "fails every run", detail: `fails in all ${fails.length} runs` })
+  else if (fails.length > 0) flags.push({ test: name, kind: "fails every run", detail: `fails in all ${fails.length} runs` })
 }
 // Isolation: a test whose outcome alone differs from its outcome with the suite.
 for (const result of alone) {

@@ -112,11 +112,7 @@ describe("end user names an object inherits: the shared counters and the routes 
 
     expect((await srv.send({ path: "/plugboard/metrics" })).status).toBe(200)
     expect((await srv.send(chat("alice"))).status).toBe(200)
-    await until(
-      async () => ((await recorder!.query({ app: "default" })) as UsageReport).apps.default?.users?.alice?.requests === 1,
-      1_000,
-      "alice counted",
-    )
+    await until(async () => ((await recorder!.query({ app: "default" })) as UsageReport).apps.default?.users?.alice?.requests === 1, 1_000, "alice counted")
     const report = ((await recorder!.query({ app: "default" })) as UsageReport).apps.default!
     expect(report.totals.requests).toBe(withUser(name).length + 1)
     expect(Object.hasOwn(report.users!, "alice")).toBe(true)
@@ -136,7 +132,11 @@ describe("end user names an object inherits: the shared counters and the routes 
     expect(reply.status).toBe(200)
     expect(logs.of("request")[0]!.fields).toMatchObject({ status: "200", user: "alice", outcome: "ok" })
     // A request that drops a parameter also reaches the `dropped` write, which throws here too.
-    const dropping = await srv.send({ method: "POST", path: "/v1/chat/completions", body: { model: "openai/gpt-5.5", messages: [{ role: "user", content: "hi" }], user: "alice", temperature: 0.2, top_p: 0.5, max_tokens: 9 } })
+    const dropping = await srv.send({
+      method: "POST",
+      path: "/v1/chat/completions",
+      body: { model: "openai/gpt-5.5", messages: [{ role: "user", content: "hi" }], user: "alice", temperature: 0.2, top_p: 0.5, max_tokens: 9 },
+    })
     expect(dropping.status).toBe(200)
     expect(dropping.headers["x-plugboard-dropped-params"]).toBeDefined()
     expect(logs.of("metrics.record_failed").length).toBeGreaterThan(0)

@@ -284,7 +284,16 @@ describe("event mapping", () => {
   })
 
   test("#411 held reasoning text is flushed before a text delta and before a tool call", async () => {
-    expect(await playWith(["get_weather"], host.reasoningDelta("call mcp_TZ2V0"), host.textDelta("Hi"), host.reasoningDelta("x mcp_TZ2V0X3dlYXRoZXI"), host.toolCalled("c1", "get_weather", {}), host.stepEnded("tool-calls"))).toEqual([
+    expect(
+      await playWith(
+        ["get_weather"],
+        host.reasoningDelta("call mcp_TZ2V0"),
+        host.textDelta("Hi"),
+        host.reasoningDelta("x mcp_TZ2V0X3dlYXRoZXI"),
+        host.toolCalled("c1", "get_weather", {}),
+        host.stepEnded("tool-calls"),
+      ),
+    ).toEqual([
       { type: "reasoning-delta", text: "call " },
       { type: "reasoning-delta", text: "mcp_TZ2V0" },
       { type: "text-delta", text: "Hi" },
@@ -296,7 +305,15 @@ describe("event mapping", () => {
   })
 
   test("#411 held reasoning text is flushed by a server tool call, so the next delta does not join the id", async () => {
-    const collector = new RequestCollector({ stopTurn: () => {}, requestID: "req_1", toolNames: ["get_weather"], callerTools: ["get_weather"], serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3 })
+    const collector = new RequestCollector({
+      stopTurn: () => {},
+      requestID: "req_1",
+      toolNames: ["get_weather"],
+      callerTools: ["get_weather"],
+      serverTools: new Set(["web"]),
+      maxServerToolSteps: 3,
+      maxServerToolCalls: 3,
+    })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
     store.dispatch(host.reasoningDelta("call mcp_TZ2V0X3dlYXRoZXI"))
@@ -317,7 +334,12 @@ describe("event mapping", () => {
     const long = "a_very_long_tool_name_that_goes_past_the_limit_".repeat(2)
     const id = `mcp_H${createHash("sha256").update(long).digest("base64url")}`
     const events = await playWith([long], host.reasoningDelta(`call ${id.slice(0, 30)}`), host.reasoningDelta(`${id.slice(30)} now`), host.reasoningEnded({}), host.stepEnded("stop"))
-    expect(events.filter((event) => event.type === "reasoning-delta").map((event) => (event as { text: string }).text).join("")).toBe(`call ${long} now`)
+    expect(
+      events
+        .filter((event) => event.type === "reasoning-delta")
+        .map((event) => (event as { text: string }).text)
+        .join(""),
+    ).toBe(`call ${long} now`)
   })
 
   test("#411 reasoning text that is not one of this request's ids is left as it is", async () => {
@@ -351,7 +373,14 @@ describe("event mapping", () => {
   })
 
   test("a tool call is emitted once; its name falls back to the input.started event", async () => {
-    expect(await play(host.toolInputStarted("c1", "lookup"), { type: "session.tool.called", data: { sessionID: "ses_1", id: "c1", input: { q: 1 } } }, host.toolCalled("c1", "lookup", { q: 1 }), host.stepEnded("tool-calls"))).toEqual([
+    expect(
+      await play(
+        host.toolInputStarted("c1", "lookup"),
+        { type: "session.tool.called", data: { sessionID: "ses_1", id: "c1", input: { q: 1 } } },
+        host.toolCalled("c1", "lookup", { q: 1 }),
+        host.stepEnded("tool-calls"),
+      ),
+    ).toEqual([
       { type: "tool-call", id: "c1", name: "lookup", input: { q: 1 } },
       { type: "finish", reason: "tool-calls", usage: undefined },
     ])
@@ -456,8 +485,16 @@ describe("#88 host errors reach the caller only as a stable code and a fixed mes
     ["a provider rate limit", { type: "provider.rate-limit", message: SECRET }, { status: 429, kind: "rate_limit", code: "rate_limited" }],
     ["any 429", { type: "unknown", status: 429, message: SECRET }, { status: 429, kind: "rate_limit", code: "rate_limited" }],
     ["an exhausted quota", { type: "provider.quota", message: SECRET }, { status: 429, kind: "rate_limit", code: "quota_exceeded" }],
-    ["a context overflow in the message", { type: "provider.invalid-request", status: 400, message: "This model's maximum context length is 8192 tokens" }, { status: 400, kind: "invalid_request", code: "context_length_exceeded" }],
-    ["a context overflow in the response body", { type: "provider.invalid-request", status: 413, message: "bad", response: { body: '{"error":"prompt is too long"}' } }, { status: 400, kind: "invalid_request", code: "context_length_exceeded" }],
+    [
+      "a context overflow in the message",
+      { type: "provider.invalid-request", status: 400, message: "This model's maximum context length is 8192 tokens" },
+      { status: 400, kind: "invalid_request", code: "context_length_exceeded" },
+    ],
+    [
+      "a context overflow in the response body",
+      { type: "provider.invalid-request", status: 413, message: "bad", response: { body: '{"error":"prompt is too long"}' } },
+      { status: 400, kind: "invalid_request", code: "context_length_exceeded" },
+    ],
     ["a provider 401", { type: "provider.auth", status: 401, message: SECRET }, { status: 401, kind: "authentication", code: "provider_auth_failed" }],
     ["a provider 403", { type: "unknown", status: 403, message: SECRET }, { status: 403, kind: "permission", code: "provider_auth_failed" }],
     ["provider credentials without a status", { type: "provider.auth", message: SECRET }, { status: 502, kind: "server", code: "provider_auth_failed" }],
@@ -468,15 +505,35 @@ describe("#88 host errors reach the caller only as a stable code and a fixed mes
     ["another provider 4xx", { type: "provider.invalid-request", status: 422, message: SECRET }, { status: 422, kind: "invalid_request", code: "provider_rejected_request" }],
     ["a provider 5xx", { type: "provider.other", status: 503, message: SECRET }, { status: 503, kind: "server", code: "provider_unavailable" }],
     ["#204 a provider 529", { type: "provider.other", status: 529, message: SECRET }, { status: 503, kind: "server", code: "provider_overloaded" }],
-    ["#204 an overloaded_error in the provider body", { type: "provider.internal", message: "bad", response: { body: '{"type":"error","error":{"type":"overloaded_error"}}' } }, { status: 503, kind: "server", code: "provider_overloaded" }],
+    [
+      "#204 an overloaded_error in the provider body",
+      { type: "provider.internal", message: "bad", response: { body: '{"type":"error","error":{"type":"overloaded_error"}}' } },
+      { status: 503, kind: "server", code: "provider_overloaded" },
+    ],
     ["#204 an overloaded message without a status", { type: "provider.internal", message: `Overloaded ${SECRET}` }, { status: 503, kind: "server", code: "provider_overloaded" }],
     ["a provider error without a status", { type: "provider.other", message: SECRET }, { status: 502, kind: "server", code: "provider_unavailable" }],
     ["anything else", { type: "unknown", message: SECRET }, { status: 502, kind: "server", code: "model_run_failed" }],
-    ["#171 a ChatGPT subscription at its usage limit", { type: "provider.invalid-request", message: `subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached ${SECRET}` }, { status: 429, kind: "rate_limit", code: "quota_exceeded" }],
-    ["#171 a usage limit in the raw body", { type: "provider.other", message: "bad", response: { body: `{"error":"usage_limit_reached","org":"${SECRET}"}` } }, { status: 429, kind: "rate_limit", code: "quota_exceeded" }],
-    ["#171 provider rate-limit wording without a 429", { type: "provider.invalid-request", message: `Rate limit reached for requests ${SECRET}` }, { status: 429, kind: "rate_limit", code: "rate_limited" }],
+    [
+      "#171 a ChatGPT subscription at its usage limit",
+      { type: "provider.invalid-request", message: `subscription_sharing_usage_limit_exceeded: ChatGPT usage limit reached ${SECRET}` },
+      { status: 429, kind: "rate_limit", code: "quota_exceeded" },
+    ],
+    [
+      "#171 a usage limit in the raw body",
+      { type: "provider.other", message: "bad", response: { body: `{"error":"usage_limit_reached","org":"${SECRET}"}` } },
+      { status: 429, kind: "rate_limit", code: "quota_exceeded" },
+    ],
+    [
+      "#171 provider rate-limit wording without a 429",
+      { type: "provider.invalid-request", message: `Rate limit reached for requests ${SECRET}` },
+      { status: 429, kind: "rate_limit", code: "rate_limited" },
+    ],
     ["#171 a rejected API key in the message", { type: "provider.invalid-request", message: `Incorrect API key provided: ${SECRET}` }, { status: 502, kind: "server", code: "provider_auth_failed" }],
-    ["#171 a model the provider does not know", { type: "provider.invalid-request", status: 404, message: `The model gpt-x does not exist ${SECRET}` }, { status: 404, kind: "not_found", code: "model_not_found" }],
+    [
+      "#171 a model the provider does not know",
+      { type: "provider.invalid-request", status: 404, message: `The model gpt-x does not exist ${SECRET}` },
+      { status: 404, kind: "not_found", code: "model_not_found" },
+    ],
     ["#171 an unknown model without a status", { type: "provider.other", message: "Unknown model: gpt-x" }, { status: 404, kind: "not_found", code: "model_not_found" }],
   ]
   test.each(cases)("%s", async (_name, error, expected) => {
@@ -487,7 +544,10 @@ describe("#88 host errors reach the caller only as a stable code and a fixed mes
 
   test("#424 a provider rejection of a replayed thinking signature says the signature was rejected, not what the provider said", async () => {
     const [event] = await play(host.stepFailed({ type: "provider.invalid-request", status: 400, message: `messages.1.content.0: Invalid \`signature\` in \`thinking\` block ${SECRET}` }))
-    expect(event).toMatchObject({ type: "error", error: { status: 400, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the signature of a replayed thinking block" } })
+    expect(event).toMatchObject({
+      type: "error",
+      error: { status: 400, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the signature of a replayed thinking block" },
+    })
     expect(JSON.stringify(event)).not.toMatch(/org-12345|internal\.example|sk-live|Invalid/)
   })
 
@@ -539,7 +599,9 @@ describe("in-process failures and bounds", () => {
     for (let i = 0; i <= 10_000; i++) run.send(host.textDelta("x"))
     expect(run.collector.terminal).toBe(true)
     expect(run.stops).toBe(1)
-    expect(await run.drain()).toEqual([{ type: "error", error: { status: 502, kind: "server", code: "response_overflow", message: "The response was not read fast enough; too much output was waiting" } }])
+    expect(await run.drain()).toEqual([
+      { type: "error", error: { status: 502, kind: "server", code: "response_overflow", message: "The response was not read fast enough; too much output was waiting" } },
+    ])
   })
 
   test("#39 so does one that falls 8 MB behind", async () => {
@@ -558,7 +620,13 @@ describe("#391 a host retry before any output moves a fallback chain on", () => 
     const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", failFastRetry, callerTools: [] })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
-    return { collector, store, get stops() { return stops } }
+    return {
+      collector,
+      store,
+      get stops() {
+        return stops
+      },
+    }
   }
 
   test("with a target after it, the retry is a provider_retry error at once and the turn is stopped", async () => {

@@ -142,12 +142,9 @@ describe("toSlug and fromSlug: UI-safe model ids", () => {
     )
   })
 
-  test.each(["", "test/echo", "fast", "--echo", "test--", "__", "test--echo__", "test--echo__high__x", "test--echo#high", "test--ec ho", "test--echo/x"])(
-    "fromSlug rejects %p",
-    (junk) => {
-      expect(fromSlug(junk)).toBeUndefined()
-    },
-  )
+  test.each(["", "test/echo", "fast", "--echo", "test--", "__", "test--echo__", "test--echo__high__x", "test--echo#high", "test--ec ho", "test--echo/x"])("fromSlug rejects %p", (junk) => {
+    expect(fromSlug(junk)).toBeUndefined()
+  })
 })
 
 describe("resolveModel: slugs", () => {

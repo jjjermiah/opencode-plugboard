@@ -25,12 +25,32 @@ const format = (schema: unknown = SCHEMA) => ({ type: "json_schema", schema })
 describe("#411 a signed thinking block replays the text it was signed for", () => {
   test("a block whose text plugboard rewrote replays the original text, with its signature", () => {
     rememberReasoning("sig_replay", "call mcp_TZ2V0X3dlYXRoZXI")
-    const { request } = parse(body({ messages: [user(), assistant([{ type: "thinking", thinking: "call get_weather", signature: "sig_replay" }, { type: "text", text: "ok" }])] }))
+    const { request } = parse(
+      body({
+        messages: [
+          user(),
+          assistant([
+            { type: "thinking", thinking: "call get_weather", signature: "sig_replay" },
+            { type: "text", text: "ok" },
+          ]),
+        ],
+      }),
+    )
     expect(request.messages[1]!.content[0]).toEqual({ type: "reasoning", text: "call mcp_TZ2V0X3dlYXRoZXI", signature: "sig_replay" })
   })
 
   test("a signature plugboard does not hold replays the text as received", () => {
-    const { request } = parse(body({ messages: [user(), assistant([{ type: "thinking", thinking: "call get_weather", signature: "sig_not_remembered" }, { type: "text", text: "ok" }])] }))
+    const { request } = parse(
+      body({
+        messages: [
+          user(),
+          assistant([
+            { type: "thinking", thinking: "call get_weather", signature: "sig_not_remembered" },
+            { type: "text", text: "ok" },
+          ]),
+        ],
+      }),
+    )
     expect(request.messages[1]!.content[0]).toEqual({ type: "reasoning", text: "call get_weather", signature: "sig_not_remembered" })
   })
 })
@@ -42,7 +62,13 @@ describe("#275 cache_control on content blocks", () => {
     const { request } = parse(
       body({
         messages: [
-          { role: "user", content: [{ type: "text", text: "big context", cache_control: cache }, { type: "image", source: { type: "base64", media_type: "image/png", data: png }, cache_control: { type: "ephemeral" } }] },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "big context", cache_control: cache },
+              { type: "image", source: { type: "base64", media_type: "image/png", data: png }, cache_control: { type: "ephemeral" } },
+            ],
+          },
           assistant([{ type: "text", text: "ok", cache_control: cache }, toolUse("t1", "read")]),
           { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "data", cache_control: { type: "ephemeral" } }] },
         ],
@@ -59,7 +85,15 @@ describe("#275 cache_control on content blocks", () => {
   test("ttl values other than 1h, and a missing ttl, are the 5-minute default (no cacheTtl)", () => {
     const { request } = parse(
       body({
-        messages: [{ role: "user", content: [{ type: "text", text: "a", cache_control: { type: "ephemeral", ttl: "5m" } }, { type: "text", text: "b", cache_control: { type: "ephemeral" } }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "a", cache_control: { type: "ephemeral", ttl: "5m" } },
+              { type: "text", text: "b", cache_control: { type: "ephemeral" } },
+            ],
+          },
+        ],
       }),
     )
     expect(request.messages[0]!.content).toEqual([
@@ -113,7 +147,11 @@ describe("#4 parseMessagesRequest: rejections are 400s whose message names the f
     ["a tool_use without id", body({ messages: [user(), assistant([{ type: "tool_use", name: "f" }])] }), /^messages\.1\.content\.0\.id: Field required/],
     ["a tool_use with a non-object input", body({ messages: [user(), assistant([toolUse("t1", "f", "x")])] }), /^messages\.1\.content\.0\.input: must be an object/],
     ["a tool_result for an unknown tool_use", body({ messages: [user([{ type: "tool_result", tool_use_id: "nope", content: "x" }])] }), /matches no tool_use block/],
-    ["a tool_result with an unsupported block", body({ messages: [user(), assistant([toolUse("t1", "f")]), user([{ type: "tool_result", tool_use_id: "t1", content: [{ type: "audio" }] }])] }), /is not supported in tool_result content/],
+    [
+      "a tool_result with an unsupported block",
+      body({ messages: [user(), assistant([toolUse("t1", "f")]), user([{ type: "tool_result", tool_use_id: "t1", content: [{ type: "audio" }] }])] }),
+      /is not supported in tool_result content/,
+    ],
     ["a system that is not text blocks", body({ system: [{ type: "image" }] }), /^system\.0: must be a text block/],
     ["tools that are not an array", body({ tools: {} }), /^tools: must be an array/],
     ["a server tool", body({ tools: [{ type: "web_search_20250305", name: "web_search" }] }), /^tools\.0\.type: "web_search_20250305" is not supported/],
@@ -158,7 +196,16 @@ describe("#4 parseMessagesRequest: content mapping", () => {
   })
 
   test("system text blocks (cache_control ignored); empty ones dropped", () => {
-    expect(parse(body({ system: [{ type: "text", text: "a", cache_control: { type: "ephemeral" } }, { type: "text", text: "" }] })).request.system).toEqual(["a"])
+    expect(
+      parse(
+        body({
+          system: [
+            { type: "text", text: "a", cache_control: { type: "ephemeral" } },
+            { type: "text", text: "" },
+          ],
+        }),
+      ).request.system,
+    ).toEqual(["a"])
   })
 
   test("Claude Code's system-role messages are lifted into the system prompt after the top-level system", () => {
@@ -194,7 +241,11 @@ describe("#4 parseMessagesRequest: content mapping", () => {
       body({
         messages: [
           user("look"),
-          assistant([{ type: "thinking", thinking: "hidden", signature: "" }, { type: "redacted_thinking", data: "opaque" }, { type: "text", text: "done" }]),
+          assistant([
+            { type: "thinking", thinking: "hidden", signature: "" },
+            { type: "redacted_thinking", data: "opaque" },
+            { type: "text", text: "done" },
+          ]),
           user("again"),
         ],
       }),
@@ -239,7 +290,14 @@ describe("#4 parseMessagesRequest: content mapping", () => {
           user("look"),
           assistant([{ type: "thinking", thinking: "hidden", signature: "s" }, { type: "text", text: "checking" }, toolUse("t1", "shot", { x: 1 }), toolUse("t2", "read")]),
           user([
-            { type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "took it" }, image({ type: "base64", media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" })] },
+            {
+              type: "tool_result",
+              tool_use_id: "t1",
+              content: [
+                { type: "text", text: "took it" },
+                image({ type: "base64", media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }),
+              ],
+            },
             { type: "tool_result", tool_use_id: "t2", content: "boom", is_error: true },
             { type: "text", text: "now explain" },
           ]),
@@ -261,7 +319,11 @@ describe("#4 parseMessagesRequest: content mapping", () => {
       { role: "tool", content: [{ type: "tool-result", id: "t2", name: "read", result: "boom", isError: true }] },
       {
         role: "user",
-        content: [{ type: "text", text: "Images returned by the tool calls above:" }, { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" }, { type: "text", text: "now explain" }],
+        content: [
+          { type: "text", text: "Images returned by the tool calls above:" },
+          { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" },
+          { type: "text", text: "now explain" },
+        ],
       },
     ])
   })

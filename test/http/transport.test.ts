@@ -127,8 +127,7 @@ describe("beginRequest: one deadline and disconnect abort per request", () => {
       const scope = beginRequest(request, response, 20, 60_000)
       // The route's shape: an SSE writer bounded by the scope, the error frame written on the timeout, then the response ends.
       const sse = sseWriter(response, scope.signal, 60_000)
-      for await (const event of sse.paced(boundEvents(script(ev.reasoning("x"), new Promise(() => {})), scope)))
-        if (event.type === "error") sse.write("data: {\"error\":\"timeout\"}\n\n")
+      for await (const event of sse.paced(boundEvents(script(ev.reasoning("x"), new Promise(() => {})), scope))) if (event.type === "error") sse.write('data: {"error":"timeout"}\n\n')
       response.end()
       scope.dispose()
     })
@@ -472,7 +471,10 @@ describe("sseWriter: commit rules and keepalive", () => {
       destroyed: false,
       writableEnded: false,
       headersSent: false,
-      writeHead() { this.headersSent = true; return this },
+      writeHead() {
+        this.headersSent = true
+        return this
+      },
       flushHeaders() {},
       setHeader() {},
       write: () => false,
@@ -482,7 +484,9 @@ describe("sseWriter: commit rules and keepalive", () => {
     const scope = new AbortController()
     const sse = sseWriter(response as unknown as Parameters<typeof sseWriter>[0], scope.signal)
     sse.write("data: x\n\n")
-    const waiting = sse.drained().then(() => { state = "drained" })
+    const waiting = sse.drained().then(() => {
+      state = "drained"
+    })
     await new Promise((resolve) => setTimeout(resolve, 5))
     expect(state).toBe("pending")
     scope.abort()

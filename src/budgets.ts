@@ -156,13 +156,7 @@ function warnOnce(
  * The budget caller: each call of an app with a budget is checked first. With no budget for the app,
  * no usage recorder, or no budgets at all, the caller is returned as it is. `budgets` is the parsed option.
  */
-export function withBudgets(
-  inner: ModelCaller,
-  budgets: Budgets | undefined,
-  usage: UsageRecorder | undefined,
-  state: BudgetState,
-  options: BudgetOptions = {},
-): ModelCaller {
+export function withBudgets(inner: ModelCaller, budgets: Budgets | undefined, usage: UsageRecorder | undefined, state: BudgetState, options: BudgetOptions = {}): ModelCaller {
   const now = options.now ?? Date.now
   return {
     stream(request, context) {

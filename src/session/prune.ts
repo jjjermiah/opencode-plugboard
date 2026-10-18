@@ -83,12 +83,10 @@ const PAGE = 500
 const MAX_DELETES = 200
 const MAX_SCAN = 20_000
 
-export const indexKey = (app: string, createdAt: number, sessionID: string): string =>
-  `${PREFIX}${app}/${String(Math.max(0, Math.floor(createdAt))).padStart(AT_WIDTH, "0")}/${sessionID}`
+export const indexKey = (app: string, createdAt: number, sessionID: string): string => `${PREFIX}${app}/${String(Math.max(0, Math.floor(createdAt))).padStart(AT_WIDTH, "0")}/${sessionID}`
 
 /** Index one new request session. The value repeats the ID; the key carries app and time. */
-export const recordSession = (port: HistoryPort, app: string, sessionID: string, createdAt: number): Promise<void> =>
-  port.put(indexKey(app, createdAt, sessionID), sessionID)
+export const recordSession = (port: HistoryPort, app: string, sessionID: string, createdAt: number): Promise<void> => port.put(indexKey(app, createdAt, sessionID), sessionID)
 
 interface Entry {
   readonly key: string
