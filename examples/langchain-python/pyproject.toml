@@ -4,4 +4,4 @@ version = "0.1.0"
 description = "LangChain (langchain-openai) against plugboard: S1 to S7 and the error paths. Pins from the 2026-10-11 record."
 requires-python = ">=3.12"
 # Exact pins: the versions the 2026-10-11 record ran on (langchain-openai 1.7.0, langchain-core 1.6.9, openai 3.29.0, Python 3.13).
-dependencies = ["langchain-openai==1.7.0", "langchain-core==1.6.9", "openai==3.29.0", "httpx==0.28.1", "pydantic==2.14.1"]
+dependencies = ["langchain-openai==1.7.0", "langchain-core==1.6.10", "openai==3.29.0", "httpx==0.28.1", "pydantic==2.14.1"]
