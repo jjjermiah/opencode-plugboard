@@ -24,7 +24,13 @@ isolateRuntime()
 /** A generation whose handler is the OpenAI route, with these keys (one app per key), in `directory`. */
 function serving(name: string, port: number, keys: Record<string, string>, extra: Record<string, unknown> = {}, directory = `/projects/${name}`) {
   const options = testOptions({ listen: { host: "127.0.0.1", port }, keys, ...extra })
-  const handler = createOpenAiRoute({ options, caller: new FakeModelCaller([]), loadCatalog: async () => CATALOG, responses: createResponseStore({ storage: new FakeStorage(), state: createResponseState() }), files: createFileStore({ storage: new FakeStorage(), state: createFileState() }) })
+  const handler = createOpenAiRoute({
+    options,
+    caller: new FakeModelCaller([]),
+    loadCatalog: async () => CATALOG,
+    responses: createResponseStore({ storage: new FakeStorage(), state: createResponseState() }),
+    files: createFileStore({ storage: new FakeStorage(), state: createFileState() }),
+  })
   return generation(name, { port, options, handler, directory })
 }
 

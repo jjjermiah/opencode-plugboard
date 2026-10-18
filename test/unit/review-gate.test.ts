@@ -35,15 +35,7 @@ interface Fake {
   readonly calls: string[]
 }
 const fake = (
-  over: {
-    pull?: Partial<PullInfo>
-    afterPull?: Partial<PullInfo>
-    checks?: CheckRun[]
-    required?: string[]
-    reviews?: ReviewInfo[]
-    diff?: DiffResult
-    forCommit?: number[]
-  } = {},
+  over: { pull?: Partial<PullInfo>; afterPull?: Partial<PullInfo>; checks?: CheckRun[]; required?: string[]; reviews?: ReviewInfo[]; diff?: DiffResult; forCommit?: number[] } = {},
 ): Fake => {
   const posted: ReviewPost[] = []
   const calls: string[] = []
@@ -81,10 +73,12 @@ const fake = (
   }
   return { api, posted, calls }
 }
-const answer = (text: string): Llm => async () => text
+const answer =
+  (text: string): Llm =>
+  async () =>
+    text
 const APPROVE = JSON.stringify({ verdict: "approve", blockers: [], notes: ["rename later"] })
-const run = (f: Fake, llm: Llm, extra: Partial<Parameters<typeof reviewGate>[0]> = {}, ev: RunEvent = event()) =>
-  reviewGate({ api: f.api, llm, repo: REPO, event: ev, ...extra })
+const run = (f: Fake, llm: Llm, extra: Partial<Parameters<typeof reviewGate>[0]> = {}, ev: RunEvent = event()) => reviewGate({ api: f.api, llm, repo: REPO, event: ev, ...extra })
 
 describe("review gate: parsing the model's verdict", () => {
   test("a plain JSON answer, a fenced one, and one wrapped in prose all parse", () => {
@@ -223,7 +217,12 @@ describe("review gate: when it acts", () => {
     expect(outcomes[0]?.outcome).toBe("skipped")
     expect(f.posted).toEqual([])
     // A person's approval, or the gate's review of an older commit, does not count.
-    const other = fake({ reviews: [{ ...prior, bot: false }, { ...prior, commitId: "d".repeat(40) }] })
+    const other = fake({
+      reviews: [
+        { ...prior, bot: false },
+        { ...prior, commitId: "d".repeat(40) },
+      ],
+    })
     expect((await run(other, answer(APPROVE)))[0]?.outcome).toBe("approved")
   })
 })
@@ -289,7 +288,12 @@ describe("review gate: the HTTP adapters", () => {
       model: "claude-sonnet-5-5",
       fetch: async (url, init) => {
         seen = { url, headers: init?.headers as Record<string, string>, body: JSON.parse(String(init?.body)) }
-        return json({ content: [{ type: "thinking", thinking: "..." }, { type: "text", text: APPROVE }] })
+        return json({
+          content: [
+            { type: "thinking", thinking: "..." },
+            { type: "text", text: APPROVE },
+          ],
+        })
       },
       sleep: async () => {},
     })
@@ -323,7 +327,7 @@ describe("review gate: the HTTP adapters", () => {
   test("the GitHub diff call asks for the diff media type and maps 406 to too-large", async () => {
     const accepts: string[] = []
     const api = githubApi("tok", REPO, async (_url, init) => {
-      accepts.push((init?.headers as Record<string, string>).Accept ?? "")
+      accepts.push((init?.headers as Record<string, string> | undefined)?.Accept ?? "")
       return accepts.length === 1 ? new Response("diff --git", { status: 200 }) : new Response("too big", { status: 406 })
     })
     expect(await api.diff(7)).toEqual({ kind: "ok", text: "diff --git" })

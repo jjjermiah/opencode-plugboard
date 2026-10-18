@@ -18,7 +18,7 @@ function recorder(): UsageRecorder {
 /** The app's report once `count` requests are recorded (the recorder writes asynchronously). */
 async function report(rec: UsageRecorder, count: number, user?: string): Promise<UsageReport> {
   let last: UsageReport | undefined
-  await until(async () => ((last = (await rec.query({ app: "app", ...(user === undefined ? {} : { user }) })) as UsageReport).totals.requests >= count), 1_000, `${count} requests`)
+  await until(async () => (last = (await rec.query({ app: "app", ...(user === undefined ? {} : { user }) })) as UsageReport).totals.requests >= count, 1_000, `${count} requests`)
   return last!
 }
 
@@ -98,6 +98,8 @@ describe("#57 end user: names an object inherits", () => {
     const app = (await rec.query({ app: "app" })) as UsageReport
     const users = app.apps.app!.users!
     expect(Object.keys(users).sort()).toEqual(["__proto__", "constructor"])
+    // biome-ignore lint/complexity/useLiteralKeys: the test reads the own key named __proto__ on purpose
+    // biome-ignore lint/suspicious/noProto: same: the key is data here, not the prototype accessor
     expect(users["__proto__"]).toEqual({ requests: 2, tokens: 7, costUsd: 0 })
     expect(app.apps.app!.totals.requests).toBe(2)
     expect(({} as Record<string, unknown>).requests).toBeUndefined()

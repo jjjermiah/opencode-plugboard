@@ -47,9 +47,7 @@ function refOf(api: FileApi, part: Json): string | undefined {
     case "responses":
       return (part.type === "input_file" || part.type === "input_image") && typeof part.file_id === "string" ? part.file_id : undefined
     case "messages":
-      return (part.type === "image" || part.type === "document") && isRecord(part.source) && part.source.type === "file" && typeof part.source.file_id === "string"
-        ? part.source.file_id
-        : undefined
+      return (part.type === "image" || part.type === "document") && isRecord(part.source) && part.source.type === "file" && typeof part.source.file_id === "string" ? part.source.file_id : undefined
     case "gemini": {
       const file = part.fileData ?? part.file_data
       const uri = isRecord(file) ? (file.fileUri ?? file.file_uri) : undefined
@@ -134,7 +132,12 @@ const textOf = (file: InlineFile) => Buffer.from(file.base64, "base64").toString
 const notFound = (id: string, field: string): PlugError => ({ status: 404, kind: "not_found", code: "file_not_found", param: field, message: `File '${id.slice(0, 80)}' not found` })
 
 function replacement(api: FileApi, part: Json, id: string, file: InlineFile, kind: FileKind): Json | PlugError {
-  const wrong = (expected: string): PlugError => ({ status: 400, kind: "invalid_request", code: "invalid_file", message: `File '${id.slice(0, 80)}' is a ${file.mime} file, which cannot be used as ${expected}` })
+  const wrong = (expected: string): PlugError => ({
+    status: 400,
+    kind: "invalid_request",
+    code: "invalid_file",
+    message: `File '${id.slice(0, 80)}' is a ${file.mime} file, which cannot be used as ${expected}`,
+  })
   switch (api) {
     case "chat":
       if (kind === "image") return { type: "image_url", image_url: { url: dataUrl(file) } }

@@ -21,7 +21,12 @@ describe("#73 buildDiscovery: what each caller may see", () => {
       apps: ["default"],
       models: { state: "ready", allowlist: ["test/*"], aliases: { fast: "test/echo#low" }, available: 5 },
       suggestedModels: ["other/*", "test/*"],
-      catalog: { providers: [{ id: "other", models: 1, examples: ["other/model"] }, { id: "test", models: 2, examples: ["test/echo", "test/vision"] }] },
+      catalog: {
+        providers: [
+          { id: "other", models: 1, examples: ["other/model"] },
+          { id: "test", models: 2, examples: ["test/echo", "test/vision"] },
+        ],
+      },
     })
     expect(doc).not.toHaveProperty("hint")
   })
@@ -108,7 +113,15 @@ describe("#73 renderDiscoveryHtml", () => {
 })
 
 describe("#56 buildStatus", () => {
-  const runtime = { runtimeVersion: 8, generations: 2, pumpRunning: true, guards: 3, startedAt: Date.UTC(2026, 9, 11), servingConfirmed: true, listener: { host: "127.0.0.1", port: 4010, bound: true } }
+  const runtime = {
+    runtimeVersion: 8,
+    generations: 2,
+    pumpRunning: true,
+    guards: 3,
+    startedAt: Date.UTC(2026, 9, 11),
+    servingConfirmed: true,
+    listener: { host: "127.0.0.1", port: 4010, bound: true },
+  }
 
   test("runtime facts, uptime and model counts for the authenticated app", () => {
     expect(buildStatus({ options: testOptions({ metrics: true }), app: "alpha", runtime, catalog: CATALOG, now: Date.UTC(2026, 9, 11, 0, 1, 30) })).toEqual({

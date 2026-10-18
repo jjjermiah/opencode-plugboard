@@ -1,0 +1,5 @@
+# The toolchain CI uses. `mise install` gives a clone the same Bun and Node. Keep these in step with the
+# `bun-version` in .github/workflows/*.yml and the `node-version` in publish.yml.
+[tools]
+bun = "1.4.2"
+node = "24"

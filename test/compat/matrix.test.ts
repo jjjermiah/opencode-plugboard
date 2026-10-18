@@ -12,7 +12,7 @@ import { writeFileSync } from "node:fs"
 import { startRoute, type RouteServer } from "../support/loopback.js"
 import { FakeModelCaller } from "../support/model-caller.js"
 import { withStopSequences } from "../../src/stop.js"
-import { CLIENTS, ENDPOINTS, type Target } from "./clients.js"
+import { CLIENTS, type ENDPOINTS, type Target } from "./clients.js"
 import { SCENARIOS, script, type Scenario } from "./scenarios.js"
 
 /** `todo`: no case written yet (#148). `n/a`: the client's endpoint has no such feature, with the reason in `note`. */

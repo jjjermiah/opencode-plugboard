@@ -25,7 +25,19 @@
  */
 
 import { isAppName, type BudgetMetric, type BudgetWindow } from "./config.js"
-import { isPlugError, type CallContext, type CatalogCost, type CatalogModel, type ModelCaller, type ModelRef, type PlugError, type PlugEvent, type PlugRequest, type PlugUsage, type ServedModel } from "./contract.js"
+import {
+  isPlugError,
+  type CallContext,
+  type CatalogCost,
+  type CatalogModel,
+  type ModelCaller,
+  type ModelRef,
+  type PlugError,
+  type PlugEvent,
+  type PlugRequest,
+  type PlugUsage,
+  type ServedModel,
+} from "./contract.js"
 import { errorMessage, log, logError } from "./log.js"
 import type { Outcome } from "./metrics.js"
 import { parseModelRef } from "./models.js"
@@ -715,7 +727,15 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
         const total = sumDays(rows.map((row) => row.day))
         appTotals.push(total)
         const days: UsageDay[] = rows.map((row) => ({ date: row.date, ...summaryOf(row.day), perModel: { ...row.day.perModel } }))
-        apps[app] = { totals: summaryOf(total), models: { ...total.perModel }, users: sumUsers(rows.map((row) => row.day), input.user), days }
+        apps[app] = {
+          totals: summaryOf(total),
+          models: { ...total.perModel },
+          users: sumUsers(
+            rows.map((row) => row.day),
+            input.user,
+          ),
+          days,
+        }
       }
       return { from: range.from, to: range.to, generatedAt: new Date(at).toISOString(), totals: summaryOf(sumDays(appTotals)), apps }
     },
@@ -789,7 +809,14 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
           const ref = served ? parseModelRef(served.model) : request.ref
           // A run that never reached its finish still spent what the host reported: it is charged, not left out.
           const spent = usage ?? running
-          recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered, ...(cache ? { cache } : {}), ...(spent ? { usage: spent } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
+          recorder.call({
+            app: context.app,
+            ...(ref ? { ref } : {}),
+            answered,
+            ...(cache ? { cache } : {}),
+            ...(spent ? { usage: spent } : {}),
+            ...(request.user === undefined ? {} : { user: request.user }),
+          })
         }
       })()
     },

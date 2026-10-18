@@ -45,7 +45,14 @@ export async function scenarios() {
 
   // A realistic envelope: what the decoder echoes for a request with instructions, a tool and sampling.
   const decoded = parseResponsesRequest(
-    { model: "fast", input: "weather?", instructions: "Be brief.", stream: true, temperature: 0.5, tools: [{ type: "function", name: "weather", parameters: { type: "object", properties: { city: { type: "string" } } } }] },
+    {
+      model: "fast",
+      input: "weather?",
+      instructions: "Be brief.",
+      stream: true,
+      temperature: 0.5,
+      tools: [{ type: "function", name: "weather", parameters: { type: "object", properties: { city: { type: "string" } } } }],
+    },
     testOptions(),
   )
   if (isPlugError(decoded)) throw new Error(decoded.message)

@@ -74,9 +74,21 @@ describe("parseGeminiRequest: rejections answer 400 with their param", () => {
     ["a functionResponse answering nothing", body({ contents: [user({ functionResponse: { name: "f", response: {} } })] }), { param: "contents[0].parts[0].functionResponse" }],
     ["a functionCall left unanswered", body({ contents: [user({ text: "x" }), modelTurn({ functionCall: { name: "f" } }), user({ text: "y" })] }), { param: "contents" }],
     ["inlineData without mimeType", body({ contents: [user({ inlineData: { data: "AA" } })] }), { param: "contents[0].parts[0].inlineData" }],
-    ["inlineData with a character outside base64 (URL-safe and standard alphabets only)", body({ contents: [user({ inlineData: { mimeType: "image/png", data: "iVBORw0KGgr7!78=" } })] }), { param: "contents[0].parts[0].inlineData", code: "invalid_image" }],
-    ["URL-safe inlineData of a length no base64 string has", body({ contents: [user({ inlineData: { mimeType: "image/png", data: "iVBORw0KGgr7_" } })] }), { param: "contents[0].parts[0].inlineData", code: "invalid_image" }],
-    ["inlineData in a model turn", body({ contents: [user({ text: "x" }), modelTurn({ inlineData: { mimeType: "image/png", data: "AA" } })] }), { param: "contents[1].parts[0].inlineData", code: "unsupported_parameter" }],
+    [
+      "inlineData with a character outside base64 (URL-safe and standard alphabets only)",
+      body({ contents: [user({ inlineData: { mimeType: "image/png", data: "iVBORw0KGgr7!78=" } })] }),
+      { param: "contents[0].parts[0].inlineData", code: "invalid_image" },
+    ],
+    [
+      "URL-safe inlineData of a length no base64 string has",
+      body({ contents: [user({ inlineData: { mimeType: "image/png", data: "iVBORw0KGgr7_" } })] }),
+      { param: "contents[0].parts[0].inlineData", code: "invalid_image" },
+    ],
+    [
+      "inlineData in a model turn",
+      body({ contents: [user({ text: "x" }), modelTurn({ inlineData: { mimeType: "image/png", data: "AA" } })] }),
+      { param: "contents[1].parts[0].inlineData", code: "unsupported_parameter" },
+    ],
     ["fileData by gs:// URI", body({ contents: [user({ fileData: { fileUri: "gs://bucket/a.png" } })] }), { param: "contents[0].parts[0].fileData.fileUri", code: "unsupported_parameter" }],
     ["an unknown part kind", body({ contents: [user({ executableCode: { code: "x" } })] }), { param: "contents[0].parts[0]", code: "unsupported_parameter" }],
     ["contents with only thoughts", body({ contents: [user({ text: "x", thought: true })] }), { param: "contents" }],
@@ -92,11 +104,19 @@ describe("parseGeminiRequest: rejections answer 400 with their param", () => {
     ["more tools than maxTools", body({ tools: tools(fn("a"), fn("b"), fn("c"), fn("d")) }), { param: "tools", code: "too_many_tools" }],
     ["a toolConfig that is not an object", body({ toolConfig: 1 }), { param: "toolConfig" }],
     ["an unknown calling mode", body({ tools: tools(fn("a")), toolConfig: { functionCallingConfig: { mode: "SOMETIMES" } } }), { param: "toolConfig.functionCallingConfig.mode" }],
-    ["allowedFunctionNames naming a missing tool", body({ tools: tools(fn("a")), toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["b"] } } }), { param: "toolConfig.functionCallingConfig.allowedFunctionNames" }],
+    [
+      "allowedFunctionNames naming a missing tool",
+      body({ tools: tools(fn("a")), toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["b"] } } }),
+      { param: "toolConfig.functionCallingConfig.allowedFunctionNames" },
+    ],
     ["an unsupported responseMimeType", body({ generationConfig: { responseMimeType: "text/x.enum" } }), { param: "generationConfig.responseMimeType", code: "unsupported_parameter" }],
     ["a responseSchema that is not an object", body({ generationConfig: { responseSchema: "x" } }), { param: "generationConfig.responseSchema" }],
     ["responseSchema next to a tool named respond", body({ tools: tools(fn("respond")), generationConfig: { responseSchema: { type: "OBJECT" } } }), { param: "tools", code: "reserved_tool_name" }],
-    ["responseSchema with ANY on one function", body({ tools: tools(fn("a"), fn("b")), toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["a"] } }, generationConfig: { responseSchema: { type: "OBJECT" } } }), { param: "toolConfig.functionCallingConfig", code: "unsupported_parameter" }],
+    [
+      "responseSchema with ANY on one function",
+      body({ tools: tools(fn("a"), fn("b")), toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["a"] } }, generationConfig: { responseSchema: { type: "OBJECT" } } }),
+      { param: "toolConfig.functionCallingConfig", code: "unsupported_parameter" },
+    ],
     ["temperature above 2", body({ generationConfig: { temperature: 2.5 } }), { param: "generationConfig.temperature" }],
     ["a fractional maxOutputTokens", body({ generationConfig: { maxOutputTokens: 1.5 } }), { param: "generationConfig.maxOutputTokens" }],
     ["six stop sequences", body({ generationConfig: { stopSequences: ["a", "b", "c", "d", "e", "f"] } }), { param: "generationConfig.stopSequences" }],
@@ -115,14 +135,24 @@ describe("parseGeminiRequest: contents", () => {
   })
 
   test("snake_case fields are read too", () => {
-    const parsed = parse({ contents: [user({ inline_data: { mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } })], system_instruction: "s", generation_config: { max_output_tokens: 5 } })
+    const parsed = parse({
+      contents: [user({ inline_data: { mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } })],
+      system_instruction: "s",
+      generation_config: { max_output_tokens: 5 },
+    })
     expect(parsed.request.system).toEqual(["s"])
     expect(parsed.request.generation).toEqual({ maxTokens: 5 })
-    expect(parsed.request.messages[0]!.content).toEqual([{ type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" }])
+    expect(parsed.request.messages[0]!.content).toEqual([
+      { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" },
+    ])
   })
 
   test("inlineData becomes a data URL; fileData with an http(s) URI passes through", () => {
-    expect(parse(body({ contents: [user({ text: "see" }, { inlineData: { mimeType: "image/jpeg", data: "/9j/4AAQSkZJRgABAQ==" } }, { fileData: { fileUri: "https://x.test/a.png", mimeType: "image/png" } })] })).request.messages[0]!.content).toEqual([
+    expect(
+      parse(
+        body({ contents: [user({ text: "see" }, { inlineData: { mimeType: "image/jpeg", data: "/9j/4AAQSkZJRgABAQ==" } }, { fileData: { fileUri: "https://x.test/a.png", mimeType: "image/png" } })] }),
+      ).request.messages[0]!.content,
+    ).toEqual([
       { type: "text", text: "see" },
       { type: "media", url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==", mediaType: "image/jpeg" },
       { type: "media", url: "https://x.test/a.png", mediaType: "image/png" },
@@ -177,7 +207,9 @@ describe("parseGeminiRequest: contents", () => {
   })
 
   test("thought parts and signature-only parts are dropped", () => {
-    expect(parse(body({ contents: [user({ text: "hi" }), modelTurn({ text: "pondering", thought: true }, { thoughtSignature: "sig" }, { text: "answer" }), user({ text: "ok" })] })).request.messages).toEqual([
+    expect(
+      parse(body({ contents: [user({ text: "hi" }), modelTurn({ text: "pondering", thought: true }, { thoughtSignature: "sig" }, { text: "answer" }), user({ text: "ok" })] })).request.messages,
+    ).toEqual([
       { role: "user", content: [{ type: "text", text: "hi" }] },
       { role: "assistant", content: [{ type: "text", text: "answer" }] },
       { role: "user", content: [{ type: "text", text: "ok" }] },
@@ -195,7 +227,13 @@ describe("parseGeminiRequest: contents", () => {
       }),
     )
     expect(parsed.request.messages.slice(1)).toEqual([
-      { role: "assistant", content: [{ type: "tool-call", id: "call_0", name: "weather", input: { city: "Oslo" } }, { type: "tool-call", id: "call_1", name: "weather", input: { city: "Rome" } }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "tool-call", id: "call_0", name: "weather", input: { city: "Oslo" } },
+          { type: "tool-call", id: "call_1", name: "weather", input: { city: "Rome" } },
+        ],
+      },
       { role: "tool", content: [{ type: "tool-result", id: "call_0", name: "weather", result: '{"output":"rain"}' }] },
       { role: "tool", content: [{ type: "tool-result", id: "call_1", name: "weather", result: '{"error":"down"}', isError: true }] },
       { role: "user", content: [{ type: "text", text: "and?" }] },
@@ -203,21 +241,43 @@ describe("parseGeminiRequest: contents", () => {
   })
 
   test("a client-sent call id is kept and matched", () => {
-    const parsed = parse(body({ contents: [user({ text: "x" }), modelTurn({ functionCall: { id: "a1", name: "f" } }, { functionCall: { id: "b2", name: "f" } }), user({ functionResponse: { id: "b2", name: "f", response: {} } }, { functionResponse: { id: "a1", name: "f", response: {} } })] }))
+    const parsed = parse(
+      body({
+        contents: [
+          user({ text: "x" }),
+          modelTurn({ functionCall: { id: "a1", name: "f" } }, { functionCall: { id: "b2", name: "f" } }),
+          user({ functionResponse: { id: "b2", name: "f", response: {} } }, { functionResponse: { id: "a1", name: "f", response: {} } }),
+        ],
+      }),
+    )
     expect(parsed.request.messages.slice(2).map((message) => (message.content[0] as { id: string }).id)).toEqual(["b2", "a1"])
   })
 
   test("a streamed model turn replayed as several contents is one assistant message, text merged at the seam", () => {
-    expect(parse(body({ contents: [user({ text: "x" }), modelTurn({ text: "Hel" }), modelTurn({ text: "lo" }, { functionCall: { name: "f" } }), user({ functionResponse: { name: "f", response: {} } })] })).request.messages[1]).toEqual({
+    expect(
+      parse(body({ contents: [user({ text: "x" }), modelTurn({ text: "Hel" }), modelTurn({ text: "lo" }, { functionCall: { name: "f" } }), user({ functionResponse: { name: "f", response: {} } })] }))
+        .request.messages[1],
+    ).toEqual({
       role: "assistant",
-      content: [{ type: "text", text: "Hello" }, { type: "tool-call", id: "call_0", name: "f", input: {} }],
+      content: [
+        { type: "text", text: "Hello" },
+        { type: "tool-call", id: "call_0", name: "f", input: {} },
+      ],
     })
   })
 })
 
 describe("parseGeminiRequest: tools, tool config and structured output", () => {
   test("Gemini Schema parameters become JSON Schema; parametersJsonSchema passes through", () => {
-    const parsed = parse(body({ tools: tools(fn("a", { description: "A", parameters: { type: "OBJECT", properties: { n: { type: "INTEGER", format: "int32" } } } }), fn("b", { parametersJsonSchema: { type: "object", additionalProperties: false } }), fn("c")) }))
+    const parsed = parse(
+      body({
+        tools: tools(
+          fn("a", { description: "A", parameters: { type: "OBJECT", properties: { n: { type: "INTEGER", format: "int32" } } } }),
+          fn("b", { parametersJsonSchema: { type: "object", additionalProperties: false } }),
+          fn("c"),
+        ),
+      }),
+    )
     expect(parsed.request.tools).toEqual([
       { name: "a", description: "A", parameters: { type: "object", properties: { n: { type: "integer" } } } },
       { name: "b", description: "", parameters: { type: "object", additionalProperties: false } },
@@ -242,7 +302,9 @@ describe("parseGeminiRequest: tools, tool config and structured output", () => {
   })
 
   test("an object responseSchema forces the respond tool with the converted schema", () => {
-    const parsed = parse(body({ generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { a: { type: "STRING", nullable: true } }, propertyOrdering: ["a"] } } }))
+    const parsed = parse(
+      body({ generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { a: { type: "STRING", nullable: true } }, propertyOrdering: ["a"] } } }),
+    )
     expect(parsed.request.tools).toEqual([{ name: "respond", description: expect.any(String), parameters: { type: "object", properties: { a: { type: ["string", "null"] } } } }])
     expect(parsed.request.toolChoice).toEqual({ type: "tool", name: "respond" })
     // The request carries the structured tool's name, so `tools: false` keeps respond (#252).
@@ -280,14 +342,14 @@ describe("parseGeminiRequest: tools, tool config and structured output", () => {
       stop: ["END"],
     })
     const effort = (thinkingConfig: unknown) => parse(body({ generationConfig: { thinkingConfig } })).reasoningEffort
-    expect([effort({ thinkingLevel: "HIGH" }), effort({ thinkingBudget: 0 }), effort({ thinkingBudget: 1024 }), effort({ thinkingBudget: 8192 }), effort({ thinkingBudget: 8193 }), effort({ thinkingBudget: -1 })]).toEqual([
-      "high",
-      "none",
-      "low",
-      "medium",
-      "high",
-      undefined,
-    ])
+    expect([
+      effort({ thinkingLevel: "HIGH" }),
+      effort({ thinkingBudget: 0 }),
+      effort({ thinkingBudget: 1024 }),
+      effort({ thinkingBudget: 8192 }),
+      effort({ thinkingBudget: 8193 }),
+      effort({ thinkingBudget: -1 }),
+    ]).toEqual(["high", "none", "low", "medium", "high", undefined])
   })
 })
 
@@ -321,8 +383,16 @@ describe("convertSchema: Gemini Schema to JSON Schema", () => {
     ["JSON Schema formats kept, Gemini-only ones dropped", { type: "STRING", format: "date-time" }, { type: "string", format: "date-time" }],
     ["Gemini-only format", { type: "NUMBER", format: "float" }, { type: "number" }],
     ["unknown keys dropped", { type: "OBJECT", example: {}, propertyOrdering: ["a"] }, { type: "object" }],
-    ["nested properties, items, anyOf and additionalProperties", { type: "OBJECT", properties: { a: { type: "ARRAY", items: { type: "BOOLEAN" } }, b: { anyOf: [{ type: "STRING" }, { type: "NULL" }] } }, additionalProperties: { type: "STRING" } }, { type: "object", properties: { a: { type: "array", items: { type: "boolean" } }, b: { anyOf: [{ type: "string" }, { type: "null" }] } }, additionalProperties: { type: "string" } }],
-    ["copied keys", { enum: ["a"], required: ["x"], pattern: "^a", default: "a", minimum: 1, maximum: 2, title: "T" }, { enum: ["a"], required: ["x"], pattern: "^a", default: "a", minimum: 1, maximum: 2, title: "T" }],
+    [
+      "nested properties, items, anyOf and additionalProperties",
+      { type: "OBJECT", properties: { a: { type: "ARRAY", items: { type: "BOOLEAN" } }, b: { anyOf: [{ type: "STRING" }, { type: "NULL" }] } }, additionalProperties: { type: "STRING" } },
+      { type: "object", properties: { a: { type: "array", items: { type: "boolean" } }, b: { anyOf: [{ type: "string" }, { type: "null" }] } }, additionalProperties: { type: "string" } },
+    ],
+    [
+      "copied keys",
+      { enum: ["a"], required: ["x"], pattern: "^a", default: "a", minimum: 1, maximum: 2, title: "T" },
+      { enum: ["a"], required: ["x"], pattern: "^a", default: "a", minimum: 1, maximum: 2, title: "T" },
+    ],
   ])("%s", (_name, input, output) => {
     expect(convertSchema(input)).toEqual(output)
   })

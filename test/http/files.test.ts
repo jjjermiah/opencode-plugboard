@@ -221,7 +221,11 @@ describe("I33 app isolation", () => {
     const { server } = await route()
     const mine = (await upload(server, "alpha", { bytes: PNG, name: "mine.png" })).json()
     const unknown = `file-${"1".repeat(32)}`
-    for (const [method, path] of [["GET", `/v1/files/${mine.id}`], ["GET", `/v1/files/${mine.id}/content`], ["DELETE", `/v1/files/${mine.id}`]] as const) {
+    for (const [method, path] of [
+      ["GET", `/v1/files/${mine.id}`],
+      ["GET", `/v1/files/${mine.id}/content`],
+      ["DELETE", `/v1/files/${mine.id}`],
+    ] as const) {
       const theirs = await server.send(get(path, "beta", {}, method))
       const missing = await server.send(get(path.replace(mine.id, unknown), "beta", {}, method))
       expect(theirs.status).toBe(404)
@@ -245,9 +249,19 @@ describe("I33 app isolation", () => {
     const mine = (await upload(server, "alpha", { bytes: PNG, name: "mine.png" })).json()
     const name = `files/${mine.id.slice(5)}`
     const replies = await Promise.all([
-      server.send({ method: "POST", path: "/v1/chat/completions", headers: as("beta"), body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "file", file: { file_id: mine.id } }] }] } }),
+      server.send({
+        method: "POST",
+        path: "/v1/chat/completions",
+        headers: as("beta"),
+        body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "file", file: { file_id: mine.id } }] }] },
+      }),
       server.send({ method: "POST", path: "/v1/responses", headers: as("beta"), body: { model: "test/echo", input: [{ role: "user", content: [{ type: "input_image", file_id: mine.id }] }] } }),
-      server.send({ method: "POST", path: "/v1/messages", headers: as("beta"), body: { model: "test/echo", max_tokens: 10, messages: [{ role: "user", content: [{ type: "image", source: { type: "file", file_id: mine.id } }] }] } }),
+      server.send({
+        method: "POST",
+        path: "/v1/messages",
+        headers: as("beta"),
+        body: { model: "test/echo", max_tokens: 10, messages: [{ role: "user", content: [{ type: "image", source: { type: "file", file_id: mine.id } }] }] },
+      }),
       server.send({ method: "POST", path: "/v1beta/models/test%2Fecho:generateContent", headers: as("beta"), body: { contents: [{ parts: [{ fileData: { fileUri: name } }] }] } }),
     ])
     expect(replies.map((reply) => reply.status)).toEqual([404, 404, 404, 404])
@@ -259,8 +273,7 @@ describe("I33 app isolation", () => {
 
   test("a malformed id is a miss too, and no key outside the app's prefix can be reached through it", async () => {
     const { server } = await route()
-    for (const id of ["../../keys/x", "file-", "FILE-" + "a".repeat(32), "file-" + "g".repeat(32), "%2e%2e%2fresponses"])
-      expect((await server.send(get(`/v1/files/${id}`, "alpha"))).status).toBe(404)
+    for (const id of ["../../keys/x", "file-", "FILE-" + "a".repeat(32), "file-" + "g".repeat(32), "%2e%2e%2fresponses"]) expect((await server.send(get(`/v1/files/${id}`, "alpha"))).status).toBe(404)
   })
 })
 
@@ -308,7 +321,12 @@ describe("retention, restart and logs", () => {
     const second = await route({}, createFileStore({ storage, state: createFileState() }))
     expect((await second.server.send(get(`/v1/files/${file.id}`, "alpha"))).json()).toEqual(file)
     expect((await second.server.send(get("/v1beta/files", "alpha"))).json().files).toHaveLength(1)
-    const used = await second.server.send({ method: "POST", path: "/v1/chat/completions", headers: as("alpha"), body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "file", file: { file_id: file.id } }] }] } })
+    const used = await second.server.send({
+      method: "POST",
+      path: "/v1/chat/completions",
+      headers: as("alpha"),
+      body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "file", file: { file_id: file.id } }] }] },
+    })
     expect(used.status).toBe(200)
   })
 
@@ -355,9 +373,19 @@ describe("failures keep each API's error shape", () => {
     const anthropic = await upload(server, "alpha", { bytes: PNG, name: "p.png" }, {}, ANTHROPIC)
     expect(anthropic.status).toBe(500)
     expect(anthropic.json()).toMatchObject({ type: "error", error: { message: "Internal server error" } })
-    const start = await server.send({ method: "POST", path: "/upload/v1beta/files", headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-protocol": "resumable", "x-goog-upload-command": "start" }, body: {} })
+    const start = await server.send({
+      method: "POST",
+      path: "/upload/v1beta/files",
+      headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-protocol": "resumable", "x-goog-upload-command": "start" },
+      body: {},
+    })
     const path = new URL(String(start.headers["x-goog-upload-url"]))
-    const google = await server.send({ method: "POST", path: path.pathname + path.search, headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-command": "upload, finalize", "content-type": "application/octet-stream" }, body: PNG })
+    const google = await server.send({
+      method: "POST",
+      path: path.pathname + path.search,
+      headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-command": "upload, finalize", "content-type": "application/octet-stream" },
+      body: PNG,
+    })
     expect(google.status).toBe(500)
     expect(google.json().error).toMatchObject({ code: 500, message: "Internal server error" })
   })
@@ -397,7 +425,13 @@ describe("endpoints", () => {
 
   test("unauthenticated callers get a 401 on every Files route", async () => {
     const { server } = await route()
-    for (const [method, path] of [["GET", "/v1/files"], ["POST", "/v1/files"], ["GET", "/v1/files/file-x"], ["GET", "/v1beta/files"], ["POST", "/upload/v1beta/files"]] as const)
+    for (const [method, path] of [
+      ["GET", "/v1/files"],
+      ["POST", "/v1/files"],
+      ["GET", "/v1/files/file-x"],
+      ["GET", "/v1beta/files"],
+      ["POST", "/upload/v1beta/files"],
+    ] as const)
       expect((await server.send({ method, path })).status).toBe(401)
   })
 })
@@ -416,7 +450,17 @@ describe("a stored file in a request reaches the model as the inline form does",
       headers: as("alpha"),
       body: {
         model: "test/echo",
-        messages: [{ role: "user", content: [{ type: "text", text: "look" }, { type: "file", file: { file_id: image.id } }, { type: "file", file: { file_id: pdf.id } }, { type: "file", file: { file_id: text.id } }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "look" },
+              { type: "file", file: { file_id: image.id } },
+              { type: "file", file: { file_id: pdf.id } },
+              { type: "file", file: { file_id: text.id } },
+            ],
+          },
+        ],
       },
     })
     expect(reply.status).toBe(200)
@@ -438,7 +482,16 @@ describe("a stored file in a request reaches the model as the inline form does",
       headers: as("alpha"),
       body: {
         model: "test/echo",
-        input: [{ role: "user", content: [{ type: "input_text", text: "look" }, { type: "input_image", file_id: image.id }, { type: "input_file", file_id: pdf.id }] }],
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: "look" },
+              { type: "input_image", file_id: image.id },
+              { type: "input_file", file_id: pdf.id },
+            ],
+          },
+        ],
       },
     })
     expect(reply.status).toBe(200)
@@ -448,13 +501,22 @@ describe("a stored file in a request reaches the model as the inline form does",
       { type: "media", url: dataUrl("application/pdf", PDF), mediaType: "application/pdf" },
     ])
     const items = (await server.send(get(`/v1/responses/${reply.json().id}/input_items?order=asc`, "alpha"))).json()
-    expect(items.data[0].content).toEqual([{ type: "input_text", text: "look" }, { type: "input_image", file_id: image.id }, { type: "input_file", file_id: pdf.id }])
+    expect(items.data[0].content).toEqual([
+      { type: "input_text", text: "look" },
+      { type: "input_image", file_id: image.id },
+      { type: "input_file", file_id: pdf.id },
+    ])
     // A later turn chained on it sees the files again.
     const next = await server.send({ method: "POST", path: "/v1/responses", headers: as("alpha"), body: { model: "test/echo", input: "and now?", previous_response_id: reply.json().id } })
     expect(next.status).toBe(200)
     expect(caller.calls[1]!.request.messages[0]!.content.map((part) => part.type)).toEqual(["text", "media", "media"])
     // An input_image cannot be a PDF.
-    const wrong = await server.send({ method: "POST", path: "/v1/responses", headers: as("alpha"), body: { model: "test/echo", input: [{ role: "user", content: [{ type: "input_image", file_id: pdf.id }] }] } })
+    const wrong = await server.send({
+      method: "POST",
+      path: "/v1/responses",
+      headers: as("alpha"),
+      body: { model: "test/echo", input: [{ role: "user", content: [{ type: "input_image", file_id: pdf.id }] }] },
+    })
     expect(wrong.status).toBe(400)
     expect(wrong.json().error.code).toBe("invalid_file")
   })
@@ -488,11 +550,21 @@ describe("a stored file in a request reaches the model as the inline form does",
     expect(content[0]).toEqual({ type: "media", url: dataUrl("image/png", PNG), mediaType: "image/png" })
     expect(content[1]).toEqual({ type: "media", url: dataUrl("application/pdf", PDF), mediaType: "application/pdf", cache: true })
     expect(content[2]).toEqual({ type: "text", text: "plain words" })
-    const wrong = await server.send({ method: "POST", path: "/v1/messages", headers: as("alpha"), body: { model: "test/echo", max_tokens: 10, messages: [{ role: "user", content: [{ type: "image", source: { type: "file", file_id: pdf.id } }] }] } })
+    const wrong = await server.send({
+      method: "POST",
+      path: "/v1/messages",
+      headers: as("alpha"),
+      body: { model: "test/echo", max_tokens: 10, messages: [{ role: "user", content: [{ type: "image", source: { type: "file", file_id: pdf.id } }] }] },
+    })
     expect(wrong.status).toBe(400)
     expect(wrong.json().error.type).toBe("invalid_request_error")
     // The count route resolves them too.
-    const counted = await server.send({ method: "POST", path: "/v1/messages/count_tokens", headers: as("alpha"), body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "image", source: { type: "file", file_id: image.id } }] }] } })
+    const counted = await server.send({
+      method: "POST",
+      path: "/v1/messages/count_tokens",
+      headers: as("alpha"),
+      body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "image", source: { type: "file", file_id: image.id } }] }] },
+    })
     expect(counted.status).toBe(200)
   })
 
@@ -502,12 +574,26 @@ describe("a stored file in a request reaches the model as the inline form does",
     const gemini = (await server.send(get(`/v1beta/files/${pdf.id.slice(5)}`, "alpha"))).json()
     expect(gemini.uri).toMatch(/\/v1beta\/files\/[0-9a-f]{32}$/)
     for (const fileUri of [gemini.name, gemini.uri]) {
-      const reply = await server.send({ method: "POST", path: "/v1beta/models/test%2Fecho:generateContent", headers: as("alpha"), body: { contents: [{ parts: [{ text: "look" }, { fileData: { fileUri, mimeType: "application/pdf" } }] }] } })
+      const reply = await server.send({
+        method: "POST",
+        path: "/v1beta/models/test%2Fecho:generateContent",
+        headers: as("alpha"),
+        body: { contents: [{ parts: [{ text: "look" }, { fileData: { fileUri, mimeType: "application/pdf" } }] }] },
+      })
       expect(reply.status).toBe(200)
     }
-    for (const call of caller.calls) expect(call.request.messages[0]!.content).toEqual([{ type: "text", text: "look" }, { type: "media", url: dataUrl("application/pdf", PDF), mediaType: "application/pdf" }])
+    for (const call of caller.calls)
+      expect(call.request.messages[0]!.content).toEqual([
+        { type: "text", text: "look" },
+        { type: "media", url: dataUrl("application/pdf", PDF), mediaType: "application/pdf" },
+      ])
     // An http uri that is not ours is still fetched as before (off by default: a 4xx from the image filter, never a file lookup).
-    const remote = await server.send({ method: "POST", path: "/v1beta/models/test%2Fecho:generateContent", headers: as("alpha"), body: { contents: [{ parts: [{ fileData: { fileUri: "https://example.com/p.png" } }] }] } })
+    const remote = await server.send({
+      method: "POST",
+      path: "/v1beta/models/test%2Fecho:generateContent",
+      headers: as("alpha"),
+      body: { contents: [{ parts: [{ fileData: { fileUri: "https://example.com/p.png" } }] }] },
+    })
     expect(remote.status).not.toBe(404)
   })
 
@@ -515,7 +601,12 @@ describe("a stored file in a request reaches the model as the inline form does",
     const { server, caller } = await route()
     const file = (await upload(server, "alpha", { bytes: PNG, name: "p.png" })).json()
     await server.send(get(`/v1/files/${file.id}`, "alpha", {}, "DELETE"))
-    const chat = (id: string) => ({ method: "POST", path: "/v1/chat/completions", headers: as("alpha"), body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "file", file: { file_id: id } }] }] } })
+    const chat = (id: string) => ({
+      method: "POST",
+      path: "/v1/chat/completions",
+      headers: as("alpha"),
+      body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "file", file: { file_id: id } }] }] },
+    })
     expect((await server.send(chat(file.id))).status).toBe(404)
     expect((await server.send(chat("file-nope"))).status).toBe(404)
     const many = { model: "test/echo", messages: [{ role: "user", content: Array.from({ length: 33 }, (_, i) => ({ type: "file", file: { file_id: `file-${String(i).padStart(32, "0")}` } })) }] }

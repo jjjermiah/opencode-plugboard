@@ -98,8 +98,7 @@ const hiddenParentTitle = (app: string): string => `plugboard: ${app}`
 
 const notFound = (message: string): PlugError => ({ status: 404, kind: "not_found", message, code: "model_not_found", param: "model" })
 
-const countMedia = (request: PlugRequest): number =>
-  request.messages.reduce((sum, message) => sum + message.content.filter((part) => part.type === "media").length, 0)
+const countMedia = (request: PlugRequest): number => request.messages.reduce((sum, message) => sum + message.content.filter((part) => part.type === "media").length, 0)
 
 /** Everything the hook will need must exist before dispatch: one prompt file per image, one seed tool per offered tool. */
 function checkPreparation(request: PlugRequest, images: number, maxTools: number): PlugError | undefined {
@@ -224,13 +223,7 @@ export type SessionPromptDeps = Pick<SessionCallerDeps, "port" | "persona" | "en
  * the Location may boot (`ensureAppDir`, `ensureBackend`), and a backend that is not ready answers 503. Image preparation (remote
  * fetches) is not run. `app` is the authenticated app name, validated by config, so the caller's name check is not repeated.
  */
-export async function sessionRequest(
-  deps: SessionPromptDeps | undefined,
-  app: string,
-  called: PlugRequest,
-  policy: AppPolicy | undefined,
-  signal: AbortSignal,
-): Promise<PlugRequest | PlugError> {
+export async function sessionRequest(deps: SessionPromptDeps | undefined, app: string, called: PlugRequest, policy: AppPolicy | undefined, signal: AbortSignal): Promise<PlugRequest | PlugError> {
   // The pure refusals first, in the order `stream` makes them: a count never sizes a request that would be refused.
   const outOfScope = checkAppModel(policy, called.model, called.ref)
   if (outOfScope) return outOfScope
@@ -273,7 +266,6 @@ export async function sessionRequest(
     tools: [...seedToolsFor(request), ...serverSchemas.map((tool) => ({ name: tool.id, description: tool.description, parameters: tool.input }))],
   }
 }
-
 
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port, sessions, maxTools, ensureBackend } = deps
@@ -476,13 +468,15 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const scope = affinity && anchored ? (hidden ? "" : scopeKey(cache, called)) : undefined
         const modelRef = { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) }
         const makeAnchor = (): Promise<string> =>
-          port.create({
-            directory,
-            model: modelRef,
-            title: hidden ? hiddenParentTitle(app) : anchorTitle(app, scope ?? ""),
-            metadata: { plugboard: { app, anchor: true } },
-            permissions: requestPermissions([]),
-          }).then((made) => String(made.id))
+          port
+            .create({
+              directory,
+              model: modelRef,
+              title: hidden ? hiddenParentTitle(app) : anchorTitle(app, scope ?? ""),
+              metadata: { plugboard: { app, anchor: true } },
+              permissions: requestPermissions([]),
+            })
+            .then((made) => String(made.id))
         let parentID: string | undefined
         const maxAnchors = maxAnchorsOf(cache)
         if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, keyScope, scope, maxAnchors, makeAnchor), context.signal)
@@ -574,7 +568,18 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         clearTimeout(drain)
         // A client that left mid-run gets its window (see `disconnectWindow`): the usage is recorded when the host reports it, later.
         // A finish already emitted ends the run for the caller: its usage is charged now, not again later (no double charge).
-        const waiting = sessionID !== undefined && collector !== undefined && promptStarted && context.signal.aborted && !interruptAtOnce() && !stopFired && finish === undefined && !collector.executionEnded && !collector.turnSettled && !interruptRequested && disconnectWindow() > 0
+        const waiting =
+          sessionID !== undefined &&
+          collector !== undefined &&
+          promptStarted &&
+          context.signal.aborted &&
+          !interruptAtOnce() &&
+          !stopFired &&
+          finish === undefined &&
+          !collector.executionEnded &&
+          !collector.turnSettled &&
+          !interruptRequested &&
+          disconnectWindow() > 0
         if (waiting && collector) settleAfterDisconnect(collector, disconnectWindow())
         // What the host has spent on the run so far: the usage record charges it when the run ends without a finish (timeout).
         else if (collector?.spent) context.onRunUsage?.(collector.spent)
@@ -600,7 +605,15 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         // A turn that stopped with nothing in it is kept as a session for inspection: the session id finds it.
         if (outcome === "finish:stop" && !produced) logWarn("answer.empty", { requestID, app, model: request.model, sessionID, tools: request.tools.length })
         if (debugEnabled())
-          logDebug("model.finished", { requestID, app, outcome, finish: finish?.reason, inputTokens: finish?.usage?.inputTokens, outputTokens: finish?.usage?.outputTokens, durationMs: Date.now() - startedAt })
+          logDebug("model.finished", {
+            requestID,
+            app,
+            outcome,
+            finish: finish?.reason,
+            inputTokens: finish?.usage?.inputTokens,
+            outputTokens: finish?.usage?.outputTokens,
+            durationMs: Date.now() - startedAt,
+          })
         logRequest("request.finished", { requestID, app, model: request.model, durationMs: Date.now() - startedAt, outcome })
       }
     },

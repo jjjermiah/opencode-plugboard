@@ -328,14 +328,28 @@ describe("#391 fallbackAfterMs: the first-event deadline", () => {
   })
 
   test("the last target has no first-event deadline: a slow last target still answers", async () => {
-    const r = await timedRun([{ after: 0, events: [rateLimited] }, { after: DEADLINE * 3, events: answer }], "pair")
+    const r = await timedRun(
+      [
+        { after: 0, events: [rateLimited] },
+        { after: DEADLINE * 3, events: answer },
+      ],
+      "pair",
+    )
     expect(r.targets).toEqual(["a/x", "c/z"])
     expect(r.aborted).toEqual([false, false])
     expect(r.served).toEqual([{ model: "c/z", fallbacks: 1, chain: true }])
   })
 
   test("a reasoning-first target is not aborted, and its stream runs past the deadline to the end", async () => {
-    const r = await timedRun([{ steps: [{ after: EARLY, events: [ev.reasoning("thinking")] }, { after: DEADLINE * 2, events: [ev.text("answer"), ev.finish()] }] }, "hang"])
+    const r = await timedRun([
+      {
+        steps: [
+          { after: EARLY, events: [ev.reasoning("thinking")] },
+          { after: DEADLINE * 2, events: [ev.text("answer"), ev.finish()] },
+        ],
+      },
+      "hang",
+    ])
     expect(r.targets).toEqual(["a/x"])
     expect(r.aborted).toEqual([false])
     expect(r.events.map((e) => e.type)).toEqual(["reasoning-delta", "text-delta", "finish"])
@@ -343,10 +357,23 @@ describe("#391 fallbackAfterMs: the first-event deadline", () => {
   })
 
   test("a text-first target is not aborted, and its answer streamed past the deadline is whole", async () => {
-    const r = await timedRun([{ steps: [{ after: EARLY, events: [ev.text("he")] }, { after: DEADLINE * 2, events: [ev.text("llo"), ev.finish()] }] }, "hang"])
+    const r = await timedRun([
+      {
+        steps: [
+          { after: EARLY, events: [ev.text("he")] },
+          { after: DEADLINE * 2, events: [ev.text("llo"), ev.finish()] },
+        ],
+      },
+      "hang",
+    ])
     expect(r.targets).toEqual(["a/x"])
     expect(r.aborted).toEqual([false])
-    expect(r.events.filter((e) => e.type === "text-delta").map((e) => (e as { text: string }).text).join("")).toBe("hello")
+    expect(
+      r.events
+        .filter((e) => e.type === "text-delta")
+        .map((e) => (e as { text: string }).text)
+        .join(""),
+    ).toBe("hello")
     expect(r.events.at(-1)).toMatchObject({ type: "finish" })
   })
 
@@ -366,7 +393,12 @@ describe("#391 fallbackAfterMs: the first-event deadline", () => {
         })()
       },
     }
-    const events = await collect(withFallbacks(caller, { options: timedOptions, loadCatalog: async () => CATALOG }).stream(plugRequest({ model: "chain", ref: resolveModel(timedOptions, "chain", CATALOG) as never }), { app: "app1", signal: new AbortController().signal }))
+    const events = await collect(
+      withFallbacks(caller, { options: timedOptions, loadCatalog: async () => CATALOG }).stream(plugRequest({ model: "chain", ref: resolveModel(timedOptions, "chain", CATALOG) as never }), {
+        app: "app1",
+        signal: new AbortController().signal,
+      }),
+    )
     expect(reasons).toEqual(["cancelled"])
     expect(events.at(-1)).toMatchObject({ type: "finish" })
   })

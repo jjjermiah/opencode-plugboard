@@ -54,7 +54,10 @@ describe("#335 live runs record the version of the commit they name", () => {
   let repo: string
   let saved: Record<string, string | undefined>
   let oldCommit: string
-  const git = (...args: string[]) => Bun.spawnSync(["git", "-C", repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", ...args]).stdout.toString().trim()
+  const git = (...args: string[]) =>
+    Bun.spawnSync(["git", "-C", repo, "-c", "user.name=test", "-c", "user.email=test@example.invalid", ...args])
+      .stdout.toString()
+      .trim()
 
   beforeEach(() => {
     saved = { PLUGBOARD_CHECKOUT: process.env.PLUGBOARD_CHECKOUT, PLUGBOARD_COMMIT: process.env.PLUGBOARD_COMMIT }

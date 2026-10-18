@@ -21,7 +21,10 @@ const bad = (message: string, code = "invalid_file_upload"): PlugError => ({ sta
 export function cleanFilename(raw: string | undefined): string {
   const last = (raw ?? "").split(/[\\/]/).pop() ?? ""
   // eslint-disable-next-line no-control-regex
-  const name = last.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 255)
+  const name = last
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, 255)
   return name.length > 0 ? name : "unnamed"
 }
 
@@ -54,7 +57,13 @@ const HEADER_END = Buffer.from("\r\n\r\n")
 
 /** The two parts of a `multipart/related` body: JSON metadata, then the file bytes. */
 export function parseRelated(contentType: string | undefined, body: Buffer): RelatedUpload | PlugError {
-  const boundary = contentType === undefined ? undefined : /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(contentType)?.slice(1).find((value) => value !== undefined)
+  const boundary =
+    contentType === undefined
+      ? undefined
+      : /boundary=(?:"([^"]+)"|([^;\s]+))/i
+          .exec(contentType)
+          ?.slice(1)
+          .find((value) => value !== undefined)
   if (boundary === undefined || !/^multipart\/related/i.test(contentType ?? "")) return bad("Content-Type must be multipart/related with a boundary", "unsupported_media_type")
   const delimiter = Buffer.from(`--${boundary}`)
   const parts: Array<{ headers: string; content: Buffer }> = []
@@ -69,7 +78,9 @@ export function parseRelated(contentType: string | undefined, body: Buffer): Rel
     const part = body.subarray(start, next)
     const split = part.indexOf(HEADER_END)
     // A part with no headers starts right at its content.
-    parts.push(split < 0 ? { headers: "", content: part.subarray(part.subarray(0, 2).equals(CRLF) ? 2 : 0) } : { headers: part.subarray(0, split).toString("latin1"), content: part.subarray(split + 4) })
+    parts.push(
+      split < 0 ? { headers: "", content: part.subarray(part.subarray(0, 2).equals(CRLF) ? 2 : 0) } : { headers: part.subarray(0, split).toString("latin1"), content: part.subarray(split + 4) },
+    )
     at = next + 2
   }
   if (parts.length !== 2) return bad("A multipart/related upload has two parts: the file metadata (JSON), then the file")

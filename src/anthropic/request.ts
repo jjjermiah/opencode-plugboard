@@ -13,16 +13,7 @@ import { show } from "../client-value.js"
 import { imageProblem } from "../image.js"
 import { replayedReasoning } from "../reasoning-replay.js"
 import { bodyUserId, userField } from "../user.js"
-import {
-  isPlugError,
-  type PlugError,
-  type PlugGeneration,
-  type PlugMessage,
-  type PlugPart,
-  type PlugRequest,
-  type PlugTool,
-  type PlugToolChoice,
-} from "../contract.js"
+import { isPlugError, type PlugError, type PlugGeneration, type PlugMessage, type PlugPart, type PlugRequest, type PlugTool, type PlugToolChoice } from "../contract.js"
 import type { MessagesExchange } from "./response.js"
 
 type JsonObject = Record<string, unknown>
@@ -280,7 +271,7 @@ const parseOutputFormat = (body: JsonObject): PlugTool | undefined | PlugError =
   if (!isRecord(config) || config.format == null) return undefined
   const format = config.format
   if (!isRecord(format)) return bad("output_config.format: must be an object")
-  if (format.type !== "json_schema") return bad(`output_config.format.type: \"${show(format.type)}\" is not supported (use \"json_schema\")`)
+  if (format.type !== "json_schema") return bad(`output_config.format.type: "${show(format.type)}" is not supported (use "json_schema")`)
   if (!isRecord(format.schema)) return bad("output_config.format.schema: Field required (a JSON Schema object)")
   return {
     name: RESPOND_TOOL,
@@ -309,8 +300,7 @@ const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
   }
   if (body.top_k != null && (typeof body.top_k !== "number" || !Number.isInteger(body.top_k) || body.top_k < 0)) return bad("top_k: must be a non-negative integer")
   if (body.stop_sequences != null) {
-    if (!Array.isArray(body.stop_sequences) || body.stop_sequences.some((s) => typeof s !== "string" || s.length === 0))
-      return bad("stop_sequences: must be an array of non-empty strings")
+    if (!Array.isArray(body.stop_sequences) || body.stop_sequences.some((s) => typeof s !== "string" || s.length === 0)) return bad("stop_sequences: must be an array of non-empty strings")
     if (body.stop_sequences.length > 0) out.stop = body.stop_sequences as string[]
   }
   return out
@@ -378,10 +368,8 @@ export function parseMessagesRequest(body: unknown, options: PlugboardOptions): 
   if (isPlugError(respond)) return respond
 
   if (toolChoice !== undefined && toolChoice !== "none" && toolChoice !== "auto" && tools.length === 0) return bad("tool_choice: needs at least one tool in tools")
-  if (typeof toolChoice === "object" && !tools.some((tool) => tool.name === toolChoice.name))
-    return bad(`tool_choice.name: "${toolChoice.name}" is not in tools`)
-  if (respond && tools.some((tool) => tool.name === RESPOND_TOOL))
-    return bad(`tools: a tool named "${RESPOND_TOOL}" collides with output_config.format, which plugboard answers through that name`)
+  if (typeof toolChoice === "object" && !tools.some((tool) => tool.name === toolChoice.name)) return bad(`tool_choice.name: "${toolChoice.name}" is not in tools`)
+  if (respond && tools.some((tool) => tool.name === RESPOND_TOOL)) return bad(`tools: a tool named "${RESPOND_TOOL}" collides with output_config.format, which plugboard answers through that name`)
   // output_config.format + caller tools: the model may call a caller tool or `respond`, so `tool_choice` is `required` (not forced to
   // `respond`). `tool_choice: none` leaves only `respond`; naming a tool contradicts a structured answer.
   if (respond && typeof toolChoice === "object") return bad("tool_choice: a tool_choice that names a tool cannot be combined with output_config.format")

@@ -338,7 +338,37 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
-const KNOWN = new Set(["listen", "keys", "adminKey", "apps", "models", "aliases", "agents", "maxTools", "maxN", "requestTimeoutMs", "fallbackAfterMs", "remoteImages", "history", "dropUnsupportedParams", "logFormat", "metrics", "modelIds", "limits", "budgets", "cache", "usage", "historyUrl", "promptCache", "requireKeys", "cors", "keepAlive", "logLevel", "logRequests", "reasoningOutput"])
+const KNOWN = new Set([
+  "listen",
+  "keys",
+  "adminKey",
+  "apps",
+  "models",
+  "aliases",
+  "agents",
+  "maxTools",
+  "maxN",
+  "requestTimeoutMs",
+  "fallbackAfterMs",
+  "remoteImages",
+  "history",
+  "dropUnsupportedParams",
+  "logFormat",
+  "metrics",
+  "modelIds",
+  "limits",
+  "budgets",
+  "cache",
+  "usage",
+  "historyUrl",
+  "promptCache",
+  "requireKeys",
+  "cors",
+  "keepAlive",
+  "logLevel",
+  "logRequests",
+  "reasoningOutput",
+])
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -382,13 +412,11 @@ export function isLoopbackHost(host: string): boolean {
 
 function positiveInt(value: unknown, name: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
   if (value === undefined) return fallback
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > max)
-    throw new Error(`plugboard option \`${name}\` must be an integer between 1 and ${max}`)
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > max) throw new Error(`plugboard option \`${name}\` must be an integer between 1 and ${max}`)
   return value
 }
 
-const REMOTE_IMAGES_ERROR =
-  "plugboard option `remoteImages` must be a boolean or `{ allow: [...] }` with host names, IP addresses or CIDR ranges that may be fetched even when they are not public"
+const REMOTE_IMAGES_ERROR = "plugboard option `remoteImages` must be a boolean or `{ allow: [...] }` with host names, IP addresses or CIDR ranges that may be fetched even when they are not public"
 
 const CORS_KNOWN = ["origins", "allowPrivateNetwork"]
 
@@ -411,11 +439,9 @@ function parseOrigin(text: unknown): string | undefined {
 function parseCors(raw: unknown, keyed: boolean): CorsConfig | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error("plugboard option `cors` must be an object: { origins, allowPrivateNetwork }")
-  for (const key of Object.keys(raw))
-    if (!CORS_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`cors.${key}\` (known: ${CORS_KNOWN.join(", ")})`)
+  for (const key of Object.keys(raw)) if (!CORS_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`cors.${key}\` (known: ${CORS_KNOWN.join(", ")})`)
   const origins = raw.origins
-  if (!Array.isArray(origins) || origins.length === 0)
-    throw new Error("plugboard option `cors.origins` must be a non-empty array of origins such as `https://chat.example.net`, or [\"*\"]")
+  if (!Array.isArray(origins) || origins.length === 0) throw new Error('plugboard option `cors.origins` must be a non-empty array of origins such as `https://chat.example.net`, or ["*"]')
   const list: string[] = []
   for (const origin of origins) {
     if (origin === "*") {
@@ -426,7 +452,9 @@ function parseCors(raw: unknown, keyed: boolean): CorsConfig | undefined {
     }
     const parsed = parseOrigin(origin)
     if (parsed === undefined)
-      throw new Error(`plugboard option \`cors.origins\` entry \`${String(origin)}\` must be an \`http://\` or \`https://\` origin: scheme, host and port only, no path, query, credentials or wildcard`)
+      throw new Error(
+        `plugboard option \`cors.origins\` entry \`${String(origin)}\` must be an \`http://\` or \`https://\` origin: scheme, host and port only, no path, query, credentials or wildcard`,
+      )
     list.push(parsed)
   }
   if (raw.allowPrivateNetwork !== undefined && typeof raw.allowPrivateNetwork !== "boolean") throw new Error("plugboard option `cors.allowPrivateNetwork` must be a boolean")
@@ -438,8 +466,7 @@ const REMOTE_IMAGES_KNOWN = ["allow", "schemes", "maxBytes", "maxItems", "maxRed
 
 function remoteImagesInt(value: unknown, name: string, min: number, max: number): number | undefined {
   if (value === undefined) return undefined
-  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max)
-    throw new Error(`plugboard option \`remoteImages.${name}\` must be an integer between ${min} and ${max}`)
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) throw new Error(`plugboard option \`remoteImages.${name}\` must be an integer between ${min} and ${max}`)
   return value
 }
 
@@ -447,8 +474,7 @@ function parseRemoteImages(value: unknown): RemoteImages {
   if (value === undefined) return false
   if (typeof value === "boolean") return value
   if (!isRecord(value)) throw new Error(REMOTE_IMAGES_ERROR)
-  for (const key of Object.keys(value))
-    if (!REMOTE_IMAGES_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`remoteImages.${key}\` (known: ${REMOTE_IMAGES_KNOWN.join(", ")})`)
+  for (const key of Object.keys(value)) if (!REMOTE_IMAGES_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`remoteImages.${key}\` (known: ${REMOTE_IMAGES_KNOWN.join(", ")})`)
   const allow = value.allow ?? []
   if (!Array.isArray(allow)) throw new Error(REMOTE_IMAGES_ERROR)
   for (const entry of allow)
@@ -487,7 +513,29 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-const APP_KNOWN = new Set(["key", "models", "system", "systemMode", "tools", "maxTools", "maxN", "history", "serverTools", "maxServerToolSteps", "maxServerToolCalls", "historyUrl", "promptCache", "endpoints", "requestTimeoutMs", "maxOutputTokens", "sampling", "model", "userHeader", "reasoningOutput", "settleMs"])
+const APP_KNOWN = new Set([
+  "key",
+  "models",
+  "system",
+  "systemMode",
+  "tools",
+  "maxTools",
+  "maxN",
+  "history",
+  "serverTools",
+  "maxServerToolSteps",
+  "maxServerToolCalls",
+  "historyUrl",
+  "promptCache",
+  "endpoints",
+  "requestTimeoutMs",
+  "maxOutputTokens",
+  "sampling",
+  "model",
+  "userHeader",
+  "reasoningOutput",
+  "settleMs",
+])
 
 /**
  * Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hidden` (since 0.29.0, #337).
@@ -512,8 +560,7 @@ function parseAppHistory(raw: unknown, at: string): HistoryLimits {
 function parseEndpoints(raw: unknown, at: string): Endpoint[] {
   if (!Array.isArray(raw) || raw.length === 0) throw new Error(`${at}.endpoints must be a non-empty array of: ${ENDPOINTS.join(", ")} (omit it to allow every endpoint)`)
   for (const entry of raw)
-    if (typeof entry !== "string" || !(ENDPOINTS as readonly string[]).includes(entry))
-      throw new Error(`${at}.endpoints entry \`${String(entry)}\` must be one of: ${ENDPOINTS.join(", ")}`)
+    if (typeof entry !== "string" || !(ENDPOINTS as readonly string[]).includes(entry)) throw new Error(`${at}.endpoints entry \`${String(entry)}\` must be one of: ${ENDPOINTS.join(", ")}`)
   return raw as Endpoint[]
 }
 const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
@@ -525,15 +572,13 @@ const SESSION_SPAWNING_TOOLS: ReadonlySet<string> = new Set(["subagent", "task"]
 
 /** `apps.<name>.serverTools`: exact OpenCode tool ids. No wildcards, no duplicates, and not the seeds or CodeMode's `execute`. */
 function parseServerTools(value: unknown, at: string): string[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SERVER_TOOLS)
-    throw new Error(`${at}.serverTools must be an array of 1 to ${MAX_SERVER_TOOLS} OpenCode tool ids`)
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SERVER_TOOLS) throw new Error(`${at}.serverTools must be an array of 1 to ${MAX_SERVER_TOOLS} OpenCode tool ids`)
   const tools: string[] = []
   for (const tool of value) {
     if (typeof tool !== "string" || !SERVER_TOOL_PATTERN.test(tool))
       throw new Error(`${at}.serverTools entry \`${String(tool)}\` must be an exact OpenCode tool id (letters, digits, \`_\`, \`.\`, \`:\`, \`-\`; no wildcards)`)
     if (tool === "execute") throw new Error(`${at}.serverTools cannot name \`execute\`: it is OpenCode's CodeMode tool and would run every tool it wraps`)
-    if (SESSION_SPAWNING_TOOLS.has(tool))
-      throw new Error(`${at}.serverTools cannot name \`${tool}\`: it starts a child session with its own agent rules, outside this app's deny-all`)
+    if (SESSION_SPAWNING_TOOLS.has(tool)) throw new Error(`${at}.serverTools cannot name \`${tool}\`: it starts a child session with its own agent rules, outside this app's deny-all`)
     if (tool.startsWith(SEED_PREFIX)) throw new Error(`${at}.serverTools cannot name \`${tool}\`: plugboard's own seed tools are reserved`)
     if (tools.includes(tool)) throw new Error(`${at}.serverTools lists \`${tool}\` twice`)
     tools.push(tool)
@@ -570,8 +615,7 @@ function parsePinnedModel(raw: unknown, at: string, appModels: ReadonlyArray<str
   }
   const ref = parseModelRef(raw)!
   if (!allowedBy(context.models, ref)) throw new Error(`plugboard option \`${at}.model\` \`${raw}\` is not allowed by the \`models\` option`)
-  if (appModels !== undefined && !appModels.includes(raw) && !allowedBy(appModels, ref))
-    throw new Error(`plugboard option \`${at}.model\` \`${raw}\` must be listed in \`${at}.models\``)
+  if (appModels !== undefined && !appModels.includes(raw) && !allowedBy(appModels, ref)) throw new Error(`plugboard option \`${at}.model\` \`${raw}\` must be listed in \`${at}.models\``)
   return raw
 }
 
@@ -588,8 +632,7 @@ function parseSampling(raw: unknown, at: string): PlugGeneration {
   const number = (key: "temperature" | "topP" | "presencePenalty" | "frequencyPenalty", min: number, max: number): number | undefined => {
     const value = raw[key]
     if (value === undefined) return undefined
-    if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max)
-      throw new Error(`plugboard option \`${at}.sampling.${key}\` must be a number from ${min} to ${max}`)
+    if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) throw new Error(`plugboard option \`${at}.sampling.${key}\` must be a number from ${min} to ${max}`)
     return value
   }
   const stop = raw.stop === undefined ? undefined : raw.stop
@@ -620,22 +663,18 @@ function parseApps(
     const at = `plugboard \`apps.${app}\``
     if (app !== DEFAULT_APP && !isAppName(app)) throw new Error(`plugboard app name \`${app}\` must match ${APP_NAME_PATTERN} and be at most ${APP_NAME_MAX} characters (or be \`${DEFAULT_APP}\`)`)
     if (!isRecord(value)) throw new Error(`${at} must be an object`)
-    for (const field of Object.keys(value))
-      if (!APP_KNOWN.has(field)) throw new Error(`Unknown plugboard option \`apps.${app}.${field}\` (known: ${[...APP_KNOWN].join(", ")})`)
+    for (const field of Object.keys(value)) if (!APP_KNOWN.has(field)) throw new Error(`Unknown plugboard option \`apps.${app}.${field}\` (known: ${[...APP_KNOWN].join(", ")})`)
     const keyed = Object.keys(context.keys).length > 0
-    if (app === DEFAULT_APP && (keyed || value.key !== undefined))
-      throw new Error(`${at} configures the keyless app and cannot be used together with \`keys\`; name the app and give it a key instead`)
+    if (app === DEFAULT_APP && (keyed || value.key !== undefined)) throw new Error(`${at} configures the keyless app and cannot be used together with \`keys\`; name the app and give it a key instead`)
     if (app !== DEFAULT_APP && !Object.hasOwn(context.keys, app)) throw new Error(`${at} has no key: add \`key\` there or an entry in \`keys\``)
 
     if (value.models !== undefined) {
-      if (!Array.isArray(value.models) || value.models.length === 0)
-        throw new Error(`${at}.models must be a non-empty array (omit it to inherit the global \`models\`)`)
+      if (!Array.isArray(value.models) || value.models.length === 0) throw new Error(`${at}.models must be a non-empty array (omit it to inherit the global \`models\`)`)
       for (const entry of value.models)
         if (typeof entry !== "string" || !(MODEL_PATTERN.test(entry) || Object.hasOwn(context.aliases, entry)))
           throw new Error(`${at}.models entry \`${String(entry)}\` must be \`provider/model\`, \`provider/model#variant\`, \`provider/*\` or an alias name`)
     }
-    if (value.system !== undefined && (typeof value.system !== "string" || value.system.trim().length === 0))
-      throw new Error(`${at}.system must be a non-empty string`)
+    if (value.system !== undefined && (typeof value.system !== "string" || value.system.trim().length === 0)) throw new Error(`${at}.system must be a non-empty string`)
     if (value.systemMode !== undefined && (typeof value.systemMode !== "string" || !SYSTEM_MODES.has(value.systemMode)))
       throw new Error(`${at}.systemMode must be \`prepend\`, \`append\` or \`replace\``)
     if (value.systemMode !== undefined && value.system === undefined) throw new Error(`${at}.systemMode needs \`system\``)
@@ -643,8 +682,7 @@ function parseApps(
     const maxTools = value.maxTools === undefined ? undefined : positiveInt(value.maxTools, `apps.${app}.maxTools`, 0, context.maxTools)
     // Only lowers the global `maxN` (#270), like `maxTools`: a higher value would be a second, unchecked global.
     const maxN = value.maxN === undefined ? undefined : positiveInt(value.maxN, `apps.${app}.maxN`, 0, context.maxN)
-    if (value.serverTools !== undefined && app === DEFAULT_APP)
-      throw new Error(`${at}.serverTools needs a key: the keyless app cannot run OpenCode tools; name the app and give it a key`)
+    if (value.serverTools !== undefined && app === DEFAULT_APP) throw new Error(`${at}.serverTools needs a key: the keyless app cannot run OpenCode tools; name the app and give it a key`)
     const serverTools = value.serverTools === undefined ? undefined : parseServerTools(value.serverTools, at)
     if (value.maxServerToolSteps !== undefined && serverTools === undefined) throw new Error(`${at}.maxServerToolSteps needs \`serverTools\``)
     const maxServerToolSteps =
@@ -690,7 +728,25 @@ function parseApps(
       ...(reasoningOutput === undefined ? {} : { reasoningOutput }),
     }
     // An app that only carries a key has no policy to look up.
-    if (value.models !== undefined || value.system !== undefined || value.tools !== undefined || maxTools !== undefined || maxN !== undefined || history !== undefined || serverTools !== undefined || historyUrl !== undefined || promptCache !== undefined || endpoints !== undefined || requestTimeoutMs !== undefined || maxOutputTokens !== undefined || sampling !== undefined || model !== undefined || userHeader !== undefined || reasoningOutput !== undefined || settleMs !== undefined)
+    if (
+      value.models !== undefined ||
+      value.system !== undefined ||
+      value.tools !== undefined ||
+      maxTools !== undefined ||
+      maxN !== undefined ||
+      history !== undefined ||
+      serverTools !== undefined ||
+      historyUrl !== undefined ||
+      promptCache !== undefined ||
+      endpoints !== undefined ||
+      requestTimeoutMs !== undefined ||
+      maxOutputTokens !== undefined ||
+      sampling !== undefined ||
+      model !== undefined ||
+      userHeader !== undefined ||
+      reasoningOutput !== undefined ||
+      settleMs !== undefined
+    )
       entries.push([app, policy])
   }
   return Object.fromEntries(entries)
@@ -704,8 +760,7 @@ const PROMPT_CACHE_KNOWN = new Set(["affinity", "scope", "maxAnchors"])
 export function parsePromptCache(raw: unknown, at: string): PromptCache | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object: { affinity, scope }`)
-  for (const key of Object.keys(raw))
-    if (!PROMPT_CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: affinity, scope, maxAnchors)`)
+  for (const key of Object.keys(raw)) if (!PROMPT_CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: affinity, scope, maxAnchors)`)
   if (typeof raw.affinity !== "string" || !AFFINITY_MODES.has(raw.affinity)) throw new Error(`plugboard option \`${at}.affinity\` must be \`off\` or \`anchor\``)
   if (typeof raw.scope !== "string" || !AFFINITY_SCOPES.has(raw.scope)) throw new Error(`plugboard option \`${at}.scope\` must be \`app\` or \`user\``)
   const maxAnchors = raw.maxAnchors === undefined ? undefined : positiveInt(raw.maxAnchors, `${at}.maxAnchors`, DEFAULT_MAX_ANCHORS, 1_000_000)
@@ -721,8 +776,7 @@ function parseCaps(raw: unknown, at: string, allowBodyCap = false): LimitCaps {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object`)
   // `maxBodyBytes` is a cap only for an app (`limits.apps`), never for `limits.perApp`, which would apply it to every app.
   const known = allowBodyCap ? [...LIMIT_CAP_KNOWN, "maxBodyBytes"] : [...LIMIT_CAP_KNOWN]
-  for (const key of Object.keys(raw))
-    if (!known.includes(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${known.join(", ")})`)
+  for (const key of Object.keys(raw)) if (!known.includes(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${known.join(", ")})`)
   return {
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, `${at}.maxConcurrent`, 0, MAX_LIMIT) }),
     ...(raw.requestsPerMinute === undefined ? {} : { requestsPerMinute: positiveInt(raw.requestsPerMinute, `${at}.requestsPerMinute`, 0, MAX_LIMIT) }),
@@ -734,8 +788,7 @@ function parseCaps(raw: unknown, at: string, allowBodyCap = false): LimitCaps {
 function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limits | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error("plugboard option `limits` must be an object")
-  for (const key of Object.keys(raw))
-    if (!LIMITS_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`limits.${key}\` (known: ${[...LIMITS_KNOWN].join(", ")})`)
+  for (const key of Object.keys(raw)) if (!LIMITS_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`limits.${key}\` (known: ${[...LIMITS_KNOWN].join(", ")})`)
   const appsRaw = raw.apps
   if (appsRaw !== undefined && !isRecord(appsRaw)) throw new Error("plugboard option `limits.apps` must be an object of app name -> caps")
   const apps: Record<string, LimitCaps> = {}
@@ -765,9 +818,7 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, "limits.maxConcurrent", 0, MAX_LIMIT) }),
     ...(raw.perApp === undefined ? {} : { perApp: parseCaps(raw.perApp, "limits.perApp") }),
     ...(appsRaw === undefined ? {} : { apps }),
-    ...(raw.maxBodyBytesInFlight === undefined
-      ? {}
-      : { maxBodyBytesInFlight: positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER) }),
+    ...(raw.maxBodyBytesInFlight === undefined ? {} : { maxBodyBytesInFlight: positiveInt(raw.maxBodyBytesInFlight, "limits.maxBodyBytesInFlight", 0, Number.MAX_SAFE_INTEGER) }),
     ...(raw.bodyReadTimeoutMs === undefined ? {} : { bodyReadTimeoutMs: positiveInt(raw.bodyReadTimeoutMs, "limits.bodyReadTimeoutMs", 0, MAX_TIMER_MS) }),
     ...(raw.bodyReadMaxMs === undefined ? {} : { bodyReadMaxMs: positiveInt(raw.bodyReadMaxMs, "limits.bodyReadMaxMs", 0, MAX_TIMER_MS) }),
   }
@@ -820,7 +871,6 @@ export function bodyLimits(options: Pick<PlugboardOptions, "limits" | "keys">, a
     maxBodyBytes: own?.maxBodyBytes ?? options.limits?.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes,
   }
 }
-
 
 /**
  * The refusal for `app` calling `endpoint` (#268): 403 `endpoint_forbidden` when `apps.<app>.endpoints` is set and does not
@@ -885,8 +935,7 @@ export function requestTimeoutOption(options: Pick<PlugboardOptions, "apps">, ap
 function parseUsage(value: unknown): UsageConfig {
   if (value === undefined) return { ...USAGE_DEFAULTS }
   if (!isRecord(value)) throw new Error("plugboard option `usage` must be an object")
-  for (const key of Object.keys(value))
-    if (!USAGE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`usage.${key}\` (known: ${[...USAGE_KNOWN].join(", ")})`)
+  for (const key of Object.keys(value)) if (!USAGE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`usage.${key}\` (known: ${[...USAGE_KNOWN].join(", ")})`)
   if (value.enabled !== undefined && typeof value.enabled !== "boolean") throw new Error("plugboard option `usage.enabled` must be a boolean")
   return {
     enabled: value.enabled !== false,
@@ -897,8 +946,7 @@ function parseUsage(value: unknown): UsageConfig {
 function parseCache(value: unknown, keys: Readonly<Record<string, string>>): CacheConfig | undefined {
   if (value === undefined) return undefined
   if (!isRecord(value)) throw new Error("plugboard option `cache` must be an object with `ttlSeconds`")
-  for (const key of Object.keys(value))
-    if (!CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`cache.${key}\` (known: ${[...CACHE_KNOWN].join(", ")})`)
+  for (const key of Object.keys(value)) if (!CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`cache.${key}\` (known: ${[...CACHE_KNOWN].join(", ")})`)
   if (value.ttlSeconds === undefined) throw new Error("plugboard option `cache.ttlSeconds` is required (how long an answer is served, in seconds)")
   const ttlSeconds = positiveInt(value.ttlSeconds, "cache.ttlSeconds", 0, MAX_CACHE_TTL_SECONDS)
   const maxEntries = positiveInt(value.maxEntries, "cache.maxEntries", CACHE_DEFAULTS.maxEntries)
@@ -907,8 +955,7 @@ function parseCache(value: unknown, keys: Readonly<Record<string, string>>): Cac
   if (!Array.isArray(value.apps) || value.apps.length === 0) throw new Error("plugboard option `cache.apps` must be a non-empty array of app names")
   // A name that can never authenticate would silently leave the cache off for the app the user meant.
   const known = Object.keys(keys).length === 0 ? [DEFAULT_APP] : Object.keys(keys)
-  for (const app of value.apps)
-    if (typeof app !== "string" || !known.includes(app)) throw new Error(`plugboard \`cache.apps\` entry \`${String(app)}\` is not an app (known: ${known.join(", ")})`)
+  for (const app of value.apps) if (typeof app !== "string" || !known.includes(app)) throw new Error(`plugboard \`cache.apps\` entry \`${String(app)}\` is not an app (known: ${known.join(", ")})`)
   return { ttlSeconds, maxEntries, maxBytes, apps: [...new Set(value.apps as string[])] }
 }
 
@@ -921,8 +968,7 @@ const WINDOW_DAYS: Readonly<Record<BudgetWindow, number>> = { day: 1, week: 7, m
 function widestWindowDays(budgets: Budgets | undefined): number {
   let most = 0
   for (const budget of [budgets?.perApp, ...Object.values(budgets?.apps ?? {})])
-    for (const metric of [budget?.requests, budget?.tokens, budget?.costUsd])
-      for (const window of Object.keys(metric ?? {}) as BudgetWindow[]) most = Math.max(most, WINDOW_DAYS[window])
+    for (const metric of [budget?.requests, budget?.tokens, budget?.costUsd]) for (const window of Object.keys(metric ?? {}) as BudgetWindow[]) most = Math.max(most, WINDOW_DAYS[window])
   return most
 }
 
@@ -934,13 +980,11 @@ function widestWindowDays(budgets: Budgets | undefined): number {
 function parseBudgets(raw: unknown, keys: Readonly<Record<string, string>>): Budgets | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error("plugboard option `budgets` must be an object")
-  for (const key of Object.keys(raw))
-    if (key !== "perApp" && key !== "apps") throw new Error(`Unknown plugboard option \`budgets.${key}\` (known: perApp, apps)`)
+  for (const key of Object.keys(raw)) if (key !== "perApp" && key !== "apps") throw new Error(`Unknown plugboard option \`budgets.${key}\` (known: perApp, apps)`)
 
   const budget = (value: unknown, at: string): Budget => {
     if (!isRecord(value)) throw new Error(`plugboard option \`${at}\` must be an object`)
-    for (const key of Object.keys(value))
-      if (!BUDGET_METRICS.includes(key as BudgetMetric)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${BUDGET_METRICS.join(", ")})`)
+    for (const key of Object.keys(value)) if (!BUDGET_METRICS.includes(key as BudgetMetric)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${BUDGET_METRICS.join(", ")})`)
     const parsed: Record<string, Record<string, number>> = {}
     for (const metric of BUDGET_METRICS) {
       const windows = value[metric]
@@ -989,15 +1033,12 @@ function parseAgents(raw: unknown, models: ReadonlyArray<string>): Record<string
   const entries: Array<[string, string]> = []
   for (const item of raw) {
     if (!isRecord(item)) throw new Error("plugboard option `agents` entries must be objects of the form { name, model }")
-    for (const key of Object.keys(item))
-      if (!AGENT_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`agents.${key}\` (known: ${[...AGENT_KNOWN].join(", ")})`)
+    for (const key of Object.keys(item)) if (!AGENT_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`agents.${key}\` (known: ${[...AGENT_KNOWN].join(", ")})`)
     const { name, model } = item
     if (typeof name !== "string" || !AGENT_NAME.test(name)) throw new Error(`plugboard agent name \`${String(name)}\` must match ${AGENT_NAME} (an OpenCode agent name)`)
     if (entries.some(([known]) => known === name)) throw new Error(`plugboard agent \`${name}\` is listed more than once in \`agents\``)
-    if (typeof model !== "string" || !ALIAS_TARGET.test(model))
-      throw new Error(`plugboard agent \`${name}\` must set \`model\` to \`provider/model\` or \`provider/model#variant\``)
-    if (!allowedBy(models as string[], parseModelRef(model)!))
-      throw new Error(`plugboard agent \`${name}\` model \`${model}\` is not allowed by the \`models\` option`)
+    if (typeof model !== "string" || !ALIAS_TARGET.test(model)) throw new Error(`plugboard agent \`${name}\` must set \`model\` to \`provider/model\` or \`provider/model#variant\``)
+    if (!allowedBy(models as string[], parseModelRef(model)!)) throw new Error(`plugboard agent \`${name}\` model \`${model}\` is not allowed by the \`models\` option`)
     entries.push([name, model])
   }
   return Object.fromEntries(entries)
@@ -1026,16 +1067,14 @@ function parseHistoryUrl(value: unknown, at = "plugboard option `historyUrl`"): 
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
   const input: Record<string, unknown> = raw ?? {}
-  for (const key of Object.keys(input))
-    if (!KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${key}\` (known: ${[...KNOWN].join(", ")})`)
+  for (const key of Object.keys(input)) if (!KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${key}\` (known: ${[...KNOWN].join(", ")})`)
 
   const listenInput = input.listen
   if (listenInput !== undefined && !isRecord(listenInput)) throw new Error("plugboard option `listen` must be an object")
   const host = listenInput?.host ?? DEFAULTS.host
   if (typeof host !== "string" || host.length === 0) throw new Error("plugboard option `listen.host` must be a non-empty string")
   const port = listenInput?.port
-  if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535))
-    throw new Error("plugboard option `listen.port` must be an integer between 1 and 65535")
+  if (port !== undefined && (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535)) throw new Error("plugboard option `listen.port` must be an integer between 1 and 65535")
   const trustProxy = parseTrustProxy(listenInput?.trustProxy)
 
   const keyEntries: Array<[string, string]> = []
@@ -1045,8 +1084,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   for (const [app, key] of mergedKeys(input.keys, input.apps)) {
     if (app === DEFAULT_APP) throw new Error(`plugboard key name \`${DEFAULT_APP}\` is reserved for keyless loopback use`)
     if (!isAppName(app)) throw new Error(`plugboard key name \`${app}\` must match ${APP_NAME_PATTERN} and be at most ${APP_NAME_MAX} characters`)
-    if (typeof key !== "string" || key.length === 0)
-      throw new Error(`plugboard key \`${app}\` must be a non-empty string (is its {env:VAR} set?)`)
+    if (typeof key !== "string" || key.length === 0) throw new Error(`plugboard key \`${app}\` must be a non-empty string (is its {env:VAR} set?)`)
     // Two apps sharing a key value would be indistinguishable: the last one would win silently.
     const other = appOfKey.get(key)
     if (other !== undefined) throw new Error(`plugboard keys \`${other}\` and \`${app}\` have the same value; every app needs its own key`)
@@ -1056,8 +1094,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   // Own-property construction: a key such as `__proto__` must stay a key, never reach the prototype.
   const keys: Record<string, string> = Object.fromEntries(keyEntries)
   digestsOf(keys)
-  if (keyEntries.length === 0 && !isLoopbackHost(host))
-    throw new Error(`plugboard refuses to listen on non-loopback host \`${host}\` without \`keys\``)
+  if (keyEntries.length === 0 && !isLoopbackHost(host)) throw new Error(`plugboard refuses to listen on non-loopback host \`${host}\` without \`keys\``)
   if (input.requireKeys !== undefined && typeof input.requireKeys !== "boolean") throw new Error("plugboard option `requireKeys` must be a boolean")
   if (input.requireKeys === true && keyEntries.length === 0)
     throw new Error("plugboard option `requireKeys` needs `keys`: without them every local caller would be served as the keyless app; add `keys` or remove `requireKeys`")
@@ -1070,8 +1107,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const models = input.models ?? []
   if (!Array.isArray(models)) throw new Error("plugboard option `models` must be an array of strings")
   for (const pattern of models)
-    if (typeof pattern !== "string" || !MODEL_PATTERN.test(pattern))
-      throw new Error(`plugboard model \`${String(pattern)}\` must be \`provider/model\`, \`provider/model#variant\` or \`provider/*\``)
+    if (typeof pattern !== "string" || !MODEL_PATTERN.test(pattern)) throw new Error(`plugboard model \`${String(pattern)}\` must be \`provider/model\`, \`provider/model#variant\` or \`provider/*\``)
 
   const aliasEntries: Array<[string, string]> = []
   const fallbackEntries: Array<[string, string[]]> = []
@@ -1091,14 +1127,11 @@ export function parseOptions(raw: unknown): PlugboardOptions {
         if (!allowedBy(models as string[], parsed.ref)) throw new Error(`plugboard alias \`${alias}\` target \`${entry}\` is not allowed by the \`models\` option`)
         continue
       }
-      if (typeof entry !== "string" || !ALIAS_TARGET.test(entry))
-        throw new Error(`plugboard alias \`${alias}\` must target \`provider/model\` or \`provider/model#variant\` (or a list of them)`)
+      if (typeof entry !== "string" || !ALIAS_TARGET.test(entry)) throw new Error(`plugboard alias \`${alias}\` must target \`provider/model\` or \`provider/model#variant\` (or a list of them)`)
       // A list is new, so it is strict: a target the allowlist would refuse can never serve, so fail at load.
-      if (Array.isArray(target) && !allowedBy(models as string[], parseModelRef(entry)!))
-        throw new Error(`plugboard alias \`${alias}\` target \`${entry}\` is not allowed by the \`models\` option`)
+      if (Array.isArray(target) && !allowedBy(models as string[], parseModelRef(entry)!)) throw new Error(`plugboard alias \`${alias}\` target \`${entry}\` is not allowed by the \`models\` option`)
     }
-    if (CANONICAL_SHAPE.test(alias))
-      throw new Error(`plugboard alias \`${alias}\` is written like a \`provider/model\` id; aliases must not contain \`/\` (use a short name such as \`fast\`)`)
+    if (CANONICAL_SHAPE.test(alias)) throw new Error(`plugboard alias \`${alias}\` is written like a \`provider/model\` id; aliases must not contain \`/\` (use a short name such as \`fast\`)`)
     aliasEntries.push([alias, chain[0] as string])
     if (chain.length > 1) fallbackEntries.push([alias, chain.slice(1) as string[]])
   }
@@ -1113,23 +1146,18 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const apps = parseApps(input.apps, { keys, aliases, models: models as string[], maxTools, maxN })
 
   const remoteImages = parseRemoteImages(input.remoteImages)
-  if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean")
-    throw new Error("plugboard option `dropUnsupportedParams` must be a boolean")
+  if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean") throw new Error("plugboard option `dropUnsupportedParams` must be a boolean")
 
-  if (input.logFormat !== undefined && input.logFormat !== "text" && input.logFormat !== "json")
-    throw new Error("plugboard option `logFormat` must be `text` or `json`")
-  if (input.logLevel !== undefined && (typeof input.logLevel !== "string" || !LOG_LEVELS.has(input.logLevel)))
-    throw new Error("plugboard option `logLevel` must be `debug`, `info`, `warn` or `error`")
+  if (input.logFormat !== undefined && input.logFormat !== "text" && input.logFormat !== "json") throw new Error("plugboard option `logFormat` must be `text` or `json`")
+  if (input.logLevel !== undefined && (typeof input.logLevel !== "string" || !LOG_LEVELS.has(input.logLevel))) throw new Error("plugboard option `logLevel` must be `debug`, `info`, `warn` or `error`")
   if (input.logRequests !== undefined && typeof input.logRequests !== "boolean") throw new Error("plugboard option `logRequests` must be a boolean")
   if (input.metrics !== undefined && typeof input.metrics !== "boolean") throw new Error("plugboard option `metrics` must be a boolean")
   if (input.reasoningOutput !== undefined && typeof input.reasoningOutput !== "boolean") throw new Error("plugboard option `reasoningOutput` must be a boolean")
-  if (input.modelIds !== undefined && (typeof input.modelIds !== "string" || !MODEL_IDS.has(input.modelIds)))
-    throw new Error("plugboard option `modelIds` must be `canonical`, `slugs` or `both`")
+  if (input.modelIds !== undefined && (typeof input.modelIds !== "string" || !MODEL_IDS.has(input.modelIds))) throw new Error("plugboard option `modelIds` must be `canonical`, `slugs` or `both`")
 
   const historyInput = input.history
   if (historyInput !== undefined && !isRecord(historyInput)) throw new Error("plugboard option `history` must be an object")
-  for (const key of Object.keys(historyInput ?? {}))
-    if (!HISTORY_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`history.${key}\` (known: ${[...HISTORY_KNOWN].join(", ")})`)
+  for (const key of Object.keys(historyInput ?? {})) if (!HISTORY_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`history.${key}\` (known: ${[...HISTORY_KNOWN].join(", ")})`)
   const maxSessions = historyInput?.maxSessions === undefined ? undefined : positiveInt(historyInput.maxSessions, "history.maxSessions", 0)
   // Unset: 30 days (#158). `0` is the explicit opt-out: no age limit, so the parsed value is absent.
   const rawAge = historyInput?.maxAgeDays
@@ -1146,7 +1174,9 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const budgets = parseBudgets(input.budgets, keys)
   if (budgets !== undefined && !usage.enabled) throw new Error("plugboard option `budgets` needs `usage` enabled: budgets are counted from the usage records")
   if (budgets !== undefined && usage.retentionDays < widestWindowDays(budgets))
-    throw new Error(`plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`)
+    throw new Error(
+      `plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`,
+    )
   const historyUrl = parseHistoryUrl(input.historyUrl)
   const promptCache = parsePromptCache(input.promptCache, "promptCache")
   // `history.hidden` parents an app's request sessions under one app-scope parent (#337). A per-user anchor cannot be that parent too.
@@ -1156,12 +1186,16 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     const hiddenHere = (apps[app]?.history?.hidden ?? hidden) === true
     const cacheHere = apps[app]?.promptCache ?? promptCache
     if (hiddenHere && cacheHere?.affinity === "anchor" && cacheHere.scope === "user")
-      throw new Error(`plugboard app \`${app}\` sets \`history.hidden\` with \`promptCache\` scope \`user\`: the hidden parent is one per app, so it cannot also be the per-user anchor. Use scope \`app\`, or turn one of them off`)
+      throw new Error(
+        `plugboard app \`${app}\` sets \`history.hidden\` with \`promptCache\` scope \`user\`: the hidden parent is one per app, so it cannot also be the per-user anchor. Use scope \`app\`, or turn one of them off`,
+      )
   }
   const cors = parseCors(input.cors, keyEntries.length > 0)
   // A first-event deadline at or past a request deadline never fires, so the chain would silently do nothing (#391).
   if (fallbackAfterMs !== undefined && fallbackAfterMs >= requestTimeoutMs)
-    throw new Error(`plugboard option \`fallbackAfterMs\` (${fallbackAfterMs}) must be below \`requestTimeoutMs\` (${requestTimeoutMs}): a first-event deadline at or past the request deadline never fires`)
+    throw new Error(
+      `plugboard option \`fallbackAfterMs\` (${fallbackAfterMs}) must be below \`requestTimeoutMs\` (${requestTimeoutMs}): a first-event deadline at or past the request deadline never fires`,
+    )
   for (const [app, policy] of Object.entries(apps))
     if (fallbackAfterMs !== undefined && policy.requestTimeoutMs !== undefined && fallbackAfterMs >= policy.requestTimeoutMs)
       throw new Error(`plugboard option \`fallbackAfterMs\` (${fallbackAfterMs}) must be below \`apps.${app}.requestTimeoutMs\` (${policy.requestTimeoutMs}): the app's requests have that deadline`)

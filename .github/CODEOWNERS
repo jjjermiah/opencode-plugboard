@@ -1,0 +1,4 @@
+# Every path has the same owner. GitHub requests the owner's review on a pull request, and OpenSSF Scorecard
+# reads this file. The ruleset does not turn on "Require review from Code Owners", so the review bot's approval
+# (docs/review-bot.md) still satisfies the required review.
+* @jjjermiah

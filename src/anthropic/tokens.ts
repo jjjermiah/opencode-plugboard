@@ -85,8 +85,7 @@ const jpegSize = (b: Buffer): Size | undefined => {
     }
     const marker = b[at + 1]!
     if (marker === 0xff) at++
-    else if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc)
-      return { height: b.readUInt16BE(at + 5), width: b.readUInt16BE(at + 7) }
+    else if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return { height: b.readUInt16BE(at + 5), width: b.readUInt16BE(at + 7) }
     else if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd9)) at += 2
     else at += 2 + b.readUInt16BE(at + 2)
   }

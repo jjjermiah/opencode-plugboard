@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Docs
+
+- Contributor tooling, no change for users ([#114](https://github.com/jjjermiah/opencode-plugboard/issues/114)). The code is now formatted and linted with Biome (`bun run lint`, `bun run format`, `bun run format:write`; config in `biome.jsonc`). CI fails a pull request that is not formatted or has a lint error, and `bun run validate` runs the same check first. A lefthook `pre-commit` hook checks the staged files; install it with `bunx lefthook install`. The one-time reformat is listed in `.git-blame-ignore-revs`, so `git blame` skips it. `mise.toml` pins Bun and Node to the versions CI uses, and `.github/CODEOWNERS` names the owner. Line width is 200 because the code was already written to that width: a narrower setting rewrites thousands more lines. A handful of recommended lint rules are off for the cases that fire hundreds of times on deliberate style; each has its reason in `biome.jsonc`.
 
 ## [0.52.0] - 2026-10-18: Files, By Reference
 

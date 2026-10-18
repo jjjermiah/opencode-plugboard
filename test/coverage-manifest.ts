@@ -35,7 +35,13 @@ export interface Row {
 }
 
 /** Routes spelled by a template or a constant in `src/`, not as a quoted `METHOD /path` literal. Probed live. */
-export const MANUAL_ROUTES = ["GET /v1/models/{id}", "POST /v1/messages", "POST /v1/messages/count_tokens", "POST /v1beta/models/{model}:generateContent", "POST /v1beta/models/{model}:streamGenerateContent"] as const
+export const MANUAL_ROUTES = [
+  "GET /v1/models/{id}",
+  "POST /v1/messages",
+  "POST /v1/messages/count_tokens",
+  "POST /v1beta/models/{model}:generateContent",
+  "POST /v1beta/models/{model}:streamGenerateContent",
+] as const
 
 const HTTP = "test/http/"
 const UNIT = "test/unit/"
@@ -45,7 +51,15 @@ const na = (reason: string): Cell => ({ na: reason })
 const read = (route: string, json: Cell, errors: Cell): Row => ({
   route,
   format: "none",
-  cells: { json, stream: na("a read has no stream"), tools: na("a read has no tools"), images: na("a read has no images"), structured: na("a read has no structured output"), n: na("a read has no n"), errors },
+  cells: {
+    json,
+    stream: na("a read has no stream"),
+    tools: na("a read has no tools"),
+    images: na("a read has no images"),
+    structured: na("a read has no structured output"),
+    n: na("a read has no n"),
+    errors,
+  },
 })
 
 export const ROWS: readonly Row[] = [
@@ -70,7 +84,13 @@ export const ROWS: readonly Row[] = [
       stream: at(HTTP + "responses.test.ts", "a stream sends named events whose name matches the data type"),
       tools: at(UNIT + "responses-response.test.ts", "text then a tool call: the message closes before the function_call item, output indexes follow"),
       images: at(UNIT + "responses-request.test.ts", "user parts: input_text, input_image (and Chat-style image_url), input_file by data and URL"),
-      structured: { tests: [{ file: UNIT + "responses-request.test.ts", text: "json_schema alone forces respond; with tools it requires a call" }, { file: UNIT + "responses-response.test.ts", text: "no respond call is a structured_output_missing failure" }, { file: UNIT + "responses-response.test.ts", text: "the final text is the answer when it is the schema's JSON, flagged as a fallback" }] },
+      structured: {
+        tests: [
+          { file: UNIT + "responses-request.test.ts", text: "json_schema alone forces respond; with tools it requires a call" },
+          { file: UNIT + "responses-response.test.ts", text: "no respond call is a structured_output_missing failure" },
+          { file: UNIT + "responses-response.test.ts", text: "the final text is the answer when it is the schema's JSON, flagged as a fallback" },
+        ],
+      },
       n: na("the Responses body has no n parameter"),
       errors: at(HTTP + "responses.test.ts", "a failure keeps its HTTP status in a JSON answer", "#38 a stream failing before any output keeps its HTTP status"),
     },
@@ -94,7 +114,12 @@ export const ROWS: readonly Row[] = [
     cells: {
       json: at(HTTP + "messages.test.ts", "a JSON answer is an Anthropic message with x-plugboard-session"),
       stream: at(HTTP + "messages.test.ts", "a stream is Anthropic's named event sequence, with no [DONE]"),
-      tools: { tests: [{ file: UNIT + "anthropic-response.test.ts", text: "a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use" }, { file: UNIT + "anthropic-request.test.ts", text: "a tool round trip: tool_use becomes a call" }] },
+      tools: {
+        tests: [
+          { file: UNIT + "anthropic-response.test.ts", text: "a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use" },
+          { file: UNIT + "anthropic-request.test.ts", text: "a tool round trip: tool_use becomes a call" },
+        ],
+      },
       images: at(UNIT + "anthropic-request.test.ts", "image and document blocks: base64 becomes a data URL, url passes through, a text document becomes text"),
       structured: at(HTTP + "messages.test.ts", "a non-streamed answer is the JSON as a text block with end_turn", "a streamed answer is one text_delta of the JSON"),
       n: na("the Messages body has no n parameter"),
@@ -109,8 +134,16 @@ export const ROWS: readonly Row[] = [
       stream: na("generateContent is the whole answer; streaming is streamGenerateContent"),
       tools: at(HTTP + "gemini.test.ts", "a JSON tool call is a candidate with a functionCall part"),
       images: at(UNIT + "gemini-request.test.ts", "inlineData becomes a data URL; fileData with an http(s) URI passes through"),
-      structured: at(HTTP + "gemini.test.ts", "a JSON structured answer is the text of the respond call", "a JSON text answer that matches the schema is the answer, with x-plugboard-structured-fallback: text"),
-      n: at(HTTP + "gemini.test.ts", "one model call per candidate; candidates in order with their index, usageMetadata summed, every session id", "above maxN is a 400 INVALID_ARGUMENT naming generationConfig.candidateCount and the option, before any model call"),
+      structured: at(
+        HTTP + "gemini.test.ts",
+        "a JSON structured answer is the text of the respond call",
+        "a JSON text answer that matches the schema is the answer, with x-plugboard-structured-fallback: text",
+      ),
+      n: at(
+        HTTP + "gemini.test.ts",
+        "one model call per candidate; candidates in order with their index, usageMetadata summed, every session id",
+        "above maxN is a 400 INVALID_ARGUMENT naming generationConfig.candidateCount and the option, before any model call",
+      ),
       errors: at(HTTP + "gemini.test.ts", "a model error keeps its status in Google's shape", "a missing key is a 401 in Google's error shape"),
     },
   },
@@ -123,15 +156,20 @@ export const ROWS: readonly Row[] = [
       tools: at(UNIT + "gemini-response.test.ts", "a tool call is a functionCall part with object args; Gemini reports STOP after one"),
       images: at(UNIT + "gemini-request.test.ts", "inlineData becomes a data URL; fileData with an http(s) URI passes through"),
       structured: at(UNIT + "gemini-response.test.ts", "structured output: the respond call's input is the text; a wrapped schema is unwrapped"),
-      n: at(HTTP + "gemini.test.ts", "SSE: candidates interleave under one responseId, each chunk carrying its index; one final usage chunk; no [DONE]", "array (no alt): the same chunks as one valid JSON array, ending with the summed usage chunk"),
-      errors: at(HTTP + "gemini.test.ts", "#38 a stream failing before output keeps its HTTP status", "#38 a stream failing after output ends with one Google error object", "a failure after output ends the array with one error object, still valid JSON"),
+      n: at(
+        HTTP + "gemini.test.ts",
+        "SSE: candidates interleave under one responseId, each chunk carrying its index; one final usage chunk; no [DONE]",
+        "array (no alt): the same chunks as one valid JSON array, ending with the summed usage chunk",
+      ),
+      errors: at(
+        HTTP + "gemini.test.ts",
+        "#38 a stream failing before output keeps its HTTP status",
+        "#38 a stream failing after output ends with one Google error object",
+        "a failure after output ends the array with one error object, still valid JSON",
+      ),
     },
   },
-  read(
-    "GET /v1/models",
-    at(HTTP + "ingress.test.ts", "GET /v1/models and /v1/models/{id}"),
-    at(HTTP + "ingress.test.ts", "is a 401 invalid_api_key and never reaches the model"),
-  ),
+  read("GET /v1/models", at(HTTP + "ingress.test.ts", "GET /v1/models and /v1/models/{id}"), at(HTTP + "ingress.test.ts", "is a 401 invalid_api_key and never reaches the model")),
   read(
     "GET /v1/models/{id}",
     at(HTTP + "ingress.test.ts", "GET /v1/models and /v1/models/{id}"),
@@ -158,11 +196,7 @@ export const ROWS: readonly Row[] = [
     at(HTTP + "files.test.ts", "upload, retrieve, list, download and delete, in OpenAI's shapes"),
     at(HTTP + "files.test.ts", "purpose is required and checked; a missing file part or a non-multipart body is a 400"),
   ),
-  read(
-    "GET /v1/files",
-    at(HTTP + "files.test.ts", "list takes purpose, limit, after and order"),
-    at(HTTP + "files.test.ts", "list takes purpose, limit, after and order"),
-  ),
+  read("GET /v1/files", at(HTTP + "files.test.ts", "list takes purpose, limit, after and order"), at(HTTP + "files.test.ts", "list takes purpose, limit, after and order")),
   read(
     "GET /v1/files/{id}",
     at(HTTP + "files.test.ts", "upload, retrieve, list, download and delete, in OpenAI's shapes"),
@@ -203,7 +237,11 @@ export const ROWS: readonly Row[] = [
     at(HTTP + "policy.test.ts", "the setup page and /plugboard/status count only the caller's models"),
     at(HTTP + "observability.test.ts", "without a key, %s is a 401, so the surface cannot be mapped"),
   ),
-  read("GET /", at(HTTP + "observability.test.ts", "the HTML page has a strict CSP, no framing, no sniffing, no caching"), at(HTTP + "observability.test.ts", "/healthz and the first-run pages stay open")),
+  read(
+    "GET /",
+    at(HTTP + "observability.test.ts", "the HTML page has a strict CSP, no framing, no sniffing, no caching"),
+    at(HTTP + "observability.test.ts", "/healthz and the first-run pages stay open"),
+  ),
   read("GET /v1", at(UNIT + "discovery.test.ts", "/plugboard/metrics is listed only when enabled"), at(HTTP + "observability.test.ts", "/healthz and the first-run pages stay open")),
   read("GET /healthz", at(HTTP + "ingress.test.ts", "GET /healthz answers ok without auth and writes no log line"), na("healthz answers 200 on every request; it has no error path")),
   read(

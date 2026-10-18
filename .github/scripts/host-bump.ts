@@ -62,9 +62,7 @@ setValue("devDependencies", PACKAGE, () => version)
 setValue("devDependencies", "effect", () => effect)
 
 // 2. The peer ranges.
-setValue("peerDependencies", "effect", (current) =>
-  Bun.semver.satisfies(effect, current) ? current : `${current} || ${effect}`,
-)
+setValue("peerDependencies", "effect", (current) => (Bun.semver.satisfies(effect, current) ? current : `${current} || ${effect}`))
 setValue("peerDependencies", PACKAGE, (current) => {
   if (Bun.semver.satisfies(version, current)) return current
   const [major, minor] = version.split(".").map(Number)

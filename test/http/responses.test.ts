@@ -55,7 +55,14 @@ describe("POST /v1/responses", () => {
     const reply = await server!.send(responses())
     expect(reply.status).toBe(200)
     expect(reply.headers["x-plugboard-session"]).toBe("ses_1")
-    expect(reply.json()).toMatchObject({ object: "response", status: "completed", model: "test/echo", store: true, output: [{ type: "message", content: [{ type: "output_text", text: "Hello" }] }], usage: { total_tokens: 2 } })
+    expect(reply.json()).toMatchObject({
+      object: "response",
+      status: "completed",
+      model: "test/echo",
+      store: true,
+      output: [{ type: "message", content: [{ type: "output_text", text: "Hello" }] }],
+      usage: { total_tokens: 2 },
+    })
     expect(logs.of("request")[0]!.fields).toMatchObject({ route: "POST /v1/responses", model: "test/echo", outcome: "ok" })
   })
 
@@ -140,7 +147,13 @@ describe("#147 item_reference resolves to an output item of a recent answer", ()
     method: "POST",
     path: "/v1/responses",
     headers,
-    body: { model: "test/echo", input: [{ type: "item_reference", id }, { role: "user", content: "Again?" }] },
+    body: {
+      model: "test/echo",
+      input: [
+        { type: "item_reference", id },
+        { role: "user", content: "Again?" },
+      ],
+    },
   })
   const messageIdOf = (output: Array<{ id: string; type: string }>) => output.find((item) => item.type === "message")!.id
 
@@ -242,7 +255,14 @@ describe("reasoningOutput (since 0.36.0) on Responses", () => {
     expect(first.status).toBe(200)
     const reasoning = first.json().output.find((item: any) => item.type === "reasoning")
     expect(reasoning.id).toMatch(/^rs_/)
-    const second = await server!.send(responses({ input: [{ type: "item_reference", id: reasoning.id }, { role: "user", content: "again" }] }))
+    const second = await server!.send(
+      responses({
+        input: [
+          { type: "item_reference", id: reasoning.id },
+          { role: "user", content: "again" },
+        ],
+      }),
+    )
     expect(second.status).toBe(200)
     expect(caller.calls).toHaveLength(2)
     expect(caller.calls[1]!.request.messages).toEqual([{ role: "user", content: [{ type: "text", text: "again" }] }])

@@ -25,9 +25,9 @@
  *  - the metrics registry (src/metrics.ts) and the runtime start time, so counters and uptime
  *     outlive any one generation. `processMetrics` / `processStatus` read them for `/metrics`,
  *     `/plugboard/status` and the discovery pages;
-  *   - the request limiter's queues and rate windows (src/limits.ts), so a cap holds across
+ *   - the request limiter's queues and rate windows (src/limits.ts), so a cap holds across
  *     generations. `processLimits` reads them;
-  *   - the usage store's live days (src/usage.ts), so the in-memory aggregates survive a generation.
+ *   - the usage store's live days (src/usage.ts), so the in-memory aggregates survive a generation.
  *     `processUsage` reads them.
  *
  * Registration is explicit: `registerGeneration` returns whether the generation was accepted. A
@@ -367,7 +367,11 @@ export function withResponseCache(caller: ModelCaller, options: PlugboardOptions
     }
     const count = options.metrics ? (app: string, result: "hit" | "miss") => processMetrics().cache(app, result) : undefined
     // One bypass predicate: a persona model, or an app whose answers depend on live OpenCode tool output (#82).
-    const serverToolApps = new Set(Object.entries(options.apps).filter(([, policy]) => policy.serverTools !== undefined).map(([app]) => app))
+    const serverToolApps = new Set(
+      Object.entries(options.apps)
+        .filter(([, policy]) => policy.serverTools !== undefined)
+        .map(([app]) => app),
+    )
     return cachedCaller(caller, config, held.store, count, (model, app) => personaOf(options, model) !== undefined || serverToolApps.has(app))
   }
   return { stream: (request, context) => (wrapped ??= build()).stream(request, context) }
@@ -717,11 +721,7 @@ function activate(generation: Generation): Promise<void> {
  *    with the live options) and has installed its hook. A generation that was rejected (options
  *    or `listen` differ) is a 503 `backend_unavailable` at once.
  */
-export async function ensureBackend(
-  app: string,
-  signal: AbortSignal,
-  boot: (directory: string) => Promise<unknown>,
-): Promise<PlugError | undefined> {
+export async function ensureBackend(app: string, signal: AbortSignal, boot: (directory: string) => Promise<unknown>): Promise<PlugError | undefined> {
   const rt = runtime()
   if (!rt) return backendUnavailable("A different plugboard runtime owns this server process; restart the server")
   try {
@@ -732,14 +732,10 @@ export async function ensureBackend(
 
     let booted = false
     while (true) {
-      if (bounded.aborted)
-        return backendUnavailable(
-          signal.aborted ? "The request ended before the app directory was ready" : "Timed out waiting for the plugboard app directory to load its backend",
-        )
+      if (bounded.aborted) return backendUnavailable(signal.aborted ? "The request ended before the app directory was ready" : "Timed out waiting for the plugboard app directory to load its backend")
       const here = rt.generations.filter((generation) => generation.directory === directory)
       if (here.length === 0) {
-        if ((rt.rejected.get(directory) ?? 0) > 0)
-          return backendUnavailable("The plugboard app directory was rejected (its plugin options or `listen` differ from the live ones)")
+        if ((rt.rejected.get(directory) ?? 0) > 0) return backendUnavailable("The plugboard app directory was rejected (its plugin options or `listen` differ from the live ones)")
         if (!booted) {
           booted = true
           try {

@@ -35,10 +35,7 @@ afterEach(async () => {
 async function start(options: Record<string, unknown> = {}, usage = true): Promise<RouteServer> {
   const storage = new FakeStorage()
   recorder = usage ? createUsageRecorder({ state: createUsageState(), storage, loadCatalog: async () => CATALOG, retentionDays: 90 }) : undefined
-  const caller = withUsage(
-    new FakeModelCaller(() => [ev.text("hi"), ev.finish("stop", { inputTokens: 10, outputTokens: 5 })]),
-    recorder,
-  )
+  const caller = withUsage(new FakeModelCaller(() => [ev.text("hi"), ev.finish("stop", { inputTokens: 10, outputTokens: 5 })]), recorder)
   server = await startRoute({ caller, options, ...(recorder ? { usage: recorder } : {}) })
   return server
 }

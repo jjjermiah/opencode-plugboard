@@ -122,8 +122,7 @@ describe("#314 cors: the plugboard response headers are exposed to the browser",
     await route({ cors })
     const reply = await server!.send(chat({ origin: APP }))
     const exposed = (reply.headers["access-control-expose-headers"] ?? "").split(", ")
-    for (const name of ["x-plugboard-request-id", "x-plugboard-model", "x-plugboard-session", "x-plugboard-usage", "retry-after"])
-      expect(exposed).toContain(name)
+    for (const name of ["x-plugboard-request-id", "x-plugboard-model", "x-plugboard-session", "x-plugboard-usage", "retry-after"]) expect(exposed).toContain(name)
     // The header the answer really carries is one of the exposed ones.
     expect(reply.headers["x-plugboard-request-id"]).toBeDefined()
   })
@@ -155,7 +154,7 @@ describe("#256 cors: Private Network Access", () => {
 
 /** Review of #319 (SHOULD 5): the preflight and an error answer carry the list too, and the list is the whole set of names. */
 describe("#314 review: Access-Control-Expose-Headers on every allowed answer, the whole list", () => {
-  const exposed = (headers: Record<string, string | string[] | undefined>) => (String(headers["access-control-expose-headers"] ?? "")).split(", ")
+  const exposed = (headers: Record<string, string | string[] | undefined>) => String(headers["access-control-expose-headers"] ?? "").split(", ")
 
   test("an allowed origin's 204 preflight carries the list", async () => {
     await route({ cors })

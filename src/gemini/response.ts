@@ -78,9 +78,7 @@ export const encodeGeminiError = (error: PlugError): object => ({
     code: error.status,
     message: error.message,
     status: error.status === 503 ? "UNAVAILABLE" : STATUSES[error.kind],
-    ...(error.param
-      ? { details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: error.param, description: error.message }] }] }
-      : {}),
+    ...(error.param ? { details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: error.param, description: error.message }] }] } : {}),
   },
 })
 
@@ -127,15 +125,13 @@ const noFinish = (): PlugError => ({ status: 500, kind: "server", message: "Mode
 const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
 export const noResponse = (): PlugError => ({ status: 502, kind: "server", message: "No response from the model" })
 
-const argsOf = (input: unknown): Record<string, unknown> =>
-  typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>) : { value: input }
+const argsOf = (input: unknown): Record<string, unknown> => (typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>) : { value: input })
 
 /** The text of a structured answer: the tool input as JSON, or its wrapped property. */
 const structuredText = (exchange: GeminiExchange, call: ToolCall): string => {
   const input = exchange.wrapped && typeof call.input === "object" && call.input !== null ? (call.input as Record<string, unknown>)[WRAP_KEY] : call.input
   return typeof input === "string" && !exchange.wrapped ? input : JSON.stringify(input ?? {})
 }
-
 
 export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: GeminiExchange, emit: (chunk: object) => void, of?: GeminiCandidate): Promise<GenerateRun> {
   const responseId = of?.responseId ?? crypto.randomUUID().replaceAll("-", "").slice(0, 22)
@@ -279,7 +275,10 @@ const addCounts = (a: Record<string, number>, b: Record<string, number>): Record
 /** The bodies of successful candidates as one: `candidates` in order with their `index`, `usageMetadata` summed, the rest from the first. */
 function mergeCandidates(bodies: ReadonlyArray<object>): object {
   const list = bodies as ReadonlyArray<{ candidates: object[]; usageMetadata?: Record<string, number> }>
-  const usage = list.reduce<Record<string, number> | undefined>((total, body) => (body.usageMetadata === undefined ? total : total === undefined ? body.usageMetadata : addCounts(total, body.usageMetadata)), undefined)
+  const usage = list.reduce<Record<string, number> | undefined>(
+    (total, body) => (body.usageMetadata === undefined ? total : total === undefined ? body.usageMetadata : addCounts(total, body.usageMetadata)),
+    undefined,
+  )
   return { ...list[0], candidates: list.map((body, index) => ({ ...body.candidates[0], index })), ...(usage === undefined ? {} : { usageMetadata: usage }) }
 }
 

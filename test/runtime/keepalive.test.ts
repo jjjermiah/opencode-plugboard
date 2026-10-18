@@ -47,8 +47,7 @@ function fakeHost(input: { stored?: Record<string, string>; deleted?: string[]; 
       "event.subscribe": () => Stream.never,
       "model.list": () => Effect.succeed({ data: [] }),
       "storage.get": (key: string) => Effect.succeed(storage.get(key)),
-      "storage.set": (key: string, value: string) =>
-        failing.put && key === KEEP_ALIVE_CHILDREN ? Effect.fail({ _tag: "Storage.Unavailable" }) : Effect.sync(() => void storage.set(key, value)),
+      "storage.set": (key: string, value: string) => (failing.put && key === KEEP_ALIVE_CHILDREN ? Effect.fail({ _tag: "Storage.Unavailable" }) : Effect.sync(() => void storage.set(key, value))),
       "session.create": (args: { parentID?: string }) => {
         if (failing.create) return Effect.fail({ _tag: "Session.Unavailable" })
         if (args.parentID !== undefined && deleted.has(args.parentID)) return Effect.fail({ _tag: "Session.NotFoundError" })

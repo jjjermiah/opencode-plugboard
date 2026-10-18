@@ -72,7 +72,9 @@ if (import.meta.main) {
   const file = resolve(import.meta.dir, "../../CHANGELOG.md")
   const bad = placeholdersInReleased(readFileSync(file, "utf8"))
   if (bad.length > 0) {
-    console.error(`CHANGELOG.md has "(since next)" in a released section (lines ${bad.join(", ")}). The release script replaces the placeholder in [Unreleased] only; a lane that merged it after the release must write the real version.`)
+    console.error(
+      `CHANGELOG.md has "(since next)" in a released section (lines ${bad.join(", ")}). The release script replaces the placeholder in [Unreleased] only; a lane that merged it after the release must write the real version.`,
+    )
     process.exit(1)
   }
   console.log("since-next: no placeholder in a released CHANGELOG section")

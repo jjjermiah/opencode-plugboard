@@ -54,8 +54,7 @@ function setup(persona: (model: string) => Persona | undefined = (model) => pers
     queueMicrotask(() => [bus(input.sessionID).textDelta("ok"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)))
   }
   const caller = createSessionCaller({ port, sessions, maxTools: 4, persona })
-  const call = (request: PlugRequest, context: Partial<CallContext> = {}) =>
-    drain(caller.stream(request, { app: "app", signal: new AbortController().signal, ...context }))
+  const call = (request: PlugRequest, context: Partial<CallContext> = {}) => drain(caller.stream(request, { app: "app", signal: new AbortController().signal, ...context }))
   return { port, states, call }
 }
 
@@ -77,9 +76,7 @@ describe("#79 a skill alias in the session caller", () => {
     const run = setup()
     const events = await run.call(plugRequest({ model: "invoice-parser", ref: echoLow }))
 
-    expect(events).toEqual([
-      { type: "error", error: { status: 404, kind: "not_found", message: "Skill invoice-parser is not available", code: "model_not_found", param: "model" } },
-    ])
+    expect(events).toEqual([{ type: "error", error: { status: 404, kind: "not_found", message: "Skill invoice-parser is not available", code: "model_not_found", param: "model" } }])
     expect(run.port.created).toEqual([])
   })
 

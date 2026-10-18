@@ -35,9 +35,7 @@ async function real() {
   const port = new FakeSessionPort()
   const sessions = createSessionStore()
   port.script.prompt = async (input) => {
-    queueMicrotask(() =>
-      [bus(input.sessionID).textDelta("ok"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)),
-    )
+    queueMicrotask(() => [bus(input.sessionID).textDelta("ok"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)))
   }
   const caller = createSessionCaller({ port, sessions, maxTools: 4, apps: APPS, affinity: createAffinity({ storage: new FakeStorage() }) })
   server = await startRoute({ caller, options: OPTIONS })

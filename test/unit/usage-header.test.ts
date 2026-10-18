@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test"
 import type { ServerResponse } from "node:http"
 import type { CallTotals, ModelRef } from "../../src/contract.js"
 import { formatUsage, reportUsage, USAGE_HEADER } from "../../src/usage-header.js"
-import { priceCall, tokenBreakdown, withUsage, type UsageRecorder } from "../../src/usage.js"
+import { priceCall, type tokenBreakdown, withUsage, type UsageRecorder } from "../../src/usage.js"
 import { ev, collect, plugRequest } from "../support/fixtures.js"
 import { FakeModelCaller } from "../support/model-caller.js"
 

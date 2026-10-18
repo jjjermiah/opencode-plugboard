@@ -49,8 +49,7 @@ const SUFFIX_INSTRUCTION = (suffix: string) =>
 const parsePrompts = (raw: unknown): string[] | PlugError => {
   if (typeof raw === "string") return [raw]
   if (!Array.isArray(raw) || raw.length === 0) return bad("prompt must be a string or a non-empty array of strings", "prompt")
-  if (raw.some((item) => typeof item === "number" || Array.isArray(item)))
-    return unsupported("Token-array prompts are not supported; send the prompt as text", "prompt")
+  if (raw.some((item) => typeof item === "number" || Array.isArray(item))) return unsupported("Token-array prompts are not supported; send the prompt as text", "prompt")
   if (!raw.every((item) => typeof item === "string")) return bad("prompt must be a string or an array of strings", "prompt")
   return raw as string[]
 }

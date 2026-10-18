@@ -1,6 +1,13 @@
 # Git hooks. Install once per clone with `bunx lefthook install` (see CONTRIBUTING.md#commits).
 # Not wired to a `prepare` script on purpose: npm runs `prepare` on `npm publish`, and the
 # publish job does not install dev dependencies.
+pre-commit:
+  commands:
+    # Format and lint the staged files only. `--no-errors-on-unmatched` keeps a commit of only docs or JSON quiet.
+    biome:
+      glob: "*.{ts,tsx,mjs}"
+      run: ./node_modules/.bin/biome check --staged --no-errors-on-unmatched
+
 commit-msg:
   commands:
     commitlint:

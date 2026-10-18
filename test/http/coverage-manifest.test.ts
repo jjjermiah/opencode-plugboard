@@ -17,7 +17,11 @@ const PROBES: Record<(typeof MANUAL_ROUTES)[number], SendInit> = {
   "POST /v1/messages": { method: "POST", path: "/v1/messages", body: { model: "test/echo", max_tokens: 8, messages: [{ role: "user", content: "hi" }] } },
   "POST /v1/messages/count_tokens": { method: "POST", path: "/v1/messages/count_tokens", body: {} },
   "POST /v1beta/models/{model}:generateContent": { method: "POST", path: "/v1beta/models/test%2Fecho:generateContent", body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] } },
-  "POST /v1beta/models/{model}:streamGenerateContent": { method: "POST", path: "/v1beta/models/test%2Fecho:streamGenerateContent?alt=sse", body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] } },
+  "POST /v1beta/models/{model}:streamGenerateContent": {
+    method: "POST",
+    path: "/v1beta/models/test%2Fecho:streamGenerateContent?alt=sse",
+    body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] },
+  },
 }
 
 const UNKNOWN = "No route for"
@@ -27,7 +31,9 @@ afterAll(() => server?.close())
 describe("#116 route x format coverage manifest", () => {
   captureLogs()
   test("#116 the scan finds the routes the routers spell out", async () => {
-    expect(await scanRouteNames()).toEqual(expect.arrayContaining(["POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status", "GET /plugboard/metrics", "GET /healthz", "GET /v1beta/models"]))
+    expect(await scanRouteNames()).toEqual(
+      expect.arrayContaining(["POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status", "GET /plugboard/metrics", "GET /healthz", "GET /v1beta/models"]),
+    )
   })
 
   // Each problem names its route and mode, so a failure says which cell to fix.

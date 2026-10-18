@@ -123,11 +123,11 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
       const file = typeof meta === "object" && meta !== null && typeof (meta as { file?: unknown }).file === "object" ? ((meta as { file: Record<string, unknown> }).file ?? {}) : {}
       const size = Number(header(request, "x-goog-upload-header-content-length"))
       const cap = fileCap(host, app)
-      if (Number.isFinite(size) && size > cap)
-        return fail({ status: 413, kind: "invalid_request", code: "file_too_large", message: `The file is larger than this app's limit of ${cap} bytes` })
+      if (Number.isFinite(size) && size > cap) return fail({ status: 413, kind: "invalid_request", code: "file_too_large", message: `The file is larger than this app's limit of ${cap} bytes` })
       sweepSessions()
       const mine = [...sessions().values()].filter((session) => session.app === app).length
-      if (mine >= MAX_SESSIONS_PER_APP) return fail({ status: 429, kind: "rate_limit", code: "too_many_uploads", message: "Too many unfinished uploads; finish or wait for them to expire", retryAfterSeconds: 30 })
+      if (mine >= MAX_SESSIONS_PER_APP)
+        return fail({ status: 429, kind: "rate_limit", code: "too_many_uploads", message: "Too many unfinished uploads; finish or wait for them to expire", retryAfterSeconds: 30 })
       const id = crypto.randomUUID().replaceAll("-", "")
       // Google's JSON is camelCase, and the Python SDK sends snake_case (`display_name`).
       const named = file.displayName ?? file.display_name
@@ -135,7 +135,7 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
       sessions().set(id, {
         app,
         filename: cleanFilename(displayName),
-        declaredType: header(request, "x-goog-upload-header-content-type") ?? (typeof (file.mimeType ?? file.mime_type) === "string" ? (file.mimeType ?? file.mime_type) as string : undefined),
+        declaredType: header(request, "x-goog-upload-header-content-type") ?? (typeof (file.mimeType ?? file.mime_type) === "string" ? ((file.mimeType ?? file.mime_type) as string) : undefined),
         startedAt: Date.now(),
         chunks: [],
         received: 0,
@@ -163,13 +163,15 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
       response.setHeader("x-goog-upload-size-received", String(session.received))
       return sendJson(response, 200, {})
     }
-    if (!commands.includes("upload") && !commands.includes("finalize")) return fail(bad("X-Goog-Upload-Command must be upload, finalize, query or cancel", "invalid_upload_command", "X-Goog-Upload-Command"))
+    if (!commands.includes("upload") && !commands.includes("finalize"))
+      return fail(bad("X-Goog-Upload-Command must be upload, finalize, query or cancel", "invalid_upload_command", "X-Goog-Upload-Command"))
 
     const cap = fileCap(host, app)
     const chunk = await readBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))
     // The chunk goes where the last one ended; anything else is a client that lost track.
     const offset = Number(header(request, "x-goog-upload-offset") ?? session.received)
-    if (offset !== session.received) return fail(bad(`X-Goog-Upload-Offset ${header(request, "x-goog-upload-offset")} does not match the ${session.received} bytes received`, "invalid_upload_offset", "X-Goog-Upload-Offset"))
+    if (offset !== session.received)
+      return fail(bad(`X-Goog-Upload-Offset ${header(request, "x-goog-upload-offset")} does not match the ${session.received} bytes received`, "invalid_upload_offset", "X-Goog-Upload-Offset"))
     if (session.received + chunk.length > cap) {
       sessions().delete(uploadId)
       return fail({ status: 413, kind: "invalid_request", code: "file_too_large", message: `The file is larger than this app's limit of ${cap} bytes` })
@@ -205,7 +207,9 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
       const type = url.searchParams.get("uploadType")
       if (protocol === "resumable" || type === "resumable" || url.searchParams.has("upload_id")) return resumable()
       if (protocol === "multipart" || type === "multipart") return multipart()
-      return fail(bad("Upload with the resumable protocol (what the Gemini SDKs do) or uploadType=multipart (multipart/related); uploadType=media is not supported", "unsupported_upload_protocol", "uploadType"))
+      return fail(
+        bad("Upload with the resumable protocol (what the Gemini SDKs do) or uploadType=multipart (multipart/related); uploadType=media is not supported", "unsupported_upload_protocol", "uploadType"),
+      )
     }
     if (match.op === "list") {
       const size = intQuery(url.searchParams, "pageSize", { min: 1, max: 100, fallback: 10 }, "pageSize")

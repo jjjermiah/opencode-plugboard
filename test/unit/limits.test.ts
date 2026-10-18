@@ -22,8 +22,7 @@ const rate429 = (retryAfterSeconds: number): PlugEvent => ({
 const signal = () => new AbortController().signal
 
 /** One call from `app`, drained to its events. */
-const start = (caller: ModelCaller, app: string, controller = new AbortController()): Promise<PlugEvent[]> =>
-  collect(caller.stream(plugRequest(), { app, signal: controller.signal }))
+const start = (caller: ModelCaller, app: string, controller = new AbortController()): Promise<PlugEvent[]> => collect(caller.stream(plugRequest(), { app, signal: controller.signal }))
 
 /** A caller whose every call holds until `open` is opened (or the request aborts), then finishes. */
 function holding() {
@@ -96,7 +95,12 @@ describe("#54 a slot is freed however the call ends", () => {
   test("when the request aborts, even if the inner stream ignores the signal", async () => {
     const state = createLimitState()
     // An inner caller that never ends and never looks at the signal: only the abort can free the slot.
-    const hung: ModelCaller = { stream: () => (async function* () { await new Promise(() => {}) })() }
+    const hung: ModelCaller = {
+      stream: () =>
+        (async function* () {
+          await new Promise(() => {})
+        })(),
+    }
     const controller = new AbortController()
     void start(withLimits(hung, cap, state), "alpha", controller)
     await tick()
@@ -181,9 +185,7 @@ describe("#54 requests per minute: a fixed window per app, checked against an in
   test("a request that falls back to a second target holds one slot and one count", async () => {
     const options = testOptions({ aliases: { chain: ["test/echo", "test/vision"] } })
     const open = gate()
-    const fake = new FakeModelCaller((_request, call) =>
-      call === 0 ? [ev.error({ status: 429, kind: "rate_limit", code: "rate_limited" })] : [{ wait: open.promise }, ev.finish()],
-    )
+    const fake = new FakeModelCaller((_request, call) => (call === 0 ? [ev.error({ status: 429, kind: "rate_limit", code: "rate_limited" })] : [{ wait: open.promise }, ev.finish()]))
     const state: LimitState = createLimitState()
     const caller = withLimits(withFallbacks(fake, { options, loadCatalog: async () => CATALOG }), () => ({ maxConcurrent: 1 }), state)
     const chain: PlugRequest = plugRequest({ model: "chain", ref: { providerID: "test", id: "echo" } })

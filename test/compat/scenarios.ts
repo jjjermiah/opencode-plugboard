@@ -127,9 +127,7 @@ export function script(request: PlugRequest): ScriptStep[] {
     case "tools":
       return answered(request) ? [ev.text(TOOL_ANSWER), finish] : [ev.call("call_1", "weather", { city: "Oslo" }), ev.finish("tool-calls", USAGE)]
     case "parallel-tools":
-      return answered(request)
-        ? [ev.text(PARALLEL_ANSWER), finish]
-        : [ev.call("call_1", "weather", { city: "Oslo" }), ev.call("call_2", "weather", { city: "Rome" }), ev.finish("tool-calls", USAGE)]
+      return answered(request) ? [ev.text(PARALLEL_ANSWER), finish] : [ev.call("call_1", "weather", { city: "Oslo" }), ev.call("call_2", "weather", { city: "Rome" }), ev.finish("tool-calls", USAGE)]
     case "image": {
       const media = request.messages.flatMap((message) => message.content).find((part) => part.type === "media")
       return [ev.text(media && media.type === "media" && media.url.startsWith("data:image/png;base64,") ? "image: image/png" : "no image"), finish]

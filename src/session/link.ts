@@ -20,13 +20,7 @@ export function sessionUrl(template: string, recordID: string, directory = ""): 
  * Sets `x-plugboard-session-url` for one history record and the log field, when a template is set.
  * Nothing happens without a template, so a route calls this unconditionally.
  */
-export function setSessionLink(
-  response: { setHeader(name: string, value: string): unknown },
-  info: { sessionUrl?: string },
-  template: string | undefined,
-  recordID: string,
-  directory?: string,
-): void {
+export function setSessionLink(response: { setHeader(name: string, value: string): unknown }, info: { sessionUrl?: string }, template: string | undefined, recordID: string, directory?: string): void {
   if (template === undefined) return
   info.sessionUrl = sessionUrl(template, recordID, directory)
   response.setHeader(SESSION_URL_HEADER, info.sessionUrl)

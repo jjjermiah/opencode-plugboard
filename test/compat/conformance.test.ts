@@ -173,7 +173,9 @@ describe("#107 OpenAI responses conform to the vendored OpenAPI schemas", () => 
   })
 
   test("#289 a function tool with strict: true is echoed with strict: true", async () => {
-    const reply = await server.send(json("/v1/responses", { model: "fast", input: tag("text"), tools: [{ type: "function", name: "weather", strict: true, parameters: { type: "object", properties: {} } }] }))
+    const reply = await server.send(
+      json("/v1/responses", { model: "fast", input: tag("text"), tools: [{ type: "function", name: "weather", strict: true, parameters: { type: "object", properties: {} } }] }),
+    )
     expect(reply.json().tools).toEqual([expect.objectContaining({ name: "weather", strict: true })])
     expectConforms("openai", "Response", reply.json(), RESPONSE_GAPS)
   })
@@ -304,9 +306,14 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
   test("#107 a thinking stream carries thinking_delta and signature_delta events, all SDK events", async () => {
     const signed: PlugEvent = { type: "reasoning-delta", text: THINKING, signature: "sig_conformance" }
     await withRoute([signed, ev.text(TEXT), ev.finish("stop", USAGE)], async (route) => {
-      const reply = await route.send(messagesPost({ model: "fast", max_tokens: 2048, thinking: { type: "enabled", budget_tokens: 1024 }, stream: true, messages: [{ role: "user", content: tag("thinking") }] }))
+      const reply = await route.send(
+        messagesPost({ model: "fast", max_tokens: 2048, thinking: { type: "enabled", budget_tokens: 1024 }, stream: true, messages: [{ role: "user", content: tag("thinking") }] }),
+      )
       expectAnthropicStream(reply.text, [])
-      const deltas = parseSse(reply.text).map((frame) => JSON.parse(frame.data!)).filter((data) => data.type === "content_block_delta").map((data) => data.delta.type)
+      const deltas = parseSse(reply.text)
+        .map((frame) => JSON.parse(frame.data!))
+        .filter((data) => data.type === "content_block_delta")
+        .map((data) => data.delta.type)
       expect(deltas).toEqual(expect.arrayContaining(["thinking_delta", "signature_delta"]))
     })
   })
@@ -385,7 +392,14 @@ describe("#107 Anthropic responses conform to the schemas derived from the SDK t
 
   test("#404 a tool_use block carries caller, which the SDK requires", async () => {
     await withRoute([ev.call("call_1", "weather", { city: "Oslo" }), ev.finish("tool-calls", USAGE)], async (route) => {
-      const reply = await route.send(messagesPost({ model: "fast", max_tokens: 64, tools: [{ name: "weather", input_schema: { type: "object", properties: { city: { type: "string" } } } }], messages: [{ role: "user", content: tag("tools") }] }))
+      const reply = await route.send(
+        messagesPost({
+          model: "fast",
+          max_tokens: 64,
+          tools: [{ name: "weather", input_schema: { type: "object", properties: { city: { type: "string" } } } }],
+          messages: [{ role: "user", content: tag("tools") }],
+        }),
+      )
       expectConforms("anthropic", "Message", reply.json(), [])
     })
   })

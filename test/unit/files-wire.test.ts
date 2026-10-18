@@ -140,7 +140,8 @@ describe("parseFormUpload", () => {
 })
 
 describe("parseRelated", () => {
-  const body = (meta: string, media: Buffer, boundary = "B") => Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: image/png\r\n\r\n`), media, Buffer.from(`\r\n--${boundary}--\r\n`)])
+  const body = (meta: string, media: Buffer, boundary = "B") =>
+    Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: image/png\r\n\r\n`), media, Buffer.from(`\r\n--${boundary}--\r\n`)])
 
   test("metadata, then the bytes exactly, including CRLF inside them", () => {
     const media = Buffer.from("a\r\nb\r\n\r\nc")

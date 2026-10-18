@@ -15,20 +15,9 @@ describe("regen: floors", () => {
   })
 
   test("a conflict takes the higher value per key, and keys only one side has", () => {
-    const text = [
-      "{",
-      '  "compat": 250,',
-      "<<<<<<< HEAD",
-      '  "http": 790,',
-      '  "unit": 1500',
-      "=======",
-      '  "http": 783,',
-      '  "session": 426,',
-      '  "unit": 1524',
-      ">>>>>>> origin/main",
-      "}",
-      "",
-    ].join("\n")
+    const text = ["{", '  "compat": 250,', "<<<<<<< HEAD", '  "http": 790,', '  "unit": 1500', "=======", '  "http": 783,', '  "session": 426,', '  "unit": 1524', ">>>>>>> origin/main", "}", ""].join(
+      "\n",
+    )
     expect(JSON.parse(resolveFloors(text)!)).toEqual({ compat: 250, http: 790, session: 426, unit: 1524 })
   })
 

@@ -116,12 +116,7 @@ async function collectText(events: AsyncIterable<PlugEvent>, exchange: Completio
  * the error frame, usage chunk or `[DONE]` (see `StreamChoice`). Nothing is written before the
  * first text, so a failure before it is still a real HTTP error.
  */
-async function streamText(
-  events: AsyncIterable<PlugEvent>,
-  exchange: CompletionsExchange,
-  write: (chunk: string) => void,
-  choice: StreamChoice,
-): Promise<StreamResult> {
+async function streamText(events: AsyncIterable<PlugEvent>, exchange: CompletionsExchange, write: (chunk: string) => void, choice: StreamChoice): Promise<StreamResult> {
   const chunk = (text: string, finish: string | null = null) =>
     write(
       `data: ${JSON.stringify({

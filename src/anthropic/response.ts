@@ -153,12 +153,10 @@ export interface ModelPageQuery {
 export const modelPageQuery = (params: URLSearchParams): ModelPageQuery | PlugError => {
   const raw = params.get("limit")
   const limit = raw === null ? MODEL_PAGE_DEFAULT : /^\d+$/.test(raw) ? Number(raw) : Number.NaN
-  if (!(limit >= 1 && limit <= MODEL_PAGE_MAX))
-    return { status: 400, kind: "invalid_request", code: "invalid_limit", param: "limit", message: "limit must be a whole number from 1 to 1000" }
+  if (!(limit >= 1 && limit <= MODEL_PAGE_MAX)) return { status: 400, kind: "invalid_request", code: "invalid_limit", param: "limit", message: "limit must be a whole number from 1 to 1000" }
   const afterId = params.get("after_id") ?? undefined
   const beforeId = params.get("before_id") ?? undefined
-  if (afterId !== undefined && beforeId !== undefined)
-    return { status: 400, kind: "invalid_request", code: "invalid_cursor", param: "before_id", message: "after_id and before_id cannot both be set" }
+  if (afterId !== undefined && beforeId !== undefined) return { status: 400, kind: "invalid_request", code: "invalid_cursor", param: "before_id", message: "after_id and before_id cannot both be set" }
   return { limit, afterId, beforeId }
 }
 
@@ -192,11 +190,7 @@ export const sseFrame = (event: MessagesStreamEvent): string => `event: ${event.
 /** The text of a structured answer: the tool input as JSON (a string input is the JSON already). */
 const structuredText = (call: ToolCall): string => (typeof call.input === "string" ? call.input : JSON.stringify(call.input ?? {}))
 
-export async function runMessage(
-  events: AsyncIterable<PlugEvent>,
-  exchange: MessagesExchange,
-  emit: (event: MessagesStreamEvent) => void,
-): Promise<MessageRun> {
+export async function runMessage(events: AsyncIterable<PlugEvent>, exchange: MessagesExchange, emit: (event: MessagesStreamEvent) => void): Promise<MessageRun> {
   const id = newId("msg")
   // Only a non-streamed body needs the aggregate: a stream is already on the wire, so nothing grows (#153).
   const aggregate = !exchange.stream

@@ -26,10 +26,7 @@ const FRONT_ENDS: Array<[string, (effort?: string) => SendInit]> = [
     "Chat Completions",
     (effort) => ({ method: "POST", path: "/v1/chat/completions", body: { model: MODEL, messages: [{ role: "user", content: "hi" }], ...(effort ? { reasoning_effort: effort } : {}) } }),
   ],
-  [
-    "Responses",
-    (effort) => ({ method: "POST", path: "/v1/responses", body: { model: MODEL, input: "hi", ...(effort ? { reasoning: { effort } } : {}) } }),
-  ],
+  ["Responses", (effort) => ({ method: "POST", path: "/v1/responses", body: { model: MODEL, input: "hi", ...(effort ? { reasoning: { effort } } : {}) } })],
   [
     "Gemini",
     (effort) => ({

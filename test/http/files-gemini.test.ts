@@ -50,7 +50,9 @@ const chunk = (app: App, path: string, command: string, offset: number, bytes: B
 describe("resumable upload (what @google/genai and google-genai send)", () => {
   test("start, one chunk, finalize: the answer carries the file and `x-goog-upload-status: final`", async () => {
     const { server } = await route()
-    const started = await server.send(start("alpha", { file: { displayName: "doc.pdf" } }, { "x-goog-upload-header-content-length": String(PDF.length), "x-goog-upload-header-content-type": "application/pdf" }))
+    const started = await server.send(
+      start("alpha", { file: { displayName: "doc.pdf" } }, { "x-goog-upload-header-content-length": String(PDF.length), "x-goog-upload-header-content-type": "application/pdf" }),
+    )
     expect(started.status).toBe(200)
     expect(started.headers["x-goog-upload-status"]).toBe("active")
     expect(target(started)).toMatch(/^\/upload\/v1beta\/files\?upload_id=[0-9a-f]{32}&upload_protocol=resumable$/)
@@ -132,7 +134,9 @@ describe("resumable upload (what @google/genai and google-genai send)", () => {
 
   test("a file that is not an accepted kind is refused at finalize, and an oversize upload when it starts or grows past the cap", async () => {
     const { server } = await route({ limits: { maxBodyBytes: 2048 } })
-    const refused = await server.send(chunk("alpha", target(await server.send(start("alpha", {}, { "x-goog-upload-header-content-type": "image/png" }))), "upload, finalize", 0, Buffer.from("not an image")))
+    const refused = await server.send(
+      chunk("alpha", target(await server.send(start("alpha", {}, { "x-goog-upload-header-content-type": "image/png" }))), "upload, finalize", 0, Buffer.from("not an image")),
+    )
     expect(refused.status).toBe(400)
     expect(refused.json().error.message).toContain("PNG, JPEG, GIF and WebP")
     const tooBig = await server.send(start("alpha", {}, { "x-goog-upload-header-content-length": "999999" }))
@@ -211,7 +215,9 @@ describe("list", () => {
     const names: string[] = []
     for (let i = 0; i < 3; i++) {
       const body = Buffer.from(`--B\r\ncontent-type: application/json\r\n\r\n{"file":{"displayName":"f${i}.txt"}}\r\n--B\r\ncontent-type: text/plain\r\n\r\nbody ${i}\r\n--B--`)
-      names.push((await server.send({ method: "POST", path: "/upload/v1beta/files?uploadType=multipart", headers: { ...as("alpha"), "content-type": "multipart/related; boundary=B" }, body })).json().file.name)
+      names.push(
+        (await server.send({ method: "POST", path: "/upload/v1beta/files?uploadType=multipart", headers: { ...as("alpha"), "content-type": "multipart/related; boundary=B" }, body })).json().file.name,
+      )
     }
     const first = (await server.send({ path: "/v1beta/files?pageSize=2", headers: as("alpha") })).json()
     expect(first.files.map((f: { name: string }) => f.name)).toEqual([names[0], names[1]])

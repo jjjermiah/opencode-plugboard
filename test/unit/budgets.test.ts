@@ -181,7 +181,13 @@ describe("#60 the budget check runs before the limits", () => {
     await requested(usage, "alpha", 1)
     const fake = new FakeModelCaller([ev.finish()])
     const limitState = createLimitState()
-    const caller = withBudgets(withLimits(fake, () => ({ maxConcurrent: 1 }), limitState), { perApp: { requests: { day: 1 } } }, usage, createBudgetState(), { now: () => clock.at })
+    const caller = withBudgets(
+      withLimits(fake, () => ({ maxConcurrent: 1 }), limitState),
+      { perApp: { requests: { day: 1 } } },
+      usage,
+      createBudgetState(),
+      { now: () => clock.at },
+    )
 
     expect(await start(caller, "alpha")).toEqual([refused("alpha", "requests day", 43_200)])
     expect(limitState.queues.get("*")?.pending ?? 0).toBe(0)
@@ -218,7 +224,7 @@ describe("#60 budget state: what the current window has used and when it resets"
 })
 
 describe("#60 refusals reach metrics as reason budget", () => {
-  test("plugboard_limited_total counts a budget refusal under reason=\"budget\"", async () => {
+  test('plugboard_limited_total counts a budget refusal under reason="budget"', async () => {
     const metrics = createMetrics()
     metrics.limited("alpha", "budget")
     const text = await metrics.render({ generations: 0, pumpRunning: false, guards: 0, startedAt: T0 })

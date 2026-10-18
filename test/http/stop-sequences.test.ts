@@ -93,7 +93,11 @@ describe("#390 usage after a stop match, on each dialect", () => {
 
   test("Messages stream: the final message_delta carries the usage of the run", async () => {
     await routeWith(new FakeModelCaller(script))
-    const reply = await server!.send({ method: "POST", path: "/v1/messages", body: { model: "test/echo", max_tokens: 1024, stream: true, stop_sequences: ["END"], messages: [{ role: "user", content: "hi" }] } })
+    const reply = await server!.send({
+      method: "POST",
+      path: "/v1/messages",
+      body: { model: "test/echo", max_tokens: 1024, stream: true, stop_sequences: ["END"], messages: [{ role: "user", content: "hi" }] },
+    })
     const delta = sseData(reply.text).find((frame) => frame.type === "message_delta")
     expect(delta).toMatchObject({ delta: { stop_reason: "stop_sequence", stop_sequence: "END" }, usage: { output_tokens: 500 } })
   })

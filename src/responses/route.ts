@@ -191,8 +191,10 @@ function pageLimit(raw: string | null): number | PlugError {
   if (raw === null) return INPUT_ITEMS_LIMIT.fallback
   if (!/^-?\d+$/.test(raw)) return badQuery("Invalid type for 'limit': expected an integer.", "limit", "invalid_type")
   const limit = Number(raw)
-  if (limit < INPUT_ITEMS_LIMIT.min) return badQuery(`Invalid 'limit': integer below minimum value. Expected a value >= ${INPUT_ITEMS_LIMIT.min}, but got ${limit} instead.`, "limit", "integer_below_min_value")
-  if (limit > INPUT_ITEMS_LIMIT.max) return badQuery(`Invalid 'limit': integer above maximum value. Expected a value <= ${INPUT_ITEMS_LIMIT.max}, but got ${limit} instead.`, "limit", "integer_above_max_value")
+  if (limit < INPUT_ITEMS_LIMIT.min)
+    return badQuery(`Invalid 'limit': integer below minimum value. Expected a value >= ${INPUT_ITEMS_LIMIT.min}, but got ${limit} instead.`, "limit", "integer_below_min_value")
+  if (limit > INPUT_ITEMS_LIMIT.max)
+    return badQuery(`Invalid 'limit': integer above maximum value. Expected a value <= ${INPUT_ITEMS_LIMIT.max}, but got ${limit} instead.`, "limit", "integer_above_max_value")
   return limit
 }
 

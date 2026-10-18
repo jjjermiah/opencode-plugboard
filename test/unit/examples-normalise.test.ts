@@ -70,7 +70,13 @@ describe("placeholders for ids", () => {
       method: "GET",
       path: "/v1/models",
       reqBody: "",
-      resBody: JSON.stringify({ object: "list", data: [{ id: "fast", object: "model", created: 0 }, { id: "anthropic/claude-haiku-4-5", object: "model", created: 0 }] }),
+      resBody: JSON.stringify({
+        object: "list",
+        data: [
+          { id: "fast", object: "model", created: 0 },
+          { id: "anthropic/claude-haiku-4-5", object: "model", created: 0 },
+        ],
+      }),
     })
     const body = normaliseTranscript([list]).exchanges[0]!.response.body as { data: Array<{ id: string; created: number }> }
     expect(body.data.map((model) => model.id)).toEqual(["fast", "anthropic/claude-haiku-4-5"])
@@ -86,7 +92,9 @@ describe("URLs, headers and secrets", () => {
 
   test("only allow-listed request headers survive; the bearer key never does", () => {
     const { exchanges } = normaliseTranscript([
-      exchange({ reqHeaders: { authorization: "Bearer sk-secret-app-key", "x-api-key": "sk-secret-app-key", "content-type": "application/json", "user-agent": "OpenAI/Python", "x-stainless-os": "MacOS" } }),
+      exchange({
+        reqHeaders: { authorization: "Bearer sk-secret-app-key", "x-api-key": "sk-secret-app-key", "content-type": "application/json", "user-agent": "OpenAI/Python", "x-stainless-os": "MacOS" },
+      }),
     ])
     expect(exchanges[0]!.request.headers).toEqual({ "content-type": "application/json" })
   })

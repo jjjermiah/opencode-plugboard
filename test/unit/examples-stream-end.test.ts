@@ -40,7 +40,12 @@ describe("#370 a stream ended normally on the wire", () => {
 
   test("a row needs at least one stream, and every stream must end", () => {
     expect(streamsEnded([])).toBe(false)
-    expect(streamsEnded([{ path: chat, resBody: "data: [DONE]\n\n" }, { path: chat, resBody: "data: {}\n\n" }])).toBe(false)
+    expect(
+      streamsEnded([
+        { path: chat, resBody: "data: [DONE]\n\n" },
+        { path: chat, resBody: "data: {}\n\n" },
+      ]),
+    ).toBe(false)
     expect(streamsEnded([{ path: chat, resBody: "data: [DONE]\n\n" }])).toBe(true)
   })
 

@@ -28,7 +28,20 @@ import { withStopSequences } from "./src/stop.js"
 import { withBudgets } from "./src/budgets.js"
 import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processKeys, processLimits, processMetrics, processUsage, registerGeneration, setConfigError, sessionStore, withResponseCache } from "./src/runtime.js"
+import {
+  ensureBackend,
+  ensurePump,
+  loadServingCatalog,
+  processBudgets,
+  processKeys,
+  processLimits,
+  processMetrics,
+  processUsage,
+  registerGeneration,
+  setConfigError,
+  sessionStore,
+  withResponseCache,
+} from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { createAffinity } from "./src/session/affinity.js"
 import { installSessionHooks } from "./src/session/context.js"
@@ -45,7 +58,7 @@ export default Plugin.define({
   id: "opencode-plugboard",
   effect: (ctx) =>
     Effect.gen(function* () {
-      let options
+      let options: ReturnType<typeof parseOptions>
       try {
         options = parseOptions(ctx.options)
       } catch (error) {
@@ -111,14 +124,19 @@ export default Plugin.define({
             withBudgets(
               withLimits(
                 // Stop sequences are applied to the answer where the host run ends, so a cached answer is the one cut (src/stop.ts).
-                withFallbacks(withStopSequences(createSessionCaller(callerDeps), (app) => { if (options.metrics) processMetrics().usageMissing(app, "stop") }), {
-                  options,
-                  loadCatalog: servingCatalog,
-                  onFallback: (app) => {
-                    if (options.metrics) processMetrics().fallback(app)
-                    usage?.fallback(app)
+                withFallbacks(
+                  withStopSequences(createSessionCaller(callerDeps), (app) => {
+                    if (options.metrics) processMetrics().usageMissing(app, "stop")
+                  }),
+                  {
+                    options,
+                    loadCatalog: servingCatalog,
+                    onFallback: (app) => {
+                      if (options.metrics) processMetrics().fallback(app)
+                      usage?.fallback(app)
+                    },
                   },
-                }),
+                ),
                 () => limits,
                 processLimits(),
                 {
@@ -191,9 +209,7 @@ export default Plugin.define({
       // ---- the usage RPC (src/rpc.ts): a synchronous registration; its handler reads the store from request time only.
       // Its error channel is `unknown` in the host, so a failed registration is logged and the plugin keeps loading.
       if (usage)
-        yield* ctx.rpc.register(UsageRpc, usageHandlers(usage)).pipe(
-          Effect.catch((error) => Effect.sync(() => logError("rpc.register_failed", { rpc: UsageRpc.id, error: errorMessage(error) }))),
-        )
+        yield* ctx.rpc.register(UsageRpc, usageHandlers(usage)).pipe(Effect.catch((error) => Effect.sync(() => logError("rpc.register_failed", { rpc: UsageRpc.id, error: errorMessage(error) }))))
 
       // ---- the context hook, the agent deny and the seed tools. Ownership of the Location is only
       // known after an asynchronous check (`ensureBackend`), so all three are no-ops until

@@ -16,19 +16,7 @@ import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate, 
 import { liveOptions } from "../runtime.js"
 import { bodyUserId, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
-import {
-  BodyError,
-  bodyPlugError,
-  RequestAborted,
-  boundEvents,
-  checkJsonContentType,
-  checkOrigin,
-  readJsonBody,
-  sendError,
-  sendJson,
-  sseWriter,
-  type RequestScope,
-} from "../http.js"
+import { BodyError, bodyPlugError, RequestAborted, boundEvents, checkJsonContentType, checkOrigin, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel, thinkingUnavailable } from "../models.js"
 import { reportCache } from "../cache.js"
@@ -109,8 +97,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const auth = await authenticateRequest(host, request)
     if (isPlugError(auth)) return fail(auth)
     info.app = auth.app
-    if (request.method !== "POST")
-      return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}; use POST` })
+    if (request.method !== "POST") return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}; use POST` })
     // An app may be limited to some endpoints (#268): refused after authentication and the method check, in this shape.
     const refused = endpointRefusal(host.options, auth.app, "messages")
     if (refused) return fail(refused)
@@ -135,11 +122,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const parsed = parseMessagesRequest(inlined, host.options)
     // A budget refused because the app's cap lowered `max_tokens` says so: the same 400, with the option named (#263).
     if (isPlugError(parsed))
-      return fail(
-        capped !== body && parsed.message === BUDGET_REFUSAL
-          ? { ...parsed, message: `${BUDGET_REFUSAL}; apps.${auth.app}.maxOutputTokens (${cap}) lowers max_tokens` }
-          : parsed,
-      )
+      return fail(capped !== body && parsed.message === BUDGET_REFUSAL ? { ...parsed, message: `${BUDGET_REFUSAL}; apps.${auth.app}.maxOutputTokens (${cap}) lowers max_tokens` } : parsed)
     const catalog = await scope.race(host.loadCatalog())
     const requested = requestedModel(host.options, auth.app, parsed.request.model, parsed.reasoningEffort)
     const ref = resolveModel(host.options, requested.model, catalog, requested.effort)

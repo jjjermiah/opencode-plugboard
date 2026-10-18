@@ -22,9 +22,22 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     expect(message).toMatchObject({ content: [{ type: "text", text: "Hello" }], stop_reason: "end_turn", stop_sequence: null })
     expect(message.id).toMatch(/^msg_[0-9a-f]{32}$/)
     // input_tokens excludes the cached parts, which are reported on their own.
-    expect(message.usage).toEqual({ input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3, cache_creation: null, inference_geo: null, service_tier: null, output_tokens_details: null, server_tool_use: null })
+    expect(message.usage).toEqual({
+      input_tokens: 6,
+      output_tokens: 2,
+      cache_creation_input_tokens: 1,
+      cache_read_input_tokens: 3,
+      cache_creation: null,
+      inference_geo: null,
+      service_tier: null,
+      output_tokens_details: null,
+      server_tool_use: null,
+    })
     // message_delta carries the narrower MessageDeltaUsage: the same counts, without cache_creation, inference_geo and service_tier.
-    expect(emitted.at(-2)).toMatchObject({ delta: { stop_reason: "end_turn" }, usage: { input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3, output_tokens_details: null, server_tool_use: null } })
+    expect(emitted.at(-2)).toMatchObject({
+      delta: { stop_reason: "end_turn" },
+      usage: { input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3, output_tokens_details: null, server_tool_use: null },
+    })
   })
 
   test("#203 message_start carries zero usage, because the host reports counts at the end; message_delta carries the real ones", async () => {
@@ -54,7 +67,10 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     const { emitted, message, types } = await run(thinking, redacted, ev.text("answer"), ev.finish())
     expect(emitted.find((event) => event.type === "content_block_start")).toEqual({ type: "content_block_start", index: 0, content_block: { type: "redacted_thinking", data: "opaque_1" } })
     expect(types.filter((type) => type === "content_block_delta")).toHaveLength(1)
-    expect(message.content).toEqual([{ type: "redacted_thinking", data: "opaque_1" }, { type: "text", text: "answer", citations: null }])
+    expect(message.content).toEqual([
+      { type: "redacted_thinking", data: "opaque_1" },
+      { type: "text", text: "answer", citations: null },
+    ])
   })
 
   test("#385 a redacted block is left out when the caller did not ask for thinking", async () => {
@@ -95,7 +111,10 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
 
   test("reasoning becomes a thinking block only when thinking was asked for", async () => {
     const on = await run(thinking, ev.reasoning("hmm"), ev.text("answer"), ev.finish())
-    expect(on.message.content).toEqual([{ type: "thinking", thinking: "hmm", signature: "" }, { type: "text", text: "answer", citations: null }])
+    expect(on.message.content).toEqual([
+      { type: "thinking", thinking: "hmm", signature: "" },
+      { type: "text", text: "answer", citations: null },
+    ])
     expect(on.emitted.find((event) => event.type === "content_block_delta")).toMatchObject({ delta: { type: "thinking_delta", thinking: "hmm" } })
     const off = await run(plain, ev.reasoning("hmm"), ev.text("answer"), ev.finish())
     expect(off.message.content).toEqual([{ type: "text", text: "answer", citations: null }])
@@ -230,8 +249,7 @@ describe("output_config.format: the answer is a text block of JSON", () => {
   })
 
   test("a length or content-filter finish with no answer is a 502 too", async () => {
-    for (const reason of ["length", "content-filter"] as const)
-      expect((await run(structured, ev.finish(reason))).failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+    for (const reason of ["length", "content-filter"] as const) expect((await run(structured, ev.finish(reason))).failure).toMatchObject({ status: 502, code: "structured_output_missing" })
   })
 
   test("a missing answer after a streamed thinking block ends the stream with an error event, no message_stop", async () => {

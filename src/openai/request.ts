@@ -9,16 +9,7 @@ import type { PlugboardOptions } from "../config.js"
 import { show } from "../client-value.js"
 import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
-import {
-  isPlugError,
-  type PlugError,
-  type PlugGeneration,
-  type PlugMessage,
-  type PlugPart,
-  type PlugRequest,
-  type PlugTool,
-  type PlugToolChoice,
-} from "../contract.js"
+import { isPlugError, type PlugError, type PlugGeneration, type PlugMessage, type PlugPart, type PlugRequest, type PlugTool, type PlugToolChoice } from "../contract.js"
 import type { OpenAiExchange } from "./response.js"
 
 type JsonObject = Record<string, unknown>
@@ -122,9 +113,7 @@ const parseMessages = (raw: unknown[]): { system: string[]; messages: PlugMessag
         const parts: PlugPart[] = []
         if (message.content != null) {
           // Assistant content may mix text and refusal parts; keep the text.
-          const value = Array.isArray(message.content)
-            ? textOf(message.content.filter((p) => isRecord(p) && p.type === "text"))
-            : textOf(message.content)
+          const value = Array.isArray(message.content) ? textOf(message.content.filter((p) => isRecord(p) && p.type === "text")) : textOf(message.content)
           if (value === undefined) return bad("Assistant content must be a string or text parts", `${param}.content`)
           if (value.length > 0) parts.push({ type: "text", text: value })
         }
@@ -132,10 +121,8 @@ const parseMessages = (raw: unknown[]): { system: string[]; messages: PlugMessag
           if (!Array.isArray(message.tool_calls)) return bad("tool_calls must be an array", `${param}.tool_calls`)
           for (const [i, call] of message.tool_calls.entries()) {
             const fn = isRecord(call) && isRecord(call.function) ? call.function : undefined
-            if (!isRecord(call) || !fn || typeof fn.name !== "string")
-              return bad("Each tool call needs an id and a function name", `${param}.tool_calls[${i}]`)
-            if (typeof call.id !== "string" || call.id.length === 0)
-              return bad("Each tool call needs a non-empty id", `${param}.tool_calls[${i}].id`)
+            if (!isRecord(call) || !fn || typeof fn.name !== "string") return bad("Each tool call needs an id and a function name", `${param}.tool_calls[${i}]`)
+            if (typeof call.id !== "string" || call.id.length === 0) return bad("Each tool call needs a non-empty id", `${param}.tool_calls[${i}].id`)
             const id = call.id
             toolNames.set(id, fn.name)
             parts.push({
@@ -151,12 +138,10 @@ const parseMessages = (raw: unknown[]): { system: string[]; messages: PlugMessag
       }
       case "tool": {
         const result = textOf(message.content)
-        if (typeof message.tool_call_id !== "string" || result === undefined)
-          return bad("Tool messages need a tool_call_id and string or text-part content", param)
+        if (typeof message.tool_call_id !== "string" || result === undefined) return bad("Tool messages need a tool_call_id and string or text-part content", param)
         const id = message.tool_call_id
         const name = toolNames.get(id)
-        if (name === undefined)
-          return bad(`Tool message answers tool_call_id "${id}", which no earlier assistant tool call has`, `${param}.tool_call_id`)
+        if (name === undefined) return bad(`Tool message answers tool_call_id "${id}", which no earlier assistant tool call has`, `${param}.tool_call_id`)
         messages.push({ role: "tool", content: [{ type: "tool-result", id, name, result }] })
         break
       }
@@ -174,14 +159,11 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
   const names = new Set<string>()
   for (const [index, entry] of raw.entries()) {
     const fn = isRecord(entry) && entry.type === "function" && isRecord(entry.function) ? entry.function : undefined
-    if (!fn || typeof fn.name !== "string" || fn.name.length === 0)
-      return bad('Each tool must be {"type":"function","function":{"name":...}}', `tools[${index}]`)
+    if (!fn || typeof fn.name !== "string" || fn.name.length === 0) return bad('Each tool must be {"type":"function","function":{"name":...}}', `tools[${index}]`)
     if (names.has(fn.name)) return bad(`Duplicate tool name "${fn.name}"`, `tools[${index}].function.name`)
-    if (fn.description != null && typeof fn.description !== "string")
-      return bad("Tool description must be a string", `tools[${index}].function.description`)
+    if (fn.description != null && typeof fn.description !== "string") return bad("Tool description must be a string", `tools[${index}].function.description`)
     // An omitted `parameters` is a tool without arguments; a present one must be a JSON Schema object.
-    if (fn.parameters != null && !isRecord(fn.parameters))
-      return bad("Tool parameters must be a JSON Schema object", `tools[${index}].function.parameters`)
+    if (fn.parameters != null && !isRecord(fn.parameters)) return bad("Tool parameters must be a JSON Schema object", `tools[${index}].function.parameters`)
     names.add(fn.name)
     tools.push({
       name: fn.name,
@@ -195,8 +177,7 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
 const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError => {
   if (raw == null) return undefined
   if (raw === "auto" || raw === "none" || raw === "required") return raw
-  if (isRecord(raw) && raw.type === "function" && isRecord(raw.function) && typeof raw.function.name === "string")
-    return { type: "tool", name: raw.function.name }
+  if (isRecord(raw) && raw.type === "function" && isRecord(raw.function) && typeof raw.function.name === "string") return { type: "tool", name: raw.function.name }
   return bad("Unsupported tool_choice", "tool_choice")
 }
 
@@ -217,16 +198,13 @@ export const parseResponseFormat = (raw: unknown): { structured?: PlugTool; inst
     const spec = raw.json_schema
     if (!isRecord(spec)) return bad("response_format.json_schema must be an object", "response_format.json_schema")
     if (spec.name != null && typeof spec.name !== "string") return bad("response_format.json_schema.name must be a string", "response_format.json_schema.name")
-    if (spec.description != null && typeof spec.description !== "string")
-      return bad("response_format.json_schema.description must be a string", "response_format.json_schema.description")
+    if (spec.description != null && typeof spec.description !== "string") return bad("response_format.json_schema.description must be a string", "response_format.json_schema.description")
     if (!isRecord(spec.schema)) return bad("response_format.json_schema.schema must be a JSON Schema object", "response_format.json_schema.schema")
     return {
       structured: {
         name: RESPOND_TOOL,
         // With caller tools also on offer, this description is what tells the model which call is the final answer.
-        description:
-          "Give your final answer by calling this tool with JSON matching its schema." +
-          (typeof spec.description === "string" ? ` ${spec.description}` : ""),
+        description: "Give your final answer by calling this tool with JSON matching its schema." + (typeof spec.description === "string" ? ` ${spec.description}` : ""),
         parameters: spec.schema,
       },
     }
@@ -238,8 +216,7 @@ export const parseResponseFormat = (raw: unknown): { structured?: PlugTool; inst
 export const parseChoiceCount = (body: JsonObject, options: PlugboardOptions, capOption = "maxN"): number | PlugError => {
   if (body.n == null) return 1
   if (typeof body.n !== "number" || !Number.isInteger(body.n) || body.n < 1) return bad("n must be a positive integer", "n")
-  if (body.n > options.maxN)
-    return bad(`n=${body.n} is above the limit of ${options.maxN} (option \`${capOption}\`; each choice is a full model call)`, "n", "too_many_choices")
+  if (body.n > options.maxN) return bad(`n=${body.n} is above the limit of ${options.maxN} (option \`${capOption}\`; each choice is a full model call)`, "n", "too_many_choices")
   return body.n
 }
 
@@ -250,8 +227,7 @@ export const parseGeneration = (body: JsonObject): PlugGeneration | PlugError =>
     if (value == null) return undefined
     if (typeof value !== "number" || !Number.isFinite(value)) return bad(`${key} must be a number`, key)
     if (integer && !Number.isInteger(value)) return bad(`${key} must be an integer`, key)
-    if (value < min || value > max)
-      return bad(max === Number.MAX_SAFE_INTEGER ? `${key} must be at least ${min}` : `${key} must be between ${min} and ${max}`, key)
+    if (value < min || value > max) return bad(max === Number.MAX_SAFE_INTEGER ? `${key} must be at least ${min}` : `${key} must be between ${min} and ${max}`, key)
     return value
   }
   for (const [key, field, min, max, integer] of [
@@ -306,29 +282,15 @@ export function parseChatRequest(body: unknown, options: PlugboardOptions, capOp
   if (typeof toolChoice === "object" && !callerTools.some((tool) => tool.name === toolChoice.name))
     return bad(`tool_choice names "${toolChoice.name}", which is not in tools`, "tool_choice.function.name")
   if (respond && callerTools.some((tool) => tool.name === RESPOND_TOOL))
-    return bad(
-      `A tool named "${RESPOND_TOOL}" collides with response_format json_schema, which plugboard answers through that name`,
-      "tools",
-      "reserved_tool_name",
-    )
+    return bad(`A tool named "${RESPOND_TOOL}" collides with response_format json_schema, which plugboard answers through that name`, "tools", "reserved_tool_name")
 
   // json_schema + caller tools: the model may call a caller tool or `respond`, so `tool_choice` is
   // `required` (not forced to `respond`). `tool_choice: none` leaves only `respond`; naming a tool
   // contradicts a structured answer.
-  if (respond && typeof toolChoice === "object")
-    return bad(
-      "A tool_choice that names a tool cannot be combined with response_format json_schema",
-      "tool_choice",
-      "unsupported_parameter",
-    )
+  if (respond && typeof toolChoice === "object") return bad("A tool_choice that names a tool cannot be combined with response_format json_schema", "tool_choice", "unsupported_parameter")
   const withCallerTools = respond !== undefined && callerTools.length > 0 && toolChoice !== "none"
   const tools = respond ? (withCallerTools ? [...callerTools, respond] : [respond]) : callerTools
-  if (tools.length > options.maxTools)
-    return bad(
-      `Request has ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`,
-      "tools",
-      "too_many_tools",
-    )
+  if (tools.length > options.maxTools) return bad(`Request has ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`, "tools", "too_many_tools")
 
   const forced: PlugToolChoice | undefined = respond ? (withCallerTools ? "required" : { type: "tool", name: RESPOND_TOOL }) : toolChoice
   const request: Omit<PlugRequest, "ref"> = {

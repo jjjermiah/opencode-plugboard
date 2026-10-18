@@ -18,7 +18,23 @@ import OpenAI from "openai"
 import type { FakeModelCaller } from "../support/model-caller.js"
 import { serverSawAbort } from "./abort.js"
 import { LANGCHAIN_CLIENTS } from "./langchain.js"
-import { CATALOG_ID, MULTI_TURN_ANSWER, PARALLEL_ANSWER, PDF_BASE64, PNG_BASE64, STREAM_DELTAS, STRUCTURED, STRUCTURED_SCHEMA, TEXT, THINKING, TOOL_ANSWER, USAGE, WEATHER_SCHEMA, tag, type Scenario } from "./scenarios.js"
+import {
+  CATALOG_ID,
+  MULTI_TURN_ANSWER,
+  PARALLEL_ANSWER,
+  PDF_BASE64,
+  PNG_BASE64,
+  STREAM_DELTAS,
+  STRUCTURED,
+  STRUCTURED_SCHEMA,
+  TEXT,
+  THINKING,
+  TOOL_ANSWER,
+  USAGE,
+  WEATHER_SCHEMA,
+  tag,
+  type Scenario,
+} from "./scenarios.js"
 
 export const ENDPOINTS = {
   chat: "POST /v1/chat/completions",
@@ -108,14 +124,30 @@ const openaiChat: Client = {
     image: async (target) => {
       const completion = await openai(target).chat.completions.create({
         model: MODEL,
-        messages: [{ role: "user", content: [{ type: "text", text: tag("image") }, { type: "image_url", image_url: { url: `data:image/png;base64,${PNG_BASE64}` } }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: tag("image") },
+              { type: "image_url", image_url: { url: `data:image/png;base64,${PNG_BASE64}` } },
+            ],
+          },
+        ],
       })
       expect(completion.choices[0]!.message.content).toBe("image: image/png")
     },
     document: async (target) => {
       const completion = await openai(target).chat.completions.create({
         model: MODEL,
-        messages: [{ role: "user", content: [{ type: "text", text: tag("document") }, { type: "file", file: { filename: "a.pdf", file_data: pdfDataUrl } }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: tag("document") },
+              { type: "file", file: { filename: "a.pdf", file_data: pdfDataUrl } },
+            ],
+          },
+        ],
       })
       expect(completion.choices[0]!.message.content).toBe("document: application/pdf")
     },
@@ -141,7 +173,13 @@ const openaiChat: Client = {
       expect((await openai(target).chat.completions.create({ model: MODEL, messages })).choices[0]!.message.content).toBe(MULTI_TURN_ANSWER)
     },
     developer: async (target) => {
-      const completion = await openai(target).chat.completions.create({ model: MODEL, messages: [{ role: "developer", content: "Be brief." }, { role: "user", content: tag("developer") }] })
+      const completion = await openai(target).chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: "developer", content: "Be brief." },
+          { role: "user", content: tag("developer") },
+        ],
+      })
       expect(completion.choices[0]!.message.content).toBe(TEXT)
     },
     n: async (target) => {
@@ -248,19 +286,39 @@ const openaiResponses: Client = {
     image: async (target) => {
       const response = await openai(target).responses.create({
         model: MODEL,
-        input: [{ role: "user", content: [{ type: "input_text", text: tag("image") }, { type: "input_image", image_url: `data:image/png;base64,${PNG_BASE64}`, detail: "auto" }] }],
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: tag("image") },
+              { type: "input_image", image_url: `data:image/png;base64,${PNG_BASE64}`, detail: "auto" },
+            ],
+          },
+        ],
       })
       expect(response.output_text).toBe("image: image/png")
     },
     document: async (target) => {
       const response = await openai(target).responses.create({
         model: MODEL,
-        input: [{ role: "user", content: [{ type: "input_text", text: tag("document") }, { type: "input_file", filename: "a.pdf", file_data: pdfDataUrl }] }],
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: tag("document") },
+              { type: "input_file", filename: "a.pdf", file_data: pdfDataUrl },
+            ],
+          },
+        ],
       })
       expect(response.output_text).toBe("document: application/pdf")
     },
     structured: async (target) => {
-      const response = await openai(target).responses.create({ model: MODEL, input: tag("structured"), text: { format: { type: "json_schema", name: "answer", schema: STRUCTURED_SCHEMA, strict: true } } })
+      const response = await openai(target).responses.create({
+        model: MODEL,
+        input: tag("structured"),
+        text: { format: { type: "json_schema", name: "answer", schema: STRUCTURED_SCHEMA, strict: true } },
+      })
       expect(JSON.parse(response.output_text)).toEqual(STRUCTURED)
     },
     error: (target) => expect429(() => openai(target).responses.create({ model: MODEL, input: tag("error") }), OpenAI.APIError),
@@ -272,12 +330,26 @@ const openaiResponses: Client = {
       const response = await openai(target).responses.create({
         model: MODEL,
         store: false,
-        input: [{ role: "user", content: tag("multi-turn") }, { role: "assistant", content: TEXT }, { role: "user", content: "Again?" }],
+        input: [
+          { role: "user", content: tag("multi-turn") },
+          { role: "assistant", content: TEXT },
+          { role: "user", content: "Again?" },
+        ],
       })
       expect(response.output_text).toBe(MULTI_TURN_ANSWER)
     },
     developer: async (target) => {
-      expect((await openai(target).responses.create({ model: MODEL, input: [{ role: "developer", content: "Be brief." }, { role: "user", content: tag("developer") }] })).output_text).toBe(TEXT)
+      expect(
+        (
+          await openai(target).responses.create({
+            model: MODEL,
+            input: [
+              { role: "developer", content: "Be brief." },
+              { role: "user", content: tag("developer") },
+            ],
+          })
+        ).output_text,
+      ).toBe(TEXT)
     },
     "stream-usage": async (target) => {
       const stream = await openai(target).responses.create({ model: MODEL, input: tag("stream-usage"), stream: true })
@@ -455,13 +527,23 @@ const anthropicMessages: Client = {
       const uses = first.content.filter((block) => block.type === "tool_use")
       expect(uses).toHaveLength(2)
       messages.push({ role: "assistant", content: first.content }, { role: "user", content: uses.map((use) => ({ type: "tool_result" as const, tool_use_id: use.id, content: "ok" })) })
-      expect((await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages, tools: [anthropicTool] })).content as unknown).toEqual([{ type: "text", text: PARALLEL_ANSWER, citations: null }])
+      expect((await anthropic(target).messages.create({ model: MODEL, max_tokens: 100, messages, tools: [anthropicTool] })).content as unknown).toEqual([
+        { type: "text", text: PARALLEL_ANSWER, citations: null },
+      ])
     },
     image: async (target) => {
       const message = await anthropic(target).messages.create({
         model: MODEL,
         max_tokens: 100,
-        messages: [{ role: "user", content: [{ type: "text", text: tag("image") }, { type: "image", source: { type: "base64", media_type: "image/png", data: PNG_BASE64 } }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: tag("image") },
+              { type: "image", source: { type: "base64", media_type: "image/png", data: PNG_BASE64 } },
+            ],
+          },
+        ],
       })
       expect(message.content as unknown).toEqual([{ type: "text", text: "image: image/png", citations: null }])
     },
@@ -486,7 +568,11 @@ const anthropicMessages: Client = {
       const message = await anthropic(target).messages.create({
         model: MODEL,
         max_tokens: 100,
-        messages: [{ role: "user", content: tag("multi-turn") }, { role: "assistant", content: TEXT }, { role: "user", content: "Again?" }],
+        messages: [
+          { role: "user", content: tag("multi-turn") },
+          { role: "assistant", content: TEXT },
+          { role: "user", content: "Again?" },
+        ],
       })
       expect(message.content as unknown).toEqual([{ type: "text", text: MULTI_TURN_ANSWER, citations: null }])
     },
@@ -518,12 +604,22 @@ const anthropicMessages: Client = {
       const message = await anthropic(target).messages.create({
         model: MODEL,
         max_tokens: 100,
-        messages: [{ role: "user", content: [{ type: "text", text: tag("document") }, { type: "document", source: { type: "base64", media_type: "application/pdf", data: PDF_BASE64 } }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: tag("document") },
+              { type: "document", source: { type: "base64", media_type: "application/pdf", data: PDF_BASE64 } },
+            ],
+          },
+        ],
       })
       expect(message.content as unknown).toEqual([{ type: "text", text: "document: application/pdf", citations: null }])
     },
     "model-id": async (target) => {
-      expect((await anthropic(target).messages.create({ model: CATALOG_ID, max_tokens: 100, messages: [{ role: "user", content: tag("model-id") }] })).content as unknown).toEqual([{ type: "text", text: TEXT, citations: null }])
+      expect((await anthropic(target).messages.create({ model: CATALOG_ID, max_tokens: 100, messages: [{ role: "user", content: tag("model-id") }] })).content as unknown).toEqual([
+        { type: "text", text: TEXT, citations: null },
+      ])
     },
     "stream-usage": async (target) => {
       const stream = anthropic(target).messages.stream({ model: MODEL, max_tokens: 100, messages: [{ role: "user", content: tag("stream-usage") }] })
@@ -577,15 +673,25 @@ const genaiGemini: Client = {
     tools: async (target) => expect(await geminiRoundTrip(target, "tools", 1)).toBe(TOOL_ANSWER),
     "parallel-tools": async (target) => expect(await geminiRoundTrip(target, "parallel-tools", 2)).toBe(PARALLEL_ANSWER),
     image: async (target) => {
-      const response = await genai(target).models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: tag("image") }, { inlineData: { mimeType: "image/png", data: PNG_BASE64 } }] }] })
+      const response = await genai(target).models.generateContent({
+        model: MODEL,
+        contents: [{ role: "user", parts: [{ text: tag("image") }, { inlineData: { mimeType: "image/png", data: PNG_BASE64 } }] }],
+      })
       expect(response.text).toBe("image: image/png")
     },
     document: async (target) => {
-      const response = await genai(target).models.generateContent({ model: MODEL, contents: [{ role: "user", parts: [{ text: tag("document") }, { inlineData: { mimeType: "application/pdf", data: PDF_BASE64 } }] }] })
+      const response = await genai(target).models.generateContent({
+        model: MODEL,
+        contents: [{ role: "user", parts: [{ text: tag("document") }, { inlineData: { mimeType: "application/pdf", data: PDF_BASE64 } }] }],
+      })
       expect(response.text).toBe("document: application/pdf")
     },
     structured: async (target) => {
-      const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("structured"), config: { responseMimeType: "application/json", responseJsonSchema: STRUCTURED_SCHEMA } })
+      const response = await genai(target).models.generateContent({
+        model: MODEL,
+        contents: tag("structured"),
+        config: { responseMimeType: "application/json", responseJsonSchema: STRUCTURED_SCHEMA },
+      })
       expect(JSON.parse(response.text!)).toEqual(STRUCTURED)
     },
     error: async (target) => {
@@ -705,7 +811,19 @@ function aiSdk(name: string, endpoint: Endpoint, model: (target: Target, id?: st
       expect(result.text).toBe(PARALLEL_ANSWER)
     },
     image: async (target) => {
-      const result = await generateText({ model: model(target), ...common, messages: [{ role: "user", content: [{ type: "text", text: tag("image") }, { type: "image", image: png(), mediaType: "image/png" }] }] })
+      const result = await generateText({
+        model: model(target),
+        ...common,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: tag("image") },
+              { type: "image", image: png(), mediaType: "image/png" },
+            ],
+          },
+        ],
+      })
       expect(result.text).toBe("image: image/png")
     },
     structured: async (target) => {
@@ -774,7 +892,15 @@ const pdfRun =
     const result = await generateText({
       model: model(target),
       maxRetries: 0,
-      messages: [{ role: "user", content: [{ type: "text", text: tag("document") }, { type: "file", data: PDF_BASE64, mediaType: "application/pdf" }] }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: tag("document") },
+            { type: "file", data: PDF_BASE64, mediaType: "application/pdf" },
+          ],
+        },
+      ],
     })
     expect(result.text).toBe("document: application/pdf")
   }
@@ -824,7 +950,8 @@ const aiAnthropicClient = aiSdk("ai + @ai-sdk/anthropic", "messages", (target, i
 const aiGoogleClient = aiSdk("ai + @ai-sdk/google", "gemini", (target, id) => aiGoogle(target, id), {
   gaps: {
     // The AI SDK's getModelPath treats an id with a slash as a full resource name and drops the models/ prefix, so the request misses the route: a 404 that names the expected path (#150).
-    "model-id": "the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass",
+    "model-id":
+      "the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass",
   },
   extra: { document: pdfRun((target) => aiGoogle(target)) },
   na: { "count-tokens": "the AI SDK does not call countTokens" },

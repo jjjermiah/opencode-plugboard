@@ -220,8 +220,7 @@ export function createFileStore(deps: FileStoreDeps): FileStore {
         logError("files.store_failed", { op: "save" })
         throw new Error("file storage unavailable")
       }
-      if (live.length >= maxFiles)
-        return { status: 400, kind: "invalid_request", code: "file_limit_exceeded", message: `This app already holds ${maxFiles} files; delete some before uploading more` }
+      if (live.length >= maxFiles) return { status: 400, kind: "invalid_request", code: "file_limit_exceeded", message: `This app already holds ${maxFiles} files; delete some before uploading more` }
       if (live.reduce((sum, entry) => sum + entry.bytes, 0) + file.bytes.length > maxAppBytes)
         return { status: 400, kind: "invalid_request", code: "file_storage_full", message: "This app's file storage is full; delete some files before uploading more" }
       const id = newFileId()

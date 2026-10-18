@@ -89,7 +89,9 @@ export function createCacheStore(limits: CacheLimits): CacheStore {
 export function cacheKey(app: string, request: PlugRequest): string {
   const { ref } = request
   const canonical = stableStringify([app, ref.providerID, ref.id, ref.variant ?? null, request.system, request.messages, request.tools, request.toolChoice ?? null, request.generation])
-  return createHash("sha256").update(canonical ?? "").digest("hex")
+  return createHash("sha256")
+    .update(canonical ?? "")
+    .digest("hex")
 }
 
 /** Called once per call the cache applies to. */
@@ -131,13 +133,7 @@ function append(events: PlugEvent[], event: { readonly type: "text-delta" | "rea
  * decides per call that the cache is not used: a persona model, or an app whose answers depend on live OpenCode
  * tool output (`serverTools`, #82). Both conditions live in the one predicate the runtime passes.
  */
-export function cachedCaller(
-  inner: ModelCaller,
-  config: CacheConfig,
-  store: CacheStore,
-  count?: CacheCounter,
-  bypass?: (model: string, app: string) => boolean,
-): ModelCaller {
+export function cachedCaller(inner: ModelCaller, config: CacheConfig, store: CacheStore, count?: CacheCounter, bypass?: (model: string, app: string) => boolean): ModelCaller {
   const apps = config.apps ? new Set(config.apps) : undefined
   return {
     async *stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
@@ -151,7 +147,9 @@ export function cachedCaller(
         if (hit.policy) context.onPolicy?.(hit.policy)
         for (const event of hit.events) {
           if (context.signal.aborted) return
-          yield event.type === "finish" ? { type: "finish", reason: event.reason, usage: { inputTokens: 0, outputTokens: 0 }, ...(event.stopSequence === undefined ? {} : { stopSequence: event.stopSequence }) } : event
+          yield event.type === "finish"
+            ? { type: "finish", reason: event.reason, usage: { inputTokens: 0, outputTokens: 0 }, ...(event.stopSequence === undefined ? {} : { stopSequence: event.stopSequence }) }
+            : event
         }
         return
       }

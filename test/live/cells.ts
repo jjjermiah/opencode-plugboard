@@ -45,8 +45,7 @@ const CALL_ARGS = { city: "Oslo" }
 /** Why an endpoint does not carry a scenario (null when it does). Written into the matrix. */
 export function naReason(endpoint: Endpoint, scenario: Scenario): string | null {
   if (endpoint === "completions") {
-    if (scenario === "tool-call" || scenario === "tool-result" || scenario === "tools-json")
-      return "legacy completions: text_completion has no tool_calls field (docs/completions.md)"
+    if (scenario === "tool-call" || scenario === "tool-result" || scenario === "tools-json") return "legacy completions: text_completion has no tool_calls field (docs/completions.md)"
     if (scenario === "image") return "legacy completions: the prompt is a string, no image input (docs/completions.md)"
   }
   return null
@@ -83,7 +82,15 @@ function chatBody(scenario: Scenario, model: string, stream: boolean): Req {
           { role: "tool", tool_call_id: CALL_ID, content: RESULT },
         ]
       : scenario === "image"
-        ? [{ role: "user", content: [{ type: "text", text: IMAGE_PROMPT }, { type: "image_url", image_url: { url: PNG_URL } }] }]
+        ? [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: IMAGE_PROMPT },
+                { type: "image_url", image_url: { url: PNG_URL } },
+              ],
+            },
+          ]
         : [user(promptFor(scenario))]
   const body: Record<string, unknown> = { model, messages, max_tokens: MAX_TOKENS, stream }
   if (hasTools(scenario)) body.tools = [{ type: "function", function: WEATHER }]
@@ -95,13 +102,17 @@ function chatBody(scenario: Scenario, model: string, stream: boolean): Req {
 function responsesBody(scenario: Scenario, model: string, stream: boolean): Req {
   const input: unknown[] =
     scenario === "tool-result"
-      ? [
-          user(RESULT_PROMPT),
-          { type: "function_call", call_id: CALL_ID, name: WEATHER.name, arguments: JSON.stringify(CALL_ARGS) },
-          { type: "function_call_output", call_id: CALL_ID, output: RESULT },
-        ]
+      ? [user(RESULT_PROMPT), { type: "function_call", call_id: CALL_ID, name: WEATHER.name, arguments: JSON.stringify(CALL_ARGS) }, { type: "function_call_output", call_id: CALL_ID, output: RESULT }]
       : scenario === "image"
-        ? [{ role: "user", content: [{ type: "input_text", text: IMAGE_PROMPT }, { type: "input_image", image_url: PNG_URL }] }]
+        ? [
+            {
+              role: "user",
+              content: [
+                { type: "input_text", text: IMAGE_PROMPT },
+                { type: "input_image", image_url: PNG_URL },
+              ],
+            },
+          ]
         : [user(promptFor(scenario))]
   const body: Record<string, unknown> = { model, input, max_output_tokens: MAX_TOKENS, stream }
   if (hasTools(scenario)) body.tools = [{ type: "function", ...WEATHER }]
@@ -122,7 +133,10 @@ function messagesBody(scenario: Scenario, model: string, stream: boolean): Req {
         ? [
             {
               role: "user",
-              content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: PNG_BASE64 } }, { type: "text", text: IMAGE_PROMPT }],
+              content: [
+                { type: "image", source: { type: "base64", media_type: "image/png", data: PNG_BASE64 } },
+                { type: "text", text: IMAGE_PROMPT },
+              ],
             },
           ]
         : [user(promptFor(scenario))]
@@ -148,8 +162,7 @@ function geminiBody(scenario: Scenario, model: string, stream: boolean): Req {
   if (scenario === "json") Object.assign(generationConfig, { responseMimeType: "application/json", responseJsonSchema: ANSWER })
   if (scenario === "tools-json") Object.assign(generationConfig, { responseMimeType: "application/json", responseJsonSchema: CITY })
   const body: Record<string, unknown> = { contents, generationConfig }
-  if (hasTools(scenario))
-    body.tools = [{ functionDeclarations: [{ name: WEATHER.name, description: WEATHER.description, parametersJsonSchema: WEATHER.parameters }] }]
+  if (hasTools(scenario)) body.tools = [{ functionDeclarations: [{ name: WEATHER.name, description: WEATHER.description, parametersJsonSchema: WEATHER.parameters }] }]
   const method = stream ? "streamGenerateContent?alt=sse" : "generateContent"
   return { path: `/v1beta/models/${encodeURIComponent(model)}:${method}`, body }
 }
@@ -294,7 +307,10 @@ export async function runCell(model: string, endpoint: Endpoint, scenario: Scena
   const stream = scenario === "stream"
   const req = requestFor(endpoint, scenario, model, stream)
   const sent = await send(req.path.replace("{model}", encodeURIComponent(model)), authHeaders(endpoint), req.body)
-  const sessions = (sent.headers.get("x-plugboard-session") ?? "").split(",").map((id) => id.trim()).filter(Boolean)
+  const sessions = (sent.headers.get("x-plugboard-session") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
   const ms = Date.now() - started
   const fail = (detail: string) => ({ ...base, status: "fail" as const, detail, sessions, ms })
 

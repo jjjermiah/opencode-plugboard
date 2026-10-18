@@ -59,14 +59,9 @@ const bad = (message: string, code: string, param?: string): PlugError => ({ sta
 export const fileCap = (host: RouteHost, app: string): number => Math.min(bodyLimits(host.options, app, host.keys?.appNames()).maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes, MAX_FILE_BYTES)
 
 /** Checks a file's size and bytes, then keeps it under the app. */
-export async function storeUpload(
-  host: RouteHost,
-  app: string,
-  upload: { bytes: Uint8Array; declaredType: string | undefined; filename: string; purpose: string },
-): Promise<FileRecord | PlugError> {
+export async function storeUpload(host: RouteHost, app: string, upload: { bytes: Uint8Array; declaredType: string | undefined; filename: string; purpose: string }): Promise<FileRecord | PlugError> {
   const cap = fileCap(host, app)
-  if (upload.bytes.length > cap)
-    return { status: 413, kind: "invalid_request", code: "file_too_large", param: "file", message: `The file is larger than this app's limit of ${cap} bytes` }
+  if (upload.bytes.length > cap) return { status: 413, kind: "invalid_request", code: "file_too_large", param: "file", message: `The file is larger than this app's limit of ${cap} bytes` }
   const detected = detectFile(upload.bytes, upload.declaredType, upload.filename)
   if ("problem" in detected) return bad(detected.problem, "invalid_file", "file")
   return host.files.save(app, retentionDaysFor(host.options, app), { filename: upload.filename, mime: detected.mime, purpose: upload.purpose, bytes: upload.bytes })
@@ -97,7 +92,8 @@ export async function serveFiles(host: RouteHost, { app, match, request, url, re
     sendError(response, anthropic ? { ...error, status: messagesStatus(error) } : error, anthropic ? encodeAnthropicError(error) : encodeOpenAiError(error), { close })
   const days = retentionDaysFor(host.options, app)
   const encode = (record: FileRecord): object => (anthropic ? encodeAnthropicFile(record, days) : encodeOpenAiFile(record, days))
-  const missing = (id: string) => fail({ status: 404, kind: anthropic ? "not_found" : "invalid_request", message: anthropic ? `File not found: ${id.slice(0, 80)}` : `No such File object: ${id.slice(0, 80)}` })
+  const missing = (id: string) =>
+    fail({ status: 404, kind: anthropic ? "not_found" : "invalid_request", message: anthropic ? `File not found: ${id.slice(0, 80)}` : `No such File object: ${id.slice(0, 80)}` })
 
   async function run(): Promise<void> {
     if (match.op === "create") return create()
@@ -171,7 +167,14 @@ export async function serveFiles(host: RouteHost, { app, match, request, url, re
       const before = params.get("before_id") ?? undefined
       if (after !== undefined && before !== undefined) return fail(bad("after_id and before_id cannot both be set", "invalid_cursor", "before_id"))
       const paged = pageItems(newest, limit, { after, before })
-      if (!paged) return fail(bad(`${page !== null ? "page" : before !== undefined ? "before_id" : "after_id"} is not a listed file`, "invalid_cursor", page !== null ? "page" : before !== undefined ? "before_id" : "after_id"))
+      if (!paged)
+        return fail(
+          bad(
+            `${page !== null ? "page" : before !== undefined ? "before_id" : "after_id"} is not a listed file`,
+            "invalid_cursor",
+            page !== null ? "page" : before !== undefined ? "before_id" : "after_id",
+          ),
+        )
       const records = await load(paged.page)
       return sendJson(response, 200, {
         data: records.map(encode),

@@ -36,14 +36,11 @@ describe("#287 a non-boolean stream is refused, on every route", () => {
     expect(caller.calls).toHaveLength(0)
   })
 
-  test.each(routes.flatMap((route) => [null, undefined, false, true].map((value) => [route.name, route, value] as const)))(
-    "#287 %s with stream %j is accepted",
-    async (_name, route, value) => {
-      const caller = new FakeModelCaller(() => [ev.text("pong"), ev.finish()])
-      server = await startRoute({ caller })
-      const reply = await server.send({ method: "POST", path: route.path, body: route.body(value) })
-      expect(reply.status).toBe(200)
-      expect(caller.calls).toHaveLength(1)
-    },
-  )
+  test.each(routes.flatMap((route) => [null, undefined, false, true].map((value) => [route.name, route, value] as const)))("#287 %s with stream %j is accepted", async (_name, route, value) => {
+    const caller = new FakeModelCaller(() => [ev.text("pong"), ev.finish()])
+    server = await startRoute({ caller })
+    const reply = await server.send({ method: "POST", path: route.path, body: route.body(value) })
+    expect(reply.status).toBe(200)
+    expect(caller.calls).toHaveLength(1)
+  })
 })

@@ -225,7 +225,7 @@ describe("#259 remoteImages limits tighten the fetch", () => {
   const allow = ["127.0.0.1"]
   const url = (path: string) => `http://127.0.0.1:${server.port}${path}`
 
-  test("schemes [\"https\"] refuses an http URL before any connection", async () => {
+  test('schemes ["https"] refuses an http URL before any connection', async () => {
     const before = hits
     expect(code(await fetchImage(url("/ok.png"), { allow, schemes: ["https"] }))).toBe("image_fetch_failed")
     expect(hits).toBe(before)

@@ -160,6 +160,11 @@ describe("#463 mixed: text with a garbled call", () => {
     const frames = sseData(await stream.ended)
     expect(JSON.stringify(frames)).not.toContain("tool_calls")
     expect(frames.flatMap((frame) => frame.choices ?? []).at(-1).finish_reason).toBe("stop")
-    expect(frames.flatMap((frame) => frame.choices ?? []).map((choice: any) => choice.delta?.content ?? "").join("")).toBe("Let me check.")
+    expect(
+      frames
+        .flatMap((frame) => frame.choices ?? [])
+        .map((choice: any) => choice.delta?.content ?? "")
+        .join(""),
+    ).toBe("Let me check.")
   })
 })

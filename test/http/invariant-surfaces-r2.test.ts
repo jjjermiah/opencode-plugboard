@@ -42,8 +42,7 @@ afterEach(async () => {
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex")
 
-const seeds = (count = 4): Record<string, HostToolDescriptor> =>
-  Object.fromEntries(Array.from({ length: count }, (_, index) => [`plugboard_seed_${index}`, { description: "placeholder", input: {} }]))
+const seeds = (count = 4): Record<string, HostToolDescriptor> => Object.fromEntries(Array.from({ length: count }, (_, index) => [`plugboard_seed_${index}`, { description: "placeholder", input: {} }]))
 
 const hostTools = (): Record<string, HostToolDescriptor> => ({
   ...seeds(4),
@@ -131,14 +130,9 @@ describe("#408 1. serverTools on the wire", () => {
         if (mode === "zero") {
           ;[b.textDelta("none"), b.stepEnded("stop"), b.executionSucceeded()].forEach((e) => sessions.dispatch(e))
         } else if (mode === "one") {
-          ;[
-            b.toolCalled("s1", "read", { path: "inside.txt" }),
-            b.toolSucceeded("s1"),
-            b.stepEnded("tool-calls"),
-            b.textDelta("one"),
-            b.stepEnded("stop"),
-            b.executionSucceeded(),
-          ].forEach((e) => sessions.dispatch(e))
+          ;[b.toolCalled("s1", "read", { path: "inside.txt" }), b.toolSucceeded("s1"), b.stepEnded("tool-calls"), b.textDelta("one"), b.stepEnded("stop"), b.executionSucceeded()].forEach((e) =>
+            sessions.dispatch(e),
+          )
         } else if (mode === "three") {
           ;[
             b.toolCalled("s1", "read", { path: "inside.txt" }),
@@ -357,7 +351,15 @@ describe("#408 2. remoteImages refusals and fetch limits on the wire", () => {
       path: "/v1/chat/completions",
       body: {
         model: "test/vision",
-        messages: [{ role: "user", content: [{ type: "text", text: "What is in this image?" }, { type: "image_url", image_url: { url } }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "What is in this image?" },
+              { type: "image_url", image_url: { url } },
+            ],
+          },
+        ],
       },
     })
     await server.close()

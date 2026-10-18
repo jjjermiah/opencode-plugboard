@@ -231,13 +231,12 @@ const structured = {
   isAnswer: (exchange: OpenAiExchange, call: ToolCall) => exchange.structuredTool !== undefined && call.name === exchange.structuredTool,
   content: (call: ToolCall) => args(call.input),
   /** The failure for a finished structured exchange, if any. */
-  failure: (exchange: OpenAiExchange, answered: boolean): PlugError | undefined =>
-    exchange.structuredTool === undefined || answered ? undefined : structuredMissing(),
+  failure: (exchange: OpenAiExchange, answered: boolean): PlugError | undefined => (exchange.structuredTool === undefined || answered ? undefined : structuredMissing()),
 }
 
 const isObjectValue = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
-const hasOwn = (value: Record<string, unknown>, key: string) => Object.prototype.hasOwnProperty.call(value, key)
+const hasOwn = (value: Record<string, unknown>, key: string) => Object.hasOwn(value, key)
 
 /** Whether a parsed JSON value has one JSON Schema type (`integer` is a whole number; an unknown type matches anything). */
 const hasType = (value: unknown, type: unknown): boolean => {
@@ -371,15 +370,7 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
   const toolCalls = isStructured ? [] : others
   const message: Record<string, unknown> = {
     role: "assistant",
-    content: isStructured
-      ? answer
-        ? structured.content(answer)
-        : (fallback ?? null)
-      : exchange.structuredTool === undefined && text.length > 0
-        ? exchange.jsonObject
-          ? unfence(text)
-          : text
-        : null,
+    content: isStructured ? (answer ? structured.content(answer) : (fallback ?? null)) : exchange.structuredTool === undefined && text.length > 0 ? (exchange.jsonObject ? unfence(text) : text) : null,
     refusal: null,
   }
   if (exchange.reasoningOutput && exchange.structuredTool === undefined && reasoning.length > 0) Object.assign(message, reasoningFields(reasoning))
@@ -433,12 +424,7 @@ export const chatUsageChunk = (model: string, id: string, created: number, usage
  * output decides the HTTP status: see `StreamResult`); a failure after it is written as an
  * `error` frame and then `data: [DONE]`.
  */
-export async function streamCompletion(
-  events: AsyncIterable<PlugEvent>,
-  exchange: OpenAiExchange,
-  write: (chunk: string) => void,
-  choice?: StreamChoice,
-): Promise<StreamResult> {
+export async function streamCompletion(events: AsyncIterable<PlugEvent>, exchange: OpenAiExchange, write: (chunk: string) => void, choice?: StreamChoice): Promise<StreamResult> {
   const id = choice?.id ?? newId()
   const created = choice?.created ?? now()
   const index = choice?.index ?? 0

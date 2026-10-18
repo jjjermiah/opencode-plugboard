@@ -61,13 +61,13 @@ export interface Endpoint {
 /**
  * Every endpoint plugboard serves, in the order the document lists them. Dispatch lives in
  * `src/openai/route.ts` and the front-end routes; `test/http/discovery.test.ts` probes each served
-  * route and fails when this list omits one (#136). `/plugboard/usage`, `/plugboard/dashboard` and `/plugboard/metrics` are added only when their options are on.
+ * route and fails when this list omits one (#136). `/plugboard/usage`, `/plugboard/dashboard` and `/plugboard/metrics` are added only when their options are on.
  */
 export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "GET", path: "/", auth: false, description: "This page." },
   { method: "GET", path: "/v1", auth: false, description: "This page as JSON." },
-  { method: "GET", path: "/plugboard/health", auth: false, description: "Liveness: {\"ok\":true}. Also at the root as /healthz." },
-  { method: "GET", path: "/plugboard/ready", auth: false, description: "Readiness: {\"ready\":true}, or a 503 problem with the reason until the backend can serve. Also at the root as /readyz." },
+  { method: "GET", path: "/plugboard/health", auth: false, description: 'Liveness: {"ok":true}. Also at the root as /healthz.' },
+  { method: "GET", path: "/plugboard/ready", auth: false, description: 'Readiness: {"ready":true}, or a 503 problem with the reason until the backend can serve. Also at the root as /readyz.' },
   { method: "GET", path: "/v1/models", auth: true, description: "Models this app may call (OpenAI shape)." },
   { method: "GET", path: "/v1/models/{id}", auth: true, description: "One model." },
   { method: "POST", path: "/v1/chat/completions", auth: true, description: "OpenAI Chat Completions." },
@@ -197,9 +197,7 @@ export function buildDiscovery({ options, app, catalog, publicOrigin }: Discover
     baseUrl: base,
     listen: { host: options.listen.host, port: options.listen.port },
     authentication: auth,
-    ...(detail
-      ? {}
-      : { hint: "Authentication is required. Send `Authorization: Bearer <key>` to see this app's configuration: the allowlist, aliases and a model suggestion." }),
+    ...(detail ? {} : { hint: "Authentication is required. Send `Authorization: Bearer <key>` to see this app's configuration: the allowlist, aliases and a model suggestion." }),
     ...(detail ? { apps: [app ?? "default"] } : {}),
     ...(detail
       ? {
@@ -227,9 +225,7 @@ const list = (items: ReadonlyArray<string>) => `<ul>${items.map((item) => `<li><
 export function renderDiscoveryHtml(doc: Discovery): string {
   const sections: string[] = []
   sections.push(`<p>Base URL: <code>${escapeHtml(doc.baseUrl)}</code></p>`)
-  sections.push(
-    `<p>Authentication: ${doc.authentication.required ? "required. Send <code>Authorization: Bearer &lt;key&gt;</code>." : "none (keyless, loopback only)."}</p>`,
-  )
+  sections.push(`<p>Authentication: ${doc.authentication.required ? "required. Send <code>Authorization: Bearer &lt;key&gt;</code>." : "none (keyless, loopback only)."}</p>`)
   if (doc.hint) sections.push(`<p class="hint">${escapeHtml(doc.hint)}</p>`)
   if (doc.apps) sections.push(`<h2>App</h2>${list(doc.apps)}`)
   if (doc.models) {

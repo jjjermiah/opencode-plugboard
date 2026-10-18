@@ -65,7 +65,12 @@ describe("parseOptions: defaults", () => {
   test("#156 the body limits are kept when set, and default to 128 MiB in flight and 30 s when not", () => {
     expect(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }).limits).toEqual({ maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 })
     // `maxBodyBytes` (#258) is the largest body, 32 MiB unless `limits.maxBodyBytes` or the app's own cap lowers it.
-    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({ maxBytesInFlight: 1024, readTimeoutMs: 500, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
+    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({
+      maxBytesInFlight: 1024,
+      readTimeoutMs: 500,
+      readCeilingMs: 300_000,
+      maxBodyBytes: 33_554_432,
+    })
     expect(bodyLimits(parseOptions({ limits: { maxConcurrent: 2 } }))).toEqual({ maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
     expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
   })
@@ -445,9 +450,9 @@ describe("parseOptions: skill aliases (#79)", () => {
   })
 
   test("#79 a skill target cannot be part of a list of fallbacks", () => {
-    expect(() =>
-      parseOptions({ models: MODELS, aliases: { "invoice-parser": ["skill:invoice-parser@anthropic/claude-sonnet-4-6", "openai/gpt-mini"] } }),
-    ).toThrow(/binds a skill, so it takes one target and no list of fallbacks/)
+    expect(() => parseOptions({ models: MODELS, aliases: { "invoice-parser": ["skill:invoice-parser@anthropic/claude-sonnet-4-6", "openai/gpt-mini"] } })).toThrow(
+      /binds a skill, so it takes one target and no list of fallbacks/,
+    )
   })
 })
 
@@ -471,7 +476,12 @@ describe("parseOptions: agents (#6)", () => {
     ["an unknown field", { agents: [{ name: "review", model: "anthropic/claude-sonnet-4-6", tools: true }] }, /Unknown plugboard option `agents.tools`/],
     [
       "the same name twice",
-      { agents: [{ name: "review", model: "anthropic/claude-sonnet-4-6" }, { name: "review", model: "openai/gpt-mini" }] },
+      {
+        agents: [
+          { name: "review", model: "anthropic/claude-sonnet-4-6" },
+          { name: "review", model: "openai/gpt-mini" },
+        ],
+      },
       /listed more than once/,
     ],
   ])("#6 an agent option with %s is rejected at load", (_name, extra, message) => {

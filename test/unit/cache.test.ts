@@ -11,8 +11,7 @@ import { collect, ev, gate, plugRequest, until } from "../support/fixtures.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
 
 const CONFIG: CacheConfig = { ttlSeconds: 60, maxEntries: 100, maxBytes: 10_000_000 }
-const store = (overrides: { ttlMs?: number; maxEntries?: number; maxBytes?: number } = {}) =>
-  createCacheStore({ ttlMs: 60_000, maxEntries: 100, maxBytes: 10_000_000, ...overrides })
+const store = (overrides: { ttlMs?: number; maxEntries?: number; maxBytes?: number } = {}) => createCacheStore({ ttlMs: 60_000, maxEntries: 100, maxBytes: 10_000_000, ...overrides })
 
 /** A context as the route passes it, with the callbacks recorded. */
 function context(app = "default", extra: Partial<CallContext> = {}) {
@@ -39,7 +38,10 @@ describe("hits and misses", () => {
     const second = await collect(cached.stream(plugRequest(), context().ctx))
     expect(fake.calls).toHaveLength(1)
     expect(first.map((event) => event.type)).toEqual(["text-delta", "text-delta", "finish"])
-    expect(second).toEqual([{ type: "text-delta", text: "Hello" }, { type: "finish", reason: "stop", usage: { inputTokens: 0, outputTokens: 0 } }])
+    expect(second).toEqual([
+      { type: "text-delta", text: "Hello" },
+      { type: "finish", reason: "stop", usage: { inputTokens: 0, outputTokens: 0 } },
+    ])
     expect(seen.cache).toEqual(["miss"])
   })
 
@@ -51,7 +53,6 @@ describe("hits and misses", () => {
     expect(order[0]).toBe("cache:miss")
     expect(order.slice(1)).toEqual(["text-delta", "text-delta", "finish"])
   })
-
 })
 
 describe("the key", () => {
@@ -120,7 +121,12 @@ describe("the key", () => {
 
 describe("#278 maxBytes counts the per-entry overhead", () => {
   test("an entry whose JSON is just under maxBytes is rejected, because the 128-byte overhead is added to its size", () => {
-    const entry: Entry = { events: [{ type: "text-delta", text: "x".repeat(1000) }, { type: "finish", reason: "stop" }] }
+    const entry: Entry = {
+      events: [
+        { type: "text-delta", text: "x".repeat(1000) },
+        { type: "finish", reason: "stop" },
+      ],
+    }
     const payload = Buffer.byteLength(JSON.stringify(entry))
     const tight = store({ maxBytes: payload + 100 })
     tight.set("k", entry)
@@ -394,7 +400,11 @@ describe("#154 a hit takes no concurrency slot and no rate window count", () => 
         yield* fake.stream(request, callContext)
       },
     }
-    const cached = cachedCaller(withLimits(gated, () => ({ maxConcurrent: 1 }), createLimitState()), CONFIG, store())
+    const cached = cachedCaller(
+      withLimits(gated, () => ({ maxConcurrent: 1 }), createLimitState()),
+      CONFIG,
+      store(),
+    )
     await collect(cached.stream(plugRequest(), context().ctx))
     const slow = collect(cached.stream(other, context().ctx))
     await until(() => calls === 2, 1_000, "the second miss to take the slot")
@@ -408,7 +418,11 @@ describe("#154 a hit takes no concurrency slot and no rate window count", () => 
 
   test("a rate window counts only misses: repeated hits pass, and the next new prompt is refused", async () => {
     const fake = new FakeModelCaller(answer)
-    const cached = cachedCaller(withLimits(fake, () => ({ perApp: { requestsPerMinute: 1 } }), createLimitState()), CONFIG, store())
+    const cached = cachedCaller(
+      withLimits(fake, () => ({ perApp: { requestsPerMinute: 1 } }), createLimitState()),
+      CONFIG,
+      store(),
+    )
     await collect(cached.stream(plugRequest(), context().ctx))
     for (let i = 0; i < 3; i++) expect((await collect(cached.stream(plugRequest(), context().ctx))).some((event) => event.type === "error")).toBe(false)
     expect(await collect(cached.stream(other, context().ctx))).toEqual([{ type: "error", error: expect.objectContaining({ status: 429, code: "rate_limit_exceeded" }) }])

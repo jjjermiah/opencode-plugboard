@@ -9,7 +9,17 @@ bun install
 bun run typecheck
 ```
 
-Before a pull request, run the whole local chain in one foreground command: typecheck, tests with the coverage gates, the coverage manifest, the package checks, the docs build and the scripted examples.
+Biome formats and lints the code (`biome.jsonc`). CI runs both checks, and the `pre-commit` hook (`bunx lefthook install`) runs them on the staged files:
+
+```sh
+bun run lint            # lint
+bun run format          # check the format
+bun run format:write    # fix the format
+```
+
+`mise.toml` pins Bun and Node to the versions CI uses (`mise install`). The reformat that introduced Biome is in `.git-blame-ignore-revs`.
+
+Before a pull request, run the whole local chain in one foreground command: lint and format check, typecheck, tests with the coverage gates, the coverage manifest, the package checks, the docs build and the scripted examples.
 
 ```sh
 bun run validate                   # about 7 minutes; logs in .agents/validate/<step>.log

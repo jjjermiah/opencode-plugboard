@@ -28,7 +28,11 @@ const flag = (name: string) => {
 }
 const docsPath = join(root, flag("--docs") ?? "docs/live-matrix.md")
 const jsonPath = join(root, flag("--json") ?? "docs/live-matrix.json")
-const models = flag("--models")?.split(",").map((model) => model.trim()).filter(Boolean) ?? LIVE_MODELS
+const models =
+  flag("--models")
+    ?.split(",")
+    .map((model) => model.trim())
+    .filter(Boolean) ?? LIVE_MODELS
 const keepSessions = args.includes("--keep-sessions")
 
 if (!LIVE_KEY) {
@@ -122,7 +126,7 @@ const markdown = [
   "",
   `Totals: ${summary.pass} pass, ${summary.fail} fail, ${summary["n-a"]} n/a, of ${summary.total} cells.`,
   "",
-  "Cells: `pass` (the answer checks out), `**FAIL**` followed by the reason and a snippet of what came back, `n/a` (the endpoint does not carry the scenario; reasons below). Scenarios: `text` (\"reply with exactly: pong\"), `stream` (the same, streamed to its terminator), `tool-call` (the model returns the call unexecuted), `tool-result` (a history with the tool result, one call), `image` (a 16x16 red PNG), `json` (JSON Schema output), `tools-json` (a tool offered together with a JSON Schema).",
+  'Cells: `pass` (the answer checks out), `**FAIL**` followed by the reason and a snippet of what came back, `n/a` (the endpoint does not carry the scenario; reasons below). Scenarios: `text` ("reply with exactly: pong"), `stream` (the same, streamed to its terminator), `tool-call` (the model returns the call unexecuted), `tool-result` (a history with the tool result, one call), `image` (a 16x16 red PNG), `json` (JSON Schema output), `tools-json` (a tool offered together with a JSON Schema).',
   "",
   ...sections,
   "## Not applicable",

@@ -8,7 +8,22 @@ const said = (text: string): PlugRequest => plugRequest({ messages: [{ role: "us
 
 describe("makeTitle", () => {
   test("the first non-blank user text, on one line", () => {
-    expect(makeTitle(plugRequest({ messages: [{ role: "assistant", content: [{ type: "text", text: "earlier" }] }, { role: "user", content: [{ type: "text", text: "   " }, { type: "text", text: "Write\n  a\tpoem" }] }] }))).toBe("Write a poem")
+    expect(
+      makeTitle(
+        plugRequest({
+          messages: [
+            { role: "assistant", content: [{ type: "text", text: "earlier" }] },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "   " },
+                { type: "text", text: "Write\n  a\tpoem" },
+              ],
+            },
+          ],
+        }),
+      ),
+    ).toBe("Write a poem")
   })
 
   test("cut to 60 characters with an ellipsis", () => {
@@ -41,14 +56,38 @@ describe("renderTranscript", () => {
     const request = plugRequest({
       system: ["be brief"],
       messages: [
-        { role: "user", content: [{ type: "text", text: "look" }, { type: "media", url: "data:a" }, { type: "media", url: "data:b" }] },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "look" },
+            { type: "media", url: "data:a" },
+            { type: "media", url: "data:b" },
+          ],
+        },
         { role: "assistant", content: [{ type: "tool-call", id: "c1", name: "lookup", input: { q: 1 } }] },
         { role: "tool", content: [{ type: "tool-result", id: "c1", name: "lookup", result: "42", isError: true }] },
       ],
       tools: [{ name: "lookup", description: "", parameters: {} }],
     })
     expect(renderTranscript(request)).toBe(
-      ["## system", "be brief", "", "## user", "look", "[image 1]", "[image 2]", "", "## assistant", '[tool call lookup (c1)] {"q":1}', "", "## tool", "[tool result lookup (c1) (error)] 42", "", "## tools", "lookup"].join("\n"),
+      [
+        "## system",
+        "be brief",
+        "",
+        "## user",
+        "look",
+        "[image 1]",
+        "[image 2]",
+        "",
+        "## assistant",
+        '[tool call lookup (c1)] {"q":1}',
+        "",
+        "## tool",
+        "[tool result lookup (c1) (error)] 42",
+        "",
+        "## tools",
+        "lookup",
+      ].join("\n"),
     )
   })
 
