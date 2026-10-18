@@ -33,6 +33,11 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      # #114: Biome lint and format check (biome.jsonc). `bun run format:write` fixes a format failure.
+      - name: Lint
+        run: bun run lint
+      - name: Format check
+        run: bun run format
       - name: Typecheck
         run: bun run typecheck
       - name: Test

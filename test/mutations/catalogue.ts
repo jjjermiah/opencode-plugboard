@@ -143,8 +143,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "P390-app-default-stop-dropped",
     invariant: "#390",
     file: "src/openai/sampling.ts",
-    find: "    for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined) out[key] = defaults[key] as never",
-    replace: '    for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined && key !== "stop") out[key] = defaults[key] as never',
+    find: "for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined) out[key] = defaults[key] as never",
+    replace: 'for (const key of Object.keys(defaults) as Array<keyof PlugGeneration>) if (out[key] === undefined && key !== "stop") out[key] = defaults[key] as never',
     tests: ["test/http/per-app-sampling.test.ts", "test/http/stop-sequences.test.ts"],
   },
   {
@@ -679,8 +679,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I15-unknown-route-before-auth",
     invariant: "I15",
     file: "src/openai/route.ts",
-    find: "    const auth = uploadApp !== undefined",
-    replace: `    if (!googleShaped && modelId === undefined && !known(route)) return fail(response, { status: 404, kind: "not_found", code: "not_found", message: "No route" })\n    const auth = uploadApp !== undefined`,
+    find: "    const auth =\n      uploadApp !== undefined",
+    replace: `    if (!googleShaped && modelId === undefined && !known(route)) return fail(response, { status: 404, kind: "not_found", code: "not_found", message: "No route" })\n    const auth =\n      uploadApp !== undefined`,
     tests: ["test/http/ingress.test.ts", "test/http/observability.test.ts"],
   },
   {
@@ -783,8 +783,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I23-yielded-finish-charged-again",
     invariant: "I23",
     file: "src/session/caller.ts",
-    find: "&& finish === undefined && !collector.executionEnded",
-    replace: "&& !collector.executionEnded",
+    find: "finish === undefined &&\n          !collector.executionEnded",
+    replace: "!collector.executionEnded",
     tests: ["test/session/cancel-usage.test.ts"],
   },
   {
@@ -855,8 +855,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I28-read-timeout-never-fires",
     invariant: "I25",
     file: "src/http.ts",
-    find: "        limits.readTimeoutMs,\n      )",
-    replace: "        limits.readTimeoutMs * 100_000,\n      )",
+    find: '"body_read_timeout")), limits.readTimeoutMs)',
+    replace: '"body_read_timeout")), limits.readTimeoutMs * 100_000)',
     tests: ["test/http/transport.test.ts", "test/http/ingress.test.ts"],
   },
   {

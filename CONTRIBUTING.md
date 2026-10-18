@@ -14,12 +14,26 @@ bun run typecheck
 bun test
 ```
 
-The type check also checks host compatibility: it fails when the pinned `@opencode/plugin` changes shape. CI runs the type check and the tests on every push and pull request.
+The type check also checks host compatibility: it fails when the pinned `@opencode/plugin` changes shape. CI runs the lint, the format check, the type check and the tests on every push and pull request.
+
+[mise](https://mise.jdx.dev) users get the CI toolchain (Bun and Node) from `mise.toml` with `mise install`.
+
+### Formatting and linting
+
+[Biome](https://biomejs.dev) formats and lints `src/`, `test/`, `.github/scripts/` and the root TypeScript files; `biome.jsonc` has the settings and a reason for every rule that is off. Generated and vendored files (`test/fixtures/specs/`, `test/types/wire.ts`) and `examples/` are left out.
+
+```sh
+bun run lint            # lint, as CI does
+bun run format          # check the format, as CI does
+bun run format:write    # fix the format
+```
+
+The lefthook `pre-commit` hook checks the staged files (see [Enforcement](#enforcement)). `git blame` skips the one-time reformat through `.git-blame-ignore-revs`; GitHub reads that file by itself, and locally you run `git config blame.ignoreRevsFile .git-blame-ignore-revs` once.
 
 Before you open a pull request, run the whole local chain in one command:
 
 ```sh
-bun run validate              # typecheck, tests + coverage gates, coverage manifest, pack, docs, scripted examples
+bun run validate              # lint + format check, typecheck, tests + coverage gates, coverage manifest, pack, docs, scripted examples
 bun run validate --mutations  # also the mutation run, after touching a guard
 bun run validate --skip examples
 ```
@@ -132,7 +146,7 @@ Fixes #N
 
 `commitlint` (config in `commitlint.config.mjs`) checks the format in two places:
 
-- Locally, a [lefthook](https://lefthook.dev) `commit-msg` hook. Install it once per clone with `bunx lefthook install`. Worktrees share the clone's hooks, but each needs its own `bun install`. Check a draft with `bunx commitlint --edit <file>` or `echo "..." | bunx commitlint`.
+- Locally, a [lefthook](https://lefthook.dev) `commit-msg` hook. The same install adds a `pre-commit` hook that runs `biome check` on the staged files. Install it once per clone with `bunx lefthook install`. Worktrees share the clone's hooks, but each needs its own `bun install`. Check a draft with `bunx commitlint --edit <file>` or `echo "..." | bunx commitlint`.
 - In CI, the "Commits" workflow lints every commit in a push or pull request. Commits up to `a54a703` (Release 0.11.0, the last one before the convention) are never checked.
 
 There is no `prepare` script on purpose. npm runs `prepare` on `npm publish`, and the publish job installs no dev dependencies, so the hook would break the release.
@@ -155,7 +169,7 @@ Prose in the README, docs, issues and changelog is plain and short. No em or en 
 
 - One change per pull request, with the issue linked.
 - Every commit passes `commitlint` and has a detailed body (see [Commits](#commits)).
-- `bun run typecheck` and `bun test` pass.
+- `bun run lint`, `bun run format`, `bun run typecheck` and `bun test` pass.
 - The pong gate passed on an isolated server, if you touched `src/` or `index.ts`.
 - `[Unreleased]` in the changelog is updated.
 - `main` is protected. Nothing is pushed to it directly: push your branch, open the pull request, and merge it once the required checks pass: `CI passed` (one aggregate check that needs every CI job, so a red job anywhere blocks the merge), `Lint commit messages` and `Analyze (javascript-typescript)`. No approving review is required, so a maintainer can merge their own pull request.

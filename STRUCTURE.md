@@ -14,6 +14,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `.github/floors/` | Ratcheting CI floors: tests per layer and coverage. Raised with `.github/scripts/test-gates.ts --ratchet`. |
 | `.github/` | CI, release scripts, the pack check, the test gates and the compatibility matrix renderer. Not published. |
 | `CONTRIBUTING.md`, `AGENTS.md` | Rules for people and for coding agents. |
+| `biome.jsonc`, `lefthook.yml`, `mise.toml`, `.git-blame-ignore-revs` | Tooling: Biome format and lint settings, the git hooks (Biome on staged files, commitlint), the Bun and Node pin CI uses, and the commits `git blame` skips. `.github/CODEOWNERS` names the owner. |
 
 ## `src/` top-level files
 
