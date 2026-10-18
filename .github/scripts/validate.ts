@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // The local validation chain in one foreground command, with a short summary at the end.
 //
-//   bun run validate                  typecheck, tests + coverage gates (ratchet), manifest, pack, docs, scripted examples
+//   bun run validate                  lint and format check, typecheck, tests + coverage gates (ratchet), manifest, pack, docs, scripted examples
 //   bun run validate --mutations      the same, then the mutation run
 //   bun run validate --only test,docs run only the named steps
 //   bun run validate --skip examples  leave out the named steps (examples is the slow one, about 6 minutes)
@@ -20,6 +20,7 @@ interface Step {
 }
 
 const STEPS: readonly Step[] = [
+  { name: "lint", cmd: "bun run lint && bun run format" },
   { name: "typecheck", cmd: "bun run typecheck" },
   {
     name: "test",
@@ -38,16 +39,16 @@ const TAIL_LINES = 30
 
 const args = process.argv.slice(2)
 const flag = (name: string) => args.includes(name)
-const valueOf = (name: string) => {
+const flagValue = (name: string) => {
   const i = args.indexOf(name)
   return i >= 0 ? args[i + 1] : undefined
 }
 
 const known = new Set(STEPS.map((step) => step.name))
-const only = valueOf("--only")?.split(",").map((name) => name.trim()).filter(Boolean)
+const only = flagValue("--only")?.split(",").map((name) => name.trim()).filter(Boolean)
 for (const name of only ?? []) if (!known.has(name)) throw new Error(`unknown step "${name}"; steps: ${[...known].join(", ")}`)
 
-const skip = valueOf("--skip")?.split(",").map((name) => name.trim()).filter(Boolean) ?? []
+const skip = flagValue("--skip")?.split(",").map((name) => name.trim()).filter(Boolean) ?? []
 for (const name of skip) if (!known.has(name)) throw new Error(`unknown step "${name}"; steps: ${[...known].join(", ")}`)
 
 const selected = STEPS.filter(

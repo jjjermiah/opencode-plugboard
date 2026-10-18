@@ -47,7 +47,7 @@ describe("since-next: CI check", () => {
 
   test("a placeholder in a released section is reported with its line", () => {
     const text = changelog("- Added a thing (since next).", "- Released (since next).")
-    expect(placeholdersInReleased(text)).toEqual([text.split("\n").findIndex((line) => line === "- Released (since next).") + 1])
+    expect(placeholdersInReleased(text)).toEqual([text.split("\n").indexOf("- Released (since next).") + 1])
   })
 
   test("a placeholder in code inside a released section is not reported", () => {

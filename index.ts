@@ -45,7 +45,7 @@ export default Plugin.define({
   id: "opencode-plugboard",
   effect: (ctx) =>
     Effect.gen(function* () {
-      let options
+      let options: ReturnType<typeof parseOptions>
       try {
         options = parseOptions(ctx.options)
       } catch (error) {

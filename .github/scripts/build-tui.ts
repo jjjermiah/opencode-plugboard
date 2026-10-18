@@ -26,7 +26,7 @@ const relativeToSrc = () => ({
   visitor: {
     "ImportDeclaration|ExportNamedDeclaration|ExportAllDeclaration"(path: { node: { source?: { value: string } } }) {
       const node = path.node.source
-      if (node && node.value.startsWith("./")) node.value = `../src/${node.value.slice(2)}`
+      if (node?.value.startsWith("./")) node.value = `../src/${node.value.slice(2)}`
     },
   },
 })

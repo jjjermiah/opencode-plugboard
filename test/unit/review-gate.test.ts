@@ -323,7 +323,7 @@ describe("review gate: the HTTP adapters", () => {
   test("the GitHub diff call asks for the diff media type and maps 406 to too-large", async () => {
     const accepts: string[] = []
     const api = githubApi("tok", REPO, async (_url, init) => {
-      accepts.push((init?.headers as Record<string, string>).Accept ?? "")
+      accepts.push((init?.headers as Record<string, string> | undefined)?.Accept ?? "")
       return accepts.length === 1 ? new Response("diff --git", { status: 200 }) : new Response("too big", { status: 406 })
     })
     expect(await api.diff(7)).toEqual({ kind: "ok", text: "diff --git" })

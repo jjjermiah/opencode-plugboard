@@ -280,7 +280,7 @@ const parseOutputFormat = (body: JsonObject): PlugTool | undefined | PlugError =
   if (!isRecord(config) || config.format == null) return undefined
   const format = config.format
   if (!isRecord(format)) return bad("output_config.format: must be an object")
-  if (format.type !== "json_schema") return bad(`output_config.format.type: \"${show(format.type)}\" is not supported (use \"json_schema\")`)
+  if (format.type !== "json_schema") return bad(`output_config.format.type: "${show(format.type)}" is not supported (use "json_schema")`)
   if (!isRecord(format.schema)) return bad("output_config.format.schema: Field required (a JSON Schema object)")
   return {
     name: RESPOND_TOOL,

@@ -4,7 +4,7 @@
  * deadline and disconnects (#32), and the plugboard response headers.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import { RequestAborted } from "../../src/http.js"
+import type { RequestAborted } from "../../src/http.js"
 import { CATALOG, ev, gate, until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { sseData, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"

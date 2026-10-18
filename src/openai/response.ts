@@ -237,7 +237,7 @@ const structured = {
 
 const isObjectValue = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
-const hasOwn = (value: Record<string, unknown>, key: string) => Object.prototype.hasOwnProperty.call(value, key)
+const hasOwn = (value: Record<string, unknown>, key: string) => Object.hasOwn(value, key)
 
 /** Whether a parsed JSON value has one JSON Schema type (`integer` is a whole number; an unknown type matches anything). */
 const hasType = (value: unknown, type: unknown): boolean => {

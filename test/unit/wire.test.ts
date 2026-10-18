@@ -26,6 +26,7 @@ const pairs: Array<[keyof typeof wire, unknown]> = [
 
 describe("#132 encoder output matches the SDK-typed goldens", () => {
   test.each(pairs)("%s", (name, actual) => {
+    // biome-ignore lint/performance/noDynamicNamespaceImportAccess: the golden is picked by name from the table above
     expect(actual).toEqual(wire[name])
   })
 
