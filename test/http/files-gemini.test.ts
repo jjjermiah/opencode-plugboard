@@ -74,6 +74,13 @@ describe("resumable upload (what @google/genai and google-genai send)", () => {
     expect((await server.send({ path: `/v1beta/${file.name}`, headers: as("alpha") })).status).toBe(404)
   })
 
+  test("the Python SDK's snake_case metadata names the file too", async () => {
+    const { server } = await route()
+    const path = target(await server.send(start("alpha", { file: { display_name: "snake.png", mime_type: "image/png", size_bytes: PNG.length } })))
+    const done = await server.send(chunk("alpha", path, "upload, finalize", 0, PNG))
+    expect(done.json().file).toMatchObject({ displayName: "snake.png", mimeType: "image/png" })
+  })
+
   test("a chunked upload: `active` after each chunk, the offset must match, and the file is made on finalize", async () => {
     const { server } = await route()
     const started = await server.send(start("alpha", {}, { "x-goog-upload-header-content-type": "image/png", "x-goog-upload-file-name": "p.png" }))
@@ -90,6 +97,23 @@ describe("resumable upload (what @google/genai and google-genai send)", () => {
     expect(last.json().file).toMatchObject({ displayName: "p.png", mimeType: "image/png", sizeBytes: String(PNG.length) })
     // A finished upload id is gone.
     expect((await server.send(chunk("alpha", path, "upload", 0, PNG))).status).toBe(404)
+  })
+
+  test("the upload url is the credential of its chunks, as Google's is (google-genai sends them with no key): the file is the starting app's", async () => {
+    const { server } = await route()
+    const path = target(await server.send(start("alpha", {}, { "x-goog-upload-header-content-type": "image/png" })))
+    const keyless = (init: SendInit): SendInit => ({ ...init, headers: Object.fromEntries(Object.entries(init.headers ?? {}).filter(([name]) => name !== "x-goog-api-key")) })
+    // An unknown id with no key is the 401 every other route gives, and a start with no key is one too.
+    expect((await server.send(keyless(chunk("alpha", `/upload/v1beta/files?upload_id=${"0".repeat(32)}`, "upload, finalize", 0, PNG)))).status).toBe(401)
+    expect((await server.send(keyless(start("alpha")))).status).toBe(401)
+    // A wrong key is not rescued by the id.
+    const wrong = chunk("alpha", path, "upload, finalize", 0, PNG)
+    expect((await server.send({ ...wrong, headers: { ...wrong.headers, "x-goog-api-key": "nope" } })).status).toBe(401)
+    const done = await server.send(keyless(chunk("alpha", path, "upload, finalize", 0, PNG)))
+    expect(done.status).toBe(200)
+    const name = done.json().file.name
+    expect((await server.send({ path: `/v1beta/${name}`, headers: as("alpha") })).status).toBe(200)
+    expect((await server.send({ path: `/v1beta/${name}`, headers: as("beta") })).status).toBe(404)
   })
 
   test("cancel drops the upload; another app's upload id is the same 404 as an unknown one", async () => {

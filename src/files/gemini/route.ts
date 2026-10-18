@@ -70,6 +70,17 @@ const SESSION_TTL_MS = 10 * 60 * 1000
 const SESSION_ID = /^[0-9a-f]{32}$/
 const CHUNK_GRANULARITY = 8 * 1024 * 1024
 
+/**
+ * The app that started the live resumable upload `id` names, or undefined for an unknown, malformed or expired id. The upload
+ * url is a capability, as Google's is: google-genai (Python) sends its chunks without a key, so the unguessable id (122 random
+ * bits, one app, 10 minutes) stands for the key of the request that started it. `src/openai/route.ts` uses this only for a
+ * chunk request that carries no key at all.
+ */
+export function uploadSessionApp(id: string | null): string | undefined {
+  const session = id !== null && SESSION_ID.test(id) ? sessions().get(id) : undefined
+  return session !== undefined && session.startedAt >= Date.now() - SESSION_TTL_MS ? session.app : undefined
+}
+
 function sweepSessions(): void {
   const cutoff = Date.now() - SESSION_TTL_MS
   for (const [id, session] of sessions()) if (session.startedAt < cutoff) sessions().delete(id)
@@ -118,11 +129,13 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
       const mine = [...sessions().values()].filter((session) => session.app === app).length
       if (mine >= MAX_SESSIONS_PER_APP) return fail({ status: 429, kind: "rate_limit", code: "too_many_uploads", message: "Too many unfinished uploads; finish or wait for them to expire", retryAfterSeconds: 30 })
       const id = crypto.randomUUID().replaceAll("-", "")
-      const displayName = typeof file.displayName === "string" ? file.displayName : (header(request, "x-goog-upload-file-name") ?? undefined)
+      // Google's JSON is camelCase, and the Python SDK sends snake_case (`display_name`).
+      const named = file.displayName ?? file.display_name
+      const displayName = typeof named === "string" ? named : (header(request, "x-goog-upload-file-name") ?? undefined)
       sessions().set(id, {
         app,
         filename: cleanFilename(displayName),
-        declaredType: header(request, "x-goog-upload-header-content-type") ?? (typeof file.mimeType === "string" ? file.mimeType : undefined),
+        declaredType: header(request, "x-goog-upload-header-content-type") ?? (typeof (file.mimeType ?? file.mime_type) === "string" ? (file.mimeType ?? file.mime_type) as string : undefined),
         startedAt: Date.now(),
         chunks: [],
         received: 0,
@@ -180,7 +193,7 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
     const parsed = parseRelated(request.headers["content-type"], body)
     if (isPlugError(parsed)) return fail(parsed)
     const meta = typeof parsed.metadata === "object" && parsed.metadata !== null ? ((parsed.metadata as { file?: unknown }).file ?? parsed.metadata) : {}
-    const displayName = typeof meta === "object" && meta !== null ? (meta as { displayName?: unknown }).displayName : undefined
+    const displayName = typeof meta === "object" && meta !== null ? ((meta as { displayName?: unknown }).displayName ?? (meta as { display_name?: unknown }).display_name) : undefined
     const stored = await finish({ bytes: parsed.bytes, declaredType: parsed.declaredType, filename: cleanFilename(typeof displayName === "string" ? displayName : undefined) })
     if (isPlugError(stored)) return fail(stored)
     return sendJson(response, 200, { file: encode(stored) })

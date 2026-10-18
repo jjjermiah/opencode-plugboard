@@ -64,7 +64,7 @@ import { serveCompletions } from "../completions/route.js"
 import { matchStoredRoute, serveResponses, serveStoredResponse } from "../responses/route.js"
 import type { ResponseStore } from "../responses/state.js"
 import { inlineRequestFiles, isFilesPath, matchFilesRoute, serveFiles } from "../files/route.js"
-import { matchGeminiFilesRoute, serveGeminiFiles } from "../files/gemini/route.js"
+import { matchGeminiFilesRoute, serveGeminiFiles, uploadSessionApp } from "../files/gemini/route.js"
 import type { FileStore } from "../files/state.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import { budgetFor, budgetStatus } from "../budgets.js"
@@ -350,9 +350,14 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but the probes and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
-    const auth = isKeyAnywhere(request.method, path)
-      ? await authenticateRequest(host, request)
-      : authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
+    // A resumable Gemini upload chunk with no key at all is authorized by its upload id (a capability url, as Google's is: google-genai sends
+    // no key on the chunks). An unknown id falls through to the usual check, which is a 401 (I15).
+    const uploadApp = geminiFiles?.op === "upload" && geminiAuthorization(request, url) === undefined ? uploadSessionApp(url.searchParams.get("upload_id")) : undefined
+    const auth = uploadApp !== undefined
+      ? { app: uploadApp }
+      : isKeyAnywhere(request.method, path)
+        ? await authenticateRequest(host, request)
+        : authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
 
