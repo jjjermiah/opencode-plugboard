@@ -1,13 +1,14 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$source": "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml",
- "$retrieved": "2026-10-11",
+ "$retrieved": "2026-10-17",
  "roots": [
   "CreateChatCompletionResponse",
   "CreateChatCompletionStreamResponse",
   "CreateCompletionResponse",
   "ListModelsResponse",
-  "Response"
+  "Response",
+  "ResponseItemList"
  ],
  "$defs": {
   "CreateChatCompletionResponse": {
@@ -1585,6 +1586,39 @@
       "gpt-3.5-turbo-16k-0613"
      ],
      "x-openai-enum-deprecations": {
+      "gpt-5.4-nano": {
+       "message": "Announced shutdown date: 2027-04-01. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-5.1": {
+       "message": "Announced shutdown date: 2027-04-01. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4.1-2025-04-14": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4.1": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4.1-mini": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4.1-mini-2025-04-14": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4o": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4o-2024-08-06": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4o-2024-11-20": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4o-mini": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
+      "gpt-4o-mini-2024-07-18": {
+       "message": "Announced shutdown date: 2027-01-14. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
+      },
       "gpt-5.3-chat-latest": {
        "message": "Announced shutdown date: 2026-08-10. See https://developers.openai.com/api/docs/deprecations for details and recommended replacements."
       },
@@ -3956,6 +3990,26 @@
     {
      "type": "object",
      "properties": {
+      "type": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "param": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
       "code": {
        "$ref": "#/$defs/ResponseErrorCode"
       },
@@ -4959,8 +5013,15 @@
      "x-stainless-const": true
     },
     "url": {
-     "type": "string",
-     "format": "uri"
+     "anyOf": [
+      {
+       "type": "string",
+       "format": "uri"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "pattern": {
      "type": "string"
@@ -4968,7 +5029,6 @@
    },
    "required": [
     "type",
-    "url",
     "pattern"
    ]
   },
@@ -5843,6 +5903,9 @@
       }
      ]
     },
+    "error": {
+     "$ref": "#/$defs/ImageGenToolCallError"
+    },
     "size": {
      "anyOf": [
       {
@@ -5933,6 +5996,69 @@
     "id",
     "status",
     "result"
+   ]
+  },
+  "ImageGenToolCallError": {
+   "properties": {
+    "code": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "type": "string"
+    },
+    "message": {
+     "type": "string"
+    },
+    "param": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "moderation_details": {
+     "$ref": "#/$defs/ImageGenToolCallModerationDetails"
+    }
+   },
+   "type": "object",
+   "required": [
+    "code",
+    "type",
+    "message",
+    "param"
+   ]
+  },
+  "ImageGenToolCallModerationDetails": {
+   "properties": {
+    "moderation_stage": {
+     "type": "string",
+     "enum": [
+      "input",
+      "output",
+      "unknown"
+     ]
+    },
+    "categories": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object",
+   "required": [
+    "moderation_stage",
+    "categories"
    ]
   },
   "ImageBackground": {
@@ -9054,6 +9180,234 @@
    "type": "object",
    "required": [
     "id"
+   ]
+  },
+  "ResponseItemList": {
+   "type": "object",
+   "properties": {
+    "object": {
+     "type": "string",
+     "enum": [
+      "list"
+     ],
+     "x-stainless-const": true
+    },
+    "data": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ItemResource"
+     }
+    },
+    "has_more": {
+     "type": "boolean"
+    },
+    "first_id": {
+     "type": "string"
+    },
+    "last_id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "object",
+    "data",
+    "has_more",
+    "first_id",
+    "last_id"
+   ]
+  },
+  "ItemResource": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/InputMessageResource"
+    },
+    {
+     "$ref": "#/$defs/OutputMessage"
+    },
+    {
+     "$ref": "#/$defs/FileSearchToolCall"
+    },
+    {
+     "$ref": "#/$defs/ComputerToolCall"
+    },
+    {
+     "$ref": "#/$defs/ComputerToolCallOutputResource"
+    },
+    {
+     "$ref": "#/$defs/WebSearchToolCall"
+    },
+    {
+     "$ref": "#/$defs/FunctionToolCallResource"
+    },
+    {
+     "$ref": "#/$defs/FunctionToolCallOutputResource"
+    },
+    {
+     "$ref": "#/$defs/ToolSearchCall"
+    },
+    {
+     "$ref": "#/$defs/ToolSearchOutput"
+    },
+    {
+     "$ref": "#/$defs/AdditionalTools"
+    },
+    {
+     "$ref": "#/$defs/ResponseConfigurationUpdate"
+    },
+    {
+     "$ref": "#/$defs/ReasoningItem"
+    },
+    {
+     "$ref": "#/$defs/Program"
+    },
+    {
+     "$ref": "#/$defs/ProgramOutput"
+    },
+    {
+     "$ref": "#/$defs/CompactionBody"
+    },
+    {
+     "$ref": "#/$defs/ImageGenToolCall"
+    },
+    {
+     "$ref": "#/$defs/CodeInterpreterToolCall"
+    },
+    {
+     "$ref": "#/$defs/LocalShellToolCall"
+    },
+    {
+     "$ref": "#/$defs/LocalShellToolCallOutput"
+    },
+    {
+     "$ref": "#/$defs/FunctionShellCall"
+    },
+    {
+     "$ref": "#/$defs/FunctionShellCallOutput"
+    },
+    {
+     "$ref": "#/$defs/ApplyPatchToolCall"
+    },
+    {
+     "$ref": "#/$defs/ApplyPatchToolCallOutput"
+    },
+    {
+     "$ref": "#/$defs/MCPListTools"
+    },
+    {
+     "$ref": "#/$defs/MCPApprovalRequest"
+    },
+    {
+     "$ref": "#/$defs/MCPApprovalResponseResource"
+    },
+    {
+     "$ref": "#/$defs/MCPToolCall"
+    },
+    {
+     "$ref": "#/$defs/CustomToolCallResource"
+    },
+    {
+     "$ref": "#/$defs/CustomToolCallOutputResource"
+    }
+   ],
+   "discriminator": {
+    "propertyName": "type"
+   }
+  },
+  "InputMessageResource": {
+   "allOf": [
+    {
+     "$ref": "#/$defs/InputMessage"
+    },
+    {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "type"
+     ]
+    }
+   ]
+  },
+  "FunctionToolCallResource": {
+   "allOf": [
+    {
+     "$ref": "#/$defs/FunctionToolCall"
+    },
+    {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "string"
+      },
+      "status": {
+       "$ref": "#/$defs/FunctionCallStatus"
+      },
+      "created_by": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "status"
+     ]
+    }
+   ]
+  },
+  "ResponseConfigurationUpdate": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "type": {
+     "type": "string",
+     "enum": [
+      "configuration_update"
+     ],
+     "default": "configuration_update",
+     "x-stainless-const": true
+    },
+    "reasoning": {
+     "type": "object",
+     "properties": {
+      "effort": {
+       "$ref": "#/$defs/ReasoningEffort"
+      }
+     }
+    }
+   },
+   "required": [
+    "id",
+    "type"
+   ]
+  },
+  "CustomToolCallResource": {
+   "allOf": [
+    {
+     "$ref": "#/$defs/CustomToolCall"
+    },
+    {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "string"
+      },
+      "status": {
+       "$ref": "#/$defs/FunctionCallStatus"
+      },
+      "created_by": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "status"
+     ]
+    }
    ]
   }
  }

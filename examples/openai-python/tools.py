@@ -60,7 +60,7 @@ def run_responses(client, model):
 
 
 def run_responses_previous_id(client, model):
-    """The same round trip with previous_response_id in place of the replayed history. Plugboard is stateless and refuses it."""
+    """The same round trip with previous_response_id in place of the replayed history. Plugboard keeps the first answer (store is on by default) and continues from it."""
     first = client.responses.create(model=model, input=PROMPT, tools=[RESPONSES_TOOL], max_output_tokens=1024)
     call = next(item for item in first.output if item.type == "function_call")
     second = client.responses.create(

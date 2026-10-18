@@ -31,7 +31,7 @@ Plugboard returns the tool calls to the app and never runs them. The app execute
 
 - The model must be on the `models` allowlist. With no `models`, chat calls return 403 `no_models_configured`.
 - Ids can contain `/` and `#`, which some UIs mishandle in URLs or dropdowns. Define an alias in `aliases` for those.
-- Chat Completions, the Responses API (stateless, see [responses.md](../responses.md)) and the model list exist. Embeddings and audio fail. Images work as `data:` URLs; plain `http(s)` image URLs are fetched by the server only when the `remoteImages` option allows it.
+- Chat Completions, the Responses API (with `previous_response_id`, see [responses.md](../responses.md)) and the model list exist. Embeddings and audio fail. Images work as `data:` URLs; plain `http(s)` image URLs are fetched by the server only when the `remoteImages` option allows it.
 - After an OpenCode restart the port stays closed until a client touches the server. See [Warm-up](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/warm-up.md).
 - From another host or a container, `localhost` is not plugboard. See the next section.
 

@@ -138,6 +138,21 @@ export const ROWS: readonly Row[] = [
     at(HTTP + "policy.test.ts", "/v1/models/{id}: a model outside the scope is the 404 model_not_found, inside it is served"),
   ),
   read(
+    "GET /v1/responses/{id}",
+    at(HTTP + "responses-stored.test.ts", "GET returns the stored response object exactly as the caller got it"),
+    at(HTTP + "responses-stored.test.ts", "I32 another app reads, lists and deletes nothing of mine: every route is a 404 and the response survives"),
+  ),
+  read(
+    "DELETE /v1/responses/{id}",
+    at(HTTP + "responses-stored.test.ts", "DELETE returns the deleted object, then every id route is a 404"),
+    at(HTTP + "responses-stored.test.ts", "I32 another app reads, lists and deletes nothing of mine: every route is a 404 and the response survives"),
+  ),
+  read(
+    "GET /v1/responses/{id}/input_items",
+    at(HTTP + "responses-stored.test.ts", "lists every input the model saw, newest first by default, as OpenAI's list object"),
+    at(HTTP + "responses-stored.test.ts", "a limit outside 1 to 100, a bad order and an unknown cursor are 400s that name the parameter"),
+  ),
+  read(
     "GET /plugboard/status",
     at(HTTP + "policy.test.ts", "the setup page and /plugboard/status count only the caller's models"),
     at(HTTP + "observability.test.ts", "without a key, %s is a 401, so the surface cannot be mapped"),

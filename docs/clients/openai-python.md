@@ -40,7 +40,7 @@ The snippet uses `client`, `model`, `messages` (a list holding the user prompt),
 
 ## Responses API
 
-The same scenarios on `client.responses` (`/v1/responses`), as the `responses` variant of the example. Plugboard is stateless, so every turn sends the whole conversation in `input`. The `responses` rows of the example are in [`runs/live/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-python/runs/live); the one refused path is `previous_response_id` (see Gotchas).
+The same scenarios on `client.responses` (`/v1/responses`), as the `responses` variant of the example. Each turn can send the whole conversation in `input`, or continue a stored answer with `previous_response_id` (since 0.51.0, see Gotchas). The `responses` rows of the example are in [`runs/live/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-python/runs/live).
 
 Text. The snippet uses `client` and `model`.
 
@@ -68,4 +68,4 @@ The Responses API has no `finish_reason`. The example maps it from the response:
 
 Gotchas (Responses):
 
-- `previous_response_id` is refused with a 400 `unsupported_parameter`. Plugboard is stateless: send the full `input`. This is a gap in the example, see [Responses API](../responses.md).
+- `previous_response_id` works since 0.51.0: plugboard keeps each answer made with `store` on, per app, and `client.responses.retrieve`, `input_items.list` and `delete` work on it. Before 0.51.0 it was refused with a 400 `unsupported_parameter`, and the recorded live run still shows that. See [Responses API](../responses.md#stored-responses-since-0-51-0).

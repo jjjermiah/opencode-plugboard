@@ -151,6 +151,20 @@ describe("#107 OpenAI responses conform to the vendored OpenAPI schemas", () => 
     expectConforms("openai", "Response", reply.json(), RESPONSE_GAPS)
   })
 
+  test("stored Responses: a chained Response, its GET copy and its input_items list conform, and DELETE has the deleted shape", async () => {
+    const first = await server.send(json("/v1/responses", { model: "fast", input: tag("text") }))
+    const second = await server.send(json("/v1/responses", { model: "fast", input: tag("text"), previous_response_id: first.json().id }))
+    expect(second.json().previous_response_id).toBe(first.json().id)
+    expectConforms("openai", "Response", second.json(), RESPONSE_GAPS)
+    const fetched = await server.send({ method: "GET", path: `/v1/responses/${second.json().id}`, headers: auth })
+    expectConforms("openai", "Response", fetched.json(), RESPONSE_GAPS)
+    const list = await server.send({ method: "GET", path: `/v1/responses/${second.json().id}/input_items?order=asc`, headers: auth })
+    expect(list.json().data).toHaveLength(3)
+    expectConforms("openai", "ResponseItemList", list.json())
+    const deleted = await server.send({ method: "DELETE", path: `/v1/responses/${second.json().id}`, headers: auth })
+    expect(deleted.json()).toEqual({ id: second.json().id, object: "response.deleted", deleted: true })
+  })
+
   test("#289 a function tool echoed on a Response carries strict: false when the caller omitted it", async () => {
     const reply = await server.send(json("/v1/responses", { model: "fast", input: tag("text"), tools: [{ type: "function", name: "weather", parameters: { type: "object", properties: {} } }] }))
     expect(reply.status).toBe(200)
