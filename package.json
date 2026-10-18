@@ -29,6 +29,7 @@
     "test": "bun test",
     "validate": "bun .github/scripts/validate.ts",
     "pr-wait": "bun .github/scripts/pr-wait.ts",
+    "regen": "bun .github/scripts/regen.ts",
     "bench": "bun test/bench/request.bench.ts",
     "mutations": "bun .github/scripts/mutation-check.ts",
     "flake-hunt": "bun .github/scripts/flake-hunt.ts",

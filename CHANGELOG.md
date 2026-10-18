@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Docs
+
+- Contributor tooling for parallel branches, no change for users. `CHANGELOG.md` merges with git's union driver, so two branches that add bullets under `[Unreleased]` no longer conflict in a local merge (GitHub's web merge ignores the attribute). `bun run regen` rebuilds `docs/compatibility.md`, the `examples/README.md` table and the test-count floors after a merge. A new option's version marker is written as the placeholder `(since next)`, which the release script replaces with the released version, and CI fails when one is left in a released changelog section. The scripted Gemini CLI and Aider examples no longer share a temp directory and `~/.aider` with a run in another worktree, which could break two `bun run validate` runs at the same time.
 
 ## [0.51.0] - 2026-10-17: Responses Remember
 

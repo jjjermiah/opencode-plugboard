@@ -60,6 +60,9 @@ jobs:
         run: bun .github/scripts/check-pack.ts
       - name: Smoke-test the packed tarball
         run: bun .github/scripts/smoke-pack.ts
+      # The `(since next)` placeholder is replaced at release time (docs/releasing.md): none may sit in a released CHANGELOG section.
+      - name: No since-next placeholder in a released section
+        run: bun .github/scripts/since-next.ts --check
       # #167: docs.yml builds the site only on push to main, so a broken link or VitePress error shows here on the pull request.
       - name: Build the docs site
         run: bun run docs:build

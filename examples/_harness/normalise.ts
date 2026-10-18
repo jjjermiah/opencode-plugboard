@@ -96,10 +96,11 @@ const SESSION_FIELDS: ReadonlyArray<readonly [RegExp, string]> = [
 ]
 
 /**
- * The CLI's fixed home and workspace (examples/gemini-cli/cli.ts) under the machine's temp dir. The CLI repeats the home path
- * in its system prompt (memory-file locations), outside the session context, so this rule covers the whole request text.
+ * The CLI's home and workspace (examples/gemini-cli/cli.ts) under the machine's temp dir, each named with the runner's pid so
+ * concurrent runs do not share them. The CLI repeats the home path in its system prompt (memory-file locations), outside the
+ * session context, so this rule covers the whole request text. A name without the pid (an older run) matches too.
  */
-const CLI_PATHS = /(?:\/[^\s"'`]*)?\/plugboard-gemini-cli-(home|workspace)/g
+const CLI_PATHS = /(?:\/[^\s"'`]*)?\/plugboard-gemini-cli-(home|workspace)(?:-\d+)?/g
 /** The checkout prefix of the CLI's own install path (its built-in skills are listed by absolute path). Only that prefix changes. */
 const CLI_INSTALL = /(?:\/[^\s"'`<>]*)?\/examples\/gemini-cli\//g
 
