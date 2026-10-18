@@ -18,6 +18,22 @@ The release script writes the full story into `CHANGELOG.md` as a collapsed `<de
 
 The script refuses when the working tree is dirty, the branch is not `main`, local `main` differs from `origin/main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, the tag or the branch `release/v0.3.0` already exists, or `--title` is missing or invalid. It moves the `[Unreleased]` text under `## [0.3.0] - <today>: Your Title`, appends the commit-level detail block, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json` and commits `chore(release): 0.3.0` on `release/v0.3.0`. The annotated tag `v0.3.0` is made on the merge commit, not on the release branch. Without `--push` the script refuses, because a release now always goes through a pull request; use `--dry-run` to preview.
 
+### Version markers: the `(since next)` placeholder
+
+A change that adds an option or behavior says which release has it: `(since 0.50.0)`. Parallel lanes cannot know that version, and when every lane guessed the next minor, a release later someone rewrote the markers by hand. So a lane writes the placeholder `(since next)`, and `Since next` where a sentence starts, in `CHANGELOG.md` and in `docs/**/*.md`:
+
+```md
+- `historyUrl` sets the link in the dashboard (since next).
+Since next, the default is on.
+```
+
+The release script replaces both forms with the version being released. It does this in the release commit, before the pull request: in the `[Unreleased]` notes that move under the version heading, and in every `docs/**/*.md` file. The pull request, the release notes and the commit therefore only ever show the real number. `--dry-run` shows the doc rewrites in its diff.
+
+- Text inside backticks or a fenced block is left alone, so a doc can show the placeholder, as this section does. A line that must stay as the placeholder after release goes in code.
+- `Since next` counts only at the start of a line, a bullet or a sentence. "Since next week" in the middle of a sentence is prose.
+- CI fails (`bun .github/scripts/since-next.ts --check`, also in `bun run validate`) when a placeholder sits in a released `CHANGELOG.md` section. That happens when a lane merges after the release with a placeholder it wrote before it: write the real version there. A placeholder in `docs/` after a release is not checked; it becomes the next release's version, which is right when the change ships in it.
+- The placeholder is not replaced in `README.md`, `CONTRIBUTING.md` or source comments. Write a real version there (the next minor), as before.
+
 ### The release rule
 
 - A release is cut only from a fully green `main`. `--push` refuses before it commits anything unless the newest CI run on `origin/main`'s commit has completed and passed. A run that is still queued or in progress is waited for in the foreground, up to 40 minutes, then judged the same way. A commit with no run listed yet gets two minutes for one. A failing `gh` call is retried: three consecutive failures stop the release.

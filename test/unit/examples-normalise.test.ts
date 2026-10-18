@@ -157,6 +157,11 @@ describe("Gemini CLI session context", () => {
     expect(normaliseSessionContext(prompt)).toBe("Memory at (<gemini-cli-home>/.gemini/GEMINI.md) and <gemini-cli-workspace>/x")
   })
 
+  test("the pid in the home and workspace names does not reach the text", () => {
+    const prompt = "Memory at (/var/folders/xn/T/plugboard-gemini-cli-home-48213/.gemini/GEMINI.md) and /tmp/plugboard-gemini-cli-workspace-7/x"
+    expect(normaliseSessionContext(prompt)).toBe(normaliseSessionContext("Memory at (/var/folders/xn/T/plugboard-gemini-cli-home/.gemini/GEMINI.md) and /tmp/plugboard-gemini-cli-workspace/x"))
+  })
+
   test("replaces only the checkout prefix of the CLI's install path, so a local and a CI checkout give the same text", () => {
     const local = "<location>/Users/a/work/opencode-plugboard/examples/gemini-cli/node_modules/@google/gemini-cli/bundle/builtin/skill-creator/SKILL.md</location>"
     const ci = "<location>/home/runner/work/opencode-plugboard/opencode-plugboard/examples/gemini-cli/node_modules/@google/gemini-cli/bundle/builtin/skill-creator/SKILL.md</location>"

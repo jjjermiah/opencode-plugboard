@@ -10,6 +10,9 @@
 // Every release needs a title: 2 to 5 words, at most 40 characters, no trailing
 // period. It lands in the heading (`## [0.3.0] - <date>: Title`) and names the GitHub release.
 //
+// The release commit also replaces the `(since next)` placeholder (and `Since next` at a sentence start) with the version,
+// in the [Unreleased] notes and in docs/**/*.md (since-next.ts). CI refuses a placeholder in a released section.
+//
 // main is protected (a ruleset requires a pull request and the CI checks), so the script never
 // commits to main or pushes it. --push does this, from a clean main that equals origin/main and whose
 // newest CI run passed, waited for while it runs (docs/releasing.md):
@@ -36,6 +39,7 @@ import { join } from "node:path"
 import semver from "semver"
 import { changelogBlock, collectCommits } from "./commit-detail.ts"
 import { approvalState, mergeRules, type GhReview } from "./merge-gate.ts"
+import { replaceSinceNext } from "./since-next.ts"
 
 const PLACEHOLDER = "Nothing yet."
 
@@ -486,8 +490,16 @@ const unreleasedAt = lines.findIndex((l) => l.startsWith("## [Unreleased]"))
 if (unreleasedAt < 0) fail('CHANGELOG.md has no "## [Unreleased]" heading')
 let sectionEnd = lines.findIndex((l, i) => i > unreleasedAt && /^(## \[|\[[^\]]+\]: )/.test(l))
 if (sectionEnd < 0) sectionEnd = lines.length
-const body = lines.slice(unreleasedAt + 1, sectionEnd).join("\n").trim()
-if (!body || body === PLACEHOLDER) fail("[Unreleased] in CHANGELOG.md is empty, nothing to release")
+const rawBody = lines.slice(unreleasedAt + 1, sectionEnd).join("\n").trim()
+if (!rawBody || rawBody === PLACEHOLDER) fail("[Unreleased] in CHANGELOG.md is empty, nothing to release")
+// Lanes write `(since next)` because they cannot know the version (docs/releasing.md): it becomes this version here, in the
+// release commit, in the notes and in docs/**/*.md.
+const body = replaceSinceNext(rawBody, version)
+const docRewrites = [...new Bun.Glob("docs/**/*.md").scanSync(".")]
+  .sort()
+  .map((file) => ({ file, before: readFileSync(file, "utf8") }))
+  .map(({ file, before }) => ({ file, before, after: replaceSinceNext(before, version) }))
+  .filter(({ before, after }) => before !== after)
 
 const linkAt = lines.findIndex((l) => l.startsWith("[Unreleased]: "))
 const link = /^\[Unreleased\]: (.+)\/compare\/v(.+)\.\.\.HEAD$/.exec(lines[linkAt] ?? "")
@@ -525,7 +537,7 @@ const nextPkg = pkgText.replace(/("version"\s*:\s*")[^"]+(")/, `$1${version}$2`)
 if (nextPkg === pkgText) fail("could not find the version field in package.json")
 
 const commitSubject = `chore(release): ${version}`
-const commitBody = `${title}. Moves [Unreleased] under ${version} in CHANGELOG.md and bumps package.json.`
+const commitBody = `${title}. Moves [Unreleased] under ${version} in CHANGELOG.md and bumps package.json.${docRewrites.length ? ` Replaces the (since next) placeholder with ${version} in ${docRewrites.length} doc file(s).` : ""}`
 
 if (dryRun) {
   for (const p of problems) console.log(`warning (would refuse without --dry-run): ${p}`)
@@ -536,6 +548,12 @@ if (dryRun) {
     writeFileSync(join(dir, "a/package.json"), pkgText)
     writeFileSync(join(dir, "b/CHANGELOG.md"), next)
     writeFileSync(join(dir, "b/package.json"), nextPkg)
+    for (const { file, before, after } of docRewrites) {
+      mkdirSync(join(dir, "a", file, ".."), { recursive: true })
+      mkdirSync(join(dir, "b", file, ".."), { recursive: true })
+      writeFileSync(join(dir, "a", file), before)
+      writeFileSync(join(dir, "b", file), after)
+    }
     const diff = Bun.spawnSync(["git", "diff", "--no-index", "--no-color", "a", "b"], { cwd: dir })
     console.log(diff.stdout.toString())
   } finally {
@@ -583,7 +601,8 @@ if (resume) {
   git("switch", "-c", releaseBranch)
   writeFileSync("CHANGELOG.md", next)
   writeFileSync("package.json", nextPkg)
-  git("add", "CHANGELOG.md", "package.json")
+  for (const { file, after } of docRewrites) writeFileSync(file, after)
+  git("add", "CHANGELOG.md", "package.json", ...docRewrites.map(({ file }) => file))
   git("commit", "-m", commitSubject, "-m", commitBody)
   console.log(`committed "${commitSubject}" on ${releaseBranch}`)
   git("push", "-u", "origin", releaseBranch)

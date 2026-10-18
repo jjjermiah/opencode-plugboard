@@ -12,16 +12,22 @@ const CLI = join(EXAMPLE, "node_modules/.bin/gemini")
 
 // The CLI puts its project temp dir (under HOME) and an empty workspace into its <session_context>, which goes on the wire.
 // Both are fixed paths here so a scripted run does not change between runs. The date in that context cannot be turned off.
-const HOME = join(tmpdir(), "plugboard-gemini-cli-home")
-const WORKSPACE = join(tmpdir(), "plugboard-gemini-cli-workspace")
+// Each runner process takes its own pair, named by its pid (normalise.ts maps the pid away). A shared pair meant that two runs on one
+// machine, say two worktrees validating at once, deleted each other's home while the CLI was using it.
+const HOME = join(tmpdir(), `plugboard-gemini-cli-home-${process.pid}`)
+const WORKSPACE = join(tmpdir(), `plugboard-gemini-cli-workspace-${process.pid}`)
 // The CLI reads its home from GEMINI_CLI_HOME before HOME, and its system settings from GEMINI_CLI_SYSTEM_SETTINGS_PATH, so a
 // laptop that sets them would leak its own skills into the prompt (#443). The run clears every GEMINI_CLI_* override and sets these.
 const SYSTEM_SETTINGS = join(HOME, "system-settings.json")
 
 /** A fresh home for one run, with the settings that select API-key auth. Trust is passed as a flag (--skip-trust). */
 export function cliHome(): string {
-  rmSync(HOME, { recursive: true, force: true })
-  rmSync(WORKSPACE, { recursive: true, force: true })
+  const clean = () => {
+    rmSync(HOME, { recursive: true, force: true })
+    rmSync(WORKSPACE, { recursive: true, force: true })
+  }
+  clean()
+  process.once("exit", clean)
   mkdirSync(join(HOME, ".gemini"), { recursive: true })
   mkdirSync(WORKSPACE, { recursive: true })
   writeFileSync(

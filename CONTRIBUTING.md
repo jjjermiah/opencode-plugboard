@@ -26,6 +26,13 @@ bun run validate --skip examples
 
 It runs in the foreground, writes each step's full output to `.agents/validate/<step>.log`, and prints one line per step plus the tail of a failed step's log. The scripted examples take about six minutes; the rest about one. After you push, `bun run pr-wait <number>` waits for the pull request's checks and prints one verdict.
 
+### Merging `main` into a branch: generated files
+
+When several branches are open at once, three kinds of file conflict on every merge. They are handled so you do not resolve them by hand:
+
+- `CHANGELOG.md` has `merge=union` in `.gitattributes`. Two branches that add bullets under `## [Unreleased]` keep both sets of lines on a local `git merge origin/main`. GitHub's web merge ignores that attribute, so merge `main` into your branch locally and push the result. Read the merged section once: both bullets stay, in the order git found them.
+- `docs/compatibility.md`, `examples/README.md` and `.github/floors/test-count-floors.json` are generated. After the merge, run `bun run regen`: one foreground command that resolves a conflicted floors file to the per-key maximum of both sides, runs the tests with the coverage gates (the floor ratchet), regenerates `docs/compatibility.md` and the table in `examples/README.md`, and prints which of the files changed. It stages nothing: check `git diff`, then commit. It takes as long as the `test` step of `bun run validate`.
+
 ## Tests
 
 The suite runs on `bun test`. It is fast and never talks to a real OpenCode server: HOME and the XDG directories point at a temporary directory for the run. [test/README.md](test/README.md) explains the layout (`unit`, `http`, `session`, `runtime`, `compat`, `types`, `live`), the shared fakes, the property tests, the SDK wire-type checks and the client compatibility matrix ([docs/compatibility.md](docs/compatibility.md)). The opt-in live layer (`test/live`, `bun run live-matrix`) calls real models on an isolated server and costs tokens; see [test/README.md](test/README.md#live-layer-99-108).
@@ -134,9 +141,11 @@ There is no `prepare` script on purpose. npm runs `prepare` on `npm publish`, an
 
 Every user-visible change adds an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). Explain why the change was made and what it cost, not just what changed. Don't paste a commit list. Maintainers cut releases from that section, and every release needs a short creative title (2 to 5 words, `bun run release X.Y.Z --title "..."`), see [docs/releasing.md](docs/releasing.md).
 
+Write the version marker of a new option as the placeholder `(since next)`, and `Since next` where a sentence starts, in `CHANGELOG.md` and `docs/**/*.md`. Do not guess the next version: parallel branches collide on it. The release script replaces the placeholder with the released version in the release commit, and CI fails when one is left in a released changelog section. See [docs/releasing.md](docs/releasing.md#version-markers-the-since-next-placeholder).
+
 ## Docs and unreleased options
 
-The docs site deploys from `main`, so it can describe options the latest release does not have. Its banner names the latest release (the version in `package.json`). Mark each option that is newer than that release in `docs/configuration.md`, on its option or field name: `` `historyUrl` (since 0.20.0) ``. Use the version that will ship it, which is the release the `[Unreleased]` section becomes, and fix the number if that release changes. Commit the mark with the option. Options that predate the marks stay unmarked.
+The docs site deploys from `main`, so it can describe options the latest release does not have. Its banner names the latest release (the version in `package.json`). Mark each option that is newer than that release in `docs/configuration.md`, on its option or field name: `` `historyUrl` (since next) ``. Write the placeholder `(since next)`, not a version number: the release script turns it into the version of the release the `[Unreleased]` section becomes. Commit the mark with the option. Options that predate the marks stay unmarked.
 
 ## Writing style
 

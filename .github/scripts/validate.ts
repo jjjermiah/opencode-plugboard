@@ -29,7 +29,7 @@ const STEPS: readonly Step[] = [
   },
   { name: "manifest", cmd: "bun run coverage-manifest" },
   { name: "pack", cmd: "bun .github/scripts/check-pack.ts && bun .github/scripts/smoke-pack.ts" },
-  { name: "docs", cmd: "bun run docs:build" },
+  { name: "docs", cmd: "bun .github/scripts/since-next.ts --check && bun run docs:build" },
   { name: "examples", cmd: "BROWSER=true bun examples/_harness/run.ts all --target scripted && git diff --exit-code examples/" },
   { name: "mutations", cmd: "bun run mutations", optional: true },
 ]
