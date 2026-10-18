@@ -36,6 +36,7 @@ import { createHistoryPort, createKeepAliveHost, createSessionPort, createStorag
 import { keepAliveIntervalMs, keepAliveLoop } from "./src/keepalive.js"
 import { createKeyStore } from "./src/keys.js"
 import { createResponseStore } from "./src/responses/state.js"
+import { createFileStore } from "./src/files/state.js"
 import { usageHandlers, UsageRpc } from "./src/rpc.js"
 import { createUsageRecorder, withUsage } from "./src/usage.js"
 import { hostVersion } from "./src/version.js"
@@ -147,6 +148,8 @@ export default Plugin.define({
         keys: createKeyStore({ state: processKeys(), storage: createStoragePort(ctx) }),
         // Stored Responses (src/responses/state.ts): read and written from request handling, on the same host storage.
         responses: createResponseStore({ storage: createStoragePort(ctx) }),
+        // Uploaded files (src/files/state.ts, since next): same host storage, request handling only.
+        files: createFileStore({ storage: createStoragePort(ctx) }),
         // The prompt a count reads (persona, server tools): the same port, persona lookup and backend gate as the session caller (#201).
         session: callerDeps,
       })

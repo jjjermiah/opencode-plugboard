@@ -27,6 +27,8 @@ import { parseResponsesRequest } from "./request.js"
 import { runResponse, sseFrame } from "./response.js"
 import { findItem, forgetAnswer, rememberAnswer } from "./store.js"
 import { retentionDaysFor } from "./state.js"
+import { loadFiles } from "../files/route.js"
+import { fileRefs, inlineFiles, restoreFileRefs } from "../files/refs.js"
 
 const SESSION_HEADER = "x-plugboard-session"
 
@@ -63,12 +65,20 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const days = retentionDaysFor(host.options, app)
   const history = await scope.race(chainOf(host, app, body, days))
   if (history !== undefined && isPlugError(history)) return fail(history)
-  const parsed = parseResponsesRequest(body, host.options, (itemId) => findItem(app, itemId), history)
+  // `input_file` and `input_image` parts with a `file_id` (in this request or in the chain before it) are replaced by the inline form of
+  // the stored file before the decoder runs (since next). A stored response keeps the reference, not the bytes (`restoreFileRefs`).
+  const loaded = await loadFiles(host, app, fileRefs("responses", body, history ?? []), scope)
+  if (isPlugError(loaded)) return fail(loaded)
+  const inlined = inlineFiles("responses", body, loaded)
+  if (isPlugError(inlined)) return fail(inlined)
+  const inlinedChain = history === undefined ? undefined : inlineFiles("responses", { input: history }, loaded)
+  if (inlinedChain !== undefined && isPlugError(inlinedChain)) return fail(inlinedChain)
+  const parsed = parseResponsesRequest(inlined, host.options, (itemId) => findItem(app, itemId), inlinedChain?.input)
   if (isPlugError(parsed)) return fail(parsed)
   // `store: false` keeps nothing for retrieval, so its output items cannot be referenced later (#426).
   const keeps = (body as { store?: unknown }).store !== false
   /** Every input item the model sees, which is what a stored response keeps and `input_items` lists. */
-  const stored = () => [...(history ?? []), ...parsed.inputItems]
+  const stored = () => [...(history ?? []), ...restoreFileRefs(parsed.inputItems)]
   const catalog = await scope.race(host.loadCatalog())
   const requested = requestedModel(host.options, app, parsed.request.model, parsed.reasoningEffort)
   const ref = resolveModel(host.options, requested.model, catalog, requested.effort)

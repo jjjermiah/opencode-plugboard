@@ -152,6 +152,52 @@ export const ROWS: readonly Row[] = [
     at(HTTP + "responses-stored.test.ts", "lists every input the model saw, newest first by default, as OpenAI's list object"),
     at(HTTP + "responses-stored.test.ts", "a limit outside 1 to 100, a bad order and an unknown cursor are 400s that name the parameter"),
   ),
+  // Files (since next): the three Files APIs, each route's answer and its refusals (test/http/files.test.ts, files-gemini.test.ts).
+  read(
+    "POST /v1/files",
+    at(HTTP + "files.test.ts", "upload, retrieve, list, download and delete, in OpenAI's shapes"),
+    at(HTTP + "files.test.ts", "purpose is required and checked; a missing file part or a non-multipart body is a 400"),
+  ),
+  read(
+    "GET /v1/files",
+    at(HTTP + "files.test.ts", "list takes purpose, limit, after and order"),
+    at(HTTP + "files.test.ts", "list takes purpose, limit, after and order"),
+  ),
+  read(
+    "GET /v1/files/{id}",
+    at(HTTP + "files.test.ts", "upload, retrieve, list, download and delete, in OpenAI's shapes"),
+    at(HTTP + "files.test.ts", "another app's file id is the same 404 as an unknown one, on every route and every API"),
+  ),
+  read(
+    "GET /v1/files/{id}/content",
+    at(HTTP + "files.test.ts", "the download is the exact bytes, as an attachment: an uploaded HTML file is never rendered"),
+    at(HTTP + "files.test.ts", "another app's file id is the same 404 as an unknown one, on every route and every API"),
+  ),
+  read(
+    "DELETE /v1/files/{id}",
+    at(HTTP + "files.test.ts", "upload, retrieve, list, download and delete, in OpenAI's shapes"),
+    at(HTTP + "files.test.ts", "another app's file id is the same 404 as an unknown one, on every route and every API"),
+  ),
+  read(
+    "POST /upload/v1beta/files",
+    at(HTTP + "files-gemini.test.ts", "start, one chunk, finalize: the answer carries the file and `x-goog-upload-status: final`"),
+    at(HTTP + "files-gemini.test.ts", "a file that is not an accepted kind is refused at finalize, and an oversize upload when it starts or grows past the cap"),
+  ),
+  read(
+    "GET /v1beta/files",
+    at(HTTP + "files-gemini.test.ts", "pageSize and pageToken page the list, oldest first, and a bad size or token is a 400"),
+    at(HTTP + "files-gemini.test.ts", "pageSize and pageToken page the list, oldest first, and a bad size or token is a 400"),
+  ),
+  read(
+    "GET /v1beta/files/{name}",
+    at(HTTP + "files-gemini.test.ts", "start, one chunk, finalize: the answer carries the file and `x-goog-upload-status: final`"),
+    at(HTTP + "files.test.ts", "another app's file id is the same 404 as an unknown one, on every route and every API"),
+  ),
+  read(
+    "DELETE /v1beta/files/{name}",
+    at(HTTP + "files-gemini.test.ts", "start, one chunk, finalize: the answer carries the file and `x-goog-upload-status: final`"),
+    at(HTTP + "files.test.ts", "another app's file id is the same 404 as an unknown one, on every route and every API"),
+  ),
   read(
     "GET /plugboard/status",
     at(HTTP + "policy.test.ts", "the setup page and /plugboard/status count only the caller's models"),

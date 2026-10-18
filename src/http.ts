@@ -166,6 +166,21 @@ export function beginRequest(
  * `limits.readCeilingMs`, is refused with 408, and its bytes go back to the budget.
  */
 export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<unknown> {
+  return readBody(request, signal, limits).then((raw) => {
+    try {
+      return raw.length === 0 ? {} : JSON.parse(raw.toString("utf8"))
+    } catch {
+      throw new BodyError(400, "Request body is not valid JSON")
+    }
+  })
+}
+
+/**
+ * Reads the whole body as bytes under the same admission as `readJsonBody` (I28): the Content-Length is charged before the
+ * first byte, a body without one as it arrives, the idle and total timers apply, and the bytes go back to the budget on every
+ * exit. File uploads (`src/files/`) use it, so an upload is bounded exactly like a JSON body. Rejects with `BodyError`.
+ */
+export function readBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const maxBodyBytes = limits.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
     const declared = Math.max(0, Number(request.headers["content-length"]) || 0)
@@ -235,11 +250,7 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     const onAbort = () => stop(signal.reason)
     const onEnd = () => {
       cleanup()
-      try {
-        resolve(chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString("utf8")))
-      } catch {
-        reject(new BodyError(400, "Request body is not valid JSON"))
-      }
+      resolve(Buffer.concat(chunks))
     }
     // The declared length is charged before the first byte is read, so a refusal costs no buffering.
     if (declared > 0 && !charge(declared)) {

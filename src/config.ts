@@ -152,9 +152,11 @@ export const DEFAULT_MAX_ANCHORS = 1000
 /**
  * The endpoint families an app may be limited to (`apps.<name>.endpoints`, #268): `chat` (`/v1/chat/completions`),
  * `completions` (`/v1/completions`), `responses`, `messages` (`/v1/messages` and its `count_tokens`), `gemini` (the
- * `/v1beta` routes) and `models` (`/v1/models`, `/v1/models/{id}`).
+ * `/v1beta` routes) and `models` (`/v1/models`, `/v1/models/{id}`). Since next, `files` is every Files route: `/v1/files...`
+ * (OpenAI and Anthropic shapes) and Gemini's `upload/v1beta/files` and `/v1beta/files...`; an app without it cannot upload, list,
+ * read or delete a file, and a request that names a file it already holds is not refused for it.
  */
-export const ENDPOINTS = ["chat", "completions", "responses", "messages", "gemini", "models"] as const
+export const ENDPOINTS = ["chat", "completions", "responses", "messages", "gemini", "models", "files"] as const
 export type Endpoint = (typeof ENDPOINTS)[number]
 
 /**

@@ -44,7 +44,7 @@ export function sendText(response: ServerResponse, status: number, contentType: 
 const escapeHtml = (value: unknown): string => escapeText(String(value))
 
 /** `http://host:port` for a listen address; an IPv6 literal gets brackets. */
-function origin(listen: PlugboardOptions["listen"]): string {
+export function origin(listen: PlugboardOptions["listen"]): string {
   const host = listen.host.includes(":") && !listen.host.startsWith("[") ? `[${listen.host}]` : listen.host
   return `http://${host}:${listen.port}`
 }

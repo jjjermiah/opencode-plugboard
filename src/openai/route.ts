@@ -63,6 +63,9 @@ import { encodeModel, encodeModelPage, modelPageQuery, pageModels } from "../ant
 import { serveCompletions } from "../completions/route.js"
 import { matchStoredRoute, serveResponses, serveStoredResponse } from "../responses/route.js"
 import type { ResponseStore } from "../responses/state.js"
+import { inlineRequestFiles, isFilesPath, matchFilesRoute, serveFiles } from "../files/route.js"
+import { matchGeminiFilesRoute, serveGeminiFiles } from "../files/gemini/route.js"
+import type { FileStore } from "../files/state.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import { budgetFor, budgetStatus } from "../budgets.js"
 import type { KeyStore } from "../keys.js"
@@ -98,6 +101,8 @@ export interface RouteHost {
   readonly session?: SessionPromptDeps
   /** Stored Responses (src/responses/state.ts, since 0.51.0): behind `previous_response_id` and `GET`/`DELETE /v1/responses/{id}`. */
   readonly responses: ResponseStore
+  /** Uploaded files (src/files/state.ts, since next): behind the Files APIs and every `file_id` and `fileUri`. */
+  readonly files: FileStore
 }
 
 const SESSION_HEADER = "x-plugboard-session"
@@ -105,6 +110,9 @@ const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
 /** `GET /v1/models` and `GET /v1/models/{id}` read credentials as the Messages route does, so `x-api-key` works there too (#399). */
 const isModelsRead = (method: string | undefined, path: string) => method === "GET" && (path === "/v1/models" || path.startsWith(MODEL_PREFIX))
+/** The Files routes read credentials the same way: `x-api-key` works there too (the Anthropic SDKs send it). */
+const isKeyAnywhere = (method: string | undefined, path: string) => isModelsRead(method, path) || isFilesPath(path)
+const isGeminiPath = (path: string) => path === "/v1beta" || path.startsWith("/v1beta/") || path.startsWith("/upload/v1beta/")
 const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status"]
 /** The endpoint family of each OpenAI route (`apps.<name>.endpoints`, #268). Gemini and `/v1/models/{id}` are classified where they are matched. */
 const ENDPOINT_BY_ROUTE: Readonly<Record<string, Endpoint>> = {
@@ -218,11 +226,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       const url = new URL(request.url ?? "/", "http://127.0.0.1")
       const path = url.pathname
       const auth =
-        isMessagesPath(path) || isModelsRead(request.method, path)
+        isMessagesPath(path) || isKeyAnywhere(request.method, path)
           ? await authenticateRequest(host, request)
         : authenticate(
             liveOptions(host.options),
-            path === "/v1beta" || path.startsWith("/v1beta/") ? geminiAuthorization(request, url) : request.headers.authorization,
+            isGeminiPath(path) ? geminiAuthorization(request, url) : request.headers.authorization,
             await runtimeDigests(),
           )
       return isPlugError(auth) ? undefined : auth.app
@@ -245,12 +253,15 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const gemini = matchGeminiRoute(request.method, path)
     // The stored-response routes carry an id in the path: they are logged and counted under their template, never with the id.
     const stored = matchStoredRoute(request.method, path)
+    // The Files routes (since next) carry an id or a name in the path too, so they are logged under their template as well.
+    const files = matchFilesRoute(request.method, path)
+    const geminiFiles = matchGeminiFilesRoute(request.method, path)
     // Any /v1beta path is Google's API, even one that matches no Gemini route (#150): its errors use Google's body.
-    const googleShaped = gemini !== undefined || path === "/v1beta" || path.startsWith("/v1beta/")
+    const googleShaped = gemini !== undefined || geminiFiles !== undefined || isGeminiPath(path)
     if (googleShaped) googleErrors.add(response)
-    const route = gemini?.route ?? stored?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
+    const route = gemini?.route ?? stored?.route ?? files?.route ?? geminiFiles?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
     // Arbitrary client paths stay out of the log.
-    info.route = gemini || stored || modelId !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
+    info.route = gemini || stored || files || geminiFiles || modelId !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
     // CORS (#256). An allowed browser origin gets its headers on every answer. Its preflight (OPTIONS with a requested method)
     // is answered here, before authentication, because a preflight carries no credentials; the Host check still runs first.
     if (host.options.cors !== undefined) {
@@ -339,14 +350,14 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     // Authenticate before anything reveals which routes exist: an unauthenticated caller sees 401 for every path but the probes and the first-run pages.
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
-    const auth = isModelsRead(request.method, path)
+    const auth = isKeyAnywhere(request.method, path)
       ? await authenticateRequest(host, request)
       : authenticate(liveOptions(host.options), googleShaped ? geminiAuthorization(request, url) : request.headers.authorization, await runtimeDigests())
     if (isPlugError(auth)) return fail(response, auth)
     info.app = auth.app
 
     // A /v1beta path no Gemini route matches: the AI SDK and LangChain send a model id with a slash and no `models/` prefix (#150).
-    if (googleShaped && !gemini)
+    if (googleShaped && !gemini && !geminiFiles)
       return fail(response, {
         status: 404,
         kind: "not_found",
@@ -354,7 +365,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         message: `No Gemini route for ${request.method} ${path}. Expected POST /v1beta/models/{model}:generateContent or POST /v1beta/models/{model}:streamGenerateContent; the path must start with /v1beta/models/. GET /v1beta/models lists the models.`,
       })
 
-    if (!gemini && !stored && modelId === undefined && !known(route)) {
+    if (!gemini && !geminiFiles && !stored && !files && modelId === undefined && !known(route)) {
       return fail(response, {
         status: 404,
         kind: "not_found",
@@ -364,11 +375,15 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
 
     // An app may be limited to some endpoints (#268). Checked after authentication and route existence (I15): a refusal is a 403, never a 404.
-    const endpoint: Endpoint | undefined = gemini ? "gemini" : stored ? "responses" : modelId !== undefined ? "models" : Object.hasOwn(ENDPOINT_BY_ROUTE, route) ? ENDPOINT_BY_ROUTE[route] : undefined
+    const endpoint: Endpoint | undefined = files || geminiFiles ? "files" : gemini ? "gemini" : stored ? "responses" : modelId !== undefined ? "models" : Object.hasOwn(ENDPOINT_BY_ROUTE, route) ? ENDPOINT_BY_ROUTE[route] : undefined
     const refusal = endpoint === undefined ? undefined : endpointRefusal(host.options, auth.app, endpoint)
     if (refusal) return fail(response, refusal)
 
     if (gemini) return serveGemini(host, { match: gemini, request, url, app: auth.app, response, scope, info })
+
+    // Files (since next): each lookup is under the caller's own app, never another's (I33).
+    if (files) return serveFiles(host, { app: auth.app, match: files, request, url, response, scope })
+    if (geminiFiles) return serveGeminiFiles(host, { app: auth.app, match: geminiFiles, request, url, response, scope })
 
     // Stored Responses: read or deleted under the caller's own app, never another's (I32).
     if (stored) return serveStoredResponse(host, { app: auth.app, match: stored, url, response, scope })
@@ -429,7 +444,10 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
     // The app's own `maxN` (#270) is the cap for this request; the decoder checks against `options.maxN`.
-    const parsed = parseChatRequest(body, { ...host.options, maxN: maxNFor(host.options, auth.app) }, maxNOption(host.options, auth.app))
+    // A `file_id` part is replaced by the inline form of the stored file before the decoder runs (since next).
+    const inlined = await inlineRequestFiles(host, auth.app, "chat", body, scope)
+    if (isPlugError(inlined)) return fail(response, inlined)
+    const parsed = parseChatRequest(inlined, { ...host.options, maxN: maxNFor(host.options, auth.app) }, maxNOption(host.options, auth.app))
     if (isPlugError(parsed)) return fail(response, parsed)
     const catalog = await scope.race(host.loadCatalog())
     const requested = requestedModel(host.options, auth.app, parsed.request.model, parsed.reasoningEffort)
