@@ -19,7 +19,7 @@ console.log(r.output_text)
 | Request field | How it is handled |
 | --- | --- |
 | `model` | Same as Chat Completions: an alias or `provider/model[#variant]`. |
-| `input` | A string, or a list of items: messages (`user`, `assistant`, `system`, `developer`) with `input_text`, `output_text` and `input_image` content; `input_file` with `file_data` or `file_url`; `function_call` and `function_call_output` for tool round trips. `reasoning` input items are accepted and dropped. |
+| `input` | A string, or a list of items: messages (`user`, `assistant`, `system`, `developer`) with `input_text`, `output_text` and `input_image` content; `input_file` with `file_data`, `file_url` or a `file_id` (since next, see [Files API](files.md)), and `input_image` with a `file_id` too; `function_call` and `function_call_output` for tool round trips. `reasoning` input items are accepted and dropped. |
 | `instructions` | The system prompt, ahead of any `system` or `developer` items. |
 | `tools` | `function` tools. `parameters: null` means no arguments. `strict` is accepted and ignored. |
 | `tool_choice` | `auto`, `none`, `required`, or `{"type":"function","name":"..."}`. |
@@ -41,7 +41,7 @@ A 400 with `code: "unsupported_parameter"` and `param` naming the field:
 - `background: true`, `prompt` (stored prompts), `top_logprobs`, `truncation: "auto"`.
 - Tools that are not `function` tools (`web_search`, `file_search`, `code_interpreter`, `computer_use`, `mcp`, `image_generation`, `custom`, ...). They run on OpenAI's servers; plugboard only hands function calls back to you.
 - `tool_choice` objects other than a function name (`allowed_tools`, hosted tool types), and a named tool together with `text.format` `json_schema`.
-- `input_image` or `input_file` with only a `file_id`.
+- `input_image` or `input_file` with a `file_id` the app does not hold: a 404 (since next, [Files API](files.md); before, every `file_id` was a 400).
 
 Other invalid input gets a plain 400 `invalid_request_error`, for example a `function_call_output` whose `call_id` no earlier `function_call` item has.
 

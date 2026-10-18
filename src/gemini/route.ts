@@ -33,6 +33,7 @@ import { serveChoices } from "../openai/fanout.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
 import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
+import { inlineRequestFiles } from "../files/route.js"
 import { parseGeminiRequest } from "./request.js"
 import { arrayWire, encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, geminiCodec, noResponse, runGenerate, sseWire } from "./response.js"
 
@@ -119,7 +120,9 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   if (match.op === "count") {
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
-    const parsed = parseGeminiRequest(match.model, false, countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))), { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))
+    const counting = await inlineRequestFiles(host, app, "gemini", countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))), scope)
+    if (isPlugError(counting)) return fail(counting)
+    const parsed = parseGeminiRequest(match.model, false, counting, { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))
     if (isPlugError(parsed)) return fail(parsed)
     const catalog = await scope.race(host.loadCatalog())
     const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
@@ -148,7 +151,9 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const wire = alt === "sse" ? sseWire() : arrayWire()
   const unsupported = checkJsonContentType(request)
   if (unsupported) return fail(unsupported)
-  const body = await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))
+  // A `fileData.fileUri` naming a stored file is replaced by the inline form of that file before the decoder runs (since next).
+  const body = await inlineRequestFiles(host, app, "gemini", await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames())), scope)
+  if (isPlugError(body)) return fail(body)
 
   // The app's own `maxN` is the cap for this request; the decoder checks `candidateCount` against it.
   const parsed = parseGeminiRequest(match.model, match.stream, body, { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))

@@ -19,6 +19,7 @@ import type { CatalogModel } from "../../src/contract.js"
 import { createMetrics } from "../../src/metrics.js"
 import { createOpenAiRoute } from "../../src/openai/route.js"
 import { createResponseState, createResponseStore } from "../../src/responses/state.js"
+import { createFileState, createFileStore } from "../../src/files/state.js"
 import { model } from "../../test/support/fixtures.js"
 import { TEST_STATUS } from "../../test/support/loopback.js"
 import { FakeStorage } from "../../test/support/usage.js"
@@ -60,6 +61,7 @@ export async function startScriptedServer(port = 0): Promise<ScriptedServer> {
     status: () => TEST_STATUS,
     // Stored Responses on an in-memory storage, so `previous_response_id` runs as it does on a server.
     responses: createResponseStore({ storage: new FakeStorage(), state: createResponseState() }),
+    files: createFileStore({ storage: new FakeStorage(), state: createFileState() }),
   })
   return {
     url: `http://127.0.0.1:${actual}/v1`,

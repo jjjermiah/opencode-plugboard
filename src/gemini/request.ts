@@ -235,7 +235,7 @@ const parseContents = (raw: unknown): PlugMessage[] | PlugError => {
         if (role === "model") return unsupported("fileData is not supported in a model turn", `${at}.fileData`)
         const uri = isRecord(file) ? field(file, "fileUri") : undefined
         if (typeof uri !== "string" || !/^https?:\/\//i.test(uri))
-          return unsupported("fileData needs an http(s) fileUri; Gemini file ids and gs:// URIs are not supported (send inlineData)", `${at}.fileData.fileUri`)
+          return unsupported("fileData needs an http(s) fileUri or a plugboard file (files/<id>, or the uri of an upload to /upload/v1beta/files); gs:// URIs and other Gemini file ids are not supported (send inlineData)", `${at}.fileData.fileUri`)
         const mimeType = isRecord(file) ? field(file, "mimeType") : undefined
         parts.push({ type: "media", url: uri, ...(typeof mimeType === "string" ? { mediaType: mimeType } : {}) })
       } else if (isRecord(part) && Object.keys(part).every((key) => key === "thoughtSignature" || key === "thought_signature" || key === "thought")) {

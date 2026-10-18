@@ -40,6 +40,7 @@ import { reportAffinity } from "../session/affinity.js"
 import { appGeneration, dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
 import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
+import { inlineRequestFiles } from "../files/route.js"
 import { parseMessagesRequest } from "./request.js"
 import { estimateTokens } from "./tokens.js"
 import { encodeError, messagesStatus, runMessage, sseFrame } from "./response.js"
@@ -128,7 +129,10 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const cap = path === COUNT_TOKENS ? undefined : appPolicy(host.options, auth.app)?.maxOutputTokens
     const capped = cap !== undefined && isRecord(body) && typeof body.max_tokens === "number" && body.max_tokens > cap ? { ...body, max_tokens: cap } : body
     const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : capped
-    const parsed = parseMessagesRequest(sized, host.options)
+    // A `source: {type: "file"}` block is replaced by the inline form of the stored file before the decoder runs (since next).
+    const inlined = await inlineRequestFiles(host, auth.app, "messages", sized, scope)
+    if (isPlugError(inlined)) return fail(inlined)
+    const parsed = parseMessagesRequest(inlined, host.options)
     // A budget refused because the app's cap lowered `max_tokens` says so: the same 400, with the option named (#263).
     if (isPlugError(parsed))
       return fail(
