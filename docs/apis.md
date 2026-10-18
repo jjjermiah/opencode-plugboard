@@ -9,7 +9,7 @@ Every API uses the same keys, models, aliases, limits, history and usage. Pick t
 | Anthropic Messages | `POST /v1/messages`, `POST /v1/messages/count_tokens` | [Messages](messages.md) |
 | Gemini | `POST /v1beta/models/{model}:generateContent`, `:streamGenerateContent`, `:countTokens` | [Gemini](gemini.md) |
 | OpenAI legacy completions | `POST /v1/completions` | [Completions](completions.md) |
-| Files (since next) | `/v1/files` (OpenAI and Anthropic shapes), `POST /upload/v1beta/files` and `/v1beta/files` (Gemini) | [Files API](files.md) |
+| Files (since 0.52.0) | `/v1/files` (OpenAI and Anthropic shapes), `POST /upload/v1beta/files` and `/v1beta/files` (Gemini) | [Files API](files.md) |
 | Model list | `GET /v1/models`, `GET /v1/models/{id}`, `GET /v1beta/models` | each API page |
 
 Plugboard's own routes live under `/plugboard/`: usage, status, metrics, the dashboard and key management. `/healthz` and `/readyz` answer health checks. See [History, usage and monitoring](guides/history-usage-and-monitoring.md).
@@ -23,7 +23,7 @@ Plugboard replaces OpenCode's prompt, messages and tools with the caller's. The 
 ## Known gaps
 
 - **Server-side conversation state is on Responses only (since 0.51.0).** Chat Completions, Messages, Gemini and legacy completions carry the whole conversation in every request. On Responses, `previous_response_id` works: an answer made with `store` on (the default) is kept per app on the host storage, for the app's `history.maxAgeDays` (30 days when unset or `0`), and survives a restart. `conversation` is refused. The output items of recent answers are also kept in memory for an hour, so `item_reference`s resolve; a restart clears that memory. See [Responses](responses.md#stored-responses-since-0-51-0).
-- **Files are per app, and only for prompts (since next).** A file uploaded to `/v1/files` (OpenAI or Anthropic shapes) or to Gemini's upload route can be named by `file_id` or `fileUri` in Chat Completions, Responses, Messages and Gemini. Plugboard accepts images, PDFs and text, up to 32 MiB (4 MiB for text), kept for the app's `history.maxAgeDays` (30 days when unset or `0`). It does not do Batch, fine-tuning, Assistants, vector stores or Gemini's `gs://` files. See [Files API](files.md).
+- **Files are per app, and only for prompts (since 0.52.0).** A file uploaded to `/v1/files` (OpenAI or Anthropic shapes) or to Gemini's upload route can be named by `file_id` or `fileUri` in Chat Completions, Responses, Messages and Gemini. Plugboard accepts images, PDFs and text, up to 32 MiB (4 MiB for text), kept for the app's `history.maxAgeDays` (30 days when unset or `0`). It does not do Batch, fine-tuning, Assistants, vector stores or Gemini's `gs://` files. See [Files API](files.md).
 - **Gemini model ids with `/` or `#`** are awkward in SDK URLs. Give clients an alias. See [Gemini](gemini.md#model-names).
 - **State is per server.** Limits, the response cache and anchors live in one OpenCode server process. Two servers do not share them, and a restart clears limits and the cache.
 - **Token counts and costs are estimates.** Plugboard has no tokenizer.

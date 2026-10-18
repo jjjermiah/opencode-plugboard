@@ -14,13 +14,92 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.52.0] - 2026-10-18: Files, By Reference
+
+**Full diff:** [v0.51.0...v0.52.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...v0.52.0)
+
 ### Added
 
-- A per-app Files API, so `file_id` inputs work instead of being a 400 (since next). Upload once, then name the file in Chat Completions (`{"type":"file","file":{"file_id"}}`), Responses (`input_file` and `input_image` with `file_id`), Messages (`image` and `document` blocks with `source: {type: "file", file_id}`) and Gemini (`fileData.fileUri` as `files/<id>` or the uri an upload returned). Three Files APIs share one store, so a file uploaded through one can be named in another's request. OpenAI: `POST /v1/files` (multipart `file` and `purpose`), `GET /v1/files` (`purpose`, `limit`, `after`, `order`), `GET /v1/files/{id}`, `GET /v1/files/{id}/content` and `DELETE /v1/files/{id}`, in OpenAI's objects and errors. Anthropic: the same paths answer in Anthropic's shapes (`type: "file"`, `mime_type`, `size_bytes`, `downloadable`, paging by `limit`, `page`, `after_id` and `before_id`) when the request sends `anthropic-version` or `anthropic-beta`, as `GET /v1/models` does. Gemini: `POST /upload/v1beta/files` with the resumable protocol both SDKs use (and `uploadType=multipart`), `GET /v1beta/files`, `GET /v1beta/files/{name}` and `DELETE`. A file's type comes from its bytes, not from what the upload declared: PNG, JPEG, GIF, WebP and PDF are told by their first bytes and reach the model exactly as their inline data URLs do, text and JSON (UTF-8, up to 4 MiB) are sent as text, and anything else is a 400 at upload that names the accepted kinds. A download is an attachment with `nosniff`, so an uploaded HTML is never rendered. Files live on the host storage, so they survive a restart, for the app's `history.maxAgeDays` (30 days when unset or `0`). An app holds at most 1000 files and 1 GiB, and one file is at most the app's body cap (32 MiB by default); an upload past a limit is refused and nothing is evicted. An upload is read under the same body admission as a JSON body. `files` is a new name for `apps.<name>.endpoints`. Another app's id is the same 404 as an unknown one (new invariant I33), and no id, name or content is logged. There is no new option. A stored Responses record keeps the `file_id`, not the bytes. See [Files API](https://jjjermiah.github.io/opencode-plugboard/files).
+- A per-app Files API, so `file_id` inputs work instead of being a 400 (since 0.52.0). Upload once, then name the file in Chat Completions (`{"type":"file","file":{"file_id"}}`), Responses (`input_file` and `input_image` with `file_id`), Messages (`image` and `document` blocks with `source: {type: "file", file_id}`) and Gemini (`fileData.fileUri` as `files/<id>` or the uri an upload returned). Three Files APIs share one store, so a file uploaded through one can be named in another's request. OpenAI: `POST /v1/files` (multipart `file` and `purpose`), `GET /v1/files` (`purpose`, `limit`, `after`, `order`), `GET /v1/files/{id}`, `GET /v1/files/{id}/content` and `DELETE /v1/files/{id}`, in OpenAI's objects and errors. Anthropic: the same paths answer in Anthropic's shapes (`type: "file"`, `mime_type`, `size_bytes`, `downloadable`, paging by `limit`, `page`, `after_id` and `before_id`) when the request sends `anthropic-version` or `anthropic-beta`, as `GET /v1/models` does. Gemini: `POST /upload/v1beta/files` with the resumable protocol both SDKs use (and `uploadType=multipart`), `GET /v1beta/files`, `GET /v1beta/files/{name}` and `DELETE`. A file's type comes from its bytes, not from what the upload declared: PNG, JPEG, GIF, WebP and PDF are told by their first bytes and reach the model exactly as their inline data URLs do, text and JSON (UTF-8, up to 4 MiB) are sent as text, and anything else is a 400 at upload that names the accepted kinds. A download is an attachment with `nosniff`, so an uploaded HTML is never rendered. Files live on the host storage, so they survive a restart, for the app's `history.maxAgeDays` (30 days when unset or `0`). An app holds at most 1000 files and 1 GiB, and one file is at most the app's body cap (32 MiB by default); an upload past a limit is refused and nothing is evicted. An upload is read under the same body admission as a JSON body. `files` is a new name for `apps.<name>.endpoints`. Another app's id is the same 404 as an unknown one (new invariant I33), and no id, name or content is logged. There is no new option. A stored Responses record keeps the `file_id`, not the bytes. See [Files API](https://jjjermiah.github.io/opencode-plugboard/files).
 
 ### Docs
 
 - Contributor tooling for parallel branches, no change for users. `CHANGELOG.md` merges with git's union driver, so two branches that add bullets under `[Unreleased]` no longer conflict in a local merge (GitHub's web merge ignores the attribute). `bun run regen` rebuilds `docs/compatibility.md`, the `examples/README.md` table and the test-count floors after a merge. A new option's version marker is written as the placeholder `(since next)`, which the release script replaces with the released version, and CI fails when one is left in a released changelog section. The scripted Gemini CLI and Aider examples no longer share a temp directory and `~/.aider` with a run in another worktree, which could break two `bun run validate` runs at the same time.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (6 commits)</summary>
+
+#### Features
+
+**feat(runtime): serve a per-app Files API so file_id inputs work** ([`1593033`](https://github.com/jjjermiah/opencode-plugboard/commit/15930332ed126a88684e47e0310a284158c6fc01))
+
+Adds the OpenAI, Anthropic and Gemini Files APIs and makes a stored file usable by id on Chat, Responses, Messages and Gemini. Before, a file given only as file_id was a 400 on every route.
+
+What changed: src/files/ holds the store (per-app records in plugin host storage, modeled on stored Responses, I32), the content check (magic bytes decide the type), the reference rewrite (a file_id part becomes the inline form the decoders already accept, so the model gets exactly the bytes an inline data URL would send), the OpenAI and Anthropic route on /v1/files (Anthropic shapes when anthropic-version or anthropic-beta is sent), and Gemini's resumable and multipart upload plus /v1beta/files. readBody in src/http.ts is the byte reader readJsonBody now wraps, so an upload goes through the same body admission (I28).
+
+Why a rewrite and not decoder changes: the decoders stay pure (I20) and validate a stored file as strictly as inline data.
+
+Validation so far: new HTTP tests, and the three official SDKs (openai, @anthropic-ai/sdk, @google/genai) uploading, using and deleting files against a loopback listener.
+
+#### Fixes
+
+**fix(gemini): accept google-genai's keyless chunks and snake_case upload metadata** ([`c49764f`](https://github.com/jjjermiah/opencode-plugboard/commit/c49764f559d142cfee67146fd25f3ebfe1f7ddd2))
+
+A live run of the Python google-genai SDK against a real OpenCode host showed two gaps that the JS SDK test did not.
+
+The Python SDK sends the chunks of a resumable upload to the upload URL with no key, as Google's upload URL is itself the credential. Plugboard answered 401. A chunk request with no key at all is now accepted when it names a live upload id, and runs as the app that started the upload. The id is 122 random bits, belongs to one app and lives 10 minutes. Any other keyless request is the same 401 as before (I15), a wrong key is not rescued by the id, and another app's key gets the 404.
+
+The Python SDK also writes the start body in snake_case (display_name, mime_type), so every file was named "unnamed". Both spellings are read now, as the Gemini decoder already does.
+
+Validation: new HTTP tests for the keyless chunk (unknown id, wrong key, owner, other app) and the snake_case name. Live: the Python google-genai upload now succeeds, with the right display name.
+
+#### Tests
+
+**test: ratchet the unit test floor for the since-next, regen and normaliser tests** ([`4a5a588`](https://github.com/jjjermiah/opencode-plugboard/commit/4a5a588f0f5916d53ec69c3ff06ac7a05da8af0b))
+
+The new unit tests (since-next, regen, the pid-named Gemini CLI paths) raise the unit count from 1547 to 1562. Floors only go up; this is the value `bun run validate` ratcheted to.
+
+**test(runtime): cover the Files store failures and raise the floors** ([`7bf4516`](https://github.com/jjjermiah/opencode-plugboard/commit/7bf4516617a3751e8c979da97d918faf34dfc2e1))
+
+The first full validate failed the line coverage gate (98.6% against 98.8%): the new files code had unreached error paths. This adds tests for them and raises the ratcheted floors.
+
+Covered: a storage failure on upload in OpenAI's, Anthropic's and Google's body, a request past its deadline in each body, an oversize chunk of a resumable upload (413), every storage read failure of the store, a sweep that cannot delete, an index read in more than one page, remove of an unreadable record, and non-object items beside a file reference.
+
+The resumable-upload limit test uses apps no other test uploads for, because unfinished uploads are process-wide state (a Map on globalThis, like the other shared state).
+
+The mutation I15-unknown-route-before-auth anchored on the auth line that the keyless upload change rewrote; it now anchors on the new line and is killed again. Validation: bun run validate --mutations: typecheck, test, manifest, pack, docs and examples pass; 178 of 179 mutations were killed before the anchor fix, and that one is killed now.
+
+#### Docs
+
+**docs(runtime): document the Files API, add its invariant and tests** ([`9e5948c`](https://github.com/jjjermiah/opencode-plugboard/commit/9e5948c02dacea5287f266bf1ef384585aae6db4))
+
+Documents the Files API (docs/files.md, the Reference sidebar, apis.md gaps, the per-API rejected lists, the `files` endpoint name), adds invariant I33 and the Files section to architecture.md, and adds the changelog entry.
+
+Tests: unit tests for the store, the content check, the reference rewrite and the wire shapes; HTTP tests for every route of the three APIs, isolation between apps (I33), retention, restart, limits, logs and the endpoint check; a client test that drives the openai, @anthropic-ai/sdk and @google/genai SDKs through upload, use by id and delete; the route coverage manifest rows; and twelve mutation entries for the isolation guard, the type check and the attachment header.
+
+inlineFiles and inlineRequestFiles return unknown: the rewritten body has another shape than the input, so a generic return type would have promised a shape it does not have.
+
+#### CI and tooling
+
+**ci: union changelog, regen command, since-next placeholder, isolated examples** ([`aa1ac09`](https://github.com/jjjermiah/opencode-plugboard/commit/aa1ac0942484dc5b44c2d77df722a0394ed8198f))
+
+A retro of a day of parallel lanes found four recurring costs. All four are contributor tooling; nothing under src/ changes.
+
+1. CHANGELOG.md conflicts on every merge. .gitattributes now sets `CHANGELOG.md merge=union`, git's built-in driver. Checked in a throwaway repo: two branches adding different bullets under the same heading merge cleanly and keep both; without the attribute the same merge conflicts. GitHub's web merge does not read .gitattributes (GitHub support and the community discussion #9288 say so, still open), so the benefit is for the local `git merge origin/main` lanes already do before pushing. Not tested against a live GitHub pull request.
+
+2. Generated files conflict. `bun run regen` (.github/scripts/regen.ts) is one foreground command: a floors file with conflict markers becomes the per-key maximum of both sides, then it runs `validate --only test` (tests, coverage, floor ratchet) with PLUGBOARD_COMPAT_RESULTS set so the same run feeds compat-matrix.ts for docs/compatibility.md, then examples-index.ts for the examples/README.md table. It prints which generated files changed, stages nothing, and fails if a conflict marker remains in the hand-written parts the generators keep. The pure floor logic is unit tested.
+
+3. Version markers collide. Lanes write the placeholder `(since next)` (and `Since next` where a sentence starts) in CHANGELOG.md and docs/**/*.md. release.ts replaces it with the released version in the release commit, in the [Unreleased] body, the PR body and every docs file, and --dry-run shows it. Code spans and fenced blocks are left alone so docs can show the placeholder. `since-next.ts --check` fails when a placeholder sits in a released changelog section; it runs in ci.yml and in the `docs` step of validate. Rejected: replacing across the whole changelog (would hide a misplaced placeholder in a released section instead of failing on it).
+
+4. Concurrent `validate --only examples` runs. Ports were already ephemeral (scripted server and capture proxy listen on port 0). Two fixed shared resources remained: the Gemini CLI example deleted and recreated a fixed $TMPDIR/plugboard-gemini-cli-home and -workspace at start, so another run deleted them under a live CLI; and the Aider runner read and rewrote the shared ~/.aider (installs.json, caches). The Gemini dirs are now named by pid and removed on exit (normalise.ts maps the pid away, with a test), and each aider process gets its own HOME with uv's cache and Python dir pinned to the real ones. Committed transcripts are byte-identical after the change. The original 1296 s aider hang was not reproduced (two cold concurrent runs passed before and after), so the aider isolation is by inspection, not proven to be the cause.
+
+Validation: typecheck, unit tests for since-next, regen and the normaliser, release --dry-run with probe placeholders in CHANGELOG.md and docs, two worktrees running `bun run validate --only examples` at once (timings in the pull request).
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.51.0] - 2026-10-17: Responses Remember
 
@@ -8591,7 +8670,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.52.0...HEAD
+[0.52.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...v0.50.0
 [0.49.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...v0.49.0

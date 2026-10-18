@@ -1,6 +1,6 @@
 # Files API
 
-Plugboard keeps files per app, so a request can name a file by id instead of carrying its bytes every time (since next). Upload once, then use the file in Chat Completions, Responses, Messages or Gemini. The three Files APIs share one store: a file uploaded through the OpenAI SDK can be named in a Gemini request.
+Plugboard keeps files per app, so a request can name a file by id instead of carrying its bytes every time (since 0.52.0). Upload once, then use the file in Chat Completions, Responses, Messages or Gemini. The three Files APIs share one store: a file uploaded through the OpenAI SDK can be named in a Gemini request.
 
 Files are stored on the OpenCode server's host storage, so they survive a restart. An app sees only its own files. Another app's id gets the same 404 as an id that never existed.
 

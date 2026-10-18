@@ -332,7 +332,7 @@ Without `keys` the only app is `default`, and `apps.default` configures it. Once
 | `messages` | `POST /v1/messages` and `POST /v1/messages/count_tokens` |
 | `gemini` | the `/v1beta/models/...` routes (and `/v1/models/{model}:generateContent`) |
 | `models` | `GET /v1/models` and `GET /v1/models/{id}` |
-| `files` (since next) | every [Files API](files.md) route: `/v1/files...`, `POST /upload/v1beta/files` and `/v1beta/files...` |
+| `files` (since 0.52.0) | every [Files API](files.md) route: `/v1/files...`, `POST /upload/v1beta/files` and `/v1beta/files...` |
 
 ```jsonc
 "apps": {
