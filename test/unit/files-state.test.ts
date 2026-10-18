@@ -156,6 +156,53 @@ describe("storage failures", () => {
     expect(await store.read("alpha", record.id, 30)).toBeUndefined()
   })
 
+  test("every storage read failure throws the same unavailable error and is logged by operation", async () => {
+    const { store, storage } = fixture()
+    const record = await saved(store, "alpha")
+    const fail = async () => {
+      throw new Error("locked")
+    }
+    storage.scan = fail
+    await expect(store.save("alpha", 30, file("b.txt"))).rejects.toThrow("file storage unavailable")
+    await expect(store.ids("alpha", 30)).rejects.toThrow("file storage unavailable")
+    const scan = FakeStorage.prototype.scan.bind(storage)
+    storage.scan = scan
+    storage.get = fail
+    await expect(store.head("alpha", record.id, 30)).rejects.toThrow("file storage unavailable")
+    await expect(store.remove("alpha", record.id)).rejects.toThrow("file storage unavailable")
+    expect(logs.of("files.store_failed").map((line) => line.fields.op)).toEqual(["save", "list", "load", "remove"])
+    // The bytes read failing after the metadata read is a failure too.
+    const first = FakeStorage.prototype.get.bind(storage)
+    storage.get = async (key) => (key.includes("/data/") ? fail() : first(key))
+    await expect(store.read("alpha", record.id, 30)).rejects.toThrow("file storage unavailable")
+  })
+
+  test("a sweep that cannot delete a file counts it as failed and goes on", async () => {
+    const { store, storage, time } = fixture()
+    await saved(store, "alpha", "old.txt")
+    time.at += 31 * DAY
+    storage.drop = async () => {
+      throw new Error("locked")
+    }
+    await saved(store, "alpha", "fresh.txt")
+    await store.idle()
+    expect(logs.of("files.swept")[0]!.fields).toMatchObject({ removed: "0", failed: "1" })
+  })
+
+  test("the index is read in pages: an app with more files than one scan page keeps them all", async () => {
+    const { store } = fixture({ maxFiles: 1000 })
+    for (let i = 0; i < 205; i++) await saved(store, "alpha", `f${i}.txt`)
+    expect(await store.ids("alpha", 30)).toHaveLength(205)
+  })
+
+  test("remove deletes a file whose record cannot be parsed, by its id", async () => {
+    const { store, storage } = fixture()
+    const record = await saved(store, "alpha")
+    storage.values.set(`files/alpha/id/${record.id}`, "{broken")
+    expect(await store.remove("alpha", record.id)).toBe(true)
+    expect(storage.values.has(`files/alpha/id/${record.id}`)).toBe(false)
+  })
+
   test("remove deletes the file, its bytes and its index entry", async () => {
     const { store, storage } = fixture()
     const record = await saved(store, "alpha")

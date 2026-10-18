@@ -340,6 +340,42 @@ describe("retention, restart and logs", () => {
   })
 })
 
+describe("failures keep each API's error shape", () => {
+  /** A store whose reads never answer, so the request deadline decides. */
+  const hanging = (): FileStore => ({ ...createFileStore({ storage: new FakeStorage(), state: createFileState() }), head: () => new Promise(() => {}) })
+  const FAST = { requestTimeoutMs: 80 }
+
+  test("a storage failure is a generic 500 in OpenAI's, Anthropic's and Google's body, and the log keeps the cause out of the answer", async () => {
+    const storage = new FakeStorage()
+    const { server } = await route({}, createFileStore({ storage, state: createFileState() }))
+    storage.failPuts = true
+    const openai = await upload(server, "alpha", { bytes: PNG, name: "p.png" })
+    expect(openai.status).toBe(500)
+    expect(openai.json().error.message).toBe("Internal server error")
+    const anthropic = await upload(server, "alpha", { bytes: PNG, name: "p.png" }, {}, ANTHROPIC)
+    expect(anthropic.status).toBe(500)
+    expect(anthropic.json()).toMatchObject({ type: "error", error: { message: "Internal server error" } })
+    const start = await server.send({ method: "POST", path: "/upload/v1beta/files", headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-protocol": "resumable", "x-goog-upload-command": "start" }, body: {} })
+    const path = new URL(String(start.headers["x-goog-upload-url"]))
+    const google = await server.send({ method: "POST", path: path.pathname + path.search, headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-command": "upload, finalize", "content-type": "application/octet-stream" }, body: PNG })
+    expect(google.status).toBe(500)
+    expect(google.json().error).toMatchObject({ code: 500, message: "Internal server error" })
+  })
+
+  test("a request that outlives its deadline is a 504 in each API's body", async () => {
+    const { server } = await route(FAST, hanging())
+    const openai = await server.send(get("/v1/files/file-" + "a".repeat(32), "alpha"))
+    expect(openai.status).toBe(504)
+    expect(openai.json().error.type).toBe("timeout_error")
+    const anthropic = await server.send(get("/v1/files/file-" + "a".repeat(32), "alpha", ANTHROPIC))
+    expect(anthropic.status).toBe(504)
+    expect(anthropic.json()).toMatchObject({ type: "error" })
+    const google = await server.send(get("/v1beta/files/" + "a".repeat(32), "alpha"))
+    expect(google.status).toBe(504)
+    expect(google.json().error.code).toBe(504)
+  })
+})
+
 describe("endpoints", () => {
   test("`files` is an endpoint of apps.<name>.endpoints: without it every Files route is a 403 endpoint_forbidden, and with it only those", async () => {
     const { server } = await route({ apps: { alpha: { endpoints: ["chat"] }, beta: { endpoints: ["files"] } } })

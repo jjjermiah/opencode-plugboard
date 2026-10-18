@@ -142,13 +142,23 @@ describe("resumable upload (what @google/genai and google-genai send)", () => {
     expect((await server.send(chunk("alpha", grown, "upload, finalize", 1500, Buffer.alloc(1500, 1)))).status).toBe(413)
   })
 
+  test("a chunk over the app's body cap is a 413 in Google's body (the body admission, I28)", async () => {
+    const { server } = await route({ limits: { maxBodyBytes: 1024 } })
+    const path = target(await server.send(start("alpha")))
+    const reply = await server.send(chunk("alpha", path, "upload", 0, Buffer.alloc(4096, 1)))
+    expect(reply.status).toBe(413)
+    expect(reply.json().error).toMatchObject({ code: 413 })
+  })
+
   test("an app holds at most 4 unfinished uploads", async () => {
-    const { server } = await route()
-    for (let i = 0; i < 4; i++) expect((await server.send(start("alpha"))).status).toBe(200)
-    const fifth = await server.send(start("alpha"))
+    // Unfinished uploads are process-wide state, so this test uses apps no other test starts an upload for.
+    const { server } = await route({ keys: { crowd: "key-crowd", quiet: "key-quiet" } })
+    const begin = (key: string): SendInit => ({ ...start("alpha"), headers: { "x-goog-api-key": key, "x-goog-upload-protocol": "resumable", "x-goog-upload-command": "start" } })
+    for (let i = 0; i < 4; i++) expect((await server.send(begin("key-crowd"))).status).toBe(200)
+    const fifth = await server.send(begin("key-crowd"))
     expect(fifth.status).toBe(429)
     expect(fifth.headers["retry-after"]).toBeDefined()
-    expect((await server.send(start("beta"))).status).toBe(200)
+    expect((await server.send(begin("key-quiet"))).status).toBe(200)
   })
 
   test("a start without the start command, and uploadType=media, are 400s that say what is supported", async () => {

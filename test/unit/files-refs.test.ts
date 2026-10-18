@@ -117,6 +117,13 @@ describe("inlineFiles", () => {
     ])
   })
 
+  test("items and parts that are not objects are passed through untouched beside a reference", () => {
+    const body = { messages: [1, null, { role: "user", content: ["loose", 7, { type: "file", file: { file_id: ID } }] }] }
+    expect(inlineFiles("chat", body, files(png))).toEqual({
+      messages: [1, null, { role: "user", content: ["loose", 7, { type: "image_url", image_url: { url: `data:image/png;base64,${png.base64}` } }] }],
+    })
+  })
+
   test("the input body is not mutated", () => {
     const body = { messages: [{ role: "user", content: [{ type: "file", file: { file_id: ID } }] }] }
     const before = JSON.stringify(body)
