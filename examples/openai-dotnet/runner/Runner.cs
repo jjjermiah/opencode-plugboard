@@ -20,10 +20,12 @@ string baseUrl = Environment.GetEnvironmentVariable("PLUGBOARD_BASE_URL") ?? thr
 string key = Environment.GetEnvironmentVariable("PLUGBOARD_KEY") ?? throw new InvalidOperationException("PLUGBOARD_KEY is not set.");
 string captureUrl = Environment.GetEnvironmentVariable("PLUGBOARD_CAPTURE_URL") ?? throw new InvalidOperationException("PLUGBOARD_CAPTURE_URL is not set: run this through examples/_harness/run.ts.");
 
+// #region snippet
 var options = new OpenAIClientOptions { Endpoint = new Uri(baseUrl) }; // already ends in /v1
 var http = new HttpClient();
 
 ChatClient ClientFor(string model) => new(model: model, credential: new ApiKeyCredential(key), options: options);
+// #endregion snippet
 
 void Emit(object line) => Console.WriteLine(JsonSerializer.Serialize(line));
 
@@ -50,7 +52,9 @@ Dictionary<string, object?> Usage(ChatTokenUsage usage) => new() { ["input_token
 // S1: one non-streamed call.
 Dictionary<string, object?> S1(string model)
 {
+    // #region snippet-chat
     ChatCompletion completion = ClientFor(model).CompleteChat([new UserChatMessage(Prompt)]);
+    // #endregion snippet-chat
     return new()
     {
         ["text"] = completion.Content[0].Text,
@@ -62,6 +66,7 @@ Dictionary<string, object?> S1(string model)
 // S2: a get_weather call, the assistant turn sent back, then the tool result under the same call id.
 Dictionary<string, object?> S2(string model)
 {
+    // #region snippet-tool
     ChatTool weatherTool = ChatTool.CreateFunctionTool(
         functionName: "get_weather",
         functionDescription: "Current weather for a city.",
@@ -74,24 +79,31 @@ Dictionary<string, object?> S2(string model)
             """));
     var toolOptions = new ChatCompletionOptions();
     toolOptions.Tools.Add(weatherTool);
+    // #endregion snippet-tool
     ChatClient client = ClientFor(model);
 
-    var observed = new Dictionary<string, object?>();
+    // #region snippet-tools
     List<ChatMessage> messages = [new UserChatMessage(ToolPrompt)];
     ChatCompletion first = client.CompleteChat(messages, toolOptions);
-    observed["finish_reason"] = FinishName(first.FinishReason);
     messages.Add(new AssistantChatMessage(first));
+    string city = "";
     if (first.ToolCalls.Count > 0)
     {
         ChatToolCall call = first.ToolCalls[0];
         using var argsJson = JsonDocument.Parse(call.FunctionArguments);
-        string city = argsJson.RootElement.GetProperty("city").GetString() ?? "";
-        observed["tool_name"] = call.FunctionName;
-        observed["tool_city"] = city;
-        observed["tool_call_id"] = call.Id;
+        city = argsJson.RootElement.GetProperty("city").GetString() ?? "";
         messages.Add(new ToolChatMessage(call.Id, $$"""{"temp_c": 18, "sky": "cloudy", "city": "{{city}}"}"""));
     }
     ChatCompletion final = client.CompleteChat(messages, toolOptions);
+    // #endregion snippet-tools
+    var observed = new Dictionary<string, object?>();
+    observed["finish_reason"] = FinishName(first.FinishReason);
+    if (first.ToolCalls.Count > 0)
+    {
+        observed["tool_name"] = first.ToolCalls[0].FunctionName;
+        observed["tool_city"] = city;
+        observed["tool_call_id"] = first.ToolCalls[0].Id;
+    }
     observed["final_text"] = final.Content[0].Text;
     observed["final_finish_reason"] = FinishName(final.FinishReason);
     return observed;
@@ -103,12 +115,14 @@ Dictionary<string, object?> S3(string model)
     var text = new StringBuilder();
     string? finish = null;
     ChatTokenUsage? usage = null;
+    // #region snippet-stream
     foreach (StreamingChatCompletionUpdate update in ClientFor(model).CompleteChatStreaming([new UserChatMessage(Prompt)]))
     {
         foreach (ChatMessageContentPart part in update.ContentUpdate) text.Append(part.Text);
         if (update.FinishReason is not null) finish = FinishName(update.FinishReason.Value);
         if (update.Usage is not null) usage = update.Usage;
     }
+    // #endregion snippet-stream
     return new() { ["text"] = text.ToString(), ["finish_reason"] = finish, ["usage"] = usage is null ? null : Usage(usage), ["done"] = true };
 }
 

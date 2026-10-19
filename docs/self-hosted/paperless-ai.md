@@ -22,18 +22,11 @@ Give paperless-ai its own key and a text alias. It sends no images, so you need 
 
 paperless-ai reads environment variables and `data/.env` in its data volume:
 
-```sh
-AI_PROVIDER=custom
-CUSTOM_BASE_URL=http://host.docker.internal:4010/v1
-CUSTOM_API_KEY=<the paperless-ai key>
-CUSTOM_MODEL=text
-PAPERLESS_API_URL=http://<paperless-ngx host>:8000/api
-PAPERLESS_API_TOKEN=<your paperless-ngx API token>
-```
+<<< @/../examples/self-hosted/paperless-ai/.env.example#snippet{ini}
 
 `CUSTOM_BASE_URL` ends in `/v1`. `CUSTOM_API_KEY` takes the plugboard key.
 
-A runnable copy is in [`examples/self-hosted/paperless-ai/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/paperless-ai/README.md).
+The `.env` and a compose file are in [`examples/self-hosted/paperless-ai/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/paperless-ai/README.md).
 
 ## What works
 

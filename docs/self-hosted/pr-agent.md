@@ -30,10 +30,7 @@ key = "<the pr-agent key>"
 
 Or in the environment:
 
-```sh
-OPENAI__API_BASE=http://192.0.2.10:4010/v1
-OPENAI__KEY=<the pr-agent key>
-```
+<<< @/../examples/self-hosted/pr-agent/.env.example#snippet{ini}
 
 Use the address your runner reaches in place of `192.0.2.10`. Set the model in `configuration.toml`:
 
@@ -46,7 +43,7 @@ custom_model_max_tokens = 200000  # the context window of the model behind the a
 
 The `openai/` prefix routes through LiteLLM to an OpenAI-compatible URL. PR-Agent does not know a prefixed model's context size, so set `custom_model_max_tokens`.
 
-A runnable env file is in [`examples/self-hosted/pr-agent/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/pr-agent/README.md).
+The env file is in [`examples/self-hosted/pr-agent/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/pr-agent/README.md).
 
 ## What works
 

@@ -99,6 +99,8 @@ Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `trans
 
 A region is named `snippet` or `snippet-<name>`, with a kebab-case name, and each name appears once per file. The docs import one region with `<<< file#name`, so a duplicate name would make the import ambiguous, and a region that does not close, or nests in another, would include the wrong lines. `snippet` is the file's first region. A file with more than one names the others after what they show (`snippet-s1`, `snippet-raw`). `check-regions.ts` (the examples CI job) fails on any of these in the tracked files under `examples/`, except Markdown, whose prose quotes the markers.
 
+Every example directory is used by a docs page: the client page imports its code with `<<< @/../examples/<name>/<file>#<region>` (a config file with no comment syntax, such as JSON, is imported whole), so the code a user reads is the code that runs. `bun .github/scripts/examples-index.ts --check` fails when an import is dead or when no page of the site mentions `examples/<name>`.
+
 ## When a run is stale
 
 A scripted run is stale when its scenarios, the checks, or the client's pinned version change. Rerun it and commit the new output; CI fails on a diff. A live run is never stale, only old: its directory name carries the date and commit, and a newer run is a new directory. Add `REPORT.md` for human notes. A live directory with only a `REPORT.md` is a historical record (`render.ts` `runKind`).

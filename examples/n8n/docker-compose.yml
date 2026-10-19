@@ -1,5 +1,6 @@
 # n8n 2.42.6, the version the runner pins. The runner starts its own container from this image (it reads the
 # image line below); this file is for running n8n yourself against plugboard, see README.md.
+# region snippet
 services:
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.42.6
@@ -18,3 +19,4 @@ services:
 
 volumes:
   n8n:
+# endregion snippet

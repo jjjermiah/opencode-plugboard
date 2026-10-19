@@ -81,10 +81,12 @@ func goMajor() string {
 }
 
 func s1(ctx context.Context, client *openai.Client, model string) (map[string]any, error) {
+	// #region snippet-chat
 	response, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:    model,
 		Messages: []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleUser, Content: prompt}},
 	})
+	// #endregion snippet-chat
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +99,7 @@ func s1(ctx context.Context, client *openai.Client, model string) (map[string]an
 }
 
 func s2(ctx context.Context, client *openai.Client, model string) (map[string]any, error) {
+	// #region snippet-tool
 	tools := []openai.Tool{{
 		Type: openai.ToolTypeFunction,
 		Function: &openai.FunctionDefinition{
@@ -105,25 +108,24 @@ func s2(ctx context.Context, client *openai.Client, model string) (map[string]an
 			Parameters:  json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`),
 		},
 	}}
+	// #endregion snippet-tool
+	// #region snippet-tools
 	messages := []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleUser, Content: "What is the weather in Paris? Use the tool."}}
 	first, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{Model: model, Messages: messages, Tools: tools})
 	if err != nil {
 		return nil, err
 	}
 	reply := first.Choices[0].Message
-	observed := map[string]any{"finish_reason": string(first.Choices[0].FinishReason)}
 	messages = append(messages, reply)
+	var call openai.ToolCall
+	var args struct {
+		City string `json:"city"`
+	}
 	if len(reply.ToolCalls) > 0 {
-		call := reply.ToolCalls[0]
-		var args struct {
-			City string `json:"city"`
-		}
+		call = reply.ToolCalls[0]
 		if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
 			return nil, err
 		}
-		observed["tool_name"] = call.Function.Name
-		observed["tool_city"] = args.City
-		observed["tool_call_id"] = call.ID
 		messages = append(messages, openai.ChatCompletionMessage{
 			Role:       openai.ChatMessageRoleTool,
 			ToolCallID: call.ID,
@@ -134,12 +136,20 @@ func s2(ctx context.Context, client *openai.Client, model string) (map[string]an
 	if err != nil {
 		return nil, err
 	}
+	// #endregion snippet-tools
+	observed := map[string]any{"finish_reason": string(first.Choices[0].FinishReason)}
+	if len(reply.ToolCalls) > 0 {
+		observed["tool_name"] = call.Function.Name
+		observed["tool_city"] = args.City
+		observed["tool_call_id"] = call.ID
+	}
 	observed["final_text"] = final.Choices[0].Message.Content
 	observed["final_finish_reason"] = string(final.Choices[0].FinishReason)
 	return observed, nil
 }
 
 func s3(ctx context.Context, client *openai.Client, model string) (map[string]any, error) {
+	// #region snippet-stream
 	stream, err := client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
 		Model:         model,
 		Messages:      []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleUser, Content: prompt}},
@@ -170,14 +180,17 @@ func s3(ctx context.Context, client *openai.Client, model string) (map[string]an
 			}
 		}
 	}
+	// #endregion snippet-stream
 	// io.EOF means the stream ended normally, after [DONE].
 	return map[string]any{"text": text, "finish_reason": finish, "usage": usage, "done": true}, nil
 }
 
 func main() {
+	// #region snippet
 	cfg := openai.DefaultConfig(os.Getenv("PLUGBOARD_KEY"))
 	cfg.BaseURL = os.Getenv("PLUGBOARD_BASE_URL") // already ends in /v1
 	client := openai.NewClientWithConfig(cfg)
+	// #endregion snippet
 	ctx := context.Background()
 
 	emit(map[string]any{"kind": "client", "name": "go-openai", "version": goOpenAIVersion(), "runtime": map[string]string{"name": "go", "version": goMajor()}})

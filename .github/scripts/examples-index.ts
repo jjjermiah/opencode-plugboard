@@ -1,16 +1,18 @@
 #!/usr/bin/env bun
 /**
  * Generates the table in examples/README.md between its markers, from the run records (docs/.vitepress/examples-model.ts),
- * and checks that every `<<<` snippet import in docs/ names a file and a region that exist.
+ * and checks that every `<<<` snippet import in docs/ names a file and a region that exist, and that every example
+ * directory is used by at least one page of the site.
  *
  *   bun .github/scripts/examples-index.ts          write the table
- *   bun .github/scripts/examples-index.ts --check  fail when the table is stale, an example has no Shows text, or an import is dead
+ *   bun .github/scripts/examples-index.ts --check  fail when the table is stale, an example has no Shows text, an import is dead, or an example is in no docs page
  *
  * The Shows text is examples/_harness/index.json (one line per example). Everything else comes from runs/.
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
 import { type ExampleEntry, type ExampleRun, readExamples, verdictCell } from "../../docs/.vitepress/examples-model.ts"
+import { MAINTAINER_PAGES } from "../../docs/.vitepress/maintainer-pages.ts"
 
 const ROOT = resolve(import.meta.dir, "../..")
 const EXAMPLES = join(ROOT, "examples")
@@ -41,25 +43,46 @@ export function renderTable(entries: ExampleEntry[], shows: Record<string, strin
   return ["| Example | Shows | Scripted | Newest live run |", "| --- | --- | --- | --- |", ...rows].join("\n")
 }
 
-/** Every `<<< @/../examples/<file>#<region>` in docs/, with the file it names and whether that region exists there. */
+/**
+ * Every `<<< @/../examples/<file>[#<region>]` in docs/, with the file it names and, when it names one, whether that region
+ * exists there. A line may end in VitePress options (`{ini}`, `[title]`), which are not part of the region name.
+ */
 export function snippetProblems(docsDir: string, examplesDir: string): string[] {
   const problems: string[] = []
-  const pattern = /<<< @\/\.\.\/examples\/([^\s#]+)#(\S+)/g
+  const pattern = /<<< @\/\.\.\/examples\/([^\s#{[]+)(?:#([\w-]+))?/g
   for (const file of markdownFiles(docsDir)) {
     const text = readFileSync(file, "utf8")
     for (const match of text.matchAll(pattern)) {
       const [, path, region] = match
-      const where = `${relative(ROOT, file)}: <<< ${path}#${region}`
+      const where = `${relative(ROOT, file)}: <<< ${path}${region ? `#${region}` : ""}`
       const target = join(examplesDir, path!)
       if (!existsFile(target)) {
         problems.push(`${where}: the file does not exist`)
         continue
       }
+      if (!region) continue
       const marker = new RegExp(`^\\s*(?:\\/\\/\\s*)?#\\s*region\\s+${escapeRegExp(region!)}\\s*$`, "m")
       if (!marker.test(readFileSync(target, "utf8"))) problems.push(`${where}: no region "${region}" in that file`)
     }
   }
   return problems
+}
+
+/**
+ * The example directories that no page of the site mentions. A page uses an example when its text names `examples/<name>`,
+ * as a `<<<` import or as a link to the directory. Maintainer pages (MAINTAINER_PAGES) do not count: the generated
+ * examples page lists every example, so it would hide a missing one.
+ */
+export function unreferencedExamples(docsDir: string, examplesDir: string): string[] {
+  const pages = markdownFiles(docsDir)
+    .filter((file) => !MAINTAINER_PAGES.includes(relative(docsDir, file)))
+    .map((file) => readFileSync(file, "utf8"))
+  return readExamples(examplesDir)
+    .map((entry) => entry.name)
+    .filter((name) => {
+      const mention = new RegExp(`examples/${escapeRegExp(name)}(?![\\w-])`)
+      return !pages.some((text) => mention.test(text))
+    })
 }
 
 function existsFile(path: string): boolean {
@@ -114,12 +137,14 @@ async function main(): Promise<void> {
     }
   }
   problems.push(...snippetProblems(DOCS, EXAMPLES))
+  for (const name of unreferencedExamples(DOCS, EXAMPLES))
+    problems.push(`examples/${name}: no page of the site uses it. Import a snippet from it with <<< @/../examples/${name}/<file>#<region>, or link it`)
 
   if (problems.length > 0) {
     for (const problem of problems) console.error(problem)
     if (check) process.exit(1)
   }
-  if (check) console.log(`examples index is current; ${entries.length} examples; all <<< imports in docs/ resolve`)
+  if (check) console.log(`examples index is current; ${entries.length} examples; all <<< imports in docs/ resolve; every example is used by a docs page`)
 }
 
 if (import.meta.main) await main()

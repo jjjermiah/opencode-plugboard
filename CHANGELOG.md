@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- The code on the client and API pages now comes from the examples that CI runs, not from text written by hand. Every example under `examples/` is used by a docs page: SDK and framework pages import their snippets, config-only apps import their config file, and the API pages show the curl examples. A check (`examples-index.ts --check`, also in `bun run validate`) fails when an example is in no page of the site or when a `<<<` import names a missing file or region.
 
 ## [0.57.0] - 2026-10-19: No More Silent Hangs
 

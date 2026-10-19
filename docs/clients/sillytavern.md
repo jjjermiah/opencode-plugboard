@@ -10,7 +10,11 @@ A chat and roleplay front end. Use the **Custom (OpenAI-compatible)** source.
 - **API key:** your plugboard key
 - **Model:** picked from the dropdown, which fills from `/v1/models`
 
-Press **Test Message** to confirm. A compose file for SillyTavern itself is in [examples/sillytavern/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/sillytavern).
+Press **Test Message** to confirm.
+
+In Docker, use `http://host.docker.internal:4010/v1` as the endpoint. The compose file maps that name to the host ([examples/sillytavern/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/sillytavern)):
+
+<<< @/../examples/sillytavern/docker-compose.yml#snippet
 
 ## What works
 

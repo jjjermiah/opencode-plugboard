@@ -7,6 +7,7 @@
 //   bun run validate --skip examples  leave out the named steps (examples is the slow one, about 6 minutes)
 //   bun run validate --keep-going     run every step even after one fails
 //
+// The docs step also runs the examples index check (every <<< import resolves, every example is used by a docs page).
 // Each step's full output goes to .agents/validate/<step>.log (ignored by git); the console shows one line per
 // step and, for a failed step, the tail of its log. Exit code 0 only when every step that ran passed.
 // It is meant to be run once, in the foreground, and waited for: no polling of logs.
@@ -28,7 +29,7 @@ const STEPS: readonly Step[] = [
   },
   { name: "manifest", cmd: "bun run coverage-manifest" },
   { name: "pack", cmd: "bun .github/scripts/check-pack.ts && bun .github/scripts/smoke-pack.ts" },
-  { name: "docs", cmd: "bun .github/scripts/since-next.ts --check && bun run docs:build" },
+  { name: "docs", cmd: "bun .github/scripts/since-next.ts --check && bun .github/scripts/examples-index.ts --check && bun run docs:build" },
   { name: "examples", cmd: "BROWSER=true bun examples/_harness/run.ts all --target scripted && git diff --exit-code examples/" },
   { name: "mutations", cmd: "bun run mutations", optional: true },
 ]

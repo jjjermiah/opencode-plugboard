@@ -1,4 +1,5 @@
 # Put this file next to LibreChat's docker-compose.yml. It mounts librechat.yaml into the api service.
+# region snippet
 services:
   api:
     volumes:
@@ -8,3 +9,4 @@ services:
     extra_hosts:
       # Linux only. Docker Desktop already provides host.docker.internal.
       - "host.docker.internal:host-gateway"
+# endregion snippet

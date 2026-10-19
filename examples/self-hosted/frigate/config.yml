@@ -2,6 +2,7 @@
 # Plugboard serves chat and descriptions. Semantic search uses a local Jina model,
 # because plugboard serves no embeddings.
 
+# region snippet
 genai:
   plugboard:
     provider: openai
@@ -18,3 +19,4 @@ semantic_search:
   enabled: true
   model: jinav1
   model_size: small
+# endregion snippet

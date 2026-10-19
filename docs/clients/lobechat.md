@@ -4,17 +4,13 @@ A self-hosted chat app. Its OpenAI provider reads its key, base URL and model li
 
 ## Connect
 
-```sh
-OPENAI_API_KEY=<your plugboard key>
-OPENAI_PROXY_URL=http://127.0.0.1:4010/v1
-OPENAI_MODEL_LIST=-all,+fast
-```
+<<< @/../examples/lobechat/.env.example#snippet{ini}
 
 - `OPENAI_PROXY_URL` must include `/v1`; without it every chat answers 404.
 - `OPENAI_MODEL_LIST` controls the picker: `-all` hides the built-in OpenAI models, `+fast` adds your alias. Use `name=Display Name` to rename.
 - Restart the container after changing these.
 
-A compose setup is in [examples/lobechat/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/lobechat).
+A compose file that loads it is in [examples/lobechat/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/lobechat).
 
 ## What works
 

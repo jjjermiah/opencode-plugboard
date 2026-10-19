@@ -23,6 +23,7 @@ KEY = os.environ["PLUGBOARD_KEY"]
 weather_calls: list[str] = []
 
 
+# region snippet
 def llm_config(stream: bool = False) -> LLMConfig:
     return LLMConfig(
         {
@@ -34,6 +35,7 @@ def llm_config(stream: bool = False) -> LLMConfig:
             "stream": stream,
         }
     )
+# endregion snippet
 
 
 def get_weather(city: str) -> str:
@@ -44,8 +46,10 @@ def get_weather(city: str) -> str:
 
 def main() -> None:
     # 1. Text.
+    # region snippet-chat
     bot = ConversableAgent("bot", llm_config=llm_config(), human_input_mode="NEVER")
     reply = bot.generate_reply(messages=[{"role": "user", "content": "Reply with the single word: pong"}])
+    # endregion snippet-chat
     print("text:", str(reply).strip())
 
     # 2. Stream (llm_config stream=True).
@@ -54,6 +58,7 @@ def main() -> None:
     print("stream:", str(reply).strip())
 
     # 3. Two-agent chat with one tool call.
+    # region snippet-tools
     assistant = ConversableAgent(
         "assistant",
         llm_config=llm_config(),
@@ -75,6 +80,7 @@ def main() -> None:
         max_turns=4,
         silent=True,
     )
+    # endregion snippet-tools
     print("tool calls:", weather_calls)
     last = next(str(m["content"]) for m in reversed(result.chat_history) if m.get("content"))
     print("chat last:", last.strip()[:200])

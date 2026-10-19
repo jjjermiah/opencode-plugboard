@@ -14,6 +14,12 @@ Every API uses the same keys, models, aliases, limits, history and usage. Pick t
 
 Plugboard's own routes live under `/plugboard/`: usage, status, metrics, the dashboard and key management. `/healthz` and `/readyz` answer health checks. See [History, usage and monitoring](guides/history-usage-and-monitoring.md).
 
+## List the models a key can use
+
+`PLUGBOARD_BASE_URL` is `http://127.0.0.1:4010/v1` and `PLUGBOARD_KEY` is your key. Every curl example is in [examples/curl/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/curl).
+
+<<< @/../examples/curl/models.sh#snippet
+
 ## How a request runs
 
 Each request becomes an OpenCode session in the app's own directory. OpenCode's normal request path calls the provider, so its logins, auth plugins and provider fixes all apply.
