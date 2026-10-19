@@ -12,6 +12,7 @@
         "@types/escape-html": "1.0.4",
         "escape-html": "1.0.3",
         "ipaddr.js": "2.5.0",
+        "jsonc-parser": "3.3.1",
         "lru-cache": "11.5.3",
         "p-queue": "9.3.5",
         "pino": "10.4.0",
@@ -112,6 +113,12 @@
       "engines": {
         "node": ">= 10"
       }
+    },
+    "node_modules/jsonc-parser": {
+      "version": "3.3.1",
+      "resolved": "https://registry.npmjs.org/jsonc-parser/-/jsonc-parser-3.3.1.tgz",
+      "integrity": "sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==",
+      "license": "MIT"
     },
     "node_modules/lru-cache": {
       "version": "11.5.3",

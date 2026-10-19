@@ -81,6 +81,18 @@ describe("#73 buildDiscovery: the models state explains a 403 before it happens"
     expect(doc.models?.hint).toMatch(hint)
   })
 
+  test("the empty-models hint and the page suggest `connected` first", () => {
+    const doc = buildDiscovery({ options: testOptions({ models: [] }), app: "default", catalog: CATALOG })
+    expect(doc.models?.hint).toContain('{"models":"connected"}')
+    expect(renderDiscoveryHtml(doc)).toContain("&quot;models&quot;: &quot;connected&quot;")
+    expect(buildDiscovery({ options: testOptions({ models: [] }), app: "default" }).models?.hint).toContain('{"models":"connected"}')
+  })
+
+  test("connected with an empty catalog says no provider is connected, not that the allowlist mismatches", () => {
+    const doc = buildDiscovery({ options: testOptions({ models: "connected" }), app: "default", catalog: [] })
+    expect(doc.models).toMatchObject({ state: "none_available", allowlist: ["connected"], hint: expect.stringContaining("Connect a provider") })
+  })
+
   test("more than 50 providers are counted, not listed", () => {
     const catalog = Array.from({ length: 53 }, (_, index) => model(`p${String(index).padStart(2, "0")}`, "m"))
     const doc = buildDiscovery({ options: keyless, catalog })

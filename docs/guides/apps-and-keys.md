@@ -21,6 +21,28 @@ What happens:
 - Without `keys`, the one app is `default`, and only local callers can reach it. On a shared machine, set `"requireKeys": true` so the server refuses to run without keys.
 - App names match `[a-z0-9-]+`. Keep keys out of the file with `{env:VAR}`.
 
+## Set up the first app in one command
+
+```sh
+bunx opencode-plugboard init
+```
+
+It adds plugboard to `~/.config/opencode/opencode.jsonc`, pinned to the version that ran. The entry has one app key (generated, 32 random bytes) and `"models": "connected"`, which allows every enabled model of every connected provider. The key is printed once, with a curl that lists your models. Restart OpenCode and touch the server, as in [Install](../install.md).
+
+```jsonc
+"options": { "keys": { "my-app": "pb_..." }, "models": "connected" }
+```
+
+Options:
+
+- `--app <name>` names the app (default `my-app`).
+- `--fast <model>` adds the alias `fast`, for example `--fast anthropic/claude-haiku-4-5`.
+- `--config <path>` edits another file.
+- `--dry-run` prints the change as a diff and writes nothing.
+- `--force` replaces an existing plugboard entry, and gives it a new key. Without it, `init` stops and leaves the file as it is.
+
+The file is edited as JSONC, so comments, formatting and other settings stay. A file that is not valid JSONC is left untouched. The key is written into the file, so keep the file private, or move the key into the environment with `{env:VAR}` afterwards.
+
 ## Fix what an app may do
 
 `apps` lets the server decide an app's behaviour, so you do not have to trust the app with it.

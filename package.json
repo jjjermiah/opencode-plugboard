@@ -29,7 +29,10 @@
       "default": "./dist/tui.js"
     }
   },
-  "files": ["index.ts", "rpc.ts", "tui.ts", "src/", "dist/", "npm-shrinkwrap.json", "README.md", "LICENSE"],
+  "bin": {
+    "opencode-plugboard": "./bin/opencode-plugboard.ts"
+  },
+  "files": ["index.ts", "rpc.ts", "tui.ts", "bin/", "src/", "dist/", "npm-shrinkwrap.json", "README.md", "LICENSE"],
   "engines": {
     "bun": ">=1.4.2"
   },
@@ -59,6 +62,7 @@
     "@types/escape-html": "1.0.4",
     "escape-html": "1.0.3",
     "ipaddr.js": "2.5.0",
+    "jsonc-parser": "3.3.1",
     "lru-cache": "11.5.3",
     "p-queue": "9.3.5",
     "pino": "10.4.0",

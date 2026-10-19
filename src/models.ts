@@ -1,6 +1,6 @@
 /** Model refs and the allowlist/alias policy over a neutral catalog. Protocol-neutral: front-ends format the results. */
 
-import { appPolicy, type AppPolicy, type PlugboardOptions } from "./config.js"
+import { appPolicy, CONNECTED, type AppPolicy, type PlugboardOptions } from "./config.js"
 import type { CatalogModel, ModelRef, PlugError } from "./contract.js"
 
 /** Alias target prefix that binds a skill: `skill:<id>@provider/model[#variant]` (see `parseAliasTarget`). */
@@ -53,9 +53,13 @@ export function fromSlug(slug: string): string | undefined {
   return parseModelRef(id) ? id : undefined
 }
 
-/** `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly. */
+/**
+ * `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly; `connected` any model.
+ * `connected` never narrows the catalog: callers match refs against the host catalog (`find`), which holds the enabled models of connected providers.
+ */
 export function allowedBy(models: ReadonlyArray<string>, ref: ModelRef): boolean {
   return models.some((pattern) => {
+    if (pattern === CONNECTED) return true
     if (pattern.endsWith("/*")) return pattern.slice(0, -2) === ref.providerID
     const p = parseModelRef(pattern)
     return p !== undefined && p.providerID === ref.providerID && p.id === ref.id && (p.variant === undefined || p.variant === ref.variant)
