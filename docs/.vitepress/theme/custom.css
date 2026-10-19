@@ -1,13 +1,76 @@
 /*
- * Wider pages. The default theme caps the layout at 1440px and the text column at 688px, which
- * squeezes the diagrams, tables and long config blocks these docs are made of. The layout now uses
- * most of the window and the text column grows with it; the outline stays on the right.
- * The theme's own rules are scoped (`[data-v-...]`), so these overrides need `!important`.
+ * A quiet, neutral look: Inter on white (or near black), one indigo accent, hairline rules,
+ * pill buttons and a framed diagram on a dotted field.
+ * The theme's own rules are scoped (`[data-v-...]`), so several overrides need `!important`.
  */
+
+/* ---- Palette ---------------------------------------------------------------------------- */
 :root {
   --vp-layout-max-width: 100%;
+
+  --vp-c-bg: #fff;
+  --vp-c-bg-alt: #fff;
+  --vp-c-bg-elv: #fff;
+  --vp-c-bg-soft: #f6f6f8;
+  --vp-c-divider: #ececf0;
+  --vp-c-gutter: #ececf0;
+  --vp-c-border: #dcdce2;
+  --vp-c-text-1: #18181b;
+  --vp-c-text-2: #52525b;
+  --vp-c-text-3: #8a8a94;
+
+  --vp-c-brand-1: #4a4ed0;
+  --vp-c-brand-2: #5b5fe6;
+  --vp-c-brand-3: #5b5fe6;
+  --vp-c-brand-soft: rgb(91 95 230 / 0.1);
+
+  --vp-button-brand-bg: #5b5fe6;
+  --vp-button-brand-hover-bg: #4a4ed0;
+  --vp-button-brand-active-bg: #4a4ed0;
+  --vp-button-brand-text: #fff;
+  --vp-button-alt-bg: transparent;
+  --vp-button-alt-hover-bg: #f6f6f8;
+  --vp-button-alt-border: #dcdce2;
+
+  --vp-code-block-bg: #fafafb;
+  --vp-code-bg: #f1f1f4;
+  --vp-code-color: #18181b;
+  --vp-code-line-number-color: #b4b4bd;
+
+  --plug-dot: rgb(91 95 230 / 0.22);
+  --plug-radius: 10px;
 }
 
+.dark {
+  --vp-c-bg: #18181b;
+  --vp-c-bg-alt: #18181b;
+  --vp-c-bg-elv: #212126;
+  --vp-c-bg-soft: #212126;
+  --vp-c-divider: #2c2c33;
+  --vp-c-gutter: #2c2c33;
+  --vp-c-border: #3a3a42;
+  --vp-c-text-1: #fafafa;
+  --vp-c-text-2: #b0b0ba;
+  --vp-c-text-3: #80808b;
+
+  --vp-c-brand-1: #aeb1ff;
+  --vp-c-brand-2: #8b8ff0;
+  --vp-c-brand-3: #5b5fe6;
+  --vp-c-brand-soft: rgb(139 143 240 / 0.16);
+
+  --vp-button-alt-hover-bg: #212126;
+  --vp-button-alt-border: #3a3a42;
+
+  --vp-code-block-bg: #1d1d21;
+  --vp-code-bg: #26262c;
+  --vp-code-color: #f4f4f5;
+  --vp-code-line-number-color: #55555f;
+
+  --plug-dot: rgb(174 177 255 / 0.18);
+}
+
+/* ---- Wider pages ------------------------------------------------------------------------ */
+/* The default theme caps the text column at 688px, which squeezes the tables and config blocks these docs are made of. */
 @media (min-width: 960px) {
   .VPDoc .container {
     max-width: none !important;
@@ -36,4 +99,295 @@
 .vp-doc svg {
   max-width: 100%;
   height: auto;
+}
+
+/* ---- Top bar ---------------------------------------------------------------------------- */
+.VPNavBar .title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.VPNavBar:not(.home.top) .divider-line,
+.VPNavBar .divider-line {
+  background-color: var(--vp-c-divider);
+}
+
+.VPNavBarMenuLink,
+.VPNavBarMenuGroup .button {
+  font-weight: 450;
+}
+
+/* Search is a pill. */
+@media (min-width: 768px) {
+  .VPNavBarSearch .DocSearch-Button {
+    border: 1px solid var(--vp-c-divider) !important;
+    border-radius: 999px !important;
+    background: var(--vp-c-bg) !important;
+  }
+
+  .VPNavBarSearch .DocSearch-Button:hover {
+    border-color: var(--vp-c-border) !important;
+  }
+}
+
+/* ---- Sidebar ---------------------------------------------------------------------------- */
+/* Group titles are small caps labels; the page you are on is simply darker, not tinted. */
+.VPSidebarItem.level-0 > .item .text {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+.VPSidebarItem.level-0 {
+  padding-bottom: 20px !important;
+}
+
+.VPSidebarItem .item .text {
+  font-size: 14px;
+}
+
+.VPSidebarItem.level-1 .text,
+.VPSidebarItem.level-2 .text {
+  font-weight: 400;
+  color: var(--vp-c-text-2);
+}
+
+.VPSidebarItem .link:hover .text {
+  color: var(--vp-c-text-1) !important;
+}
+
+.VPSidebarItem.is-active > .item .text,
+.VPSidebarItem.is-active > .item > .link > .text {
+  color: var(--vp-c-text-1) !important;
+  font-weight: 560 !important;
+}
+
+.VPSidebarItem.level-1.is-active > .item > .indicator,
+.VPSidebarItem.level-2.is-active > .item > .indicator {
+  background-color: var(--vp-c-brand-2);
+}
+
+/* ---- Page text -------------------------------------------------------------------------- */
+.vp-doc h1 {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* A section title is followed by a hairline that fills the rest of the row. */
+.vp-doc h2 {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 44px 0 18px;
+  padding-top: 0;
+  border-top: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.vp-doc h2::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--vp-c-divider);
+}
+
+.vp-doc h3 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.vp-doc a {
+  font-weight: 500;
+  text-underline-offset: 3px;
+}
+
+.vp-doc :not(pre) > code {
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.85em;
+}
+
+.vp-doc a > code {
+  color: var(--vp-c-brand-1);
+}
+
+/* ---- Code blocks ------------------------------------------------------------------------ */
+.vp-doc div[class*="language-"] {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: var(--plug-radius);
+  background-color: var(--vp-code-block-bg);
+  margin: 18px 0;
+}
+
+.vp-doc [class*="language-"] pre,
+.vp-doc [class*="language-"] code {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.vp-doc div[class*="language-"] > span.lang {
+  color: var(--vp-c-text-3);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.vp-doc .line-numbers-mode {
+  padding-left: 0;
+}
+
+.vp-doc .custom-block,
+.vp-doc table {
+  border-radius: var(--plug-radius);
+}
+
+.vp-doc tr,
+.vp-doc th,
+.vp-doc td {
+  border-color: var(--vp-c-divider);
+}
+
+.vp-doc th {
+  background: var(--vp-c-bg-soft);
+  font-weight: 560;
+}
+
+.vp-doc tr {
+  background: transparent !important;
+}
+
+/* ---- Home ------------------------------------------------------------------------------- */
+/* A dotted field behind the hero that fades out toward the content. */
+.VPHome {
+  position: relative;
+  overflow-x: clip;
+}
+
+.VPHome::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 760px;
+  background-image: radial-gradient(circle, var(--plug-dot) 1.2px, transparent 1.6px);
+  background-size: 16px 16px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 75% at 50% 18%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 75% at 50% 18%, #000 20%, transparent 75%);
+  pointer-events: none;
+}
+
+.VPHome > * {
+  position: relative;
+}
+
+/* The hero text is centred; the diagram sits under it. */
+.VPHero .container {
+  justify-content: center;
+}
+
+.VPHero .main {
+  max-width: 760px !important;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.VPHero .name,
+.VPHero .text {
+  font-size: clamp(32px, 5.4vw, 52px) !important;
+  line-height: 1.12 !important;
+  letter-spacing: -0.03em;
+  font-weight: 650 !important;
+  max-width: none !important;
+}
+
+.VPHero .name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(15px, 2.2vw, 18px) !important;
+  letter-spacing: 0;
+  font-weight: 500 !important;
+  margin-bottom: 14px;
+}
+
+.VPHero .name .clip {
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+  color: var(--vp-c-brand-1) !important;
+}
+
+.VPHero .tagline {
+  max-width: 620px !important;
+  margin: 16px auto 0;
+  font-size: 18px !important;
+  line-height: 1.55 !important;
+  color: var(--vp-c-text-2) !important;
+}
+
+.VPHero .actions {
+  justify-content: center;
+}
+
+.VPButton {
+  border-radius: 999px !important;
+  font-weight: 560 !important;
+}
+
+.hero-figure {
+  margin: -24px auto 0;
+  padding: 0 24px;
+  max-width: 1080px;
+}
+
+.hero-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.hero-figure picture {
+  display: block;
+}
+
+.only-dark {
+  display: none !important;
+}
+
+.dark .only-light {
+  display: none !important;
+}
+
+.dark .only-dark {
+  display: block !important;
+}
+
+.VPFeatures .item .VPLink,
+.VPFeatures .VPFeature {
+  border-radius: 14px !important;
+}
+
+.VPFeature {
+  border: 1px solid var(--vp-c-divider) !important;
+  background: transparent !important;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.VPFeature:hover {
+  border-color: var(--vp-c-brand-2) !important;
+  background: var(--vp-c-bg-soft) !important;
+}
+
+.VPFeature .title {
+  font-weight: 600 !important;
+}
+
+/* On a phone the figure is the narrow drawing, stacked top to bottom. */
+@media (max-width: 640px) {
+  .hero-figure {
+    max-width: 400px;
+    margin-top: 20px;
+    padding: 0 24px;
+  }
 }

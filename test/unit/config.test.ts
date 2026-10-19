@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions, reasoningOutputFor } from "../../src/config.js"
+import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, CONNECTED, isLoopbackHost, maxNFor, parseOptions, reasoningOutputFor } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -26,6 +26,27 @@ describe("parseOptions: defaults", () => {
       modelIds: "canonical",
       usage: { enabled: true, retentionDays: 90 },
     })
+  })
+
+  test('models: "connected" parses to the one-entry list that allows every catalog model; unset stays empty', () => {
+    expect(parseOptions({ models: "connected" }).models).toEqual([CONNECTED])
+    expect(parseOptions({}).models).toEqual([])
+    expect(parseOptions({ models: null }).models).toEqual([])
+  })
+
+  test.each([
+    ["another string", "anthropic/*", /must be an array of strings/],
+    ["`connected` inside a list", ["test/*", "connected"], /as the whole value/],
+    ["a number", 4, /must be an array of strings/],
+  ])("models rejects %s", (_name, models, message) => {
+    expect(() => parseOptions({ models })).toThrow(message)
+  })
+
+  test('models: "connected" lets an alias target and an agent model through the load-time allowlist check', () => {
+    const options = parseOptions({ models: "connected", aliases: { fast: ["openai/gpt-mini", "anthropic/claude"] }, agents: [{ name: "reviewer", model: "openai/gpt-mini" }] })
+    expect(options.aliases).toEqual({ fast: "openai/gpt-mini" })
+    expect(options.fallbacks).toEqual({ fast: ["anthropic/claude"] })
+    expect(options.agents).toEqual({ reviewer: "openai/gpt-mini" })
   })
 
   test("null is the same as no options", () => {

@@ -17,7 +17,7 @@
 
 import type { ServerResponse } from "node:http"
 import escapeText from "escape-html"
-import type { PlugboardOptions } from "./config.js"
+import { CONNECTED, type PlugboardOptions } from "./config.js"
 import type { CatalogModel } from "./contract.js"
 import { listAvailableModels } from "./models.js"
 import type { RuntimeSnapshot } from "./metrics.js"
@@ -176,16 +176,20 @@ export function buildDiscovery({ options, app, catalog, publicOrigin }: Discover
 
   let state: ModelsState = "ready"
   let modelsHint: string | undefined
-  const example = JSON.stringify(suggested && suggested.length > 0 ? { models: suggested } : { models: ["provider/*"] })
+  const connected = options.models.includes(CONNECTED)
   if (options.models.length === 0) {
     state = "no_models_configured"
-    modelsHint = `The \`models\` option is empty, so every model call fails with 403 no_models_configured. Add an allowlist to the plugin options, for example ${example}`
+    modelsHint = `The \`models\` option is empty, so every model call fails with 403 no_models_configured. Add \`${JSON.stringify({ models: CONNECTED })}\` to the plugin options to allow every model of every connected provider${
+      suggested && suggested.length > 0 ? `, or list providers: ${JSON.stringify({ models: suggested })}` : ""
+    }`
   } else if (!catalog) {
     state = "catalog_unavailable"
     modelsHint = "The model catalog could not be loaded from the OpenCode server."
   } else if (listed.length === 0) {
     state = "none_available"
-    modelsHint = "Nothing in the `models` allowlist matches a model the server offers. Check the provider and model ids against the catalog below."
+    modelsHint = connected
+      ? "`models` is `connected`, but the OpenCode server offers no enabled model. Connect a provider in OpenCode."
+      : "Nothing in the `models` allowlist matches a model the server offers. Check the provider and model ids against the catalog below."
   }
 
   const first = listed[0]?.id ?? PLACEHOLDER_MODEL
@@ -238,7 +242,9 @@ export function renderDiscoveryHtml(doc: Discovery): string {
     if (aliases.length > 0) sections.push(`<h3>Aliases</h3>${list(aliases.map(([alias, target]) => [alias, target, ...(models.fallbacks?.[alias] ?? [])].join(" -> ")))}`)
   }
   if (doc.suggestedModels) {
-    sections.push(`<h2>Suggested <code>models</code> option</h2>${pre(`"models": ${JSON.stringify(doc.suggestedModels)}`)}`)
+    sections.push(
+      `<h2>Suggested <code>models</code> option</h2>${pre(`"models": "${CONNECTED}"`)}<p>Every model of every connected provider. Or only some providers:</p>${pre(`"models": ${JSON.stringify(doc.suggestedModels)}`)}`,
+    )
   }
   if (doc.catalog) {
     const rows = doc.catalog.providers

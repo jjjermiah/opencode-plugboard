@@ -80,6 +80,14 @@ try {
   }
   checkTuiEntry(join(project, "node_modules", "opencode-plugboard", "dist", "tui.js"))
 
+  // The `init` command line ships in `bin/` and needs its own dependency (jsonc-parser) from the install.
+  const initOut = run([join(project, "node_modules", ".bin", "opencode-plugboard"), "init", "--dry-run", "--config", join(work, "init-config.jsonc")], project)
+  if (!initOut.includes('"models": "connected"')) {
+    console.error("smoke: `opencode-plugboard init --dry-run` from the installed package did not print the plugin entry")
+    process.exit(1)
+  }
+  console.log("init command ok")
+
   // Stands in for OpenCode, which provides effect and @opencode/plugin to plugins. Same pins as the dev dependencies.
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
     peerDependencies: Record<string, string>

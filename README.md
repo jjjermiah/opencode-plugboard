@@ -1,9 +1,19 @@
-# opencode-plugboard
+<div align="center">
+  <br />
+  <h1>opencode-plugboard</h1>
+  <p>Your OpenCode logins, served as an API</p>
 
 [![npm](https://img.shields.io/npm/v/opencode-plugboard)](https://www.npmjs.com/package/opencode-plugboard)
 [![license](https://img.shields.io/npm/l/opencode-plugboard)](https://github.com/jjjermiah/opencode-plugboard/blob/main/LICENSE)
 [![CI](https://github.com/jjjermiah/opencode-plugboard/actions/workflows/ci.yml/badge.svg)](https://github.com/jjjermiah/opencode-plugboard/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jjjermiah/opencode-plugboard/badge)](https://scorecard.dev/viewer/?uri=github.com/jjjermiah/opencode-plugboard)
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jjjermiah/opencode-plugboard/main/docs/public/hero-dark.svg" />
+    <img src="https://raw.githubusercontent.com/jjjermiah/opencode-plugboard/main/docs/public/hero-light.svg" width="860" alt="Apps call plugboard with the OpenAI, Anthropic or Gemini API. Plugboard runs inside your OpenCode server, turns each request into an OpenCode session and uses your provider logins." />
+  </picture>
+  <br />
+</div>
 
 Use the models you already log in to in OpenCode (ChatGPT, Claude, GitHub Copilot, OpenCode Go and the rest) from any app that speaks the OpenAI, Anthropic or Gemini API.
 
