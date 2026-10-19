@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 380" width="1000" height="380" role="img" aria-labelledby="t d">
+  <title id="t">How plugboard fits in</title>
+  <desc id="d">Apps call plugboard with the OpenAI, Anthropic or Gemini API. Plugboard runs inside your OpenCode server and turns each request into an OpenCode session, which uses your provider logins: Claude, ChatGPT, GitHub Copilot and OpenCode Go.</desc>
+  <style>
+    text { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #18181b; font-size: 14px }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+    .muted { fill: #71717a }
+    .h { font-size: 16px; font-weight: 600 }
+    .label { font-size: 11px; letter-spacing: .08em; fill: #71717a; font-weight: 600 }
+    .win { fill: #fafafa; stroke: #e4e4e7 }
+    .bar { fill: #f4f4f5 }
+    .rule { stroke: #e4e4e7 }
+    .card { fill: #fff; stroke: #e4e4e7 }
+    .hot { fill: #eef0ff; stroke: #5b5fe6; stroke-width: 1.5 }
+    .accent { fill: #4a4ed0 }
+    .pill { fill: #fff; stroke: #e4e4e7 }
+    .wire { fill: none; stroke: #a1a1aa; stroke-width: 1.5 }
+    .head { fill: #a1a1aa }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9z" class="head"/></marker>
+  </defs>
+
+  <text x="0" y="64" class="label">YOUR APPS</text>
+  <rect x="0" y="95" width="180" height="46" rx="10" class="pill"/><text x="90" y="123" text-anchor="middle">Open WebUI</text>
+  <rect x="0" y="152" width="180" height="46" rx="10" class="pill"/><text x="90" y="180" text-anchor="middle">n8n</text>
+  <rect x="0" y="209" width="180" height="46" rx="10" class="pill"/><text x="90" y="237" text-anchor="middle">Your script</text>
+  <path d="M182 118C220 118 232 170 270 170" class="wire" marker-end="url(#a)"/>
+  <path d="M182 175L270 175" class="wire" marker-end="url(#a)"/>
+  <path d="M182 232C220 232 232 180 270 180" class="wire" marker-end="url(#a)"/>
+
+  <rect x="250" y="40" width="500" height="300" rx="14" class="win"/>
+  <path d="M250 54a14 14 0 0 1 14-14h472a14 14 0 0 1 14 14v26H250z" class="bar"/>
+  <path d="M250 80H750" class="rule"/>
+  <circle cx="274" cy="60" r="5.5" fill="#ff5f57"/><circle cx="292" cy="60" r="5.5" fill="#febc2e"/><circle cx="310" cy="60" r="5.5" fill="#28c840"/>
+  <text x="500" y="65" text-anchor="middle" class="mono muted" style="font-size:12px">OpenCode server</text>
+
+  <rect x="274" y="112" width="220" height="130" rx="12" class="hot"/>
+  <text x="292" y="144" class="h accent">plugboard</text>
+  <text x="292" y="166" class="mono muted" style="font-size:12px">127.0.0.1:4010</text>
+  <text x="292" y="200">OpenAI, Anthropic and</text>
+  <text x="292" y="220">Gemini compatible APIs</text>
+  <path d="M496 177H528" class="wire" marker-end="url(#a)"/>
+  <rect x="530" y="112" width="196" height="130" rx="12" class="card"/>
+  <text x="548" y="144" class="h">OpenCode session</text>
+  <text x="548" y="166" class="muted" style="font-size:12px">one per request</text>
+  <text x="548" y="200">in a directory for</text>
+  <text x="548" y="220">the calling app</text>
+  <text x="500" y="298" text-anchor="middle" class="muted" style="font-size:13px">Tool calls go back to your app. OpenCode never runs them.</text>
+
+  <text x="820" y="64" class="label">YOUR LOGINS</text>
+  <rect x="820" y="81" width="180" height="38" rx="10" class="pill"/><text x="910" y="105" text-anchor="middle">Claude</text>
+  <rect x="820" y="131" width="180" height="38" rx="10" class="pill"/><text x="910" y="155" text-anchor="middle">ChatGPT</text>
+  <rect x="820" y="181" width="180" height="38" rx="10" class="pill"/><text x="910" y="205" text-anchor="middle">GitHub Copilot</text>
+  <rect x="820" y="231" width="180" height="38" rx="10" class="pill"/><text x="910" y="255" text-anchor="middle">OpenCode Go</text>
+  <path d="M728 172C775 172 775 100 818 100" class="wire" marker-end="url(#a)"/>
+  <path d="M728 176C775 176 775 150 818 150" class="wire" marker-end="url(#a)"/>
+  <path d="M728 180C775 180 775 200 818 200" class="wire" marker-end="url(#a)"/>
+  <path d="M728 184C775 184 775 250 818 250" class="wire" marker-end="url(#a)"/>
+</svg>

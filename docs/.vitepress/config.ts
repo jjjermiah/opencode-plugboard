@@ -15,6 +15,8 @@ export default defineConfig({
     "Use your ChatGPT, Claude, Copilot and OpenCode Go logins from any OpenAI, Anthropic or Gemini compatible app.",
   base: "/opencode-plugboard/",
   cleanUrls: true,
+  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/opencode-plugboard/logo.svg" }]],
+  markdown: { theme: { light: "vitesse-light", dark: "vitesse-dark" } },
   lastUpdated: false,
   // Maintainer and test pages live in docs/ next to the code they describe, but are not part of the user site.
   srcExclude: [
@@ -42,6 +44,7 @@ export default defineConfig({
     ],
   },
   themeConfig: {
+    logo: "/logo.svg",
     nav: [
       { text: "Get started", link: "/install" },
       { text: "Guides", link: "/guides/apps-and-keys" },
