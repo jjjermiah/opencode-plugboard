@@ -279,3 +279,99 @@ describe("reasoningOutput (since 0.36.0) on Responses", () => {
     expect(reply.json().output.map((item: any) => item.type)).toEqual(["message"])
   })
 })
+
+describe("#498 Codex CLI: namespace, custom, additional_tools and hosted tools", () => {
+  const weather = {
+    type: "namespace",
+    name: "mcp__weather",
+    description: "Tools in the mcp__weather namespace.",
+    tools: [{ type: "function", name: "get_weather", description: "Weather", strict: false, parameters: { type: "object", properties: { city: { type: "string" } } } }],
+  }
+  const exec = { type: "custom", name: "exec", description: "Run code", format: { type: "grammar", syntax: "lark", definition: "start: /.+/" } }
+  const toolNames = (caller: FakeModelCaller) => caller.call.request.tools.map((tool) => tool.name)
+
+  test("web_search is left out with x-plugboard-dropped-tools, and the MCP namespace is offered as one prefixed function", async () => {
+    const caller = await route([ev.call("call_1", "mcp__weather__get_weather", { city: "Paris" }), ev.finish("tool-calls")])
+    const reply = await server!.send(responses({ tools: [{ type: "web_search", external_web_access: false }, weather] }))
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-dropped-tools"]).toBe("web_search")
+    expect(toolNames(caller)).toEqual(["mcp__weather__get_weather"])
+    // The call comes back in the shape Codex parses: the bare name and the namespace.
+    expect(reply.json().output).toEqual([
+      { id: expect.stringMatching(/^fc_/), type: "function_call", status: "completed", call_id: "call_1", name: "get_weather", namespace: "mcp__weather", arguments: '{"city":"Paris"}' },
+    ])
+  })
+
+  test("a stream carries the header and the namespace on the call item", async () => {
+    await route([ev.call("call_1", "mcp__weather__get_weather", { city: "Paris" }), ev.finish("tool-calls")])
+    const reply = await server!.send(responses({ stream: true, tools: [{ type: "web_search" }, weather] }))
+    expect(reply.headers["x-plugboard-dropped-tools"]).toBe("web_search")
+    const done = eventsOf(reply.text).find((frame) => frame.event === "response.output_item.done")!
+    expect(done.data.item).toMatchObject({ type: "function_call", name: "get_weather", namespace: "mcp__weather" })
+  })
+
+  test("without a hosted tool there is no header", async () => {
+    await route([ev.text("Hi"), ev.finish()])
+    expect((await server!.send(responses({ tools: [weather] }))).headers).not.toHaveProperty("x-plugboard-dropped-tools")
+  })
+
+  test("the tool result Codex sends back, with the namespace on the call, reaches the model under the flattened name", async () => {
+    const caller = await route([ev.text("It is sunny."), ev.finish()])
+    const reply = await server!.send(
+      responses({
+        tools: [weather],
+        input: [
+          { type: "message", role: "user", content: [{ type: "input_text", text: "Weather in Paris?" }] },
+          { type: "function_call", call_id: "call_1", name: "get_weather", namespace: "mcp__weather", arguments: '{"city":"Paris"}' },
+          { type: "function_call_output", call_id: "call_1", output: "sunny" },
+        ],
+      }),
+    )
+    expect(reply.status).toBe(200)
+    expect(caller.call.request.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"])
+    expect(caller.call.request.messages[1]).toMatchObject({ content: [{ type: "tool-call", name: "mcp__weather__get_weather" }] })
+  })
+
+  test("a known model slug: the tools come in an additional_tools item, with no tools field, and a custom call round trips", async () => {
+    const caller = await route([ev.call("call_1", "exec", { input: "text('hi')" }), ev.finish("tool-calls")])
+    const reply = await server!.send(
+      responses({
+        input: [
+          {
+            type: "additional_tools",
+            id: "at_1",
+            role: "developer",
+            tools: [{ type: "namespace", name: "functions", description: "", tools: [exec, { type: "function", name: "wait", parameters: { type: "object" } }] }],
+          },
+          { type: "message", role: "user", content: [{ type: "input_text", text: "run it" }] },
+        ],
+      }),
+    )
+    expect(reply.status).toBe(200)
+    expect(toolNames(caller)).toEqual(["exec", "wait"])
+    expect(reply.json().output).toEqual([{ id: expect.stringMatching(/^ctc_/), type: "custom_tool_call", status: "completed", call_id: "call_1", name: "exec", input: "text('hi')" }])
+
+    const second = await server!.send(
+      responses({
+        input: [
+          { type: "additional_tools", id: "at_1", role: "developer", tools: [{ type: "namespace", name: "functions", description: "", tools: [exec] }] },
+          { type: "message", role: "user", content: [{ type: "input_text", text: "run it" }] },
+          { type: "custom_tool_call", call_id: "call_1", name: "exec", input: "text('hi')" },
+          { type: "custom_tool_call_output", call_id: "call_1", output: "hi" },
+        ],
+      }),
+    )
+    expect(second.status).toBe(200)
+    expect(caller.calls[1]!.request.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"])
+  })
+
+  test("a tool type plugboard cannot take is still a 400 naming the field, and a request with too many flattened tools is too_many_tools", async () => {
+    const caller = await route([ev.finish()], { maxTools: 2 })
+    const refused = await server!.send(responses({ tools: [{ type: "local_shell" }] }))
+    expect(refused.status).toBe(400)
+    expect(refused.json().error).toMatchObject({ code: "unsupported_parameter", param: "tools[0].type" })
+    const many = await server!.send(responses({ tools: [{ type: "namespace", name: "n", tools: ["a", "b", "c"].map((name) => ({ type: "function", name })) }] }))
+    expect(many.json().error).toMatchObject({ code: "too_many_tools" })
+    expect(caller.calls).toEqual([])
+  })
+})

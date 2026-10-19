@@ -31,17 +31,14 @@ function config(baseUrl: string, withTool: boolean): string {
   return [
     'model = "fast"',
     'model_provider = "plugboard"',
-    // Plugboard takes function tools only. Codex's built-in web search and its multi-agent tools (a `namespace` tool) are
-    // rejected with a 400 (#498), so a run turns both off. Goals and view_image are off only to keep the request small.
-    'web_search = "disabled"',
     "include_permissions_instructions = false",
     "include_environment_context = false",
     "include_apps_instructions = false",
     `model_instructions_file = "${join(HOME, "instructions.md")}"`,
     "[skills.bundled]",
     "enabled = false",
+    // Goals and view_image are off only to keep the request small.
     "[features]",
-    "multi_agent = false",
     "goals = false",
     "view_image = false",
     ...(withTool ? ["[mcp_servers.weather]", `command = "${process.execPath}"`, `args = ["${join(EXAMPLE, "weather-mcp.ts")}"]`] : []),

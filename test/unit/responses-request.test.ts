@@ -51,7 +51,9 @@ describe("parseResponsesRequest: stateless and hosted features are refused with 
     ["top_logprobs", { top_logprobs: 2 }, "top_logprobs"],
     ["truncation auto", { truncation: "auto" }, "truncation"],
     ["an unknown item type", { input: [{ type: "web_search_call" }] }, "input[0].type"],
-    ["a hosted tool", { tools: [{ type: "web_search" }] }, "tools[0].type"],
+    ["a tool type with no client-side shape (local_shell)", { tools: [{ type: "local_shell" }] }, "tools[0].type"],
+    ["a tool_search tool", { tools: [{ type: "tool_search", execution: "client" }] }, "tools[0].type"],
+    ["a tool of another type inside a namespace", { tools: [{ type: "namespace", name: "n", tools: [{ type: "web_search" }] }] }, "tools[0].tools[0].type"],
     ["an input_image by file_id", { input: [message("user", [{ type: "input_image", file_id: "f" }])] }, "input[0].content[0].image_url"],
     ["an input_file by file_id", { input: [message("user", [{ type: "input_file", file_id: "f" }])] }, "input[0].content[0].file_data"],
     ["an unsupported user part", { input: [message("user", [{ type: "input_audio" }])] }, "input[0].content[0].type"],
@@ -341,5 +343,151 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
 
   test("sampling maps to the neutral names (no penalties in Responses)", () => {
     expect(parse(body({ temperature: 1, top_p: 0.2, max_output_tokens: 7 })).request.generation).toEqual({ temperature: 1, topP: 0.2, maxTokens: 7 })
+  })
+})
+
+describe("#498 Codex tool shapes: namespace, custom, additional_tools and hosted tools", () => {
+  const wide = testOptions({ maxTools: 4 })
+  const parseWide = (raw: unknown): ParsedResponses => {
+    const parsed = parseResponsesRequest(raw, wide)
+    if (isPlugError(parsed)) throw new Error(`unexpected rejection: ${parsed.message} (${parsed.param})`)
+    return parsed
+  }
+  const weather = {
+    type: "namespace",
+    name: "mcp__weather",
+    description: "Tools in the mcp__weather namespace.",
+    tools: [fn("get_weather", { description: "Weather", parameters: { type: "object", properties: { city: { type: "string" } } } })],
+  }
+  const exec = { type: "custom", name: "exec", description: "Run code", format: { type: "grammar", syntax: "lark", definition: "start: /.+/" } }
+
+  test("a namespace tool becomes one function per tool, named namespace__name, and its call goes back as the bare name in the namespace", () => {
+    const parsed = parseWide(body({ tools: [fn("a"), weather] }))
+    expect(parsed.request.tools.map((tool) => tool.name)).toEqual(["a", "mcp__weather__get_weather"])
+    expect(parsed.request.tools[1]).toMatchObject({ description: "Weather", parameters: { properties: { city: { type: "string" } } } })
+    expect([...parsed.exchange.toolRoutes!]).toEqual([["mcp__weather__get_weather", { name: "get_weather", namespace: "mcp__weather" }]])
+  })
+
+  test("a namespace that ends in __ is not given a second separator", () => {
+    const parsed = parseWide(body({ tools: [{ type: "namespace", name: "mcp__Some_Server__", tools: [fn("t")] }] }))
+    expect(parsed.request.tools.map((tool) => tool.name)).toEqual(["mcp__Some_Server__t"])
+  })
+
+  test("the functions namespace, Codex's own default, keeps the bare name and needs no route", () => {
+    const parsed = parseWide(body({ tools: [{ type: "namespace", name: "functions", tools: [fn("wait")] }] }))
+    expect(parsed.request.tools.map((tool) => tool.name)).toEqual(["wait"])
+    expect(parsed.exchange.toolRoutes).toBeUndefined()
+  })
+
+  test("a function_call in a namespace in the history is the flattened tool, and its output pairs with it", () => {
+    const call = { type: "function_call", call_id: "c1", name: "get_weather", namespace: "mcp__weather", arguments: '{"city":"Paris"}' }
+    const parsed = parseWide(body({ input: [message("user", "hi"), call, fnOutput("c1", "sunny")], tools: [weather] }))
+    expect(parsed.request.messages).toEqual([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      { role: "assistant", content: [{ type: "tool-call", id: "c1", name: "mcp__weather__get_weather", input: { city: "Paris" } }] },
+      { role: "tool", content: [{ type: "tool-result", id: "c1", name: "mcp__weather__get_weather", result: "sunny" }] },
+    ])
+  })
+
+  test("the maxTools count is of the flattened functions, not of the namespace entries", () => {
+    const many = { type: "namespace", name: "n", tools: [fn("a"), fn("b"), fn("c")] }
+    expect(parseResponsesRequest(body({ tools: [many, fn("d"), fn("e")] }), wide)).toMatchObject({ code: "too_many_tools", param: "tools" })
+    expect(parseWide(body({ tools: [many, fn("d")] })).request.tools).toHaveLength(4)
+  })
+
+  test("a flattened name that collides with another tool is a duplicate, and respond stays reserved", () => {
+    expect(parseResponsesRequest(body({ tools: [fn("n__a"), { type: "namespace", name: "n", tools: [fn("a")] }] }), wide)).toMatchObject({
+      param: "tools[1].tools[0].name",
+      message: 'Duplicate tool name "n__a"',
+    })
+    const reserved = { type: "namespace", name: "functions", tools: [fn("respond")] }
+    expect(parseResponsesRequest(body({ tools: [reserved], text: { format: { type: "json_schema", schema: {} } } }), wide)).toMatchObject({ code: "reserved_tool_name" })
+  })
+
+  test("a malformed namespace tool is a 400 on the field", () => {
+    expect(parseResponsesRequest(body({ tools: [{ type: "namespace", tools: [] }] }), wide)).toMatchObject({ param: "tools[0].name" })
+    expect(parseResponsesRequest(body({ tools: [{ type: "namespace", name: "n" }] }), wide)).toMatchObject({ param: "tools[0].tools" })
+    expect(parseResponsesRequest(body({ tools: [{ type: "namespace", name: "n", tools: ["x"] }] }), wide)).toMatchObject({ param: "tools[0].tools[0]" })
+    expect(parseResponsesRequest(body({ tools: [{ type: "namespace", name: "n", tools: [{ type: "function" }] }] }), wide)).toMatchObject({ param: "tools[0].tools[0].name" })
+  })
+
+  test("a custom tool is a function taking one string, with its grammar in the description; its call goes back as a custom call", () => {
+    const parsed = parseWide(body({ tools: [exec] }))
+    expect(parsed.request.tools).toEqual([
+      {
+        name: "exec",
+        description: 'Run code\n\nThis is a freeform tool: pass its whole input as the "input" string.\n\nThe input must match this lark grammar:\nstart: /.+/',
+        parameters: { type: "object", properties: { input: { type: "string", description: "The raw input of the tool." } }, required: ["input"], additionalProperties: false },
+      },
+    ])
+    expect([...parsed.exchange.toolRoutes!]).toEqual([["exec", { name: "exec", custom: true }]])
+  })
+
+  test("a custom tool in a namespace has both the namespace and the custom flag; a tool without a grammar has none in its description", () => {
+    const parsed = parseWide(
+      body({
+        tools: [
+          { type: "namespace", name: "functions", tools: [{ type: "custom", name: "patch", format: { type: "text" } }] },
+          { type: "namespace", name: "n", tools: [{ type: "custom", name: "p" }] },
+        ],
+      }),
+    )
+    expect(parsed.request.tools.map((tool) => tool.name)).toEqual(["patch", "n__p"])
+    expect(parsed.request.tools[0]!.description).not.toContain("grammar")
+    expect([...parsed.exchange.toolRoutes!].map(([name, route]) => [name, route])).toEqual([
+      ["patch", { name: "patch", custom: true }],
+      ["n__p", { name: "p", namespace: "n", custom: true }],
+    ])
+  })
+
+  test("custom_tool_call and its output in the history are the function call and result of the flattened tool", () => {
+    const call = { type: "custom_tool_call", call_id: "c1", name: "exec", input: "text('hi')" }
+    const output = { type: "custom_tool_call_output", call_id: "c1", output: "done" }
+    const parsed = parseWide(body({ input: [message("user", "hi"), call, output], tools: [exec] }))
+    expect(parsed.request.messages.slice(1)).toEqual([
+      { role: "assistant", content: [{ type: "tool-call", id: "c1", name: "exec", input: { input: "text('hi')" } }] },
+      { role: "tool", content: [{ type: "tool-result", id: "c1", name: "exec", result: "done" }] },
+    ])
+    expect(parseResponsesRequest(body({ input: [output] }), wide)).toMatchObject({ param: "input[0].call_id", message: expect.stringContaining("custom_tool_call") })
+  })
+
+  test("tool_choice names a tool by its namespace and name, or a custom tool", () => {
+    expect(parseWide(body({ tools: [weather], tool_choice: { type: "function", namespace: "mcp__weather", name: "get_weather" } })).request.toolChoice).toEqual({
+      type: "tool",
+      name: "mcp__weather__get_weather",
+    })
+    expect(parseWide(body({ tools: [exec], tool_choice: { type: "custom", name: "exec" } })).request.toolChoice).toEqual({ type: "tool", name: "exec" })
+  })
+
+  test("an additional_tools input item is a tool list, with no tools field and no message of its own", () => {
+    const parsed = parseWide(
+      body({ input: [{ type: "additional_tools", role: "developer", tools: [{ type: "namespace", name: "functions", tools: [exec, fn("wait")] }, weather] }, message("user", "hi")] }),
+    )
+    expect(parsed.request.tools.map((tool) => tool.name)).toEqual(["exec", "wait", "mcp__weather__get_weather"])
+    expect(parsed.request.messages).toEqual([{ role: "user", content: [{ type: "text", text: "hi" }] }])
+    expect(parsed.inputItems[0]).toMatchObject({ type: "additional_tools" })
+  })
+
+  test("additional_tools next to tools is one list; the same declaration sent again is not a duplicate, a different one is", () => {
+    const item = { type: "additional_tools", role: "developer", tools: [fn("a")] }
+    expect(parseWide(body({ input: [item, message("user", "x"), item], tools: [fn("b")] })).request.tools.map((tool) => tool.name)).toEqual(["b", "a"])
+    expect(parseResponsesRequest(body({ input: [item, message("user", "x"), { ...item, tools: [fn("a", { description: "other" })] }] }), wide)).toMatchObject({ param: "input[2].tools[0].name" })
+    expect(parseResponsesRequest(body({ input: [item, message("user", "x")], tools: [fn("a", { description: "other" })] }), wide)).toMatchObject({ message: 'Duplicate tool name "a"' })
+    expect(parseResponsesRequest(body({ input: [{ type: "additional_tools", tools: "x" }, message("user", "x")] }), wide)).toMatchObject({ param: "input[0].tools" })
+  })
+
+  test("hosted tools are left out and named, never counted; the rest of the request is unchanged", () => {
+    const parsed = parseWide(
+      body({
+        tools: [{ type: "web_search", external_web_access: false }, fn("a"), { type: "file_search" }, { type: "web_search" }],
+        input: [{ type: "additional_tools", tools: [{ type: "image_generation" }] }, message("user", "hi")],
+      }),
+    )
+    expect(parsed.request.tools.map((tool) => tool.name)).toEqual(["a"])
+    expect(parsed.droppedTools).toEqual(["web_search", "file_search", "image_generation"])
+    expect(parseWide(body({ tools: [fn("a")] })).droppedTools).toEqual([])
+    // The echoed object shows the tools as the caller sent them.
+    expect((parsed.exchange.envelope.tools as unknown[]).length).toBe(4)
+    expect(parseWide(body({ tools: [{ type: "web_search" }, fn("a"), fn("b"), fn("c"), fn("d")] })).request.tools).toHaveLength(4)
   })
 })

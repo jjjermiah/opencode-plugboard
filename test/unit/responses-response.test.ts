@@ -304,3 +304,41 @@ describe("reasoningOutput (since 0.36.0): reasoning items on Responses", () => {
     expect(JSON.stringify(emitted)).not.toContain("secret")
   })
 })
+
+describe("#498 calls to flattened tools go back in the shape Codex parses", () => {
+  const routed: ResponsesExchange = {
+    ...plain,
+    toolRoutes: new Map([
+      ["mcp__weather__get_weather", { name: "get_weather", namespace: "mcp__weather" }],
+      ["exec", { name: "exec", custom: true }],
+      ["n__p", { name: "p", namespace: "n", custom: true }],
+    ]),
+  }
+
+  test("a call in a namespace is a function_call with the bare name and the namespace, in every event that names it", async () => {
+    const { emitted, response } = await run(routed, ev.call("c1", "mcp__weather__get_weather", { city: "Paris" }), ev.finish("tool-calls"))
+    expect(response.output).toEqual([
+      { id: expect.stringMatching(/^fc_/), type: "function_call", status: "completed", call_id: "c1", name: "get_weather", namespace: "mcp__weather", arguments: '{"city":"Paris"}' },
+    ])
+    expect(emitted.find((event) => event.type === "response.output_item.added")).toMatchObject({ item: { name: "get_weather", namespace: "mcp__weather" } })
+    expect(emitted.find((event) => event.type === "response.function_call_arguments.done")).toMatchObject({ name: "get_weather", arguments: '{"city":"Paris"}' })
+  })
+
+  test("a custom call is a custom_tool_call carrying the raw input, with its own input events", async () => {
+    const { types, response } = await run(routed, ev.call("c1", "exec", { input: "text('hi')" }), ev.finish("tool-calls"))
+    expect(types.slice(2)).toEqual(["response.output_item.added", "response.custom_tool_call_input.delta", "response.custom_tool_call_input.done", "response.output_item.done", "response.completed"])
+    expect(response.output).toEqual([{ id: expect.stringMatching(/^ctc_/), type: "custom_tool_call", status: "completed", call_id: "c1", name: "exec", input: "text('hi')" }])
+  })
+
+  test("a custom call in a namespace has both; a model that sent text or other arguments still gives Codex a string", async () => {
+    const { response } = await run(routed, ev.call("c1", "n__p", "raw text"), ev.call("c2", "n__p", { code: 1 }), ev.finish("tool-calls"))
+    expect(response.output[0]).toMatchObject({ type: "custom_tool_call", name: "p", namespace: "n", input: "raw text" })
+    expect(response.output[1]).toMatchObject({ type: "custom_tool_call", name: "p", namespace: "n", input: '{"code":1}' })
+  })
+
+  test("a tool with no route keeps its name and has no namespace field", async () => {
+    const { response } = await run(routed, ev.call("c1", "read", { path: "a" }), ev.finish("tool-calls"))
+    expect(response.output[0]).toMatchObject({ type: "function_call", name: "read" })
+    expect(response.output[0]).not.toHaveProperty("namespace")
+  })
+})

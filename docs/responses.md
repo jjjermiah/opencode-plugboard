@@ -17,10 +17,10 @@ console.log(r.output_text)
 | Request field | How it is handled |
 | --- | --- |
 | `model` | Same as Chat Completions: an alias or `provider/model[#variant]`. |
-| `input` | A string, or a list of items: messages (`user`, `assistant`, `system`, `developer`) with `input_text`, `output_text` and `input_image` content; `input_file` with `file_data`, `file_url` or a `file_id` (see [Files API](files.md)); `input_image` with a `file_id`; `function_call` and `function_call_output` for tool round trips. `reasoning` input items are accepted and dropped. |
+| `input` | A string, or a list of items: messages (`user`, `assistant`, `system`, `developer`) with `input_text`, `output_text` and `input_image` content; `input_file` with `file_data`, `file_url` or a `file_id` (see [Files API](files.md)); `input_image` with a `file_id`; `function_call` and `function_call_output` for tool round trips, `custom_tool_call` and `custom_tool_call_output` for freeform tools; `additional_tools` items, which declare tools (see [Tools](#tools)). `reasoning` input items are accepted and dropped. |
 | `instructions` | The system prompt, ahead of any `system` or `developer` items. |
-| `tools` | `function` tools. `parameters: null` means no arguments. `strict` is accepted and ignored. |
-| `tool_choice` | `auto`, `none`, `required`, or `{"type":"function","name":"..."}`. |
+| `tools` | `function`, `namespace` and `custom` tools, and the hosted tools plugboard leaves out. See [Tools](#tools). `parameters: null` means no arguments. `strict` is accepted and ignored. |
+| `tool_choice` | `auto`, `none`, `required`, `{"type":"function","name":"..."}` (with `namespace` for a tool of a namespace) or `{"type":"custom","name":"..."}`. |
 | `text.format` | `json_schema` and `json_object`, mapped as in Chat Completions (see [architecture](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md)). `text` is the default. |
 | `max_output_tokens`, `temperature`, `top_p` | Passed to the model. |
 | `reasoning.effort` | Picks the model variant of that name when the model has one and the id carries none (`openai/gpt-5.6-luna` with `low` becomes `openai/gpt-5.6-luna#low`). Otherwise ignored. `reasoning.summary` is ignored. |
@@ -39,8 +39,8 @@ A 400 with `code: "unsupported_parameter"` and `param` naming the field:
 | `conversation` | Use `previous_response_id`, or send the full `input` each time. |
 | `item_reference` input items that name no output item plugboard holds | See [Multi-turn with the Vercel AI SDK](#multi-turn-with-the-vercel-ai-sdk). A reference to an output item of a recent answer works. |
 | `background: true`, `prompt` (stored prompts), `top_logprobs`, `truncation: "auto"` | Not available. |
-| Tools that are not `function` tools (`web_search`, `file_search`, `code_interpreter`, `computer_use`, `mcp`, `image_generation`, `custom`, ...) | They run on OpenAI's servers. Plugboard only hands function calls back to you. |
-| `tool_choice` objects other than a function name (`allowed_tools`, hosted tool types), and a named tool together with `text.format` `json_schema` | Not available. |
+| Tool types other than `function`, `namespace`, `custom` and the hosted types in [Tools](#tools) (`local_shell`, `tool_search`, `computer_use_preview`, ...), and anything but a `function` or `custom` tool inside a `namespace` | They need a client-side exchange plugboard has no shape for. |
+| `tool_choice` objects other than a function or custom tool name (`allowed_tools`, hosted tool types), and a named tool together with `text.format` `json_schema` | Not available. |
 
 Other refusals:
 
@@ -48,12 +48,26 @@ Other refusals:
 | --- | --- |
 | `input_image` or `input_file` with a `file_id` the app does not hold | 404 (see [Files API](files.md)). |
 | A tool named `respond` together with `text.format` `json_schema` | 400 `reserved_tool_name`. |
-| More tools than `maxTools` | 400 `too_many_tools`. |
+| More tools than `maxTools` | 400 `too_many_tools`. The count is of the functions the model gets: a `namespace` tool counts one per tool, and hosted tools count none. |
+| Two tools with the same name, after a `namespace` tool is flattened | 400 `invalid_request_error`, `Duplicate tool name`. |
 | Any other invalid input, for example a `function_call_output` whose `call_id` no earlier `function_call` item has | 400 `invalid_request_error`. |
+
+## Tools
+
+Codex CLI sends all of these, so a stock `config.toml` works (see [Codex CLI](clients/codex-cli.md)).
+
+| Tool | What plugboard does |
+| --- | --- |
+| `function` | Offered to the model as is. |
+| `namespace` (`{"type":"namespace","name":"mcp__weather","tools":[...]}`) | Flattened into one function per tool, named `<namespace>__<name>` (`mcp__weather__get_weather`). The name stays bare in the `functions` namespace, Codex's own. A call comes back as `function_call` with `name` set to the bare tool name and `namespace` set to the namespace, which is the shape Codex dispatches on. A `function_call` with a `namespace` in `input` is read back to the flattened name. |
+| `custom` (a freeform tool, such as Codex's `exec` and `apply_patch`) | Offered as a function with one string argument `input`, with the tool's grammar in its description. A call comes back as a `custom_tool_call` item whose `input` is that string, and `custom_tool_call_output` carries the result. |
+| `web_search`, `web_search_preview`, `file_search`, `code_interpreter`, `image_generation`, `mcp` | Left out. They run on OpenAI's servers, and a client cannot know the backend has none. The response carries `x-plugboard-dropped-tools` with the types, such as `web_search`. |
+
+An `additional_tools` input item (`{"type":"additional_tools","role":"developer","tools":[...]}`) is a tool list like `tools`, and Codex sends it instead of `tools` for the models it knows. All the lists are joined. A declaration sent twice with the same content counts once; two different ones with one name are a duplicate.
 
 ## Output
 
-A response object with `output` items in order: a `message` item (`msg_...`, one `output_text` part) when the model wrote text, and one `function_call` item (`fc_...`, with `call_id`, `name`, `arguments`) per tool call. `status` is `completed`, or `incomplete` with `incomplete_details.reason` `max_output_tokens` or `content_filter`. The message item that the cut left open is `incomplete` too. `usage` has `input_tokens` (including cache reads), `output_tokens` (including reasoning), `total_tokens` and the `*_details` objects. The `x-plugboard-session` header works as on Chat Completions.
+A response object with `output` items in order: a `message` item (`msg_...`, one `output_text` part) when the model wrote text, and one `function_call` item (`fc_...`, with `call_id`, `name`, `arguments`, and `namespace` for a tool of a namespace) per tool call, or a `custom_tool_call` item (`ctc_...`, with `call_id`, `name`, `input`) for a freeform tool. `status` is `completed`, or `incomplete` with `incomplete_details.reason` `max_output_tokens` or `content_filter`. The message item that the cut left open is `incomplete` too. `usage` has `input_tokens` (including cache reads), `output_tokens` (including reasoning), `total_tokens` and the `*_details` objects. The `x-plugboard-session` header works as on Chat Completions.
 
 Reasoning text comes back only when the server sets `reasoningOutput` (per app or global). A `reasoning` item then comes before the message, with one `summary_text` part holding the provider's reasoning text itself, not a generated summary. The item appears whether or not the request set `reasoning.summary`. See [Reasoning output](configuration.md#reasoning-output).
 
@@ -79,7 +93,7 @@ response.output_item.done
 response.completed                   (or response.incomplete / response.failed), with the full response and usage
 ```
 
-Tool calls arrive whole from the model, so each call is a single `function_call_arguments.delta` holding the full arguments, as in Chat Completions.
+Tool calls arrive whole from the model, so each call is a single `function_call_arguments.delta` holding the full arguments, as in Chat Completions. A freeform call has `response.custom_tool_call_input.delta` and `response.custom_tool_call_input.done` in their place, with the whole input.
 
 A structured answer (`json_schema`) is one `output_text.delta`. Its text is held back until the turn ends, so the stream commits with the first output event (the keep-alive comments start then) and a missing answer is a `response.failed` event after that. Without a respond call the answer is taken from the final text when it is the JSON the schema asks for, the same small check as Chat Completions (`x-plugboard-structured-fallback: text`, non-streamed responses only). Any other turn without the call is a 502 `structured_output_missing` for every finish reason, or a `response.failed` once a stream has started.
 

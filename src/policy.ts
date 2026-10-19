@@ -8,6 +8,14 @@ export const SERVER_TOOLS_HEADER = "x-plugboard-server-tools"
 /** Set when the request asked for one tool call per answer and plugboard keeps only the first (#202). */
 export const PARALLEL_TOOLS_HEADER = "x-plugboard-parallel-tools"
 
+/** Set when the request declared hosted tools (`web_search` from Codex, ...) and plugboard left them out (#498). */
+export const DROPPED_TOOLS_HEADER = "x-plugboard-dropped-tools"
+
+/** `x-plugboard-dropped-tools`: the hosted tool types left out of the request, comma separated, before any body (a stream gets it too). */
+export function reportDroppedTools(response: ServerResponse, types: ReadonlyArray<string>): void {
+  if (types.length > 0) response.setHeader(DROPPED_TOOLS_HEADER, types.join(","))
+}
+
 /**
  * `x-plugboard-parallel-tools: limited` for a request that asked for one tool call per answer. The host has no
  * switch for it on every route, so the session collector keeps the first call; the header says so before any body.
