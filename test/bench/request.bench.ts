@@ -14,6 +14,7 @@ import { Agent, request as httpRequest } from "node:http"
 import { writeFileSync } from "node:fs"
 import type { CatalogModel, ModelCaller, PlugEvent } from "../../src/contract.js"
 import { resolveModel } from "../../src/models.js"
+import { parseCompletionsRequest } from "../../src/completions/request.js"
 import { parseChatRequest } from "../../src/openai/request.js"
 import { CATALOG, ev, events, model, testOptions } from "../support/fixtures.js"
 import { startRoute, type RouteServer } from "../support/loopback.js"
@@ -129,6 +130,12 @@ bench("gemini generateContent, json", async () => {
 
 bench("decode and validate a chat body", () => {
   do_not_optimize(parseChatRequest(chatBody, testOptions()))
+})
+
+const completionsBody = { model: "test/echo", prompt: "hello", temperature: 0.2, stream: false }
+
+bench("decode and validate a legacy completions body", () => {
+  do_not_optimize(parseCompletionsRequest(completionsBody, testOptions()))
 })
 
 bench("resolve a model in a 1,000-model allowlist", () => {
