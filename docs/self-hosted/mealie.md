@@ -6,7 +6,7 @@ Mealie is a recipe manager. Its AI features import recipes from text, URLs and p
 
 Give Mealie its own key. `default` serves every AI feature. `image` is optional and only photo imports use it, so it must accept images. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

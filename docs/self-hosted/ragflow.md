@@ -14,7 +14,7 @@ Plugboard serves the LLM role. Every dataset needs an embedding model, and plugb
 
 Give RAGFlow its own key and a chat alias. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

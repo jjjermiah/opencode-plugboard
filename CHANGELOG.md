@@ -26,6 +26,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - A freeform tool call the model made without its `input` now goes back to Codex with an empty `input` and a debug log line (`responses.custom_input_missing`, the tool name only). It was the JSON text `{}`, which Codex would have run as the tool's own language.
 - The `tools` echoed in a Responses answer now leave out the hosted tools plugboard dropped and include the tools declared in `additional_tools` items ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)).
 
+### Changed
+
+- Docs: every plugboard config snippet on the site has a second tab, Full config, with the whole `opencode.jsonc` around it, so a reader sees where the lines go. The tab adds a minimal `keys` and `models` when the snippet has none, marked with a comment. Picking a tab once picks it on every snippet and on later pages. A fence tagged `jsonc plugboard` (members of `options`) or `jsonc plugboard-options` (an `options` member) gets the tabs; the wrapper is `docs/.vitepress/full-config.ts`, and a tagged snippet that is not valid JSONC fails the docs build.
+
 ## [0.54.0] - 2026-10-19: Codex, Out of the Box
 
 **Full diff:** [v0.53.0...v0.54.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...v0.54.0)

@@ -52,7 +52,7 @@ curl -s http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY
 
 Send images as `data:` URLs, which always work. Plain `http(s)` URLs are fetched by the server only when you allow it.
 
-```jsonc
+```jsonc plugboard
 "remoteImages": { "allow": ["images.internal"], "schemes": ["https"], "maxBytes": 5242880 }
 ```
 

@@ -4,7 +4,7 @@
 
 ## Give each tool its own key
 
-```jsonc
+```jsonc plugboard
 "keys": {
   "discord-bot": "{env:PLUGBOARD_KEY_DISCORD}",
   "n8n": "{env:PLUGBOARD_KEY_N8N}",
@@ -29,7 +29,7 @@ bunx opencode-plugboard init
 
 It adds plugboard to `~/.config/opencode/opencode.jsonc`, pinned to the version that ran. The entry has one app key (generated, 32 random bytes) and `"models": "connected"`, which allows every enabled model of every connected provider. The key is printed once, with a curl that lists your models. Restart OpenCode and touch the server, as in [Install](../install.md).
 
-```jsonc
+```jsonc plugboard-options
 "options": { "keys": { "my-app": "pb_..." }, "models": "connected" }
 ```
 
@@ -47,7 +47,7 @@ The file is edited as JSONC, so comments, formatting and other settings stay. A 
 
 `apps` lets the server decide an app's behaviour, so you do not have to trust the app with it.
 
-```jsonc
+```jsonc plugboard
 "apps": {
   "discord-bot": { "models": ["fast"], "model": "fast", "system": "Answer in two sentences.", "tools": false, "maxOutputTokens": 400 },
   "coding": { "models": ["anthropic/*"], "maxTools": 16 }
@@ -64,7 +64,7 @@ An app with a policy still needs its key in `keys` (or `apps.<name>.key`).
 
 ## Lock a key to some endpoints
 
-```jsonc
+```jsonc plugboard
 "apps": { "claude-code": { "endpoints": ["messages"] } }
 ```
 

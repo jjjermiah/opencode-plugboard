@@ -14,7 +14,7 @@ Plugboard serves the LLM role. Indexing and search need an embedding model, whic
 
 Give Onyx its own key and a text alias. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

@@ -6,7 +6,7 @@ Nextcloud's AI features run through the `integration_openai` app. It connects an
 
 Give Nextcloud its own key. `vision` handles image analysis and OCR, so it must accept images. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

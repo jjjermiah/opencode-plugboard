@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs"
 import { defineConfig } from "vitepress"
+import { fullConfigPlugin } from "./full-config.ts"
 
 const repo = "https://github.com/jjjermiah/opencode-plugboard"
 
@@ -16,7 +17,8 @@ export default defineConfig({
   base: "/opencode-plugboard/",
   cleanUrls: true,
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/opencode-plugboard/logo.svg" }]],
-  markdown: { theme: { light: "vitesse-light", dark: "vitesse-dark" } },
+  // A fence tagged `jsonc plugboard` or `jsonc plugboard-options` gets a Snippet tab and a Full config tab (full-config.ts).
+  markdown: { theme: { light: "vitesse-light", dark: "vitesse-dark" }, config: (md) => md.use(fullConfigPlugin(latest)) },
   lastUpdated: false,
   // Maintainer and test pages live in docs/ next to the code they describe, but are not part of the user site.
   srcExclude: [
