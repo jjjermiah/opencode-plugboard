@@ -13,12 +13,12 @@ The hub runs real apps, so attacks there are limited by design. On the hub, the 
 
 ```jsonc
 "keys": { "redteam": "{env:PLUGBOARD_KEY_REDTEAM}" },
-"apps": { "redteam": { "models": ["fast", "opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5", "github-copilot/gpt-5.5"] } },
+"apps": { "redteam": { "models": ["fast", "opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"] } },
 "limits": { "apps": { "redteam": { "maxConcurrent": 2, "requestsPerMinute": 30 } } },
 "budgets": { "apps": { "redteam": { "requests": { "day": 600 }, "tokens": { "day": 3000000 } } } }
 ```
 
-`GET /v1/models` with the `redteam` key shows the app's models: `fast`, `opencode-go/glm-5.3-flash`, `anthropic/claude-haiku-4-5` and `github-copilot/gpt-5.5`, each with its `#` reasoning-effort variants. Read that list at the start of a round; it is the source of truth for what the key may call. Prefer the cheap models (`fast`, Haiku 4.5, GLM 5.3 Flash) and call `github-copilot/gpt-5.5` only when a test needs that provider: its listed price per token is the highest of the four.
+`GET /v1/models` with the `redteam` key shows the app's models: `fast`, `opencode-go/glm-5.3-flash` and `anthropic/claude-haiku-4-5`, each with its `#` reasoning-effort variants. Read that list at the start of a round; it is the source of truth for what the key may call. All three are cheap models.
 
 ## Rules of engagement
 
