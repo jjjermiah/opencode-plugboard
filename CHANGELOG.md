@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.53.0] - 2026-10-18: First Run, Fast Recovery
+
+**Full diff:** [v0.52.0...v0.53.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.52.0...v0.53.0)
+
 ### Added
 
 - A circuit breaker for fallback chains. A target of a list alias that fails three times in a row (a rate limit, a quota error, a provider failure, timeout or sign-in failure, a host retry, or a missed `fallbackAfterMs` deadline; a backend error or an empty stream still moves the chain on but does not count) is skipped for 60 seconds, so a dead provider stops costing every request a failed call. After the cooldown one request is let through as a probe: an answer closes the breaker, a failure opens it again. When every target of a chain is cooling down the first one is still tried, so a request is never failed without an attempt. The state is per target model and shared by the whole process. Option `fallbackCooldown` sets `failureThreshold`, `cooldownMs` and `windowMs`, or is `false` to turn it off. Single-target aliases and model ids are never skipped. `GET /plugboard/status` lists the targets cooling down and until when, the log has `fallback.cooldown.open`, `fallback.cooldown.skip` and `fallback.cooldown.close`, and with `metrics: true` there are `plugboard_fallback_cooldown_events_total` and `plugboard_fallback_cooldown_targets`. The breaker is per model id, so each variant is its own target. `x-plugboard-fallbacks` now counts a skipped target as a fallback. Fault-injection tests run the whole chain over a fake host: a first target that hangs, answers 429, fails with an upstream 520, makes the host retry, or errors after its first event.
@@ -25,6 +31,519 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - Three more clients run headless in CI, and the Codex run found a gap ([#214](https://github.com/jjjermiah/opencode-plugboard/issues/214), [#232](https://github.com/jjjermiah/opencode-plugboard/issues/232), [#233](https://github.com/jjjermiah/opencode-plugboard/issues/233), [#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)). Codex CLI 0.163.0 (`codex exec`, an `env_key` provider, a fresh `CODEX_HOME` per run, no login), Spring AI 2.0.1 and LangChain4j 1.22.0 now have scripted example runs that CI checks, and CI installs Java 21 for the two Java ones. Spring AI's `base-url` must end in `/v1`. Codex fails on a stock config, because plugboard refuses the `web_search` and `namespace` tools it sends by default: `web_search = "disabled"` and `[features] multi_agent = false` fix that, and `examples/codex-cli/config.toml` has both. A Codex tool call and a Codex model slug it knows (such as `openai/gpt-5.6-luna#low`) are recorded as gaps in #498.
 
 - Contributor tooling, no change for users ([#114](https://github.com/jjjermiah/opencode-plugboard/issues/114)). The code is now formatted and linted with Biome (`bun run lint`, `bun run format`, `bun run format:write`; config in `biome.jsonc`). CI fails a pull request that is not formatted or has a lint error, and `bun run validate` runs the same check first. A lefthook `pre-commit` hook checks the staged files; install it with `bunx lefthook install`. The one-time reformat is listed in `.git-blame-ignore-revs`, so `git blame` skips it. `mise.toml` pins Bun and Node to the versions CI uses, and `.github/CODEOWNERS` names the owner. Line width is 200 because the code was already written to that width: a narrower setting rewrites thousands more lines. A handful of recommended lint rules are off for the cases that fire hundreds of times on deliberate style; each has its reason in `biome.jsonc`.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (42 commits)</summary>
+
+#### Features
+
+**feat(dashboard): usage and models tabs, range picker, themes and phone layout** ([`c7871ee`](https://github.com/jjjermiah/opencode-plugboard/commit/c7871eeb3ff2336af9c5edcf374d3c4ea9a57a0c))
+
+The dashboard already showed totals, an app table, daily charts and a model table. This rebuilds it into something worth showing off, with the same static page, the same two JSON APIs and the same CSP.
+
+Usage tab:
+- Cards for requests, tokens, cost, errors and cache hits, each with the change against the previous period of the same length (a second call to /plugboard/usage; any failure just leaves the arrows out).
+- Daily charts with a fill, one point per UTC day, the axis and cursor in UTC whatever the browser zone is (the old axis drifted by the local offset), and a total in each heading.
+- Apps and models tables sortable on every column, with share bars (progress elements: no inline style is needed, so the CSP stays as is).
+- Empty state, error banner with retry, loading skeleton. A stale answer from a previous range or sign-in cannot overwrite a newer one.
+- The range (today, 7, 30, 90 days) is kept for the tab.
+
+Models tab: lists what GET /v1/models returns for the entered key, with badges (alias, agent, skill, tools, vision, pdf, audio, status), context length, price per million tokens, a filter, a copy-id button and a curl, Python or JavaScript snippet that reads PLUGBOARD_API_KEY. The admin key is not an app key on the model routes (401, invariant I15 and plugboard-key-rule.test.ts), so the tab asks for an app key then. Copy falls back to a textarea on plain http, where navigator.clipboard is missing.
+
+Decisions: no new endpoint and no new dependency. The range picker says Today, not 24 h, because usage is recorded per UTC day. The page keeps CSS-only theming (prefers-color-scheme); no manual toggle.
+
+Tests: page markers, the script's fetch targets (only /plugboard/usage and /v1/models), no inline style from script, the stylesheet's dark and phone rules, and the /v1/models fields the Models tab reads. Checked in headless Chrome against a seeded server; screenshots are in the PR.
+
+Refs #141
+
+**feat(config): models "connected" and `opencode-plugboard init`** ([`80a4300`](https://github.com/jjjermiah/opencode-plugboard/commit/80a43001f4e51f331c4a31e9b4a6f06df0a579a8))
+
+A first request needed a key, a `models` list and an env var, and a missing `models` was a 403. Two changes shorten that path while keeping per-app keys.
+
+`"models": "connected"` (global, and accepted on `apps.<name>.models`) allows every enabled model of every connected provider. It parses to the one-entry list `["connected"]` (`CONNECTED` in config.ts), so the empty-list 403, the cache fingerprint and generation comparison need no special case. `allowedBy` treats the entry as "any model"; every caller already matches the ref against the host catalog (`find`), which holds only enabled models, and that catalog is read per request, so a provider connected later is served without a restart. Keys, alias targets and per-app narrowing are unchanged; no `models` is still 403. On an app, `"connected"` means no narrowing (the global list is still the ceiling, the existing "an app can only narrow" rule). `["connected"]` as a list entry and any other string are refused (the string message stays the old "must be an array of strings", which existing tests pin). `GET /v1`, `GET /` and the 403 hint suggest `"models": "connected"` first, and an empty catalog under `connected` says to connect a provider.
+
+`bunx opencode-plugboard init` (`bin/opencode-plugboard.ts`, logic in src/cli.ts) adds the plugin entry to ~/.config/opencode/opencode.jsonc (XDG aware, `opencode.json` if that is what exists) or `--config`. It pins the running version, generates one `pb_` key (32 random bytes), sets `models: "connected"` and, with `--fast`, `aliases.fast`. It prints the key once with curls, `--dry-run` prints a diff with a placeholder key, and an existing plugboard entry is only replaced with `--force`. The file is edited with jsonc-parser so comments and other settings stay.
+
+Decisions: jsonc-parser 3.3.1 is a new exact-pinned runtime dependency (MIT, no dependencies, no install script, pure JS; AGENTS.md allows that), shrinkwrap regenerated per docs/packaging.md. Rejected: refusing files with comments (loses the common case), a hand-rolled JSONC editor, writing `{env:VAR}` (it is the extra step this removes). `bin/` joins the `files` allowlist; smoke-pack runs the installed `.bin/opencode-plugboard init --dry-run`.
+
+Validation: bun run validate passes (lint, typecheck, test, manifest, pack, docs, examples). The first examples run differed only in the order of Gemini CLI's skill list in one scripted transcript, unrelated to this change; a rerun of that step passed. Model answers were not checked live.
+
+**feat(fallback): add a circuit breaker for fallback chains** ([`44502e5`](https://github.com/jjjermiah/opencode-plugboard/commit/44502e590eca5eb8f158c650e93ed3c192b435d7))
+
+A target of a list alias that fails three times in a row is now skipped for 60 seconds, so a dead provider stops costing every request a failed call (or a full fallbackAfterMs wait). After the cooldown one request is let through as a probe; an answer closes the breaker, a failure opens it again for a full cooldown. When every target of a chain is cooling down the first is still tried, so a request never fails without an attempt.
+
+What changed:
+- src/breaker.ts: pure state machine (closed, open, half open) with an injectable clock, one breaker per target model (provider/model#variant). Kept on the process runtime (runtime VERSION 17), so every generation shares it.
+- src/fallback.ts: the chain picks targets with select (skips cooling ones, claims the probe slot) and hasNext (look-ahead, takes no slot). A later target that would be skipped does not follow, so the attempt before it is unbounded by fallbackAfterMs and keeps the host's retries. A retryable failure, a deadline, a throw or an empty stream counts; an answer closes; a client error or an abandoned request only gives back the probe slot. An error after the first event is an answer, never retried and never counted. Only list aliases reach the chain, so a single-target alias or model id never skips.
+- Option fallbackCooldown { failureThreshold: 3, cooldownMs: 60000, windowMs: 60000 }, any field optional, or false to turn it off. Flat next to fallbackAfterMs, global only.
+- Observability: GET /plugboard/status lists the cooling targets and until when; logs fallback.cooldown.open, .skip, .close, .all_open; metrics plugboard_fallback_cooldown_events_total{app,event} and plugboard_fallback_cooldown_targets.
+- x-plugboard-fallbacks is now the answering target's position, so a skipped target counts.
+
+Rejected: a per-app or per-alias breaker (a provider outage is not per alias); a metric label with the model string (metrics labels carry ids only); failing fast when all targets cool down (the issue says to try the first).
+
+Tests: unit breaker and chain tests with a moved clock; a fault injection suite through the real route, withFallbacks and session caller over the fake host (hang past fallbackAfterMs, 429, upstream 520, host retry, error after the first event) asserting order, timing, x-plugboard-model, x-plugboard-fallbacks and the open, skip and close sequence. 16 mutation catalogue entries guard the breaker.
+
+Validation: bun run validate (lint, typecheck, test, manifest, pack, docs, examples) passes; bun run mutations: 195 of 195 killed.
+
+#### Fixes
+
+**fix(fallback): harden the circuit breaker after review** ([`2b3b6e6`](https://github.com/jjjermiah/opencode-plugboard/commit/2b3b6e6a9592127d17a9d057489136484774e6c1))
+
+Review of the breaker found one race and several smaller gaps. This commit fixes them.
+
+Race (M1): the chain's look-ahead used peek, which takes no probe slot, and select claimed the slot later. Two requests could both be bounded by fallbackAfterMs because the next target's probe looked free; the second then got skip, so its aborted attempt had no target to go to and the client saw an empty stream or a 503. The look-ahead now returns the index it found. When select comes back empty but an attempt was told a target follows, that target is tried without a claim, as in the all-cooling case.
+
+Probe ownership (m1): claim returns a token for the half-open probe, and release frees the slot only for that token, so an attempt that was forced through or began before the breaker opened cannot free a live probe. A failure on a half-open breaker reopens it and clears the slot.
+
+Other fixes:
+- m2: inner.stream is called inside the try, so a synchronous throw releases the probe, clears the deadline timer and falls back like any other failed attempt.
+- m3: a failure on a breaker that is still open counts quietly. It no longer logs a warning, counts an open event or extends the cooldown.
+- m4: only the provider's failures and a missed deadline count (rate_limited, quota_exceeded, provider_unavailable, provider_timeout, provider_auth_failed, provider_retry, first_event_deadline). backend_failed, prompt_failed, model_run_failed, an empty stream and a throw still fall back but say nothing about the target.
+- n1: the metrics gauge counts open targets only. A breaker unused for cooldownMs plus windowMs after its cooldown is forgotten, in status and in the verdict alike.
+- n2, n3: docs say the header is the position among the resolved targets and that each variant is its own target.
+
+Not done on purpose: provider_overloaded as a retryable class (n4). It changes which errors fall back at all, so it is issue #503.
+
+Tests: breaker state machine cases for tokens, quiet failures and forgetting; chain tests for the race, counted and uncounted failures, the deadline and a synchronous throw; a metrics gauge test. Eight new mutation catalogue entries guard the new branches. Floors regenerated.
+
+#### Refactors
+
+**refactor(completions): decode the legacy completions top-level checks with Effect Schema** ([`1317c60`](https://github.com/jjjermiah/opencode-plugboard/commit/1317c60a30cee29251bc1c4a85e67160dd3b5365))
+
+First vertical slice of #123. The legacy POST /v1/completions decoder's top-level checks (model, prompt presence, stream, logprobs, best_of, echo, suffix) now run as one Effect Schema struct (`LegacyBody` in src/completions/request.ts). Each check is a filter annotated with the PlugError message and code it fails with. An adapter walks the first issue (Composite, then Pointer for the field, then the Filter or MissingKey leaf) and returns the same bad()/unsupported() shape.
+
+Why: #123 asks for Effect Schema adoption one front-end at a time, starting with a self-contained decoder. This slice keeps the check order, messages, params and codes byte-identical, so the HTTP error bodies do not change.
+
+Decisions:
+- Schema covers only the contiguous prefix of checks that runs before the prompt shape. prompt shape, n, generation and response_format stay hand-written because they share helpers with the chat decoder (parseChoiceCount, parseGeneration, parseResponseFormat) and parsePrompts has precedence rules (token arrays are unsupported even when other items are also wrong).
+- Optional fields use Schema.optionalKey. A required Unknown key reports an absent value as MissingKey, not as a filter failure, so model and prompt map MissingKey to "<field> is required", which is the old message.
+- The Schema decode is one Result, errors "first" (the default), so the first failing field in declaration order is the one reported, as before.
+
+Rejected:
+- Schema.String and typed fields: a wrong type becomes InvalidType with no annotation, which would need a second adapter branch. Unknown plus a filter keeps one leaf kind (Filter) for every message.
+- Migrating the prompt shape too: it needs a union with precedence, and expressing "any token item means unsupported, even if another item is also bad" in Schema needs contortions. Left for a follow-up.
+
+Validation:
+- Differential check against the origin/main decoder over 60,007 seeded bodies (valid and invalid, 22 distinct error messages): 0 mismatches on the full serialized result, including param and code.
+- test/unit/completions.test.ts: two new pinning tests (exact message, param and code per check; first failing check wins across fields).
+- bun test: 2728 ran, 0 fail. Typecheck, coverage gates (--ratchet, unit floor 1269 to 1286: the floor was already 15 behind main before this change), manifest, pack/smoke, docs:build and the examples harness all exit 0. bun run mutations: 82 of 82 killed.
+- Bench: legacy completions decode p50 988 ns before, 1250 ns after (about +260 ns per request, under 0.5% of the ~69 us chat round trip on the same run). Chat decode is unchanged (987 ns to 965 ns). The bench gained a legacy completions entry, since none existed.
+
+Refs #123
+
+**style: reformat the codebase with Biome** ([`1e5e41c`](https://github.com/jjjermiah/opencode-plugboard/commit/1e5e41ce8b03fc74b4c0522b38eeafb14ff050f0))
+
+The one-time reformat for the Biome config added in the previous commit. It is the output of `bun run format:write` and nothing else: no hand edits, no lint fixes, no behaviour change. 156 files, 2559 lines added and 1236 removed. Most of the churn is Biome expanding arrays and objects that were on one long line, and joining short calls that were wrapped by hand.
+
+This commit is listed in .git-blame-ignore-revs (next commits), so `git blame` skips it. Keep it as a real commit (merge, not squash) so that hash stays valid.
+
+This commit alone fails two gates; the next commit fixes both:
+- four mutation catalogue entries anchor on source text whose layout changed
+- the line coverage ratio fell from 98.9% to 98.8% because the reformat adds lines; no test and no covered code changed
+
+Refs #114
+
+#### Tests
+
+**test(examples): regenerate openai-python scripted run for openai 3.31.0** ([`68dd474`](https://github.com/jjjermiah/opencode-plugboard/commit/68dd4740f2daa1dbcfa1ee8d3a320788d5b954b1))
+
+Dependabot bumped openai from 3.29.0 to 3.31.0 in examples/openai-python (#482). The scripted run is checked in CI with a clean-diff gate, so the committed transcript has to match what the example now reports. Without this commit the Examples job fails on the diff.
+
+What changed in the regenerated output: the recorded client version (summary.json "version" and the header line of summary.md) moves from 3.29.0 to 3.31.0. Nothing else in the transcripts changed. The scenario requests, the wire captures and the verdicts are identical, so this is a version bump in the recorded output and not a behaviour change.
+
+Decision: regenerate the transcript instead of pinning the example back to 3.29.0. The example's job is to track the current openai SDK, and a version string is the only thing the SDK bump moved.
+
+Validation: bun examples/_harness/run.ts openai-python --target scripted exits 0 with verdict pass, and the git diff touches only the two summary files above. Only the examples step was run; the full validate chain was not run in this worktree.
+
+Refs #482
+
+**test(examples): regenerate dspy scripted run for dspy 3.4.1** ([`2a98a87`](https://github.com/jjjermiah/opencode-plugboard/commit/2a98a87bc2aed159322201f6b2f5687746f6883f))
+
+Dependabot bumped dspy from 3.4.0 to 3.4.1 in examples/dspy (#484). The scripted run is checked in CI with a clean-diff gate, so the committed transcript has to match what the example now reports. Without this commit the Examples job fails on the diff.
+
+What changed in the regenerated output: the recorded client version (summary.json "version" and the header line of summary.md) moves from 3.4.0 to 3.4.1. Nothing else in the transcripts changed. The scenario requests, the wire captures and the verdicts are identical, so this is a version bump in the recorded output and not a behaviour change.
+
+Decision: regenerate the transcript instead of pinning dspy back to 3.4.0. The example tracks the current dspy release, and a version string is the only thing the bump moved.
+
+Validation: bun examples/_harness/run.ts dspy --target scripted exits 0 with verdict pass, and the git diff touches only the two summary files above. Only the examples step was run for this example; the full validate chain was not run in this worktree.
+
+Refs #484
+
+**test(examples): regenerate openai-agents scripted run for openai-agents 0.24.0** ([`220490a`](https://github.com/jjjermiah/opencode-plugboard/commit/220490af09d1743e3bcaf7d21927f063134ec182))
+
+Dependabot bumped openai-agents from 0.23.1 to 0.24.0 in examples/openai-agents (#485). The scripted run is checked in CI with a clean-diff gate, so the committed transcript has to match what the example now reports. Without this commit the Examples job fails on the diff.
+
+What changed in the regenerated output: the recorded client version (summary.json "version" and the header line of summary.md) moves from 0.23.1 to 0.24.0. Nothing else in the transcripts changed. The scenario requests, the wire captures and the verdicts are identical, so this is a version bump in the recorded output and not a behaviour change.
+
+Decision: regenerate the transcript instead of pinning openai-agents back to 0.23.1. The example tracks the current SDK, and a version string is the only thing the bump moved.
+
+Validation: bun examples/_harness/run.ts openai-agents --target scripted exits 0 with verdict pass, and the git diff touches only the two summary files above. Only the examples step was run for this example; the full validate chain was not run in this worktree.
+
+Refs #485
+
+**test(examples): regenerate litellm-client scripted run for litellm 1.105.1** ([`e65b7bc`](https://github.com/jjjermiah/opencode-plugboard/commit/e65b7bc3528609ac49d816c8c4439f3e04a4a556))
+
+Dependabot bumped litellm from 1.105.0 to 1.105.1 in examples/litellm-client (#486). The scripted run is checked in CI with a clean-diff gate, so the committed transcript has to match what the example now reports. Without this commit the Examples job fails on the diff.
+
+What changed in the regenerated output: the recorded client version (summary.json "version" and the header line of summary.md) moves from 1.105.0 to 1.105.1. Nothing else in the transcripts changed. The scenario requests, the wire captures and the verdicts are identical, so this is a version bump in the recorded output and not a behaviour change.
+
+Decision: regenerate the transcript instead of pinning litellm back to 1.105.0. The example tracks the current litellm release, and a version string is the only thing the bump moved.
+
+Validation: bun examples/_harness/run.ts litellm-client --target scripted exits 0 with verdict pass, and the git diff touches only the two summary files above. Only the examples step was run for this example; the full validate chain was not run in this worktree.
+
+Refs #486
+
+**test(examples): regenerate pydantic-ai scripted run for pydantic-ai-slim 2.56.0** ([`adce06b`](https://github.com/jjjermiah/opencode-plugboard/commit/adce06b7b3bd7e94d73d841832d0c68269810d0e))
+
+Dependabot bumped pydantic-ai-slim[openai] from 2.55.0 to 2.56.0 in examples/pydantic-ai (#487). The scripted run is checked in CI with a clean-diff gate, so the committed transcript has to match what the example now reports. Without this commit the Examples job fails on the diff.
+
+What changed in the regenerated output: the recorded client version (summary.json "version" and the header line of summary.md) moves from 2.55.0 to 2.56.0. Nothing else in the transcripts changed. The scenario requests, the wire captures and the verdicts are identical, so this is a version bump in the recorded output and not a behaviour change.
+
+Decision: regenerate the transcript instead of pinning pydantic-ai-slim back to 2.55.0. The example tracks the current release, and a version string is the only thing the bump moved.
+
+Validation: bun examples/_harness/run.ts pydantic-ai --target scripted exits 0 with verdict pass, and the git diff touches only the two summary files above. Only the examples step was run for this example; the full validate chain was not run in this worktree.
+
+Refs #487
+
+**test(completions): ratchet the unit floor for the two pinning tests** ([`dd5c906`](https://github.com/jjjermiah/opencode-plugboard/commit/dd5c906197b3fd1a7944a33a706f1482655d5eeb))
+
+The slice adds two unit tests that pin each legacy top-level check's message, param and code and the first-failure order. After merging main the floor was 1622; the suite now counts 1624 (bun run validate, test step: 3379 tests across 136 files, 0 fail).
+
+Refs #123
+
+**test(examples): run Codex CLI, Spring AI and LangChain4j in the scripted harness** ([`fb140a6`](https://github.com/jjjermiah/opencode-plugboard/commit/fb140a6ca6c9934a2a958002061d487e3df9502d))
+
+Three clients were open only because nobody had run them headless. Each is now a harness example with a committed, deterministic scripted run that the Examples CI job checks.
+
+Codex CLI 0.163.0 (`codex exec --json`): an `env_key` provider, a fresh HOME and CODEX_HOME per run and an empty workspace, so nothing from ~/.codex, ~/.agents or an AGENTS.md reaches the prompt. The runner turns off the permissions, environment, apps and skills text and replaces the 17 KB of built-in instructions (model_instructions_file), so the committed run is the same on every machine. S1 and S3 pass on `fast` and the Anthropic alias. The run found real gaps, filed as #498: a stock config sends `web_search` and a `namespace` tool, which plugboard refuses with a 400; any MCP tool is a `namespace` tool, so S2 and S4 are recorded gaps; a model slug Codex knows (gpt-5.6) goes out as an `additional_tools` input item, a gap on S1. examples/codex-cli/config.toml now turns off web_search and multi_agent.
+
+Spring AI 2.0.1 (Spring Boot 4.0.8, Java 21, Maven wrapper): chat, stream and a @Tool round trip pass. `base-url` must end in /v1: Spring AI 2.0 builds on the OpenAI Java SDK, the short form gets a 404 on /chat/completions, and `completions-path` has no effect.
+
+LangChain4j 1.22.0 (Java 21, Maven wrapper): chat, tool round trip, stream and streamed tool call pass. 1.23.0 is not released (Maven Central's newest is 1.22.0), so the issue's HTTP/1.1 note could not be tried on it; the default JDK client worked with 1.22.0. accumulateToolCallId true and false both pass.
+
+Harness changes: the scripted model also calls a tool named `<prefix>__get_weather`, and the normaliser fixes Codex's turn start time and sandbox name in its turn metadata (tests added for both). CI installs Java 21 with setup-java. Cold Maven builds took 23 s and 16 s locally.
+
+Validation: both new Java runs and the Codex run are byte-identical across two runs; every other scripted run still passes.
+
+Refs #214, #232, #233
+
+**test(examples): make the Spring AI scripted run independent of Map.of order** ([`0bf7188`](https://github.com/jjjermiah/opencode-plugboard/commit/0bf7188ce7051cc74d5f5abd5bde0a7991663fc2))
+
+CI regenerated the Spring AI run and got the two "not checked" notes of S2 in the other order. The runner built the `unobserved` plan with Map.of, which iterates in a different order on each JVM start, and the note lists the checks in plan order. A LinkedHashMap fixes the order. The run is committed in that order and was identical across three local runs.
+
+Refs #232
+
+**test(mutations): follow the breaker refactor in the catalogue anchors** ([`82d748c`](https://github.com/jjjermiah/opencode-plugboard/commit/82d748cc25affb011cab75d74e0270a68a122b75))
+
+Eight breaker mutation entries still named the old code (probeAt, the string verdict, the boolean look-ahead), so the run reported them as anchors that match nothing, and one replacement became a syntax error. They now name the current lines: the probe lease, the answer that closes, the probe slot given back, the claim that skips a cooling target, the forced first attempt, the failure and answer counts, and the look-ahead. Each is killed on its own, and the full run passes.
+
+#### Docs
+
+**docs(development): the dev host pin is 2.0.32** ([`635f333`](https://github.com/jjjermiah/opencode-plugboard/commit/635f333f39e067d0ec2c590b5b6c41538ca4e389))
+
+The host-bump PR #462 moved @opencode/plugin to 2.0.32, but the development page still named 2.0.30.
+
+Validation: docs only.
+
+**docs: user site describes the current project only** ([`92b532c`](https://github.com/jjjermiah/opencode-plugboard/commit/92b532c070c039a717c2e1818ab0fa2cc62e629e))
+
+The docs read like a changelog and a test report: version markers, "before 0.N", live-run records and pass lines on every client page. Users need the current behaviour and how to set up their client.
+
+- Maintainer and generated test pages (architecture, development, releasing, packaging, review bot, red team, best practices, security reviews, compatibility, live matrix, examples) stay in docs/ but are excluded from the site with srcExclude. The Project sidebar group and the Test results link are gone; Security moves to Reference.
+- The ExampleResult and ExamplesIndex components are removed.
+- A vite plugin expands __PLUGBOARD_VERSION__ in site pages to the latest release, and bun run release moves every quoted "opencode-plugboard@X.Y.Z" install pin in README.md and docs/ to the released version (bumpInstallPins, unit-tested), so install snippets never go stale.
+- README rewritten around what it serves, a Works with line and the feature guides; the SDK client pages are rewritten as setup guides.
+- AGENTS.md gains the user-docs rules agents follow from now on.
+
+Validation: bun test test/unit/since-next.test.ts passes (10 tests); the docs build runs in CI.
+
+**docs(clients): every client page is a setup guide** ([`9a3aff5`](https://github.com/jjjermiah/opencode-plugboard/commit/9a3aff58101d7fe82e3ceb32b6ef0461995d919a))
+
+The client pages opened with test records: tested versions, live-run links, pass lines, scenario ids, "not verified" lists and the history of what failed before which release. A user setting up a client needs none of that.
+
+Each page now says what the client is, how to connect it (settings or the example's code), what works, and the limits that are true today with their workarounds. Test evidence stays in examples/. A few facts were corrected on the way: the Gemini pages no longer claim the schema is enforced, Spring AI's base URL is the origin (the client adds /v1/chat/completions), and the Anthropic pages document output_config.format as the first way to get structured output.
+
+Validation: docs build in CI.
+
+**docs(site): drop the overlapping banner, show the release in the nav** ([`8311bc0`](https://github.com/jjjermiah/opencode-plugboard/commit/8311bc09fe84f8fa6f4e3e5043bd43cd22cdf05b))
+
+The banner sat in VitePress' layout-top slot without reserving its height, so it overlapped the fixed nav bar and the search box. The latest release is now the last nav item, linking to the changelog; the banner component and its CSS are gone.
+
+Validation: bun run docs:build renders the nav without overlap.
+
+**docs(self-hosted): app pages are setup guides** ([`21dfe6f`](https://github.com/jjjermiah/opencode-plugboard/commit/21dfe6f1fd45d4596811bb3c5d42d1bb337ed5ee))
+
+The self-hosted pages carried check dates, star counts, source line references, "docs-verified, not run" notes and issue links. Each page now says what the app's AI feature is, the plugboard options it needs, how to connect it, what works, and its current limits with the provider it needs for embeddings or speech. The overview table drops star counts and issue links and points the core Home Assistant row to the Extended OpenAI Conversation page.
+
+Validation: pages build; remaining dead links are in reference pages being rewritten in the same branch.
+
+**docs(configuration): describe options as they are, not when they came** ([`7bb03e2`](https://github.com/jjjermiah/opencode-plugboard/commit/7bb03e27a145df704118fc83cbb073098b95c1a1))
+
+The configuration reference carried about 60 "(since 0.N)" markers, issue numbers as provenance, a test-harness method paragraph for the seed pool and two dated measurement tables for prompt-cache affinity. The markers and provenance are gone; the seed-pool cost is a small table of what a user pays per cap, and the affinity section says which providers gain from anchor mode.
+
+Validation: docs build in CI.
+
+**docs(reference): describe current behaviour only on the API pages** ([`2508736`](https://github.com/jjjermiah/opencode-plugboard/commit/2508736cb5dba8302e55f765feb146e7e46e1764))
+
+The API reference pages (APIs, Chat Completions, Responses, Messages, Gemini, completions, Files, headers, errors, history, remote access, warm-up, TUI, security) carried version markers, tested-with notes and history. They now state what each route accepts, refuses (as tables with error codes) and returns, checked against src/:
+
+- messages.md no longer claims redacted_thinking is never returned (src/anthropic/response.ts emits it).
+- chat-completions.md: logprobs is refused only when true; any top_logprobs is refused; reserved_tool_name and too_many_choices are listed.
+- responses.md: truncation is refused unless "disabled", background only when true; reserved_tool_name and too_many_tools are listed.
+- apis.md: "Known gaps" is "Not supported" (with a known-gaps anchor alias) and lists only what is unsupported today.
+
+Anchors that carried "since" slugs are renamed across docs/ and the two example READMEs that linked them; links to excluded maintainer pages point to GitHub.
+
+Validation: bun run docs:build completes with no dead links.
+
+**docs(site): quieter kimaki-style look with a framed hero diagram** ([`27a9544`](https://github.com/jjjermiah/opencode-plugboard/commit/27a954430c6342b7989822771571c8286b7755d4))
+
+The owner likes how kimaki.dev looks. I read its page and computed styles in headless Chrome: Inter on white or near black (oklch 0.16), one accent (Discord blurple, lighter in dark mode), 16px section titles with a hairline running to the right, a pill search box, small uppercase sidebar group labels with the active page simply darker, borderless-feeling code blocks, a dotted field behind the hero and a large framed picture of the product under a short centred intro.
+
+Applied with VitePress plus custom CSS and one small Layout.vue; no framework change (kimaki.dev runs on its own Holocron/React stack, which VitePress cannot match one to one).
+
+- palette in light and dark through the --vp-* variables, one indigo accent
+- Inter stays: the default VitePress theme already self-hosts it, so no font request and no new dependency
+- hero text centred, mono package name, pill buttons, hairline feature cards
+- home-hero-after slot shows an SVG of plugboard inside the OpenCode server (apps in, provider logins out), with a wide and a phone drawing in light and dark
+- section titles with a trailing hairline, softer sidebar, rounded bordered code blocks, vitesse code themes
+- logo mark and favicon
+- README top: centred title, tagline, badges and the same diagram
+
+Page content, URLs and anchors are unchanged; the release item stays in the nav. The README image URLs point at main, so they resolve after merge.
+
+Validation: bun run validate --skip examples passed (lint, typecheck, test, manifest, pack, docs); docs build has no dead links.
+
+**docs(install): start with opencode-plugboard init** ([`e86c4dc`](https://github.com/jjjermiah/opencode-plugboard/commit/e86c4dcc746852b7e354d7ec1b6a5b461d9417ae))
+
+The install page and README opened with five manual steps: an env var, a hand-written plugin entry with a model list, restart, warm-up, call. With `bunx opencode-plugboard init` and `"models": "connected"` the first request takes three: init, restart and warm-up, call. The manual entry stays as the alternative, now using "connected", and the 403 no_models_configured row says how to fix it.
+
+Validation: bun run docs:build completes.
+
+**docs(clients): correct Spring AI, LangChain4j and Codex CLI setup** ([`7ffad78`](https://github.com/jjjermiah/opencode-plugboard/commit/7ffad78fe7eb7f88c391271f6584c5ab0ab7fdb2))
+
+The scripted examples merged in #502 ran these three clients and showed the pages were wrong:
+
+- Spring AI 2.x: base-url must end in /v1 (it uses the official OpenAI Java SDK). The page said to leave /v1 off, which gives a 404 on every call; completions-path does not help.
+- LangChain4j: 1.23.0 does not exist; 1.22.0 is current and works with the default HTTP client, so the HTTP/1.1 note is gone.
+- Codex CLI: a stock config fails with 400 before the model is called. The page now sets web_search = "disabled" and multi_agent = false, says to use an alias, and states that MCP tools don't work yet (tracked in #498, being fixed).
+
+Validation: bun run docs:build completes.
+
+#### CI and tooling
+
+**ci: add Biome, a pre-commit hook, a mise toolchain pin and CODEOWNERS** ([`c915144`](https://github.com/jjjermiah/opencode-plugboard/commit/c9151446770b2999f1619c089b87766034f5898f))
+
+Style rode on review until now: no formatter, no linter. This adds the tools and the lint fixes the rules found. The one-time reformat is the next commit, so this one stays readable.
+
+What changed
+- biome.jsonc (Biome 2.5.15, pinned exactly): format and lint over src/, test/, .github/scripts/ and the root TS files. Out of scope: dist/, test/fixtures/specs/ (vendored), test/types/wire.ts (generated from JSON.stringify output), examples/ (each has its own toolchain), docs/.vitepress cache and dist.
+- Formatter matches the code: 2 spaces, double quotes, no semicolons, trailing commas, quoted property names kept as written. Line width is 200. The code was written to about 200 columns and wrapped by hand, and 200 rewrites the fewest lines (measured on the same tree: 140 adds 9.8k lines, 160 adds 5.8k, 180 adds 3.7k, 200 adds 2.6k).
+- Linter: the recommended preset, with the rules that fire on deliberate project style turned off, each with a one-line reason in the file: noNonNullAssertion (1107 hits), useTemplate (108), noAssignInExpressions (33), useIterableCallbackReturn (24), noCommaOperator (15), noVoidTypeReturn (14), noControlCharactersInRegex (8). Tests and scripts also allow noExplicitAny (60) and noTemplateCurlyInString (4, mutation catalogue source text).
+- Scripts: bun run lint, bun run format (check only), bun run format:write. validate gets a lint step (lint and format check) before typecheck.
+- lefthook pre-commit runs biome check on staged files; the commit-msg commitlint hook stays.
+- mise.toml pins bun 1.4.2 and node 24, what CI and publish.yml use.
+- .github/CODEOWNERS: * @jjjermiah. The ruleset does not require code-owner review, so the review bot's approval still counts (docs/review-bot.md).
+
+Lint fixes the remaining rules found (no behaviour change)
+- src/openai/response.ts: Object.hasOwn(value, key) for Object.prototype.hasOwnProperty.call.
+- src/anthropic/request.ts: dropped needless backslashes before quotes in a template string.
+- index.ts: explicit type for the options variable.
+- build-tui.ts: optional chain; validate.ts: valueOf renamed flagValue (it shadowed a built-in).
+- tests: three type-only imports became import type; indexOf for a findIndex equality test; an optional-chain guard in review-gate.test.ts; two biome-ignore comments with reasons for the __proto__ key test and the wire golden lookup.
+
+Rejected: fixing the 1100 non-null assertions (a different review, and a behaviour risk), and Biome's import sorting (the files group imports by hand).
+
+CI enforcement and docs follow in the last commit of this pull request.
+
+Refs #114
+
+**ci: enforce Biome in CI, re-anchor mutations, list the reformat in blame-ignore** ([`8c2cb4a`](https://github.com/jjjermiah/opencode-plugboard/commit/8c2cb4ae7e2712ea94ffb7647cd54f19eb71d517))
+
+This finishes the Biome work after the reformat commit.
+
+What changed
+- ci.yml: `bun run lint` and `bun run format` run in the existing "Typecheck, test and pack" job, before the typecheck. No new job and no new check name: the ruleset still requires exactly `CI passed`, `Lint commit messages` and `Analyze (javascript-typescript)`, and `CI passed` already needs this job.
+- .git-blame-ignore-revs lists the reformat commit (1e5e41c). GitHub reads the file by itself. The pull request must be merged with a merge commit, not squashed, or that hash is lost.
+- test/mutations/catalogue.ts: four entries anchored on source text whose layout the reformat changed (P390-app-default-stop-dropped, I15-unknown-route-before-auth, I23-yielded-finish-charged-again, I28-read-timeout-never-fires). The find and replace strings now match the formatted source; each mutation is the same change as before.
+- .github/floors/coverage-floor.json: lines 98.9 to 98.8. The reformat splits one-line statements across lines, so the line count and the uncovered share of it moved by a tenth of a point. No test was removed and no covered code changed. This is the one floor lowered by hand; the ratchet raises it again if coverage grows.
+- Docs: CONTRIBUTING.md, docs/development.md, STRUCTURE.md, AGENTS.md and a CHANGELOG bullet under Unreleased.
+
+Validation: `bun run validate --mutations` passes all 8 steps (lint, typecheck, test, manifest, pack, docs, examples, mutations), mutations 179 of 179 killed.
+
+Closes #114
+
+**chore(repo): remove the node_modules symlink committed by mistake** ([`6dde818`](https://github.com/jjjermiah/opencode-plugboard/commit/6dde818a2d38f16e1ffc55f9481216079e34b1e1))
+
+A worktree symlink to the main checkout's node_modules was committed with the docs changes. In CI it broke bun install with ENOENT on node_modules. The .gitignore entry node_modules/ matches directories only, so it did not catch the symlink; it now ignores node_modules in any form.
+
+Validation: git ls-files no longer lists node_modules.
+
+#### Dependencies
+
+**build(deps): bump werkzeug in /examples/semantic-kernel** ([`eb23801`](https://github.com/jjjermiah/opencode-plugboard/commit/eb2380101d805d8b5e24d52a4994869002b5fe64))
+
+Bumps [werkzeug](https://github.com/pallets/werkzeug) from 3.1.1 to 3.1.9.
+- [Release notes](https://github.com/pallets/werkzeug/releases)
+- [Changelog](https://github.com/pallets/werkzeug/blob/main/CHANGES.rst)
+- [Commits](https://github.com/pallets/werkzeug/compare/3.1.1...3.1.9)
+
+--- updated-dependencies:
+- dependency-name: werkzeug dependency-version: 3.1.9 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump openai in /examples/openai-agents** ([`e0240c8`](https://github.com/jjjermiah/opencode-plugboard/commit/e0240c8a21f1e21cb2e0a1639982b3317e1af5f4))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.29.0 to 3.31.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.29.0...v3.31.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.31.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump openai in /examples/openai-python** ([`3a4f6bc`](https://github.com/jjjermiah/opencode-plugboard/commit/3a4f6bc94780e73d4f1485c55e8d971c161218bc))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.29.0 to 3.31.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.29.0...v3.31.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.31.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump openai from 3.29.0 to 3.31.0 in /examples/pydantic-ai** ([`2809f61`](https://github.com/jjjermiah/opencode-plugboard/commit/2809f614a5b8bea22a67f96633751f47964e719d))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.29.0 to 3.31.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.29.0...v3.31.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.31.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump litellm in /examples/litellm-client** ([`316a523`](https://github.com/jjjermiah/opencode-plugboard/commit/316a52318d2c354e07402656b15162550bccb3cf))
+
+Bumps [litellm](https://github.com/BerriAI/litellm) from 1.105.0 to 1.105.1.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.105.0...v1.105.1)
+
+--- updated-dependencies:
+- dependency-name: litellm dependency-version: 1.105.1 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump litellm from 1.105.0 to 1.105.1 in /examples/dspy** ([`91aa60e`](https://github.com/jjjermiah/opencode-plugboard/commit/91aa60e81106f8973451957d26c005051178120e))
+
+Bumps [litellm](https://github.com/BerriAI/litellm) from 1.105.0 to 1.105.1.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.105.0...v1.105.1)
+
+--- updated-dependencies:
+- dependency-name: litellm dependency-version: 1.105.1 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump langchain-core in /examples/langchain-python** ([`1aeea93`](https://github.com/jjjermiah/opencode-plugboard/commit/1aeea933918a1cee5f78c45fb12208d109c516ec))
+
+Bumps [langchain-core](https://github.com/langchain-ai/langchain) from 1.6.9 to 1.6.10.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-core==1.6.9...langchain-core==1.6.10)
+
+--- updated-dependencies:
+- dependency-name: langchain-core dependency-version: 1.6.10 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump github/codeql-action/init from 4.38.3 to 4.39.0** ([`80042ba`](https://github.com/jjjermiah/opencode-plugboard/commit/80042ba38ef636c81843183a9194d955bcc96e37))
+
+Bumps [github/codeql-action/init](https://github.com/github/codeql-action) from 4.38.3 to 4.39.0.
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/24c54180a607b1449ed407dd24f251e4e9147c8d...6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee)
+
+--- updated-dependencies:
+- dependency-name: github/codeql-action/init dependency-version: 4.39.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump github/codeql-action/upload-sarif** ([`744d6a8`](https://github.com/jjjermiah/opencode-plugboard/commit/744d6a86e1cb136451ce6e03edfb5b54d4b2779c))
+
+Bumps [github/codeql-action/upload-sarif](https://github.com/github/codeql-action) from 4.38.3 to 4.39.0.
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/24c54180a607b1449ed407dd24f251e4e9147c8d...6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee)
+
+--- updated-dependencies:
+- dependency-name: github/codeql-action/upload-sarif dependency-version: 4.39.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**ci(deps): bump every codeql-action step to 4.39.0 together** ([`1259c54`](https://github.com/jjjermiah/opencode-plugboard/commit/1259c54ca57ecba76eed6cc37670bbc2223f1a41))
+
+Dependabot split the codeql-action bump into one PR for init (#492) and one for analyze (#491). Each alone fails the Analyze job, because init and analyze must be the same version. This commit moves analyze and the scorecard upload-sarif step to the same 4.39.0 SHA as init, so all three steps match.
+
+Closes #491 as superseded.
+
+Validation: CodeQL Analyze runs on this PR.
+
+**build(deps): bump openai in /examples/langchain-python** ([`9bd8087`](https://github.com/jjjermiah/opencode-plugboard/commit/9bd808729c57db06dfc36e6d0a94fa48abb0c8ef))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.29.0 to 3.31.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.29.0...v3.31.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.31.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump openai-agents in /examples/openai-agents** ([`78c63d1`](https://github.com/jjjermiah/opencode-plugboard/commit/78c63d13e86c1c1af238ccb447ac2c4194bceffd))
+
+Bumps [openai-agents](https://github.com/openai/openai-agents-python) from 0.23.1 to 0.24.0.
+- [Release notes](https://github.com/openai/openai-agents-python/releases)
+- [Changelog](https://github.com/openai/openai-agents-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-agents-python/compare/v0.23.1...v0.24.0)
+
+--- updated-dependencies:
+- dependency-name: openai-agents dependency-version: 0.24.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump pydantic-ai-slim[openai] in /examples/pydantic-ai** ([`4730522`](https://github.com/jjjermiah/opencode-plugboard/commit/47305228addd82e738dba857df08849571975e5f))
+
+Bumps [pydantic-ai-slim[openai]](https://github.com/pydantic/pydantic-ai) from 2.55.0 to 2.56.0.
+- [Release notes](https://github.com/pydantic/pydantic-ai/releases)
+- [Changelog](https://github.com/pydantic/pydantic-ai/blob/main/docs/changelog.md)
+- [Commits](https://github.com/pydantic/pydantic-ai/compare/v2.55.0...v2.56.0)
+
+--- updated-dependencies:
+- dependency-name: pydantic-ai-slim[openai] dependency-version: 2.56.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): bump dspy from 3.4.0 to 3.4.1 in /examples/dspy** ([`2eb46de`](https://github.com/jjjermiah/opencode-plugboard/commit/2eb46de630e8f044fede0557da4099f316b7e055))
+
+Bumps [dspy](https://github.com/stanfordnlp/dspy) from 3.4.0 to 3.4.1.
+- [Release notes](https://github.com/stanfordnlp/dspy/releases)
+- [Commits](https://github.com/stanfordnlp/dspy/compare/3.4.0...3.4.1)
+
+--- updated-dependencies:
+- dependency-name: dspy dependency-version: 3.4.1 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.52.0] - 2026-10-18: Files, By Reference
 
@@ -8680,7 +9199,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.52.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...HEAD
+[0.53.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...v0.51.0
 [0.50.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...v0.50.0
