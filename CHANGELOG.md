@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- The LangChain4j example now builds against Jackson 2.22.3 instead of 2.22.1, which fixes the seven advisories that OpenSSF Scorecard reported in its `pom.xml` ([#523](https://github.com/jjjermiah/opencode-plugboard/issues/523)). The shipped package was never affected.
 
 ## [0.57.0] - 2026-10-19: No More Silent Hangs
 
