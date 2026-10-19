@@ -14,12 +14,54 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.56.0] - 2026-10-19: Every Dial Reaches the Model
+
+**Full diff:** [v0.55.0...v0.56.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.55.0...v0.56.0)
+
 ### Added
 
 - `top_k` (Anthropic Messages) and `generationConfig.topK` (Gemini) reach the model ([#511](https://github.com/jjjermiah/opencode-plugboard/issues/511)). Both were accepted and dropped, so a client that set top-k for diversity got no effect. They now travel to OpenCode as its `topK` option, and `apps.<name>.sampling` accepts `topK`. OpenCode 2.0.32 puts it on the wire for Anthropic Messages and Gemini only; GitHub Copilot and the OpenAI Responses protocol never send it, and Claude Opus 4.7 and newer and every 5.x refuse it with a 400. Plugboard drops it for those models and still lists `top_k` in `x-plugboard-dropped-params`.
 - `seed` on Chat Completions, legacy completions and Gemini is passed to the model ([#512](https://github.com/jjjermiah/opencode-plugboard/issues/512)). It was accepted and ignored without a word. OpenCode sends it for Gemini and OpenAI-style chat models but not for Anthropic Messages or the OpenAI Responses protocol, so Claude and GPT-5 and 6 drop it and `x-plugboard-dropped-params` lists `seed`.
 - With `metrics: true`, remote image fetches are counted ([#513](https://github.com/jjjermiah/opencode-plugboard/issues/513)): `plugboard_remote_image_fetches_total{outcome}` (`ok`, `blocked`, `too_large`, `timeout`, `error`), `plugboard_remote_image_bytes_total` and `plugboard_remote_image_fetch_duration_seconds{outcome}`. No label names a URL or host.
 - A caller's `x-request-id` is echoed back and written to the request log line as `clientRequestId` ([#514](https://github.com/jjjermiah/opencode-plugboard/issues/514)), so a gateway's id finds the plugboard line. A value is kept when it is 1 to 128 characters of letters, digits and `_ . : / + = -`; anything else is ignored. CORS preflights allow the header. `x-plugboard-request-id` is unchanged.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Features
+
+**feat(openai): forward top_k and seed, count image fetches, echo x-request-id** ([`d3fdb3a`](https://github.com/jjjermiah/opencode-plugboard/commit/d3fdb3a3e2e2ca6b07dcd96cfcc13c16bd593448))
+
+Four gaps in what plugboard does with fields a caller already sends, plus an investigation that changes no behaviour.
+
+top_k and seed (#511, #512). Anthropic `top_k` and Gemini `topK` were accepted and dropped; `seed` on Chat Completions, legacy completions and Gemini was ignored without a header. PlugGeneration gains `topK` and `seed`, and the context hook passes them to the host beside `topP` (options.topK, options.seed). Read from OpenCode v2.0.32: GenerationOptions has both, and only some protocols put them on the wire. anthropic-messages sends top_k and no seed, gemini sends both, openai-chat sends seed, open-responses sends neither, and the GitHub Copilot adapters report topK (and, on Responses, seed) unsupported and drop them. So `dropRejected` gets rules instead of a blanket drop: modern Claude refuses top_k (400), Claude has no seed, Copilot sends no topK, and GPT-5/6 (Responses) send neither. The header order is temperature, top_p, top_k, the penalties, seed. The per-app `sampling` defaults accept `topK` (not `seed`, a default seed makes no sense). Chat Completions and Responses have no top-k field and are unchanged. The Anthropic route no longer special-cases top_k.
+
+Rejected: dropping seed everywhere, because the host can forward it for Gemini and chat models; forwarding top_k everywhere, because Opus 4.7+ answers 400 for it.
+
+Remote image metrics (#513). With `metrics: true`: plugboard_remote_image_fetches_total{outcome}, plugboard_remote_image_bytes_total and plugboard_remote_image_fetch_duration_seconds{outcome}. Outcomes are ok, blocked (address or scheme refused), too_large, timeout, error. No URL or host label. A fetch the client abandoned is not counted, since it is not an outcome of the fetch. The report hook can never fail the image.
+
+Caller request id (#514). A valid `x-request-id` (1 to 128 of [\w.:/+=-]) is echoed, logged as clientRequestId on the request line and allowed in CORS request headers. It never replaces x-plugboard-request-id (I22 still holds for that id). Not added to Expose-Headers: the page sent the value, and the exposed-list test pins the x-plugboard-* names.
+
+Silent event stream (#515), investigation only: test/session/silent-stream.test.ts shows the response ends only on session.step.ended or an execution event, so losing both leaves the request open until requestTimeoutMs. No fix.
+
+Tests change where behaviour changed: the Anthropic request test (topK on the generation, topKIgnored gone), the per-app sampling "unknown field" case (topK is now known, so it uses another name), the CORS preflight allow-headers string, and the gemini-cli scripted transcript (it sends topK to gpt-5.6-luna, which now reports top_k). 17 mutation entries are added; one existing entry's find text follows the renamed scheme check.
+
+Validation: bun run validate --skip examples --mutations: all 7 steps passed, 227 of 227 mutations killed. The examples step stops at langchain4j (no Java locally); the other scripted examples were run by name and only gemini-cli changed. promptfoo and zed are not installed here (exit 127).
+
+Refs #515
+Closes #511, closes #512, closes #513, closes #514
+
+#### Tests
+
+**test(tests): ratchet the test-count floors after merging main** ([`1c85229`](https://github.com/jjjermiah/opencode-plugboard/commit/1c852295b71ef1f43e7e5b113b40cbee632e7d86))
+
+The merge brought the other lane's tests next to this branch's. The validate run raised the floors to the merged counts: more tests, never fewer. No test was removed or skipped.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.55.0] - 2026-10-19: Long Names, Clean Tools
 
@@ -9350,7 +9392,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.55.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.56.0...HEAD
+[0.56.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.52.0...v0.53.0
