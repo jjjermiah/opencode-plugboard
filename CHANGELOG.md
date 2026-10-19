@@ -17,10 +17,67 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - Docs: every plugboard config snippet on the site has a second tab, Full config, with the whole `opencode.jsonc` around it, so a reader sees where the lines go. The tab adds a minimal `keys` and `models` when the snippet has none, marked with a comment. Picking a tab once picks it on every snippet and on later pages. A fence tagged `jsonc plugboard` (members of `options`) or `jsonc plugboard-options` (an `options` member) gets the tabs; the wrapper is `docs/.vitepress/full-config.ts`, and a tagged snippet that is not valid JSONC fails the docs build.
+Nothing yet.
+
+## [0.54.0] - 2026-10-19: Codex, Out of the Box
+
+**Full diff:** [v0.53.0...v0.54.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...v0.54.0)
 
 ### Fixed
 
 - Codex CLI works through `/v1/responses` with a stock `config.toml`, tools included ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498), [#214](https://github.com/jjjermiah/opencode-plugboard/issues/214)). Codex sends three tool shapes that got a 400 before the model was called. A `namespace` tool, which is how Codex sends every MCP server's tools and its multi-agent tools, is now flattened into one function per tool named `<namespace>__<tool>`, and the model's call goes back as the bare tool name plus its `namespace`, which is what Codex dispatches on. A `custom` (freeform) tool, such as Codex's `exec` and `apply_patch`, is offered as a function with one string argument and comes back as a `custom_tool_call` item. An `additional_tools` input item, which Codex uses instead of `tools` for the models it knows, is read as a tool list. Hosted tools (`web_search`, `web_search_preview`, `file_search`, `code_interpreter`, `image_generation`, `mcp`) are no longer refused: they are left out and named in the new `x-plugboard-dropped-tools` response header, because a client cannot know the backend has no web search. Other tool types (`local_shell`, `tool_search`, ...) are still refused with 400. The `maxTools` count is of the functions the model gets, and a flattened name that collides with another tool or with `respond` is refused as before. `examples/codex-cli/` no longer needs `web_search = "disabled"` or `multi_agent = false`, and its scripted run passes the tool call on `fast` and on `openai/gpt-5.6-luna#low`.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (4 commits)</summary>
+
+#### Features
+
+**feat(responses): take Codex CLI's namespace, custom, additional_tools and hosted tools** ([`a4aa8a8`](https://github.com/jjjermiah/opencode-plugboard/commit/a4aa8a8226a418a94ccc5ba8f855fa8c1dcea0cc))
+
+Codex CLI 0.163.0 with a stock config.toml got a 400 before the model was called. It sends three tool shapes plugboard refused.
+
+What changed, in src/responses/:
+
+- namespace tools (every MCP server's tools, and Codex's multi-agent tools) are flattened into one function per tool, named <namespace>__<tool> (mcp__weather__get_weather). The "functions" namespace, Codex's own, keeps the bare name. The call goes back as a function_call whose name is the bare tool name and whose namespace is the namespace: that is what Codex builds its ToolName from (codex-rs/core/src/tools/router.rs build_tool_call), and the scripted capture shows the same. A function_call with a namespace in input is read back to the flattened name, so history round trips.
+- custom (freeform) tools are offered as a function with one string argument `input`, with the grammar in the description, and come back as a custom_tool_call item (with custom_tool_call_input.delta/done events). custom_tool_call and custom_tool_call_output are read from input. Codex needs this: a model slug it knows (openai/gpt-5.6-luna#low) declares its only code tool, exec, as a custom tool and calls MCP tools through it.
+- an additional_tools input item is a tool list, joined with tools. A declaration sent again with identical content counts once; a different one with the same name is a duplicate.
+- hosted tool types (web_search, web_search_preview, file_search, code_interpreter, image_generation, mcp) are left out, not refused, and named in the new x-plugboard-dropped-tools header, set before any body so a stream has it too. Other types (local_shell, tool_search, ...) stay 400.
+- maxTools counts the flattened functions; duplicates and the reserved respond name are checked on the flat names.
+
+Rejected: a prefixed name on the call item (Codex looks tools up by namespace and name, a flat name would not be found); dropping custom tools like hosted ones (a luna-slug Codex would have no way to run anything).
+
+Validation: bun run validate --mutations --skip examples passes (9 new mutation entries). The scripted Codex run is regenerated with a stock-like config (no web_search = "disabled", no multi_agent = false): S1 and S2 on fast, haiku and gpt-5.6-luna#low and S4 pass. The luna S2 is a real custom_tool_call round trip through Codex's code mode.
+
+Closes #498
+Closes #214
+
+#### Tests
+
+**test(examples): make the Codex tool call a real round trip and the run deterministic** ([`22644dd`](https://github.com/jjjermiah/opencode-plugboard/commit/22644dd2bf50022a1b5d126a2516205515cc7345))
+
+The scripted Codex run passed S2 and S4, but the MCP call came back as "MCP tool call requires approval, but approval policy is never": a headless run cannot answer the prompt, so the model never saw a tool result. The example config now sets default_tools_approval_mode = "approve" on the weather server, and the second request carries the real result.
+
+That result starts with "Wall time: 0.0003 seconds", which differs by run and failed the Examples job ("scripted runs are current"). The normaliser fixes the value to <seconds>, with a unit test, like the turn start time and sandbox next to it.
+
+Refs #498
+
+#### Docs
+
+**docs(clients): document stock-config Codex CLI support** ([`b827b67`](https://github.com/jjjermiah/opencode-plugboard/commit/b827b6717b264ac54d087ee61857271052d8749f))
+
+#505 made plugboard accept Codex's namespace, custom and hosted tools and its additional_tools input item. The Codex page no longer needs the web_search and multi_agent workarounds or the alias-only rule. It now says MCP tools work, that web search is dropped and named in x-plugboard-dropped-tools, that headless MCP servers need default_tools_approval_mode = "approve", and that maxTools may need raising when MCP servers are added.
+
+Validation: bun run docs:build completes.
+
+**docs(changelog): move the Codex fix under Unreleased** ([`42bd499`](https://github.com/jjjermiah/opencode-plugboard/commit/42bd499d3bd6a4a8d1f9fa97c580b1d8aa45821e))
+
+#505 merged after 0.53.0 was released, and the union merge driver put its Fixed bullet under the 0.53.0 heading. 0.53.0's release notes were cut before the merge and are correct; only CHANGELOG.md on main was wrong. The bullet moves to [Unreleased] so 0.54.0 carries it, and the 0.53.0 Docs bullet no longer claims the fix shipped in that release.
+
+Validation: release.ts reads a non-empty [Unreleased] section.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.53.0] - 2026-10-18: First Run, Fast Recovery
 
@@ -9205,7 +9262,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.54.0...HEAD
+[0.54.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...v0.52.0
 [0.51.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...v0.51.0
