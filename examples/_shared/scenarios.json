@@ -105,6 +105,36 @@
       ]
     },
     {
+      "id": "S8",
+      "name": "traced call reaches the tracing backend",
+      "required": true,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": "Reply with exactly: pong",
+      "observes": ["trace_received", "trace_model_matches", "trace_usage_matches", "trace_output_matches"],
+      "checks": [
+        { "name": "generation reached the tracing backend", "path": "trace_received", "equals": true },
+        { "name": "generation records the model name", "path": "trace_model_matches", "equals": true },
+        { "name": "generation records the usage plugboard returned", "path": "trace_usage_matches", "equals": true },
+        { "name": "generation records the answer", "path": "trace_output_matches", "equals": true }
+      ]
+    },
+    {
+      "id": "S9",
+      "name": "pull request review of a local branch",
+      "required": true,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": null,
+      "observes": ["review_written", "review_has_scripted_text", "request_route", "request_model"],
+      "checks": [
+        { "name": "review file written", "path": "review_written", "equals": true },
+        { "name": "review holds the model's text", "path": "review_has_scripted_text", "equals": true },
+        { "name": "request reached chat completions", "path": "request_route", "equals": "/v1/chat/completions" },
+        { "name": "request used the configured model", "path": "request_model", "equals": "fast" }
+      ]
+    },
+    {
       "id": "E1",
       "name": "wrong key",
       "required": false,

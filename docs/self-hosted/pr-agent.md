@@ -30,7 +30,7 @@ key = "<the pr-agent key>"
 
 Or in the environment:
 
-<<< @/../examples/self-hosted/pr-agent/.env.example#snippet{ini}
+<<< @/../examples/pr-agent/.env.example#snippet{ini}
 
 Use the address your runner reaches in place of `192.0.2.10`. Set the model in `configuration.toml`:
 
@@ -41,13 +41,21 @@ fallback_models = ["openai/review"]
 custom_model_max_tokens = 200000  # the context window of the model behind the alias
 ```
 
-The `openai/` prefix routes through LiteLLM to an OpenAI-compatible URL. PR-Agent does not know a prefixed model's context size, so set `custom_model_max_tokens`.
+The `openai/` prefix routes through LiteLLM to an OpenAI-compatible URL, and plugboard receives the model name without it (`review`). PR-Agent does not know a prefixed model's context size. Without `custom_model_max_tokens` the review stops before it sends a request, with `Ensure openai/review is defined in MAX_TOKENS ... or set a positive value for it in config.custom_model_max_tokens`.
 
-The env file is in [`examples/self-hosted/pr-agent/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/pr-agent/README.md).
+## Review a local branch
+
+PR-Agent's `local` git provider needs no hosted pull request. It compares the checked-out branch with a target branch in the current repository and writes the review to `review.md`. It takes the target branch where the other providers take a pull request URL. The same settings as above, as environment variables:
+
+<<< @/../examples/pr-agent/run.py#snippet
+
+A review that fails still writes `review.md`, with the text `Failed to review PR`. Read the file for the model's findings.
+
+A runnable version that builds a throwaway repository with a `main` and a feature branch is in [`examples/pr-agent/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/pr-agent/README.md). It needs no GitHub token.
 
 ## What works
 
-`/review`, `/describe`, `/improve` and `/ask`, each as a chat request through `config.model`.
+`/review`, `/describe`, `/improve` and `/ask`, each as a chat request through `config.model`, on a local branch or on GitHub, GitLab, Bitbucket and the other hosted providers, which take the same model settings.
 
 ## Limits
 

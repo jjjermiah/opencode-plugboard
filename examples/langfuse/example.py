@@ -20,6 +20,7 @@ LANGFUSE_SERVER_VARS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_
 if not all(os.environ.get(name) for name in LANGFUSE_SERVER_VARS):
     os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 
+from langfuse import get_client  # noqa: E402
 from langfuse.openai import OpenAI  # noqa: E402
 
 URL = os.environ.get("PLUGBOARD_URL", "http://127.0.0.1:4010/v1")
@@ -111,6 +112,9 @@ def main() -> int:
     else:
         results.append(check("tool round trip", False, "no get_weather call to answer"))
 
+    # The SDK exports in the background: send what is queued before the script ends.
+    if os.environ.get("LANGFUSE_TRACING_ENABLED") != "false":
+        get_client().flush()
     return 0 if all(results) else 1
 
 

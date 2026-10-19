@@ -11,3 +11,4 @@ Verdict: **pass** · langfuse 4.17.0 on python 3 · models: fast, anthropic/clau
 | S2 | anthropic/claude-haiku-4-5 | yes | pass | 6/6 |
 | S2 | openai/gpt-5.6-luna#low | yes | pass | 6/6 |
 | S3 | fast | yes | pass | 4/4 |
+| S8 | fast | yes | pass | 4/4 |
