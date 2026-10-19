@@ -17,11 +17,6 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Added
 
 - `apps.<name>.hostedTools` is `"drop"` (the default) or `"refuse"` ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)). It decides what the Responses route does with a hosted tool (`web_search`, `file_search`, `code_interpreter`, `image_generation`, `mcp`) sent next to function tools: drop it and name it in `x-plugboard-dropped-tools`, or answer 400 `unsupported_parameter`.
-Nothing yet.
-
-## [0.54.0] - 2026-10-19: Codex, Out of the Box
-
-**Full diff:** [v0.53.0...v0.54.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...v0.54.0)
 
 ### Fixed
 
@@ -30,6 +25,13 @@ Nothing yet.
 - A stored chain whose tool changed its description between turns no longer fails with `Duplicate tool name` ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)). With `previous_response_id` every earlier turn's `additional_tools` list comes first, and the newest declaration of a name now wins. A name twice in one list, or in `tools` and in an `additional_tools` item, is still a duplicate.
 - A freeform tool call the model made without its `input` now goes back to Codex with an empty `input` and a debug log line (`responses.custom_input_missing`, the tool name only). It was the JSON text `{}`, which Codex would have run as the tool's own language.
 - The `tools` echoed in a Responses answer now leave out the hosted tools plugboard dropped and include the tools declared in `additional_tools` items ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)).
+
+## [0.54.0] - 2026-10-19: Codex, Out of the Box
+
+**Full diff:** [v0.53.0...v0.54.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...v0.54.0)
+
+### Fixed
+
 - Codex CLI works through `/v1/responses` with a stock `config.toml`, tools included ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498), [#214](https://github.com/jjjermiah/opencode-plugboard/issues/214)). Codex sends three tool shapes that got a 400 before the model was called. A `namespace` tool, which is how Codex sends every MCP server's tools and its multi-agent tools, is now flattened into one function per tool named `<namespace>__<tool>`, and the model's call goes back as the bare tool name plus its `namespace`, which is what Codex dispatches on. A `custom` (freeform) tool, such as Codex's `exec` and `apply_patch`, is offered as a function with one string argument and comes back as a `custom_tool_call` item. An `additional_tools` input item, which Codex uses instead of `tools` for the models it knows, is read as a tool list. Hosted tools (`web_search`, `web_search_preview`, `file_search`, `code_interpreter`, `image_generation`, `mcp`) are no longer refused: they are left out and named in the new `x-plugboard-dropped-tools` response header, because a client cannot know the backend has no web search. Other tool types (`local_shell`, `tool_search`, ...) are still refused with 400. The `maxTools` count is of the functions the model gets, and a flattened name that collides with another tool or with `respond` is refused as before. `examples/codex-cli/` no longer needs `web_search = "disabled"` or `multi_agent = false`, and its scripted run passes the tool call on `fast` and on `openai/gpt-5.6-luna#low`.
 
 <!-- commit-detail:start -->
