@@ -3,7 +3,14 @@
  * and CI refuses it inside a released CHANGELOG section. docs/releasing.md.
  */
 import { describe, expect, test } from "bun:test"
-import { hasSinceNext, placeholdersInReleased, replaceSinceNext } from "../../.github/scripts/since-next.ts"
+import { bumpInstallPins, hasSinceNext, placeholdersInReleased, replaceSinceNext } from "../../.github/scripts/since-next.ts"
+
+describe("since-next: install pins follow the release", () => {
+  test("a quoted package pin moves to the new version, prose mentions stay", () => {
+    const text = '"package": "opencode-plugboard@0.49.0",\n`"opencode-plugboard@0.48.0-rc.1"`\nnpm serves `opencode-plugboard@0.3.0` after a minute.'
+    expect(bumpInstallPins(text, "0.53.0")).toBe('"package": "opencode-plugboard@0.53.0",\n`"opencode-plugboard@0.53.0"`\nnpm serves `opencode-plugboard@0.3.0` after a minute.')
+  })
+})
 
 describe("since-next: replacing the placeholder", () => {
   test("the parenthesised form and the sentence-start form become the version", () => {

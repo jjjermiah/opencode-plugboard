@@ -1,15 +1,10 @@
 # paperless-gpt
 
-paperless-gpt is a companion to paperless-ngx. It suggests titles, tags, correspondents and document types with an LLM, and it can run OCR through a vision model.
-
-| | |
-| --- | --- |
-| Upstream | [icereed/paperless-gpt](https://github.com/icereed/paperless-gpt) (about 2.8k stars) |
-| Config source | the README, and `docs/openai_compatible_providers.md` in the same repo |
-| Plugboard API | `/v1/chat/completions`, with images for LLM OCR |
-| Status | Works for suggestions and OCR. No embeddings used. docs-verified, not run (checked 2026-10-11) |
+paperless-gpt is a companion to paperless-ngx. An LLM suggests titles, tags, correspondents and document types, and a vision model can run OCR.
 
 ## Plugboard options
+
+Give paperless-gpt its own key. `vision` handles OCR and must accept images. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
 ```jsonc
 {
@@ -26,38 +21,27 @@ paperless-gpt is a companion to paperless-ngx. It suggests titles, tags, corresp
 }
 ```
 
-`text` handles suggestions. `vision` handles OCR, and it must accept images.
-
-## paperless-gpt config
-
-The README's compose example sets the provider with env vars. Use the plugboard key and aliases:
+## Connect
 
 ```sh
 LLM_PROVIDER=openai
 LLM_MODEL=text
-OPENAI_API_KEY=<the paperless-gpt app key>
+OPENAI_API_KEY=<the paperless-gpt key>
 OPENAI_BASE_URL=http://host.docker.internal:4010/v1
 VISION_LLM_PROVIDER=openai
 VISION_LLM_MODEL=vision
 ```
 
-The README lists `OPENAI_BASE_URL` as the base URL for any OpenAI-compatible endpoint. The upstream `openai_compatible_providers.md` page says it must point at the API root, which for plugboard ends in `/v1`. `OPENAI_API_KEY` is the plugboard app key, not an OpenAI key.
+`OPENAI_API_KEY` takes the plugboard key. `OPENAI_BASE_URL` ends in `/v1`.
 
 A runnable copy is in [`examples/self-hosted/paperless-gpt/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/paperless-gpt/README.md).
 
-## What works and what does not
+## What works
 
-- **Suggestions** (title, tags, correspondent, document type): through `LLM_MODEL`.
-- **LLM OCR**: `VISION_LLM_PROVIDER` and `VISION_LLM_MODEL`. Needed only if you set the OCR provider to `llm`.
-- **Embeddings**: the README does not describe any embedding use. Nothing to route to plugboard.
-- **Structured output**: not checked against plugboard.
+- Suggestions for title, tags, correspondent and document type, through `LLM_MODEL`.
+- LLM OCR, through `VISION_LLM_PROVIDER` and `VISION_LLM_MODEL`. Set the OCR provider to `llm` to use it.
 
-## Gotchas
+## Limits
 
-- paperless-gpt has no authentication. Its README says the UI and `/api/*` are open to anyone who can reach the port, and that it listens on all interfaces by default. Publish the port on the host loopback or a trusted network only.
+- paperless-gpt has no login. Anyone who can reach its port can use the UI and `/api/*`. Publish the port on loopback or a trusted network.
 - Keep the paperless-ngx API token in an env file, not in the compose file.
-
-## Sources
-
-- [paperless-gpt README](https://github.com/icereed/paperless-gpt/blob/main/README.md)
-- [OpenAI-compatible providers](https://github.com/icereed/paperless-gpt/blob/main/docs/openai_compatible_providers.md)

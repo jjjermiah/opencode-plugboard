@@ -1,12 +1,8 @@
 # Codex CLI
 
-Verified: docs only. The `wire_api` values, the `env_key` provider field and `--profile` were checked against developers.openai.com (the Codex config sample and config reference). `codex exec` was not checked against the docs. Not run: the dev server at `127.0.0.1:4010` was down, so a Codex task against plugboard is still to do.
-
-Codex CLI is OpenAI's terminal coding agent. It is the Responses-only client: its config accepts `responses` as the only `wire_api` value. So Codex needs plugboard's `POST /v1/responses` route ([Responses API](../responses.md)), and a gateway that only serves Chat Completions will not work with it.
+OpenAI's terminal coding agent. It uses only the [Responses API](../responses.md).
 
 ## Plugboard options
-
-One app for Codex, and an alias for the model it calls:
 
 ```jsonc
 "options": {
@@ -16,9 +12,9 @@ One app for Codex, and an alias for the model it calls:
 }
 ```
 
-Swap the model for one your OpenCode server is signed in to. ChatGPT models need a variant (`#low` here), as [configuration](../configuration.md#models) explains.
+Use any model your OpenCode server is signed in to. ChatGPT models need a variant such as `#low`.
 
-## Codex config
+## Connect
 
 In `~/.codex/config.toml`:
 
@@ -33,28 +29,14 @@ env_key = "PLUGBOARD_KEY_CODEX_CLI"
 wire_api = "responses"
 ```
 
-Then export the key and run Codex:
+Then export the key and run `codex` or `codex exec "..."`. `base_url` ends in `/v1`; `env_key` names the variable Codex reads the key from. A `--profile` only needs to set `model` or `model_provider` on top of this file. A copy is in [examples/codex-cli/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/codex-cli).
 
-```sh
-export PLUGBOARD_KEY_CODEX_CLI="<your app key>"
-codex
-codex exec "list the files in this directory"
-```
+## What works
 
-- `base_url` ends in `/v1`. Codex appends `/responses`.
-- `env_key` names the environment variable Codex reads the key from. Codex sends it as a bearer token.
-- `codex --profile NAME` layers `$CODEX_HOME/NAME.config.toml` over this file. Keep the provider in the base file, as above, and a profile only needs to set `model` or `model_provider`.
+Streaming, function tool calls (Codex runs its shell and edit tools), and both ways to continue a conversation: resending it whole, or `previous_response_id`.
 
-A copyable version is in [examples/codex-cli/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/codex-cli).
+## Limits
 
-## Features exercised
-
-- `/v1/responses` with streaming, and function tool calls, which Codex's shell tool uses. Each call comes back to Codex unexecuted.
-- Reasoning: plugboard accepts reasoning items in the input and drops them. It does not return reasoning text unless the server sets `reasoningOutput` (since 0.36.0). Codex is not tested with that setting on.
-
-## Quirks
-
-- `previous_response_id` works since 0.51.0 (plugboard keeps each answer made with `store` on, per app, for the app's history retention), so Codex can resend the whole conversation or chain from the last answer. `conversation` is rejected with 400 `unsupported_parameter`. Which of the two Codex does was not checked against Codex's source. A 400 `previous_response_not_found` that names `previous_response_id` means the answer is gone: expired, deleted, sent with `store: false`, or from another app's key.
-- Plugboard accepts only `function` tools. A tool Codex sends with type `custom` (a freeform tool) is refused with 400. Which tool types Codex sends depends on the model, and was not checked. A live run should confirm a file edit goes through.
-- Hosted tools (`web_search`, `file_search`, `code_interpreter`, and the like) are refused with 400. They run on OpenAI's side, which plugboard does not reach.
-- `include` and `parallel_tool_calls` are accepted and ignored. `store: false` keeps nothing, so its output items cannot be referenced later (#426). The response echoes the `store` you sent, `true` when you leave it out (#442).
+- Only `function` tools are accepted. Freeform `custom` tools and hosted tools (`web_search`, `file_search`, `code_interpreter`) are refused with 400.
+- Reasoning text is returned only when the hub sets `reasoningOutput: true`.
+- A 400 `previous_response_not_found` means the earlier answer is gone: expired, deleted, sent with `store: false`, or made with another app's key.

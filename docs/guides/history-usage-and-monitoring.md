@@ -71,7 +71,7 @@ curl -s http://127.0.0.1:4010/plugboard/metrics -H "Authorization: Bearer $PLUGB
 
 All in the [configuration reference](../configuration.md#history-usage-and-monitoring):
 
-- [`history`](../configuration.md#options), [hidden app sessions](../configuration.md#hidden-app-sessions-since-0-30-0), [session links](../configuration.md#session-links)
+- [`history`](../configuration.md#options), [hidden app sessions](../configuration.md#hidden-app-sessions), [session links](../configuration.md#session-links)
 - [Usage statistics](../configuration.md#usage-statistics) and [the dashboard](../configuration.md#dashboard)
 - `metrics`, `logFormat`, `logLevel`, `logRequests`, and [Operating](../configuration.md#operating)
 - The [response headers](../headers.md) and [error codes](../errors.md)

@@ -1,12 +1,10 @@
 # Google GenAI Python SDK
 
-<ExampleResult example="gemini-python" />
+The official `google-genai` package, on plugboard's [Gemini API](../gemini.md).
 
-Tested: `google-genai` 2.31.0, live run [`2026-10-16-v0.41.0-29-g2d6aac1`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/gemini-python/runs/live/2026-10-16-v0.41.0-29-g2d6aac1) at plugboard 0.41.0: pass. The SDK's `inlineData` (`mime_type`, URL-safe base64) works since [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401) and [#409](https://github.com/jjjermiah/opencode-plugboard/issues/409) were fixed. The code below is the example's snippets.
+## Connect
 
-## Setup
-
-The SDK adds `/v1beta` itself, so the base URL is the plugboard origin, without `/v1`:
+The SDK adds `/v1beta` itself, so the base URL is the plugboard origin:
 
 ```python
 from google import genai
@@ -15,13 +13,13 @@ from google.genai import types
 client = genai.Client(api_key=PLUGBOARD_KEY, http_options=types.HttpOptions(base_url="http://127.0.0.1:4010"))
 ```
 
-The snippets use `client` (above) and `model`, `"fast"` in the examples.
-
 ## Chat
 
 <<< @/../examples/gemini-python/chat.py#snippet
 
-## Tool call
+## Tool calls
+
+Gemini calls carry no id: the function name pairs a `functionResponse` with its call.
 
 <<< @/../examples/gemini-python/tools.py#snippet
 
@@ -29,11 +27,11 @@ The snippets use `client` (above) and `model`, `"fast"` in the examples.
 
 <<< @/../examples/gemini-python/stream.py#snippet
 
+A streamed tool call arrives whole, in one chunk:
+
 <<< @/../examples/gemini-python/stream_tools.py#snippet
 
-## Image
-
-Inline bytes go through `Part.from_bytes`.
+## Images
 
 <<< @/../examples/gemini-python/image.py#snippet
 
@@ -41,19 +39,15 @@ Inline bytes go through `Part.from_bytes`.
 
 <<< @/../examples/gemini-python/structured.py#snippet
 
-## Model ids
+## Files
 
-A bare `#` starts a URL fragment, so `openai/gpt-5.6-luna#low` is sent as `openai/gpt-5.6-luna%23low`. `run.py` does this for every scenario. A `/` goes as it is. See [Gemini API](../gemini.md#model-names).
+`client.files.upload(file="doc.pdf")` uploads through plugboard; pass the returned file to `generate_content` like any other part. See [Files](../files.md).
 
-## Errors
+## Model names
 
-<<< @/../examples/gemini-python/errors.py#snippet-wrong-key
+A `#` in a model name must be sent as `%23` (`openai/gpt-5.6-luna%23low`); a `/` goes as it is. Aliases avoid both. See [Gemini model names](../gemini.md#model-names).
 
-<<< @/../examples/gemini-python/errors.py#snippet-unknown-model
+## Limits
 
-Errors raise `ClientError` with the HTTP code. The body's `status` (`UNAUTHENTICATED`, `NOT_FOUND`) is the name Google uses, not the OpenAI codes.
-
-## Gotchas
-
-- `client.models.list()` and `client.models.get()` are served.
-- Gemini calls carry no id. The name pairs a function response with its call.
+- Errors raise `ClientError` with the HTTP status; the body's `status` is Google's name (`UNAUTHENTICATED`, `NOT_FOUND`).
+- The schema in structured output is not enforced by the provider. Validate the answer.

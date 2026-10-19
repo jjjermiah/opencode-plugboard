@@ -1,6 +1,6 @@
 # Clients
 
-Every client needs a base URL, a plugboard key and a model name ([Connect your app](../connect.md)). Each page below has the exact config for one client, what was tested, and the gotchas found. The [examples overview](../examples.md) shows the latest test results for all of them.
+Every client needs a base URL, a plugboard key and a model name ([Connect your app](../connect.md)). Each page below has the settings and working code or config for one client, and the limits to know about. Runnable versions of the code are in [`examples/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples).
 
 Not listed? Any app with an "OpenAI-compatible" setting works: see [Any OpenAI-compatible app](any-app.md).
 

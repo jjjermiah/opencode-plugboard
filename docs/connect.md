@@ -24,7 +24,7 @@ If an app only asks for "an OpenAI-compatible URL", use the first row. See [Any 
 
 ## Choose by client
 
-Each client page has the config, a chat, a tool call, structured output and what was found in testing. The [clients overview](clients/index.md) lists all of them with their results.
+Each client page shows the settings, working code or config, and the limits to know about. The [clients overview](clients/index.md) lists all of them.
 
 | You use | Start here |
 | --- | --- |

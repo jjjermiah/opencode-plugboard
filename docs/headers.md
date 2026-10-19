@@ -1,6 +1,6 @@
 # Response headers
 
-Plugboard adds `x-plugboard-*` headers to model answers. They tell you what happened to a request without reading logs. A browser page can read them when its origin is in [`cors.origins`](configuration.md#browser-origins-since-0-26-0).
+Plugboard adds `x-plugboard-*` headers to model answers. They tell you what happened to a request without reading logs. A browser page can read them when its origin is in [`cors.origins`](configuration.md#browser-origins).
 
 A streamed answer sends its headers with the first event, so headers that need the finished answer (`x-plugboard-usage`, `x-plugboard-server-tools`) are only on non-streamed answers.
 
