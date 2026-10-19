@@ -189,6 +189,13 @@ describe("Gemini CLI session context", () => {
     expect(normaliseSessionContext("It took 3 seconds")).toBe("It took 3 seconds")
   })
 
+  test("fixes the date PR-Agent puts after its `--PR Info--` header, and no other date", () => {
+    const prompt = (date: string) => `\n--PR Info--\n\nToday's Date: ${date}\n\nTitle: 'feature/greeting'\n\nReleased 2026-01-02.`
+    expect(normaliseSessionContext(prompt("2026-10-19"))).toBe("\n--PR Info--\n\nToday's Date: <date>\n\nTitle: 'feature/greeting'\n\nReleased 2026-01-02.")
+    expect(normaliseSessionContext(prompt("2026-10-19"))).toBe(normaliseSessionContext(prompt("2027-01-01")))
+    expect(normaliseSessionContext("Today's Date: 2026-10-19")).toBe("Today's Date: 2026-10-19")
+  })
+
   test("applies to every string of a parsed body and keeps its structure", () => {
     const body = { contents: [{ parts: [{ text: block }, { text: "Reply with exactly: pong" }] }], n: 3 }
     const out = normaliseSessionContextValue(body) as typeof body

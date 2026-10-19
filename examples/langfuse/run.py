@@ -1,9 +1,10 @@
-"""Runner for the Langfuse example: Langfuse's OpenAI wrapper with tracing off. Started by examples/_harness/run.ts, which
+"""Runner for the Langfuse example: Langfuse's OpenAI wrapper with tracing on. Started by examples/_harness/run.ts, which
 captures the traffic and writes the run. This file writes nothing: it prints one JSON line per scenario and model.
 
     uv run --frozen run.py          # against PLUGBOARD_BASE_URL and PLUGBOARD_KEY, through the harness
 
-The scenarios are the ones in example.py: S1 text, S2 tool round trip, S3 stream.
+The scenarios are the ones in example.py: S1 text, S2 tool round trip, S3 stream. S8 checks the trace of one call: the SDK sends
+it to fake_langfuse.py, a Langfuse ingestion endpoint on loopback, and the runner reads back what arrived.
 """
 
 import json
@@ -11,13 +12,24 @@ import os
 import sys
 from pathlib import Path
 
-# The harness never sends traces. Tracing is off before langfuse is imported, whatever the caller's environment says.
-os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
-
 SHARED = Path(__file__).resolve().parents[1] / "_shared"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "_harness" / "py"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from fake_langfuse import FakeLangfuse  # noqa: E402
+
+# The traces go to a Langfuse stand-in on loopback, never to a real server, whatever the caller's environment says.
+fake = FakeLangfuse("pk-lf-example", "sk-lf-example")
+# region snippet-tracing
+os.environ["LANGFUSE_PUBLIC_KEY"] = "pk-lf-example"
+os.environ["LANGFUSE_SECRET_KEY"] = "sk-lf-example"
+os.environ["LANGFUSE_BASE_URL"] = fake.url  # your Langfuse URL, for example https://cloud.langfuse.com
+# endregion snippet-tracing
+os.environ["LANGFUSE_TRACING_ENABLED"] = "true"
+os.environ.pop("LANGFUSE_HOST", None)
 
 import harness  # noqa: E402
+from langfuse import get_client  # noqa: E402
 from langfuse.openai import OpenAI  # noqa: E402
 
 PROMPT = "Reply with exactly: pong"
@@ -76,6 +88,27 @@ def s3(client, model):
     return {"text": text, "finish_reason": finish, "usage": usage, "done": True}
 
 
+TRACE_NAME = "plugboard-traced-call"
+
+
+def s8(client, model):
+    # region snippet-flush
+    response = client.chat.completions.create(model=model, messages=[{"role": "user", "content": PROMPT}], max_completion_tokens=1024, name=TRACE_NAME)
+    # The SDK exports in the background: send what is queued before the script ends.
+    get_client().flush()
+    # endregion snippet-flush
+    arrived = [span for span in fake.generations() if span["name"] == TRACE_NAME]
+    attributes = arrived[0]["attributes"] if len(arrived) == 1 else {}
+    usage, sent = (fake.usage_of(arrived[0]) if arrived else {}), response.usage
+    output = json.loads(attributes.get("langfuse.observation.output") or "{}")
+    return {
+        "trace_received": len(arrived) == 1,
+        "trace_model_matches": attributes.get("langfuse.observation.model.name") == model,
+        "trace_usage_matches": sent is not None and usage.get("prompt_tokens") == sent.prompt_tokens and usage.get("completion_tokens") == sent.completion_tokens,
+        "trace_output_matches": bool(output.get("content")) and output.get("content") == response.choices[0].message.content,
+    }
+
+
 def main() -> None:
     # region snippet
     client = OpenAI(base_url=os.environ["PLUGBOARD_BASE_URL"], api_key=os.environ["PLUGBOARD_KEY"], max_retries=0)
@@ -86,8 +119,11 @@ def main() -> None:
             "S1": lambda model: s1(client, model),
             "S2": lambda model: s2(client, model),
             "S3": lambda model: s3(client, model),
+            "S8": lambda model: s8(client, model),
         }
     )
+    get_client().shutdown()
+    fake.close()
 
 
 if __name__ == "__main__":

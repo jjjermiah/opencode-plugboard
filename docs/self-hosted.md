@@ -22,7 +22,7 @@ Plugboard serves chat (Chat Completions, Responses, Anthropic Messages and Gemin
 | [Tandoor Recipes](self-hosted/tandoor.md) | Recipe import, step sorting, nutrition | Chat, vision | Text and photo import. PDF import fails |
 | [LLM Vision for Home Assistant](self-hosted/llm-vision.md) | Image and video analysis | Chat, vision | Vision through the Custom OpenAI provider |
 | [SiYuan](self-hosted/siyuan.md) | AI writing and Q/A | Chat | Writing, chat and the agent. Semantic search needs embeddings elsewhere |
-| [PR-Agent](self-hosted/pr-agent.md) | Pull request review, describe, improve | Chat | All of it |
+| [PR-Agent](self-hosted/pr-agent.md) | Pull request review, describe, improve | Chat | `/review` of a local branch. The other commands send the same kind of chat request |
 | [RAGFlow](self-hosted/ragflow.md) | Document RAG | Chat | Chat. Dataset embeddings and reranking come from elsewhere |
 | Home Assistant OpenAI Conversation (core) | Voice and conversation agent | None | The core integration only accepts the official OpenAI endpoint. Use [Extended OpenAI Conversation](clients/home-assistant-extended-openai.md) |
 | Immich | No LLM feature. Smart search and face recognition use local models | None | Not applicable |

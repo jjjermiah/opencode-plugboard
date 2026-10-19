@@ -25,6 +25,29 @@ const userText = (request: PlugRequest): string =>
 const hasPngPart = (request: PlugRequest): boolean =>
   request.messages.some((message) => message.content.some((part) => part.type === "media" && part.url.startsWith("data:image/png")))
 const answered = (request: PlugRequest): boolean => request.messages.some((message) => message.role === "tool")
+/**
+ * The review PR-Agent's `/review` gets (examples/pr-agent). Its user prompt holds a `--PR Info--` header and a `The PR code diff:` block, which no
+ * other client sends. The finding below is what the example's runner looks for in the `review.md` the local git provider writes.
+ */
+export const PR_REVIEW = { header: "Scripted finding", content: "The scripted model reviewed this diff and found nothing to change." }
+const PR_REVIEW_YAML = `review:
+  estimated_effort_to_review_[1-5]: 1
+  relevant_tests: |
+    No
+  key_issues_to_review:
+    - relevant_file: |
+        hello.py
+      issue_header: |
+        ${PR_REVIEW.header}
+      issue_content: |
+        ${PR_REVIEW.content}
+      start_line: 2
+      end_line: 2
+  security_concerns: |
+    No
+`
+const isPrAgentReview = (text: string): boolean => text.includes("--PR Info--") && text.includes("The PR code diff:")
+
 /** n8n's Structured Output Parser puts its schema in the prompt, with the answer wrapped in `output` (#344). Other clients send no such text. */
 const wantsOutputWrapper = (text: string): boolean => text.includes('"properties":{"output"')
 
@@ -56,6 +79,7 @@ export function answer(request: PlugRequest): PlugEvent[] {
     return [ev.call(CALL_ID, forced, input), ev.finish("tool-calls", USAGE)]
   }
   const text = userText(request)
+  if (isPrAgentReview(text)) return say(PR_REVIEW_YAML)
   // DSPy's chat adapter wraps the question and wants the answer in a `[[ ## answer ## ]]` field, after `reasoning` when the
   // signature asks for it. Other clients never send these markers, so their answers are unchanged.
   if (text.includes("[[ ## ")) {

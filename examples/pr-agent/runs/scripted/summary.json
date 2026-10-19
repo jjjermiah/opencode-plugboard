@@ -1,0 +1,46 @@
+{
+  "client": {
+    "name": "pr-agent",
+    "runtime": {
+      "name": "python",
+      "version": "3"
+    },
+    "version": "0.48.0"
+  },
+  "example": "pr-agent",
+  "models": [
+    "fast"
+  ],
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "name": "review file written",
+          "ok": true
+        },
+        {
+          "name": "review holds the model's text",
+          "ok": true
+        },
+        {
+          "name": "request reached chat completions",
+          "ok": true
+        },
+        {
+          "name": "request used the configured model",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S9",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S9.fast.json"
+    }
+  ],
+  "schema": 1,
+  "target": "scripted",
+  "verdict": "pass"
+}
