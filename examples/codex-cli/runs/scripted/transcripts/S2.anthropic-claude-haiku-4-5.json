@@ -973,10 +973,6 @@
                         }
                       ],
                       "type": "namespace"
-                    },
-                    {
-                      "external_web_access": false,
-                      "type": "web_search"
                     }
                   ],
                   "top_p": null,
@@ -1456,10 +1452,6 @@
                         }
                       ],
                       "type": "namespace"
-                    },
-                    {
-                      "external_web_access": false,
-                      "type": "web_search"
                     }
                   ],
                   "top_p": null,
@@ -2004,10 +1996,6 @@
                         }
                       ],
                       "type": "namespace"
-                    },
-                    {
-                      "external_web_access": false,
-                      "type": "web_search"
                     }
                   ],
                   "top_p": null,
@@ -3036,10 +3024,6 @@
                         }
                       ],
                       "type": "namespace"
-                    },
-                    {
-                      "external_web_access": false,
-                      "type": "web_search"
                     }
                   ],
                   "top_p": null,
@@ -3519,10 +3503,6 @@
                         }
                       ],
                       "type": "namespace"
-                    },
-                    {
-                      "external_web_access": false,
-                      "type": "web_search"
                     }
                   ],
                   "top_p": null,
@@ -4122,10 +4102,6 @@
                         }
                       ],
                       "type": "namespace"
-                    },
-                    {
-                      "external_web_access": false,
-                      "type": "web_search"
                     }
                   ],
                   "top_p": null,

@@ -6,7 +6,7 @@ Open Notebook is a self-hosted research notebook: sources, notes, transformation
 
 Give Open Notebook its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

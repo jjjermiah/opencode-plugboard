@@ -227,6 +227,11 @@ export interface AppPolicy {
    */
   readonly reasoningOutput?: boolean
   /**
+   * Option `apps.<name>.hostedTools`: what the Responses route does with a hosted tool (`web_search`, `file_search`, ...) next to the caller's
+   * function tools. `drop` (the default) leaves it out and names it in `x-plugboard-dropped-tools`; `refuse` answers 400. Read it with `hostedToolsFor`.
+   */
+  readonly hostedTools?: HostedTools
+  /**
    * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.32.0, #264): a field fills the request only where the caller
    * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
    */
@@ -557,7 +562,15 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
+export type HostedTools = "drop" | "refuse"
+
+/** What `app` does with hosted tools on the Responses route: `drop` unless the app sets `hostedTools` (#498). */
+export function hostedToolsFor(options: Pick<PlugboardOptions, "apps">, app: string): HostedTools {
+  return appPolicy(options, app)?.hostedTools ?? "drop"
+}
+
 const APP_KNOWN = new Set([
+  "hostedTools",
   "key",
   "models",
   "system",
@@ -753,6 +766,9 @@ function parseApps(
     const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
     if (value.reasoningOutput !== undefined && typeof value.reasoningOutput !== "boolean") throw new Error(`plugboard option \`apps.${app}.reasoningOutput\` must be a boolean`)
     const reasoningOutput = value.reasoningOutput as boolean | undefined
+    if (value.hostedTools !== undefined && value.hostedTools !== "drop" && value.hostedTools !== "refuse")
+      throw new Error(`plugboard option \`apps.${app}.hostedTools\` must be \`drop\` or \`refuse\``)
+    const hostedTools = value.hostedTools as HostedTools | undefined
     const policy: AppPolicy = {
       ...(appModels === undefined ? {} : { models: appModels as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -774,6 +790,7 @@ function parseApps(
       ...(model === undefined ? {} : { model }),
       ...(userHeader === undefined ? {} : { userHeader }),
       ...(reasoningOutput === undefined ? {} : { reasoningOutput }),
+      ...(hostedTools === undefined ? {} : { hostedTools }),
     }
     // An app that only carries a key has no policy to look up.
     if (
@@ -793,6 +810,7 @@ function parseApps(
       model !== undefined ||
       userHeader !== undefined ||
       reasoningOutput !== undefined ||
+      hostedTools !== undefined ||
       settleMs !== undefined
     )
       entries.push([app, policy])

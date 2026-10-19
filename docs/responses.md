@@ -40,6 +40,7 @@ A 400 with `code: "unsupported_parameter"` and `param` naming the field:
 | `item_reference` input items that name no output item plugboard holds | See [Multi-turn with the Vercel AI SDK](#multi-turn-with-the-vercel-ai-sdk). A reference to an output item of a recent answer works. |
 | `background: true`, `prompt` (stored prompts), `top_logprobs`, `truncation: "auto"` | Not available. |
 | Tool types other than `function`, `namespace`, `custom` and the hosted types in [Tools](#tools) (`local_shell`, `tool_search`, `computer_use_preview`, ...), and anything but a `function` or `custom` tool inside a `namespace` | They need a client-side exchange plugboard has no shape for. |
+| Hosted tools (`web_search`, `file_search`, ...) when the request has no function tool to send with them, whatever `tool_choice` says; and any hosted tool in an app with `hostedTools: "refuse"` | They run on OpenAI's servers. Next to function tools they are left out instead, see [Tools](#tools). |
 | `tool_choice` objects other than a function or custom tool name (`allowed_tools`, hosted tool types), and a named tool together with `text.format` `json_schema` | Not available. |
 
 Other refusals:
@@ -49,7 +50,7 @@ Other refusals:
 | `input_image` or `input_file` with a `file_id` the app does not hold | 404 (see [Files API](files.md)). |
 | A tool named `respond` together with `text.format` `json_schema` | 400 `reserved_tool_name`. |
 | More tools than `maxTools` | 400 `too_many_tools`. The count is of the functions the model gets: a `namespace` tool counts one per tool, and hosted tools count none. |
-| Two tools with the same name, after a `namespace` tool is flattened | 400 `invalid_request_error`, `Duplicate tool name`. |
+| Two tools with the same name, after a `namespace` tool is flattened | 400 `invalid_request_error`, `Duplicate tool name`. A later `additional_tools` item that declares a name again replaces the earlier one instead. |
 | Any other invalid input, for example a `function_call_output` whose `call_id` no earlier `function_call` item has | 400 `invalid_request_error`. |
 
 ## Tools
@@ -59,11 +60,11 @@ Codex CLI sends all of these, so a stock `config.toml` works (see [Codex CLI](cl
 | Tool | What plugboard does |
 | --- | --- |
 | `function` | Offered to the model as is. |
-| `namespace` (`{"type":"namespace","name":"mcp__weather","tools":[...]}`) | Flattened into one function per tool, named `<namespace>__<name>` (`mcp__weather__get_weather`). The name stays bare in the `functions` namespace, Codex's own. A call comes back as `function_call` with `name` set to the bare tool name and `namespace` set to the namespace, which is the shape Codex dispatches on. A `function_call` with a `namespace` in `input` is read back to the flattened name. |
-| `custom` (a freeform tool, such as Codex's `exec` and `apply_patch`) | Offered as a function with one string argument `input`, with the tool's grammar in its description. A call comes back as a `custom_tool_call` item whose `input` is that string, and `custom_tool_call_output` carries the result. |
-| `web_search`, `web_search_preview`, `file_search`, `code_interpreter`, `image_generation`, `mcp` | Left out. They run on OpenAI's servers, and a client cannot know the backend has none. The response carries `x-plugboard-dropped-tools` with the types, such as `web_search`. |
+| `namespace` (`{"type":"namespace","name":"mcp__weather","tools":[...]}`) | Flattened into one function per tool, named `<namespace>__<name>` (`mcp__weather__get_weather`). A name over 64 characters, the longest OpenAI and Anthropic take, is cut to 55 characters and ends in `_` and 8 hex characters of a hash of the namespace and the name, so it is the same on every request. The name stays bare in the `functions` namespace, Codex's own. A call comes back as `function_call` with `name` set to the bare tool name and `namespace` set to the namespace, which is the shape Codex dispatches on. A `function_call` with a `namespace` in `input` is read back to the flattened name. |
+| `custom` (a freeform tool, such as Codex's `exec` and `apply_patch`) | Offered as a function with one string argument `input`, with the tool's grammar in its description. A call comes back as a `custom_tool_call` item whose `input` is that string, and `custom_tool_call_output` carries the result. A call the model made without the `input` argument gets an empty `input`. |
+| `web_search`, `web_search_preview`, `file_search`, `code_interpreter`, `image_generation`, `mcp` | Left out when function tools are sent with them: they run on OpenAI's servers, and a client cannot know the backend has none. The response carries `x-plugboard-dropped-tools` with the types, such as `web_search`, and the echoed `tools` leave them out. With no function tool, the request is refused. The per-app option `hostedTools` (see [Per-app policy](configuration.md#per-app-policy-apps)) is `drop` (the default) or `refuse`, which refuses a hosted tool in any case. |
 
-An `additional_tools` input item (`{"type":"additional_tools","role":"developer","tools":[...]}`) is a tool list like `tools`, and Codex sends it instead of `tools` for the models it knows. All the lists are joined. A declaration sent twice with the same content counts once; two different ones with one name are a duplicate.
+An `additional_tools` input item (`{"type":"additional_tools","role":"developer","tools":[...]}`) is a tool list like `tools`, and Codex sends it instead of `tools` for the models it knows. All the lists are joined, and the echoed `tools` include them. A name declared in more than one `additional_tools` item (a chain made with `previous_response_id` sends the list of every turn) takes the newest declaration, so a description that changed between turns is not an error. A name twice in one list, or in `tools` and in an `additional_tools` item, is a duplicate.
 
 ## Output
 

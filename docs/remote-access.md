@@ -21,7 +21,7 @@ Plugboard listens on `127.0.0.1` by default, so only the OpenCode host can call 
 
 This is the simplest option for devices you own. Bind plugboard to the host's tailnet address, not to `0.0.0.0`, and set keys:
 
-```jsonc
+```jsonc plugboard
 "listen": { "host": "100.101.102.103", "port": 4010 },
 "keys": { "laptop": "{env:PLUGBOARD_KEY_LAPTOP}" }
 ```
@@ -95,7 +95,7 @@ The client then uses `http://127.0.0.1:4010/v1` with a key. Keep the local port 
 
 A browser UI on another origin calls plugboard only when that origin is named in `cors.origins` (see [configuration](configuration.md#browser-origins)). Behind a TLS proxy, list the public origin the browser sees, such as `https://chat.example.net`, and trust the proxy's address with `listen.trustProxy` so the Host check and the logs see the real client.
 
-```jsonc
+```jsonc plugboard
 "keys": { "chat-ui": "{env:PLUGBOARD_KEY_CHAT}" },
 "listen": { "host": "127.0.0.1", "port": 4010, "trustProxy": ["127.0.0.1"] },
 "cors": { "origins": ["https://chat.example.net"] }

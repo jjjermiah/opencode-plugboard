@@ -6,7 +6,7 @@ Anthropic's terminal coding agent. It speaks the [Messages API](../messages.md),
 
 One app for Claude Code, and aliases for the tiers it uses:
 
-```jsonc
+```jsonc plugboard-options
 "options": {
   "keys": { "claude-code": "{env:PLUGBOARD_KEY_CLAUDE_CODE}" },
   "models": ["anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-4-6"],

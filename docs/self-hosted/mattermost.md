@@ -6,7 +6,7 @@ The Mattermost AI plugin adds AI assistants (agents) to Mattermost. Each agent u
 
 Give Mattermost its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

@@ -6,7 +6,7 @@ Langflow is a visual builder for agents and flows. Its language model components
 
 Give Langflow its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

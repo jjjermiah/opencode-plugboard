@@ -6,7 +6,7 @@ SiYuan is a block-based personal knowledge base. Its AI features are writing hel
 
 Give SiYuan its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

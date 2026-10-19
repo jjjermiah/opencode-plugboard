@@ -6,7 +6,7 @@ The Extended OpenAI Conversation custom component (not core Home Assistant's Ope
 
 Home Assistant reaches plugboard over the LAN, so plugboard binds a reachable address with keys set ([Serving other machines](../guides/serving-other-machines.md)):
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

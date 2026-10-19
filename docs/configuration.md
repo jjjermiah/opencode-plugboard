@@ -42,7 +42,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 | `models` | none (required) | Allowlist of models callers may use: a list of patterns, or `"connected"` for every enabled model of every connected provider. See [Models](#models). |
 | `aliases` | none | Map of alias to `provider/model[#variant]`, or to an ordered list of them (fallbacks), or to `skill:<id>@provider/model[#variant]` (a skill bound to a model). Each target must also pass `models`. See [Aliases and fallbacks](#aliases-and-fallbacks) and [Skills and agents](#skills-and-agents). |
 | `agents` | none | List of `{ name, model }`: OpenCode agents exposed as `agent/<name>`, each on the `model` given (which must pass `models`). See [Skills and agents](#skills-and-agents). |
-| `maxTools` | `64` | Most tools one request may carry. Fixed when the plugin loads. Each slot is a registered placeholder tool in every app Location: about 70 KiB per Location at 256 (see [Cost of the seed pool](#cost-of-the-seed-pool)). The default covers coding agents with MCP servers (Claude Code sends 36). A request over the cap gets a 400 that names this option. |
+| `maxTools` | `64` | Most tools one request may carry. Fixed when the plugin loads. Each slot is a registered placeholder tool in every app Location: about 70 KiB per Location at 256 (see [Cost of the seed pool](#cost-of-the-seed-pool)). The default covers coding agents with MCP servers (Claude Code sends 36). Codex CLI sends about 11 built-in tools plus every tool of each MCP server it loads, so one server with 50 tools or more passes 64: raise `maxTools` for a Codex app. A request over the cap gets a 400 that names this option. |
 | `maxN` | `1` | Most model calls one request may fan out to: `n` on Chat Completions and `/v1/completions`, prompts times `n` for a prompt array, or `generationConfig.candidateCount` on Gemini. Each is a full call and a kept session, so `n: 4` costs four times. Above the cap, 400 `too_many_choices`. An `apps.<name>.maxN` must be at most this value: a larger per-app value is a load error that stops the plugin. See [completions](completions.md). |
 | `requestTimeoutMs` | `600000` | A request that runs longer is interrupted. |
 | `fallbackCooldown` | `{ failureThreshold: 3, cooldownMs: 60000, windowMs: 60000 }` | Circuit breaker for list aliases. A target that failed `failureThreshold` times in a row within `windowMs` is skipped for `cooldownMs`, then one probe request is let through. Any field may be left out; `false` turns the breaker off. Global only. See [Aliases and fallbacks](#aliases-and-fallbacks). |
@@ -71,7 +71,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 
 Behind Traefik, nginx or Caddy, plugboard sees the proxy's address, and the proxy's own `Host` (the public name) fails the loopback Host check. Option `listen.trustProxy` names the proxies whose forwarded headers are read:
 
-```jsonc
+```jsonc plugboard
 "listen": {
   "host": "127.0.0.1",
   "port": 4010,
@@ -91,7 +91,7 @@ Read [SECURITY](https://github.com/jjjermiah/opencode-plugboard/blob/main/SECURI
 
 A web page in a browser runs on its own origin and calls plugboard from there. Option `cors` names the origins that may do that:
 
-```jsonc
+```jsonc plugboard
 "cors": {
   "origins": ["https://chat.example.net", "http://localhost:3000"],
   "allowPrivateNetwork": false
@@ -118,7 +118,7 @@ A web page in a browser runs on its own origin and calls plugboard from there. O
 | `maxRedirects` | `0` | Redirects the fetcher follows, 0 to 10. Each target goes through the address check again. |
 | `timeoutMs` | `20000` | Time allowed for one fetch, 1 to 600000. |
 
-```jsonc
+```jsonc plugboard
 "remoteImages": {
   "allow": ["images.internal"],
   "schemes": ["https"],
@@ -201,7 +201,7 @@ Some chat UIs mangle `/` and `#`, so `anthropic/claude-haiku-4-5#high` breaks th
 
 An alias is a short name for a model. Point it at a list to get ordered fallbacks:
 
-```json
+```json plugboard
 "aliases": {
   "smart": "anthropic/claude-sonnet-4-5",
   "fast": ["opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"]
@@ -246,7 +246,7 @@ Two kinds of name sit beside plain models. Both are off until you configure them
 
 **Skill aliases.** An alias target can bind a skill from the OpenCode server:
 
-```json
+```json plugboard
 "aliases": {
   "invoice-parser": "skill:invoice-parser@anthropic/claude-sonnet-4-6"
 }
@@ -256,7 +256,7 @@ The text between `skill:` and `@` is the skill's `id`, as OpenCode lists it. The
 
 **Agents.** Option `agents` exposes OpenCode agents (see the [permission model](#permission-model) below):
 
-```json
+```json plugboard
 "agents": [{ "name": "review", "model": "anthropic/claude-sonnet-4-6" }]
 ```
 
@@ -281,7 +281,7 @@ Each key name is an app. A request made with the `my-app` key is the app `my-app
 
 Use `apps` to fix an app's behaviour on the server, without touching the app:
 
-```json
+```json plugboard
 {
   "apps": {
     "discord-bot": { "key": "{env:BOT_KEY}", "models": ["fast"], "system": "Answer in two sentences.", "tools": false },
@@ -306,6 +306,7 @@ Use `apps` to fix an app's behaviour on the server, without touching the app:
 | `endpoints` | The endpoint families this app may call: a non-empty list of `chat`, `completions`, `responses`, `messages`, `gemini`, `models` and `files`. Absent: every endpoint. A call outside the list is a 403 `endpoint_forbidden`, in the route's own error shape. See [Endpoint names](#endpoint-names). |
 | `userHeader` | A request header that names the end user, read instead of the body's `user` (or `metadata.user_id` on Messages) when the request sends it. Lower case, 1 to 64 letters, digits or hyphens, such as `x-user-id`. A credential header (`authorization`, `proxy-authorization`, `x-api-key`, `api-key`, `x-goog-api-key`, `x-auth-token`, `cookie`) is refused at load, because its value would be logged as the user. A header present with a blank value is absent, so the body's user is used. Otherwise the value goes through the same rules as the body field: a refused one is dropped with `x-plugboard-user-dropped: 1` and does not fall back to the body. Gemini has no end user, so a Gemini-only app gets no effect from this option, and no load warning. See [End users](#end-users). |
 | `reasoningOutput` | This app's reasoning switch for Chat Completions and Responses. It replaces the global `reasoningOutput` for this app, in both directions: `false` drops reasoning here while the global one is on. Absent: the global value. See [Reasoning output](#reasoning-output). |
+| `hostedTools` | What the Responses route does with a hosted tool (`web_search`, `file_search`, `code_interpreter`, `image_generation`, `mcp`) sent next to function tools: `"drop"` (the default) leaves it out and lists it in `x-plugboard-dropped-tools`, `"refuse"` answers 400 `unsupported_parameter`. A request whose only tools are hosted ones is refused either way. See [Responses tools](responses.md#tools). |
 | `model` | One model every request of this app runs on, as a canonical id (`provider/model` or `provider/model#variant`) or an alias name. The caller's `model` and `reasoning_effort` are ignored, and the answer names the pinned model. Never a `provider/*` pattern. It must pass the global `models`. When the app has `models`, a canonical id must match one of them, and an alias must be listed by name or have a target that matches one of them. A pin the server does not enable answers 404 `model_not_found` naming the pinned model, not the caller's. Absent: the caller's model. See [Models](#models). |
 | `maxOutputTokens` | The most output tokens one answer of this app may have, 1 to 2147483647. It applies on every route (`max_tokens`, `max_completion_tokens`, `max_output_tokens`, `maxOutputTokens`, Gemini's `generationConfig.maxOutputTokens`): a caller with no limit gets the cap, a higher limit is lowered to it, and a lower one is kept. It is never raised. On Messages the cap lowers `max_tokens` before the request is parsed, so a `thinking.budget_tokens` at or above the capped value gets the existing 400 `thinking.budget_tokens: must be less than max_tokens`, and no model call is made. The finish reason is still `length` when the model stops on the cap. |
 | `settleMs` | How long, in milliseconds (0 to 2147483647), the host may finish its step after a caller stop sequence matched, or after the client left mid-run, before it is interrupted. The default is 2000. 0 interrupts at once: the usage of the step is lost (counted in `plugboard_usage_missing_total{reason="stop"}`). A request timeout, and a cancel by plugboard itself (a sibling choice of `n` failed), interrupt at once, without a window. A client that left is not held up by the window, which runs after the response is over: the usage the host reports inside it is charged to the app when it arrives, and with none it is counted in `plugboard_usage_missing_total{reason="disconnect"}`. While the window runs, a tool call (client or server) or a step that asks for another step ends the run at once, so no tool runs for a client that left and no step starts. The host run of a client that left may keep going for up to this long, outside the app's `maxConcurrent` (its slot is released when the response ends), so a long window costs capacity for apps with server tools. The window never runs past the request deadline (`requestTimeoutMs`, the app's own when set) minus 250 ms, so a stop match near the deadline still finishes as `stop` before the 504. A host failure inside the window finishes a stop answer as `stop` with a warning. See the `sampling.stop` row. |
@@ -347,7 +348,7 @@ Without `keys` the only app is `default`, and `apps.default` configures it. Once
 | `models` | `GET /v1/models` and `GET /v1/models/{id}` |
 | `files` | every [Files API](files.md) route: `/v1/files...`, `POST /upload/v1beta/files` and `/v1beta/files...` |
 
-```jsonc
+```jsonc plugboard
 "apps": {
   "discord-bot": { "endpoints": ["chat"] },   // Chat Completions only
   "claude-code": { "endpoints": ["messages"] }, // Anthropic Messages only
@@ -361,7 +362,7 @@ The check runs after authentication, so an unauthenticated caller still gets a 4
 
 `limits` caps how many model calls run at once, and how many an app may start per minute. Without it nothing is capped.
 
-```json
+```json plugboard
 "limits": {
   "maxConcurrent": 8,
   "perApp": { "maxConcurrent": 2, "requestsPerMinute": 30 },
@@ -384,7 +385,7 @@ The check runs after authentication, so an unauthenticated caller still gets a 4
 
 Every route reads its JSON body through one check, before any of it is buffered. Two options under `limits` bound it:
 
-```json
+```json plugboard
 "limits": { "maxBodyBytesInFlight": 134217728, "bodyReadTimeoutMs": 30000 }
 ```
 
@@ -399,7 +400,7 @@ A body that breaks either limit gets 408 `body_read_timeout`, and its bytes are 
 - `maxBodyBytes` is the largest body the server accepts, 1 to 33554432 (32 MiB). Unset, it is 32 MiB. A body over it gets 413 before it is read, in the route's own error shape. It cannot be above 32 MiB.
 - `limits.apps.<name>.maxBodyBytes` lowers that for one app: 1 up to the value of `limits.maxBodyBytes` (or 32 MiB when that is unset). A larger value is refused at load. The app's cap is read from its key before the body is read, so an app that sends a large body is refused without that body taking the in-flight budget of the others. A request whose key matches no app gets the global cap, and it is refused with 401 anyway. `maxBodyBytes` has no per-app form under `limits.perApp`.
 
-```json
+```json plugboard
 "limits": { "maxBodyBytes": 4194304, "apps": { "chat-widget": { "maxBodyBytes": 262144 } } }
 ```
 
@@ -407,7 +408,7 @@ A body that breaks either limit gets 408 `body_read_timeout`, and its bytes are 
 
 `budgets` caps what each app may use in a window: requests, tokens and cost. It reads the same records as [usage statistics](#usage-statistics), so it needs `usage` on (the default). With `usage: { "enabled": false }` the server refuses to load the option. Retention must cover the windows in use: a `month` ceiling needs `usage.retentionDays` of at least 31 and a `week` ceiling at least 7, or the server refuses to load it, since older days would stop counting.
 
-```json
+```json plugboard
 "budgets": {
   "perApp": { "requests": { "day": 1000 }, "tokens": { "month": 20000000 } },
   "apps": { "coding": { "costUsd": { "month": 50 } } }
@@ -428,7 +429,7 @@ A body that breaks either limit gets 408 `body_read_timeout`, and its bytes are 
 
 Pollers and bots often send the same prompt again and again. With `cache` set, plugboard keeps completed answers in memory and replays them for an identical request from the same app, without creating a session or spending quota.
 
-```json
+```json plugboard
 "cache": { "ttlSeconds": 300, "maxEntries": 1000, "maxBytes": 67108864, "apps": ["poller"] }
 ```
 
@@ -453,7 +454,7 @@ This section is about the session key. The breakpoints a caller places on Anthro
 
 Providers cache a prompt by its prefix. Some also route by a session key: OpenAI takes `prompt_cache_key`, and the ChatGPT subscription takes a `session-id` header. OpenCode derives that key from the session's affinity, which is the session's parent when it has one, else the session itself. Each plugboard request is a new session, so with the default the key changes on every request and the provider cannot route to the cache it wrote.
 
-```jsonc
+```jsonc plugboard
 "promptCache": { "affinity": "anchor", "scope": "app" }
 ```
 
@@ -486,8 +487,8 @@ Anchors are kept, and they are sessions in OpenCode's list. There is one per app
 
 OpenCode lists only root sessions (no parent) in its session lists: the TUI, the app's home screen and the session switcher. Every plugboard request is a session, so an API app fills those lists. With `history.hidden` on, a request session is a child of one long-lived parent per app, titled `plugboard: <app>`, and the lists show that one parent instead of every request.
 
-```jsonc
-"history": { "hidden": true }
+```jsonc plugboard
+"history": { "hidden": true },
 "apps": { "bot": { "history": { "hidden": false } } }
 ```
 
@@ -638,7 +639,7 @@ A bot that serves many people is one app, so its history and usage would be one 
 
 A response names its history record in `x-plugboard-session`, but the OpenCode web UI has no URL a plugin can read. Option `historyUrl` is the template you fill in, and it depends on how you reach OpenCode:
 
-```json
+```json plugboard
 { "historyUrl": "http://opencode.example:4096/session/{id}" }
 ```
 

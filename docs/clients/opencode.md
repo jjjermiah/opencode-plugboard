@@ -60,7 +60,7 @@ OpenCode sends about 12 tools, with MCP tools behind the single Code Mode `execu
 
 Turn on the anchor on the hub so the provider's prompt cache keeps hitting across turns:
 
-```jsonc
+```jsonc plugboard
 "promptCache": { "affinity": "anchor", "scope": "app" }
 ```
 

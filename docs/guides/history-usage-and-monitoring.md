@@ -6,7 +6,7 @@
 
 Every request is kept as an OpenCode session in a directory for its app, so it never mixes with your projects. Chat responses carry the session id as `x-plugboard-session`.
 
-```jsonc
+```jsonc plugboard
 "history": { "maxSessions": 500, "maxAgeDays": 30 }   // the global limits; the stricter one wins within an app
 ```
 
@@ -21,7 +21,7 @@ History holds every prompt and reply, so treat OpenCode's database as sensitive.
 
 Usage is recorded per app and per UTC day: requests, errors, latency, tokens, estimated cost, cache hits, fallbacks and 429 refusals. It is on by default. An admin key reads every app, and an app key reads only its own.
 
-```jsonc
+```jsonc plugboard
 "adminKey": "{env:PLUGBOARD_ADMIN_KEY}",   // reads every app; not a model key
 "usage": { "retentionDays": 90 }           // the default; { "enabled": false } turns it off
 ```
@@ -51,7 +51,7 @@ Cost is an estimate at list prices. Use it to compare apps, not as a bill. Each 
 
 Prometheus metrics are off by default. Turn them on, and get structured logs when a pipeline reads them.
 
-```jsonc
+```jsonc plugboard
 "metrics": true,
 "logFormat": "json"   // one object per line; ids and outcomes only, never keys or bodies
 ```
