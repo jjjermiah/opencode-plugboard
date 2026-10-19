@@ -235,6 +235,7 @@ export const parseGeneration = (body: JsonObject): PlugGeneration | PlugError =>
     ["top_p", "topP", 0, 1, false],
     ["presence_penalty", "presencePenalty", -2, 2, false],
     ["frequency_penalty", "frequencyPenalty", -2, 2, false],
+    ["seed", "seed", Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, true],
     // max_completion_tokens is the current name; max_tokens the deprecated one. Prefer the former.
     ["max_tokens", "maxTokens", 1, Number.MAX_SAFE_INTEGER, true],
     ["max_completion_tokens", "maxTokens", 1, Number.MAX_SAFE_INTEGER, true],

@@ -676,11 +676,11 @@ function parsePinnedModel(raw: unknown, at: string, appModels: ReadonlyArray<str
   return raw
 }
 
-const SAMPLING_KNOWN = ["temperature", "topP", "maxTokens", "stop", "presencePenalty", "frequencyPenalty"] as const
+const SAMPLING_KNOWN = ["temperature", "topP", "topK", "maxTokens", "stop", "presencePenalty", "frequencyPenalty"] as const
 
 /**
  * Option `apps.<name>.sampling` (#264): the sampling defaults of one app. Each field is checked like the same field of a request
- * (`temperature` 0 to 2, `topP` 0 to 1, the penalties -2 to 2, `maxTokens` a positive integer, `stop` 1 to 4 strings).
+ * (`temperature` 0 to 2, `topP` 0 to 1, `topK` a positive integer, the penalties -2 to 2, `maxTokens` a positive integer, `stop` 1 to 4 strings).
  */
 function parseSampling(raw: unknown, at: string): PlugGeneration {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.sampling\` must be an object`)
@@ -697,12 +697,14 @@ function parseSampling(raw: unknown, at: string): PlugGeneration {
     throw new Error(`plugboard option \`${at}.sampling.stop\` must be an array of 1 to 4 strings`)
   const temperature = number("temperature", 0, 2)
   const topP = number("topP", 0, 1)
+  const topK = raw.topK === undefined ? undefined : positiveInt(raw.topK, `${at}.sampling.topK`, 0)
   const presencePenalty = number("presencePenalty", -2, 2)
   const frequencyPenalty = number("frequencyPenalty", -2, 2)
   const maxTokens = raw.maxTokens === undefined ? undefined : positiveInt(raw.maxTokens, `${at}.sampling.maxTokens`, 0, MAX_TIMER_MS)
   return {
     ...(temperature === undefined ? {} : { temperature }),
     ...(topP === undefined ? {} : { topP }),
+    ...(topK === undefined ? {} : { topK }),
     ...(maxTokens === undefined ? {} : { maxTokens }),
     ...(stop === undefined ? {} : { stop: stop as string[] }),
     ...(presencePenalty === undefined ? {} : { presencePenalty }),

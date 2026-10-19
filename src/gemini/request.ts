@@ -338,6 +338,8 @@ const parseGeneration = (config: JsonObject): PlugGeneration | PlugError => {
     ["topP", "topP", 0, 1, false],
     ["presencePenalty", "presencePenalty", -2, 2, false],
     ["frequencyPenalty", "frequencyPenalty", -2, 2, false],
+    ["topK", "topK", 0, Number.MAX_SAFE_INTEGER, true],
+    ["seed", "seed", Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, true],
     ["maxOutputTokens", "maxTokens", 1, Number.MAX_SAFE_INTEGER, true],
   ] as const) {
     const value = field(config, key)

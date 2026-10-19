@@ -14,7 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `top_k` (Anthropic Messages) and `generationConfig.topK` (Gemini) reach the model ([#511](https://github.com/jjjermiah/opencode-plugboard/issues/511)). Both were accepted and dropped, so a client that set top-k for diversity got no effect. They now travel to OpenCode as its `topK` option, and `apps.<name>.sampling` accepts `topK`. OpenCode 2.0.32 puts it on the wire for Anthropic Messages and Gemini only; GitHub Copilot and the OpenAI Responses protocol never send it, and Claude Opus 4.7 and newer and every 5.x refuse it with a 400. Plugboard drops it for those models and still lists `top_k` in `x-plugboard-dropped-params`.
+- `seed` on Chat Completions, legacy completions and Gemini is passed to the model ([#512](https://github.com/jjjermiah/opencode-plugboard/issues/512)). It was accepted and ignored without a word. OpenCode sends it for Gemini and OpenAI-style chat models but not for Anthropic Messages or the OpenAI Responses protocol, so Claude and GPT-5 and 6 drop it and `x-plugboard-dropped-params` lists `seed`.
+- With `metrics: true`, remote image fetches are counted ([#513](https://github.com/jjjermiah/opencode-plugboard/issues/513)): `plugboard_remote_image_fetches_total{outcome}` (`ok`, `blocked`, `too_large`, `timeout`, `error`), `plugboard_remote_image_bytes_total` and `plugboard_remote_image_fetch_duration_seconds{outcome}`. No label names a URL or host.
+- A caller's `x-request-id` is echoed back and written to the request log line as `clientRequestId` ([#514](https://github.com/jjjermiah/opencode-plugboard/issues/514)), so a gateway's id finds the plugboard line. A value is kept when it is 1 to 128 characters of letters, digits and `_ . : / + = -`; anything else is ignored. CORS preflights allow the header. `x-plugboard-request-id` is unchanged.
 
 ## [0.55.0] - 2026-10-19: Long Names, Clean Tools
 

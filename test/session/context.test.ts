@@ -94,6 +94,11 @@ describe("the context hook", () => {
     expect(run(event({ options: undefined })).options).toEqual({ maxTokens: 9, temperature: 0.2, topP: 0.5, presencePenalty: 1, frequencyPenalty: -1 })
   })
 
+  test("#511 #512 top_k and seed reach the host's options beside top_p", () => {
+    const { run } = hook(plugRequest({ generation: { topP: 0.5, topK: 40, seed: 7 } }))
+    expect(run(event()).options).toEqual({ keep: true, topP: 0.5, topK: 40, seed: 7 })
+  })
+
   test("#275 a caller cache breakpoint on a text, image or tool result becomes the host's ephemeral cache hint; a block without one has none", () => {
     const hostMedia = [{ type: "media", asset: "A" }]
     const { run } = hook(

@@ -280,6 +280,14 @@ describe("parseChatRequest: generation and exchange", () => {
     })
   })
 
+  test("#512 seed maps to the neutral seed; a fractional or non-numeric seed is a 400 naming it", () => {
+    expect(parse(body({ seed: 42 })).request.generation).toEqual({ seed: 42 })
+    expect(parse(body({ seed: -3 })).request.generation).toEqual({ seed: -3 })
+    expect(parse(body({ seed: null })).request.generation).toEqual({})
+    expect(parseChatRequest(body({ seed: 1.5 }), options)).toMatchObject({ status: 400, param: "seed", message: "seed must be an integer" })
+    expect(parseChatRequest(body({ seed: "7" }), options)).toMatchObject({ status: 400, param: "seed" })
+  })
+
   test("max_completion_tokens wins over the deprecated max_tokens", () => {
     expect(parse(body({ max_tokens: 5, max_completion_tokens: 9 })).request.generation.maxTokens).toBe(9)
   })

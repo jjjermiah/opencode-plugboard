@@ -128,7 +128,15 @@ describe("#4 the route", () => {
     expect(unknown.json()).toEqual(anthropicError("not_found_error"))
   })
 
-  test("top_k is dropped and reported with the sampling drops", async () => {
+  test("#511 top_k reaches the model call and is not reported when the model takes it", async () => {
+    const caller = new FakeModelCaller([ev.finish()])
+    server = await startRoute({ caller, catalog: [...CATALOG, { providerID: "anthropic", id: "claude-sonnet-4-5", variants: [] }], options: { models: ["anthropic/*"] } })
+    const reply = await server.send(messages({ model: "anthropic/claude-sonnet-4-5", top_k: 5 }))
+    expect(reply.headers).not.toHaveProperty("x-plugboard-dropped-params")
+    expect(caller.call.request.generation).toEqual({ maxTokens: 64, topK: 5 })
+  })
+
+  test("top_k is dropped and reported with the sampling drops when the model refuses it", async () => {
     const caller = new FakeModelCaller([ev.finish()])
     server = await startRoute({ caller, catalog: [...CATALOG, { providerID: "anthropic", id: "claude-opus-5", variants: [] }], options: { models: ["anthropic/*"] } })
     const reply = await server.send(messages({ model: "anthropic/claude-opus-5", temperature: 0.5, top_k: 5 }))

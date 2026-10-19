@@ -35,6 +35,37 @@ describe("#30 dropRejected: the observed table, row by row", () => {
   })
 })
 
+describe("#511 #512 dropRejected: top_k and seed follow the protocol the host uses", () => {
+  const KS: PlugGeneration = { topK: 40, seed: 7 }
+  const rows: Array<[string, string, string, string[]]> = [
+    // Anthropic Messages sends top_k and no seed; a modern model refuses top_k too.
+    ["older Claude keeps top_k and loses seed", "anthropic", "claude-sonnet-4-5", ["seed"]],
+    ["modern Claude loses both", "anthropic", "claude-opus-5", ["top_k", "seed"]],
+    // Copilot's protocols never send top_k; its chat protocol (Claude, GPT-4) sends seed, its Responses protocol (GPT-5/6) does not.
+    ["Claude on Copilot loses top_k only", "github-copilot", "claude-haiku-4.5", ["top_k"]],
+    ["GPT-4o on Copilot loses top_k only", "github-copilot", "gpt-4o", ["top_k"]],
+    ["GPT-5 on Copilot loses both", "github-copilot", "gpt-5-mini", ["top_k", "seed"]],
+    // The OpenAI Responses protocol carries neither.
+    ["GPT-5 loses both", "openai", "gpt-5.5", ["top_k", "seed"]],
+    // Gemini and chat protocols: no rule, the host decides.
+    ["Gemini keeps both", "google", "gemini-3-pro", []],
+    ["GPT-4o keeps both", "openai", "gpt-4o", []],
+    ["an unknown model keeps both", "acme", "model-x", []],
+  ]
+  test.each(rows)("%s (%s/%s) drops %p", (_name, providerID, id, expected) => {
+    expect(dropped(providerID, id, KS)).toEqual(expected)
+  })
+
+  test("the header lists top_k after top_p and seed last", () => {
+    expect(dropped("openai", "gpt-5.5", { ...ALL, topK: 5, seed: 1 })).toEqual(["temperature", "top_p", "top_k", "frequency_penalty", "presence_penalty", "seed"])
+  })
+
+  test("what survives still carries top_k and seed", () => {
+    expect(dropRejected({ providerID: "anthropic", id: "claude-sonnet-4-5" }, KS).generation).toEqual({ topK: 40 })
+    expect(dropRejected({ providerID: "google", id: "gemini-3-pro" }, KS).generation).toEqual(KS)
+  })
+})
+
 describe("#30 dropRejected: value rules", () => {
   test("a parameter at the only value a model takes is kept", () => {
     expect(dropped("opencode-go", "kimi-k2.7-code", { temperature: 1, topP: 0.95, frequencyPenalty: 0, presencePenalty: 0 })).toEqual([])

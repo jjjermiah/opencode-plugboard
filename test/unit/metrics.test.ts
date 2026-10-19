@@ -149,6 +149,43 @@ describe("#56 createMetrics: Prometheus text", () => {
     ])
   })
 
+  test("#513 remote image fetches are counted by outcome, with bytes and a duration, and no label names a URL or host", async () => {
+    const metrics = createMetrics()
+    expect(samples(await metrics.render(snapshot), "plugboard_remote_image_fetches_total")).toEqual([])
+    metrics.imageFetch({ outcome: "ok", bytes: 1500, ms: 120 })
+    metrics.imageFetch({ outcome: "ok", bytes: 500, ms: 30 })
+    metrics.imageFetch({ outcome: "blocked", bytes: 0, ms: 1 })
+    metrics.imageFetch({ outcome: "too_large", bytes: 2048, ms: 40 })
+    metrics.imageFetch({ outcome: "timeout", bytes: 0, ms: 20_000 })
+    metrics.imageFetch({ outcome: "error", bytes: 0, ms: 5 })
+    const text = await metrics.render(snapshot)
+    expect(samples(text, "plugboard_remote_image_fetches_total")).toEqual([
+      'plugboard_remote_image_fetches_total{outcome="ok"} 2',
+      'plugboard_remote_image_fetches_total{outcome="blocked"} 1',
+      'plugboard_remote_image_fetches_total{outcome="too_large"} 1',
+      'plugboard_remote_image_fetches_total{outcome="timeout"} 1',
+      'plugboard_remote_image_fetches_total{outcome="error"} 1',
+    ])
+    expect(samples(text, "plugboard_remote_image_bytes_total")).toEqual(["plugboard_remote_image_bytes_total 4048"])
+    expect(samples(text, "plugboard_remote_image_fetch_duration_seconds_count")).toEqual([
+      'plugboard_remote_image_fetch_duration_seconds_count{outcome="ok"} 2',
+      'plugboard_remote_image_fetch_duration_seconds_count{outcome="blocked"} 1',
+      'plugboard_remote_image_fetch_duration_seconds_count{outcome="too_large"} 1',
+      'plugboard_remote_image_fetch_duration_seconds_count{outcome="timeout"} 1',
+      'plugboard_remote_image_fetch_duration_seconds_count{outcome="error"} 1',
+    ])
+    expect(samples(text, "plugboard_remote_image_fetch_duration_seconds_sum")[0]).toBe('plugboard_remote_image_fetch_duration_seconds_sum{outcome="ok"} 0.15')
+  })
+
+  test("#513 a non-finite duration or byte count is ignored, the fetch is still counted", async () => {
+    const metrics = createMetrics()
+    metrics.imageFetch({ outcome: "error", bytes: Number.NaN, ms: Number.NaN })
+    const text = await metrics.render(snapshot)
+    expect(samples(text, "plugboard_remote_image_fetches_total")).toEqual(['plugboard_remote_image_fetches_total{outcome="error"} 1'])
+    expect(samples(text, "plugboard_remote_image_bytes_total")).toEqual(["plugboard_remote_image_bytes_total 0"])
+    expect(samples(text, "plugboard_remote_image_fetch_duration_seconds_count")).toEqual([])
+  })
+
   test("the content type is the registry's (text format 0.0.4)", () => {
     expect(createMetrics().contentType).toBe("text/plain; version=0.0.4; charset=utf-8")
   })

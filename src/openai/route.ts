@@ -20,6 +20,9 @@
  * Response header `x-plugboard-request-id: <id>` is set on every response, before anything else
  * can fail. The same id is the `id` of the request's log line, and of every other log line emitted
  * while the request is being handled (`withRequestId` in `src/log.ts`).
+ *
+ * A caller's `x-request-id` (1 to 128 safe characters) is echoed back as `x-request-id` and logged as `clientRequestId`
+ * on the request's log line. It never replaces the plugboard id.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
@@ -48,6 +51,8 @@ import {
   BodyError,
   bodyPlugError,
   REQUEST_ID_HEADER,
+  CLIENT_REQUEST_ID_HEADER,
+  clientRequestId,
   RequestAborted,
   beginRequest,
   boundEvents,
@@ -195,6 +200,8 @@ interface RequestInfo extends ServedInfo {
   dropped?: string
   /** The end user the body named, when kept (src/user.ts). */
   user?: string
+  /** The caller's `x-request-id`, when it sent a valid one (#514). */
+  clientRequestId?: string
   /** The client address behind a trusted proxy (`listen.trustProxy`, #266); set only when that option is on. */
   client?: string
 }
@@ -287,7 +294,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           if (hostError) return fail(response, hostError)
           response.writeHead(204, {
             "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
-            "access-control-allow-headers": "authorization, content-type, x-api-key, x-goog-api-key",
+            "access-control-allow-headers": "authorization, content-type, x-api-key, x-goog-api-key, x-request-id",
             ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true" ? { "access-control-allow-private-network": "true" } : {}),
           })
           response.end()
@@ -570,13 +577,18 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   return async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     // Generated here, never taken from the client: the id is echoed and logged, so it must not be attacker-controlled text.
     const id = crypto.randomUUID().replaceAll("-", "").slice(0, 12)
-    if (!response.headersSent) response.setHeader(REQUEST_ID_HEADER, id)
-    return withRequestId(id, () => run(request, response, id))
+    // The caller's own `x-request-id` is a second, separate field: bounded and charset-checked, echoed and logged, never used as the id (#514).
+    const clientId = clientRequestId(request)
+    if (!response.headersSent) {
+      response.setHeader(REQUEST_ID_HEADER, id)
+      if (clientId !== undefined) response.setHeader(CLIENT_REQUEST_ID_HEADER, clientId)
+    }
+    return withRequestId(id, () => run(request, response, id, clientId))
   }
 
-  async function run(request: IncomingMessage, response: ServerResponse, id: string): Promise<void> {
+  async function run(request: IncomingMessage, response: ServerResponse, id: string, clientId: string | undefined): Promise<void> {
     const started = Date.now()
-    const info: RequestInfo = { route: "unparsed" }
+    const info: RequestInfo = { route: "unparsed", ...(clientId === undefined ? {} : { clientRequestId: clientId }) }
     if (host.options.listen.trustProxy !== undefined) info.client = clientAddress(request, host.options.listen.trustProxy)
     recorded("requestStarted", () => metrics?.requestStarted())
     // The deadline is armed after the app is known, so an app's own `requestTimeoutMs` (#257) applies from the first await.
@@ -638,6 +650,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       if (!probe) {
         const fields = {
           id,
+          clientRequestId: info.clientRequestId,
           route: info.route,
           app: info.app,
           user: info.user,

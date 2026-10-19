@@ -25,8 +25,6 @@ export interface ParsedMessages {
   readonly exchange: MessagesExchange
   /** Variant name to try on the model (from `output_config.effort` or `thinking.budget_tokens`). */
   readonly reasoningEffort?: string
-  /** `top_k` was sent; plugboard has no such sampling option, so it is ignored and reported. */
-  readonly topKIgnored: boolean
 }
 
 const isRecord = (value: unknown): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value)
@@ -298,7 +296,10 @@ const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
     if (value < 0 || value > 1) return bad(`${key}: must be between 0 and 1`)
     out[field] = value
   }
-  if (body.top_k != null && (typeof body.top_k !== "number" || !Number.isInteger(body.top_k) || body.top_k < 0)) return bad("top_k: must be a non-negative integer")
+  if (body.top_k != null) {
+    if (typeof body.top_k !== "number" || !Number.isInteger(body.top_k) || body.top_k < 0) return bad("top_k: must be a non-negative integer")
+    out.topK = body.top_k
+  }
   if (body.stop_sequences != null) {
     if (!Array.isArray(body.stop_sequences) || body.stop_sequences.some((s) => typeof s !== "string" || s.length === 0)) return bad("stop_sequences: must be an array of non-empty strings")
     if (body.stop_sequences.length > 0) out.stop = body.stop_sequences as string[]
@@ -399,6 +400,5 @@ export function parseMessagesRequest(body: unknown, options: PlugboardOptions): 
       ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
     },
     ...(thinking.effort ? { reasoningEffort: thinking.effort } : {}),
-    topKIgnored: body.top_k != null,
   }
 }

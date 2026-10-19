@@ -44,6 +44,7 @@ import {
   withResponseCache,
 } from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
+import type { ImageFetch } from "./src/session/media.js"
 import { createAffinity } from "./src/session/affinity.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createKeepAliveHost, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
@@ -95,6 +96,9 @@ export default Plugin.define({
         requestTimeoutMs: options.requestTimeoutMs,
         onUsageMissing: (app: string) => {
           if (options.metrics) processMetrics().usageMissing(app, "disconnect")
+        },
+        onImageFetch: (fetched: ImageFetch) => {
+          if (options.metrics) processMetrics().imageFetch(fetched)
         },
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),

@@ -353,6 +353,22 @@ describe("parseGeminiRequest: tools, tool config and structured output", () => {
   })
 })
 
+describe("parseGeminiRequest: topK and seed", () => {
+  test("#511 #512 topK and seed map to the neutral generation; snake_case is read too", () => {
+    expect(parse(body({ generationConfig: { topK: 40, seed: 7 } })).request.generation).toEqual({ topK: 40, seed: 7 })
+    expect(parse(body({ generationConfig: { top_k: 5 } })).request.generation).toEqual({ topK: 5 })
+  })
+
+  test("a fractional or negative topK and a fractional seed are a 400 naming the field", () => {
+    for (const [generationConfig, param] of [
+      [{ topK: 1.5 }, "generationConfig.topK"],
+      [{ topK: -1 }, "generationConfig.topK"],
+      [{ seed: 0.5 }, "generationConfig.seed"],
+    ] as const)
+      expect(parseGeminiRequest("fast", false, body({ generationConfig }), options)).toMatchObject({ status: 400, param })
+  })
+})
+
 describe("parseGeminiRequest: candidateCount (since 0.50.0)", () => {
   const many = testOptions({ maxN: 3 })
   const count = (candidateCount: unknown, opts = many, cap?: string) => parseGeminiRequest("fast", false, body({ generationConfig: { candidateCount } }), opts, cap)
