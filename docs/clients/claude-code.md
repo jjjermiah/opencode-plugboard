@@ -48,7 +48,7 @@ Streaming, Claude Code's tools (returned to it as `tool_use` blocks, several in 
 
 ## Limits
 
-- Claude Code sends about 36 tools, more with MCP servers. Requests over `maxTools` (default 64) are refused with 400; raise `maxTools` if you add many MCP servers.
+- Claude Code sends its built-in tools plus every tool of each MCP server. Requests over `maxTools` (default 64) are refused with 400; raise `maxTools` if you add MCP servers.
 - For a non-Claude model, Claude Code prints `claude-code:unrecognized_model` and assumes a 200k context. Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the real window.
 - Anthropic server tools (`web_search`, `code_execution`) are refused with 400.
-- Two checks still go to `api.anthropic.com`: WebFetch's domain check (turn it off with `skipWebFetchPreflight: true`) and the fast-mode check. Chat through plugboard works when they fail. `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` turns off other optional traffic.
+- WebFetch checks each domain with `api.anthropic.com`; turn that off with `skipWebFetchPreflight: true`. `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` turns off Claude Code's other calls to Anthropic. Chat through plugboard works either way.
