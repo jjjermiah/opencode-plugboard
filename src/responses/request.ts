@@ -6,8 +6,10 @@
  * how history already works. An `item_reference` is resolved through the `resolve` argument (the
  * route passes the per-app store of recent answers, src/responses/store.ts; #147). A
  * `previous_response_id` is resolved by the route (src/responses/state.ts), which passes the stored
- * items as `history`. Anything else that needs server-side state (`conversation`, `background`) or a
- * hosted tool is rejected with 400 `unsupported_parameter` naming the field. The route resolves `model` to a
+ * items as `history`. Anything else that needs server-side state (`conversation`, `background`) is rejected with
+ * 400 `unsupported_parameter` naming the field. Tools: `function` tools pass; `namespace` and `custom` tools are flattened into
+ * function tools (`parseTools`) and called back in the shape Codex parses (src/responses/response.ts); an `additional_tools`
+ * input item is a tool list; hosted tools are left out and reported. The route resolves `model` to a
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
@@ -15,7 +17,7 @@ import { show } from "../client-value.js"
 import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
 import { isPlugError, type PlugError, type PlugGeneration, type PlugMessage, type PlugPart, type PlugRequest, type PlugTool, type PlugToolChoice } from "../contract.js"
-import type { ResponsesExchange } from "./response.js"
+import { FREEFORM_ARGUMENT, type ResponsesExchange, type ToolRoute } from "./response.js"
 
 type JsonObject = Record<string, unknown>
 
@@ -24,6 +26,8 @@ export interface ParsedResponses {
   readonly request: Omit<PlugRequest, "ref">
   /** The new `input` as items, with `item_reference`s replaced by the items they name (what a stored response keeps). */
   readonly inputItems: ReadonlyArray<JsonObject>
+  /** Hosted tool types left out of the request (`x-plugboard-dropped-tools`). */
+  readonly droppedTools: ReadonlyArray<string>
   /** Response presentation state for the encoder; never reaches the model call. */
   readonly exchange: ResponsesExchange
   readonly reasoningEffort?: string
@@ -146,7 +150,11 @@ const userItem = (text: string): JsonObject => ({ type: "message", role: "user",
  * `resolved` is the new input with its `item_reference`s replaced by the items they name: with `history`, the input the
  * model saw (src/responses/state.ts).
  */
-const parseInput = (input: unknown, resolve: ItemResolver | undefined, history: ReadonlyArray<JsonObject> = []): { system: string[]; messages: PlugMessage[]; resolved: JsonObject[] } | PlugError => {
+const parseInput = (
+  input: unknown,
+  resolve: ItemResolver | undefined,
+  history: ReadonlyArray<JsonObject> = [],
+): { system: string[]; messages: PlugMessage[]; resolved: JsonObject[]; toolSources: ToolSource[] } | PlugError => {
   const fresh = typeof input === "string" ? [userItem(input)] : input
   if (!Array.isArray(fresh) || fresh.length === 0) return bad("input must be a string or a non-empty array of items", "input")
   const resolved: JsonObject[] = []
@@ -154,6 +162,7 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined, history: 
   const system: string[] = []
   const messages: PlugMessage[] = []
   const toolNames = new Map<string, string>()
+  const toolSources: ToolSource[] = []
   let pending: PlugPart[] | undefined
   const flush = () => {
     if (pending && pending.length > 0) messages.push({ role: "assistant", content: pending })
@@ -196,25 +205,43 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined, history: 
         }
         break
       }
-      case "function_call": {
-        if (typeof item.call_id !== "string" || item.call_id.length === 0) return bad("function_call needs a non-empty call_id", `${param}.call_id`)
-        if (typeof item.name !== "string" || item.name.length === 0) return bad("function_call needs a name", `${param}.name`)
-        toolNames.set(item.call_id, item.name)
+      // A call in a namespace (`namespace` + the bare `name`, as Codex sends it back) is the flattened tool the model was offered (`flatName`).
+      // A freeform call carries its raw text in `input`: the model gave it as the one argument of the function it saw.
+      case "function_call":
+      case "custom_tool_call": {
+        if (typeof item.call_id !== "string" || item.call_id.length === 0) return bad(`${type} needs a non-empty call_id`, `${param}.call_id`)
+        if (typeof item.name !== "string" || item.name.length === 0) return bad(`${type} needs a name`, `${param}.name`)
+        if (item.namespace != null && typeof item.namespace !== "string") return bad(`${type} namespace must be a string`, `${param}.namespace`)
+        const name = flatName(item.namespace ?? undefined, item.name)
+        toolNames.set(item.call_id, name)
         ;(pending ??= []).push({
           type: "tool-call",
           id: item.call_id,
-          name: item.name,
-          input: typeof item.arguments === "string" ? parseJson(item.arguments) : (item.arguments ?? {}),
+          name,
+          input:
+            type === "custom_tool_call"
+              ? { [FREEFORM_ARGUMENT]: typeof item.input === "string" ? item.input : "" }
+              : typeof item.arguments === "string"
+                ? parseJson(item.arguments)
+                : (item.arguments ?? {}),
         })
         break
       }
-      case "function_call_output": {
+      // Codex declares its tools in an input item instead of `tools` for a model it knows (#498).
+      case "additional_tools": {
+        if (!Array.isArray(item.tools)) return bad("additional_tools needs a tools array", `${param}.tools`)
+        toolSources.push({ raw: item.tools, param: `${param}.tools`, additional: true })
+        break
+      }
+      case "function_call_output":
+      case "custom_tool_call_output": {
         flush()
-        if (typeof item.call_id !== "string") return bad("function_call_output needs a call_id", `${param}.call_id`)
+        if (typeof item.call_id !== "string") return bad(`${type} needs a call_id`, `${param}.call_id`)
         const result = textOf(item.output)
-        if (result === undefined) return bad("function_call_output output must be a string or an array of text parts", `${param}.output`)
+        if (result === undefined) return bad(`${type} output must be a string or an array of text parts`, `${param}.output`)
         const name = toolNames.get(item.call_id)
-        if (name === undefined) return bad(`function_call_output answers call_id "${item.call_id}", which no earlier function_call item has`, `${param}.call_id`)
+        if (name === undefined)
+          return bad(`${type} answers call_id "${item.call_id}", which no earlier ${type === "custom_tool_call_output" ? "custom_tool_call" : "function_call"} item has`, `${param}.call_id`)
         messages.push({ role: "tool", content: [{ type: "tool-result", id: item.call_id, name, result }] })
         break
       }
@@ -227,32 +254,122 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined, history: 
   }
   flush()
   if (messages.length === 0) return bad("input has no user, assistant or tool items", "input")
-  return { system, messages, resolved }
+  return { system, messages, resolved, toolSources }
 }
 
-const parseTools = (raw: unknown): PlugTool[] | PlugError => {
-  if (raw == null) return []
-  if (!Array.isArray(raw)) return bad("tools must be an array", "tools")
+/** Where a list of tool declarations came from: the `tools` field, or an `additional_tools` input item (Codex, #498). */
+interface ToolSource {
+  readonly raw: unknown
+  readonly param: string
+  readonly additional: boolean
+}
+
+interface DeclaredTools {
+  readonly tools: PlugTool[]
+  /** Flattened names whose call goes back under another name, in a namespace, or as a custom tool call. */
+  readonly routes: Map<string, ToolRoute>
+  /** Hosted tool types that were left out. */
+  readonly dropped: string[]
+}
+
+/** The namespace Codex gives to top-level tools; a tool in it keeps its bare name. */
+const DEFAULT_NAMESPACE = "functions"
+
+/**
+ * Tool types that run on OpenAI's servers: nothing in plugboard can run them, and a client cannot know that, so they are
+ * left out and reported (`x-plugboard-dropped-tools`). Other types (`local_shell`, `tool_search`, `computer_use_preview`, ...)
+ * need a client-side round trip plugboard has no shape for, and stay refused.
+ */
+const HOSTED_TOOLS = new Set(["web_search", "web_search_preview", "web_search_preview_2025_03_11", "file_search", "code_interpreter", "image_generation", "mcp"])
+
+const isDefaultNamespace = (namespace: string | undefined): boolean => namespace === undefined || namespace === "" || namespace === DEFAULT_NAMESPACE
+
+/** The function name the model sees for a tool of a `namespace`: the namespace and the name, joined by `__` (`mcp__weather__get_weather`). */
+const flatName = (namespace: string | undefined, name: string): string => (isDefaultNamespace(namespace) ? name : `${namespace}${namespace!.endsWith("__") ? "" : "__"}${name}`)
+
+/** A freeform tool as a function tool taking one string: its grammar, when it has one, goes into the description. */
+const customTool = (name: string, entry: JsonObject): PlugTool => {
+  const format = isRecord(entry.format) && entry.format.type === "grammar" && typeof entry.format.definition === "string" ? entry.format : undefined
+  const syntax = typeof format?.syntax === "string" ? `${format.syntax} ` : ""
+  const grammar = format ? `\n\nThe input must match this ${syntax}grammar:\n${format.definition}` : ""
+  return {
+    name,
+    description: `${typeof entry.description === "string" ? entry.description : ""}\n\nThis is a freeform tool: pass its whole input as the "${FREEFORM_ARGUMENT}" string.${grammar}`.trim(),
+    parameters: { type: "object", properties: { [FREEFORM_ARGUMENT]: { type: "string", description: "The raw input of the tool." } }, required: [FREEFORM_ARGUMENT], additionalProperties: false },
+  }
+}
+
+/**
+ * Tool declarations -> function tools. A `namespace` tool (Codex sends every MCP server's tools as one) is flattened into
+ * one function per tool, named by `flatName`. A `custom` tool becomes a function with one string argument. `routes` records
+ * how a call to each goes back to the client. Hosted tool types are dropped; any other type is refused. The names are the
+ * flat ones, so the duplicate, reserved-name and `maxTools` checks count what the model gets.
+ */
+const parseTools = (sources: ReadonlyArray<ToolSource>): DeclaredTools | PlugError => {
   const tools: PlugTool[] = []
-  const names = new Set<string>()
-  for (const [index, entry] of raw.entries()) {
-    const at = `tools[${index}]`
-    if (!isRecord(entry)) return bad("Each tool must be an object", at)
-    if (entry.type !== "function")
-      return unsupported(`Unsupported tool type "${show(entry.type)}": only function tools are supported (built-in tools such as web_search and file_search run on OpenAI's servers)`, `${at}.type`)
-    if (typeof entry.name !== "string" || entry.name.length === 0) return bad('Each function tool needs a "name"', `${at}.name`)
-    if (names.has(entry.name)) return bad(`Duplicate tool name "${entry.name}"`, `${at}.name`)
+  const routes = new Map<string, ToolRoute>()
+  const dropped: string[] = []
+  // The flat name and the declaration it came from. A client may send the same `additional_tools` item again with its history.
+  const seen = new Map<string, string>()
+
+  const add = (entry: JsonObject, at: string, namespace: string | undefined, additional: boolean): PlugError | undefined => {
+    if (typeof entry.name !== "string" || entry.name.length === 0) return bad(`Each ${entry.type} tool needs a "name"`, `${at}.name`)
+    const name = flatName(namespace, entry.name)
+    const declaration = JSON.stringify([namespace, entry])
+    if (seen.has(name)) {
+      if (additional && seen.get(name) === declaration) return undefined
+      return bad(`Duplicate tool name "${name}"`, `${at}.name`)
+    }
     if (entry.description != null && typeof entry.description !== "string") return bad("Tool description must be a string", `${at}.description`)
     // `parameters` may be null (strict mode with no arguments): a tool without arguments.
     if (entry.parameters != null && !isRecord(entry.parameters)) return bad("Tool parameters must be a JSON Schema object", `${at}.parameters`)
-    names.add(entry.name)
-    tools.push({
-      name: entry.name,
-      description: typeof entry.description === "string" ? entry.description : "",
-      parameters: isRecord(entry.parameters) ? entry.parameters : { type: "object", properties: {} },
-    })
+    seen.set(name, declaration)
+    const custom = entry.type === "custom"
+    tools.push(
+      custom
+        ? customTool(name, entry)
+        : {
+            name,
+            description: typeof entry.description === "string" ? entry.description : "",
+            parameters: isRecord(entry.parameters) ? entry.parameters : { type: "object", properties: {} },
+          },
+    )
+    const target = isDefaultNamespace(namespace) ? undefined : namespace
+    if (custom || target !== undefined) routes.set(name, { name: entry.name, ...(target !== undefined ? { namespace: target } : {}), ...(custom ? { custom: true } : {}) })
+    return undefined
   }
-  return tools
+
+  for (const { raw, param, additional } of sources) {
+    if (raw == null) continue
+    if (!Array.isArray(raw)) return bad(`${param} must be an array`, param)
+    for (const [index, entry] of raw.entries()) {
+      const at = `${param}[${index}]`
+      if (!isRecord(entry)) return bad("Each tool must be an object", at)
+      if (entry.type === "function" || entry.type === "custom") {
+        const problem = add(entry, at, undefined, additional)
+        if (problem) return problem
+      } else if (entry.type === "namespace") {
+        if (typeof entry.name !== "string" || entry.name.length === 0) return bad('Each namespace tool needs a "name"', `${at}.name`)
+        if (!Array.isArray(entry.tools)) return bad("A namespace tool needs a tools array", `${at}.tools`)
+        for (const [position, inner] of entry.tools.entries()) {
+          const innerAt = `${at}.tools[${position}]`
+          if (!isRecord(inner)) return bad("Each tool must be an object", innerAt)
+          if (inner.type !== "function" && inner.type !== "custom")
+            return unsupported(`Unsupported tool type "${show(inner.type)}" in a namespace: only function and custom tools are supported`, `${innerAt}.type`)
+          const problem = add(inner, innerAt, entry.name, additional)
+          if (problem) return problem
+        }
+      } else if (typeof entry.type === "string" && HOSTED_TOOLS.has(entry.type)) {
+        if (!dropped.includes(entry.type)) dropped.push(entry.type)
+      } else {
+        return unsupported(
+          `Unsupported tool type "${show(entry.type)}": plugboard takes function, namespace and custom tools, and leaves out hosted tools such as web_search and file_search (they run on OpenAI's servers)`,
+          `${at}.type`,
+        )
+      }
+    }
+  }
+  return { tools, routes, dropped }
 }
 
 /**
@@ -265,7 +382,8 @@ const echoTool = (tool: unknown): unknown => (isRecord(tool) && tool.type === "f
 const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError => {
   if (raw == null) return undefined
   if (raw === "auto" || raw === "none" || raw === "required") return raw
-  if (isRecord(raw) && raw.type === "function" && typeof raw.name === "string") return { type: "tool", name: raw.name }
+  if (isRecord(raw) && (raw.type === "function" || raw.type === "custom") && typeof raw.name === "string")
+    return { type: "tool", name: flatName(typeof raw.namespace === "string" ? raw.namespace : undefined, raw.name) }
   return unsupported('Unsupported tool_choice: use auto, none, required or {type:"function", name}', "tool_choice")
 }
 
@@ -340,8 +458,10 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
 
   const parsed = parseInput(body.input, resolve, history)
   if (isPlugError(parsed)) return parsed
-  const callerTools = parseTools(body.tools)
-  if (!Array.isArray(callerTools)) return callerTools
+  // `additional_tools` items are tool lists too: with one, `tools` may be absent (Codex sends it so for a model it knows, #498).
+  const declared = parseTools([{ raw: body.tools, param: "tools", additional: false }, ...parsed.toolSources])
+  if (isPlugError(declared)) return declared
+  const callerTools = declared.tools
   const toolChoice = parseToolChoice(body.tool_choice)
   if (isPlugError(toolChoice)) return toolChoice
   const format = parseTextFormat(body.text)
@@ -380,6 +500,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   return {
     request,
     inputItems: parsed.resolved,
+    droppedTools: declared.dropped,
     exchange: {
       model: body.model,
       stream: body.stream === true,
@@ -401,6 +522,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
         user: typeof body.user === "string" ? body.user : null,
       },
       ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+      ...(declared.routes.size > 0 ? { toolRoutes: declared.routes } : {}),
     },
     ...(reasoningEffort ? { reasoningEffort } : {}),
   }

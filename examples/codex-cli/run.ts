@@ -14,14 +14,6 @@ const NO_LIST = "the CLI does not list models"
 const NO_ERRORS = "not run: the CLI prints API errors as text, and its JSON events carry no status"
 const NO_FINISH = "the CLI's events carry no finish reason; the turn is recorded as completed or failed"
 const NO_CALL_ID = "the CLI's events carry no call id"
-const NAMESPACE = {
-  note: "Codex sends an MCP server's tools as a `namespace` tool, and plugboard accepts function tools only: the request gets a 400",
-  issue: "#498",
-}
-const ADDITIONAL_TOOLS = {
-  note: "for a model slug it knows, Codex sends its tools as an `additional_tools` input item, which plugboard refuses with a 400. An alias such as fast avoids it",
-  issue: "#498",
-}
 
 cliHome()
 emitClient("@openai/codex", await cliVersion())
@@ -34,7 +26,6 @@ await runAll(
     S4: (model) => tools.run(model),
   },
   {
-    gaps: { "S1|openai/gpt-5.6-luna#low": ADDITIONAL_TOOLS, "S2|openai/gpt-5.6-luna#low": ADDITIONAL_TOOLS, S2: NAMESPACE, S4: NAMESPACE },
     na: {
       S5: NO_IMAGE,
       S6: NO_JSON_SCHEMA,

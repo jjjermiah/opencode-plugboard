@@ -15,7 +15,7 @@ import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { effortUnavailable, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
+import { reportDroppedTools, reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
@@ -88,6 +88,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
   const call: PlugRequest = { ...parsed.request, model: requested.model, generation, ref }
   reportParallelTools(response, call)
+  reportDroppedTools(response, parsed.droppedTools)
   // The echoed object shows what the model gets: the app's cap and sampling defaults, not only the caller's values (#263, #264).
   const exchange: ResponsesExchange = {
     ...parsed.exchange,

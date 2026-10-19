@@ -12,6 +12,16 @@ import { structuredMissing, textFallback } from "../openai/response.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
+/**
+ * How a call to a flattened tool goes back to the client: `namespace` tools come back as the bare `name` plus `namespace` (the
+ * shape Codex parses), `custom` tools as a `custom_tool_call` whose `input` is the raw text.
+ */
+export interface ToolRoute {
+  readonly name: string
+  readonly namespace?: string
+  readonly custom?: true
+}
+
 /** What the encoder needs besides the model events: Responses presentation state. The request decoder produces it. */
 export interface ResponsesExchange {
   /** The model string the client sent; echoed in every response object. A request that used an alias with fallbacks echoes the target that answered (`CallContext.onServed`). */
@@ -29,6 +39,8 @@ export interface ResponsesExchange {
   readonly callerTools?: boolean
   /** The caller's `text.format` schema: a text answer is taken when the model skipped the respond call (`textFallback`, #173). */
   readonly structuredSchema?: Readonly<Record<string, unknown>>
+  /** The flattened tools of the request whose call goes back under another name, in a namespace, or as a custom tool call (src/responses/request.ts). */
+  readonly toolRoutes?: ReadonlyMap<string, ToolRoute>
   /** Option `reasoningOutput` (since 0.36.0): reasoning is returned as a `reasoning` item. Never in structured output. */
   readonly reasoningOutput?: boolean
 }
@@ -50,6 +62,16 @@ export interface ResponseRun {
 type Item = Record<string, unknown>
 
 const args = (input: unknown) => (typeof input === "string" ? input : JSON.stringify(input ?? {}))
+
+/** The one argument that carries the raw text of a freeform (`custom`) tool through the function the model sees. */
+export const FREEFORM_ARGUMENT = "input"
+
+/** The raw text of a freeform tool call: the argument the model gave, else whatever it sent as text. */
+const freeformInput = (input: unknown): string => {
+  if (typeof input === "string") return input
+  const value = typeof input === "object" && input !== null ? (input as Record<string, unknown>)[FREEFORM_ARGUMENT] : undefined
+  return typeof value === "string" ? value : args(input)
+}
 
 const newId = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`
 
@@ -191,12 +213,28 @@ export async function runResponse(
     closeReasoning()
     closeMessage()
     const index = nextIndex++
+    const route = exchange.toolRoutes?.get(call.name)
+    const name = route?.name ?? call.name
+    const where = route?.namespace === undefined ? {} : { namespace: route.namespace }
+    if (route?.custom) {
+      const itemId = newId("ctc")
+      const input = freeformInput(call.input)
+      const item = (status: string, text: string): Item => ({ id: itemId, type: "custom_tool_call", status, call_id: call.id, name, ...where, input: text })
+      send("response.output_item.added", { output_index: index, item: item("in_progress", "") })
+      send("response.custom_tool_call_input.delta", { item_id: itemId, output_index: index, delta: input })
+      send("response.custom_tool_call_input.done", { item_id: itemId, output_index: index, input })
+      const done = item("completed", input)
+      send("response.output_item.done", { output_index: index, item: done })
+      items.push(done)
+      calls++
+      return
+    }
     const itemId = newId("fc")
     const argumentsText = args(call.input)
-    const item = (status: string, text: string): Item => ({ id: itemId, type: "function_call", status, call_id: call.id, name: call.name, arguments: text })
+    const item = (status: string, text: string): Item => ({ id: itemId, type: "function_call", status, call_id: call.id, name, ...where, arguments: text })
     send("response.output_item.added", { output_index: index, item: item("in_progress", "") })
     send("response.function_call_arguments.delta", { item_id: itemId, output_index: index, delta: argumentsText })
-    send("response.function_call_arguments.done", { item_id: itemId, output_index: index, name: call.name, arguments: argumentsText })
+    send("response.function_call_arguments.done", { item_id: itemId, output_index: index, name, arguments: argumentsText })
     const done = item("completed", argumentsText)
     send("response.output_item.done", { output_index: index, item: done })
     items.push(done)

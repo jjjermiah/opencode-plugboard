@@ -14,7 +14,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [async-openai/](async-openai/) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard | pass | [`2026-10-16-9852300`](async-openai/runs/live/2026-10-16-9852300/), pass |
 | [autogen/](autogen/) | AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run | not run | not run |
 | [claude-code/](claude-code/) | Claude Code through `ANTHROPIC_BASE_URL`: shell exports and a `settings.json` `env` block | not run | not run |
-| [codex-cli/](codex-cli/) | Codex CLI (`@openai/codex`), headless (`codex exec`), through a custom `responses` provider with an `env_key` and no login: a chat and a stream. A tool call and a known model slug are gaps (#498) | partial | not run |
+| [codex-cli/](codex-cli/) | Codex CLI (`@openai/codex`), headless (`codex exec`), through a custom `responses` provider with an `env_key` and no login: a chat and a stream. A tool call and a known model slug are gaps (#498) | pass | not run |
 | [continue/](continue/) | Continue `config.yaml` with one plugboard model on Chat Completions and one on Responses | not run | not run |
 | [crewai/](crewai/) | CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard | not run | not run |
 | [curl/](curl/) | One request per API in plain shell: chat, responses, Anthropic Messages, Gemini, legacy completions and models | pass | [`2026-10-17-ece50cd`](curl/runs/live/2026-10-17-ece50cd/), pass |

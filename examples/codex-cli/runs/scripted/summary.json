@@ -54,43 +54,91 @@
       "transcript": "transcripts/S1.anthropic-claude-haiku-4-5.json"
     },
     {
-      "checks": [],
-      "error": "Error: codex turn failed: {\"error\":{\"message\":\"Unsupported input item type \\\"additional_tools\\\"\",\"type\":\"invalid_request_error\",\"param\":\"input[0].type\",\"code\":\"unsupported_parameter\"}}",
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "for a model slug it knows, Codex sends its tools as an `additional_tools` input item, which plugboard refuses with a 400. An alias such as fast avoids it (#498)",
+      "note": "not checked, finish_reason is stop: the CLI's events carry no finish reason; the turn is recorded as completed or failed",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S1.openai-gpt-5.6-luna-low.json"
     },
     {
-      "checks": [],
-      "error": "Error: codex turn failed: {\"error\":{\"message\":\"Unsupported tool type \\\"namespace\\\": only function tools are supported (built-in tools such as web_search and file_search run on OpenAI's servers)\",\"type\":\"invalid_request_error\",\"param\":\"tools[6].type\",\"code\":\"unsupported_parameter\"}}",
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
       "id": "S2",
       "model": "fast",
-      "note": "Codex sends an MCP server's tools as a `namespace` tool, and plugboard accepts function tools only: the request gets a 400 (#498)",
+      "note": "not checked, turn 1 finish_reason is tool_calls: the CLI's events carry no finish reason; the turn is recorded as completed or failed; not checked, call id present: the CLI's events carry no call id; not checked, turn 2 finish_reason is stop: the CLI's events carry no finish reason; the turn is recorded as completed or failed",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S2.fast.json"
     },
     {
-      "checks": [],
-      "error": "Error: codex turn failed: {\"error\":{\"message\":\"Unsupported tool type \\\"namespace\\\": only function tools are supported (built-in tools such as web_search and file_search run on OpenAI's servers)\",\"type\":\"invalid_request_error\",\"param\":\"tools[6].type\",\"code\":\"unsupported_parameter\"}}",
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
-      "note": "Codex sends an MCP server's tools as a `namespace` tool, and plugboard accepts function tools only: the request gets a 400 (#498)",
+      "note": "not checked, turn 1 finish_reason is tool_calls: the CLI's events carry no finish reason; the turn is recorded as completed or failed; not checked, call id present: the CLI's events carry no call id; not checked, turn 2 finish_reason is stop: the CLI's events carry no finish reason; the turn is recorded as completed or failed",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S2.anthropic-claude-haiku-4-5.json"
     },
     {
-      "checks": [],
-      "error": "Error: codex turn failed: {\"error\":{\"message\":\"Unsupported input item type \\\"additional_tools\\\"\",\"type\":\"invalid_request_error\",\"param\":\"input[0].type\",\"code\":\"unsupported_parameter\"}}",
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "for a model slug it knows, Codex sends its tools as an `additional_tools` input item, which plugboard refuses with a 400. An alias such as fast avoids it (#498)",
+      "note": "not checked, turn 1 finish_reason is tool_calls: the CLI's events carry no finish reason; the turn is recorded as completed or failed; not checked, call id present: the CLI's events carry no call id; not checked, turn 2 finish_reason is stop: the CLI's events carry no finish reason; the turn is recorded as completed or failed",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S2.openai-gpt-5.6-luna-low.json"
     },
     {
@@ -117,13 +165,22 @@
       "transcript": "transcripts/S3.fast.json"
     },
     {
-      "checks": [],
-      "error": "Error: codex turn failed: {\"error\":{\"message\":\"Unsupported tool type \\\"namespace\\\": only function tools are supported (built-in tools such as web_search and file_search run on OpenAI's servers)\",\"type\":\"invalid_request_error\",\"param\":\"tools[6].type\",\"code\":\"unsupported_parameter\"}}",
+      "checks": [
+        {
+          "name": "streamed get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        }
+      ],
+      "error": null,
       "id": "S4",
       "model": "fast",
-      "note": "Codex sends an MCP server's tools as a `namespace` tool, and plugboard accepts function tools only: the request gets a 400 (#498)",
+      "note": "not checked, finish_reason is tool_calls: the CLI's events carry no finish reason; the turn is recorded as completed or failed; not checked, call id present: the CLI's events carry no call id",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S4.fast.json"
     },
     {
@@ -219,5 +276,5 @@
   ],
   "schema": 1,
   "target": "scripted",
-  "verdict": "partial"
+  "verdict": "pass"
 }

@@ -15,6 +15,7 @@ A streamed answer sends its headers with the first event, so headers that need t
 | `x-plugboard-cache` | The app uses the response cache | `hit` or `miss`. |
 | `x-plugboard-affinity` | The app uses prompt-cache anchors | `anchor`, or `none` when the request got no anchor. |
 | `x-plugboard-dropped-params` | Sampling parameters were dropped | The dropped names, comma separated, such as `temperature,top_p`. See [`dropUnsupportedParams`](configuration.md#options). |
+| `x-plugboard-dropped-tools` | A Responses request declared hosted tools | The types left out, comma separated, such as `web_search`. See [Responses tools](responses.md#tools). Streamed answers carry it too. |
 | `x-plugboard-thinking` | Thinking or a reasoning effort was asked for, and the model has no variant for it | `unavailable`. The request ran without thinking. |
 | `x-plugboard-policy` | The app's policy changed the request | `tools-stripped`: the app has `tools: false` and the caller's tools were removed. |
 | `x-plugboard-parallel-tools` | `parallel_tool_calls: false` | `limited`: only the first tool call of the answer was kept. |

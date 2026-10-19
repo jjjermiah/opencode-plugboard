@@ -294,6 +294,7 @@ export const CORS_EXPOSED_HEADERS = [
   "x-plugboard-server-tools",
   "x-plugboard-parallel-tools",
   "x-plugboard-dropped-params",
+  "x-plugboard-dropped-tools",
   "x-plugboard-thinking",
   "x-plugboard-cache",
   "x-plugboard-affinity",

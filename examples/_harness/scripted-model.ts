@@ -76,6 +76,11 @@ export function answer(request: PlugRequest): PlugEvent[] {
     if (weather && request.toolChoice !== "none") {
       return [ev.call(CALL_ID, weather.name, { city: "Paris" }), ev.finish("tool-calls", USAGE)]
     }
+    // A model Codex knows works in code mode: MCP tools are not offered, they are called from JavaScript run by the `exec` freeform
+    // tool (a custom tool, which plugboard gives the model as a function taking one `input` string, #498).
+    if (request.tools.some((tool) => tool.name === "exec") && request.toolChoice !== "none") {
+      return [ev.call(CALL_ID, "exec", { input: 'text(JSON.stringify(await tools.mcp__weather__get_weather({ city: "Paris" })))' }), ev.finish("tool-calls", USAGE)]
+    }
   }
   if (text.includes(prompt("S5"))) return say(hasPngPart(request) ? "red" : "no image")
   if (text.includes(prompt("S6"))) return say(JSON.stringify(wantsOutputWrapper(text) ? { output: MEAL } : MEAL))
