@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- A shorter first run. `"models": "connected"` allows every enabled model of every connected provider, read from the server's catalog on each request, so a provider you connect later is served without a restart. Keys are still required, an alias target must still be a model the server offers, and no `models` still answers 403 `no_models_configured`. `apps.<name>.models` accepts `"connected"` too, meaning no narrowing. `GET /v1`, `GET /` and the 403 hint now suggest it. `bunx opencode-plugboard init` adds the plugin to `~/.config/opencode/opencode.jsonc` (or `--config <path>`): the running version pinned, one generated app key (`--app`, default `my-app`), `models: "connected"` and, with `--fast <model>`, an alias `fast`. It prints the key once with a curl, edits the file as JSONC so comments and other settings stay, shows a diff with `--dry-run`, and never replaces an existing plugboard entry without `--force`. The package gains one runtime dependency, `jsonc-parser` (pure JavaScript, no install script), used only by that command.
+
 ### Docs
 
 - Contributor tooling, no change for users ([#114](https://github.com/jjjermiah/opencode-plugboard/issues/114)). The code is now formatted and linted with Biome (`bun run lint`, `bun run format`, `bun run format:write`; config in `biome.jsonc`). CI fails a pull request that is not formatted or has a lint error, and `bun run validate` runs the same check first. A lefthook `pre-commit` hook checks the staged files; install it with `bunx lefthook install`. The one-time reformat is listed in `.git-blame-ignore-revs`, so `git blame` skips it. `mise.toml` pins Bun and Node to the versions CI uses, and `.github/CODEOWNERS` names the owner. Line width is 200 because the code was already written to that width: a narrower setting rewrites thousands more lines. A handful of recommended lint rules are off for the cases that fire hundreds of times on deliberate style; each has its reason in `biome.jsonc`.

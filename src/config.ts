@@ -24,7 +24,10 @@ export interface PlugboardOptions {
   readonly keys: Readonly<Record<string, string>>
   /** Per-app policy (`apps`); only apps that set a policy field appear. Look one up with `appPolicy`. */
   readonly apps: Readonly<Record<string, AppPolicy>>
-  /** Allowlist: exact `provider/model`, `provider/model#variant`, or `provider/*` patterns. Empty = nothing allowed. */
+  /**
+   * Allowlist: exact `provider/model`, `provider/model#variant`, or `provider/*` patterns. Empty = nothing allowed.
+   * Written as the string `"connected"`, it is `[CONNECTED]`: every model the host catalog offers (see `allowedBy`).
+   */
   readonly models: ReadonlyArray<string>
   /** Alias -> `provider/model[#variant]`. Targets must also pass the allowlist. */
   readonly aliases: Readonly<Record<string, string>>
@@ -326,13 +329,21 @@ export const APP_NAME_MAX = 255
 /** Whether `name` is an app name: APP_NAME_PATTERN and at most APP_NAME_MAX characters (ASCII, so bytes). */
 export const isAppName = (name: string): boolean => APP_NAME_PATTERN.test(name) && name.length <= APP_NAME_MAX
 export const DEFAULT_APP = "default"
+/**
+ * The `models` value that allows every enabled model of every connected provider. Stored as the one entry of the parsed
+ * list, so the empty-list refusal and the JSON comparison across generations need no special case. It is never a
+ * `provider/model` pattern, so a list entry spelled this way is refused.
+ */
+export const CONNECTED = "connected"
 /** Model steps that may run server tools per request when `maxServerToolSteps` is not set. */
 export const DEFAULT_SERVER_TOOL_STEPS = 8
 /** Server tool calls per request when `maxServerToolCalls` is not set (across all steps). */
 export const DEFAULT_SERVER_TOOL_CALLS = 16
+/** The listener port when `listen.port` is not set. */
+export const DEFAULT_PORT = 4010
 const DEFAULTS = {
   host: "127.0.0.1",
-  port: 4010,
+  port: DEFAULT_PORT,
   maxTools: 64,
   maxN: 1,
   requestTimeoutMs: 600_000,
@@ -668,9 +679,11 @@ function parseApps(
     if (app === DEFAULT_APP && (keyed || value.key !== undefined)) throw new Error(`${at} configures the keyless app and cannot be used together with \`keys\`; name the app and give it a key instead`)
     if (app !== DEFAULT_APP && !Object.hasOwn(context.keys, app)) throw new Error(`${at} has no key: add \`key\` there or an entry in \`keys\``)
 
-    if (value.models !== undefined) {
-      if (!Array.isArray(value.models) || value.models.length === 0) throw new Error(`${at}.models must be a non-empty array (omit it to inherit the global \`models\`)`)
-      for (const entry of value.models)
+    // `"connected"` names no narrowing: the app gets whatever the global `models` allows, the same as omitting it.
+    const appModels = value.models === CONNECTED ? undefined : value.models
+    if (appModels !== undefined) {
+      if (!Array.isArray(appModels) || appModels.length === 0) throw new Error(`${at}.models must be a non-empty array or \`"connected"\` (omit it to inherit the global \`models\`)`)
+      for (const entry of appModels)
         if (typeof entry !== "string" || !(MODEL_PATTERN.test(entry) || Object.hasOwn(context.aliases, entry)))
           throw new Error(`${at}.models entry \`${String(entry)}\` must be \`provider/model\`, \`provider/model#variant\`, \`provider/*\` or an alias name`)
     }
@@ -701,12 +714,12 @@ function parseApps(
     const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
     const settleMs = value.settleMs === undefined ? undefined : positiveInt(value.settleMs, `apps.${app}.settleMs`, 0, MAX_TIMER_MS)
     const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
-    const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, value.models as string[] | undefined, context)
+    const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, appModels as string[] | undefined, context)
     const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
     if (value.reasoningOutput !== undefined && typeof value.reasoningOutput !== "boolean") throw new Error(`plugboard option \`apps.${app}.reasoningOutput\` must be a boolean`)
     const reasoningOutput = value.reasoningOutput as boolean | undefined
     const policy: AppPolicy = {
-      ...(value.models === undefined ? {} : { models: value.models as string[] }),
+      ...(appModels === undefined ? {} : { models: appModels as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
       systemMode: (value.systemMode as SystemMode | undefined) ?? "prepend",
       tools: value.tools !== false,
@@ -729,7 +742,7 @@ function parseApps(
     }
     // An app that only carries a key has no policy to look up.
     if (
-      value.models !== undefined ||
+      appModels !== undefined ||
       value.system !== undefined ||
       value.tools !== undefined ||
       maxTools !== undefined ||
@@ -1063,6 +1076,18 @@ function parseHistoryUrl(value: unknown, at = "plugboard option `historyUrl`"): 
   return value
 }
 
+/** Option `models`: an array of patterns, or the string `"connected"` (every model of every connected provider). Unset is the empty list. */
+function parseModels(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return []
+  if (raw === CONNECTED) return [CONNECTED]
+  if (!Array.isArray(raw)) throw new Error("plugboard option `models` must be an array of strings")
+  for (const pattern of raw) {
+    if (pattern === CONNECTED) throw new Error(`plugboard option \`models\` takes \`"${CONNECTED}"\` as the whole value (\`"models": "${CONNECTED}"\`), not as a list entry`)
+    if (typeof pattern !== "string" || !MODEL_PATTERN.test(pattern)) throw new Error(`plugboard model \`${String(pattern)}\` must be \`provider/model\`, \`provider/model#variant\` or \`provider/*\``)
+  }
+  return raw as string[]
+}
+
 /** Validates raw plugin options and applies defaults. Throws `Error` with an actionable message. */
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
@@ -1104,10 +1129,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     if (keyEntries.some(([, key]) => key === input.adminKey)) throw new Error("plugboard option `adminKey` must differ from every app key")
   }
 
-  const models = input.models ?? []
-  if (!Array.isArray(models)) throw new Error("plugboard option `models` must be an array of strings")
-  for (const pattern of models)
-    if (typeof pattern !== "string" || !MODEL_PATTERN.test(pattern)) throw new Error(`plugboard model \`${String(pattern)}\` must be \`provider/model\`, \`provider/model#variant\` or \`provider/*\``)
+  const models = parseModels(input.models)
 
   const aliasEntries: Array<[string, string]> = []
   const fallbackEntries: Array<[string, string[]]> = []
