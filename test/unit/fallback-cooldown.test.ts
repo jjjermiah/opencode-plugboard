@@ -144,14 +144,77 @@ describe("a target that keeps failing is skipped", () => {
 describe("what counts as a failure", () => {
   test.each([
     ["a 429", [rateLimited]],
+    ["a quota error", [ev.error({ status: 429, kind: "rate_limit", code: "quota_exceeded" })]],
     ["a provider failure (520)", [ev.error({ status: 502, kind: "server", code: "provider_unavailable" })]],
+    ["a provider timeout", [ev.error({ status: 504, kind: "timeout", code: "provider_timeout" })]],
+    ["a provider sign-in failure", [ev.error({ status: 502, kind: "server", code: "provider_auth_failed" })]],
     ["a provider_retry", [ev.error({ status: 503, kind: "server", code: "provider_retry" })]],
-    ["an empty stream", []],
-    ["a thrown error", new Error("boom")],
   ])("%s opens the breaker after three", async (_name, script) => {
     const run = setup({ "a/x": script, "b/y": answer(), "c/z": answer() })
     for (let i = 0; i < 3; i++) await run.request()
     expect((await run.request()).targets).toEqual(["b/y"])
+  })
+
+  test("a missed first-event deadline counts, as a provider's silence", async () => {
+    const timed = parseOptions({ ...raw, fallbackAfterMs: 40, fallbackCooldown: { failureThreshold: 2, cooldownMs: COOLDOWN_MS } })
+    const targets: string[] = []
+    const inner: ModelCaller = {
+      stream(request, context) {
+        targets.push(`${request.ref.providerID}/${request.ref.id}`)
+        return (async function* () {
+          if (request.ref.id === "x") await new Promise<void>((resolve) => context.signal.addEventListener("abort", () => resolve(), { once: true }))
+          else yield* answer()
+        })()
+      },
+    }
+    const caller = withFallbacks(inner, { options: timed, loadCatalog: async () => CATALOG, breaker: createBreaker() })
+    const ask = () => collect(caller.stream(plugRequest({ model: "chain", ref: resolveModel(timed, "chain", CATALOG) as never }), { app: "app1", signal: new AbortController().signal }))
+    await ask()
+    await ask()
+    expect(targets).toEqual(["a/x", "b/y", "a/x", "b/y"])
+    expect(logs.of("fallback.cooldown.open")).toHaveLength(1)
+    await ask()
+    expect(targets.slice(4)).toEqual(["b/y"])
+  })
+
+  // These still move the chain on, but say nothing about the target: a backend that throws, a prompt that could not start, a failed
+  // model run, an empty stream.
+  test.each([
+    ["a failed model run", [ev.error({ status: 502, kind: "server", code: "model_run_failed" })]],
+    ["a prompt that could not start", [ev.error({ status: 502, kind: "server", code: "prompt_failed" })]],
+    ["a backend failure", [ev.error({ status: 502, kind: "server", code: "backend_failed" })]],
+    ["an empty stream", []],
+    ["a thrown error", new Error("boom")],
+  ])("%s falls back but never opens the breaker", async (_name, script) => {
+    const run = setup({ "a/x": script, "b/y": answer(), "c/z": answer() })
+    for (let i = 0; i < 6; i++) expect((await run.request()).targets).toEqual(["a/x", "b/y"])
+    expect(run.breaker.cooling()).toEqual([])
+    expect(run.events).toEqual([])
+  })
+
+  test("a synchronous throw of the model caller is a failure of the attempt: the next target answers, and a probe it held is given back", async () => {
+    let at = 1_000_000
+    const breaker = createBreaker(() => at)
+    const config = { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 }
+    for (let i = 0; i < 3; i++) breaker.failure("a/x", config)
+    at += COOLDOWN_MS
+    let first = true
+    const inner: ModelCaller = {
+      stream(request) {
+        if (request.ref.id === "x" && first) {
+          first = false
+          throw new Error("sync boom")
+        }
+        return (async function* () {
+          yield* answer()
+        })()
+      },
+    }
+    const caller = withFallbacks(inner, { options, loadCatalog: async () => CATALOG, breaker })
+    const out = await collect(caller.stream(plugRequest({ model: "chain", ref: resolveModel(options, "chain", CATALOG) as never }), { app: "app1", signal: new AbortController().signal }))
+    expect(out.map((e) => e.type)).toEqual(["text-delta", "finish"])
+    // The probe slot of a/x is free again: the next claim is a probe, not a skip.
+    expect(breaker.claim("a/x", config).verdict).toBe("probe")
   })
 
   test("a failure after the first event is an answer: it does not count, and it is not retried", async () => {
@@ -283,6 +346,68 @@ describe("the half-open probe", () => {
     run.behaviour["a/x"] = answer()
     expect((await run.request()).targets).toEqual(["a/x"])
     expect(run.breaker.cooling()).toEqual([])
+  })
+})
+
+describe("a look-ahead that took no probe slot", () => {
+  /** b is half open with its probe free when R2 starts, so R2's attempt on a is told b follows (and is bounded by the deadline); R1 then takes b's probe. */
+  test("another request takes the probe of the target an attempt was told follows: the attempt's failure still goes there, and is not left with an empty stream", async () => {
+    const timed = parseOptions({ ...raw, fallbackAfterMs: 40, fallbackCooldown: { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 } })
+    const config = { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 }
+    let at = 1_000_000
+    const breaker = createBreaker(() => at)
+    for (let i = 0; i < 3; i++) breaker.failure("b/y#low", config)
+    at += COOLDOWN_MS
+    for (let i = 0; i < 3; i++) breaker.failure("c/z", config)
+    expect(breaker.peek("b/y#low", config)).toBe(true)
+    expect(breaker.peek("c/z", config)).toBe(false)
+
+    let release!: () => void
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const seen: Array<{ target: string; fallbackNext: boolean | undefined }> = []
+    let calls = 0
+    const inner: ModelCaller = {
+      stream(request, context) {
+        const target = `${request.ref.providerID}/${request.ref.id}`
+        seen.push({ target, fallbackNext: context.fallbackNext })
+        const call = target === "a/x" ? calls++ : -1
+        return (async function* () {
+          if (target === "a/x") {
+            // R2's call hangs until the deadline aborts it; R1's call fails at once.
+            if (call === 0) await new Promise<void>((resolve) => context.signal.addEventListener("abort", () => resolve(), { once: true }))
+            else yield rateLimited
+            return
+          }
+          await held
+          yield* answer()
+        })()
+      },
+    }
+    const caller = withFallbacks(inner, { options: timed, loadCatalog: async () => CATALOG, breaker })
+    const ask = () => collect(caller.stream(plugRequest({ model: "chain", ref: resolveModel(timed, "chain", CATALOG) as never }), { app: "app1", signal: new AbortController().signal }))
+    const settle = () => new Promise((resolve) => setImmediate(resolve))
+
+    const r2 = ask()
+    await settle()
+    await settle()
+    // R2 is on a/x, bounded by the deadline because b looked free.
+    expect(seen).toEqual([{ target: "a/x", fallbackNext: true }])
+    const r1 = ask()
+    await settle()
+    await settle()
+    // R1 failed on a/x at once and took b's probe.
+    expect(seen.map((call) => call.target)).toEqual(["a/x", "a/x", "b/y"])
+    expect(breaker.peek("b/y#low", config)).toBe(false)
+    // The deadline passes: R2 has no slot to claim on b, but it was told b follows, so b is tried anyway.
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    expect(seen.map((call) => call.target)).toEqual(["a/x", "a/x", "b/y", "b/y"])
+    release()
+    const [out2, out1] = await Promise.all([r2, r1])
+    expect(out2.map((e) => e.type)).toEqual(["text-delta", "finish"])
+    expect(out1.map((e) => e.type)).toEqual(["text-delta", "finish"])
+    expect(logs.of("model.fallback_exhausted")).toEqual([])
+    // c/z is open: the forced attempt on b is the last that would run, so it has no deadline.
+    expect(seen.at(-1)).toEqual({ target: "b/y", fallbackNext: false })
   })
 })
 

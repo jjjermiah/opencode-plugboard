@@ -15,7 +15,8 @@
  * Each target also has a circuit breaker (option `fallbackCooldown`, `src/breaker.ts`): a target that failed `failureThreshold` times
  * in a row is skipped for `cooldownMs`, so the chain goes straight to the next target. After the cooldown one request is let
  * through; its answer closes the breaker. When every target is cooling down the first one is tried anyway, so a request never fails
- * without an attempt. A target that is skipped counts in `x-plugboard-fallbacks` (the header is the answering target's position).
+ * without an attempt. A target that is skipped counts in `x-plugboard-fallbacks` (the header is the answering target's position among
+ * the resolved targets).
  *
  * A call whose model is not an alias with fallbacks goes straight to the wrapped caller.
  */
@@ -97,6 +98,13 @@ export const isRetryable = (error: PlugError): boolean => error.code !== undefin
 /** The `reason` of a fallback whose target produced no model event within `fallbackAfterMs` (#391). */
 export const FIRST_EVENT_DEADLINE = "first_event_deadline"
 
+/**
+ * The failures that count against a target's breaker: what the provider did (rate limit, quota, unavailable, timeout, sign-in, a host
+ * retry) and a missed first-event deadline. The rest of `RETRYABLE` still moves the chain on, but says nothing about the target: a
+ * backend that throws, a prompt that could not start, a failed model run, an empty stream.
+ */
+const COUNTED = new Set(["rate_limited", "quota_exceeded", "provider_unavailable", "provider_timeout", "provider_auth_failed", "provider_retry", FIRST_EVENT_DEADLINE])
+
 /** The caller's events with a chain of fallbacks behind the request's model; see the file comment. */
 export function withFallbacks(inner: ModelCaller, deps: FallbackDeps): ModelCaller {
   const breaker = deps.breaker ?? createBreaker()
@@ -132,18 +140,23 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
   const targets = [request.ref, ...(await resolveRest(deps, request, context.app))]
   const name = (index: number): string => refToString(targets[index]!)
 
-  /** The first target from `from` on that is not cooling down, claiming its slot; the targets skipped on the way are logged. */
-  const select = (from: number): number | undefined => {
+  /** The first target from `from` on that is not cooling down, claiming its slot (`token` for a probe); the targets skipped on the way are logged. */
+  const select = (from: number): { readonly index: number; readonly token?: number } | undefined => {
     for (let index = from; index < targets.length; index++) {
-      if (!cooldown || breaker.claim(name(index), cooldown) !== "skip") return index
+      if (!cooldown) return { index }
+      const claim = breaker.claim(name(index), cooldown)
+      if (claim.verdict !== "skip") return { index, token: claim.token }
       const until = breaker.until(name(index))
       log("fallback.cooldown.skip", { app: context.app, target: name(index), ...(until === undefined ? {} : { until: new Date(until).toISOString() }) })
       deps.onCooldown?.("skip", context.app)
     }
     return undefined
   }
-  /** Whether a target after `index` would run now. Takes no slot. */
-  const hasNext = (index: number): boolean => targets.some((_, at) => at > index && (!cooldown || breaker.peek(name(at), cooldown)))
+  /** The first target after `index` that would run now, or undefined. Takes no slot. */
+  const lookAhead = (index: number): number | undefined => {
+    for (let at = index + 1; at < targets.length; at++) if (!cooldown || breaker.peek(name(at), cooldown)) return at
+    return undefined
+  }
   const note = (event: "opened" | "reopened" | "closed" | undefined, model: string): void => {
     if (event === undefined) return
     const until = breaker.until(model)
@@ -159,12 +172,13 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
     deps.onCooldown?.(event === "closed" ? "close" : "open", context.app)
   }
 
-  // Every target cooling down: the first one is tried anyway, so the request always gets an attempt.
-  let index = select(0)
-  if (index === undefined) {
+  // Every target cooling down: the first one is tried anyway, so the request always gets an attempt. It holds no probe slot.
+  let chosen = select(0)
+  if (chosen === undefined) {
     logWarn("fallback.cooldown.all_open", { app: context.app, targets: targets.length })
-    index = 0
+    chosen = { index: 0 }
   }
+  let { index, token } = chosen
   let attempts = 0
   for (;;) {
     attempts++
@@ -175,7 +189,8 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
     // Whether a target follows this attempt. With a first-event deadline, an attempt that has one is aborted when the
     // deadline passes; the last target is not. A host retry before any output also fails it at once (#391). A target
     // that is cooling down does not follow: the attempt is then the last one that would run.
-    const following = hasNext(index)
+    const ahead = lookAhead(index)
+    const following = ahead !== undefined
     const deadline = deps.options.fallbackAfterMs ?? 0
     const bounded = deadline > 0 && following
     const deadlineAbort = bounded ? new AbortController() : undefined
@@ -188,11 +203,12 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
         }, deadline)
       : undefined
     const signal = deadlineAbort ? AbortSignal.any([context.signal, deadlineAbort.signal]) : context.signal
-    const iterator = inner.stream(next, { ...context, signal, fallbackNext: following, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
 
+    let iterator: AsyncIterator<PlugEvent> | undefined
     let first: IteratorResult<PlugEvent> | undefined
     let thrown: { readonly error: unknown } | undefined
     try {
+      iterator = inner.stream(next, { ...context, signal, fallbackNext: following, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
       first = await iterator.next()
     } catch (error) {
       thrown = { error }
@@ -208,21 +224,25 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
     else if (first!.value.type === "error" && isRetryable(first!.value.error)) reason = first!.value.error.code
     if (context.signal.aborted) reason = undefined
 
-    // The target's breaker: a failure counts, an answer closes it, and any other end (the client left, a client error) only gives back the probe slot.
+    // The target's breaker: a failure of the provider counts, an answer closes it, and any other end (the client left, a failure that is
+    // plugboard's own) only gives back the probe slot, if this attempt holds it.
     if (cooldown) {
       const model = refToString(ref)
-      if (reason !== undefined) note(breaker.failure(model, cooldown), model)
-      else if (!thrown && !first!.done && first!.value.type !== "error") note(breaker.success(model), model)
-      else breaker.release(model)
+      if (reason !== undefined && COUNTED.has(reason)) note(breaker.failure(model, cooldown), model)
+      else if (reason === undefined && !thrown && !first!.done && first!.value.type !== "error") note(breaker.success(model), model)
+      else breaker.release(model, token)
     }
 
     if (reason !== undefined) {
-      const to = select(index + 1)
+      // The look-ahead took no slot, so another request may have taken the probe of the target it found: it is then tried without one, as the
+      // attempt was told it follows (and may have been aborted for it).
+      const to = select(index + 1) ?? (ahead === undefined ? undefined : { index: ahead })
       if (to !== undefined) {
-        if (!thrown || timedOut) await close(iterator)
-        log("model.fallback", { app: context.app, from: refToString(ref), to: name(to), reason, attempt: attempts })
+        if (iterator && (!thrown || timedOut)) await close(iterator)
+        log("model.fallback", { app: context.app, from: refToString(ref), to: name(to.index), reason, attempt: attempts })
         deps.onFallback?.(context.app)
-        index = to
+        index = to.index
+        token = to.token
         continue
       }
       logWarn("model.fallback_exhausted", { app: context.app, attempts, reason })
@@ -236,9 +256,9 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
     if (reason === undefined && first!.value.type !== "error") context.onServed?.({ model: refToString(ref), fallbacks: index, chain: true })
     try {
       yield first!.value
-      for (let step = await iterator.next(); !step.done; step = await iterator.next()) yield step.value
+      for (let step = await iterator!.next(); !step.done; step = await iterator!.next()) yield step.value
     } finally {
-      await close(iterator)
+      await close(iterator!)
     }
     return
   }

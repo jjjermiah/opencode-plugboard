@@ -40,7 +40,7 @@ export interface RuntimeSnapshot {
   readonly guards: number
   /** Runtime start, epoch ms. */
   readonly startedAt: number
-  /** Targets of fallback chains that are cooling down now (`src/breaker.ts`); absent counts as none. */
+  /** Targets of fallback chains whose breaker is open or half open (`src/breaker.ts`); absent counts as none. The gauge counts the open ones. */
   readonly cooldowns?: ReadonlyArray<CoolingTarget>
 }
 
@@ -130,7 +130,7 @@ export function createMetrics(): Metrics {
     labelNames: ["app", "event"],
     registers: [registry],
   })
-  const cooling = new Gauge({ name: "plugboard_fallback_cooldown_targets", help: "Fallback chain targets cooling down right now (open or waiting for their probe).", registers: [registry] })
+  const cooling = new Gauge({ name: "plugboard_fallback_cooldown_targets", help: "Fallback chain targets being skipped right now (breaker open, cooldown not over).", registers: [registry] })
   const limited = new Counter({
     name: "plugboard_limited_total",
     help: "Model calls refused with 429 by a concurrency cap, a requests-per-minute limit or a budget, by app and reason.",
@@ -195,7 +195,7 @@ export function createMetrics(): Metrics {
       generations.set(snapshot.generations)
       pumpUp.set(snapshot.pumpRunning ? 1 : 0)
       guards.set(snapshot.guards)
-      cooling.set(snapshot.cooldowns?.length ?? 0)
+      cooling.set(snapshot.cooldowns?.filter((target) => target.state === "open").length ?? 0)
       startTime.set(Math.floor(snapshot.startedAt / 1000))
       return registry.metrics()
     },
