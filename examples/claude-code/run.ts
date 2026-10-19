@@ -21,9 +21,9 @@ await runAll(
   {
     S1: (model) => chat.run("S1", model),
     S3: (model) => chat.run("S3", model),
-    S11: () => tools.steps(),
-    S12: () => tools.subagent(),
-    S13: () => compact.run(),
+    S12: () => tools.steps(),
+    S13: () => tools.subagent(),
+    S14: () => compact.run(),
   },
   {
     na: {

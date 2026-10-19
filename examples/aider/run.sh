@@ -6,8 +6,9 @@
 #   bash examples/aider/run.sh                                      # through the harness, with the env run.ts sets
 #
 # Aider is a terminal tool that edits files, so it is a scripted check, not a harness client: it sends one message in a
-# throwaway git repo and reads the answer. It cannot see the wire finish_reason or usage, so the one check here is
-# "answer contains pong". The captured transcript still holds the wire fields.
+# throwaway git repo and reads the result. It cannot see the wire finish_reason or usage, so S1 checks "answer contains pong".
+# S11 asks for a file edit in the edit format Aider picks for the model (`whole` for fast and gpt, `diff` for claude) and
+# reads the file back. The captured transcripts still hold the wire fields.
 set -euo pipefail
 
 # Aider picks its edit format and prompts from model metadata, which the host can change (a fetched price map differs
@@ -37,17 +38,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 VERSION="$(uv run --isolated --project "$HERE" python -c 'import importlib.metadata as m; print(m.version("aider-chat"))')"
 printf '{"kind":"client","name":"aider-chat","version":"%s","runtime":{"name":"bash","version":"%s"}}\n' "$VERSION" "${BASH_VERSINFO[0]}"
-printf '{"kind":"plan","scenarios":["S1"]}\n'
+printf '{"kind":"plan","scenarios":["S1","S11"]}\n'
 
-for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
-  # The capture proxy tags the next exchanges with this scenario and model, and waits until the last one has finished.
-  curl -fsS -X POST "$PLUGBOARD_CAPTURE_URL/__mark" -H 'content-type: application/json' \
-    -d "{\"scenario\":\"S1\",\"model\":\"$MODEL\"}" -o /dev/null
-
-  DIR="$(mktemp -d)"
-  AIDER_HOME="$(mktemp -d)"
+# A throwaway git repo with one committed file, `hello.py`. Prints its path.
+make_repo() {
+  local dir
+  dir="$(mktemp -d)"
   (
-    cd "$DIR"
+    cd "$dir"
     git init -q .
     git config user.email check@example.invalid
     git config user.name check
@@ -55,6 +53,16 @@ for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
     git add hello.py
     git commit -qm init
   )
+  echo "$dir"
+}
+
+for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
+  # The capture proxy tags the next exchanges with this scenario and model, and waits until the last one has finished.
+  curl -fsS -X POST "$PLUGBOARD_CAPTURE_URL/__mark" -H 'content-type: application/json' \
+    -d "{\"scenario\":\"S1\",\"model\":\"$MODEL\"}" -o /dev/null
+
+  DIR="$(make_repo)"
+  AIDER_HOME="$(mktemp -d)"
 
   set +e
   OUT="$(cd "$DIR" && HOME="$AIDER_HOME" OPENAI_API_BASE="$PLUGBOARD_BASE_URL" OPENAI_API_KEY="$PLUGBOARD_KEY" uv run --isolated --project "$HERE" aider \
@@ -72,6 +80,39 @@ for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
   else
     echo "$OUT" | tail -20 >&2
     printf '{"kind":"result","scenario":"S1","model":"%s","status":"fail","checks":[{"name":"answer contains pong","ok":false}],"error":null,"note":null}\n' "$MODEL"
+  fi
+done
+
+for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
+  curl -fsS -X POST "$PLUGBOARD_CAPTURE_URL/__mark" -H 'content-type: application/json' \
+    -d "{\"scenario\":\"S11\",\"model\":\"$MODEL\"}" -o /dev/null
+
+  DIR="$(make_repo)"
+  AIDER_HOME="$(mktemp -d)"
+
+  # No --edit-format: Aider picks the format for the model. The diff format's prompt names the host's platform, shell and date;
+  # the transcript writer replaces them (examples/_harness/normalise.ts).
+  set +e
+  OUT="$(cd "$DIR" && HOME="$AIDER_HOME" OPENAI_API_BASE="$PLUGBOARD_BASE_URL" OPENAI_API_KEY="$PLUGBOARD_KEY" uv run --isolated --project "$HERE" aider \
+    --model "openai/$MODEL" --weak-model "openai/$MODEL" --yes-always --no-auto-commits --no-analytics \
+    --no-check-update --no-show-model-warnings --no-show-release-notes --message 'Change hello.py to print: hello from plugboard' hello.py 2>&1)"
+  RC=$?
+  set -e
+  TEXT="$(cat "$DIR/hello.py")"
+  rm -rf "$DIR" "$AIDER_HOME"
+
+  NEW=false
+  KEPT=false
+  case "$TEXT" in *"hello from plugboard"*) NEW=true ;; esac
+  case "$TEXT" in *'print("hi")'*) KEPT=true ;; esac
+  if [ "$RC" -ne 0 ]; then
+    echo "$OUT" | tail -20 >&2
+    printf '{"kind":"result","scenario":"S11","model":"%s","status":"fail","checks":[],"error":"aider exited %s","note":null}\n' "$MODEL" "$RC"
+  elif [ "$NEW" = true ] && [ "$KEPT" = false ]; then
+    printf '{"kind":"result","scenario":"S11","model":"%s","status":"pass","checks":[{"name":"file has the new line","ok":true},{"name":"old line is gone","ok":true}],"error":null,"note":null}\n' "$MODEL"
+  else
+    echo "$OUT" | tail -20 >&2
+    printf '{"kind":"result","scenario":"S11","model":"%s","status":"fail","checks":[{"name":"file has the new line","ok":%s},{"name":"old line is gone","ok":%s}],"error":null,"note":null}\n' "$MODEL" "$NEW" "$([ "$KEPT" = true ] && echo false || echo true)"
   fi
 done
 

@@ -19,8 +19,8 @@ Verdict: **pass** · @anthropic-ai/claude-code 2.1.303 on bun 1 · models: fast,
 | S6 | anthropic/claude-haiku-4-5 | yes | n/a |  |
 | S6 | openai/gpt-5.6-luna#low | yes | n/a |  |
 | S7 | - | yes | n/a |  |
-| S11 | fast | yes | pass | 4/4 |
 | S12 | fast | yes | pass | 4/4 |
-| S13 | fast | yes | pass | 5/5 |
+| S13 | fast | yes | pass | 4/4 |
+| S14 | fast | yes | pass | 5/5 |
 | E1 | fast | no | n/a |  |
 | E2 | nope | no | n/a |  |

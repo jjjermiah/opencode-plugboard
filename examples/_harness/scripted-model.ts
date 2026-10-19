@@ -40,21 +40,21 @@ const COMPACT_SUMMARY = "scripted summary: the user asked to remember 42."
 function claudeCode(request: PlugRequest, text: string): PlugEvent[] | undefined {
   const results = toolResults(request)
   const workspace = /Primary working directory: (\S+)/.exec(request.system.join("\n"))?.[1]
-  if (text.includes(SUBAGENT_PROMPT) && !text.includes(prompt("S12"))) return say("The secret word is marmot.")
-  if (text.includes(prompt("S11")) && workspace) {
+  if (text.includes(SUBAGENT_PROMPT) && !text.includes(prompt("S13"))) return say("The secret word is marmot.")
+  if (text.includes(prompt("S12")) && workspace) {
     const file = `${workspace}/notes.txt`
     if (results.length === 0) return [ev.call("toolu_scripted_write", "Write", { file_path: file, content: "plugboard\n" }), ev.finish("tool-calls", USAGE)]
     if (results.length === 1) return [ev.call("toolu_scripted_read", "Read", { file_path: file }), ev.finish("tool-calls", USAGE)]
     return say("done")
   }
   // The compaction request is the whole session plus Claude Code's instruction to summarise it, so it is matched before the prompt it quotes.
-  if (text.includes(prompt("S13"))) {
+  if (text.includes(prompt("S14"))) {
     if (text.includes("detailed summary of the conversation")) return say(`<summary>${COMPACT_SUMMARY}</summary>`)
     // After /compact the history is the summary plus the new prompt: no assistant turn is left to quote.
     if (text.includes(COMPACT_SUMMARY)) return say(request.messages.some((message) => message.role === "assistant") ? "summary and old turns" : "summary only")
     return say("noted")
   }
-  if (text.includes(prompt("S12"))) {
+  if (text.includes(prompt("S13"))) {
     if (results.length === 0) {
       const input = { description: "Ask for the secret word", prompt: SUBAGENT_PROMPT, subagent_type: "general-purpose", run_in_background: false }
       return [ev.call("toolu_scripted_agent", "Agent", input), ev.finish("tool-calls", USAGE)]
@@ -63,6 +63,7 @@ function claudeCode(request: PlugRequest, text: string): PlugEvent[] | undefined
   }
   return undefined
 }
+
 /**
  * The review PR-Agent's `/review` gets (examples/pr-agent). Its user prompt holds a `--PR Info--` header and a `The PR code diff:` block, which no
  * other client sends. The finding below is what the example's runner looks for in the `review.md` the local git provider writes.
@@ -93,6 +94,18 @@ const wantsOutputWrapper = (text: string): boolean => text.includes('"properties
 function say(answer: string): PlugEvent[] {
   const half = Math.ceil(answer.length / 2)
   return [ev.text(answer.slice(0, half)), ev.text(answer.slice(half)), ev.finish("stop", USAGE)]
+}
+
+/**
+ * Aider's edit reply to S11, in the format its prompt asks for. A model Aider knows to prefer `diff` gets SEARCH/REPLACE blocks; any other
+ * gets the whole file. Aider's file is `hello.py`, which holds `print("hi")`.
+ */
+function aiderEdit(prompts: string): PlugEvent[] {
+  const fence = "```"
+  if (prompts.includes("SEARCH/REPLACE")) {
+    return say(`I will change the greeting.\n\nhello.py\n${fence}python\n<<<<<<< SEARCH\nprint("hi")\n=======\nprint("hello from plugboard")\n>>>>>>> REPLACE\n${fence}\n`)
+  }
+  return say(`I will change the greeting.\n\nhello.py\n${fence}\nprint("hello from plugboard")\n${fence}\n`)
 }
 
 const propertiesOf = (schema: unknown): object => (schema as { properties?: object } | undefined)?.properties ?? {}
@@ -146,6 +159,7 @@ export function answer(request: PlugRequest): PlugEvent[] {
       return [ev.call(CALL_ID, "exec", { input: 'text(JSON.stringify(await tools.mcp__weather__get_weather({ city: "Paris" })))' }), ev.finish("tool-calls", USAGE)]
     }
   }
+  if (text.includes(prompt("S11"))) return aiderEdit(`${request.system.join("\n")}\n${text}`)
   if (text.includes(prompt("S5"))) return say(hasPngPart(request) ? "red" : "no image")
   if (text.includes(prompt("S6"))) return say(JSON.stringify(wantsOutputWrapper(text) ? { output: MEAL } : MEAL))
   return [ev.error({ status: 500, kind: "server", message: `scripted model has no answer for this prompt: ${text.slice(0, 80)}` })]

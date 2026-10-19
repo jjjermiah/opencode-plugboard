@@ -19,9 +19,9 @@ claude -p "reply with exactly: pong"
 | Scenario | Result |
 | --- | --- |
 | S1 chat and S3 stream, on `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low` | pass. Claude Code streams every call, so S1 and S3 are one call |
-| S11 several tool calls in one run | pass. The model asks for `Write`, then `Read`, then answers: three `/v1/messages` requests with the tool results sent back. The run checks that `notes.txt` exists in the workspace |
-| S12 a sub-agent | pass. The model calls the `Agent` tool. Claude Code sends the sub-agent's own request (its prompt, 18 tools) to plugboard, and the model's answer comes back to the main agent as a tool result |
-| S13 compaction | pass. First turn, then `/compact` on the same session (`--resume`), then a turn on the compacted session. Claude Code sends the whole session with its summary instruction, and the next request holds the summary and no old turns |
+| S12 several tool calls in one run | pass. The model asks for `Write`, then `Read`, then answers: three `/v1/messages` requests with the tool results sent back. The run checks that `notes.txt` exists in the workspace |
+| S13 a sub-agent | pass. The model calls the `Agent` tool. Claude Code sends the sub-agent's own request (its prompt, 18 tools) to plugboard, and the model's answer comes back to the main agent as a tool result |
+| S14 compaction | pass. First turn, then `/compact` on the same session (`--resume`), then a turn on the compacted session. Claude Code sends the whole session with its summary instruction, and the next request holds the summary and no old turns |
 | S2, S4, S5, S6, S7, E1, E2 | n/a: the CLI runs its own tools and has no data-URL image, JSON-schema output, model list or status in its events |
 
 Every request carries Claude Code's 20 tools (18 for a sub-agent), well under the default `maxTools` of 64.

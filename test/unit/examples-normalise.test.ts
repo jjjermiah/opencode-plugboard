@@ -230,6 +230,18 @@ describe("Gemini CLI session context", () => {
     expect(JSON.stringify(exchanges[0]!.response.body)).not.toContain("plugboard-claude-code-workspace")
   })
 
+  test("fixes the platform, shell and date in Aider's diff-format prompt, and no other line", () => {
+    const prompt = (platform: string, shell: string, date: string) =>
+      `Keep in mind:\n- Platform: ${platform}\n- Shell: SHELL=${shell}\n- Current date: ${date}\n- The user is operating inside a git repository\n\nReleased 2026-01-02.`
+    expect(normaliseSessionContext(prompt("macOS-27.0-arm64-arm-64bit", "/opt/homebrew/bin/zsh", "2026-10-19"))).toBe(
+      "Keep in mind:\n- Platform: <platform>\n- Shell: <shell>\n- Current date: <date>\n- The user is operating inside a git repository\n\nReleased 2026-01-02.",
+    )
+    expect(normaliseSessionContext(prompt("macOS-27.0-arm64-arm-64bit", "/opt/homebrew/bin/zsh", "2026-10-19"))).toBe(
+      normaliseSessionContext(prompt("Linux-6.8.0-x86_64-with-glibc2.39", "/bin/bash", "2027-01-01")),
+    )
+    expect(normaliseSessionContext("Current date: 2026-10-19")).toBe("Current date: 2026-10-19")
+  })
+
   test("puts the Gemini CLI's available skills in name order, whatever order the filesystem listed them", () => {
     const skill = (name: string) => `  <skill>\n    <name>${name}</name>\n    <description>About ${name}.</description>\n  </skill>`
     const prompt = (...names: Array<string>) => `Before.\n<available_skills>\n${names.map(skill).join("\n")}\n</available_skills>\nAfter.`

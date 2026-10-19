@@ -87,38 +87,38 @@ describe("scripted model Claude Code runs (examples/claude-code)", () => {
   const assistant: PlugRequest["messages"][number] = { role: "assistant", content: [{ type: "text", text: "noted" }] }
   const callOf = (events: PlugEvent[]) => calls(events)[0] as { name: string; input: unknown } | undefined
 
-  test("S11 writes notes.txt in the working directory the system prompt names, reads it back, then answers", () => {
-    const first = answer(claude([user(prompt("S11"))]))
+  test("S12 writes notes.txt in the working directory the system prompt names, reads it back, then answers", () => {
+    const first = answer(claude([user(prompt("S12"))]))
     expect(callOf(first)).toMatchObject({ name: "Write", input: { file_path: "/w/ws/notes.txt", content: "plugboard\n" } })
-    const second = answer(claude([user(prompt("S11")), result("Write", "ok")]))
+    const second = answer(claude([user(prompt("S12")), result("Write", "ok")]))
     expect(callOf(second)).toMatchObject({ name: "Read", input: { file_path: "/w/ws/notes.txt" } })
-    const third = answer(claude([user(prompt("S11")), result("Write", "ok"), result("Read", "plugboard")]))
+    const third = answer(claude([user(prompt("S12")), result("Write", "ok"), result("Read", "plugboard")]))
     expect(calls(third)).toEqual([])
     expect(textOf(third)).toBe("done")
   })
 
-  test("S11 without a working directory in the system prompt gets the scripted error, not a guessed path", () => {
-    expect(answer(claude([user(prompt("S11"))], [])).some((event) => event.type === "error")).toBe(true)
+  test("S12 without a working directory in the system prompt gets the scripted error, not a guessed path", () => {
+    expect(answer(claude([user(prompt("S12"))], [])).some((event) => event.type === "error")).toBe(true)
   })
 
-  test("S12 calls the Agent tool once, answers the sub-agent's own request, and passes its reply on", () => {
-    const main = answer(claude([user(prompt("S12"))]))
+  test("S13 calls the Agent tool once, answers the sub-agent's own request, and passes its reply on", () => {
+    const main = answer(claude([user(prompt("S13"))]))
     expect(callOf(main)).toMatchObject({ name: "Agent", input: { prompt: "What is the secret word? Reply with the word only.", run_in_background: false } })
     // The sub-agent's request holds only its own prompt, so it is not asked to call the Agent tool again.
     const nested = answer(claude([user("What is the secret word? Reply with the word only.")]))
     expect(calls(nested)).toEqual([])
     expect(textOf(nested)).toBe("The secret word is marmot.")
-    const done = answer(claude([user(prompt("S12")), result("Agent", "[hand-back]\n  The secret word is marmot.\nagentId: abc")]))
+    const done = answer(claude([user(prompt("S13")), result("Agent", "[hand-back]\n  The secret word is marmot.\nagentId: abc")]))
     expect(textOf(done)).toBe("The sub-agent said: marmot")
   })
 
-  test("S13 answers the first turn, the compaction request with a summary, and a compacted history with what it saw", () => {
-    expect(textOf(answer(claude([user(prompt("S13"))])))).toBe("noted")
-    const compaction = user(`Your task is to create a detailed summary of the conversation so far, for the prompt: ${prompt("S13")}`)
-    expect(textOf(answer(claude([user(prompt("S13")), assistant, compaction])))).toContain("scripted summary")
+  test("S14 answers the first turn, the compaction request with a summary, and a compacted history with what it saw", () => {
+    expect(textOf(answer(claude([user(prompt("S14"))])))).toBe("noted")
+    const compaction = user(`Your task is to create a detailed summary of the conversation so far, for the prompt: ${prompt("S14")}`)
+    expect(textOf(answer(claude([user(prompt("S14")), assistant, compaction])))).toContain("scripted summary")
     const summary = user("Summary:\nscripted summary: the user asked to remember 42.")
-    expect(textOf(answer(claude([summary, user(prompt("S13"))])))).toBe("summary only")
-    expect(textOf(answer(claude([summary, assistant, user(prompt("S13"))])))).toBe("summary and old turns")
+    expect(textOf(answer(claude([summary, user(prompt("S14"))])))).toBe("summary only")
+    expect(textOf(answer(claude([summary, assistant, user(prompt("S14"))])))).toBe("summary and old turns")
   })
 
   test("a plain S1 prompt from Claude Code keeps its pong", () => {
@@ -157,6 +157,26 @@ describe("scripted model tool choices", () => {
   test("required after a tool result does not force again", () => {
     const events = answer(plugRequest({ messages: [user(prompt("S6")), toolResult], tools: [MEAL_TOOL], toolChoice: "required" }))
     expect(calls(events)).toEqual([])
+  })
+})
+
+describe("scripted model Aider file edit (S11)", () => {
+  const fence = "```"
+  const edit = (system: string): PlugRequest => plugRequest({ system: [system], messages: [user(prompt("S11"))] })
+
+  test("a prompt that names the whole-file listing gets the whole file", () => {
+    const text = textOf(answer(edit("You MUST use this *file listing* format")))
+    expect(text).toContain(`hello.py\n${fence}\nprint("hello from plugboard")\n${fence}`)
+    expect(text).not.toContain("SEARCH")
+  })
+
+  test("a prompt that names SEARCH/REPLACE blocks gets a SEARCH/REPLACE block for the committed line", () => {
+    const text = textOf(answer(edit("Use *SEARCH/REPLACE* blocks")))
+    expect(text).toContain('<<<<<<< SEARCH\nprint("hi")\n=======\nprint("hello from plugboard")\n>>>>>>> REPLACE')
+  })
+
+  test("the answer finishes with stop", () => {
+    expect(answer(edit("x")).at(-1)).toMatchObject({ type: "finish", reason: "stop" })
   })
 })
 
