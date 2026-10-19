@@ -161,11 +161,14 @@ jobs:
         working-directory: examples/openai-dotnet
         run: dotnet --version
       # The spring-ai and langchain4j runners build with their Maven wrapper (it downloads Maven 3.9.11) on Java 21.
+      # The Maven cache keeps a Maven Central hiccup (a plugin descriptor that fails to download) from failing the job.
       - name: Install Java (the spring-ai and langchain4j runners build with ./mvnw)
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "21"
+          cache: maven
+          cache-dependency-path: examples/*/pom.xml
       - name: Snippet region names are unique per file
         run: bun examples/_harness/check-regions.ts
       # `all` runs every example that has a runner, so a new example needs no edit here (and parallel example PRs
