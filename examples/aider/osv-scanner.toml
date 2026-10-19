@@ -1,6 +1,7 @@
-# Advisories left in uv.lock after every fixable one was lifted (see pyproject.toml). The example is a dev-only scripted
-# check: it ships in no package, and Aider runs in a throwaway directory against the capture proxy. Each entry expires,
-# so it is looked at again then. Re-check with: osv-scanner scan source --no-ignore -L examples/aider/uv.lock
+# Advisories in the packages a fresh resolve of examples/aider installs, after every fixable one was lifted (see pyproject.toml). There
+# is no lockfile, so osv-scanner finds nothing to scan here by itself and these entries apply only if a scan is given a resolved set
+# (for example `uv export` output). The example is a dev-only scripted check: it ships in no package, and Aider runs in a throwaway
+# directory against the capture proxy. Each entry expires, so it is looked at again then.
 
 # aider-chat 0.86.2 is the last Aider release and has no fixed version.
 [[IgnoredVulns]]
