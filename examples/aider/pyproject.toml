@@ -9,7 +9,8 @@ dependencies = ["aider-chat==0.86.2"]
 # aider-chat 0.86.2 pins its dependencies to exact versions that now have published advisories, and it is the last
 # release. These floors lift the transitive packages that have a fix; uv.lock holds the versions that resolve, and the
 # scripted example checks that Aider still runs against them. litellm stays at 1.81.10: Aider refuses to start with any
-# litellm that adds an exception class it does not list (1.81.16 adds PermissionDeniedError). That, aider-chat itself and
+# litellm that adds an exception class it does not list (1.81.11 and every later release, up to 1.106.0, adds PermissionDeniedError;
+# every fixed litellm release is 1.82.0 or later). That, aider-chat itself and
 # diskcache (no fixed release) are the advisories left; osv-scanner.toml lists them.
 [tool.uv]
 override-dependencies = [

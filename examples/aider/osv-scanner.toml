@@ -20,7 +20,7 @@ ignoreUntil = 2027-01-17
 reason = "diskcache 5.6.3, no fixed release. Unsafe pickle deserialization needs write access to the cache directory, which is a throwaway directory here."
 
 # litellm stays at 1.81.10: Aider 0.86.2 pins it, and refuses to start with a litellm that adds an exception class it does not
-# list (1.81.16 adds PermissionDeniedError). Every advisory below concerns the litellm proxy server: its admin API, SSO or
+# list (1.81.11 and every later release adds PermissionDeniedError). Every advisory below concerns the litellm proxy server: its admin API, SSO or
 # OIDC login, MCP gateway, guardrails or prompt endpoints. Aider calls only the litellm SDK (litellm.completion) and never
 # starts the proxy, so none of that code runs.
 [[IgnoredVulns]]

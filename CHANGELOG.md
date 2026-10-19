@@ -17,6 +17,7 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Security
 
 - The LangChain4j example now builds against Jackson 2.22.3 instead of 2.22.1, which fixes the seven advisories that OpenSSF Scorecard reported in its `pom.xml` ([#523](https://github.com/jjjermiah/opencode-plugboard/issues/523)). The shipped package was never affected.
+- Re-checked the 31 open Dependabot alerts in the example lockfiles ([#526](https://github.com/jjjermiah/opencode-plugboard/issues/526)). No lockfile can move: Aider 0.86.2 is the newest Aider and refuses to start with any litellm after 1.81.10, and every fixed litellm is 1.82.0 or later. The other alerts (diskcache, nltk, two on aider-chat) have no fixed release. All 31 are in example projects that ship in no package, and each is listed in the example's `osv-scanner.toml` with a reason.
 
 ## [0.57.0] - 2026-10-19: No More Silent Hangs
 
