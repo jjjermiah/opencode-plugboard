@@ -146,6 +146,7 @@ describe("what counts as a failure", () => {
     ["a 429", [rateLimited]],
     ["a quota error", [ev.error({ status: 429, kind: "rate_limit", code: "quota_exceeded" })]],
     ["a provider failure (520)", [ev.error({ status: 502, kind: "server", code: "provider_unavailable" })]],
+    ["a provider overload (529)", [ev.error({ status: 503, kind: "server", code: "provider_overloaded" })]],
     ["a provider timeout", [ev.error({ status: 504, kind: "timeout", code: "provider_timeout" })]],
     ["a provider sign-in failure", [ev.error({ status: 502, kind: "server", code: "provider_auth_failed" })]],
     ["a provider_retry", [ev.error({ status: 503, kind: "server", code: "provider_retry" })]],

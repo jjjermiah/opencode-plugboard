@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Fixed
+
+- A fallback chain now moves on from a target that answers "overloaded" ([#503](https://github.com/jjjermiah/opencode-plugboard/issues/503)). Anthropic's 529 (`provider_overloaded`) was returned to the client as the final error even when the next target was healthy. It now falls back like a rate limit or an outage, and three in a row open the target's circuit breaker. As before, an overload after output has started is never retried.
+
 ### Changed
 
 - The code on the client and API pages now comes from the examples that CI runs, not from text written by hand. Every example under `examples/` is used by a docs page: SDK and framework pages import their snippets, config-only apps import their config file, and the API pages show the curl examples. A check (`examples-index.ts --check`, also in `bun run validate`) fails when an example is in no page of the site or when a `<<<` import names a missing file or region.

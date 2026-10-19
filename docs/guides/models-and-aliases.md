@@ -52,7 +52,7 @@ Point an alias at a list. If the first target fails before it sends any output, 
 
 What happens:
 
-- A rate limit, quota error, provider outage or timeout moves the request on.
+- A rate limit, quota error, provider outage, overload or timeout moves the request on.
 - Once any text or tool call has reached the client, a failure is not retried. A partly streamed answer is never restarted.
 - A retried answer shows it:
 

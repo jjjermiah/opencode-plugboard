@@ -104,6 +104,15 @@ describe("withFallbacks", () => {
     expect(r.closed).toEqual([true, true])
   })
 
+  test("#503 a provider overload before output moves to the next target; after output it is never retried", async () => {
+    const overloaded = ev.error({ status: 503, kind: "server", code: "provider_overloaded" })
+    const r = await run([[overloaded], [ev.text("hi"), ev.finish()]])
+    expect(r.targets).toEqual(["a/x", "b/y"])
+    expect(r.served).toEqual([{ model: "b/y#low", fallbacks: 1, chain: true }])
+    const late = await run([[ev.text("par"), overloaded], [ev.text("never")]])
+    expect(late.targets).toEqual(["a/x"])
+  })
+
   test("a thrown error or an empty stream counts as a failure", async () => {
     const r = await run([new Error("boom"), [], [ev.text("ok"), ev.finish()]])
     expect(r.targets).toEqual(["a/x", "b/y", "c/z"])

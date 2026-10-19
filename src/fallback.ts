@@ -52,6 +52,7 @@ const RETRYABLE = new Set([
   "rate_limited",
   "quota_exceeded",
   "provider_unavailable",
+  "provider_overloaded",
   "provider_timeout",
   "provider_auth_failed",
   "model_run_failed",
@@ -99,11 +100,11 @@ export const isRetryable = (error: PlugError): boolean => error.code !== undefin
 export const FIRST_EVENT_DEADLINE = "first_event_deadline"
 
 /**
- * The failures that count against a target's breaker: what the provider did (rate limit, quota, unavailable, timeout, sign-in, a host
+ * The failures that count against a target's breaker: what the provider did (rate limit, quota, unavailable, overloaded, timeout, sign-in, a host
  * retry) and a missed first-event deadline. The rest of `RETRYABLE` still moves the chain on, but says nothing about the target: a
  * backend that throws, a prompt that could not start, a failed model run, an empty stream.
  */
-const COUNTED = new Set(["rate_limited", "quota_exceeded", "provider_unavailable", "provider_timeout", "provider_auth_failed", "provider_retry", FIRST_EVENT_DEADLINE])
+const COUNTED = new Set(["rate_limited", "quota_exceeded", "provider_unavailable", "provider_overloaded", "provider_timeout", "provider_auth_failed", "provider_retry", FIRST_EVENT_DEADLINE])
 
 /** The caller's events with a chain of fallbacks behind the request's model; see the file comment. */
 export function withFallbacks(inner: ModelCaller, deps: FallbackDeps): ModelCaller {
