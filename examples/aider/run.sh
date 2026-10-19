@@ -90,7 +90,8 @@ for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
   DIR="$(make_repo)"
   AIDER_HOME="$(mktemp -d)"
 
-  # No --edit-format: Aider picks the format for the model.
+  # No --edit-format: Aider picks the format for the model. The diff format's prompt names the host's platform, shell and date;
+  # the transcript writer replaces them (examples/_harness/normalise.ts).
   set +e
   OUT="$(cd "$DIR" && HOME="$AIDER_HOME" OPENAI_API_BASE="$PLUGBOARD_BASE_URL" OPENAI_API_KEY="$PLUGBOARD_KEY" uv run --isolated --project "$HERE" aider \
     --model "openai/$MODEL" --weak-model "openai/$MODEL" --yes-always --no-auto-commits --no-analytics \
