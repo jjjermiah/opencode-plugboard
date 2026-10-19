@@ -21,6 +21,7 @@ import { raceAbort } from "../abort.js"
 import { DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, isAppName, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { debugEnabled, log, logDebug, logError, logRequest, logWarn } from "../log.js"
+import type { Metrics } from "../metrics.js"
 import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
 import { requestSystem } from "./context.js"
@@ -62,6 +63,10 @@ export interface SessionCallerDeps {
   /** Test seams for the settle timers (#390): defaults are `SETTLE_MS` and `STOP_DRAIN_MS`. */
   readonly settleMs?: number
   readonly stopDrainMs?: number
+  /** The global `silenceMs`: how long a request may hear no event before the stored messages are read (#515). Absent: `SILENCE_MS`. */
+  readonly silenceMs?: number
+  /** The metrics to count a request settled from the host's stored messages because its terminal events never came (#515). Absent: not counted. */
+  readonly metrics?: () => Pick<Metrics, "settledFromTranscript">
   /** Called once for a run whose usage the host never reported (`reason` `disconnect`, see `settleMs`). Counted, never estimated. */
   readonly onUsageMissing?: (app: string) => void
   /** Called once for each remote image fetch that ended (metrics): outcome, body bytes and duration, never the URL. */
@@ -84,6 +89,13 @@ const SETTLE_MS = 2_000
 
 /** After the interrupt, how long the host may take to report the end before the stream closes with the usage counted so far. */
 const STOP_DRAIN_MS = 5_000
+
+/**
+ * How long a request may hear no event before its session's stored messages are read (#515). The host sends a delta for every piece of
+ * text, reasoning and tool input, so a model that is writing is never quiet this long; a model that thinks without streaming is, and the
+ * read then finds an unfinished message and the request keeps waiting. The cost of a short value is one more read, not a wrong answer.
+ */
+export const SILENCE_MS = 30_000
 
 /** Kept clear of the request deadline when a stop match is near it: the answer must finish before the route answers 504 (#390 review). */
 const STOP_DEADLINE_MARGIN_MS = 250
@@ -341,6 +353,39 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const kind = (context.signal.reason as { kind?: unknown } | undefined)?.kind
         return kind === "timeout" || kind === "cancelled"
       }
+      // The silence watch (#515): when the host's event stream goes quiet for `silenceMs`, the session's stored last assistant message is
+      // read. A finished one settles the request as the events would have; an unfinished one means the model is still working, so the
+      // watch waits another interval. Events arriving at any time put the watch off, and never race the read: a read that overlapped an
+      // event is dropped, so the live path is never overtaken by an older snapshot.
+      let silence: ReturnType<typeof setTimeout> | undefined
+      const watchSilence = (run: RequestCollector, id: string, since: number) => {
+        const interval = deps.silenceMs ?? SILENCE_MS
+        const arm = (delay: number) => {
+          silence = setTimeout(() => void check(), delay)
+          silence.unref?.()
+        }
+        const check = async () => {
+          if (run.terminal || context.signal.aborted) return
+          const quiet = Date.now() - Math.max(since, run.lastEventAt)
+          if (quiet < interval) return arm(interval - quiet)
+          const readAt = Date.now()
+          const silentMs = readAt - Math.max(since, run.lastEventAt)
+          try {
+            const answer = await port.lastAnswer(id)
+            if (run.terminal || context.signal.aborted) return
+            if (run.lastEventAt >= readAt) return arm(interval)
+            if (answer !== undefined && run.settleFromAnswer(answer)) {
+              logWarn("session.settled_from_transcript", { requestID, app, sessionID: id, silentMs, finish: answer.finish ?? "error" })
+              deps.metrics?.().settledFromTranscript(app)
+              return
+            }
+          } catch (error) {
+            logWarn("session.transcript_read_failed", { requestID, app, sessionID: id, error: describeError(error) })
+          }
+          arm(interval)
+        }
+        arm(interval)
+      }
       let stopFired = false
       const onAbort = () => {
         collector?.cancel()
@@ -550,6 +595,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           owned.push({ type: "session.execution.failed", error: { type: "prompt_failed", message: "Could not start the model session" } })
         })
 
+        watchSilence(owned, sessionID, Date.now())
         for await (const event of collector.events()) {
           if (firstEvent) {
             firstEvent = false
@@ -568,6 +614,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         context.stopAnswer?.removeEventListener("abort", onStopAnswer)
         clearTimeout(settle)
         clearTimeout(drain)
+        clearTimeout(silence)
         // A client that left mid-run gets its window (see `disconnectWindow`): the usage is recorded when the host reports it, later.
         // A finish already emitted ends the run for the caller: its usage is charged now, not again later (no double charge).
         const waiting =

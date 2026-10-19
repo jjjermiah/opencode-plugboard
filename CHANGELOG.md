@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- A request no longer waits out `requestTimeoutMs` when OpenCode's event stream stays connected but never delivers the end of the answer ([#515](https://github.com/jjjermiah/opencode-plugboard/issues/515)). Both terminal events could go missing, and then a request hung for the full 10 minutes and ended as a 504, while a streaming client saw a healthy open connection. A request that hears no event for `silenceMs` (new global option, default 30000) now reads the messages OpenCode stored for its session. A finished answer settles the request with its text, tool calls, finish reason and usage; a stream that already sent text gets only the rest, with no repeat. An unfinished answer means the model is still working, so the request keeps waiting and checks again. A request that keeps receiving events is never read. Each settled request is logged as `session.settled_from_transcript` and counted in `plugboard_settled_from_transcript_total{app}`. Also, text that a second model step writes after server tools is no longer cut by the length of the first step's text when its deltas are lost.
 
 ## [0.56.0] - 2026-10-19: Every Dial Reaches the Model
 

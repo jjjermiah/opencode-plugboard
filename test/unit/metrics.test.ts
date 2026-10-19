@@ -149,6 +149,18 @@ describe("#56 createMetrics: Prometheus text", () => {
     ])
   })
 
+  test("#515 a request settled from the host's stored messages is counted per app: plugboard_settled_from_transcript_total", async () => {
+    const metrics = createMetrics()
+    expect(samples(await metrics.render(snapshot), "plugboard_settled_from_transcript_total")).toEqual([])
+    metrics.settledFromTranscript("alpha")
+    metrics.settledFromTranscript("alpha")
+    metrics.settledFromTranscript("beta")
+    expect(samples(await metrics.render(snapshot), "plugboard_settled_from_transcript_total")).toEqual([
+      'plugboard_settled_from_transcript_total{app="alpha"} 2',
+      'plugboard_settled_from_transcript_total{app="beta"} 1',
+    ])
+  })
+
   test("#513 remote image fetches are counted by outcome, with bytes and a duration, and no label names a URL or host", async () => {
     const metrics = createMetrics()
     expect(samples(await metrics.render(snapshot), "plugboard_remote_image_fetches_total")).toEqual([])

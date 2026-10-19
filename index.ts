@@ -94,6 +94,8 @@ export default Plugin.define({
         affinity: createAffinity({ storage: createStoragePort(ctx) }),
         historyHidden: options.history.hidden,
         requestTimeoutMs: options.requestTimeoutMs,
+        ...(options.silenceMs === undefined ? {} : { silenceMs: options.silenceMs }),
+        ...(options.metrics ? { metrics: processMetrics } : {}),
         onUsageMissing: (app: string) => {
           if (options.metrics) processMetrics().usageMissing(app, "disconnect")
         },
