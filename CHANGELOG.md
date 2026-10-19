@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.55.0] - 2026-10-19: Long Names, Clean Tools
+
+**Full diff:** [v0.54.0...v0.55.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.54.0...v0.55.0)
+
 ### Added
 
 - `apps.<name>.hostedTools` is `"drop"` (the default) or `"refuse"` ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)). It decides what the Responses route does with a hosted tool (`web_search`, `file_search`, `code_interpreter`, `image_generation`, `mcp`) sent next to function tools: drop it and name it in `x-plugboard-dropped-tools`, or answer 400 `unsupported_parameter`.
@@ -29,6 +35,72 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Changed
 
 - Docs: every plugboard config snippet on the site has a second tab, Full config, with the whole `opencode.jsonc` around it, so a reader sees where the lines go. The tab adds a minimal `keys` and `models` when the snippet has none, marked with a comment. Picking a tab once picks it on every snippet and on later pages. A fence tagged `jsonc plugboard` (members of `options`) or `jsonc plugboard-options` (an `options` member) gets the tabs; the wrapper is `docs/.vitepress/full-config.ts`, and a tagged snippet that is not valid JSONC fails the docs build.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (5 commits)</summary>
+
+#### Fixes
+
+**fix(responses): long tool names, hosted-only tools, newest additional_tools, echo** ([`79836cc`](https://github.com/jjjermiah/opencode-plugboard/commit/79836cc5a6c7edc9e26368e7f8168b520041cb7c))
+
+Review items on #505 (Codex CLI tool shapes).
+
+- A flattened name over 64 characters (an MCP server name plus a long tool name) is cut to 55 characters and ends in "_" and 8 hex characters of a sha256 of (namespace, name). flatName is the one function used for the offer, tool_choice and the history, so the call goes back under the declared name: shortened names get a route like namespace and custom tools do. A bare function name over 64 characters is cut the same way.
+- Hosted tools are left out only when function tools come with them. With none (also with tool_choice required, which would have run with nothing to call), the request is refused with the 400 it got before #505. New per-app option hostedTools, "drop" (default) or "refuse"; the route passes it to the decoder.
+- A name declared in more than one additional_tools item takes the newest declaration, so a chain made with previous_response_id, which resends every turn's list, does not fail when a description changes. A name twice in one list, or in tools and an additional_tools item, is still a duplicate.
+- A freeform call the model made without its input argument goes back with an empty input and a debug line (responses.custom_input_missing, tool name only), not the JSON text of the arguments.
+- The echoed tools leave out dropped hosted tools and include the tools of additional_tools items, in the caller's shape (a namespace once, with the tools in force).
+
+The "required with every tool dropped" case of the review is covered by the hosted-only refusal: a request that drops every tool is now refused whatever tool_choice says.
+
+Validation: bun run validate --mutations --skip examples passes (lint, typecheck, tests, manifest, pack, docs, 223 of 223 mutations killed, 13 new or changed P498 entries). The langchain4j example cannot run here (no Java), so the examples step was run through the full validate and failed only on it. The codex-cli scripted run is regenerated (the echoed tools changed).
+
+Refs #498
+
+**fix(config): read the wrapping braces of a docs snippet without the const enum** ([`7e46c0a`](https://github.com/jjjermiah/opencode-plugboard/commit/7e46c0af66b82a74e281db40275b7aa9762f5d78))
+
+jsonc-parser's SyntaxKind is a const enum, which the repo's verbatimModuleSyntax typecheck rejects. docs/.vitepress/full-config.ts now finds the one wrapping `{ }` of a fragment with jsonc-parser's `visit` callbacks instead of scanner token kinds. Same behaviour; the 24 tests in test/unit/docs-full-config.test.ts pass unchanged.
+
+The test-count floor for the unit layer is ratcheted up for the new tests.
+
+Validation: bun run validate --skip examples, all 6 steps passed.
+
+#### Docs
+
+**docs(config): add a Full config tab to every plugboard config snippet** ([`6e17426`](https://github.com/jjjermiah/opencode-plugboard/commit/6e1742662fba230d7da57fa1e75379d55a7c36d1))
+
+A reader of a snippet like `"keys": { ... }` has to guess where it goes in opencode.jsonc. Each plugboard snippet on the site now has a second tab with the whole file around it.
+
+What changed:
+- docs/.vitepress/full-config.ts: a markdown-it plugin (config.ts, through `markdown.config`). A fence tagged `jsonc plugboard` (members of `options`, or the `options` object in braces) or `jsonc plugboard-options` (an `"options"` member, or the entry in braces) becomes a VitePress code group: Snippet as written, Full config with the schema, the pinned package (the latest release, same constant config.ts already has) and the fragment re-indented under plugins[0].options.
+- The wrapping is textual, so comments, layout, trailing commas and comma-separated members survive. jsonc-parser only reads the fragment to see what it sets, and an invalid fragment fails the docs build with page:line.
+- A fragment with no keys gets a minimal `keys` (named after the apps the fragment mentions in apps, limits.apps, budgets.apps or cache.apps, since an app with a policy needs its key; `my-app` otherwise), and one with no `models` gets `"models": "connected"`. Each added member carries `// added so the file works`. Chosen over line highlighting because the comment survives copy and says why the line is there.
+- docs/.vitepress/theme/config-tabs.ts: VitePress code groups do not sync. Picking Snippet or Full config switches every group on the page, on later pages, and after a reload (localStorage `plugboard-config-tab`).
+- 59 snippets tagged across the guides, configuration, remote access, the client pages and the 18 self-hosted pages. Not tagged: other apps' configs (Codex config.toml, Zed, Kilo Code, Gemini CLI, OpenCode `providers`), responses and error bodies, curl and SDK code, install.md (already a whole file) and the maintainer pages.
+- One doc fix needed for tagging: the hidden-sessions snippet in configuration.md had two members with no comma between them.
+- test/unit/docs-full-config.test.ts: 24 tests. Output parses with jsonc-parser, plugins[0].options holds the fragment's keys, for member lists, braces, comments, trailing commas, single-line and nested options, apps without keys, invalid input, and the plugin through VitePress's own renderer.
+
+Rejected: a vite transform on the page source (a markdown-it plugin keeps the code group markup VitePress already styles and tests); highlighting instead of the comment; one client script per group.
+
+Validation: bun test (new file 24 pass), bun run docs:build (no dead links), bun run validate --skip examples. Checked in headless Chrome: the tabs switch in light and dark, one choice applies to every group, survives a page change and a reload.
+
+**docs: join the unreleased fixed sections after merging main** ([`830d0cc`](https://github.com/jjjermiah/opencode-plugboard/commit/830d0cc731025b1588d62b93d5b022959e763f95))
+
+Main already had a Fixed section under Unreleased with the Codex bullet from the first pull request. Merging left two Fixed headings next to each other. This keeps one heading with this change's bullets first and that bullet last. No wording of either changed.
+
+Refs #498
+
+**docs: restore the unreleased section after the 0.54.0 merge** ([`3242273`](https://github.com/jjjermiah/opencode-plugboard/commit/324227343b496976cc391f2480796a6ae5c813ee))
+
+Main released 0.54.0 while this branch was open. The merge put this change's bullets into the 0.54.0 section.
+
+They are back under Unreleased, and the 0.54.0 section is as on main.
+
+Refs #498
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.54.0] - 2026-10-19: Codex, Out of the Box
 
@@ -9273,7 +9345,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.54.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.55.0...HEAD
+[0.55.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.52.0...v0.53.0
 [0.52.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...v0.52.0
