@@ -12,7 +12,21 @@
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <langchain4j.version>1.22.0</langchain4j.version>
+    <jackson.version>2.22.3</jackson.version>
   </properties>
+
+  <!-- LangChain4j 1.22.0 resolves Jackson 2.22.1, which has known advisories fixed in 2.22.3. Importing the BOM lifts every Jackson module together. -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
