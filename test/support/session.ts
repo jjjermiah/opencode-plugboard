@@ -6,7 +6,7 @@
  * Field names follow what `RequestCollector` reads (src/session/events.ts); when the host's event
  * shapes change, change them here once.
  */
-import type { DirectToolSchema, HistoryPort, Json, SessionPort } from "../../src/session/host.js"
+import type { DirectToolSchema, HistoryPort, Json, SessionPort, StoredAnswer } from "../../src/session/host.js"
 import type { OperatorRule } from "../../src/session/seeds.js"
 
 type CreateInput = Parameters<SessionPort["create"]>[0]
@@ -18,6 +18,8 @@ export class FakeSessionPort implements SessionPort {
   readonly prompted: PromptInput[] = []
   readonly interrupted: string[] = []
   readonly removed: string[] = []
+  /** The sessions whose stored last assistant message was read (`lastAnswer`), in order. */
+  readonly answerReads: string[] = []
   /** Skills and agents the fake app directory has: `skills.set(id, content)`, `agents.set(id, { system })`. */
   readonly skills = new Map<string, string>()
   readonly agents = new Map<string, { readonly system?: string }>()
@@ -31,6 +33,8 @@ export class FakeSessionPort implements SessionPort {
     prompt?: (input: PromptInput) => Promise<unknown>
     interrupt?: (sessionID: string) => Promise<void>
     remove?: (sessionID: string) => Promise<void>
+    /** What the host has stored as the session's last assistant message. Default: none. */
+    lastAnswer?: (sessionID: string) => Promise<StoredAnswer | undefined>
   } = {}
 
   async create(input: CreateInput): Promise<{ id: string }> {
@@ -52,6 +56,11 @@ export class FakeSessionPort implements SessionPort {
   async remove(sessionID: string): Promise<void> {
     this.removed.push(sessionID)
     if (this.script.remove) await this.script.remove(sessionID)
+  }
+
+  async lastAnswer(sessionID: string): Promise<StoredAnswer | undefined> {
+    this.answerReads.push(sessionID)
+    return this.script.lastAnswer ? this.script.lastAnswer(sessionID) : undefined
   }
 
   async skill(_directory: string, id: string): Promise<string | undefined> {

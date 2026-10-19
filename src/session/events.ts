@@ -20,7 +20,7 @@
 
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
 import { log, logError, logWarn } from "../log.js"
-import type { BusEvent } from "./host.js"
+import type { BusEvent, StoredAnswer } from "./host.js"
 import { StopScan } from "../stop.js"
 import { placeholderAliases, placeholderRewriter } from "../tool-placeholders.js"
 import { rememberReasoning } from "../reasoning-replay.js"
@@ -345,6 +345,8 @@ export class RequestCollector {
   private reportHook: (() => void) | undefined
   /** The host was stopped because the client left (a tool call or a step that asks for more): once. */
   private leftStopped = false
+  /** When the last bus event reached `push` (any type, also one the collector ignores), in ms since the epoch; 0 before the first. */
+  private heardAt = 0
 
   constructor(private readonly hooks: CollectorHooks) {
     this.reasoningNames = placeholderRewriter(placeholderAliases(hooks.toolNames ?? []))
@@ -387,6 +389,38 @@ export class RequestCollector {
     return this.queue
   }
 
+  /** When the host last sent any event for this request (0 before the first). A silent stream is told apart from a slow model by this (#515). */
+  get lastEventAt(): number {
+    return this.heardAt
+  }
+
+  /**
+   * Settle the request from the host's stored last assistant message, for a stream that stopped delivering its terminal events (#515).
+   * The message is replayed as the events the host would have sent: each text part as `session.text.ended` (the collector sends only
+   * the text its deltas did not carry, so a stream that already sent parts gets the rest and no repeat), each tool call as
+   * `session.tool.called` (a call already seen is skipped by id), then the step end or failure with its finish reason and tokens. The
+   * collector's own rules then decide the finish, so the result is the one the event path gives.
+   *
+   * Returns true when the request is terminal. False means the answer is not final yet: the step still runs, or it ended with server
+   * tools only, so the host starts another step. Nothing past the text and calls is replayed then, so asking again counts nothing twice.
+   */
+  settleFromAnswer(answer: StoredAnswer): boolean {
+    if (this.finished) return true
+    if (!answer.completed || (answer.error === undefined && answer.finish === undefined)) return false
+    let ordinal = 0
+    for (const part of answer.parts) {
+      if (part.type === "text") this.push({ type: "session.text.ended", ordinal: ordinal++, text: part.text })
+      else this.push({ type: "session.tool.called", id: part.id, name: part.name, input: part.input })
+    }
+    if (answer.error !== undefined) this.push({ type: "session.step.failed", error: answer.error, tokens: answer.tokens })
+    else {
+      // The host runs the next step by itself (the event path does not finish on this step end either).
+      if (this.calls.size === 0 && this.stepServerCalls > 0 && (toFinish(answer.finish) === "stop" || toFinish(answer.finish) === "tool-calls")) return false
+      this.push({ type: "session.step.ended", finish: answer.finish, tokens: answer.tokens })
+    }
+    return this.finished
+  }
+
   /** Calls `done` once, when the host reports the end of a step or of the execution: the usage of the run is final from then on. */
   whenReported(done: () => void): void {
     this.reportHook = done
@@ -410,6 +444,7 @@ export class RequestCollector {
    * structured fields (`tokens`, `error`) are cast to the shapes in `RawUsage` / `RawError`.
    */
   push(item: BusEvent): void {
+    this.heardAt = Date.now()
     switch (item.type) {
       case "session.text.delta": {
         if (this.finished) return
@@ -517,6 +552,8 @@ export class RequestCollector {
         return
       case "session.step.ended": {
         this.reported()
+        // Text and reasoning ordinals count from 0 in each assistant message, so the next step starts its counts again.
+        this.emittedText.clear()
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         // After a match the step is the last one: no server tools are run and no next step starts (#390 review).
         // A plain end leaves the host to finish the run itself; a pending client tool call needs the interrupt.

@@ -699,6 +699,23 @@ describe("#391 fallbackAfterMs", () => {
   })
 })
 
+describe("#515 silenceMs", () => {
+  test("absent by default (the session caller uses 30 s); set, it is the global silence before the stored messages are read", () => {
+    expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("silenceMs")
+    expect(parseOptions({ models: ["a/*"], silenceMs: 5000 }).silenceMs).toBe(5000)
+    expect(parseOptions({ models: ["a/*"], silenceMs: 2 ** 31 - 1 }).silenceMs).toBe(2 ** 31 - 1)
+  })
+
+  test.each([
+    ["zero", 0],
+    ["a fraction", 1.5],
+    ["a string", "500"],
+    ["past the timer limit", 2 ** 31],
+  ])("refused at load: %s", (_name, silenceMs) => {
+    expect(() => parseOptions({ models: ["a/*"], silenceMs })).toThrow(/`silenceMs` must be an integer between 1/)
+  })
+})
+
 describe("fallbackCooldown", () => {
   test("absent by default, which means 3 failures, a 60 s cooldown and a 60 s window", () => {
     expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("fallbackCooldown")

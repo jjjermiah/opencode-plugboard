@@ -71,6 +71,24 @@ export interface SessionPort {
    * `serverTools` (#194), never at setup.
    */
   agentRules(directory: string, agent: string | undefined): Promise<ReadonlyArray<OperatorRule> | undefined>
+  /**
+   * The last assistant message the host stored for the session (`ctx.session.context`), or undefined when there is none. Read only when a
+   * request has heard no event for a while (#515): the stored message is what the host's own events were built from.
+   */
+  lastAnswer(sessionID: string): Promise<StoredAnswer | undefined>
+}
+
+/** The last assistant message of a session, as the host stored it. Parts keep their order. */
+export interface StoredAnswer {
+  /** The host set `time.completed`: the step is over, whatever the way it ended. */
+  readonly completed: boolean
+  /** The step's finish reason (`stop`, `tool-calls`, `length`, ...), absent while it runs or when it failed. */
+  readonly finish?: string
+  /** The step's failure (the host's `SessionError`), when it failed. */
+  readonly error?: Readonly<Record<string, unknown>>
+  /** The host's token record of the step (`RawUsage` in `events.ts`). */
+  readonly tokens?: Readonly<Record<string, unknown>>
+  readonly parts: ReadonlyArray<{ readonly type: "text"; readonly text: string } | { readonly type: "tool"; readonly id: string; readonly name: string; readonly input: Json }>
 }
 
 /** A direct tool as a request session offers it: its id (the name the model calls it by), description and JSON schema. */
@@ -170,8 +188,37 @@ export function createSessionPort(ctx: HostContext): SessionPort {
       const agent = id === undefined ? listed.data.find((item) => item.mode !== "subagent" && !item.hidden) : listed.data.find((item) => item.id === id)
       return agent?.permissions.map((rule) => ({ action: rule.action, resource: rule.resource, effect: rule.effect }))
     },
+    lastAnswer: async (sessionID) => toStoredAnswer(await run(ctx.session.context({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["context"]>[0]))),
     directTools: () => run(ctx.tool.list()).then((tools) => tools.filter(isDirect).map((tool) => tool.id)),
     directToolSchemas: () => run(ctx.tool.list()).then((tools) => tools.filter(isDirect).map((tool) => ({ id: tool.id, description: tool.description, input: modelSchema(tool.input) }))),
+  }
+}
+
+/**
+ * The last assistant message of the host's stored messages, in the neutral shape. Read defensively like the bus events: a part that
+ * does not have the expected fields is skipped, and a tool whose input is still streaming (a string) is not a call yet.
+ */
+export function toStoredAnswer(messages: ReadonlyArray<unknown>): StoredAnswer | undefined {
+  const last = [...messages].reverse().find((message) => record(message)?.type === "assistant")
+  const message = record(last)
+  if (message === undefined) return undefined
+  const parts: Array<StoredAnswer["parts"][number]> = []
+  for (const raw of Array.isArray(message.content) ? message.content : []) {
+    const part = record(raw)
+    if (part?.type === "text" && typeof part.text === "string") parts.push({ type: "text", text: part.text })
+    else if (part?.type === "tool" && typeof part.id === "string" && typeof part.name === "string") {
+      const input = record(record(part.state)?.input)
+      if (input !== undefined) parts.push({ type: "tool", id: part.id, name: part.name, input: input as Json })
+    }
+  }
+  const error = record(message.error)
+  const tokens = record(message.tokens)
+  return {
+    completed: record(message.time)?.completed !== undefined,
+    ...(typeof message.finish === "string" ? { finish: message.finish } : {}),
+    ...(error === undefined ? {} : { error }),
+    ...(tokens === undefined ? {} : { tokens }),
+    parts,
   }
 }
 

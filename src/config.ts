@@ -60,6 +60,12 @@ export interface PlugboardOptions {
   readonly maxN: number
   readonly requestTimeoutMs: number
   /**
+   * Option `silenceMs` (#515): how long a request may hear no event from OpenCode before plugboard reads the session's stored messages. A
+   * finished answer there settles the request; an unfinished one means the model is still working, and the request waits on. Absent (the
+   * default): 30000. Global only.
+   */
+  readonly silenceMs?: number
+  /**
    * Fetch http(s) image URLs server-side. Off by default: it is an SSRF vector into the host's network.
    * `true` fetches public addresses only (loopback, private, link-local, CGNAT and ULA ranges are refused);
    * `{ allow }` is on too, and lists the hosts (`name`, `*.suffix`), addresses or CIDR ranges that may be
@@ -385,6 +391,7 @@ const KNOWN = new Set([
   "maxTools",
   "maxN",
   "requestTimeoutMs",
+  "silenceMs",
   "fallbackAfterMs",
   "fallbackCooldown",
   "remoteImages",
@@ -1215,6 +1222,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const fallbackAfterMs = input.fallbackAfterMs === undefined ? undefined : positiveInt(input.fallbackAfterMs, "fallbackAfterMs", 0, MAX_TIMER_MS)
   const fallbackCooldown = parseFallbackCooldown(input.fallbackCooldown)
   const requestTimeoutMs = positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS)
+  const silenceMs = input.silenceMs === undefined ? undefined : positiveInt(input.silenceMs, "silenceMs", 0, MAX_TIMER_MS)
   const agents = parseAgents(input.agents, models as string[])
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
@@ -1290,6 +1298,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     maxTools,
     maxN,
     requestTimeoutMs,
+    ...(silenceMs === undefined ? {} : { silenceMs }),
     remoteImages,
     history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }), ...(hidden === undefined ? {} : { hidden }) },
     dropUnsupportedParams: input.dropUnsupportedParams !== false,

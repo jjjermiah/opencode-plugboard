@@ -78,6 +78,8 @@ export interface Metrics {
    * sequence ended the answer, #390) or `disconnect` (the client left). Counted, not estimated.
    */
   usageMissing(app: string, reason: "stop" | "disconnect"): void
+  /** A request whose terminal events never came was settled from the host's stored messages (`silenceMs`, #515). */
+  settledFromTranscript(app: string): void
   /** One remote image fetch ended: its outcome, the body bytes read (0 when none), and how long it took in milliseconds. Never the URL or host. */
   imageFetch(input: { readonly outcome: ImageFetchOutcome; readonly bytes: number; readonly ms: number }): void
   /** A call was refused with 429 by a concurrency cap (`concurrency`), a requests-per-minute limit (`rate`) or a budget (`budget`). */
@@ -124,6 +126,12 @@ export function createMetrics(): Metrics {
     name: "plugboard_usage_missing_total",
     help: "Runs that closed without the host's usage (the step did not finish within settleMs), by app and reason (stop or disconnect).",
     labelNames: ["app", "reason"],
+    registers: [registry],
+  })
+  const settledFromTranscript = new Counter({
+    name: "plugboard_settled_from_transcript_total",
+    help: "Requests settled from the host's stored messages because OpenCode's event stream never delivered the end of the answer (option silenceMs), by app.",
+    labelNames: ["app"],
     registers: [registry],
   })
   const fallbacks = new Counter({
@@ -205,6 +213,7 @@ export function createMetrics(): Metrics {
     fallback: (app) => count(fallbacks, { app }),
     cooldown: (app, event) => count(cooldowns, { app, event }),
     usageMissing: (app, reason) => count(usageMissing, { app, reason }),
+    settledFromTranscript: (app) => count(settledFromTranscript, { app }),
     limited: (app, reason) => count(limited, { app, reason }),
     cache: (app, result) => count(cache, { app, result }),
     imageFetch({ outcome, bytes, ms }) {
