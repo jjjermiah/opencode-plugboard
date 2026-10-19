@@ -27,9 +27,15 @@ Then `gemini -m fast`. For headless runs add `--skip-trust` (or set `GEMINI_CLI_
 
 <<< @/../examples/gemini-cli/stream.ts#snippet
 
+## Token counts
+
+A prompt that refers to an image or a PDF with `@name` makes the CLI call `:countTokens` before it sends the prompt, to check that the request fits the model's context window. Plugboard answers with an [estimate](../gemini.md). A prompt with text only calls nothing: the CLI estimates it itself.
+
+<<< @/../examples/gemini-cli/count.ts#snippet
+
 ## What works
 
-Chat, streaming and the CLI's own tools, which it runs itself.
+Chat, streaming, token counts and the CLI's own tools, which it runs itself.
 
 ## Limits
 

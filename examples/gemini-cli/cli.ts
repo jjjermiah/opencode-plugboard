@@ -2,7 +2,7 @@
  * Runs the Gemini CLI headless against plugboard: the API key and base URL come from the environment, the auth type from a
  * settings file in a home made for each run, so nothing is written to the user's ~/.gemini and no login or browser is used.
  */
-import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -36,6 +36,11 @@ export function cliHome(): string {
   )
   writeFileSync(SYSTEM_SETTINGS, "{}")
   return HOME
+}
+
+/** Copies a file into the CLI's workspace, so a prompt can refer to it as `@<name>`. */
+export function stageFile(source: string, name: string): void {
+  copyFileSync(source, join(WORKSPACE, name))
 }
 
 /** The CLI's environment: the caller's, minus every GEMINI_CLI_* override, with the run's home and an empty system settings file. */

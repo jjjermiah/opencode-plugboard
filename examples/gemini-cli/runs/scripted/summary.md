@@ -19,6 +19,7 @@ Verdict: **pass** · @google/gemini-cli 0.64.0 on bun 1 · models: fast, anthrop
 | S6 | anthropic/claude-haiku-4-5 | yes | n/a |  |
 | S6 | openai/gpt-5.6-luna#low | yes | n/a |  |
 | S7 | - | yes | n/a |  |
+| S10 | fast | yes | pass | 2/2 |
 | E1 | fast | no | n/a |  |
 | E2 | nope | no | n/a |  |
 

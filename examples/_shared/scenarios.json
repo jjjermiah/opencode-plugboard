@@ -135,6 +135,19 @@
       ]
     },
     {
+      "id": "S10",
+      "name": "token count before a request",
+      "required": true,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": "Reply with exactly: pong",
+      "observes": ["total_tokens", "total_tokens_positive"],
+      "checks": [
+        { "name": "count is a number", "path": "total_tokens", "number": true },
+        { "name": "count is above zero", "path": "total_tokens_positive", "equals": true }
+      ]
+    },
+    {
       "id": "E1",
       "name": "wrong key",
       "required": false,
