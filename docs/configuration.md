@@ -254,11 +254,11 @@ Each entry is listed in `/v1/models` as `agent/review`. A request for it runs a 
 **Agents never run a tool on the server in this release.** The permission model, for an agent entry and for any model request:
 
 - Agents never run server tools. Every OpenCode tool is denied for the session, so an agent answers with its configured persona and model and nothing more. Running tools on the server is a separate decision, tracked for trusted tools in [#82](https://github.com/jjjermiah/opencode-plugboard/issues/82).
-- Every OpenCode tool stays denied, whatever the agent's own rules allow. Each session is created with `deny *`, then `allow plugboard_seed_*`. OpenCode merges the agent's rules first and the session's last, and the last matching rule wins, so the session's deny holds over an agent that allows everything. The evidence is in [docs/architecture.md](architecture.md#skills-and-agents-in-the-context-hook).
+- Every OpenCode tool stays denied, whatever the agent's own rules allow. Each session is created with `deny *`, then `allow plugboard_seed_*`. OpenCode merges the agent's rules first and the session's last, and the last matching rule wins, so the session's deny holds over an agent that allows everything. The details are in [docs/architecture.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md#skills-and-agents-in-the-context-hook).
 - Caller tools go back to the caller unexecuted, as for any model. Caller messages replace the history. The seed tools only record the call, and the turn ends.
 - Persistent "always" approvals in OpenCode are not consulted for these tools, because the session's deny is checked before them.
 
-Both kinds appear in `/v1/models` with `plugboard.skill` or `plugboard.agent` set. Their answers are never cached (see [Response cache](#response-cache)). Architecture: [docs/architecture.md](architecture.md#skills-and-agents-in-the-context-hook).
+Both kinds appear in `/v1/models` with `plugboard.skill` or `plugboard.agent` set. Their answers are never cached (see [Response cache](#response-cache)). Architecture: [docs/architecture.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md#skills-and-agents-in-the-context-hook).
 
 ## Apps and keys
 
