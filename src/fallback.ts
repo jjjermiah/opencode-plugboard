@@ -12,11 +12,17 @@
  * target is tried; the last target is not bounded by it. An attempt with a target after it is also not made to wait
  * out a host retry: the host's `session.retry.scheduled` before any output fails it at once (`provider_retry`, #391).
  *
+ * Each target also has a circuit breaker (option `fallbackCooldown`, `src/breaker.ts`): a target that failed `failureThreshold` times
+ * in a row is skipped for `cooldownMs`, so the chain goes straight to the next target. After the cooldown one request is let
+ * through; its answer closes the breaker. When every target is cooling down the first one is tried anyway, so a request never fails
+ * without an attempt. A target that is skipped counts in `x-plugboard-fallbacks` (the header is the answering target's position).
+ *
  * A call whose model is not an alias with fallbacks goes straight to the wrapped caller.
  */
 
 import type { ServerResponse } from "node:http"
-import type { PlugboardOptions } from "./config.js"
+import { createBreaker, type Breaker } from "./breaker.js"
+import { DEFAULT_FALLBACK_COOLDOWN, type FallbackCooldown, type PlugboardOptions } from "./config.js"
 import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest, ServedModel } from "./contract.js"
 import { RequestAborted } from "./http.js"
 import { debugEnabled, log, logDebug, logWarn } from "./log.js"
@@ -29,6 +35,10 @@ export interface FallbackDeps {
   loadCatalog(): Promise<ReadonlyArray<CatalogModel>>
   /** A call is about to be retried on the next target (metrics). */
   readonly onFallback?: (app: string) => void
+  /** The breaker of the targets; the process's (`processBreaker`) in the plugin. Without one the wrapper keeps a breaker of its own. */
+  readonly breaker?: Breaker
+  /** A target's breaker opened or closed, or a request skipped a target that is cooling down (metrics). */
+  readonly onCooldown?: (event: "open" | "close" | "skip", app: string) => void
 }
 
 /**
@@ -89,13 +99,17 @@ export const FIRST_EVENT_DEADLINE = "first_event_deadline"
 
 /** The caller's events with a chain of fallbacks behind the request's model; see the file comment. */
 export function withFallbacks(inner: ModelCaller, deps: FallbackDeps): ModelCaller {
+  const breaker = deps.breaker ?? createBreaker()
   return {
     stream(request, context) {
       if (!Object.hasOwn(deps.options.fallbacks, request.model)) return reportPlain(inner.stream(request, context), context, request.ref)
-      return chain(inner, deps, request, context)
+      return chain(inner, deps, breaker, request, context)
     },
   }
 }
+
+/** The cooldown settings in force, or `false` when option `fallbackCooldown` turns the breaker off. */
+export const cooldownOf = (options: PlugboardOptions): FallbackCooldown | false => options.fallbackCooldown ?? DEFAULT_FALLBACK_COOLDOWN
 
 /**
  * A call that is not a list alias: no retry, but the answer still names its model (`x-plugboard-model`, #279).
@@ -112,18 +126,56 @@ async function* reportPlain(events: AsyncIterable<PlugEvent>, context: CallConte
   }
 }
 
-async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
-  let rest: ModelRef[] | undefined
-  let ref = request.ref
-  let attempt = 0
+async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, request: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
+  const cooldown = cooldownOf(deps.options)
+  // The targets in order: the request's own, then the fallbacks that are allowed and enabled.
+  const targets = [request.ref, ...(await resolveRest(deps, request, context.app))]
+  const name = (index: number): string => refToString(targets[index]!)
+
+  /** The first target from `from` on that is not cooling down, claiming its slot; the targets skipped on the way are logged. */
+  const select = (from: number): number | undefined => {
+    for (let index = from; index < targets.length; index++) {
+      if (!cooldown || breaker.claim(name(index), cooldown) !== "skip") return index
+      const until = breaker.until(name(index))
+      log("fallback.cooldown.skip", { app: context.app, target: name(index), ...(until === undefined ? {} : { until: new Date(until).toISOString() }) })
+      deps.onCooldown?.("skip", context.app)
+    }
+    return undefined
+  }
+  /** Whether a target after `index` would run now. Takes no slot. */
+  const hasNext = (index: number): boolean => targets.some((_, at) => at > index && (!cooldown || breaker.peek(name(at), cooldown)))
+  const note = (event: "opened" | "reopened" | "closed" | undefined, model: string): void => {
+    if (event === undefined) return
+    const until = breaker.until(model)
+    if (event === "closed") log("fallback.cooldown.close", { app: context.app, target: model })
+    else
+      logWarn("fallback.cooldown.open", {
+        app: context.app,
+        target: model,
+        reopened: event === "reopened",
+        cooldownMs: cooldown === false ? undefined : cooldown.cooldownMs,
+        ...(until === undefined ? {} : { until: new Date(until).toISOString() }),
+      })
+    deps.onCooldown?.(event === "closed" ? "close" : "open", context.app)
+  }
+
+  // Every target cooling down: the first one is tried anyway, so the request always gets an attempt.
+  let index = select(0)
+  if (index === undefined) {
+    logWarn("fallback.cooldown.all_open", { app: context.app, targets: targets.length })
+    index = 0
+  }
+  let attempts = 0
   for (;;) {
+    attempts++
+    const ref = targets[index]!
     // The history id of this attempt: handed on only if the attempt is the one that answers (or the last).
     let recorded: { id: string; directory?: string } | undefined
-    const next = attempt === 0 ? request : retarget(deps.options, request, ref)
+    const next = index === 0 ? request : retarget(deps.options, request, ref)
     // Whether a target follows this attempt. With a first-event deadline, an attempt that has one is aborted when the
-    // deadline passes; the last target is not. A host retry before any output also fails it at once (#391).
-    rest ??= await resolveRest(deps, request, context.app)
-    const following = rest.length > attempt
+    // deadline passes; the last target is not. A host retry before any output also fails it at once (#391). A target
+    // that is cooling down does not follow: the attempt is then the last one that would run.
+    const following = hasNext(index)
     const deadline = deps.options.fallbackAfterMs ?? 0
     const bounded = deadline > 0 && following
     const deadlineAbort = bounded ? new AbortController() : undefined
@@ -156,18 +208,24 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     else if (first!.value.type === "error" && isRetryable(first!.value.error)) reason = first!.value.error.code
     if (context.signal.aborted) reason = undefined
 
+    // The target's breaker: a failure counts, an answer closes it, and any other end (the client left, a client error) only gives back the probe slot.
+    if (cooldown) {
+      const model = refToString(ref)
+      if (reason !== undefined) note(breaker.failure(model, cooldown), model)
+      else if (!thrown && !first!.done && first!.value.type !== "error") note(breaker.success(model), model)
+      else breaker.release(model)
+    }
+
     if (reason !== undefined) {
-      rest ??= await resolveRest(deps, request, context.app)
-      const target = rest[attempt]
-      if (target) {
+      const to = select(index + 1)
+      if (to !== undefined) {
         if (!thrown || timedOut) await close(iterator)
-        log("model.fallback", { app: context.app, from: refToString(ref), to: refToString(target), reason, attempt: attempt + 1 })
+        log("model.fallback", { app: context.app, from: refToString(ref), to: name(to), reason, attempt: attempts })
         deps.onFallback?.(context.app)
-        ref = target
-        attempt++
+        index = to
         continue
       }
-      logWarn("model.fallback_exhausted", { app: context.app, attempts: attempt + 1, reason })
+      logWarn("model.fallback_exhausted", { app: context.app, attempts, reason })
     }
 
     // Answered, ran out of targets, or the request ended: this attempt's outcome is the response.
@@ -175,7 +233,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, request: PlugReque
     if (thrown) throw thrown.error
     if (first!.done) return
     // An error is not an answer: a call that fails (non-retryable, or on its last target) reports no served model.
-    if (reason === undefined && first!.value.type !== "error") context.onServed?.({ model: refToString(ref), fallbacks: attempt, chain: true })
+    if (reason === undefined && first!.value.type !== "error") context.onServed?.({ model: refToString(ref), fallbacks: index, chain: true })
     try {
       yield first!.value
       for (let step = await iterator.next(); !step.done; step = await iterator.next()) yield step.value

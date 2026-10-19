@@ -342,6 +342,11 @@ export function buildStatus(input: {
     sessionGuards: runtime.guards,
     models: catalog ? { catalog: catalog.length, available: listAvailableModels(options, catalog, app).length } : { error: "catalog_unavailable" },
     metrics: options.metrics,
+    // The circuit breaker of list aliases (src/breaker.ts): the targets being skipped now, and until when.
+    fallbackCooldown: {
+      enabled: options.fallbackCooldown !== false,
+      cooling: (runtime.cooldowns ?? []).map((target) => ({ model: target.model, state: target.state, failures: target.failures, until: new Date(target.until).toISOString() })),
+    },
     // The plugin options error the last Location to load the plugin hit (#159); absent when options parse.
     ...(runtime.configError ? { configError: { message: runtime.configError.message, at: new Date(runtime.configError.at).toISOString() } } : {}),
   }

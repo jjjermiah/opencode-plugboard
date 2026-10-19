@@ -667,3 +667,32 @@ describe("#391 fallbackAfterMs", () => {
     expect(parseOptions({ ...base, fallbackAfterMs: 1000, apps: { bot: { requestTimeoutMs: 5000 } } }).fallbackAfterMs).toBe(1000)
   })
 })
+
+describe("fallbackCooldown", () => {
+  test("absent by default, which means 3 failures, a 60 s cooldown and a 60 s window", () => {
+    expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("fallbackCooldown")
+  })
+
+  test("an object sets the fields it names; the rest keep their defaults", () => {
+    expect(parseOptions({ models: ["a/*"], fallbackCooldown: {} }).fallbackCooldown).toEqual({ failureThreshold: 3, cooldownMs: 60_000, windowMs: 60_000 })
+    expect(parseOptions({ models: ["a/*"], fallbackCooldown: { failureThreshold: 5, cooldownMs: 30_000 } }).fallbackCooldown).toEqual({ failureThreshold: 5, cooldownMs: 30_000, windowMs: 60_000 })
+    expect(parseOptions({ models: ["a/*"], fallbackCooldown: { windowMs: 10_000 } }).fallbackCooldown).toMatchObject({ windowMs: 10_000 })
+  })
+
+  test("false turns the breaker off", () => {
+    expect(parseOptions({ models: ["a/*"], fallbackCooldown: false }).fallbackCooldown).toBe(false)
+  })
+
+  test.each([
+    ["true", true, /`fallbackCooldown` must be `false` or an object/],
+    ["a number", 3, /`fallbackCooldown` must be `false` or an object/],
+    ["an array", [], /`fallbackCooldown` must be `false` or an object/],
+    ["an unknown field", { cooldown: 1 }, /Unknown plugboard option `fallbackCooldown.cooldown`/],
+    ["a zero threshold", { failureThreshold: 0 }, /`fallbackCooldown.failureThreshold` must be an integer between 1/],
+    ["a fractional cooldown", { cooldownMs: 1.5 }, /`fallbackCooldown.cooldownMs`/],
+    ["a string window", { windowMs: "60" }, /`fallbackCooldown.windowMs`/],
+    ["a cooldown past the timer limit", { cooldownMs: 2 ** 31 }, /`fallbackCooldown.cooldownMs`/],
+  ])("%s is refused", (_name, value, message) => {
+    expect(() => parseOptions({ models: ["a/*"], fallbackCooldown: value })).toThrow(message)
+  })
+})
