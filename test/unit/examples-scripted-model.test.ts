@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
-import { answer } from "../../examples/_harness/scripted-model.js"
+import { answer, PR_REVIEW } from "../../examples/_harness/scripted-model.js"
 import { ev, plugRequest } from "../support/fixtures.js"
 import type { PlugEvent, PlugRequest, PlugTool } from "../../src/contract.js"
 
@@ -63,6 +63,23 @@ describe("scripted model DSPy answers", () => {
   })
 })
 
+describe("scripted model PR-Agent review (examples/pr-agent)", () => {
+  const review = (diff: string): PlugRequest => plugRequest({ system: ["You are PR-Reviewer"], messages: [user(`--PR Info--\n\nTitle: 'x'\n\nThe PR code diff:\n======\n${diff}\n======`)] })
+
+  test("a review prompt gets the YAML review, with the finding the runner looks for", () => {
+    const text = textOf(answer(review("+print('hi')")))
+    expect(text).toContain("review:\n")
+    expect(text).toContain(PR_REVIEW.header)
+    expect(text).toContain(PR_REVIEW.content)
+    expect(answer(review("+print('hi')")).at(-1)).toMatchObject({ type: "finish", reason: "stop" })
+  })
+
+  test("a prompt with only one of the two PR-Agent markers gets the scripted error", () => {
+    expect(answer(plugRequest({ messages: [user("--PR Info--\nsomething")] })).some((event) => event.type === "error")).toBe(true)
+    expect(answer(plugRequest({ messages: [user("The PR code diff:\nsomething")] })).some((event) => event.type === "error")).toBe(true)
+  })
+})
+
 describe("scripted model tool choices", () => {
   test("required with one fillable tool forces it with the meal", () => {
     const events = answer(plugRequest({ messages: [user(prompt("S6"))], tools: [MEAL_TOOL], toolChoice: "required" }))
@@ -97,9 +114,9 @@ describe("scripted model tool choices", () => {
   })
 })
 
-describe("scripted model Aider file edit (S8)", () => {
+describe("scripted model Aider file edit (S10)", () => {
   const fence = "```"
-  const edit = (system: string): PlugRequest => plugRequest({ system: [system], messages: [user(prompt("S8"))] })
+  const edit = (system: string): PlugRequest => plugRequest({ system: [system], messages: [user(prompt("S10"))] })
 
   test("a prompt that names the whole-file listing gets the whole file", () => {
     const text = textOf(answer(edit("You MUST use this *file listing* format")))

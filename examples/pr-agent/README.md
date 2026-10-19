@@ -1,6 +1,6 @@
 # PR-Agent with plugboard
 
-Points PR-Agent's OpenAI-like provider at plugboard, for `/review` and `/describe`. Full notes are in [docs/self-hosted/pr-agent.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted/pr-agent.md). Docs-verified, not run.
+Points PR-Agent's OpenAI-like provider at plugboard and runs `/review` on a local branch. Full notes are in [docs/self-hosted/pr-agent.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/self-hosted/pr-agent.md).
 
 ## 1. Plugboard
 
@@ -30,4 +30,20 @@ Run PR-Agent the way the upstream docs describe (GitHub Action, webhook or CLI) 
 curl -s http://192.0.2.10:4010/v1/models -H "Authorization: Bearer <the pr-agent app key>"
 ```
 
-Then run `/describe` on a small test pull request before `/review`.
+Then review a local branch with the `local` git provider. In a clean repository with the branch checked out and `main` as the target:
+
+```sh
+CONFIG__GIT_PROVIDER=local python -m pr_agent.cli --pr_url main review
+```
+
+The review is in `review.md`.
+
+## Scripted run
+
+`run.py` does the same in a throwaway repository against a scripted model, with the PR-Agent version pinned in `pyproject.toml` and `uv.lock`:
+
+```sh
+bun examples/_harness/run.ts pr-agent --target scripted
+```
+
+CI runs it and fails on a diff in `runs/scripted`.

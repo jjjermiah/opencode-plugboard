@@ -1,0 +1,8 @@
+[project]
+name = "plugboard-example-pr-agent"
+version = "0.1.0"
+description = "PR-Agent /review of a local branch against plugboard. The runner calls the pinned pr-agent with the local git provider in a throwaway git repo."
+requires-python = ">=3.12,<3.14"
+# Exact pin: the PR-Agent release the scripted run checks (litellm 1.105.0 comes with it). The local git provider needs no
+# extra: the hosted-provider SDKs (github, gitlab, ...) are optional extras of pr-agent.
+dependencies = ["pr-agent==0.48.0"]

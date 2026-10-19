@@ -7,7 +7,7 @@
 #
 # Aider is a terminal tool that edits files, so it is a scripted check, not a harness client: it sends one message in a
 # throwaway git repo and reads the result. It cannot see the wire finish_reason or usage, so S1 checks "answer contains pong".
-# S8 asks for a file edit in the edit format Aider picks for the model (`whole` for fast and gpt, `diff` for claude) and
+# S10 asks for a file edit in the edit format Aider picks for the model (`whole` for fast and gpt, `diff` for claude) and
 # reads the file back. The captured transcripts still hold the wire fields.
 set -euo pipefail
 
@@ -38,7 +38,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 VERSION="$(uv run --isolated --project "$HERE" python -c 'import importlib.metadata as m; print(m.version("aider-chat"))')"
 printf '{"kind":"client","name":"aider-chat","version":"%s","runtime":{"name":"bash","version":"%s"}}\n' "$VERSION" "${BASH_VERSINFO[0]}"
-printf '{"kind":"plan","scenarios":["S1","S8"]}\n'
+printf '{"kind":"plan","scenarios":["S1","S10"]}\n'
 
 # A throwaway git repo with one committed file, `hello.py`. Prints its path.
 make_repo() {
@@ -85,7 +85,7 @@ done
 
 for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
   curl -fsS -X POST "$PLUGBOARD_CAPTURE_URL/__mark" -H 'content-type: application/json' \
-    -d "{\"scenario\":\"S8\",\"model\":\"$MODEL\"}" -o /dev/null
+    -d "{\"scenario\":\"S10\",\"model\":\"$MODEL\"}" -o /dev/null
 
   DIR="$(make_repo)"
   AIDER_HOME="$(mktemp -d)"
@@ -106,12 +106,12 @@ for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
   case "$TEXT" in *'print("hi")'*) KEPT=true ;; esac
   if [ "$RC" -ne 0 ]; then
     echo "$OUT" | tail -20 >&2
-    printf '{"kind":"result","scenario":"S8","model":"%s","status":"fail","checks":[],"error":"aider exited %s","note":null}\n' "$MODEL" "$RC"
+    printf '{"kind":"result","scenario":"S10","model":"%s","status":"fail","checks":[],"error":"aider exited %s","note":null}\n' "$MODEL" "$RC"
   elif [ "$NEW" = true ] && [ "$KEPT" = false ]; then
-    printf '{"kind":"result","scenario":"S8","model":"%s","status":"pass","checks":[{"name":"file has the new line","ok":true},{"name":"old line is gone","ok":true}],"error":null,"note":null}\n' "$MODEL"
+    printf '{"kind":"result","scenario":"S10","model":"%s","status":"pass","checks":[{"name":"file has the new line","ok":true},{"name":"old line is gone","ok":true}],"error":null,"note":null}\n' "$MODEL"
   else
     echo "$OUT" | tail -20 >&2
-    printf '{"kind":"result","scenario":"S8","model":"%s","status":"fail","checks":[{"name":"file has the new line","ok":%s},{"name":"old line is gone","ok":%s}],"error":null,"note":null}\n' "$MODEL" "$NEW" "$([ "$KEPT" = true ] && echo false || echo true)"
+    printf '{"kind":"result","scenario":"S10","model":"%s","status":"fail","checks":[{"name":"file has the new line","ok":%s},{"name":"old line is gone","ok":%s}],"error":null,"note":null}\n' "$MODEL" "$NEW" "$([ "$KEPT" = true ] && echo false || echo true)"
   fi
 done
 

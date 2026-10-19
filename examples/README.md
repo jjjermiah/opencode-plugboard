@@ -33,7 +33,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [langchain-js/](langchain-js/) | LangChain JS (`@langchain/openai`): the same scenarios, with a `chat` and an `auto` variant | pass | [`2026-10-16-95261a4`](langchain-js/runs/live/2026-10-16-95261a4/), pass |
 | [langchain-python/](langchain-python/) | LangChain (`langchain-openai`'s `ChatOpenAI`): chat, tools, streaming, images, structured output, models and the error paths, on Chat Completions and on the Responses API | pass | [`2026-10-16-95261a4`](langchain-python/runs/live/2026-10-16-95261a4/), pass |
 | [langchain4j/](langchain4j/) | LangChain4j (`langchain4j-open-ai`, Java 21, Maven wrapper) with a chat, a stream, a tool round trip and a streamed tool call | pass | not run |
-| [langfuse/](langfuse/) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`; passes against plugboard with tracing off | pass | not run |
+| [langfuse/](langfuse/) | Langfuse's OpenAI wrapper (`from langfuse.openai import OpenAI`) with a text call, a stream and one tool round trip. A PEP 723 script, run with `uv run`. The scripted run traces to a Langfuse stand-in on loopback and checks that the generation arrived with the model name and usage | pass | not run |
 | [librechat/](librechat/) | LibreChat custom endpoints for plugboard, OpenAI and Anthropic shapes: `librechat.yaml`, a compose override and `.env` | not run | not run |
 | [litellm-client/](litellm-client/) | LiteLLM's `completion()` with the `openai/` prefix: a completion, a stream, a tool round trip and structured output | pass | [`2026-10-12-a67e176`](litellm-client/runs/live/2026-10-12-a67e176/), historical record |
 | [llamaindex/](llamaindex/) | LlamaIndex `OpenAILike` against plugboard: text, stream and a tool round trip. A PEP 723 script | pass | [`2026-10-16-9852300`](llamaindex/runs/live/2026-10-16-9852300/), pass |
@@ -46,6 +46,7 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 | [openai-dotnet/](openai-dotnet/) | The official OpenAI .NET library with a text call, a stream and one tool round trip. Run with `dotnet run`; passes against plugboard | pass | not run |
 | [openai-js/](openai-js/) | The OpenAI JS SDK: the same scenarios in TypeScript, on Chat Completions and on the Responses API | pass | [`2026-10-17-ece50cd`](openai-js/runs/live/2026-10-17-ece50cd/), partial |
 | [openai-python/](openai-python/) | The OpenAI Python SDK: chat, tools, streaming, images, structured output, models and the error paths, on Chat Completions and on the Responses API | pass | [`2026-10-17-ece50cd`](openai-python/runs/live/2026-10-17-ece50cd/), partial |
+| [pr-agent/](pr-agent/) | PR-Agent (`pr-agent`) `/review` of a local branch with its `local` git provider, in a throwaway git repo. A `uv run` project with an exact pin | pass | not run |
 | [promptfoo/](promptfoo/) | promptfoo config: `openai:chat:fast` with plugboard's base URL, a text check and a tool-call check | not run | not run |
 | [pydantic-ai/](pydantic-ai/) | pydantic-ai (`OpenAIChatModel`, Chat Completions): chat, tools, streaming, images, structured output and the error paths | pass | [`2026-10-13-c97ac66-2`](pydantic-ai/runs/live/2026-10-13-c97ac66-2/), pass |
 | [pydantic-ai-anthropic/](pydantic-ai-anthropic/) | pydantic-ai (`AnthropicModel`, the Messages API) on plugboard's Messages route: chat, tools, streaming, images, structured output and the error paths | pass | [`2026-10-17-ece50cd`](pydantic-ai-anthropic/runs/live/2026-10-17-ece50cd/), pass |
@@ -91,7 +92,6 @@ The examples in [self-hosted/](self-hosted/) are for apps that already run in Do
 - [Frigate](self-hosted/frigate/README.md): a `genai` provider in `config.yml`
 - [paperless-gpt](self-hosted/paperless-gpt/README.md): a compose service and `.env.example`
 - [paperless-ai](self-hosted/paperless-ai/README.md): a compose file and `.env.example` for its custom provider
-- [PR-Agent](self-hosted/pr-agent/README.md): `.env.example` for the OpenAI-like provider, and the model in `configuration.toml`
 - [SiYuan](self-hosted/siyuan/README.md): a compose file and `.env.example` for its OpenAI provider environment variables
 
 ## Setup for the other examples

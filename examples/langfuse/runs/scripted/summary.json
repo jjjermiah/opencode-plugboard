@@ -214,6 +214,33 @@
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S3.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "generation reached the tracing backend",
+          "ok": true
+        },
+        {
+          "name": "generation records the model name",
+          "ok": true
+        },
+        {
+          "name": "generation records the usage plugboard returned",
+          "ok": true
+        },
+        {
+          "name": "generation records the answer",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S8",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S8.fast.json"
     }
   ],
   "schema": 1,
