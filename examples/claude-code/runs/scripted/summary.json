@@ -1,0 +1,333 @@
+{
+  "client": {
+    "name": "@anthropic-ai/claude-code",
+    "runtime": {
+      "name": "bun",
+      "version": "1"
+    },
+    "version": "2.1.303"
+  },
+  "example": "claude-code",
+  "models": [
+    "fast",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-5.6-luna#low",
+    "nope"
+  ],
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.anthropic-claude-haiku-4-5.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.openai-gpt-5.6-luna-low.json"
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "fast",
+      "note": "the CLI runs its own tools, so a custom get_weather function cannot be added to a headless run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "the CLI runs its own tools, so a custom get_weather function cannot be added to a headless run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "the CLI runs its own tools, so a custom get_weather function cannot be added to a headless run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [
+        {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "finish_reason is stop",
+          "ok": true
+        },
+        {
+          "name": "usage chunk present when requested",
+          "ok": true
+        },
+        {
+          "name": "stream ended normally",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S3",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S3.fast.json"
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S4",
+      "model": "fast",
+      "note": "the CLI runs its own tools, so a custom get_weather function cannot be added to a headless run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "fast",
+      "note": "the CLI takes an image only as a file it reads, not a data URL, so S5 is not run through it",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "the CLI takes an image only as a file it reads, not a data URL, so S5 is not run through it",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "the CLI takes an image only as a file it reads, not a data URL, so S5 is not run through it",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S6",
+      "model": "fast",
+      "note": "the CLI has no JSON-schema output option for a chat-only run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S6",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "the CLI has no JSON-schema output option for a chat-only run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S6",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "the CLI has no JSON-schema output option for a chat-only run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S7",
+      "model": "-",
+      "note": "the CLI does not list models",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [
+        {
+          "name": "tools ran in order: Write, Read",
+          "ok": true
+        },
+        {
+          "name": "the file holds the written text",
+          "ok": true
+        },
+        {
+          "name": "final answer arrived",
+          "ok": true
+        },
+        {
+          "name": "run ended without an error",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S12",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S12.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "the agent tool was called",
+          "ok": true
+        },
+        {
+          "name": "the sub-agent's own model call was answered",
+          "ok": true
+        },
+        {
+          "name": "final answer carries the sub-agent's reply",
+          "ok": true
+        },
+        {
+          "name": "run ended without an error",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S13",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S13.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "first turn answered",
+          "ok": true
+        },
+        {
+          "name": "the CLI compacted the session",
+          "ok": true
+        },
+        {
+          "name": "the summary came from the model",
+          "ok": true
+        },
+        {
+          "name": "the next turn saw the summary, not the old turns",
+          "ok": true
+        },
+        {
+          "name": "run ended without an error",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S14",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S14.fast.json"
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "E1",
+      "model": "fast",
+      "note": "not run: the CLI prints API errors as text and retries, and its events carry no status",
+      "required": false,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "E2",
+      "model": "nope",
+      "note": "not run: the CLI prints API errors as text and retries, and its events carry no status",
+      "required": false,
+      "status": "n/a",
+      "transcript": null
+    }
+  ],
+  "schema": 1,
+  "target": "scripted",
+  "verdict": "pass"
+}

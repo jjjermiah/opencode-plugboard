@@ -196,6 +196,40 @@ describe("Gemini CLI session context", () => {
     expect(normaliseSessionContext("Today's Date: 2026-10-19")).toBe("Today's Date: 2026-10-19")
   })
 
+  test("fixes Claude Code's workspace path, home path and project directory name, whatever the temp dir and pid", () => {
+    const prompt = (tmp: string, slug: string, pid: number) =>
+      `Primary working directory: ${tmp}/plugboard-claude-code-workspace-${pid}\nread the transcript at: ${tmp}/plugboard-claude-code-home-${pid}/.claude/projects/${slug}-plugboard-claude-code-workspace-${pid}/abc.jsonl`
+    const mac = prompt("/private/var/folders/xn/09rpd/T", "-private-var-folders-xn-09rpd-T", 84671)
+    const ci = prompt("/tmp", "-tmp", 3012)
+    expect(normaliseSessionContext(mac)).toBe("Primary working directory: <claude-code-workspace>\nread the transcript at: <claude-code-home>/.claude/projects/<claude-code-project>/abc.jsonl")
+    expect(normaliseSessionContext(ci)).toBe(normaliseSessionContext(mac))
+  })
+
+  test("fixes the platform, shell and OS version in Claude Code's environment block, and no other line of it", () => {
+    const env = (platform: string, shell: string, os: string) =>
+      `# Environment\n - Primary working directory: /w\n - Is a git repository: false\n - Platform: ${platform}\n - Shell: ${shell}\n - OS Version: ${os}\n - Next line.`
+    expect(normaliseSessionContext(env("darwin", "zsh", "Darwin 27.0.0"))).toBe(env("<platform>", "<shell>", "<os-version>"))
+    expect(normaliseSessionContext(env("linux", "bash", "Linux 6.8.0-1015-azure"))).toBe(normaliseSessionContext(env("darwin", "zsh", "Darwin 27.0.0")))
+    expect(normaliseSessionContext("Platform: darwin")).toBe("Platform: darwin")
+  })
+
+  test("fixes the sub-agent id and run time Claude Code puts in an Agent tool result, and nothing else in it", () => {
+    const result = (id: string, ms: number) =>
+      `The report.\nagentId: ${id} (use SendMessage with to: '${id}', summary: 'x' to continue this agent)\n<usage>subagent_tokens: 18\ntool_uses: 0\nduration_ms: ${ms}</usage>`
+    expect(normaliseSessionContext(result("a07a22c557ff2e83b", 27))).toBe(
+      "The report.\nagentId: <agent-id> (use SendMessage with to: '<agent-id>', summary: 'x' to continue this agent)\n<usage>subagent_tokens: 18\ntool_uses: 0\nduration_ms: <ms></usage>",
+    )
+    expect(normaliseSessionContext(result("0123456789abcdef0", 4012))).toBe(normaliseSessionContext(result("a07a22c557ff2e83b", 27)))
+  })
+
+  test("the response body is normalised too: a scripted tool call names a path in the CLI's workspace", () => {
+    const body = JSON.stringify({ file_path: "/private/var/folders/xn/T/plugboard-claude-code-workspace-9/notes.txt" })
+    const sse = `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "input_json_delta", partial_json: body } })}\n\n`
+    const { exchanges } = normaliseTranscript([exchange({ resBody: sse, resHeaders: { "content-type": "text/event-stream" } })])
+    expect(JSON.stringify(exchanges[0]!.response.body)).toContain("<claude-code-workspace>/notes.txt")
+    expect(JSON.stringify(exchanges[0]!.response.body)).not.toContain("plugboard-claude-code-workspace")
+  })
+
   test("fixes the platform, shell and date in Aider's diff-format prompt, and no other line", () => {
     const prompt = (platform: string, shell: string, date: string) =>
       `Keep in mind:\n- Platform: ${platform}\n- Shell: SHELL=${shell}\n- Current date: ${date}\n- The user is operating inside a git repository\n\nReleased 2026-01-02.`

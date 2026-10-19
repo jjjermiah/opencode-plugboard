@@ -6,7 +6,7 @@
   "anythingllm": "AnythingLLM in Docker with the Generic OpenAI provider's env vars",
   "async-openai": "async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard",
   "autogen": "AutoGen (autogen 0.14.1, the classic `config_list` API) on the Chat Completions route (`api_type: openai`) and the Messages route (`api_type: anthropic`): a text call, a two-agent tool round and, on Chat Completions, a stream. A `uv run` project with exact pins",
-  "claude-code": "Claude Code through `ANTHROPIC_BASE_URL`: shell exports and a `settings.json` `env` block",
+  "claude-code": "Claude Code (`@anthropic-ai/claude-code`), headless (`claude -p`), through `ANTHROPIC_BASE_URL` with a key from the environment and no login: a chat, a stream, several tool calls in one run, a sub-agent and `/compact`. Also the shell exports and a `settings.json` `env` block",
   "codex-cli": "Codex CLI (`@openai/codex`), headless (`codex exec`), through a custom `responses` provider with an `env_key` and no login: a chat and a stream. A tool call and a known model slug are gaps (#498)",
   "continue": "Continue `config.yaml` with one plugboard model on Chat Completions and one on Responses",
   "crewai": "CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard",

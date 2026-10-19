@@ -28,6 +28,9 @@ The scripted model answers only the exact prompts in `_shared/scenarios.json`. A
 | S9 | review of a local branch (a runner that drives PR-Agent's local git provider, as `examples/pr-agent` does) | yes |
 | S10 | token count before a request (Gemini `:countTokens`, from the SDK or from a client that checks its own context) | yes |
 | S11 | file edit in the client's own edit format (Aider: `whole` or `diff` by model) | no |
+| S12 | coding agent: several tool calls in one run (Claude Code's `Write`, then `Read`, then an answer) | yes |
+| S13 | coding agent: a sub-agent makes its own model call (Claude Code's `Agent` tool) | yes |
+| S14 | coding agent: compaction of a session (Claude Code's `/compact`, then a turn on the compacted session) | yes |
 | E1 | wrong key (401 `invalid_api_key`, type `authentication_error`) | no |
 | E2 | unknown model (404 `model_not_found`, type `not_found_error`) | no |
 
@@ -91,6 +94,7 @@ Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `trans
 - `http://127.0.0.1:<port>` becomes `<plugboard>`, error text included.
 - The writer refuses any file that contains the app key. Live runs use only the prompts in `scenarios.json`.
 - **Gemini CLI session context** (`normaliseSessionContext`, applied to request bodies only): the CLI's `<session_context>` block carries today's date, the operating system and the temp dir and workspace. Inside that block, the date becomes `<date>`, the OS `<os>`, the temp dir `<temp-dir>` and the workspace `<workspace>`. Anywhere in a request, the CLI's fixed home and workspace paths (`plugboard-gemini-cli-home`, `plugboard-gemini-cli-workspace` under the temp dir) become `<gemini-cli-home>` and `<gemini-cli-workspace>`, because the CLI repeats the home path in its system prompt. Nothing else changes. Tested in `test/unit/examples-normalise.test.ts`.
+- **Claude Code** (same pass, request and response bodies): its run home and workspace (`plugboard-claude-code-home-<pid>`, `plugboard-claude-code-workspace-<pid>` under the temp dir) become `<claude-code-home>` and `<claude-code-workspace>`, and the project directory name in a transcript path (the workspace path with `/` and `.` turned into `-`) becomes `<claude-code-project>`. In the environment block of its system prompt the `Platform`, `Shell` and `OS Version` lines become `<platform>`, `<shell>` and `<os-version>`. A sub-agent's hand-back text (`agentId: <hex>`, `to: '<hex>'`, `duration_ms: <n>`) becomes `<agent-id>` and `<ms>`. The response body is normalised because a scripted `Write` call names a path in the workspace.
 
 ## Adding an example
 

@@ -161,6 +161,52 @@
       ]
     },
     {
+      "id": "S12",
+      "name": "coding agent: several tool calls in one run",
+      "required": true,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": "Create notes.txt containing plugboard, read it back, then say done.",
+      "observes": ["tools_used", "file_content", "final_text", "is_error"],
+      "checks": [
+        { "name": "tools ran in order: Write, Read", "path": "tools_used", "equals": ["Write", "Read"] },
+        { "name": "the file holds the written text", "path": "file_content", "containsAny": ["plugboard"] },
+        { "name": "final answer arrived", "path": "final_text", "containsAny": ["done"] },
+        { "name": "run ended without an error", "path": "is_error", "equals": false }
+      ]
+    },
+    {
+      "id": "S13",
+      "name": "coding agent: a sub-agent makes its own model call",
+      "required": true,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": "Ask a sub-agent for the secret word, then tell me what it said.",
+      "observes": ["agent_called", "subagent_reply", "final_text", "is_error"],
+      "checks": [
+        { "name": "the agent tool was called", "path": "agent_called", "equals": true },
+        { "name": "the sub-agent's own model call was answered", "path": "subagent_reply", "containsAny": ["marmot"] },
+        { "name": "final answer carries the sub-agent's reply", "path": "final_text", "containsAny": ["marmot"] },
+        { "name": "run ended without an error", "path": "is_error", "equals": false }
+      ]
+    },
+    {
+      "id": "S14",
+      "name": "coding agent: compaction of a session",
+      "required": true,
+      "models": ["fast"],
+      "routes": "generate",
+      "prompt": "Remember the number 42 and say noted.",
+      "observes": ["first_text", "compacted", "summary_text", "resumed_text", "is_error"],
+      "checks": [
+        { "name": "first turn answered", "path": "first_text", "containsAny": ["noted"] },
+        { "name": "the CLI compacted the session", "path": "compacted", "equals": true },
+        { "name": "the summary came from the model", "path": "summary_text", "containsAny": ["scripted summary"] },
+        { "name": "the next turn saw the summary, not the old turns", "path": "resumed_text", "containsAny": ["summary only"] },
+        { "name": "run ended without an error", "path": "is_error", "equals": false }
+      ]
+    },
+    {
       "id": "E1",
       "name": "wrong key",
       "required": false,
