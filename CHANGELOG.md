@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard at `/plugboard/dashboard` is rebuilt as two tabs. Usage shows cards for requests, tokens, cost, errors and cache hits for today, 7, 30 or 90 days, each with its change against the previous period, daily charts in UTC, sortable tables of apps and models with share bars, and clear empty and error states. Models lists what `/v1/models` returns for an app key, with badges for aliases, agents, tools, vision and other inputs, context length, price per million tokens, a button that copies the model id and a ready curl, Python or JavaScript snippet. It follows light and dark mode and works on a phone. It adds no dependency and keeps the same CSP and security headers.
+
 ### Docs
 
 - Contributor tooling, no change for users ([#114](https://github.com/jjjermiah/opencode-plugboard/issues/114)). The code is now formatted and linted with Biome (`bun run lint`, `bun run format`, `bun run format:write`; config in `biome.jsonc`). CI fails a pull request that is not formatted or has a lint error, and `bun run validate` runs the same check first. A lefthook `pre-commit` hook checks the staged files; install it with `bunx lefthook install`. The one-time reformat is listed in `.git-blame-ignore-revs`, so `git blame` skips it. `mise.toml` pins Bun and Node to the versions CI uses, and `.github/CODEOWNERS` names the owner. Line width is 200 because the code was already written to that width: a narrower setting rewrites thousands more lines. A handful of recommended lint rules are off for the cases that fire hundreds of times on deliberate style; each has its reason in `biome.jsonc`.

@@ -570,9 +570,11 @@ Persistence: each day is written to OpenCode's plugin storage as its changes lan
 
 ### Dashboard
 
-`GET /plugboard/dashboard` on plugboard's own port is a page for the same report: totals for today, 7, 30 or 90 days, a table of apps (sortable by requests, tokens or cost, with errors, p95 latency and the last request), daily charts per app for requests, cost and tokens, and the models by cost. It works on a phone, and follows light or dark mode.
+`GET /plugboard/dashboard` on plugboard's own port is a page for the same report, in two tabs. It works on a phone, and follows light or dark mode.
 
-- The page itself needs no key, and it holds no usage. Enter a key on it; the page reads `/plugboard/usage` with that key and keeps the key in `sessionStorage`, so it lasts for the browser tab and is gone when the tab closes. Sign out clears it.
+- **Usage.** Cards for requests, tokens, estimated cost, errors and cache hits for today, 7, 30 or 90 days, each with its change against the previous period of the same length. Daily charts per app for requests, cost and tokens. A table of apps and a table of models, both sortable, with errors, p95 latency and the last request. A range with no usage shows an empty state, and a failed load shows an error with a retry.
+- **Models.** What `GET /v1/models` returns for the key: the id, badges for aliases, agents, tools, vision and other input types, the context length and the price per million tokens. Filter by id, tools or vision. Each row copies its id and shows a curl, Python or JavaScript snippet that reads the key from `PLUGBOARD_API_KEY`. `/v1/models` takes an app key, so with the admin key the tab asks for one.
+- The page itself needs no key, and it holds no usage. Enter a key on it; the page reads `/plugboard/usage` and `/v1/models` with that key and keeps the key in `sessionStorage`, so it lasts for the browser tab and is gone when the tab closes. Sign out clears it.
 - The charts use [uPlot](https://github.com/leeoniya/uPlot) (MIT), a pinned dependency that plugboard serves itself from `/plugboard/dashboard/uplot.js` and `/plugboard/dashboard/uplot.css`. Nothing loads from another origin, and the page sends no inline script or style. The policy is `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ...` (see `src/dashboard/page.ts`).
 - Days are UTC, so "today" starts at 00:00 UTC.
 - With `usage: { "enabled": false }` the page and its files are not served, and the discovery pages do not link them.
