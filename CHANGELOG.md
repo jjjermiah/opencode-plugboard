@@ -14,6 +14,11 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- The Aider example now checks a file edit through plugboard ([#215](https://github.com/jjjermiah/opencode-plugboard/issues/215)). A new shared scenario, S11, asks Aider to change a file in a throwaway git repo. The scripted model answers in the edit format Aider picks for the model, whole file for `fast` and `openai/gpt-5.6-luna#low`, SEARCH/REPLACE blocks for `anthropic/claude-haiku-4-5`, and the runner checks that the file changed. The committed scripted run has the three transcripts, and the Aider page says which edit formats work.
+- The AutoGen example now runs on the Anthropic Messages route as well ([#230](https://github.com/jjjermiah/opencode-plugboard/issues/230)). It is a `uv run` project with exact pins and a lockfile, and its runner is part of the scripted CI check. Chat and the two-agent tool round trip run on Chat Completions (`api_type: openai`) and on Messages (`api_type: anthropic`, `base_url` without `/v1`), and the stream runs on Chat Completions. The AutoGen page shows both configs.
+
 ### Changed
 
 - The Gemini CLI example runs a token count scenario ([#103](https://github.com/jjjermiah/opencode-plugboard/issues/103)). The pinned CLI calls `:countTokens` in a headless run when the prompt refers to an image or a PDF with `@name`, as its check that the request fits the context window, and the scripted run records that call and its answer. A text-only prompt calls nothing. The scenario is S10 in `examples/_shared/scenarios.json`. The Gemini CLI client page documents it, and the LangChain Google GenAI page lists the stream cancel limit of `@langchain/google-genai` (its `@google/generative-ai` SDK reports an abort as an error).

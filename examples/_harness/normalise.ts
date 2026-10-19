@@ -117,6 +117,9 @@ const CODEX_WALL_TIME = /(Wall time:? )[0-9.]+( seconds)/g
 /** PR-Agent puts the day it runs in the review prompt (`Today's Date: 2026-10-19`), right after its `--PR Info--` header. */
 const PR_AGENT_DATE = /(--PR Info--\n\nToday's Date: )\d{4}-\d{2}-\d{2}/g
 
+/** Aider's diff-format prompt names the host's platform, its shell and the day (`- Platform: macOS-...`, `- Shell: SHELL=...`, `- Current date: ...`). */
+const AIDER_HOST = /((?:- )?Platform: )[^\n]*(\n(?:- )?Shell: )[^\n]*(\n(?:- )?Current date: )\d{4}-\d{2}-\d{2}/g
+
 /** The Gemini CLI lists its skills in the order the filesystem returns them, which changes from run to run. */
 const AVAILABLE_SKILLS = /<available_skills>[\s\S]*?<\/available_skills>/g
 const SKILL_ENTRY = /[ \t]*<skill>[\s\S]*?<\/skill>/g
@@ -135,7 +138,7 @@ function sortAvailableSkills(text: string): string {
 
 /**
  * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, the Gemini CLI's
- * fixed home and workspace paths and Codex CLI's turn start time and sandbox, and PR-Agent's date, anywhere in it,
+ * fixed home and workspace paths and Codex CLI's turn start time and sandbox, PR-Agent's date and Aider's platform, shell and date, anywhere in it,
  * and puts the Gemini CLI's skill list in name order. Nothing else changes.
  */
 export function normaliseSessionContext(text: string): string {
@@ -147,6 +150,7 @@ export function normaliseSessionContext(text: string): string {
     .replace(CODEX_SANDBOX, '$1"<sandbox>"')
     .replace(CODEX_WALL_TIME, "$1<seconds>$2")
     .replace(PR_AGENT_DATE, "$1<date>")
+    .replace(AIDER_HOST, "$1<platform>$2<shell>$3<date>")
 }
 
 /** The same, applied to every string in a parsed JSON value. */

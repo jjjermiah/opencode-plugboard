@@ -114,6 +114,26 @@ describe("scripted model tool choices", () => {
   })
 })
 
+describe("scripted model Aider file edit (S11)", () => {
+  const fence = "```"
+  const edit = (system: string): PlugRequest => plugRequest({ system: [system], messages: [user(prompt("S11"))] })
+
+  test("a prompt that names the whole-file listing gets the whole file", () => {
+    const text = textOf(answer(edit("You MUST use this *file listing* format")))
+    expect(text).toContain(`hello.py\n${fence}\nprint("hello from plugboard")\n${fence}`)
+    expect(text).not.toContain("SEARCH")
+  })
+
+  test("a prompt that names SEARCH/REPLACE blocks gets a SEARCH/REPLACE block for the committed line", () => {
+    const text = textOf(answer(edit("Use *SEARCH/REPLACE* blocks")))
+    expect(text).toContain('<<<<<<< SEARCH\nprint("hi")\n=======\nprint("hello from plugboard")\n>>>>>>> REPLACE')
+  })
+
+  test("the answer finishes with stop", () => {
+    expect(answer(edit("x")).at(-1)).toMatchObject({ type: "finish", reason: "stop" })
+  })
+})
+
 describe("scripted model smolagents final answer (#370)", () => {
   const FINAL_TOOL: PlugTool = {
     name: "final_answer",

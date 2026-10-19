@@ -27,6 +27,7 @@ The scripted model answers only the exact prompts in `_shared/scenarios.json`. A
 | S8 | traced call reaches the tracing backend (a runner with a local stand-in for the backend, as `examples/langfuse` has) | yes |
 | S9 | review of a local branch (a runner that drives PR-Agent's local git provider, as `examples/pr-agent` does) | yes |
 | S10 | token count before a request (Gemini `:countTokens`, from the SDK or from a client that checks its own context) | yes |
+| S11 | file edit in the client's own edit format (Aider: `whole` or `diff` by model) | no |
 | E1 | wrong key (401 `invalid_api_key`, type `authentication_error`) | no |
 | E2 | unknown model (404 `model_not_found`, type `not_found_error`) | no |
 

@@ -1,11 +1,11 @@
 {
   "_comment": "What each example shows, for the Shows column of examples/README.md. examples-index.ts fails when an example directory has no entry here. The Scripted and Newest live run columns come from runs/, not from this file.",
-  "aider": "Aider (a terminal coding tool) through plugboard's OpenAI-compatible endpoint. A runner checks one message on three models",
+  "aider": "Aider (a terminal coding tool) through plugboard's OpenAI-compatible endpoint. A runner checks one message and one file edit, in the edit format Aider picks for the model, on three models",
   "anthropic-js": "The Anthropic TypeScript SDK (`@anthropic-ai/sdk`) on plugboard's Messages route: chat, tools, streaming, images, structured output as a forced tool, models and the error paths",
   "anthropic-python": "The Anthropic Python SDK (`anthropic`) on plugboard's Messages route: chat, tools, streaming, images, structured output as a forced tool, models and the error paths",
   "anythingllm": "AnythingLLM in Docker with the Generic OpenAI provider's env vars",
   "async-openai": "async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard",
-  "autogen": "AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run",
+  "autogen": "AutoGen (autogen 0.14.1, the classic `config_list` API) on the Chat Completions route (`api_type: openai`) and the Messages route (`api_type: anthropic`): a text call, a two-agent tool round and, on Chat Completions, a stream. A `uv run` project with exact pins",
   "claude-code": "Claude Code through `ANTHROPIC_BASE_URL`: shell exports and a `settings.json` `env` block",
   "codex-cli": "Codex CLI (`@openai/codex`), headless (`codex exec`), through a custom `responses` provider with an `env_key` and no login: a chat and a stream. A tool call and a known model slug are gaps (#498)",
   "continue": "Continue `config.yaml` with one plugboard model on Chat Completions and one on Responses",
