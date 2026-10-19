@@ -6,7 +6,7 @@
 
 Nothing is exposed by accident. A model is callable only if `models` lists it, and `/v1/models` shows only those.
 
-```jsonc
+```jsonc plugboard
 "models": [
   "anthropic/*",                 // every Claude model
   "openai/gpt-5.6-luna#low",     // one ChatGPT variant
@@ -27,7 +27,7 @@ A model outside the list answers 404:
 
 An alias is a name a caller uses as `model`. Change the target in one line and every app that uses the alias moves with it.
 
-```jsonc
+```jsonc plugboard
 "aliases": {
   "smart": "anthropic/claude-sonnet-4-6",
   "fast": "opencode-go/glm-5.3-flash"
@@ -44,7 +44,7 @@ x-plugboard-model: opencode-go/glm-5.3-flash
 
 Point an alias at a list. If the first target fails before it sends any output, plugboard tries the next.
 
-```jsonc
+```jsonc plugboard
 "aliases": {
   "fast": ["opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"]
 }
@@ -71,7 +71,7 @@ x-plugboard-fallbacks: 1
 
 ## Chat UIs that break on `/` and `#`
 
-```jsonc
+```jsonc plugboard
 "modelIds": "both"   // canonical ids and UI-safe slugs
 ```
 

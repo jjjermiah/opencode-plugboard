@@ -71,7 +71,7 @@ Options live under `options` in the plugin entry. `{env:VAR}` is expanded by Ope
 
 Behind Traefik, nginx or Caddy, plugboard sees the proxy's address, and the proxy's own `Host` (the public name) fails the loopback Host check. Option `listen.trustProxy` names the proxies whose forwarded headers are read:
 
-```jsonc
+```jsonc plugboard
 "listen": {
   "host": "127.0.0.1",
   "port": 4010,
@@ -91,7 +91,7 @@ Read [SECURITY](https://github.com/jjjermiah/opencode-plugboard/blob/main/SECURI
 
 A web page in a browser runs on its own origin and calls plugboard from there. Option `cors` names the origins that may do that:
 
-```jsonc
+```jsonc plugboard
 "cors": {
   "origins": ["https://chat.example.net", "http://localhost:3000"],
   "allowPrivateNetwork": false
@@ -118,7 +118,7 @@ A web page in a browser runs on its own origin and calls plugboard from there. O
 | `maxRedirects` | `0` | Redirects the fetcher follows, 0 to 10. Each target goes through the address check again. |
 | `timeoutMs` | `20000` | Time allowed for one fetch, 1 to 600000. |
 
-```jsonc
+```jsonc plugboard
 "remoteImages": {
   "allow": ["images.internal"],
   "schemes": ["https"],
@@ -199,7 +199,7 @@ Some chat UIs mangle `/` and `#`, so `anthropic/claude-haiku-4-5#high` breaks th
 
 An alias is a short name for a model. Point it at a list to get ordered fallbacks:
 
-```json
+```json plugboard
 "aliases": {
   "smart": "anthropic/claude-sonnet-4-5",
   "fast": ["opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"]
@@ -244,7 +244,7 @@ Two kinds of name sit beside plain models. Both are off until you configure them
 
 **Skill aliases.** An alias target can bind a skill from the OpenCode server:
 
-```json
+```json plugboard
 "aliases": {
   "invoice-parser": "skill:invoice-parser@anthropic/claude-sonnet-4-6"
 }
@@ -254,7 +254,7 @@ The text between `skill:` and `@` is the skill's `id`, as OpenCode lists it. The
 
 **Agents.** Option `agents` exposes OpenCode agents (see the [permission model](#permission-model) below):
 
-```json
+```json plugboard
 "agents": [{ "name": "review", "model": "anthropic/claude-sonnet-4-6" }]
 ```
 
@@ -279,7 +279,7 @@ Each key name is an app. A request made with the `my-app` key is the app `my-app
 
 Use `apps` to fix an app's behaviour on the server, without touching the app:
 
-```json
+```json plugboard
 {
   "apps": {
     "discord-bot": { "key": "{env:BOT_KEY}", "models": ["fast"], "system": "Answer in two sentences.", "tools": false },
@@ -345,7 +345,7 @@ Without `keys` the only app is `default`, and `apps.default` configures it. Once
 | `models` | `GET /v1/models` and `GET /v1/models/{id}` |
 | `files` | every [Files API](files.md) route: `/v1/files...`, `POST /upload/v1beta/files` and `/v1beta/files...` |
 
-```jsonc
+```jsonc plugboard
 "apps": {
   "discord-bot": { "endpoints": ["chat"] },   // Chat Completions only
   "claude-code": { "endpoints": ["messages"] }, // Anthropic Messages only
@@ -359,7 +359,7 @@ The check runs after authentication, so an unauthenticated caller still gets a 4
 
 `limits` caps how many model calls run at once, and how many an app may start per minute. Without it nothing is capped.
 
-```json
+```json plugboard
 "limits": {
   "maxConcurrent": 8,
   "perApp": { "maxConcurrent": 2, "requestsPerMinute": 30 },
@@ -382,7 +382,7 @@ The check runs after authentication, so an unauthenticated caller still gets a 4
 
 Every route reads its JSON body through one check, before any of it is buffered. Two options under `limits` bound it:
 
-```json
+```json plugboard
 "limits": { "maxBodyBytesInFlight": 134217728, "bodyReadTimeoutMs": 30000 }
 ```
 
@@ -397,7 +397,7 @@ A body that breaks either limit gets 408 `body_read_timeout`, and its bytes are 
 - `maxBodyBytes` is the largest body the server accepts, 1 to 33554432 (32 MiB). Unset, it is 32 MiB. A body over it gets 413 before it is read, in the route's own error shape. It cannot be above 32 MiB.
 - `limits.apps.<name>.maxBodyBytes` lowers that for one app: 1 up to the value of `limits.maxBodyBytes` (or 32 MiB when that is unset). A larger value is refused at load. The app's cap is read from its key before the body is read, so an app that sends a large body is refused without that body taking the in-flight budget of the others. A request whose key matches no app gets the global cap, and it is refused with 401 anyway. `maxBodyBytes` has no per-app form under `limits.perApp`.
 
-```json
+```json plugboard
 "limits": { "maxBodyBytes": 4194304, "apps": { "chat-widget": { "maxBodyBytes": 262144 } } }
 ```
 
@@ -405,7 +405,7 @@ A body that breaks either limit gets 408 `body_read_timeout`, and its bytes are 
 
 `budgets` caps what each app may use in a window: requests, tokens and cost. It reads the same records as [usage statistics](#usage-statistics), so it needs `usage` on (the default). With `usage: { "enabled": false }` the server refuses to load the option. Retention must cover the windows in use: a `month` ceiling needs `usage.retentionDays` of at least 31 and a `week` ceiling at least 7, or the server refuses to load it, since older days would stop counting.
 
-```json
+```json plugboard
 "budgets": {
   "perApp": { "requests": { "day": 1000 }, "tokens": { "month": 20000000 } },
   "apps": { "coding": { "costUsd": { "month": 50 } } }
@@ -426,7 +426,7 @@ A body that breaks either limit gets 408 `body_read_timeout`, and its bytes are 
 
 Pollers and bots often send the same prompt again and again. With `cache` set, plugboard keeps completed answers in memory and replays them for an identical request from the same app, without creating a session or spending quota.
 
-```json
+```json plugboard
 "cache": { "ttlSeconds": 300, "maxEntries": 1000, "maxBytes": 67108864, "apps": ["poller"] }
 ```
 
@@ -451,7 +451,7 @@ This section is about the session key. The breakpoints a caller places on Anthro
 
 Providers cache a prompt by its prefix. Some also route by a session key: OpenAI takes `prompt_cache_key`, and the ChatGPT subscription takes a `session-id` header. OpenCode derives that key from the session's affinity, which is the session's parent when it has one, else the session itself. Each plugboard request is a new session, so with the default the key changes on every request and the provider cannot route to the cache it wrote.
 
-```jsonc
+```jsonc plugboard
 "promptCache": { "affinity": "anchor", "scope": "app" }
 ```
 
@@ -484,8 +484,8 @@ Anchors are kept, and they are sessions in OpenCode's list. There is one per app
 
 OpenCode lists only root sessions (no parent) in its session lists: the TUI, the app's home screen and the session switcher. Every plugboard request is a session, so an API app fills those lists. With `history.hidden` on, a request session is a child of one long-lived parent per app, titled `plugboard: <app>`, and the lists show that one parent instead of every request.
 
-```jsonc
-"history": { "hidden": true }
+```jsonc plugboard
+"history": { "hidden": true },
 "apps": { "bot": { "history": { "hidden": false } } }
 ```
 
@@ -636,7 +636,7 @@ A bot that serves many people is one app, so its history and usage would be one 
 
 A response names its history record in `x-plugboard-session`, but the OpenCode web UI has no URL a plugin can read. Option `historyUrl` is the template you fill in, and it depends on how you reach OpenCode:
 
-```json
+```json plugboard
 { "historyUrl": "http://opencode.example:4096/session/{id}" }
 ```
 

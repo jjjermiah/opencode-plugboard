@@ -6,7 +6,7 @@ paperless-ai runs beside paperless-ngx. An LLM suggests titles, tags, correspond
 
 Give paperless-ai its own key and a text alias. It sends no images, so you need no vision alias. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

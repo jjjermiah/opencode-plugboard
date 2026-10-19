@@ -6,7 +6,7 @@ PR-Agent (Qodo) reviews pull requests with an LLM. Its commands are `/review`, `
 
 Give PR-Agent its own key. The review sends the whole diff and asks for a YAML reply, so use a model with a long context. The runner must reach plugboard ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

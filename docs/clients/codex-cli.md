@@ -4,7 +4,7 @@ OpenAI's terminal coding agent. It uses only the [Responses API](../responses.md
 
 ## Plugboard options
 
-```jsonc
+```jsonc plugboard-options
 "options": {
   "keys": { "codex-cli": "{env:PLUGBOARD_KEY_CODEX_CLI}" },
   "models": ["openai/gpt-5.6-luna#low", "anthropic/claude-haiku-4-5"],

@@ -14,6 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Changed
+
+- Docs: every plugboard config snippet on the site has a second tab, Full config, with the whole `opencode.jsonc` around it, so a reader sees where the lines go. The tab adds a minimal `keys` and `models` when the snippet has none, marked with a comment. Picking a tab once picks it on every snippet and on later pages. A fence tagged `jsonc plugboard` (members of `options`) or `jsonc plugboard-options` (an `options` member) gets the tabs; the wrapper is `docs/.vitepress/full-config.ts`, and a tagged snippet that is not valid JSONC fails the docs build.
 Nothing yet.
 
 ## [0.54.0] - 2026-10-19: Codex, Out of the Box

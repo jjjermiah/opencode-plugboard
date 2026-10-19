@@ -6,7 +6,7 @@
 
 `limits` caps how many model calls run at once, and how many an app may start per minute. Nothing queues. A call over a cap gets a 429 at once, so the provider never sees it.
 
-```jsonc
+```jsonc plugboard
 "limits": {
   "maxConcurrent": 8,
   "perApp": { "maxConcurrent": 2, "requestsPerMinute": 30 },
@@ -29,7 +29,7 @@ A full concurrency cap answers `too_many_requests` with `retry-after: 1`. The `c
 
 `budgets` sets ceilings per app for a UTC day, week or month: requests, tokens or cost. It reads the usage records, so `usage` must stay on.
 
-```jsonc
+```jsonc plugboard
 "budgets": {
   "perApp": { "requests": { "day": 1000 }, "tokens": { "month": 20000000 } },
   "apps": { "coding": { "costUsd": { "month": 50 } } }
@@ -47,7 +47,7 @@ An app over a ceiling gets 429 `budget_exceeded` until the window resets. The se
 
 Pollers and bots often send the same prompt again and again. With `cache`, an identical request from the same app gets the stored answer. No session is created and no provider call is made.
 
-```jsonc
+```jsonc plugboard
 "cache": { "ttlSeconds": 300, "apps": ["discord-bot"] }
 ```
 
@@ -63,7 +63,7 @@ Only normal text answers are kept. Answers with tool calls, errors, structured o
 
 `promptCache` with `affinity: "anchor"` gives every request of an app the same cache key. It helps ChatGPT subscription models. Anthropic and Copilot GPT already cache without it.
 
-```jsonc
+```jsonc plugboard
 "promptCache": { "affinity": "anchor", "scope": "app" }
 ```
 

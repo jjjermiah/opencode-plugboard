@@ -6,7 +6,7 @@ Tandoor Recipes is a recipe manager. Its AI features import recipes from text, i
 
 Give Tandoor its own key. `import` must accept images for photo import. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

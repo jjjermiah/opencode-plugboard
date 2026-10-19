@@ -6,7 +6,7 @@
 
 Plugboard binds `127.0.0.1` by default, so only the OpenCode host can call it. To serve another machine, bind a specific address and set keys:
 
-```jsonc
+```jsonc plugboard
 "listen": { "host": "192.0.2.10", "port": 4010 },
 "keys": { "laptop": "{env:PLUGBOARD_KEY_LAPTOP}" }
 ```
@@ -36,7 +36,7 @@ Then limit who can reach the port with a firewall or tailnet rules. Do not forwa
 
 A web page on another origin can call plugboard only when that origin is named in `cors.origins`. Behind a proxy, also set `listen.trustProxy` so the Host check and the logs see the real client.
 
-```jsonc
+```jsonc plugboard
 "keys": { "chat-ui": "{env:PLUGBOARD_KEY_CHAT}" },
 "listen": { "host": "127.0.0.1", "port": 4010, "trustProxy": ["127.0.0.1"] },
 "cors": { "origins": ["https://chat.example.net"] }
