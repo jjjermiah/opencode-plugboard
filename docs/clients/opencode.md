@@ -1,28 +1,17 @@
 # OpenCode
 
-Verified: run, 2026-10-13, OpenCode 2.0.27, against plugboard main on an isolated server. The configs and results are in [Live results](#live-results).
+Another OpenCode (on your laptop, say) can use a plugboard hub as its provider. That OpenCode runs the tools on its own machine; the hub only answers the model calls.
 
-OpenCode can use plugboard as a provider in two ways:
+## Anthropic dialect (preferred)
 
-- **As a provider** (this page): OpenCode runs the model call and its tools on your machine. Plugboard answers the model call.
-- **As an attached server** (`opencode attach`): tools run on the hub. Not verified on this page.
-
-## Dialects
-
-Use the Anthropic dialect when you can. Plugboard's Messages route keeps reasoning and thinking replay with no setting. Chat Completions and Responses drop reasoning by default. Since 0.36.0, `reasoningOutput: true` returns it on those two routes (opt-in, see [Reasoning output](../configuration.md#reasoning-output)). Whether OpenCode sends that reasoning back on the next turn was not checked here ([#255](https://github.com/jjjermiah/opencode-plugboard/issues/255)).
-
-Custom and built-in providers are declared under `providers` (plural) in the OpenCode config.
-
-### Anthropic (preferred)
-
-The built-in `anthropic` provider takes its base URL in `settings`. The Messages route is `POST /v1/messages`, and the SDK adds the path, so the base URL ends in `/v1`:
+The Messages route keeps reasoning and replays signed thinking with no extra setting. Point the built-in `anthropic` provider at the hub:
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
   "providers": {
     "anthropic": {
-      "settings": { "baseURL": "http://127.0.0.1:4010/v1" },
+      "settings": { "baseURL": "http://127.0.0.1:4010/v1", "apiKey": "{env:PLUGBOARD_KEY}" },
       "models": {
         "fast": { "name": "fast", "limit": { "context": 200000, "output": 8000 } }
       }
@@ -31,11 +20,7 @@ The built-in `anthropic` provider takes its base URL in `settings`. The Messages
 }
 ```
 
-Give the key through `ANTHROPIC_API_KEY`, or set `"apiKey": "{env:PLUGBOARD_KEY}"` under `settings`. The hub accepts the key as `x-api-key`.
-
-### OpenAI-compatible (Chat Completions)
-
-Set `package` to `@ai-sdk/openai-compatible` on the provider:
+## OpenAI-compatible dialect
 
 ```jsonc
 {
@@ -53,62 +38,34 @@ Set `package` to `@ai-sdk/openai-compatible` on the provider:
 }
 ```
 
-Run with `-m plugboard/fast` or `-m anthropic/fast`. Replace `fast` with any id `GET /v1/models` lists.
+This dialect drops reasoning unless the hub sets `reasoningOutput: true` ([Reasoning output](../configuration.md#reasoning-output)).
 
-## Declaring limits and cost
+Providers go under `providers` (plural). Run with `-m anthropic/fast` or `-m plugboard/fast`; use any name `GET /v1/models` lists.
 
-A custom provider with no `limit` gets OpenCode's 200k context and 32k output, and a zero `cost`. That miscounts compaction and hides spend. Declare both per model. `limit` is in tokens. `cost` is USD per million tokens. A context tier (`tier.size`, in tokens) prices long prompts higher.
+## Limits and cost
 
-Generate the block from a hub instead of typing it:
+A custom model without `limit` gets 200k context and 32k output, and without `cost` its spend shows as zero. Generate both from the hub:
 
 ```sh
 PLUGBOARD_KEY=<app key> bun .github/scripts/opencode-models.ts http://127.0.0.1:4010
 ```
 
-The script reads `GET /v1/models` and prints `limit` and `cost` for each id. It skips ids with a `#variant` suffix, because OpenCode reads `provider/model#variant` as a model plus a variant and would send the base model. For a variant, declare the base id. The script needs the `context_length`, `max_output_tokens` and `pricing` fields from [#376](https://github.com/jjjermiah/opencode-plugboard/issues/376). A hub without them gets empty entries. Facts the hub does not list are left out, never zero.
+It prints a `models` block with `limit` and `cost` for each model from `/v1/models` (run it from a plugboard checkout). Models with a `#variant` suffix are skipped: declare the base model.
 
-## Tool limit
+## Tools
 
-OpenCode v2.0.27 sends 12 built-in tools: `edit`, `glob`, `grep`, `question`, `read`, `shell`, `skill`, `subagent`, `webfetch`, `websearch`, `write`, `execute`. By default MCP tools go through the single Code Mode `execute` tool, so a request stays well under the default cap of 64.
-
-A request is refused only when a server sets `codemode: false` and sends its tools directly. Then the total can pass 64. The refusal names the option:
-
-- OpenAI dialect: `Error: Request has 72 tools; plugboard allows 64 (option 'maxTools')`
-- Anthropic dialect: `tools: 72 tools; plugboard allows 64 ...`
-
-Raise `maxTools` on the hub:
-
-```jsonc
-"options": { "maxTools": 128 }
-```
-
-It is a global option. An app can only lower it (`apps.<name>.maxTools`).
+OpenCode sends about 12 tools, with MCP tools behind the single Code Mode `execute` tool, so requests stay under `maxTools` (64). A server with `codemode: false` sends its tools directly and can go over; raise `maxTools` on the hub if requests are refused with `Request has N tools; plugboard allows 64`.
 
 ## Prompt cache
 
-On the hub, turn on the anchor so the provider's prompt cache keeps hitting across turns:
+Turn on the anchor on the hub so the provider's prompt cache keeps hitting across turns:
 
 ```jsonc
 "promptCache": { "affinity": "anchor", "scope": "app" }
 ```
 
-Without it, a cache read can miss on every turn. See [Prompt-cache affinity](../configuration.md#prompt-cache-affinity).
+See [Prompt-cache affinity](../configuration.md#prompt-cache-affinity).
 
 ## Scratch checks
 
-Use `--standalone` for a scratch check, for example `opencode run --standalone -m plugboard/fast "reply with exactly: pong"`. Without it, `opencode run` connects to or starts the managed background service, which is not your scratch config.
-
-## Live results
-
-Verified: run, 2026-10-13, OpenCode 2.0.27. Plugboard main, dev server at `127.0.0.1:4010`, scratch HOME, `opencode run --standalone`.
-
-| Check | Result |
-|---|---|
-| `run -m anthropic/fast "reply with exactly: pong"` | `pong` |
-| `run -m plugboard/fast "reply with exactly: pong"` | `pong` |
-| Tool prompt on both providers: read a file, answer with its word | the read tool ran; answer `plum-7421` |
-| 72 tools sent (60-tool MCP server, `codemode: false`), both dialects | `400`, refused with the messages in [Tool limit](#tool-limit) |
-| Generated `models` block, 170 entries with tiers, loaded in OpenCode | loads; `opencode models --standalone` lists 171 `plugboard/*` models |
-| Read-tool run on `plugboard/fast`, with the generated `openai/gpt-6.1-sol` cost | `cost: 0.020484` (10117 input tokens at $2/M, 25 output at $10/M); without cost it is 0 |
-
-Not verified: `opencode attach`.
+`opencode run --standalone -m plugboard/fast "reply with exactly: pong"` uses your scratch config instead of the managed background service.
