@@ -8,7 +8,7 @@ For text conversation, use [Extended OpenAI Conversation](../clients/home-assist
 
 Give LLM Vision its own key and a vision alias. Home Assistant reaches plugboard over the network ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

@@ -6,7 +6,7 @@ Karakeep saves bookmarks, pages and PDFs. An LLM tags them and, if you turn it o
 
 Give Karakeep its own key and two aliases. `vision` must accept images, because `INFERENCE_IMAGE_MODEL` sends them. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

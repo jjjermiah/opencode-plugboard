@@ -6,7 +6,7 @@ Khoj is a personal AI that chats over your notes, documents and the web. One cha
 
 Give Khoj its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

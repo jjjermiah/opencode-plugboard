@@ -6,7 +6,7 @@ Dify's **OpenAI-API-compatible** model provider, in Chat completion mode.
 
 Give Dify its own key. If Dify runs in Docker, plugboard must bind a reachable address ([Serving other machines](../guides/serving-other-machines.md)):
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

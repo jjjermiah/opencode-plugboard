@@ -6,7 +6,7 @@ SparkyFitness is a self-hosted nutrition, fitness and health tracker. Its AI ass
 
 Give SparkyFitness its own key. Plugboard must bind an address the SparkyFitness server reaches ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },

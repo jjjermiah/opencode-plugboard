@@ -6,7 +6,7 @@ paperless-gpt is a companion to paperless-ngx. An LLM suggests titles, tags, cor
 
 Give paperless-gpt its own key. `vision` handles OCR and must accept images. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
-```jsonc
+```jsonc plugboard-options
 {
   "options": {
     "listen": { "host": "0.0.0.0", "port": 4010 },
