@@ -1,6 +1,6 @@
 /**
  * Fault injection through a fallback chain: the real route, `withFallbacks` and session caller over a fake host. Each target
- * of the chain misbehaves in one of the ways a provider does (hangs, 429, upstream 520, a host retry, an error after the first
+ * of the chain misbehaves in one of the ways a provider does (hangs, 429, 529 overloaded, upstream 520, a host retry, an error after the first
  * event), and the tests assert the order the targets are called in, how long the answer took, the `x-plugboard-model` and
  * `x-plugboard-fallbacks` headers, and, over several requests, the circuit breaker's open, skip and close sequence.
  *
@@ -21,7 +21,7 @@ import { bus, FakeSessionPort, type BusEnvelope } from "../support/session.js"
 const logs = captureLogs()
 
 /** What a target does when the host runs it. */
-type Fault = "ok" | "hang" | "429" | "520" | "retry" | "midstream"
+type Fault = "ok" | "hang" | "429" | "520" | "529" | "retry" | "midstream"
 
 const DEADLINE = 250
 /** An attempt that fails at once must be over well before the first-event deadline. */
@@ -35,6 +35,8 @@ const RAW = {
   fallbackCooldown: { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 600_000 },
 }
 const upstream520 = { type: "provider.internal", status: 520, message: "upstream 520" }
+/** Anthropic's overloaded_error: the provider's own 529 (#503). */
+const upstream529 = { type: "provider.other", status: 529, message: "Overloaded" }
 
 let server: RouteServer | undefined
 afterEach(async () => {
@@ -62,6 +64,8 @@ async function start(faults: Record<string, Fault>) {
         return send([host.stepFailed({ type: "provider.rate-limit", status: 429 }), host.executionFailed({ type: "provider.rate-limit", status: 429 })])
       case "520":
         return send([host.stepFailed(upstream520), host.executionFailed(upstream520)])
+      case "529":
+        return send([host.stepFailed(upstream529), host.executionFailed(upstream529)])
       case "retry":
         return send([host.retryScheduled(upstream520)])
       case "midstream":
@@ -101,6 +105,7 @@ describe("a first target that fails before any output: the next target answers",
     ["hangs past fallbackAfterMs", "hang"],
     ["answers 429", "429"],
     ["fails upstream with 520", "520"],
+    ["is overloaded (529, provider_overloaded)", "529"],
     ["makes the host schedule a retry of a 520 (provider_retry)", "retry"],
   ] as const)("the first target %s", async (_name, fault) => {
     const run = await start({ "a/x": fault, "b/y": "ok", "c/z": "ok" })
@@ -192,6 +197,14 @@ describe("the circuit breaker over several requests", () => {
     expect(probe.reply.headers).not.toHaveProperty("x-plugboard-fallbacks")
     expect(cooldownEvents()).toEqual(["open", "skip", "close"])
     expect((await run.status()).cooling).toEqual([])
+  })
+
+  test("529 overloaded: open after three, then skipped", async () => {
+    const run = await start({ "a/x": "529", "b/y": "ok", "c/z": "ok" })
+    for (let i = 0; i < 3; i++) expect((await run.ask()).ran).toEqual(["a/x", "b/y"])
+    expect(cooldownEvents()).toEqual(["open"])
+    expect((await run.status()).cooling).toMatchObject([{ model: "a/x", state: "open", failures: 3 }])
+    expect((await run.ask()).ran).toEqual(["b/y"])
   })
 
   test("a hung target: three deadlines are paid, then the target is skipped and the answer is immediate", async () => {

@@ -1157,6 +1157,22 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/unit/fallback-cooldown.test.ts", "test/session/fallback-chain.test.ts"],
   },
   {
+    id: "fallback-overloaded-not-retryable",
+    invariant: "fallback",
+    file: "src/fallback.ts",
+    find: '  "provider_unavailable",\n  "provider_overloaded",\n',
+    replace: '  "provider_unavailable",\n',
+    tests: ["test/unit/fallback.test.ts", "test/session/fallback-chain.test.ts"],
+  },
+  {
+    id: "fallback-overloaded-not-counted",
+    invariant: "fallback",
+    file: "src/fallback.ts",
+    find: '"provider_unavailable", "provider_overloaded", "provider_timeout"',
+    replace: '"provider_unavailable", "provider_timeout"',
+    tests: ["test/unit/fallback-cooldown.test.ts", "test/session/fallback-chain.test.ts"],
+  },
+  {
     id: "fallback-answer-not-counted",
     invariant: "fallback",
     file: "src/fallback.ts",
