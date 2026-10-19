@@ -1,0 +1,953 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "client_metadata": {
+            "root_turn_id": "<id-1>",
+            "session_id": "<id-2>",
+            "thread_id": "<id-2>",
+            "turn_id": "<id-1>",
+            "x-codex-installation-id": "<id-3>",
+            "x-codex-turn-metadata": "{\"installation_id\":\"<id-3>\",\"session_id\":\"<id-2>\",\"thread_id\":\"<id-2>\",\"agent_name\":\"/root\",\"turn_id\":\"<id-1>\",\"window_id\":\"<id-2>:0\",\"window_number\":0,\"context_window_id\":\"<id-4>\",\"request_kind\":\"turn\",\"history_initialization\":\"new\",\"root_turn_id\":\"<id-1>\",\"thread_source\":\"user\",\"turn_trigger\":\"exec\",\"sandbox\":\"<sandbox>\",\"sandbox_mode\":\"read-only\",\"auto_review_enabled\":false,\"node_repl_auto_review_required\":false,\"node_repl_disabled\":false,\"turn_started_at_unix_ms\":<unix-ms>,\"analytics_enabled\":true,\"model\":\"anthropic/claude-haiku-4-5\"}",
+            "x-codex-window-id": "<id-2>:0"
+          },
+          "include": [
+            "reasoning.encrypted_content"
+          ],
+          "input": [
+            {
+              "content": [
+                {
+                  "text": "You are a coding agent. Answer briefly and use the tools you are given.",
+                  "type": "input_text"
+                }
+              ],
+              "id": "<id-5>",
+              "role": "developer",
+              "type": "message"
+            },
+            {
+              "content": [
+                {
+                  "text": "Reply with exactly: pong",
+                  "type": "input_text"
+                }
+              ],
+              "id": "<id-6>",
+              "role": "user",
+              "type": "message"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "parallel_tool_calls": true,
+          "prompt_cache_key": "<id-2>",
+          "reasoning": {
+            "summary": "auto"
+          },
+          "store": false,
+          "stream": true,
+          "tool_choice": "auto",
+          "tools": [
+            {
+              "description": "Runs a command in a PTY, returning output or a session ID for ongoing interaction.",
+              "name": "exec_command",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "cmd": {
+                    "description": "Shell command to execute.",
+                    "type": "string"
+                  },
+                  "justification": {
+                    "description": "User-facing approval question for `require_escalated`; omit otherwise.",
+                    "type": "string"
+                  },
+                  "login": {
+                    "description": "True runs the shell with -l/-i semantics; false disables them. Defaults to true.",
+                    "type": "boolean"
+                  },
+                  "max_output_tokens": {
+                    "description": "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
+                    "type": "number"
+                  },
+                  "prefix_rule": {
+                    "description": "Reusable approval prefix for `cmd`, only with `sandbox_permissions: \"require_escalated\"`; for example [\"git\", \"pull\"].",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "sandbox_permissions": {
+                    "description": "Per-command sandbox override. Defaults to `use_default`; use `require_escalated` for unsandboxed execution.",
+                    "enum": [
+                      "use_default",
+                      "require_escalated"
+                    ],
+                    "type": "string"
+                  },
+                  "shell": {
+                    "description": "Shell binary to launch. Defaults to the user's default shell.",
+                    "type": "string"
+                  },
+                  "tty": {
+                    "description": "True allocates a PTY for the command; false or omitted uses plain pipes.",
+                    "type": "boolean"
+                  },
+                  "workdir": {
+                    "description": "Working directory for the command. Defaults to the turn cwd.",
+                    "type": "string"
+                  },
+                  "yield_time_ms": {
+                    "description": "Wait before yielding output. Defaults to 10000 ms; effective range is 250-30000 ms.",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "cmd"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            },
+            {
+              "description": "Writes characters to an existing unified exec session and returns recent output.",
+              "name": "write_stdin",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "chars": {
+                    "description": "Bytes to write to stdin. Defaults to empty, which polls without writing.",
+                    "type": "string"
+                  },
+                  "max_output_tokens": {
+                    "description": "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
+                    "type": "number"
+                  },
+                  "session_id": {
+                    "description": "Identifier of the running unified exec session.",
+                    "type": "number"
+                  },
+                  "yield_time_ms": {
+                    "description": "Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "session_id"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            },
+            {
+              "description": "Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.",
+              "name": "request_user_input",
+              "parameters": {
+                "additionalProperties": false,
+                "properties": {
+                  "questions": {
+                    "description": "Questions to show the user. Prefer 1 and do not exceed 3",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "header": {
+                          "description": "Short header label shown in the UI (12 or fewer chars).",
+                          "type": "string"
+                        },
+                        "id": {
+                          "description": "Stable identifier for mapping answers (snake_case).",
+                          "type": "string"
+                        },
+                        "options": {
+                          "description": "Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with \"(Recommended)\". Do not include an \"Other\" option in this list; the client will add a free-form \"Other\" option automatically.",
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "description": {
+                                "description": "One short sentence explaining impact/tradeoff if selected.",
+                                "type": "string"
+                              },
+                              "label": {
+                                "description": "User-facing label (1-5 words).",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "description"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "question": {
+                          "description": "Single-sentence prompt shown to the user.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "header",
+                        "question",
+                        "options"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "questions"
+                ],
+                "type": "object"
+              },
+              "strict": false,
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "text/event-stream",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/responses"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "response": {
+                  "created_at": "<time-1>",
+                  "error": null,
+                  "id": "<id-7>",
+                  "incomplete_details": null,
+                  "instructions": null,
+                  "max_output_tokens": null,
+                  "metadata": {},
+                  "model": "anthropic/claude-haiku-4-5",
+                  "object": "response",
+                  "output": [],
+                  "parallel_tool_calls": true,
+                  "previous_response_id": null,
+                  "reasoning": {
+                    "effort": null,
+                    "summary": null
+                  },
+                  "status": "in_progress",
+                  "store": false,
+                  "temperature": null,
+                  "text": {
+                    "format": {
+                      "type": "text"
+                    }
+                  },
+                  "tool_choice": "auto",
+                  "tools": [
+                    {
+                      "description": "Runs a command in a PTY, returning output or a session ID for ongoing interaction.",
+                      "name": "exec_command",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cmd": {
+                            "description": "Shell command to execute.",
+                            "type": "string"
+                          },
+                          "justification": {
+                            "description": "User-facing approval question for `require_escalated`; omit otherwise.",
+                            "type": "string"
+                          },
+                          "login": {
+                            "description": "True runs the shell with -l/-i semantics; false disables them. Defaults to true.",
+                            "type": "boolean"
+                          },
+                          "max_output_tokens": {
+                            "description": "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
+                            "type": "number"
+                          },
+                          "prefix_rule": {
+                            "description": "Reusable approval prefix for `cmd`, only with `sandbox_permissions: \"require_escalated\"`; for example [\"git\", \"pull\"].",
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "sandbox_permissions": {
+                            "description": "Per-command sandbox override. Defaults to `use_default`; use `require_escalated` for unsandboxed execution.",
+                            "enum": [
+                              "use_default",
+                              "require_escalated"
+                            ],
+                            "type": "string"
+                          },
+                          "shell": {
+                            "description": "Shell binary to launch. Defaults to the user's default shell.",
+                            "type": "string"
+                          },
+                          "tty": {
+                            "description": "True allocates a PTY for the command; false or omitted uses plain pipes.",
+                            "type": "boolean"
+                          },
+                          "workdir": {
+                            "description": "Working directory for the command. Defaults to the turn cwd.",
+                            "type": "string"
+                          },
+                          "yield_time_ms": {
+                            "description": "Wait before yielding output. Defaults to 10000 ms; effective range is 250-30000 ms.",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "cmd"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    },
+                    {
+                      "description": "Writes characters to an existing unified exec session and returns recent output.",
+                      "name": "write_stdin",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "chars": {
+                            "description": "Bytes to write to stdin. Defaults to empty, which polls without writing.",
+                            "type": "string"
+                          },
+                          "max_output_tokens": {
+                            "description": "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
+                            "type": "number"
+                          },
+                          "session_id": {
+                            "description": "Identifier of the running unified exec session.",
+                            "type": "number"
+                          },
+                          "yield_time_ms": {
+                            "description": "Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "session_id"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    },
+                    {
+                      "description": "Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.",
+                      "name": "request_user_input",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "questions": {
+                            "description": "Questions to show the user. Prefer 1 and do not exceed 3",
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "header": {
+                                  "description": "Short header label shown in the UI (12 or fewer chars).",
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "description": "Stable identifier for mapping answers (snake_case).",
+                                  "type": "string"
+                                },
+                                "options": {
+                                  "description": "Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with \"(Recommended)\". Do not include an \"Other\" option in this list; the client will add a free-form \"Other\" option automatically.",
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "description": {
+                                        "description": "One short sentence explaining impact/tradeoff if selected.",
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "description": "User-facing label (1-5 words).",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "label",
+                                      "description"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                "question": {
+                                  "description": "Single-sentence prompt shown to the user.",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "header",
+                                "question",
+                                "options"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "questions"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    }
+                  ],
+                  "top_p": null,
+                  "truncation": "disabled",
+                  "user": null
+                },
+                "sequence_number": 0,
+                "type": "response.created"
+              },
+              "event": "response.created"
+            },
+            {
+              "data": {
+                "response": {
+                  "created_at": "<time-2>",
+                  "error": null,
+                  "id": "<id-7>",
+                  "incomplete_details": null,
+                  "instructions": null,
+                  "max_output_tokens": null,
+                  "metadata": {},
+                  "model": "anthropic/claude-haiku-4-5",
+                  "object": "response",
+                  "output": [],
+                  "parallel_tool_calls": true,
+                  "previous_response_id": null,
+                  "reasoning": {
+                    "effort": null,
+                    "summary": null
+                  },
+                  "status": "in_progress",
+                  "store": false,
+                  "temperature": null,
+                  "text": {
+                    "format": {
+                      "type": "text"
+                    }
+                  },
+                  "tool_choice": "auto",
+                  "tools": [
+                    {
+                      "description": "Runs a command in a PTY, returning output or a session ID for ongoing interaction.",
+                      "name": "exec_command",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cmd": {
+                            "description": "Shell command to execute.",
+                            "type": "string"
+                          },
+                          "justification": {
+                            "description": "User-facing approval question for `require_escalated`; omit otherwise.",
+                            "type": "string"
+                          },
+                          "login": {
+                            "description": "True runs the shell with -l/-i semantics; false disables them. Defaults to true.",
+                            "type": "boolean"
+                          },
+                          "max_output_tokens": {
+                            "description": "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
+                            "type": "number"
+                          },
+                          "prefix_rule": {
+                            "description": "Reusable approval prefix for `cmd`, only with `sandbox_permissions: \"require_escalated\"`; for example [\"git\", \"pull\"].",
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "sandbox_permissions": {
+                            "description": "Per-command sandbox override. Defaults to `use_default`; use `require_escalated` for unsandboxed execution.",
+                            "enum": [
+                              "use_default",
+                              "require_escalated"
+                            ],
+                            "type": "string"
+                          },
+                          "shell": {
+                            "description": "Shell binary to launch. Defaults to the user's default shell.",
+                            "type": "string"
+                          },
+                          "tty": {
+                            "description": "True allocates a PTY for the command; false or omitted uses plain pipes.",
+                            "type": "boolean"
+                          },
+                          "workdir": {
+                            "description": "Working directory for the command. Defaults to the turn cwd.",
+                            "type": "string"
+                          },
+                          "yield_time_ms": {
+                            "description": "Wait before yielding output. Defaults to 10000 ms; effective range is 250-30000 ms.",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "cmd"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    },
+                    {
+                      "description": "Writes characters to an existing unified exec session and returns recent output.",
+                      "name": "write_stdin",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "chars": {
+                            "description": "Bytes to write to stdin. Defaults to empty, which polls without writing.",
+                            "type": "string"
+                          },
+                          "max_output_tokens": {
+                            "description": "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
+                            "type": "number"
+                          },
+                          "session_id": {
+                            "description": "Identifier of the running unified exec session.",
+                            "type": "number"
+                          },
+                          "yield_time_ms": {
+                            "description": "Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "session_id"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    },
+                    {
+                      "description": "Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.",
+                      "name": "request_user_input",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "questions": {
+                            "description": "Questions to show the user. Prefer 1 and do not exceed 3",
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "header": {
+                                  "description": "Short header label shown in the UI (12 or fewer chars).",
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "description": "Stable identifier for mapping answers (snake_case).",
+                                  "type": "string"
+                                },
+                                "options": {
+                                  "description": "Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with \"(Recommended)\". Do not include an \"Other\" option in this list; the client will add a free-form \"Other\" option automatically.",
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "description": {
+                                        "description": "One short sentence explaining impact/tradeoff if selected.",
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "description": "User-facing label (1-5 words).",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "label",
+                                      "description"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                "question": {
+                                  "description": "Single-sentence prompt shown to the user.",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "header",
+                                "question",
+                                "options"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "questions"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    }
+                  ],
+                  "top_p": null,
+                  "truncation": "disabled",
+                  "user": null
+                },
+                "sequence_number": 1,
+                "type": "response.in_progress"
+              },
+              "event": "response.in_progress"
+            },
+            {
+              "data": {
+                "item": {
+                  "content": [],
+                  "id": "<id-8>",
+                  "role": "assistant",
+                  "status": "in_progress",
+                  "type": "message"
+                },
+                "output_index": 0,
+                "sequence_number": 2,
+                "type": "response.output_item.added"
+              },
+              "event": "response.output_item.added"
+            },
+            {
+              "data": {
+                "content_index": 0,
+                "item_id": "<id-8>",
+                "output_index": 0,
+                "part": {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "",
+                  "type": "output_text"
+                },
+                "sequence_number": 3,
+                "type": "response.content_part.added"
+              },
+              "event": "response.content_part.added"
+            },
+            {
+              "data": {
+                "content_index": 0,
+                "delta": "po",
+                "item_id": "<id-8>",
+                "logprobs": [],
+                "output_index": 0,
+                "sequence_number": 4,
+                "type": "response.output_text.delta"
+              },
+              "event": "response.output_text.delta"
+            },
+            {
+              "data": {
+                "content_index": 0,
+                "delta": "ng",
+                "item_id": "<id-8>",
+                "logprobs": [],
+                "output_index": 0,
+                "sequence_number": 5,
+                "type": "response.output_text.delta"
+              },
+              "event": "response.output_text.delta"
+            },
+            {
+              "data": {
+                "content_index": 0,
+                "item_id": "<id-8>",
+                "logprobs": [],
+                "output_index": 0,
+                "sequence_number": 6,
+                "text": "pong",
+                "type": "response.output_text.done"
+              },
+              "event": "response.output_text.done"
+            },
+            {
+              "data": {
+                "content_index": 0,
+                "item_id": "<id-8>",
+                "output_index": 0,
+                "part": {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "pong",
+                  "type": "output_text"
+                },
+                "sequence_number": 7,
+                "type": "response.content_part.done"
+              },
+              "event": "response.content_part.done"
+            },
+            {
+              "data": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "pong",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "<id-8>",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "output_index": 0,
+                "sequence_number": 8,
+                "type": "response.output_item.done"
+              },
+              "event": "response.output_item.done"
+            },
+            {
+              "data": {
+                "response": {
+                  "created_at": "<time-3>",
+                  "error": null,
+                  "id": "<id-7>",
+                  "incomplete_details": null,
+                  "instructions": null,
+                  "max_output_tokens": null,
+                  "metadata": {},
+                  "model": "anthropic/claude-haiku-4-5",
+                  "object": "response",
+                  "output": [
+                    {
+                      "content": [
+                        {
+                          "annotations": [],
+                          "logprobs": [],
+                          "text": "pong",
+                          "type": "output_text"
+                        }
+                      ],
+                      "id": "<id-8>",
+                      "role": "assistant",
+                      "status": "completed",
+                      "type": "message"
+                    }
+                  ],
+                  "parallel_tool_calls": true,
+                  "previous_response_id": null,
+                  "reasoning": {
+                    "effort": null,
+                    "summary": null
+                  },
+                  "status": "completed",
+                  "store": false,
+                  "temperature": null,
+                  "text": {
+                    "format": {
+                      "type": "text"
+                    }
+                  },
+                  "tool_choice": "auto",
+                  "tools": [
+                    {
+                      "description": "Runs a command in a PTY, returning output or a session ID for ongoing interaction.",
+                      "name": "exec_command",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cmd": {
+                            "description": "Shell command to execute.",
+                            "type": "string"
+                          },
+                          "justification": {
+                            "description": "User-facing approval question for `require_escalated`; omit otherwise.",
+                            "type": "string"
+                          },
+                          "login": {
+                            "description": "True runs the shell with -l/-i semantics; false disables them. Defaults to true.",
+                            "type": "boolean"
+                          },
+                          "max_output_tokens": {
+                            "description": "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
+                            "type": "number"
+                          },
+                          "prefix_rule": {
+                            "description": "Reusable approval prefix for `cmd`, only with `sandbox_permissions: \"require_escalated\"`; for example [\"git\", \"pull\"].",
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "sandbox_permissions": {
+                            "description": "Per-command sandbox override. Defaults to `use_default`; use `require_escalated` for unsandboxed execution.",
+                            "enum": [
+                              "use_default",
+                              "require_escalated"
+                            ],
+                            "type": "string"
+                          },
+                          "shell": {
+                            "description": "Shell binary to launch. Defaults to the user's default shell.",
+                            "type": "string"
+                          },
+                          "tty": {
+                            "description": "True allocates a PTY for the command; false or omitted uses plain pipes.",
+                            "type": "boolean"
+                          },
+                          "workdir": {
+                            "description": "Working directory for the command. Defaults to the turn cwd.",
+                            "type": "string"
+                          },
+                          "yield_time_ms": {
+                            "description": "Wait before yielding output. Defaults to 10000 ms; effective range is 250-30000 ms.",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "cmd"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    },
+                    {
+                      "description": "Writes characters to an existing unified exec session and returns recent output.",
+                      "name": "write_stdin",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "chars": {
+                            "description": "Bytes to write to stdin. Defaults to empty, which polls without writing.",
+                            "type": "string"
+                          },
+                          "max_output_tokens": {
+                            "description": "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.",
+                            "type": "number"
+                          },
+                          "session_id": {
+                            "description": "Identifier of the running unified exec session.",
+                            "type": "number"
+                          },
+                          "yield_time_ms": {
+                            "description": "Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.",
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "session_id"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    },
+                    {
+                      "description": "Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.",
+                      "name": "request_user_input",
+                      "parameters": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "questions": {
+                            "description": "Questions to show the user. Prefer 1 and do not exceed 3",
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "header": {
+                                  "description": "Short header label shown in the UI (12 or fewer chars).",
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "description": "Stable identifier for mapping answers (snake_case).",
+                                  "type": "string"
+                                },
+                                "options": {
+                                  "description": "Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with \"(Recommended)\". Do not include an \"Other\" option in this list; the client will add a free-form \"Other\" option automatically.",
+                                  "items": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "description": {
+                                        "description": "One short sentence explaining impact/tradeoff if selected.",
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "description": "User-facing label (1-5 words).",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "label",
+                                      "description"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                "question": {
+                                  "description": "Single-sentence prompt shown to the user.",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "header",
+                                "question",
+                                "options"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "questions"
+                        ],
+                        "type": "object"
+                      },
+                      "strict": false,
+                      "type": "function"
+                    }
+                  ],
+                  "top_p": null,
+                  "truncation": "disabled",
+                  "usage": {
+                    "input_tokens": 11,
+                    "input_tokens_details": {
+                      "cached_tokens": 0
+                    },
+                    "output_tokens": 7,
+                    "output_tokens_details": {
+                      "reasoning_tokens": 0
+                    },
+                    "total_tokens": 18
+                  },
+                  "user": null
+                },
+                "sequence_number": 9,
+                "type": "response.completed"
+              },
+              "event": "response.completed"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ]
+}
