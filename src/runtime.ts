@@ -28,7 +28,8 @@
  *   - the request limiter's queues and rate windows (src/limits.ts), so a cap holds across
  *     generations. `processLimits` reads them;
  *   - the usage store's live days (src/usage.ts), so the in-memory aggregates survive a generation.
- *     `processUsage` reads them.
+ *     `processUsage` reads them;
+ *   - the fallback circuit breaker (src/breaker.ts): which targets are cooling down. `processBreaker` reads it.
  *
  * Registration is explicit: `registerGeneration` returns whether the generation was accepted. A
  * rejected one (different `listen`, options that differ from the live ones, foreign runtime) never
@@ -52,6 +53,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import { Cause, Effect, Stream } from "effect"
 import stableStringify from "safe-stable-stringify"
 import { raceAbort } from "./abort.js"
+import { createBreaker, type Breaker } from "./breaker.js"
 import { cachedCaller, createCacheStore, type CacheStore } from "./cache.js"
 import { personaOf } from "./models.js"
 import type { PlugboardOptions } from "./config.js"
@@ -124,8 +126,8 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 16: the keep-alive owner (`keepAlive`, #310) lives here, so one loop runs per process across generations. 15: the last options error (`configError`, #159) and `catalogLoaded` for `/readyz` (#160). 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
-const VERSION = 16
+/** 17: the fallback circuit breaker's state (`src/breaker.ts`, option `fallbackCooldown`) lives here too, so a cooling target is skipped by every generation. 16: the keep-alive owner (`keepAlive`, #310) lives here, so one loop runs per process across generations. 15: the last options error (`configError`, #159) and `catalogLoaded` for `/readyz` (#160). 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+const VERSION = 17
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
 interface Listener {
@@ -183,6 +185,8 @@ interface Runtime {
   readonly metrics: Metrics
   /** Concurrency queues and requests-per-minute windows (see src/limits.ts). */
   readonly limits: LimitState
+  /** The circuit breaker state of fallback chains (see src/breaker.ts). */
+  readonly breaker: Breaker
   /** When this runtime was created, epoch ms. */
   readonly startedAt: number
   /**
@@ -217,6 +221,7 @@ const detachedSessions = createSessionStore()
 const detachedMetrics = createMetrics()
 const detachedStartedAt = Date.now()
 const detachedLimits = createLimitState()
+const detachedBreaker = createBreaker()
 const detachedUsage = createUsageState()
 const detachedBudgets = createBudgetState()
 const detachedKeys = createKeyState()
@@ -236,6 +241,7 @@ function runtime(): Runtime | undefined {
       sweep: { nextAt: 0, running: false },
       metrics: createMetrics(),
       limits: createLimitState(),
+      breaker: createBreaker(),
       usage: createUsageState(),
       budgets: createBudgetState(),
       runtimeKeys: createKeyState(),
@@ -319,6 +325,9 @@ export const processMetrics = (): Metrics => runtime()?.metrics ?? detachedMetri
 
 /** The request limiter's state shared by every generation in the process (detached under a foreign-version runtime). */
 export const processLimits = (): LimitState => runtime()?.limits ?? detachedLimits
+
+/** The fallback circuit breaker shared by every generation in the process (detached under a foreign-version runtime). */
+export const processBreaker = (): Breaker => runtime()?.breaker ?? detachedBreaker
 
 /** The usage store's live days shared by every generation in the process (detached under a foreign-version runtime). */
 export const processUsage = (): UsageState => runtime()?.usage ?? detachedUsage
@@ -405,6 +414,7 @@ export function processStatus(): RuntimeStatus {
     startedAt: rt.startedAt,
     servingConfirmed: rt.confirmed.size > 0,
     catalogLoaded: rt.catalogLoaded === true,
+    cooldowns: rt.breaker.cooling(),
     ...(rt.listener ? { listener: { host: rt.listener.listen.host, port: rt.listener.listen.port, bound: rt.listener.bound } } : {}),
     ...(rt.configError ? { configError: rt.configError } : {}),
   }

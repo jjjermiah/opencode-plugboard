@@ -107,6 +107,27 @@ describe("#56 createMetrics: Prometheus text", () => {
     ])
   })
 
+  test("the breaker's events are counted per app and event, and the gauge counts the targets being skipped, not those waiting for a probe", async () => {
+    const metrics = createMetrics()
+    metrics.cooldown("alpha", "open")
+    metrics.cooldown("alpha", "skip")
+    metrics.cooldown("alpha", "skip")
+    metrics.cooldown("alpha", "close")
+    const text = await metrics.render({
+      ...snapshot,
+      cooldowns: [
+        { model: "a/x", state: "open", failures: 3, until: 2 },
+        { model: "b/y", state: "half-open", failures: 3, until: 1 },
+      ],
+    })
+    expect(samples(text, "plugboard_fallback_cooldown_events_total")).toEqual([
+      'plugboard_fallback_cooldown_events_total{app="alpha",event="open"} 1',
+      'plugboard_fallback_cooldown_events_total{app="alpha",event="skip"} 2',
+      'plugboard_fallback_cooldown_events_total{app="alpha",event="close"} 1',
+    ])
+    expect(text).toContain("\nplugboard_fallback_cooldown_targets 1\n")
+  })
+
   test("each registry is its own: the default one is untouched and no process metrics are collected", async () => {
     const first = createMetrics()
     const second = createMetrics()

@@ -12,6 +12,7 @@
  */
 
 import { Counter, Gauge, Histogram, Registry } from "@prometheus-io/client"
+import type { CoolingTarget } from "./breaker.js"
 import type { PlugUsage } from "./contract.js"
 
 /** `app` label of a request that was not authenticated (app names cannot contain an underscore). */
@@ -39,6 +40,8 @@ export interface RuntimeSnapshot {
   readonly guards: number
   /** Runtime start, epoch ms. */
   readonly startedAt: number
+  /** Targets of fallback chains whose breaker is open or half open (`src/breaker.ts`); absent counts as none. The gauge counts the open ones. */
+  readonly cooldowns?: ReadonlyArray<CoolingTarget>
 }
 
 /** Request duration buckets, seconds: model calls run from under a second to many minutes. */
@@ -62,6 +65,8 @@ export interface Metrics {
   dropped(params: ReadonlyArray<string>): void
   /** A model call failed before any output and was retried on the next target of its alias. */
   fallback(app: string): void
+  /** A target's breaker opened or closed, or a call skipped a target that is cooling down (`src/breaker.ts`). */
+  cooldown(app: string, event: "open" | "close" | "skip"): void
   /**
    * A run closed without the host's usage: its step did not finish in the settle window (`settleMs`). `reason` is `stop` (a stop
    * sequence ended the answer, #390) or `disconnect` (the client left). Counted, not estimated.
@@ -119,6 +124,13 @@ export function createMetrics(): Metrics {
     labelNames: ["app"],
     registers: [registry],
   })
+  const cooldowns = new Counter({
+    name: "plugboard_fallback_cooldown_events_total",
+    help: "Circuit breaker events of fallback chains, by app and event: open (a target is skipped for its cooldown), close (a probe answered) and skip (a call went past a cooling target).",
+    labelNames: ["app", "event"],
+    registers: [registry],
+  })
+  const cooling = new Gauge({ name: "plugboard_fallback_cooldown_targets", help: "Fallback chain targets being skipped right now (breaker open, cooldown not over).", registers: [registry] })
   const limited = new Counter({
     name: "plugboard_limited_total",
     help: "Model calls refused with 429 by a concurrency cap, a requests-per-minute limit or a budget, by app and reason.",
@@ -169,6 +181,7 @@ export function createMetrics(): Metrics {
       for (const param of params) count(dropped, { param })
     },
     fallback: (app) => count(fallbacks, { app }),
+    cooldown: (app, event) => count(cooldowns, { app, event }),
     usageMissing: (app, reason) => count(usageMissing, { app, reason }),
     limited: (app, reason) => count(limited, { app, reason }),
     cache: (app, result) => count(cache, { app, result }),
@@ -182,6 +195,7 @@ export function createMetrics(): Metrics {
       generations.set(snapshot.generations)
       pumpUp.set(snapshot.pumpRunning ? 1 : 0)
       guards.set(snapshot.guards)
+      cooling.set(snapshot.cooldowns?.filter((target) => target.state === "open").length ?? 0)
       startTime.set(Math.floor(snapshot.startedAt / 1000))
       return registry.metrics()
     },

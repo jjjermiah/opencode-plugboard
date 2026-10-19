@@ -149,7 +149,17 @@ describe("#56 buildStatus", () => {
       sessionGuards: 3,
       models: { catalog: 3, available: 4 },
       metrics: true,
+      fallbackCooldown: { enabled: true, cooling: [] },
     })
+  })
+
+  test("the targets cooling down, and whether the breaker is on", () => {
+    const until = Date.UTC(2026, 9, 11, 0, 2)
+    const cooldowns = [{ model: "a/x", state: "open" as const, failures: 3, until }]
+    expect(buildStatus({ options: testOptions(), runtime: { ...runtime, cooldowns }, now: until - 1000 })).toMatchObject({
+      fallbackCooldown: { enabled: true, cooling: [{ model: "a/x", state: "open", failures: 3, until: "2026-10-11T00:02:00.000Z" }] },
+    })
+    expect(buildStatus({ options: testOptions({ fallbackCooldown: false }), runtime, now: until })).toMatchObject({ fallbackCooldown: { enabled: false, cooling: [] } })
   })
 
   test("#347 the package version and the host OpenCode version come first, and an unknown OpenCode version is left out", () => {

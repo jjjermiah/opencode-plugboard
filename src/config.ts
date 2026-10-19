@@ -49,6 +49,12 @@ export interface PlugboardOptions {
    * `requestTimeoutMs` and below each `apps.<name>.requestTimeoutMs` (refused at load otherwise).
    */
   readonly fallbackAfterMs?: number
+  /**
+   * Option `fallbackCooldown`: the circuit breaker of list aliases (`src/breaker.ts`). A target that failed `failureThreshold` times in a row
+   * within `windowMs` is skipped for `cooldownMs`, then one request is let through; its success closes the breaker. `false` turns it off.
+   * Absent (the default): `DEFAULT_FALLBACK_COOLDOWN`. Process-wide, per target model. Global only.
+   */
+  readonly fallbackCooldown?: FallbackCooldown | false
   readonly maxTools: number
   /** Most model calls one request may fan out to: `n` for chat completions, prompts x `n` for legacy completions. Each is a full call and a kept session. */
   readonly maxN: number
@@ -349,6 +355,20 @@ const DEFAULTS = {
   requestTimeoutMs: 600_000,
 } as const
 
+/** Option `fallbackCooldown`, resolved. */
+export interface FallbackCooldown {
+  /** Consecutive retryable failures of one target that open the breaker. */
+  readonly failureThreshold: number
+  /** How long an open target is skipped, in ms. */
+  readonly cooldownMs: number
+  /** The failures must fall within this many ms of the first one; a slower streak starts over. */
+  readonly windowMs: number
+}
+
+/** Used when option `fallbackCooldown` is not set. */
+export const DEFAULT_FALLBACK_COOLDOWN: FallbackCooldown = { failureThreshold: 3, cooldownMs: 60_000, windowMs: 60_000 }
+const FALLBACK_COOLDOWN_KNOWN = new Set(["failureThreshold", "cooldownMs", "windowMs"])
+
 const KNOWN = new Set([
   "listen",
   "keys",
@@ -361,6 +381,7 @@ const KNOWN = new Set([
   "maxN",
   "requestTimeoutMs",
   "fallbackAfterMs",
+  "fallbackCooldown",
   "remoteImages",
   "history",
   "dropUnsupportedParams",
@@ -425,6 +446,18 @@ function positiveInt(value: unknown, name: string, fallback: number, max = Numbe
   if (value === undefined) return fallback
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > max) throw new Error(`plugboard option \`${name}\` must be an integer between 1 and ${max}`)
   return value
+}
+
+/** Option `fallbackCooldown`: `false`, or `{ failureThreshold, cooldownMs, windowMs }` with any of them left at its default. */
+function parseFallbackCooldown(raw: unknown): FallbackCooldown | false | undefined {
+  if (raw === undefined || raw === false) return raw
+  if (!isRecord(raw)) throw new Error("plugboard option `fallbackCooldown` must be `false` or an object with `failureThreshold`, `cooldownMs` and `windowMs`")
+  for (const key of Object.keys(raw)) if (!FALLBACK_COOLDOWN_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`fallbackCooldown.${key}\` (known: ${[...FALLBACK_COOLDOWN_KNOWN].join(", ")})`)
+  return {
+    failureThreshold: positiveInt(raw.failureThreshold, "fallbackCooldown.failureThreshold", DEFAULT_FALLBACK_COOLDOWN.failureThreshold, 1000),
+    cooldownMs: positiveInt(raw.cooldownMs, "fallbackCooldown.cooldownMs", DEFAULT_FALLBACK_COOLDOWN.cooldownMs, MAX_TIMER_MS),
+    windowMs: positiveInt(raw.windowMs, "fallbackCooldown.windowMs", DEFAULT_FALLBACK_COOLDOWN.windowMs, MAX_TIMER_MS),
+  }
 }
 
 const REMOTE_IMAGES_ERROR = "plugboard option `remoteImages` must be a boolean or `{ allow: [...] }` with host names, IP addresses or CIDR ranges that may be fetched even when they are not public"
@@ -1160,6 +1193,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
   const fallbacks: Record<string, string[]> = Object.fromEntries(fallbackEntries)
   const fallbackAfterMs = input.fallbackAfterMs === undefined ? undefined : positiveInt(input.fallbackAfterMs, "fallbackAfterMs", 0, MAX_TIMER_MS)
+  const fallbackCooldown = parseFallbackCooldown(input.fallbackCooldown)
   const requestTimeoutMs = positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS)
   const agents = parseAgents(input.agents, models as string[])
 
@@ -1232,6 +1266,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     agents,
     fallbacks,
     ...(fallbackAfterMs === undefined ? {} : { fallbackAfterMs }),
+    ...(fallbackCooldown === undefined ? {} : { fallbackCooldown }),
     maxTools,
     maxN,
     requestTimeoutMs,
