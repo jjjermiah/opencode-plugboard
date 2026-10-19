@@ -193,6 +193,20 @@ describe("answers", () => {
     expect(text).not.toContain("[DONE]")
   })
 
+  test("#408 each text delta is its own chunk and reaches the client before the next delta; the last chunk carries only the finish reason and usage", async () => {
+    const release = gate()
+    await route([ev.text("1\n2"), ev.text("\n3\n4"), { wait: release.promise }, ev.text("\n5"), ev.finish("stop", { inputTokens: 7, outputTokens: 3 })])
+    const open = await server!.open(stream())
+    // Both early deltas are on the wire while the model is still waiting: nothing is held back for the end.
+    const early = await open.waitFor((text) => text.includes("\\n3\\n4"))
+    expect(sseData(early).map((chunk) => chunk.candidates[0].content.parts[0].text)).toEqual(["1\n2", "\n3\n4"])
+    release.open()
+    const chunks = sseData(await open.ended)
+    expect(chunks.map((chunk) => chunk.candidates[0].content.parts[0].text)).toEqual(["1\n2", "\n3\n4", "\n5", ""])
+    expect(chunks.slice(0, -1).every((chunk) => chunk.candidates[0].finishReason === undefined && chunk.usageMetadata === undefined)).toBe(true)
+    expect(chunks.at(-1)).toMatchObject({ candidates: [{ finishReason: "STOP" }], usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 3, totalTokenCount: 10 } })
+  })
+
   test("#38 a stream failing before output keeps its HTTP status", async () => {
     await route([ev.error({ status: 503, message: "down" })])
     const reply = await server!.send(stream())

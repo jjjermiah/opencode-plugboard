@@ -13,10 +13,12 @@ The hub runs real apps, so attacks there are limited by design. On the hub, the 
 
 ```jsonc
 "keys": { "redteam": "{env:PLUGBOARD_KEY_REDTEAM}" },
-"apps": { "redteam": { "models": ["fast", "anthropic/claude-haiku-4-5"] } },
+"apps": { "redteam": { "models": ["fast", "opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5", "github-copilot/gpt-5.5"] } },
 "limits": { "apps": { "redteam": { "maxConcurrent": 2, "requestsPerMinute": 30 } } },
 "budgets": { "apps": { "redteam": { "requests": { "day": 600 }, "tokens": { "day": 3000000 } } } }
 ```
+
+`GET /v1/models` with the `redteam` key shows the app's models: `fast`, `opencode-go/glm-5.3-flash`, `anthropic/claude-haiku-4-5` and `github-copilot/gpt-5.5`, each with its `#` reasoning-effort variants. Read that list at the start of a round; it is the source of truth for what the key may call. Prefer the cheap models (`fast`, Haiku 4.5, GLM 5.3 Flash) and call `github-copilot/gpt-5.5` only when a test needs that provider: its listed price per token is the highest of the four.
 
 ## Rules of engagement
 
@@ -29,7 +31,7 @@ On the hub:
 
 - Use only the `redteam` key. Never use or look for other apps' keys.
 - No floods, no oversized bodies, no slow-reader or disconnect storms, no fuzzing. Those belong on the dev server.
-- Use only the scoped cheap models. Hitting the app's 429s or budget is expected: note it and slow down.
+- Use only the models the `redteam` key lists, and keep to the cheap ones unless a test needs another. Hitting the app's 429s or budget is expected: note it and slow down.
 - Stop at once and report if the hub degrades: `/readyz` is not 200, `/healthz` fails, or latency jumps for a plain `fast` call.
 - Don't change the hub's config, restart it, or touch its OpenCode sessions other than your own.
 
