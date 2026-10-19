@@ -3,6 +3,13 @@
 model = "fast"
 model_provider = "plugboard"
 
+# Plugboard takes function tools only, and Codex 0.163 sends two other kinds by default (#498). Turn both off.
+# Codex's web search is a `web_search` tool, and its multi-agent tools go out as a `namespace` tool.
+web_search = "disabled"
+
+[features]
+multi_agent = false
+
 [model_providers.plugboard]
 name = "Plugboard"
 base_url = "http://127.0.0.1:4010/v1"

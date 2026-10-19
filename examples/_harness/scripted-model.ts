@@ -70,8 +70,9 @@ export function answer(request: PlugRequest): PlugEvent[] {
       return [ev.call(CALL_ID, "final_answer", { answer: "18 C and cloudy" }), ev.finish("tool-calls", USAGE)]
     }
     if (answered(request)) return say("18 C and cloudy")
-    // Semantic Kernel prefixes plugin functions on the wire (weather-get_weather). Answer with the name the client sent.
-    const weather = request.tools.find((tool) => tool.name === "get_weather" || tool.name.endsWith("-get_weather"))
+    // Semantic Kernel prefixes plugin functions on the wire (weather-get_weather), and Codex prefixes an MCP tool with its
+    // server (mcp__weather__get_weather). Answer with the name the client sent.
+    const weather = request.tools.find((tool) => tool.name === "get_weather" || tool.name.endsWith("-get_weather") || tool.name.endsWith("__get_weather"))
     if (weather && request.toolChoice !== "none") {
       return [ev.call(CALL_ID, weather.name, { city: "Paris" }), ev.finish("tool-calls", USAGE)]
     }

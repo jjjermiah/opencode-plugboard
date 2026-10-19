@@ -75,6 +75,11 @@ describe("scripted model tool choices", () => {
     expect(calls(events)).toEqual([ev.call("call_scripted_1", "get_weather", { city: "Paris" })])
   })
 
+  test("calls a get_weather tool with a server prefix (Codex's MCP tools) under the name the client sent", () => {
+    const events = answer(plugRequest({ messages: [user(prompt("S2"))], tools: [{ ...WEATHER_TOOL, name: "mcp__weather__get_weather" }] }))
+    expect(calls(events)).toEqual([ev.call("call_scripted_1", "mcp__weather__get_weather", { city: "Paris" })])
+  })
+
   test("a named choice forces its tool as before, whatever the schema", () => {
     const events = answer(plugRequest({ messages: [user(prompt("S2"))], tools: [WEATHER_TOOL], toolChoice: { type: "tool", name: "get_weather" } }))
     expect(calls(events)).toEqual([ev.call("call_scripted_1", "get_weather", {})])
