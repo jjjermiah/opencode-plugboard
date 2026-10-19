@@ -136,8 +136,7 @@ export function appRows(report: UsageReport): AppRow[] {
   const { totals } = report
   return Object.entries(report.apps)
     .map(([app, entry]): AppRow => {
-      const share =
-        totals.costUsd > 0 ? entry.totals.costUsd / totals.costUsd : totals.requests > 0 ? entry.totals.requests / totals.requests : 0
+      const share = totals.costUsd > 0 ? entry.totals.costUsd / totals.costUsd : totals.requests > 0 ? entry.totals.requests / totals.requests : 0
       return {
         app,
         requests: entry.totals.requests,
@@ -153,15 +152,7 @@ export function appRows(report: UsageReport): AppRow[] {
 }
 
 export function appValues(row: AppRow): string[] {
-  return [
-    row.app,
-    formatCount(row.requests),
-    formatCount(row.tokens),
-    formatCost(row.costUsd),
-    formatCount(row.errors),
-    formatMs(row.p95Ms),
-    formatInstant(row.lastRequestAt),
-  ]
+  return [row.app, formatCount(row.requests), formatCount(row.tokens), formatCost(row.costUsd), formatCount(row.errors), formatMs(row.p95Ms), formatInstant(row.lastRequestAt)]
 }
 
 export interface ModelRow {

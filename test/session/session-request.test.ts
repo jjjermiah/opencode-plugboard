@@ -75,6 +75,12 @@ describe("#201 the tools the session offers", () => {
     expect(counted).toMatchObject({ tools: [] })
   })
 
+  test("tools: false keeps tool_choice none: no server tool is offered (#421, SHOULD 3)", async () => {
+    const request = plugRequest({ tools: [tool("a")], toolChoice: "none" })
+    const counted = await sessionRequest(hosted(websearch()), "app", request, policy({ serverTools: ["websearch"], tools: false }), signal)
+    expect(counted).toMatchObject({ tools: [] })
+  })
+
   test("a named tool choice offers only that caller tool, with its steering sentence", async () => {
     const request = plugRequest({ tools: [tool("a"), tool("b")], toolChoice: { type: "tool", name: "b" } })
     const counted = await sessionRequest(undefined, "app", request, undefined, signal)

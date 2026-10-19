@@ -37,3 +37,35 @@ The snippet uses `client`, `model`, `messages` (a list holding the user prompt),
 - Streaming usage needs `stream_options={"include_usage": True}`. A streamed tool call arrives as one delta with the whole arguments string.
 - `client.models.list()` and `client.models.retrieve(id)` (`GET /v1/models/{id}`) are both served. `retrieve` was added after the 2026-10-11 run and has not been re-run with this SDK.
 - A wrong key raises `AuthenticationError` (401 `invalid_api_key`). An unknown model raises `NotFoundError` (404 `model_not_found`).
+
+## Responses API
+
+The same scenarios on `client.responses` (`/v1/responses`), as the `responses` variant of the example. Each turn can send the whole conversation in `input`, or continue a stored answer with `previous_response_id` (since 0.51.0, see Gotchas). The `responses` rows of the example are in [`runs/live/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-python/runs/live).
+
+Text. The snippet uses `client` and `model`.
+
+<<< @/../examples/openai-python/chat.py#snippet-responses
+
+Tool call. The snippet uses `client`, `model`, `PROMPT` and `TOOL_RESULT`, and `RESPONSES_TOOL` (the `get_weather` tool in the Responses shape: the name at the top level, no `function` wrapper). `store=False` sends the whole history back in `input`.
+
+<<< @/../examples/openai-python/tools.py#snippet-responses
+
+Streaming. The snippet uses `client` and `model`. The text is read from the `response.output_text.delta` events, and the final response must agree with them.
+
+<<< @/../examples/openai-python/stream.py#snippet-responses
+
+Image. The snippet uses `client`, `model` and `RED` (the data URL, `examples/_shared/red32.dataurl.txt`).
+
+<<< @/../examples/openai-python/image.py#snippet-responses
+
+Structured output with `responses.parse`, and the raw `text.format` `json_schema` form. The snippets use `client`, `model`, `Meal` (the Pydantic model in `structured.py`), `PROMPT` and `SCHEMA`.
+
+<<< @/../examples/openai-python/structured.py#snippet-responses
+
+<<< @/../examples/openai-python/structured.py#snippet-responses-raw
+
+The Responses API has no `finish_reason`. The example maps it from the response: `tool_calls` if a function call is in the output, else `stop` when the status is `completed`. That is a mapping, not a read.
+
+Gotchas (Responses):
+
+- `previous_response_id` works since 0.51.0: plugboard keeps each answer made with `store` on, per app, and `client.responses.retrieve`, `input_items.list` and `delete` work on it. Before 0.51.0 it was refused with a 400 `unsupported_parameter`, and the recorded live run still shows that. See [Responses API](../responses.md#stored-responses-since-0-51-0).

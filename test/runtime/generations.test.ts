@@ -124,7 +124,14 @@ describe("who serves", () => {
 
   test("a handler that throws is a 503, and the listener keeps serving", async () => {
     const port = await freePort()
-    registerGeneration(generation("a", { port, handler: () => { throw new Error("bad handler") } }))
+    registerGeneration(
+      generation("a", {
+        port,
+        handler: () => {
+          throw new Error("bad handler")
+        },
+      }),
+    )
     await listening(port)
     expect(await whoServes(port)).toBe("503 plugboard handler failed")
     expect(logs.of("listener.handler_failed")[0]!.fields.error).toBe("bad handler")
@@ -181,8 +188,7 @@ describe("the listener outlives generations by a grace period", () => {
 })
 
 describe("#85 history index", () => {
-  const registerSession = (sessionID: string) =>
-    sessionStore().register({ sessionID, app: "app", requestID: "r", request: plugRequest(), collector: { push() {} } })
+  const registerSession = (sessionID: string) => sessionStore().register({ sessionID, app: "app", requestID: "r", request: plugRequest(), collector: { push() {} } })
 
   test("with no limits, registering a request session writes nothing to host storage", async () => {
     const history = new FakeHistoryPort()
@@ -202,8 +208,7 @@ describe("#85 history index", () => {
 })
 
 describe("#265 history index per app", () => {
-  const registerSession = (sessionID: string) =>
-    sessionStore().register({ sessionID, app: "app", requestID: "r", request: plugRequest(), collector: { push() {} } })
+  const registerSession = (sessionID: string) => sessionStore().register({ sessionID, app: "app", requestID: "r", request: plugRequest(), collector: { push() {} } })
 
   test("an app with its own limit and no global limit is indexed", async () => {
     const history = new FakeHistoryPort()
@@ -226,7 +231,10 @@ describe("#265 history index per app", () => {
 describe("#265 review: the sweep runs when only per-app limits exist", () => {
   test("a new session arrives, the app's own maxSessions of 1 removes the two older sessions", async () => {
     const history = new FakeHistoryPort()
-    for (const [at, id] of [[1, "old-1"], [2, "old-2"]] as const) {
+    for (const [at, id] of [
+      [1, "old-1"],
+      [2, "old-2"],
+    ] as const) {
       history.sessions.add(id)
       await history.put(`history/app/${String(at).padStart(15, "0")}/${id}`, id)
     }

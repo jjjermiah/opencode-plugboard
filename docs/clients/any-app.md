@@ -8,7 +8,7 @@ An app that lets you set a base URL, an API key and a model id can use plugboard
 | API key | a key from the plugboard `keys` option, not a provider key |
 | Model | `provider/model[#variant]` or an alias from `aliases` |
 
-Install the plugin pinned to a version in your global OpenCode config, for example `"package": "opencode-plugboard@0.26.0"`. A bare `"opencode-plugboard"` means `latest`, so a cache refresh or `opencode plugin update` can pull a release you have not read. A global plugin runs inside OpenCode in every project, next to your provider logins, so move the pin on purpose after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md). The full config is in the [README](https://github.com/jjjermiah/opencode-plugboard#quick-start).
+Install the plugin pinned to a version in your global OpenCode config, for example `"package": "opencode-plugboard@0.48.0"`. A bare `"opencode-plugboard"` means `latest`, so a cache refresh or `opencode plugin update` can pull a release you have not read. A global plugin runs inside OpenCode in every project, next to your provider logins, so move the pin on purpose after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md). The full setup is in [Install](../install.md).
 
 ```sh
 curl http://localhost:4010/v1/models -H "Authorization: Bearer $PLUGBOARD_KEY"
@@ -31,7 +31,7 @@ Plugboard returns the tool calls to the app and never runs them. The app execute
 
 - The model must be on the `models` allowlist. With no `models`, chat calls return 403 `no_models_configured`.
 - Ids can contain `/` and `#`, which some UIs mishandle in URLs or dropdowns. Define an alias in `aliases` for those.
-- Chat Completions, the Responses API (stateless, see [responses.md](../responses.md)) and the model list exist. Embeddings and audio fail. Images work as `data:` URLs; plain `http(s)` image URLs are fetched by the server only when the `remoteImages` option allows it.
+- Chat Completions, the Responses API (with `previous_response_id`, see [responses.md](../responses.md)) and the model list exist. Embeddings and audio fail. Images work as `data:` URLs; plain `http(s)` image URLs are fetched by the server only when the `remoteImages` option allows it.
 - After an OpenCode restart the port stays closed until a client touches the server. See [Warm-up](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/warm-up.md).
 - From another host or a container, `localhost` is not plugboard. See the next section.
 

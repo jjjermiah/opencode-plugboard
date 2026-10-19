@@ -20,10 +20,7 @@ afterEach(async () => {
 
 async function start(): Promise<RouteServer> {
   const options = parseOptions({ models: ["test/*"], ...ALIASES })
-  const caller = withFallbacks(
-    new FakeModelCaller(() => [ev.text("hi"), ev.finish()]),
-    { options, loadCatalog: async () => CATALOG },
-  )
+  const caller = withFallbacks(new FakeModelCaller(() => [ev.text("hi"), ev.finish()]), { options, loadCatalog: async () => CATALOG })
   server = await startRoute({ caller, options: ALIASES })
   return server
 }

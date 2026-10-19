@@ -14,7 +14,38 @@ bun run typecheck
 bun test
 ```
 
-The type check also checks host compatibility: it fails when the pinned `@opencode/plugin` changes shape. CI runs the type check and the tests on every push and pull request.
+The type check also checks host compatibility: it fails when the pinned `@opencode/plugin` changes shape. CI runs the lint, the format check, the type check and the tests on every push and pull request.
+
+[mise](https://mise.jdx.dev) users get the CI toolchain (Bun and Node) from `mise.toml` with `mise install`.
+
+### Formatting and linting
+
+[Biome](https://biomejs.dev) formats and lints `src/`, `test/`, `.github/scripts/` and the root TypeScript files; `biome.jsonc` has the settings and a reason for every rule that is off. Generated and vendored files (`test/fixtures/specs/`, `test/types/wire.ts`) and `examples/` are left out.
+
+```sh
+bun run lint            # lint, as CI does
+bun run format          # check the format, as CI does
+bun run format:write    # fix the format
+```
+
+The lefthook `pre-commit` hook checks the staged files (see [Enforcement](#enforcement)). `git blame` skips the one-time reformat through `.git-blame-ignore-revs`; GitHub reads that file by itself, and locally you run `git config blame.ignoreRevsFile .git-blame-ignore-revs` once.
+
+Before you open a pull request, run the whole local chain in one command:
+
+```sh
+bun run validate              # lint + format check, typecheck, tests + coverage gates, coverage manifest, pack, docs, scripted examples
+bun run validate --mutations  # also the mutation run, after touching a guard
+bun run validate --skip examples
+```
+
+It runs in the foreground, writes each step's full output to `.agents/validate/<step>.log`, and prints one line per step plus the tail of a failed step's log. The scripted examples take about six minutes; the rest about one. After you push, `bun run pr-wait <number>` waits for the pull request's checks and prints one verdict.
+
+### Merging `main` into a branch: generated files
+
+When several branches are open at once, three kinds of file conflict on every merge. They are handled so you do not resolve them by hand:
+
+- `CHANGELOG.md` has `merge=union` in `.gitattributes`. Two branches that add bullets under `## [Unreleased]` keep both sets of lines on a local `git merge origin/main`. GitHub's web merge ignores that attribute, so merge `main` into your branch locally and push the result. Read the merged section once: both bullets stay, in the order git found them.
+- `docs/compatibility.md`, `examples/README.md` and `.github/floors/test-count-floors.json` are generated. After the merge, run `bun run regen`: one foreground command that resolves a conflicted floors file to the per-key maximum of both sides, runs the tests with the coverage gates (the floor ratchet), regenerates `docs/compatibility.md` and the table in `examples/README.md`, and prints which of the files changed. It stages nothing: check `git diff`, then commit. It takes as long as the `test` step of `bun run validate`.
 
 ## Tests
 
@@ -115,7 +146,7 @@ Fixes #N
 
 `commitlint` (config in `commitlint.config.mjs`) checks the format in two places:
 
-- Locally, a [lefthook](https://lefthook.dev) `commit-msg` hook. Install it once per clone with `bunx lefthook install`. Worktrees share the clone's hooks, but each needs its own `bun install`. Check a draft with `bunx commitlint --edit <file>` or `echo "..." | bunx commitlint`.
+- Locally, a [lefthook](https://lefthook.dev) `commit-msg` hook. The same install adds a `pre-commit` hook that runs `biome check` on the staged files. Install it once per clone with `bunx lefthook install`. Worktrees share the clone's hooks, but each needs its own `bun install`. Check a draft with `bunx commitlint --edit <file>` or `echo "..." | bunx commitlint`.
 - In CI, the "Commits" workflow lints every commit in a push or pull request. Commits up to `a54a703` (Release 0.11.0, the last one before the convention) are never checked.
 
 There is no `prepare` script on purpose. npm runs `prepare` on `npm publish`, and the publish job installs no dev dependencies, so the hook would break the release.
@@ -124,9 +155,11 @@ There is no `prepare` script on purpose. npm runs `prepare` on `npm publish`, an
 
 Every user-visible change adds an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). Explain why the change was made and what it cost, not just what changed. Don't paste a commit list. Maintainers cut releases from that section, and every release needs a short creative title (2 to 5 words, `bun run release X.Y.Z --title "..."`), see [docs/releasing.md](docs/releasing.md).
 
+Write the version marker of a new option as the placeholder `(since next)`, and `Since next` where a sentence starts, in `CHANGELOG.md` and `docs/**/*.md`. Do not guess the next version: parallel branches collide on it. The release script replaces the placeholder with the released version in the release commit, and CI fails when one is left in a released changelog section. See [docs/releasing.md](docs/releasing.md#version-markers-the-since-next-placeholder).
+
 ## Docs and unreleased options
 
-The docs site deploys from `main`, so it can describe options the latest release does not have. Its banner names the latest release (the version in `package.json`). Mark each option that is newer than that release in `docs/configuration.md`, on its option or field name: `` `historyUrl` (since 0.20.0) ``. Use the version that will ship it, which is the release the `[Unreleased]` section becomes, and fix the number if that release changes. Commit the mark with the option. Options that predate the marks stay unmarked.
+The docs site deploys from `main`, so it can describe options the latest release does not have. Its banner names the latest release (the version in `package.json`). Mark each option that is newer than that release in `docs/configuration.md`, on its option or field name: `` `historyUrl` (since next) ``. Write the placeholder `(since next)`, not a version number: the release script turns it into the version of the release the `[Unreleased]` section becomes. Commit the mark with the option. Options that predate the marks stay unmarked.
 
 ## Writing style
 
@@ -136,7 +169,7 @@ Prose in the README, docs, issues and changelog is plain and short. No em or en 
 
 - One change per pull request, with the issue linked.
 - Every commit passes `commitlint` and has a detailed body (see [Commits](#commits)).
-- `bun run typecheck` and `bun test` pass.
+- `bun run lint`, `bun run format`, `bun run typecheck` and `bun test` pass.
 - The pong gate passed on an isolated server, if you touched `src/` or `index.ts`.
 - `[Unreleased]` in the changelog is updated.
 - `main` is protected. Nothing is pushed to it directly: push your branch, open the pull request, and merge it once the required checks pass: `CI passed` (one aggregate check that needs every CI job, so a red job anywhere blocks the merge), `Lint commit messages` and `Analyze (javascript-typescript)`. No approving review is required, so a maintainer can merge their own pull request.

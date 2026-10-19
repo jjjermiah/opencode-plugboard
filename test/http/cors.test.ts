@@ -42,9 +42,21 @@ describe("#256 cors: a preflight from an allowed origin is answered before authe
     const reply = await server!.send(preflight(APP))
     expect(reply.status).toBe(204)
     expect(reply.headers["access-control-allow-origin"]).toBe(APP)
-    expect(reply.headers["access-control-allow-methods"]).toBe("GET, POST, OPTIONS")
+    expect(reply.headers["access-control-allow-methods"]).toBe("GET, POST, DELETE, OPTIONS")
     expect(reply.headers["access-control-allow-headers"]).toBe("authorization, content-type, x-api-key, x-goog-api-key")
     expect(reply.headers.vary).toBe("Origin")
+    expect(caller.calls).toEqual([])
+  })
+
+  test("a DELETE preflight on a stored response from an allowed origin is allowed, and needs no key", async () => {
+    const { caller } = await route({ keys: { app: "secret" }, cors })
+    const path = `/v1/responses/resp_${"a".repeat(32)}`
+    const reply = await server!.send({ method: "OPTIONS", path, headers: { origin: APP, "access-control-request-method": "DELETE" } })
+    expect(reply.status).toBe(204)
+    expect(reply.headers["access-control-allow-origin"]).toBe(APP)
+    expect(reply.headers["access-control-allow-methods"]).toContain("DELETE")
+    // The actual DELETE still needs its key.
+    expect((await server!.send({ method: "DELETE", path, headers: { origin: APP } })).status).toBe(401)
     expect(caller.calls).toEqual([])
   })
 
@@ -110,8 +122,7 @@ describe("#314 cors: the plugboard response headers are exposed to the browser",
     await route({ cors })
     const reply = await server!.send(chat({ origin: APP }))
     const exposed = (reply.headers["access-control-expose-headers"] ?? "").split(", ")
-    for (const name of ["x-plugboard-request-id", "x-plugboard-model", "x-plugboard-session", "x-plugboard-usage", "retry-after"])
-      expect(exposed).toContain(name)
+    for (const name of ["x-plugboard-request-id", "x-plugboard-model", "x-plugboard-session", "x-plugboard-usage", "retry-after"]) expect(exposed).toContain(name)
     // The header the answer really carries is one of the exposed ones.
     expect(reply.headers["x-plugboard-request-id"]).toBeDefined()
   })
@@ -143,7 +154,7 @@ describe("#256 cors: Private Network Access", () => {
 
 /** Review of #319 (SHOULD 5): the preflight and an error answer carry the list too, and the list is the whole set of names. */
 describe("#314 review: Access-Control-Expose-Headers on every allowed answer, the whole list", () => {
-  const exposed = (headers: Record<string, string | string[] | undefined>) => (String(headers["access-control-expose-headers"] ?? "")).split(", ")
+  const exposed = (headers: Record<string, string | string[] | undefined>) => String(headers["access-control-expose-headers"] ?? "").split(", ")
 
   test("an allowed origin's 204 preflight carries the list", async () => {
     await route({ cors })

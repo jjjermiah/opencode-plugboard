@@ -33,3 +33,11 @@ The tool's result is read from `examples/_shared/get_weather.result.json`. The r
 - Set `use_responses_api=False`. Left unset, an id that starts with `gpt-5.6` can switch the client to the Responses API. Plugboard serves that API (see [Responses API](../responses.md)), but this page's runs used Chat Completions. A `provider/` prefix avoids it, but set the flag anyway.
 - LangChain has no list-models call. Use the wrapped OpenAI client (`llm.root_client.models.list()`).
 - A wrong key raises `openai.AuthenticationError` (401, `invalid_api_key`). An unknown model raises `openai.NotFoundError` (404, `model_not_found`).
+
+## Responses API
+
+`ChatOpenAI` with `use_responses_api=True` sends the same calls to `/v1/responses`. The example's `responses` variant runs chat, tools, streaming, images and structured output on it. LangChain exposes no `finish_reason` on that route, though plugboard returns status `completed`, so those checks are left out of the example's rows (`unobserved`, issue 104).
+
+The snippet builds the client; `chat_model` is the Chat Completions one (above).
+
+<<< @/../examples/langchain-python/llm.py#snippet-responses

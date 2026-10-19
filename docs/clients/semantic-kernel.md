@@ -59,3 +59,14 @@ Not exercised: structured output, the .NET route, and the Responses API (`OpenAI
 
 - The streamed reply gave one or two non-empty content updates across runs (one and two were observed). The count varies per run, so the script prints it and does not check it against a number.
 - `max_completion_tokens` is set to 1024, so a reasoning model behind the `fast` alias still has room to answer.
+
+## Harness runs (2026-10-16)
+
+`examples/semantic-kernel/run.py` runs through the examples harness with semantic-kernel 1.45.0, pinned in `uv.lock`. It covers S1 text, S2 tool round trip (calls made by hand, `auto_invoke=False`), S3 stream and S4 streamed tool call. S1 and S2 run on `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`; S3 and S4 run on `fast`. Semantic Kernel asks for stream usage itself, so S3 checks it. S5 to S7 and E1/E2 were not run.
+
+- Scripted, byte-identical across two runs: [runs/scripted](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/semantic-kernel/runs/scripted). Pass. The scripted model answers the prefixed tool name `weather-get_weather`, the name Semantic Kernel sends.
+- Live against the dev server, served build `git describe` v0.41.0-32-g9852300 (main): [runs/live/2026-10-16-9852300](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/semantic-kernel/runs/live/2026-10-16-9852300). Pass, including S2 and S4. `fast` was served by `anthropic/claude-haiku-4-5` (see its REPORT.md).
+
+The copyable client in `chat.py`:
+
+<<< @/../examples/semantic-kernel/chat.py#snippet

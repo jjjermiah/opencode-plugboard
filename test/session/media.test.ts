@@ -10,7 +10,7 @@ import type { ServerResponse } from "node:http"
 import ipaddr from "ipaddr.js"
 import type { PlugRequest } from "../../src/contract.js"
 import { ImageError, isPublicAddress, parseAllowEntry, prepareImages, type RemoteImages } from "../../src/session/media.js"
-import { plugRequest } from "../support/fixtures.js"
+import { plugRequest, until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { listen, type Loopback } from "../support/loopback.js"
 
@@ -20,6 +20,8 @@ const LOCALHOST = (await lookup("localhost", { all: true, verbatim: true })).map
 const PNG = Buffer.from("89504e470d0a1a0a", "hex")
 let server: Loopback
 let hits = 0
+/** Requests per path: a test counts its own fetches here, so a request from another test does not count (#434). */
+const served = new Map<string, number>()
 /** Responses a `/hang` fetch leaves open; a test destroys them when it is done. */
 const hung: ServerResponse[] = []
 const routes: Record<string, (response: ServerResponse) => void> = {
@@ -27,6 +29,7 @@ const routes: Record<string, (response: ServerResponse) => void> = {
     response.writeHead(200, { "content-type": "image/png" })
     response.end(PNG)
   },
+  "/max-items.png": (response) => routes["/ok.png"]!(response),
   "/redirect": (response) => {
     response.writeHead(302, { location: "/ok.png" })
     response.end()
@@ -50,10 +53,16 @@ const routes: Record<string, (response: ServerResponse) => void> = {
     response.writeHead(200, { "content-type": "image/png", "content-length": String(21 * 1024 * 1024) })
     response.end()
   },
+  "/streamed-huge": (response) => {
+    response.writeHead(200, { "content-type": "image/png", "transfer-encoding": "chunked" })
+    response.write(Buffer.alloc(600, 0x41))
+    response.end(Buffer.alloc(600, 0x42))
+  },
 }
 beforeAll(async () => {
   server = await listen((request, response) => {
     hits++
+    served.set(request.url ?? "", (served.get(request.url ?? "") ?? 0) + 1)
     ;(routes[request.url ?? ""] ?? routes["/missing"]!)(response)
   })
 })
@@ -78,13 +87,19 @@ describe("#84 addresses that are not public are refused before any connection", 
     ["loopback", "http://127.0.0.1/a.png"],
     ["loopback, another address", "http://127.255.0.9/a.png"],
     ["loopback in hex (URL-normalized)", "http://0x7f000001/a.png"],
+    ["loopback in dotted hex", "http://0x7f.0.0.1/a.png"],
+    ["loopback in octal (URL-normalized)", "http://0177.0.0.1/a.png"],
+    ["loopback in two-part shorthand", "http://127.1/a.png"],
     ["loopback as one integer", "http://2130706433/a.png"],
     ["this network", "http://0.0.0.0/a.png"],
     ["private 10/8", "http://10.1.2.3/a.png"],
+    ["private 10/8 in octal", "http://012.0.0.1/a.png"],
+    ["private 10/8 in dotted hex", "http://0x0a.0.0.1/a.png"],
     ["private 172.16/12", "http://172.31.255.255/a.png"],
     ["private 192.168/16", "http://192.168.1.1/a.png"],
     ["CGNAT", "http://100.64.0.1/a.png"],
     ["link-local (cloud metadata)", "http://169.254.169.254/latest/meta-data"],
+    ["link-local in octal", "http://0251.0376.0251.0376/a.png"],
     ["documentation", "http://203.0.113.5/a.png"],
     ["benchmarking", "http://198.18.0.1/a.png"],
     ["multicast", "http://224.0.0.1/a.png"],
@@ -210,7 +225,7 @@ describe("#259 remoteImages limits tighten the fetch", () => {
   const allow = ["127.0.0.1"]
   const url = (path: string) => `http://127.0.0.1:${server.port}${path}`
 
-  test("schemes [\"https\"] refuses an http URL before any connection", async () => {
+  test('schemes ["https"] refuses an http URL before any connection', async () => {
     const before = hits
     expect(code(await fetchImage(url("/ok.png"), { allow, schemes: ["https"] }))).toBe("image_fetch_failed")
     expect(hits).toBe(before)
@@ -218,6 +233,7 @@ describe("#259 remoteImages limits tighten the fetch", () => {
 
   test("maxBytes below the image size is image_too_large; at the size it is fetched", async () => {
     expect(code(await fetchImage(url("/ok.png"), { allow, maxBytes: PNG.length - 1 }))).toBe("image_too_large")
+    expect(code(await fetchImage(url("/streamed-huge"), { allow, maxBytes: 1024 }))).toBe("image_too_large")
     expect(code(await fetchImage(url("/ok.png"), { allow, maxBytes: PNG.length }))).toBe("fetched")
   })
 
@@ -237,12 +253,19 @@ describe("#259 remoteImages limits tighten the fetch", () => {
   })
 
   test("maxItems: a second remote URL is refused before its fetch; data URLs are not counted", async () => {
-    const before = hits
-    const error = await prepareImages(withImages(url("/ok.png"), url("/ok.png")), new AbortController().signal, { allow, maxItems: 1 }).catch((caught: unknown) => caught)
+    const count = () => served.get("/max-items.png") ?? 0
+    const before = count()
+    // The hang test's request can reach the server after that test ended (#434): one arrives inside this window.
+    const seen = hung.length
+    const late = server.raw({ path: "/hang" })
+    await until(() => hung.length > seen, 1_000, "the late /hang request")
+    for (const response of hung.splice(0)) response.destroy()
+    late.destroy()
+    const error = await prepareImages(withImages(url("/max-items.png"), url("/max-items.png")), new AbortController().signal, { allow, maxItems: 1 }).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(ImageError)
     expect((error as ImageError).code).toBe("too_many_remote_images")
-    expect(hits).toBe(before + 1)
-    const files = await prepareImages(withImages("data:a", url("/ok.png"), "data:b"), new AbortController().signal, { allow, maxItems: 1 })
+    expect(count()).toBe(before + 1)
+    const files = await prepareImages(withImages("data:a", url("/max-items.png"), "data:b"), new AbortController().signal, { allow, maxItems: 1 })
     expect(files).toHaveLength(3)
   })
 })

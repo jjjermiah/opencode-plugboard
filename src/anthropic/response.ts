@@ -7,7 +7,8 @@
  * no-op `emit`. Thinking blocks are produced only when the request asked for thinking.
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
-import { StopHoldback } from "../stop.js"
+import type { ListedModel } from "../models.js"
+import { structuredMissing, textFallback } from "../openai/response.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -18,8 +19,16 @@ export interface MessagesExchange {
   readonly stream: boolean
   /** `thinking` was enabled or adaptive: reasoning text is returned as thinking blocks. */
   readonly thinking: boolean
-  /** The request's `stop_sequences`. The host reports a stop without the sequence that caused it, so the end of the text is checked. */
-  readonly stop?: ReadonlyArray<string>
+  /** Name of the forced tool that carries `output_config.format` output; its input becomes the JSON text of the answer. */
+  readonly structuredTool?: string
+  /** The caller's schema, checked against a text answer when the model skipped the respond call (`textFallback`). */
+  readonly structuredSchema?: Readonly<Record<string, unknown>>
+  /**
+   * The caller's own tools are offered next to the structured tool. A call to any of them is the
+   * response (normal `tool_use`, prose and the structured answer dropped); the structured answer is
+   * the text only when the step called no caller tool.
+   */
+  readonly callerTools?: boolean
 }
 
 /** A stream event as emitted: `type` is also the SSE event name. */
@@ -32,6 +41,8 @@ export interface MessageRun {
   readonly started: boolean
   /** The final message object. */
   readonly message?: object
+  /** The structured answer came from the final text, not the respond call (`textFallback`). */
+  readonly structuredFallback?: boolean
 }
 
 type Block = Record<string, unknown>
@@ -40,6 +51,9 @@ const newId = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll("-
 
 /** Host call ids are not always Anthropic-shaped; `toolu_` plus the id with unsafe characters replaced. */
 const toolId = (id: string) => (/^toolu_[A-Za-z0-9_-]+$/.test(id) ? id : `toolu_${id.replace(/[^A-Za-z0-9_-]/g, "_")}`)
+
+/** Every tool call plugboard returns is one the model made directly (not from a server tool), as Anthropic reports it. */
+const DIRECT_CALLER = () => ({ type: "direct" as const })
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -67,8 +81,16 @@ const encodeUsage = (usage: PlugUsage | undefined) => {
     output_tokens: usage?.outputTokens ?? 0,
     cache_creation_input_tokens: write,
     cache_read_input_tokens: read,
+    output_tokens_details: null,
+    server_tool_use: null,
   }
 }
+
+/**
+ * A Message's usage: the counts above plus `cache_creation`, `inference_geo` and `service_tier`, which the SDK's `Usage` type
+ * requires (null when plugboard has no value). message_delta carries the narrower `MessageDeltaUsage`, so it takes `encodeUsage` alone.
+ */
+const encodeMessageUsage = (usage: PlugUsage | undefined) => ({ ...encodeUsage(usage), cache_creation: null, inference_geo: null, service_tier: null })
 
 const STOP_REASON: Record<Exclude<PlugFinish, "error">, string> = {
   stop: "end_turn",
@@ -111,14 +133,64 @@ const errorType = (error: PlugError): string => {
 /** `{"type":"error","error":{"type","message"}}`: the body of every error on this route, and the data of a stream `error` event. */
 export const encodeError = (error: PlugError) => ({ type: "error", error: { type: errorType(error), message: error.message } })
 
+/** One model as Anthropic's `GET /v1/models/{id}` (and each `data` entry) names it. An unknown release date is the epoch. */
+export const encodeModel = ({ id, model }: ListedModel) => {
+  const released = model.released === undefined ? NaN : new Date(model.released).getTime()
+  return { type: "model", id, display_name: model.name ?? id, created_at: new Date(Number.isNaN(released) ? 0 : released).toISOString() }
+}
+
+/** Anthropic's `limit` on `GET /v1/models`: default 20, from 1 to 1000. */
+export const MODEL_PAGE_DEFAULT = 20
+export const MODEL_PAGE_MAX = 1000
+
+export interface ModelPageQuery {
+  readonly limit: number
+  readonly afterId?: string
+  readonly beforeId?: string
+}
+
+/** The paging query of `GET /v1/models`. A refusal is a 400, the same shape as the other parameter refusals. */
+export const modelPageQuery = (params: URLSearchParams): ModelPageQuery | PlugError => {
+  const raw = params.get("limit")
+  const limit = raw === null ? MODEL_PAGE_DEFAULT : /^\d+$/.test(raw) ? Number(raw) : Number.NaN
+  if (!(limit >= 1 && limit <= MODEL_PAGE_MAX)) return { status: 400, kind: "invalid_request", code: "invalid_limit", param: "limit", message: "limit must be a whole number from 1 to 1000" }
+  const afterId = params.get("after_id") ?? undefined
+  const beforeId = params.get("before_id") ?? undefined
+  if (afterId !== undefined && beforeId !== undefined) return { status: 400, kind: "invalid_request", code: "invalid_cursor", param: "before_id", message: "after_id and before_id cannot both be set" }
+  return { limit, afterId, beforeId }
+}
+
+/**
+ * One page in catalog order. `after_id` starts after that model, `before_id` ends before it; `hasMore` says
+ * whether the page's direction has models left. `undefined` when the cursor names no listed model.
+ */
+export const pageModels = (models: ReadonlyArray<ListedModel>, { limit, afterId, beforeId }: ModelPageQuery) => {
+  if (beforeId !== undefined) {
+    const end = models.findIndex((m) => m.id === beforeId)
+    if (end < 0) return undefined
+    const start = Math.max(0, end - limit)
+    return { models: models.slice(start, end), hasMore: start > 0 }
+  }
+  const start = afterId === undefined ? 0 : models.findIndex((m) => m.id === afterId) + 1
+  if (afterId !== undefined && start === 0) return undefined
+  return { models: models.slice(start, start + limit), hasMore: start + limit < models.length }
+}
+
+/** `GET /v1/models` in Anthropic's list shape: one page, with `has_more` for its direction. */
+export const encodeModelPage = (models: ReadonlyArray<ListedModel>, hasMore: boolean) => ({
+  data: models.map(encodeModel),
+  has_more: hasMore,
+  first_id: models[0]?.id ?? null,
+  last_id: models.at(-1)?.id ?? null,
+})
+
 /** SSE frame of one stream event: `event: <type>` then `data: <json>`. */
 export const sseFrame = (event: MessagesStreamEvent): string => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
 
-export async function runMessage(
-  events: AsyncIterable<PlugEvent>,
-  exchange: MessagesExchange,
-  emit: (event: MessagesStreamEvent) => void,
-): Promise<MessageRun> {
+/** The text of a structured answer: the tool input as JSON (a string input is the JSON already). */
+const structuredText = (call: ToolCall): string => (typeof call.input === "string" ? call.input : JSON.stringify(call.input ?? {}))
+
+export async function runMessage(events: AsyncIterable<PlugEvent>, exchange: MessagesExchange, emit: (event: MessagesStreamEvent) => void): Promise<MessageRun> {
   const id = newId("msg")
   // Only a non-streamed body needs the aggregate: a stream is already on the wire, so nothing grows (#153).
   const aggregate = !exchange.stream
@@ -129,12 +201,16 @@ export async function runMessage(
   let started = false
   let pinged = false
   let calls = 0
+  let answered = false
+  /** The text of a structured turn (not emitted): it is the answer only if the respond call never comes. */
+  let collected = ""
+  /** With caller tools offered the structured answer waits for the finish: a caller tool call in the same step replaces it. */
+  let held: ToolCall | undefined
   let finish: Exclude<PlugFinish, "error"> | undefined
+  /** The caller's stop sequence that ended the answer, when one did (src/stop.ts). */
+  let matched: string | undefined
   let usage: PlugUsage | undefined
   let failure: PlugError | undefined
-  // Text is held back by the longest stop sequence, so a sequence at the end of the answer can be
-  // found and removed before it is sent (src/stop.ts). Without stop sequences nothing is held.
-  const holdback = new StopHoldback(exchange.stop ?? [])
 
   const message = (extra: Record<string, unknown>) => ({
     id,
@@ -144,7 +220,10 @@ export async function runMessage(
     content,
     stop_reason: null,
     stop_sequence: null,
-    usage: encodeUsage(undefined),
+    container: null,
+    diagnostics: null,
+    stop_details: null,
+    usage: encodeMessageUsage(undefined),
     ...extra,
   })
   const start = () => {
@@ -163,7 +242,7 @@ export async function runMessage(
     emit({ type: "content_block_stop", index: open.index })
     // A thinking block carries the provider's signature when the host reported one (#146); otherwise it is empty. Plugboard drops
     // thinking blocks it receives, so a replayed block never reaches a provider with an empty signature.
-    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text } : { type: "thinking", thinking: open.text, signature: open.signature ?? "" })
+    if (aggregate) content.push(open.kind === "text" ? { type: "text", text: open.text, citations: null } : { type: "thinking", thinking: open.text, signature: open.signature ?? "" })
     open = undefined
   }
   /** The provider's signature for the open thinking block (#146): a `signature_delta` before the block stops. */
@@ -172,8 +251,17 @@ export async function runMessage(
     open.signature = signature
     emit({ type: "content_block_delta", index: open.index, delta: { type: "signature_delta", signature } })
   }
-  const releaseHeld = () => delta("text", holdback.release())
-  const text = (chunk: string) => delta("text", holdback.push(chunk))
+  /** A redacted thinking block (#385): the provider's opaque payload, one whole block with no deltas, as the API sends it. */
+  const redacted = (data: string) => {
+    start()
+    close()
+    const index = nextIndex++
+    emit({ type: "content_block_start", index, content_block: { type: "redacted_thinking", data } })
+    ping()
+    emit({ type: "content_block_stop", index })
+    if (aggregate) content.push({ type: "redacted_thinking", data })
+  }
+  const text = (chunk: string) => delta("text", chunk)
   const delta = (kind: "text" | "thinking", text: string) => {
     if (text.length === 0) return
     start()
@@ -183,7 +271,7 @@ export async function runMessage(
       emit({
         type: "content_block_start",
         index: open.index,
-        content_block: kind === "text" ? { type: "text", text: "" } : { type: "thinking", thinking: "", signature: "" },
+        content_block: kind === "text" ? { type: "text", text: "", citations: null } : { type: "thinking", thinking: "", signature: "" },
       })
       ping()
     }
@@ -196,17 +284,16 @@ export async function runMessage(
   }
   /** Tool calls arrive whole, so each goes out as one `input_json_delta` holding the full input. */
   const toolCall = (call: ToolCall) => {
-    releaseHeld()
     start()
     close()
     const index = nextIndex++
     const toolUseId = toolId(call.id)
     const input = toolInput(call.input)
-    emit({ type: "content_block_start", index, content_block: { type: "tool_use", id: toolUseId, name: call.name, input: {} } })
+    emit({ type: "content_block_start", index, content_block: { type: "tool_use", id: toolUseId, name: call.name, caller: DIRECT_CALLER(), input: {} } })
     ping()
     emit({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } })
     emit({ type: "content_block_stop", index })
-    if (aggregate) content.push({ type: "tool_use", id: toolUseId, name: call.name, input })
+    if (aggregate) content.push({ type: "tool_use", id: toolUseId, name: call.name, caller: DIRECT_CALLER(), input })
     calls++
   }
 
@@ -218,39 +305,57 @@ export async function runMessage(
     if (event.type === "finish") {
       usage = event.usage ?? usage
       if (event.reason === "error") failure ??= failedRun()
-      else finish = event.reason
+      else {
+        finish = event.reason
+        matched = event.stopSequence
+      }
       continue
     }
     if (event.type === "reasoning-delta") {
-      releaseHeld()
       if (exchange.thinking) {
-        delta("thinking", event.text)
-        if (event.signature !== undefined) sign(event.signature)
+        if (event.redactedData !== undefined) redacted(event.redactedData)
+        else {
+          delta("thinking", event.text)
+          if (event.signature !== undefined) sign(event.signature)
+        }
       }
+    } else if (exchange.structuredTool !== undefined) {
+      // Structured mode: only the first answer is content; prose and other tool calls are suppressed, except the caller's own tools when offered.
+      if (event.type === "tool-call" && event.name === exchange.structuredTool) {
+        if (!answered) {
+          answered = true
+          if (exchange.callerTools) held = event
+          else text(structuredText(event))
+        }
+      } else if (event.type === "text-delta") collected += event.text
+      else if (exchange.callerTools) toolCall(event)
     } else if (event.type === "text-delta") text(event.text)
     else toolCall(event)
   }
 
-  failure ??= finish ? undefined : noFinish()
+  const passthrough = exchange.callerTools === true && calls > 0
+  const structuredTurn = exchange.structuredTool !== undefined && !passthrough
+  const fallback = structuredTurn && !answered && exchange.structuredSchema !== undefined ? textFallback(collected, exchange.structuredSchema) : undefined
+  failure ??= finish ? (structuredTurn && !answered && fallback === undefined ? structuredMissing() : undefined) : noFinish()
   if (failure) {
     if (!started) return { failure, started }
     // The stream is already committed: close what is open and end with an `error` event (no `message_stop`).
-    releaseHeld()
     close()
     emit(encodeError(failure))
     return { failure, started }
   }
-  // A plain stop with no tool calls that ends on a stop sequence: the sequence is not part of the answer.
-  const { text: rest, matched } = holdback.finish(finish === "stop" && calls === 0)
-  delta("text", rest)
+  if (held && !passthrough) text(structuredText(held))
+  if (fallback !== undefined) text(fallback)
   start()
   close()
   ping()
-  const reason = finish === "stop" && calls > 0 ? "tool-calls" : (finish ?? "stop")
-  const stopReason = matched !== undefined ? "stop_sequence" : STOP_REASON[reason as Exclude<PlugFinish, "error">]
-  const stopSequence = matched ?? null
-  const final = message({ stop_reason: stopReason, stop_sequence: stopSequence, usage: encodeUsage(usage) })
-  emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: stopSequence }, usage: final.usage })
+  // A tool call in the turn makes it a tool turn, as Anthropic reports it: a sequence after the call does not change the reason.
+  // A structured answer is text to the caller: its turn ends as `end_turn` although the model ended on the respond call.
+  const reason = structuredTurn && finish === "tool-calls" ? "stop" : finish === "stop" && calls > 0 ? "tool-calls" : (finish ?? "stop")
+  const sequence = calls === 0 && !answered ? (matched ?? null) : null
+  const stopReason = sequence !== null ? "stop_sequence" : STOP_REASON[reason as Exclude<PlugFinish, "error">]
+  const final = message({ stop_reason: stopReason, stop_sequence: sequence, usage: encodeMessageUsage(usage) })
+  emit({ type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: sequence, container: null, stop_details: null }, usage: encodeUsage(usage) })
   emit({ type: "message_stop" })
-  return { started, message: final }
+  return { started, message: final, ...(fallback !== undefined ? { structuredFallback: true } : {}) }
 }

@@ -1,15 +1,59 @@
 import { describe, expect, test } from "bun:test"
 import { parseMessagesRequest, type ParsedMessages } from "../../src/anthropic/request.js"
 import { isPlugError } from "../../src/contract.js"
+import { rememberReasoning } from "../../src/reasoning-replay.js"
 import { testOptions } from "../support/fixtures.js"
 
 const options = testOptions({ maxTools: 2 })
+
+// #390 review: a client value with no usable toString is a 400, never a thrown TypeError (show, src/client-value.ts).
+test("anthropic: a user block whose type has a null toString is a 400, not a crash", () => {
+  const body = { model: "test/echo", max_tokens: 8, messages: [{ role: "user", content: [{ type: { toString: null } }] }] }
+  const result = parseMessagesRequest(body, options)
+  expect(isPlugError(result)).toBe(true)
+  expect(result).toMatchObject({ status: 400, message: expect.stringContaining('"object"') })
+})
 const user = (content: unknown = "hi") => ({ role: "user", content })
 const assistant = (content: unknown) => ({ role: "assistant", content })
 const body = (extra: Record<string, unknown> = {}) => ({ model: "test/echo", max_tokens: 100, messages: [user()], ...extra })
 const tool = (name: string, extra: Record<string, unknown> = {}) => ({ name, input_schema: { type: "object" }, ...extra })
 const toolUse = (id: string, name: string, input: unknown = {}) => ({ type: "tool_use", id, name, input })
 const image = (source: unknown) => ({ type: "image", source })
+const SCHEMA = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false }
+const format = (schema: unknown = SCHEMA) => ({ type: "json_schema", schema })
+
+describe("#411 a signed thinking block replays the text it was signed for", () => {
+  test("a block whose text plugboard rewrote replays the original text, with its signature", () => {
+    rememberReasoning("sig_replay", "call mcp_TZ2V0X3dlYXRoZXI")
+    const { request } = parse(
+      body({
+        messages: [
+          user(),
+          assistant([
+            { type: "thinking", thinking: "call get_weather", signature: "sig_replay" },
+            { type: "text", text: "ok" },
+          ]),
+        ],
+      }),
+    )
+    expect(request.messages[1]!.content[0]).toEqual({ type: "reasoning", text: "call mcp_TZ2V0X3dlYXRoZXI", signature: "sig_replay" })
+  })
+
+  test("a signature plugboard does not hold replays the text as received", () => {
+    const { request } = parse(
+      body({
+        messages: [
+          user(),
+          assistant([
+            { type: "thinking", thinking: "call get_weather", signature: "sig_not_remembered" },
+            { type: "text", text: "ok" },
+          ]),
+        ],
+      }),
+    )
+    expect(request.messages[1]!.content[0]).toEqual({ type: "reasoning", text: "call get_weather", signature: "sig_not_remembered" })
+  })
+})
 
 describe("#275 cache_control on content blocks", () => {
   test("an ephemeral breakpoint on a text, image or tool_result block is carried as a caller breakpoint; ttl 1h is carried as cacheTtl, any other ttl is the 5-minute default", () => {
@@ -18,7 +62,13 @@ describe("#275 cache_control on content blocks", () => {
     const { request } = parse(
       body({
         messages: [
-          { role: "user", content: [{ type: "text", text: "big context", cache_control: cache }, { type: "image", source: { type: "base64", media_type: "image/png", data: png }, cache_control: { type: "ephemeral" } }] },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "big context", cache_control: cache },
+              { type: "image", source: { type: "base64", media_type: "image/png", data: png }, cache_control: { type: "ephemeral" } },
+            ],
+          },
           assistant([{ type: "text", text: "ok", cache_control: cache }, toolUse("t1", "read")]),
           { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "data", cache_control: { type: "ephemeral" } }] },
         ],
@@ -35,7 +85,15 @@ describe("#275 cache_control on content blocks", () => {
   test("ttl values other than 1h, and a missing ttl, are the 5-minute default (no cacheTtl)", () => {
     const { request } = parse(
       body({
-        messages: [{ role: "user", content: [{ type: "text", text: "a", cache_control: { type: "ephemeral", ttl: "5m" } }, { type: "text", text: "b", cache_control: { type: "ephemeral" } }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "a", cache_control: { type: "ephemeral", ttl: "5m" } },
+              { type: "text", text: "b", cache_control: { type: "ephemeral" } },
+            ],
+          },
+        ],
       }),
     )
     expect(request.messages[0]!.content).toEqual([
@@ -89,7 +147,11 @@ describe("#4 parseMessagesRequest: rejections are 400s whose message names the f
     ["a tool_use without id", body({ messages: [user(), assistant([{ type: "tool_use", name: "f" }])] }), /^messages\.1\.content\.0\.id: Field required/],
     ["a tool_use with a non-object input", body({ messages: [user(), assistant([toolUse("t1", "f", "x")])] }), /^messages\.1\.content\.0\.input: must be an object/],
     ["a tool_result for an unknown tool_use", body({ messages: [user([{ type: "tool_result", tool_use_id: "nope", content: "x" }])] }), /matches no tool_use block/],
-    ["a tool_result with an unsupported block", body({ messages: [user(), assistant([toolUse("t1", "f")]), user([{ type: "tool_result", tool_use_id: "t1", content: [{ type: "audio" }] }])] }), /is not supported in tool_result content/],
+    [
+      "a tool_result with an unsupported block",
+      body({ messages: [user(), assistant([toolUse("t1", "f")]), user([{ type: "tool_result", tool_use_id: "t1", content: [{ type: "audio" }] }])] }),
+      /is not supported in tool_result content/,
+    ],
     ["a system that is not text blocks", body({ system: [{ type: "image" }] }), /^system\.0: must be a text block/],
     ["tools that are not an array", body({ tools: {} }), /^tools: must be an array/],
     ["a server tool", body({ tools: [{ type: "web_search_20250305", name: "web_search" }] }), /^tools\.0\.type: "web_search_20250305" is not supported/],
@@ -107,7 +169,16 @@ describe("#4 parseMessagesRequest: rejections are 400s whose message names the f
     ["a thinking budget below 1024", body({ max_tokens: 5000, thinking: { type: "enabled", budget_tokens: 1000 } }), /at least 1024/],
     ["a thinking budget not below max_tokens", body({ max_tokens: 2000, thinking: { type: "enabled", budget_tokens: 2000 } }), /less than max_tokens/],
     ["an unknown thinking type", body({ thinking: { type: "on" } }), /^thinking\.type/],
-    ["output_config.format (structured outputs)", body({ output_config: { format: { type: "json_schema" } } }), /^output_config\.format: structured outputs are not supported/],
+    ["output_config.format that is not an object", body({ output_config: { format: "json" } }), /^output_config\.format: must be an object/],
+    ["output_config.format of another type", body({ output_config: { format: { type: "json_object" } } }), /^output_config\.format\.type: "json_object" is not supported/],
+    ["output_config.format without a schema", body({ output_config: { format: { type: "json_schema" } } }), /^output_config\.format\.schema: Field required/],
+    ["output_config.format with a tool named respond", body({ output_config: { format: format() }, tools: [tool("respond")] }), /^tools: a tool named "respond" collides with output_config\.format/],
+    [
+      "output_config.format with a tool_choice that names a tool",
+      body({ output_config: { format: format() }, tools: [tool("a")], tool_choice: { type: "tool", name: "a" } }),
+      /^tool_choice: a tool_choice that names a tool cannot be combined with output_config\.format/,
+    ],
+    ["output_config.format with a caller tool over maxTools", body({ output_config: { format: format() }, tools: [tool("a"), tool("b")] }), /^tools: 3 tools; plugboard allows 2/],
   ]
   test.each(rejections)("rejects %s", (_name, raw, message) => {
     const parsed = parseMessagesRequest(raw, options)
@@ -125,7 +196,16 @@ describe("#4 parseMessagesRequest: content mapping", () => {
   })
 
   test("system text blocks (cache_control ignored); empty ones dropped", () => {
-    expect(parse(body({ system: [{ type: "text", text: "a", cache_control: { type: "ephemeral" } }, { type: "text", text: "" }] })).request.system).toEqual(["a"])
+    expect(
+      parse(
+        body({
+          system: [
+            { type: "text", text: "a", cache_control: { type: "ephemeral" } },
+            { type: "text", text: "" },
+          ],
+        }),
+      ).request.system,
+    ).toEqual(["a"])
   })
 
   test("Claude Code's system-role messages are lifted into the system prompt after the top-level system", () => {
@@ -156,17 +236,51 @@ describe("#4 parseMessagesRequest: content mapping", () => {
     ])
   })
 
-  test("#146 a replayed thinking block is dropped whatever its signature, so the empty signature plugboard sends never reaches a provider", () => {
+  test("#374 an unsigned thinking block is dropped, so the empty signature plugboard sends never reaches a provider; a redacted block is kept as opaque reasoning", () => {
     const { request } = parse(
       body({
         messages: [
           user("look"),
-          assistant([{ type: "thinking", thinking: "hidden", signature: "" }, { type: "redacted_thinking", data: "opaque" }, { type: "text", text: "done" }]),
+          assistant([
+            { type: "thinking", thinking: "hidden", signature: "" },
+            { type: "redacted_thinking", data: "opaque" },
+            { type: "text", text: "done" },
+          ]),
           user("again"),
         ],
       }),
     )
-    expect(request.messages[1]).toEqual({ role: "assistant", content: [{ type: "text", text: "done" }] })
+    expect(request.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "", redactedData: "opaque" },
+        { type: "text", text: "done" },
+      ],
+    })
+  })
+
+  test("#374 a signed thinking block is kept in order with its signature, ahead of the tool calls it preceded", () => {
+    const { request } = parse(
+      body({
+        messages: [
+          user("look"),
+          assistant([{ type: "thinking", thinking: "plan", signature: "sig_1" }, toolUse("t1", "read", { p: 1 })]),
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "data" }] },
+        ],
+      }),
+    )
+    expect(request.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "plan", signature: "sig_1" },
+        { type: "tool-call", id: "t1", name: "read", input: { p: 1 } },
+      ],
+    })
+  })
+
+  test("#374 an omitted-thinking block (empty text, signature) is kept as a signed reasoning part, and its turn is not dropped as empty", () => {
+    const { request } = parse(body({ messages: [user("a"), assistant([{ type: "thinking", thinking: "", signature: "sig_2" }]), user("b")] }))
+    expect(request.messages[1]).toEqual({ role: "assistant", content: [{ type: "reasoning", text: "", signature: "sig_2" }] })
   })
 
   test("a tool round trip: tool_use becomes a call, each tool_result its own tool message, result images follow as user media", () => {
@@ -176,7 +290,14 @@ describe("#4 parseMessagesRequest: content mapping", () => {
           user("look"),
           assistant([{ type: "thinking", thinking: "hidden", signature: "s" }, { type: "text", text: "checking" }, toolUse("t1", "shot", { x: 1 }), toolUse("t2", "read")]),
           user([
-            { type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "took it" }, image({ type: "base64", media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" })] },
+            {
+              type: "tool_result",
+              tool_use_id: "t1",
+              content: [
+                { type: "text", text: "took it" },
+                image({ type: "base64", media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }),
+              ],
+            },
             { type: "tool_result", tool_use_id: "t2", content: "boom", is_error: true },
             { type: "text", text: "now explain" },
           ]),
@@ -185,12 +306,24 @@ describe("#4 parseMessagesRequest: content mapping", () => {
     )
     expect(request.messages).toEqual([
       { role: "user", content: [{ type: "text", text: "look" }] },
-      { role: "assistant", content: [{ type: "text", text: "checking" }, { type: "tool-call", id: "t1", name: "shot", input: { x: 1 } }, { type: "tool-call", id: "t2", name: "read", input: {} }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "hidden", signature: "s" },
+          { type: "text", text: "checking" },
+          { type: "tool-call", id: "t1", name: "shot", input: { x: 1 } },
+          { type: "tool-call", id: "t2", name: "read", input: {} },
+        ],
+      },
       { role: "tool", content: [{ type: "tool-result", id: "t1", name: "shot", result: "took it" }] },
       { role: "tool", content: [{ type: "tool-result", id: "t2", name: "read", result: "boom", isError: true }] },
       {
         role: "user",
-        content: [{ type: "text", text: "Images returned by the tool calls above:" }, { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" }, { type: "text", text: "now explain" }],
+        content: [
+          { type: "text", text: "Images returned by the tool calls above:" },
+          { type: "media", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png" },
+          { type: "text", text: "now explain" },
+        ],
       },
     ])
   })
@@ -206,6 +339,10 @@ describe("#4 parseMessagesRequest: tools, sampling and thinking", () => {
     expect(parse(body({ tools: [tool("a")], tool_choice: choice })).request.toolChoice).toEqual(expected as never)
   })
 
+  test("#421 tool_choice none without tools is kept, so the session offers no server tool", () => {
+    expect(parse(body({ tool_choice: { type: "none" } })).request.toolChoice).toBe("none")
+  })
+
   test("custom tools map to neutral tools; type custom is accepted", () => {
     expect(parse(body({ tools: [tool("a", { type: "custom", description: "A" })] })).request.tools).toEqual([{ name: "a", description: "A", parameters: { type: "object" } }])
   })
@@ -219,6 +356,7 @@ describe("#4 parseMessagesRequest: tools, sampling and thinking", () => {
 
   test.each([
     [1024, "low"],
+    [2048, "low"],
     [4096, "low"],
     [4097, "medium"],
     [16384, "medium"],
@@ -237,5 +375,45 @@ describe("#4 parseMessagesRequest: tools, sampling and thinking", () => {
 
   test("the exchange echoes the client's model and stream flag", () => {
     expect(parse(body({ stream: true })).exchange).toEqual({ model: "test/echo", stream: true, thinking: false })
+  })
+})
+
+describe("output_config.format (structured outputs)", () => {
+  test("a json_schema format is the forced respond tool, marked as structured, with the schema on the exchange", () => {
+    const { request, exchange } = parse(body({ output_config: { format: format() } }))
+    expect(request.tools).toEqual([{ name: "respond", description: expect.stringContaining("final answer"), parameters: SCHEMA }])
+    expect(request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    expect(request.structuredTool).toBe("respond")
+    expect(exchange).toEqual({ model: "test/echo", stream: false, thinking: false, structuredTool: "respond", structuredSchema: SCHEMA })
+  })
+
+  test("a null format, or output_config with only an effort, is plain text output", () => {
+    for (const raw of [{ format: null }, { effort: "high" }]) {
+      const { request, exchange } = parse(body({ output_config: raw }))
+      expect(request.tools).toEqual([])
+      expect(request.structuredTool).toBeUndefined()
+      expect(exchange.structuredTool).toBeUndefined()
+    }
+  })
+
+  test("with caller tools the model may call one of them or respond: the choice is required and the exchange says so", () => {
+    const { request, exchange } = parse(body({ output_config: { format: format() }, tools: [tool("a")] }))
+    expect(request.tools.map((t) => t.name)).toEqual(["a", "respond"])
+    expect(request.toolChoice).toBe("required")
+    expect(exchange.callerTools).toBe(true)
+  })
+
+  test("tool_choice any with a caller tool also leaves the model a choice; none leaves only respond", () => {
+    const any = parse(body({ output_config: { format: format() }, tools: [tool("a")], tool_choice: { type: "any" } }))
+    expect(any.request.toolChoice).toBe("required")
+    expect(any.request.tools.map((t) => t.name)).toEqual(["a", "respond"])
+    const none = parse(body({ output_config: { format: format() }, tools: [tool("a")], tool_choice: { type: "none" } }))
+    expect(none.request.tools.map((t) => t.name)).toEqual(["respond"])
+    expect(none.request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    expect(none.exchange.callerTools).toBeUndefined()
+  })
+
+  test("effort and thinking still pick the variant next to a format", () => {
+    expect(parse(body({ output_config: { format: format(), effort: "low" } })).reasoningEffort).toBe("low")
   })
 })

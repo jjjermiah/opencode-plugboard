@@ -39,5 +39,5 @@ Verdict: **pass** · curl 8 on bash 5 · models: fast, anthropic/claude-haiku-4-
 | S6 | anthropic/claude-haiku-4-5 | yes | pass | 3/3 |
 | S6 | openai/gpt-5.6-luna#low | yes | pass | 3/3 |
 | S7 | - | yes | pass | 3/3 |
-| E1 | fast | no | pass | 2/2 |
-| E2 | nope | no | pass | 2/2 |
+| E1 | fast | no | pass | 3/3 |
+| E2 | nope | no | pass | 3/3 |

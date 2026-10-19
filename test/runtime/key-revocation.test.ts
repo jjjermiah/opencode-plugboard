@@ -9,7 +9,10 @@
  */
 import { describe, expect, test } from "bun:test"
 import { createOpenAiRoute } from "../../src/openai/route.js"
+import { createResponseState, createResponseStore } from "../../src/responses/state.js"
+import { createFileState, createFileStore } from "../../src/files/state.js"
 import { registerGeneration } from "../../src/runtime.js"
+import { FakeStorage } from "../support/usage.js"
 import { CATALOG, testOptions, until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { FakeModelCaller } from "../support/model-caller.js"
@@ -21,7 +24,13 @@ isolateRuntime()
 /** A generation whose handler is the OpenAI route, with these keys (one app per key), in `directory`. */
 function serving(name: string, port: number, keys: Record<string, string>, extra: Record<string, unknown> = {}, directory = `/projects/${name}`) {
   const options = testOptions({ listen: { host: "127.0.0.1", port }, keys, ...extra })
-  const handler = createOpenAiRoute({ options, caller: new FakeModelCaller([]), loadCatalog: async () => CATALOG })
+  const handler = createOpenAiRoute({
+    options,
+    caller: new FakeModelCaller([]),
+    loadCatalog: async () => CATALOG,
+    responses: createResponseStore({ storage: new FakeStorage(), state: createResponseState() }),
+    files: createFileStore({ storage: new FakeStorage(), state: createFileState() }),
+  })
   return generation(name, { port, options, handler, directory })
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "opencode-plugboard",
-  "version": "0.33.0",
+  "version": "0.52.0",
   "type": "module",
   "license": "MIT",
   "description": "Use the ChatGPT, Claude, Copilot and OpenCode Go logins in your OpenCode server from any app: an OpenCode V2 plugin serving OpenAI, Anthropic and Gemini compatible APIs.",
@@ -16,9 +16,18 @@
   "main": "./index.ts",
   "types": "./index.ts",
   "exports": {
-    ".": { "types": "./index.ts", "default": "./index.ts" },
-    "./rpc": { "types": "./rpc.ts", "default": "./rpc.ts" },
-    "./tui": { "types": "./tui.ts", "default": "./dist/tui.js" }
+    ".": {
+      "types": "./index.ts",
+      "default": "./index.ts"
+    },
+    "./rpc": {
+      "types": "./rpc.ts",
+      "default": "./rpc.ts"
+    },
+    "./tui": {
+      "types": "./tui.ts",
+      "default": "./dist/tui.js"
+    }
   },
   "files": ["index.ts", "rpc.ts", "tui.ts", "src/", "dist/", "npm-shrinkwrap.json", "README.md", "LICENSE"],
   "engines": {
@@ -26,7 +35,13 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tui.json && tsc --noEmit -p test && tsc --noEmit -p examples/_harness",
+    "lint": "biome lint .",
+    "format": "biome format .",
+    "format:write": "biome format --write .",
     "test": "bun test",
+    "validate": "bun .github/scripts/validate.ts",
+    "pr-wait": "bun .github/scripts/pr-wait.ts",
+    "regen": "bun .github/scripts/regen.ts",
     "bench": "bun test/bench/request.bench.ts",
     "mutations": "bun .github/scripts/mutation-check.ts",
     "flake-hunt": "bun .github/scripts/flake-hunt.ts",
@@ -58,13 +73,14 @@
     "@anthropic-ai/sdk": "0.133.0",
     "@babel/core": "7.29.7",
     "@babel/preset-typescript": "7.27.1",
+    "@biomejs/biome": "2.5.15",
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
     "@google/genai": "2.28.0",
     "@langchain/anthropic": "1.5.12",
     "@langchain/google-genai": "2.3.2",
     "@langchain/openai": "1.6.2",
-    "@opencode/plugin": "2.0.27",
+    "@opencode/plugin": "2.0.32",
     "@opentui/core": "0.5.17",
     "@opentui/solid": "0.5.17",
     "@types/bun": "1.4.2",
@@ -84,9 +100,12 @@
     "mitata": "1.0.34",
     "openai": "7.32.0",
     "semver": "7.8.5",
-    "solid-js": "1.9.15",
+    "solid-js": "1.9.17",
     "typescript": "^5.9.3",
     "vitepress": "1.6.4"
+  },
+  "overrides": {
+    "vite": "6.4.3"
   },
   "peerDependencies": {
     "@opencode/plugin": ">=2.0.26 <2.1",
@@ -96,10 +115,20 @@
     "solid-js": ">=1.9.0"
   },
   "peerDependenciesMeta": {
-    "@opencode/plugin": { "optional": true },
-    "effect": { "optional": true },
-    "@opentui/core": { "optional": true },
-    "@opentui/solid": { "optional": true },
-    "solid-js": { "optional": true }
+    "@opencode/plugin": {
+      "optional": true
+    },
+    "effect": {
+      "optional": true
+    },
+    "@opentui/core": {
+      "optional": true
+    },
+    "@opentui/solid": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
   }
 }

@@ -1,5 +1,6 @@
 // S3, streaming text, with and without usage. Raw chunks, then the SDK's stream helper, which must agree.
 import OpenAI from "openai"
+import { responsesFinishReason } from "./chat.ts"
 
 export async function run(client: OpenAI, model: string) {
   // #region snippet
@@ -29,6 +30,20 @@ export async function run(client: OpenAI, model: string) {
   if (!plainText) throw new Error("the stream without usage sent no text")
   if (helperText !== text) throw new Error(`stream helper text ${JSON.stringify(helperText)} differs from the raw stream ${JSON.stringify(text)}`)
   return { text, finish_reason: finish, usage, done: true }
+}
+
+export async function runResponses(client: OpenAI, model: string) {
+  // #region snippet-responses
+  const stream = client.responses.stream({ model, input: "Reply with exactly: pong", max_output_tokens: 1024 })
+  let text = ""
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta") text += event.delta
+  }
+  const final = await stream.finalResponse()
+  // #endregion snippet-responses
+  // The final response carries the same text the deltas did.
+  if (final.output_text !== text) throw new Error(`final response text ${JSON.stringify(final.output_text)} differs from the deltas ${JSON.stringify(text)}`)
+  return { text, finish_reason: responsesFinishReason(final), usage: final.usage ?? null, done: true }
 }
 
 if (import.meta.main) {

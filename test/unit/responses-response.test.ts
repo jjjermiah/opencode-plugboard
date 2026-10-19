@@ -13,6 +13,13 @@ async function run(exchange: ResponsesExchange, ...list: PlugEvent[]) {
   return { ...result, response: result.response as any, emitted, types: emitted.map((event) => event.type) }
 }
 
+describe("#390 review: the Responses object always carries usage, zeros when the host reported none", () => {
+  test("a completed response without host usage has usage with zeros", async () => {
+    const { response } = await run(plain, ev.text("Hi"), ev.finish("stop"))
+    expect(response.usage).toMatchObject({ input_tokens: 0, output_tokens: 0, total_tokens: 0 })
+  })
+})
+
 describe("runResponse: event order", () => {
   test("a text answer: created, in_progress, item and part added, deltas, done events, completed", async () => {
     const { types, emitted, response } = await run(plain, ev.text("Hel"), ev.text("lo"), ev.finish("stop"))
@@ -29,7 +36,14 @@ describe("runResponse: event order", () => {
       "response.completed",
     ])
     expect(emitted.find((event) => event.type === "response.output_text.done")).toMatchObject({ text: "Hello", output_index: 0, content_index: 0 })
-    expect(response).toMatchObject({ object: "response", status: "completed", model: "fast", store: false, error: null, output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Hello" }] }] })
+    expect(response).toMatchObject({
+      object: "response",
+      status: "completed",
+      model: "fast",
+      store: false,
+      error: null,
+      output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Hello" }] }],
+    })
     expect(response.id).toMatch(/^resp_[0-9a-f]{32}$/)
   })
 
@@ -83,6 +97,13 @@ describe("runResponse: event order", () => {
     expect(response).toMatchObject({ status: "incomplete", incomplete_details: { reason: wire } })
   })
 
+  test("#425 an answer cut by max_output_tokens has an incomplete message item, in the stream and in the response", async () => {
+    const { emitted, response } = await run(plain, ev.text("cut"), ev.finish("length"))
+    const done = emitted.find((event: any) => event.type === "response.output_item.done") as any
+    expect(done.item).toMatchObject({ type: "message", status: "incomplete" })
+    expect(response.output[0]).toMatchObject({ type: "message", status: "incomplete" })
+  })
+
   test("an empty answer still opens and completes the response", async () => {
     const { types, response } = await run(plain, ev.finish())
     expect(types).toEqual(["response.created", "response.in_progress", "response.completed"])
@@ -100,7 +121,12 @@ describe("runResponse: failures", () => {
 
   test("#49 a failure before output on a stream the transport already committed opens the response and fails it", async () => {
     const emitted: ResponsesStreamEvent[] = []
-    const result = await runResponse(events(ev.reasoning("x"), ev.error({ message: "died" })), plain, (event) => void emitted.push(event), () => true)
+    const result = await runResponse(
+      events(ev.reasoning("x"), ev.error({ message: "died" })),
+      plain,
+      (event) => void emitted.push(event),
+      () => true,
+    )
     expect(emitted.map((event) => [event.type, event.sequence_number])).toEqual([
       ["response.created", 0],
       ["response.in_progress", 1],
@@ -199,8 +225,82 @@ describe("#173 runResponse: a text answer and the 502 for every finish", () => {
 
   test("streamed: a missing answer after committed prose ends as response.failed, not a completed answer", async () => {
     const emitted: ResponsesStreamEvent[] = []
-    const result = await runResponse(events(ev.text("prose"), ev.finish("stop")), withSchema, (event) => void emitted.push(event), () => true)
+    const result = await runResponse(
+      events(ev.text("prose"), ev.finish("stop")),
+      withSchema,
+      (event) => void emitted.push(event),
+      () => true,
+    )
     expect(result.failure).toMatchObject({ code: "structured_output_missing" })
     expect(emitted.at(-1)!.type).toBe("response.failed")
+  })
+})
+
+describe("reasoningOutput (since 0.36.0): reasoning items on Responses", () => {
+  const on: ResponsesExchange = { ...plain, reasoningOutput: true }
+
+  test("a run of reasoning is one reasoning item with a summary_text part, before the message", async () => {
+    const { types, emitted, response } = await run(on, ev.reasoning("th"), ev.reasoning("ink"), ev.text("A"), ev.finish())
+    expect(types).toEqual([
+      "response.created",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.reasoning_summary_part.added",
+      "response.reasoning_summary_text.delta",
+      "response.reasoning_summary_text.delta",
+      "response.reasoning_summary_text.done",
+      "response.reasoning_summary_part.done",
+      "response.output_item.done",
+      "response.output_item.added",
+      "response.content_part.added",
+      "response.output_text.delta",
+      "response.output_text.done",
+      "response.content_part.done",
+      "response.output_item.done",
+      "response.completed",
+    ])
+    expect(emitted.find((event) => event.type === "response.reasoning_summary_text.done")).toMatchObject({ item_id: expect.stringMatching(/^rs_/), output_index: 0, summary_index: 0, text: "think" })
+    expect(response.output.map((item: any) => item.type)).toEqual(["reasoning", "message"])
+    expect(response.output[0]).toEqual({ id: expect.stringMatching(/^rs_[0-9a-f]{32}$/), type: "reasoning", status: "completed", summary: [{ type: "summary_text", text: "think" }] })
+  })
+
+  test("reasoning after text is a new item: the message closes first and output indexes follow", async () => {
+    const { response } = await run(on, ev.text("A"), ev.reasoning("B"), ev.finish())
+    expect(response.output.map((item: any) => [item.type, item.status])).toEqual([
+      ["message", "completed"],
+      ["reasoning", "completed"],
+    ])
+    expect(response.output[1].summary).toEqual([{ type: "summary_text", text: "B" }])
+  })
+
+  test("a reasoning item is closed before a tool call", async () => {
+    const { types, response } = await run(on, ev.reasoning("need it"), ev.call("c1", "read", { path: "a" }), ev.finish("tool-calls"))
+    expect(types.slice(2, 9)).toEqual([
+      "response.output_item.added",
+      "response.reasoning_summary_part.added",
+      "response.reasoning_summary_text.delta",
+      "response.reasoning_summary_text.done",
+      "response.reasoning_summary_part.done",
+      "response.output_item.done",
+      "response.output_item.added",
+    ])
+    expect(response.output.map((item: any) => item.type)).toEqual(["reasoning", "function_call"])
+  })
+
+  test("a failure after reasoning closes the reasoning item before response.failed", async () => {
+    const { types, failure, response } = await run(on, ev.reasoning("x"), ev.error({ status: 500, kind: "server", message: "boom" }))
+    expect(failure).toBeDefined()
+    expect(types.slice(-3)).toEqual(["response.reasoning_summary_part.done", "response.output_item.done", "response.failed"])
+    expect(response.output[0]).toMatchObject({ type: "reasoning", status: "incomplete", summary: [{ type: "summary_text", text: "x" }] })
+  })
+
+  test("off (the default): no reasoning item", async () => {
+    const { response } = await run(plain, ev.reasoning("secret"), ev.text("x"), ev.finish())
+    expect(response.output.map((item: any) => item.type)).toEqual(["message"])
+  })
+
+  test("structured output never carries reasoning", async () => {
+    const { emitted } = await run({ ...structured, reasoningOutput: true }, ev.reasoning("secret"), ev.call("c1", "respond", { a: 1 }), ev.finish())
+    expect(JSON.stringify(emitted)).not.toContain("secret")
   })
 })

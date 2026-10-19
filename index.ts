@@ -24,16 +24,32 @@ import { appHistoryLimits, parseOptions } from "./src/config.js"
 import { personaOf } from "./src/models.js"
 import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
+import { withStopSequences } from "./src/stop.js"
 import { withBudgets } from "./src/budgets.js"
 import { withLimits } from "./src/limits.js"
 import { createOpenAiRoute } from "./src/openai/route.js"
-import { ensureBackend, ensurePump, loadServingCatalog, processBudgets, processKeys, processLimits, processMetrics, processUsage, registerGeneration, setConfigError, sessionStore, withResponseCache } from "./src/runtime.js"
+import {
+  ensureBackend,
+  ensurePump,
+  loadServingCatalog,
+  processBudgets,
+  processKeys,
+  processLimits,
+  processMetrics,
+  processUsage,
+  registerGeneration,
+  setConfigError,
+  sessionStore,
+  withResponseCache,
+} from "./src/runtime.js"
 import { createSessionCaller } from "./src/session/caller.js"
 import { createAffinity } from "./src/session/affinity.js"
 import { installSessionHooks } from "./src/session/context.js"
 import { createHistoryPort, createKeepAliveHost, createSessionPort, createStoragePort, loadCatalog } from "./src/session/host.js"
 import { keepAliveIntervalMs, keepAliveLoop } from "./src/keepalive.js"
 import { createKeyStore } from "./src/keys.js"
+import { createResponseStore } from "./src/responses/state.js"
+import { createFileStore } from "./src/files/state.js"
 import { usageHandlers, UsageRpc } from "./src/rpc.js"
 import { createUsageRecorder, withUsage } from "./src/usage.js"
 import { hostVersion } from "./src/version.js"
@@ -42,7 +58,7 @@ export default Plugin.define({
   id: "opencode-plugboard",
   effect: (ctx) =>
     Effect.gen(function* () {
-      let options
+      let options: ReturnType<typeof parseOptions>
       try {
         options = parseOptions(ctx.options)
       } catch (error) {
@@ -75,6 +91,10 @@ export default Plugin.define({
         promptCache: options.promptCache,
         affinity: createAffinity({ storage: createStoragePort(ctx) }),
         historyHidden: options.history.hidden,
+        requestTimeoutMs: options.requestTimeoutMs,
+        onUsageMissing: (app: string) => {
+          if (options.metrics) processMetrics().usageMissing(app, "disconnect")
+        },
         // The readiness gate the caller awaits before creating a session (fails closed: 503 `backend_unavailable`).
         ensureBackend: (app: string, signal: AbortSignal) => ensureBackend(app, signal, bootLocation),
       }
@@ -103,14 +123,20 @@ export default Plugin.define({
             // Budgets sit outside the limiter, so a budget refusal never takes a slot (src/budgets.ts).
             withBudgets(
               withLimits(
-                withFallbacks(createSessionCaller(callerDeps), {
-                  options,
-                  loadCatalog: servingCatalog,
-                  onFallback: (app) => {
-                    if (options.metrics) processMetrics().fallback(app)
-                    usage?.fallback(app)
+                // Stop sequences are applied to the answer where the host run ends, so a cached answer is the one cut (src/stop.ts).
+                withFallbacks(
+                  withStopSequences(createSessionCaller(callerDeps), (app) => {
+                    if (options.metrics) processMetrics().usageMissing(app, "stop")
+                  }),
+                  {
+                    options,
+                    loadCatalog: servingCatalog,
+                    onFallback: (app) => {
+                      if (options.metrics) processMetrics().fallback(app)
+                      usage?.fallback(app)
+                    },
                   },
-                }),
+                ),
                 () => limits,
                 processLimits(),
                 {
@@ -138,6 +164,10 @@ export default Plugin.define({
         usage,
         // Runtime app keys (#55): read from storage on the first authentication, cached on the runtime.
         keys: createKeyStore({ state: processKeys(), storage: createStoragePort(ctx) }),
+        // Stored Responses (src/responses/state.ts): read and written from request handling, on the same host storage.
+        responses: createResponseStore({ storage: createStoragePort(ctx) }),
+        // Uploaded files (src/files/state.ts, since next): same host storage, request handling only.
+        files: createFileStore({ storage: createStoragePort(ctx) }),
         // The prompt a count reads (persona, server tools): the same port, persona lookup and backend gate as the session caller (#201).
         session: callerDeps,
       })
@@ -179,9 +209,7 @@ export default Plugin.define({
       // ---- the usage RPC (src/rpc.ts): a synchronous registration; its handler reads the store from request time only.
       // Its error channel is `unknown` in the host, so a failed registration is logged and the plugin keeps loading.
       if (usage)
-        yield* ctx.rpc.register(UsageRpc, usageHandlers(usage)).pipe(
-          Effect.catch((error) => Effect.sync(() => logError("rpc.register_failed", { rpc: UsageRpc.id, error: errorMessage(error) }))),
-        )
+        yield* ctx.rpc.register(UsageRpc, usageHandlers(usage)).pipe(Effect.catch((error) => Effect.sync(() => logError("rpc.register_failed", { rpc: UsageRpc.id, error: errorMessage(error) }))))
 
       // ---- the context hook, the agent deny and the seed tools. Ownership of the Location is only
       // known after an asynchronous check (`ensureBackend`), so all three are no-ops until

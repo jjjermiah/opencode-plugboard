@@ -163,8 +163,7 @@ export function createSessionPort(ctx: HostContext): SessionPort {
           files: input.files,
         } satisfies Parameters<HostSession["prompt"]>[0]),
       ),
-    interrupt: (sessionID) =>
-      run(ctx.session.interrupt({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["interrupt"]>[0])).then(() => undefined),
+    interrupt: (sessionID) => run(ctx.session.interrupt({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["interrupt"]>[0])).then(() => undefined),
     remove: (sessionID) => run(ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0])).then(() => undefined),
     agentRules: async (directory, id) => {
       const listed = await run(ctx.agent.list({ location: { directory } }))
@@ -172,10 +171,7 @@ export function createSessionPort(ctx: HostContext): SessionPort {
       return agent?.permissions.map((rule) => ({ action: rule.action, resource: rule.resource, effect: rule.effect }))
     },
     directTools: () => run(ctx.tool.list()).then((tools) => tools.filter(isDirect).map((tool) => tool.id)),
-    directToolSchemas: () =>
-      run(ctx.tool.list()).then((tools) =>
-        tools.filter(isDirect).map((tool) => ({ id: tool.id, description: tool.description, input: modelSchema(tool.input) })),
-      ),
+    directToolSchemas: () => run(ctx.tool.list()).then((tools) => tools.filter(isDirect).map((tool) => ({ id: tool.id, description: tool.description, input: modelSchema(tool.input) }))),
   }
 }
 
@@ -218,11 +214,7 @@ const failureTag = (error: unknown): unknown => (typeof error === "object" && er
  * captured as a value first, so the promise rejects with the typed error and not with the runtime's wrapper.
  */
 const childOrMissing = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
-  Effect.runPromise(
-    effect.pipe(
-      Effect.match({ onSuccess: (value) => ({ failed: false as const, value }), onFailure: (error) => ({ failed: true as const, error }) }),
-    ),
-  ).then((result) => {
+  Effect.runPromise(effect.pipe(Effect.match({ onSuccess: (value) => ({ failed: false as const, value }), onFailure: (error) => ({ failed: true as const, error }) }))).then((result) => {
     if (!result.failed) return result.value
     throw failureTag(result.error) === "Session.NotFoundError" ? new MissingParentError() : result.error
   })
@@ -239,9 +231,9 @@ export function createHistoryPort(ctx: HostContext): HistoryPort {
       })),
     removeSession: (sessionID) =>
       Effect.runPromise(
-        ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0]).pipe(
-          Effect.match({ onSuccess: () => undefined, onFailure: (error) => ({ error }) }),
-        ),
+        ctx.session
+          .remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0])
+          .pipe(Effect.match({ onSuccess: () => undefined, onFailure: (error) => ({ error }) })),
       ).then((failed) => {
         if (failed === undefined) return "removed" as const
         if (failureTag(failed.error) === "Session.NotFoundError") return "missing" as const
@@ -302,19 +294,17 @@ export function createKeepAliveHost(ctx: HostContext, storage: StoragePort): Kee
       ),
     remove: (sessionID) =>
       Effect.runPromise(
-        ctx.session.remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0]).pipe(
-          Effect.catch((error) => (failureTag(error) === "Session.NotFoundError" ? Effect.void : Effect.fail(error))),
-        ),
+        ctx.session
+          .remove({ sessionID: hostSessionID(sessionID) } satisfies Parameters<HostSession["remove"]>[0])
+          .pipe(Effect.catch((error) => (failureTag(error) === "Session.NotFoundError" ? Effect.void : Effect.fail(error)))),
       ),
   }
 }
 
-const record = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
+const record = (value: unknown): Record<string, unknown> | undefined => (typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined)
 
 const finite = (value: unknown): number | undefined => (typeof value === "number" && Number.isFinite(value) ? value : undefined)
-const strings = (value: unknown): string[] | undefined =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined
+const strings = (value: unknown): string[] | undefined => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined)
 const STATUSES = new Set(["alpha", "beta", "deprecated", "active"])
 
 /** Host `Model.Cost[]` (USD per million tokens, optional context tier) -> neutral price entries; malformed entries are skipped. */
@@ -332,8 +322,8 @@ function toCosts(raw: unknown): CatalogCost[] | undefined {
     costs.push({
       input,
       output,
-      cacheRead: finite(cache?.read) ?? 0,
-      cacheWrite: finite(cache?.write) ?? 0,
+      cacheRead: finite(cache?.read),
+      cacheWrite: finite(cache?.write),
       ...(size === undefined ? {} : { aboveContext: size }),
     })
   }
@@ -354,9 +344,7 @@ function toCatalog(raw: ReadonlyArray<unknown>): CatalogModel[] {
     const providerID = model.providerID
     const id = model.modelID ?? model.id
     if (typeof providerID !== "string" || typeof id !== "string" || !providerID || !id) continue
-    const variants = (Array.isArray(model.variants) ? model.variants : [])
-      .map((v) => (typeof v === "string" ? v : record(v)?.id))
-      .filter((v): v is string => typeof v === "string" && v.length > 0)
+    const variants = (Array.isArray(model.variants) ? model.variants : []).map((v) => (typeof v === "string" ? v : record(v)?.id)).filter((v): v is string => typeof v === "string" && v.length > 0)
     const caps = record(model.capabilities)
     const input = caps && Array.isArray(caps.input) ? caps.input : undefined
     const limit = record(model.limit)
@@ -418,6 +406,8 @@ export interface HostToolDescriptor {
  */
 export interface ContextHookEvent {
   readonly sessionID: string
+  /** The model this call runs on (the host's `model.ref`); read to decide whether signed reasoning is replayed (#374, #386). */
+  readonly model?: { readonly providerID: string; readonly id?: string }
   system: unknown[]
   messages?: Array<{ content?: unknown }>
   options?: Record<string, unknown>

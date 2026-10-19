@@ -65,9 +65,7 @@ describe("scripted model DSPy answers", () => {
 
 describe("scripted model tool choices", () => {
   test("required with one fillable tool forces it with the meal", () => {
-    const events = answer(
-      plugRequest({ messages: [user(prompt("S6"))], tools: [MEAL_TOOL], toolChoice: "required" }),
-    )
+    const events = answer(plugRequest({ messages: [user(prompt("S6"))], tools: [MEAL_TOOL], toolChoice: "required" }))
     expect(events[0]).toEqual(ev.call("call_scripted_1", "final_result", { calories: 180, protein_g: 13 }))
     expect(events.at(-1)).toMatchObject({ type: "finish", reason: "tool-calls" })
   })
@@ -78,9 +76,7 @@ describe("scripted model tool choices", () => {
   })
 
   test("a named choice forces its tool as before, whatever the schema", () => {
-    const events = answer(
-      plugRequest({ messages: [user(prompt("S2"))], tools: [WEATHER_TOOL], toolChoice: { type: "tool", name: "get_weather" } }),
-    )
+    const events = answer(plugRequest({ messages: [user(prompt("S2"))], tools: [WEATHER_TOOL], toolChoice: { type: "tool", name: "get_weather" } }))
     expect(calls(events)).toEqual([ev.call("call_scripted_1", "get_weather", {})])
   })
 
@@ -91,9 +87,27 @@ describe("scripted model tool choices", () => {
   })
 
   test("required after a tool result does not force again", () => {
-    const events = answer(
-      plugRequest({ messages: [user(prompt("S6")), toolResult], tools: [MEAL_TOOL], toolChoice: "required" }),
-    )
+    const events = answer(plugRequest({ messages: [user(prompt("S6")), toolResult], tools: [MEAL_TOOL], toolChoice: "required" }))
     expect(calls(events)).toEqual([])
+  })
+})
+
+describe("scripted model smolagents final answer (#370)", () => {
+  const FINAL_TOOL: PlugTool = {
+    name: "final_answer",
+    description: "Give the final answer",
+    parameters: { type: "object", properties: { answer: { type: "string" } } },
+  }
+  const observation = user(`New task:\n${prompt("S2")}\nObservation:\n{"temp_c": 18, "sky": "cloudy"}`)
+
+  test("an Observation: turn with a final_answer tool is answered with a final_answer call", () => {
+    const events = answer(plugRequest({ messages: [observation], tools: [WEATHER_TOOL, FINAL_TOOL] }))
+    expect(calls(events)).toEqual([ev.call("call_scripted_1", "final_answer", { answer: "18 C and cloudy" })])
+    expect(events.at(-1)).toMatchObject({ type: "finish", reason: "tool-calls" })
+  })
+
+  test("without a final_answer tool the Observation turn keeps the old path (the get_weather loop)", () => {
+    const events = answer(plugRequest({ messages: [observation], tools: [WEATHER_TOOL] }))
+    expect(calls(events)).toEqual([ev.call("call_scripted_1", "get_weather", { city: "Paris" })])
   })
 })

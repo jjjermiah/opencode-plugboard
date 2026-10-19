@@ -1,0 +1,97 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "content": [
+                {
+                  "text": "Estimate: 2 boiled eggs and a slice of toast.",
+                  "type": "text"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "anthropic/claude-haiku-4-5",
+          "stream": false,
+          "tool_choice": {
+            "type": "any"
+          },
+          "tools": [
+            {
+              "description": "The final response which ends this conversation",
+              "input_schema": {
+                "properties": {
+                  "calories": {
+                    "type": "number"
+                  },
+                  "protein_g": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "calories",
+                  "protein_g"
+                ],
+                "type": "object"
+              },
+              "name": "final_result"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/messages?beta=true"
+      },
+      "response": {
+        "body": {
+          "container": null,
+          "content": [
+            {
+              "caller": {
+                "type": "direct"
+              },
+              "id": "<id-1>",
+              "input": {
+                "calories": 180,
+                "protein_g": 13
+              },
+              "name": "final_result",
+              "type": "tool_use"
+            }
+          ],
+          "diagnostics": null,
+          "id": "<id-2>",
+          "model": "anthropic/claude-haiku-4-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": null,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": null,
+            "input_tokens": 11,
+            "output_tokens": 7,
+            "output_tokens_details": null,
+            "server_tool_use": null,
+            "service_tier": null
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

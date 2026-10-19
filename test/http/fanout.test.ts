@@ -77,10 +77,38 @@ describe("#58 chat completions with n > 1, streaming", () => {
     expect(text.match(/\[DONE\]/g)).toHaveLength(1)
   })
 
+  test("#423 every choice opens with its role chunk, in index order, before any content, even when choice 1 answers first", async () => {
+    const release = gate()
+    await route((_request, call) => (call === 0 ? [{ wait: release.promise }, ev.text("A1"), ev.finish()] : [ev.text("B1"), ev.finish()]))
+    const stream = await server!.open(chat({ n: 2, stream: true }))
+    await stream.waitFor((text) => text.includes('"B1"'))
+    release.open()
+    const chunks = sseData(await stream.ended)
+    // The openai-python stream helper keeps choices in arrival order and indexes them by `index`: a new index must be the next one.
+    const known = new Set<number>()
+    for (const chunk of chunks)
+      for (const choice of chunk.choices) {
+        if (known.has(choice.index)) continue
+        expect(choice.index).toBe(known.size)
+        known.add(choice.index)
+      }
+    expect(chunks.slice(0, 2).map((chunk) => [chunk.choices[0].index, chunk.choices[0].delta])).toEqual([
+      [0, { role: "assistant", content: "" }],
+      [1, { role: "assistant", content: "" }],
+    ])
+    expect(chunks.findIndex((chunk) => chunk.choices[0].delta.content === "B1")).toBeGreaterThan(1)
+  })
+
   test("include_usage: one final chunk with the summed usage", async () => {
     await route((_request, call) => [ev.text("x"), ev.finish("stop", usage(5, call + 1))])
     const chunks = sseData(await (await server!.open(chat({ n: 2, stream: true, stream_options: { include_usage: true } }))).ended)
     expect(chunks.filter((chunk) => chunk.usage)).toEqual([expect.objectContaining({ choices: [], usage: expect.objectContaining({ prompt_tokens: 10, completion_tokens: 3 }) })])
+  })
+
+  test("#390 review: include_usage with n > 1 and no usage from any choice still ends with a usage chunk of zeros", async () => {
+    await route(() => [ev.text("x"), ev.finish("stop")])
+    const chunks = sseData(await (await server!.open(chat({ n: 2, stream: true, stream_options: { include_usage: true } }))).ended)
+    expect(chunks.filter((chunk) => chunk.usage)).toEqual([expect.objectContaining({ choices: [], usage: expect.objectContaining({ prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }) })])
   })
 
   test("a failure after the stream committed is one error frame and [DONE]; the other choice is cancelled", async () => {
@@ -114,7 +142,12 @@ describe("#75 POST /v1/completions", () => {
     const caller = await route([ev.text(" upon a time"), ev.finish("stop", { inputTokens: 2, outputTokens: 4 })])
     const reply = await server!.send(completions({ max_tokens: 8 }))
     expect(caller.call.request).toMatchObject({ system: [], tools: [], messages: [{ role: "user", content: [{ type: "text", text: "Once" }] }], generation: { maxTokens: 8 } })
-    expect(reply.json()).toMatchObject({ object: "text_completion", model: "test/echo", choices: [{ index: 0, text: " upon a time", finish_reason: "stop", logprobs: null }], usage: { total_tokens: 6 } })
+    expect(reply.json()).toMatchObject({
+      object: "text_completion",
+      model: "test/echo",
+      choices: [{ index: 0, text: " upon a time", finish_reason: "stop", logprobs: null }],
+      usage: { total_tokens: 6 },
+    })
     expect(logs.of("request")[0]!.fields).toMatchObject({ route: "POST /v1/completions", model: "test/echo" })
   })
 
@@ -226,5 +259,42 @@ describe("#170 a structured answer in the text, over HTTP", () => {
     const reply = await server!.send(chat({ response_format: jsonSchema }))
     expect(reply.status).toBe(502)
     expect(reply.json().error.code).toBe("structured_output_missing")
+  })
+})
+
+describe("reasoningOutput with n > 1 (since 0.36.0): each choice keeps its own reasoning", () => {
+  const thinking = (_request: unknown, call: number) => [ev.reasoning(`think ${call}`), ev.text(`answer ${call}`), ev.finish("stop")]
+
+  test("JSON: each choice carries its own reasoning under both names", async () => {
+    await route(thinking, { reasoningOutput: true })
+    const reply = await server!.send(chat({ n: 2 }))
+    expect(reply.status).toBe(200)
+    expect(reply.json().choices.map((choice: any) => [choice.index, choice.message.reasoning_content, choice.message.reasoning, choice.message.content])).toEqual([
+      [0, "think 0", "think 0", "answer 0"],
+      [1, "think 1", "think 1", "answer 1"],
+    ])
+  })
+
+  test("SSE: reasoning deltas carry the choice index they belong to", async () => {
+    await route(thinking, { reasoningOutput: true })
+    const reply = await server!.send(chat({ n: 2, stream: true }))
+    const deltasOf = (index: number) =>
+      sseData(reply.text)
+        .flatMap((frame) => frame.choices ?? [])
+        .filter((choice: any) => choice.index === index)
+        .map((choice: any) => choice.delta)
+    for (const index of [0, 1]) {
+      const reasoning = deltasOf(index)
+        .filter((delta: any) => delta.reasoning_content !== undefined)
+        .map((delta: any) => [delta.reasoning_content, delta.reasoning])
+      expect(reasoning).toEqual([[`think ${index}`, `think ${index}`]])
+    }
+    expect(reply.text.endsWith("data: [DONE]\n\n")).toBe(true)
+  })
+
+  test("off (the default): no choice carries reasoning", async () => {
+    await route(thinking)
+    const reply = await server!.send(chat({ n: 2 }))
+    expect(JSON.stringify(reply.json())).not.toContain("think")
   })
 })

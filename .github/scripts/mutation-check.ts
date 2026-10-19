@@ -68,7 +68,10 @@ try {
       rows.push({ mutation, verdict: "anchor", detail: `find text occurs ${occurrences} times in ${mutation.file}, expected 1` })
       continue
     }
-    writeFileSync(path, original.replace(mutation.find, () => mutation.replace))
+    writeFileSync(
+      path,
+      original.replace(mutation.find, () => mutation.replace),
+    )
     try {
       const run = await runTests(work, mutation.tests)
       const killed = !run.ok && run.failing > 0
@@ -92,7 +95,10 @@ const table = [
   "",
   "| Entry | Invariant | File | Tests | Result |",
   "|---|---|---|---|---|",
-  ...rows.map(({ mutation, verdict, detail }) => `| \`${mutation.id}\` | ${mutation.invariant} | \`${mutation.file}\` | ${mutation.tests.map((t) => `\`${t.replace("test/", "")}\``).join(", ")} | ${verdict === "killed" ? "killed" : `**${verdict}**`}: ${detail} |`),
+  ...rows.map(
+    ({ mutation, verdict, detail }) =>
+      `| \`${mutation.id}\` | ${mutation.invariant} | \`${mutation.file}\` | ${mutation.tests.map((t) => `\`${t.replace("test/", "")}\``).join(", ")} | ${verdict === "killed" ? "killed" : `**${verdict}**`}: ${detail} |`,
+  ),
   "",
   `${rows.filter((row) => row.verdict === "killed").length} of ${rows.length} killed.`,
   "",

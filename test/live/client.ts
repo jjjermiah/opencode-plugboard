@@ -24,7 +24,10 @@ export function authHeaders(endpoint: Endpoint): Record<string, string> {
 }
 
 export function recordSessions(headers: Headers): string[] {
-  const ids = (headers.get("x-plugboard-session") ?? "").split(",").map((id) => id.trim()).filter(Boolean)
+  const ids = (headers.get("x-plugboard-session") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
   for (const id of ids) created.add(id)
   return ids
 }

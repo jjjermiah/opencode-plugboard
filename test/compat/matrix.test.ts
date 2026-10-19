@@ -11,7 +11,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { writeFileSync } from "node:fs"
 import { startRoute, type RouteServer } from "../support/loopback.js"
 import { FakeModelCaller } from "../support/model-caller.js"
-import { CLIENTS, ENDPOINTS, type Target } from "./clients.js"
+import { withStopSequences } from "../../src/stop.js"
+import { CLIENTS, type ENDPOINTS, type Target } from "./clients.js"
 import { SCENARIOS, script, type Scenario } from "./scenarios.js"
 
 /** `todo`: no case written yet (#148). `n/a`: the client's endpoint has no such feature, with the reason in `note`. */
@@ -33,7 +34,7 @@ beforeAll(async () => {
   // maxN 4: the default of 1 refuses n > 1 (each choice is a model call); the matrix allows four so the n scenario
   // and the legacy prompt array times n (two prompts, n 2) run.
   const caller = new FakeModelCaller((request) => script(request))
-  server = await startRoute({ caller, options: { keys: { compat: KEY }, aliases: { fast: "test/echo" }, maxN: 4 } })
+  server = await startRoute({ caller: withStopSequences(caller), options: { keys: { compat: KEY }, aliases: { fast: "test/echo" }, maxN: 4 } })
   target = { origin: server.url, apiKey: KEY, caller }
 })
 

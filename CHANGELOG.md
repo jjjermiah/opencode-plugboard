@@ -14,14 +14,2603 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Docs
+
+- Contributor tooling, no change for users ([#114](https://github.com/jjjermiah/opencode-plugboard/issues/114)). The code is now formatted and linted with Biome (`bun run lint`, `bun run format`, `bun run format:write`; config in `biome.jsonc`). CI fails a pull request that is not formatted or has a lint error, and `bun run validate` runs the same check first. A lefthook `pre-commit` hook checks the staged files; install it with `bunx lefthook install`. The one-time reformat is listed in `.git-blame-ignore-revs`, so `git blame` skips it. `mise.toml` pins Bun and Node to the versions CI uses, and `.github/CODEOWNERS` names the owner. Line width is 200 because the code was already written to that width: a narrower setting rewrites thousands more lines. A handful of recommended lint rules are off for the cases that fire hundreds of times on deliberate style; each has its reason in `biome.jsonc`.
+
+## [0.52.0] - 2026-10-18: Files, By Reference
+
+**Full diff:** [v0.51.0...v0.52.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...v0.52.0)
+
+### Added
+
+- A per-app Files API, so `file_id` inputs work instead of being a 400 (since 0.52.0). Upload once, then name the file in Chat Completions (`{"type":"file","file":{"file_id"}}`), Responses (`input_file` and `input_image` with `file_id`), Messages (`image` and `document` blocks with `source: {type: "file", file_id}`) and Gemini (`fileData.fileUri` as `files/<id>` or the uri an upload returned). Three Files APIs share one store, so a file uploaded through one can be named in another's request. OpenAI: `POST /v1/files` (multipart `file` and `purpose`), `GET /v1/files` (`purpose`, `limit`, `after`, `order`), `GET /v1/files/{id}`, `GET /v1/files/{id}/content` and `DELETE /v1/files/{id}`, in OpenAI's objects and errors. Anthropic: the same paths answer in Anthropic's shapes (`type: "file"`, `mime_type`, `size_bytes`, `downloadable`, paging by `limit`, `page`, `after_id` and `before_id`) when the request sends `anthropic-version` or `anthropic-beta`, as `GET /v1/models` does. Gemini: `POST /upload/v1beta/files` with the resumable protocol both SDKs use (and `uploadType=multipart`), `GET /v1beta/files`, `GET /v1beta/files/{name}` and `DELETE`. A file's type comes from its bytes, not from what the upload declared: PNG, JPEG, GIF, WebP and PDF are told by their first bytes and reach the model exactly as their inline data URLs do, text and JSON (UTF-8, up to 4 MiB) are sent as text, and anything else is a 400 at upload that names the accepted kinds. A download is an attachment with `nosniff`, so an uploaded HTML is never rendered. Files live on the host storage, so they survive a restart, for the app's `history.maxAgeDays` (30 days when unset or `0`). An app holds at most 1000 files and 1 GiB, and one file is at most the app's body cap (32 MiB by default); an upload past a limit is refused and nothing is evicted. An upload is read under the same body admission as a JSON body. `files` is a new name for `apps.<name>.endpoints`. Another app's id is the same 404 as an unknown one (new invariant I33), and no id, name or content is logged. There is no new option. A stored Responses record keeps the `file_id`, not the bytes. See [Files API](https://jjjermiah.github.io/opencode-plugboard/files).
+
+### Docs
+
+- Contributor tooling for parallel branches, no change for users. `CHANGELOG.md` merges with git's union driver, so two branches that add bullets under `[Unreleased]` no longer conflict in a local merge (GitHub's web merge ignores the attribute). `bun run regen` rebuilds `docs/compatibility.md`, the `examples/README.md` table and the test-count floors after a merge. A new option's version marker is written as the placeholder `(since next)`, which the release script replaces with the released version, and CI fails when one is left in a released changelog section. The scripted Gemini CLI and Aider examples no longer share a temp directory and `~/.aider` with a run in another worktree, which could break two `bun run validate` runs at the same time.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (6 commits)</summary>
+
+#### Features
+
+**feat(runtime): serve a per-app Files API so file_id inputs work** ([`1593033`](https://github.com/jjjermiah/opencode-plugboard/commit/15930332ed126a88684e47e0310a284158c6fc01))
+
+Adds the OpenAI, Anthropic and Gemini Files APIs and makes a stored file usable by id on Chat, Responses, Messages and Gemini. Before, a file given only as file_id was a 400 on every route.
+
+What changed: src/files/ holds the store (per-app records in plugin host storage, modeled on stored Responses, I32), the content check (magic bytes decide the type), the reference rewrite (a file_id part becomes the inline form the decoders already accept, so the model gets exactly the bytes an inline data URL would send), the OpenAI and Anthropic route on /v1/files (Anthropic shapes when anthropic-version or anthropic-beta is sent), and Gemini's resumable and multipart upload plus /v1beta/files. readBody in src/http.ts is the byte reader readJsonBody now wraps, so an upload goes through the same body admission (I28).
+
+Why a rewrite and not decoder changes: the decoders stay pure (I20) and validate a stored file as strictly as inline data.
+
+Validation so far: new HTTP tests, and the three official SDKs (openai, @anthropic-ai/sdk, @google/genai) uploading, using and deleting files against a loopback listener.
+
+#### Fixes
+
+**fix(gemini): accept google-genai's keyless chunks and snake_case upload metadata** ([`c49764f`](https://github.com/jjjermiah/opencode-plugboard/commit/c49764f559d142cfee67146fd25f3ebfe1f7ddd2))
+
+A live run of the Python google-genai SDK against a real OpenCode host showed two gaps that the JS SDK test did not.
+
+The Python SDK sends the chunks of a resumable upload to the upload URL with no key, as Google's upload URL is itself the credential. Plugboard answered 401. A chunk request with no key at all is now accepted when it names a live upload id, and runs as the app that started the upload. The id is 122 random bits, belongs to one app and lives 10 minutes. Any other keyless request is the same 401 as before (I15), a wrong key is not rescued by the id, and another app's key gets the 404.
+
+The Python SDK also writes the start body in snake_case (display_name, mime_type), so every file was named "unnamed". Both spellings are read now, as the Gemini decoder already does.
+
+Validation: new HTTP tests for the keyless chunk (unknown id, wrong key, owner, other app) and the snake_case name. Live: the Python google-genai upload now succeeds, with the right display name.
+
+#### Tests
+
+**test: ratchet the unit test floor for the since-next, regen and normaliser tests** ([`4a5a588`](https://github.com/jjjermiah/opencode-plugboard/commit/4a5a588f0f5916d53ec69c3ff06ac7a05da8af0b))
+
+The new unit tests (since-next, regen, the pid-named Gemini CLI paths) raise the unit count from 1547 to 1562. Floors only go up; this is the value `bun run validate` ratcheted to.
+
+**test(runtime): cover the Files store failures and raise the floors** ([`7bf4516`](https://github.com/jjjermiah/opencode-plugboard/commit/7bf4516617a3751e8c979da97d918faf34dfc2e1))
+
+The first full validate failed the line coverage gate (98.6% against 98.8%): the new files code had unreached error paths. This adds tests for them and raises the ratcheted floors.
+
+Covered: a storage failure on upload in OpenAI's, Anthropic's and Google's body, a request past its deadline in each body, an oversize chunk of a resumable upload (413), every storage read failure of the store, a sweep that cannot delete, an index read in more than one page, remove of an unreadable record, and non-object items beside a file reference.
+
+The resumable-upload limit test uses apps no other test uploads for, because unfinished uploads are process-wide state (a Map on globalThis, like the other shared state).
+
+The mutation I15-unknown-route-before-auth anchored on the auth line that the keyless upload change rewrote; it now anchors on the new line and is killed again. Validation: bun run validate --mutations: typecheck, test, manifest, pack, docs and examples pass; 178 of 179 mutations were killed before the anchor fix, and that one is killed now.
+
+#### Docs
+
+**docs(runtime): document the Files API, add its invariant and tests** ([`9e5948c`](https://github.com/jjjermiah/opencode-plugboard/commit/9e5948c02dacea5287f266bf1ef384585aae6db4))
+
+Documents the Files API (docs/files.md, the Reference sidebar, apis.md gaps, the per-API rejected lists, the `files` endpoint name), adds invariant I33 and the Files section to architecture.md, and adds the changelog entry.
+
+Tests: unit tests for the store, the content check, the reference rewrite and the wire shapes; HTTP tests for every route of the three APIs, isolation between apps (I33), retention, restart, limits, logs and the endpoint check; a client test that drives the openai, @anthropic-ai/sdk and @google/genai SDKs through upload, use by id and delete; the route coverage manifest rows; and twelve mutation entries for the isolation guard, the type check and the attachment header.
+
+inlineFiles and inlineRequestFiles return unknown: the rewritten body has another shape than the input, so a generic return type would have promised a shape it does not have.
+
+#### CI and tooling
+
+**ci: union changelog, regen command, since-next placeholder, isolated examples** ([`aa1ac09`](https://github.com/jjjermiah/opencode-plugboard/commit/aa1ac0942484dc5b44c2d77df722a0394ed8198f))
+
+A retro of a day of parallel lanes found four recurring costs. All four are contributor tooling; nothing under src/ changes.
+
+1. CHANGELOG.md conflicts on every merge. .gitattributes now sets `CHANGELOG.md merge=union`, git's built-in driver. Checked in a throwaway repo: two branches adding different bullets under the same heading merge cleanly and keep both; without the attribute the same merge conflicts. GitHub's web merge does not read .gitattributes (GitHub support and the community discussion #9288 say so, still open), so the benefit is for the local `git merge origin/main` lanes already do before pushing. Not tested against a live GitHub pull request.
+
+2. Generated files conflict. `bun run regen` (.github/scripts/regen.ts) is one foreground command: a floors file with conflict markers becomes the per-key maximum of both sides, then it runs `validate --only test` (tests, coverage, floor ratchet) with PLUGBOARD_COMPAT_RESULTS set so the same run feeds compat-matrix.ts for docs/compatibility.md, then examples-index.ts for the examples/README.md table. It prints which generated files changed, stages nothing, and fails if a conflict marker remains in the hand-written parts the generators keep. The pure floor logic is unit tested.
+
+3. Version markers collide. Lanes write the placeholder `(since next)` (and `Since next` where a sentence starts) in CHANGELOG.md and docs/**/*.md. release.ts replaces it with the released version in the release commit, in the [Unreleased] body, the PR body and every docs file, and --dry-run shows it. Code spans and fenced blocks are left alone so docs can show the placeholder. `since-next.ts --check` fails when a placeholder sits in a released changelog section; it runs in ci.yml and in the `docs` step of validate. Rejected: replacing across the whole changelog (would hide a misplaced placeholder in a released section instead of failing on it).
+
+4. Concurrent `validate --only examples` runs. Ports were already ephemeral (scripted server and capture proxy listen on port 0). Two fixed shared resources remained: the Gemini CLI example deleted and recreated a fixed $TMPDIR/plugboard-gemini-cli-home and -workspace at start, so another run deleted them under a live CLI; and the Aider runner read and rewrote the shared ~/.aider (installs.json, caches). The Gemini dirs are now named by pid and removed on exit (normalise.ts maps the pid away, with a test), and each aider process gets its own HOME with uv's cache and Python dir pinned to the real ones. Committed transcripts are byte-identical after the change. The original 1296 s aider hang was not reproduced (two cold concurrent runs passed before and after), so the aider isolation is by inspection, not proven to be the cause.
+
+Validation: typecheck, unit tests for since-next, regen and the normaliser, release --dry-run with probe placeholders in CHANGELOG.md and docs, two worktrees running `bun run validate --only examples` at once (timings in the pull request).
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.51.0] - 2026-10-17: Responses Remember
+
+**Full diff:** [v0.50.0...v0.51.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...v0.51.0)
+
+### Added
+
+- Stored Responses, so `previous_response_id` works (since 0.51.0, [#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)). An answer made with `store` on, which is the default, is kept per app in the plugin's host storage: every input item the model saw (each with an id, `item_reference`s replaced by the item they name) and the response object. A request with `previous_response_id` gets that response's input and output ahead of its own `input`, so chains of chains work. `instructions` do not carry over, as on OpenAI. A streamed answer is stored before its closing event goes out, so it can be retrieved at once. Three routes join it: `GET /v1/responses/{id}`, `DELETE /v1/responses/{id}` (answers `{id, object: "response.deleted", deleted: true}`) and `GET /v1/responses/{id}/input_items` with `limit` (1 to 100, default 20), `order` and `after`. They use OpenAI's error body, and they count as the `responses` endpoint for `apps.<name>.endpoints`. Another app's id is the same miss as an unknown, deleted or expired one, so isolation between apps holds (new invariant I32): a 404 on the three id routes and, as on OpenAI, a 400 `previous_response_not_found` on `previous_response_id`. The CORS preflight now allows `DELETE`. Records survive a restart. They are kept for the app's `history.maxAgeDays`, or 30 days when that is unset or `0`: a stored response is a whole conversation, so it is never kept forever, and there is no new option. Each app keeps at most 1000 responses and 128 MiB, oldest first, and an answer over 8 MiB stored is answered but not kept (`responses.store_skipped` in the log). `store: false` keeps nothing, as before. No id and no body is logged. `conversation` is still refused, and its message now points at `previous_response_id`. The `item_reference` memory (one hour, in the process) is unchanged, except that a `DELETE` also clears the response's items from it. The openai-python and openai-js `responses-previous-id` scenario is no longer a gap.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (6 commits)</summary>
+
+#### Features
+
+**feat(responses): store responses, previous_response_id and the stored-response routes** ([`08a9848`](https://github.com/jjjermiah/opencode-plugboard/commit/08a9848d450bdc6a5ee56156a2e9ba71f5f5e5c8))
+
+Plugboard refused previous_response_id and kept nothing but the output items of recent answers in memory for item_reference. It now stores each answer made with store on (the default), per app, in the plugin's host storage, and serves OpenAI's stored-response API on top of it.
+
+What changed
+- state.ts (new): the durable store. A record is `responses/<app>/id/<id>` (JSON: createdAt, bytes, input items, response object) plus an index entry `responses/<app>/at/<ms>-<bytes>-<id>` in creation order, so a sweep can trim by age and size without reading any record.
+- previous_response_id: the route loads the stored response of the same app and passes its input and output to the pure decoder as `history`, ahead of the new input. Each stored response holds its whole input, so chains of chains are one lookup. instructions do not carry over (OpenAI's documented rule). An unknown, deleted, expired or other app's id is the same 404 (code previous_response_not_found, param previous_response_id).
+- GET and DELETE /v1/responses/{id} and GET /v1/responses/{id}/input_items (limit 1 to 100 default 20, order desc default, after = item id), with OpenAI's error body (404 invalid_request_error). They count as the responses endpoint for apps.<name>.endpoints and are logged under their templates, never with the id. stream=true on GET is a 400 unsupported_parameter.
+- Input items get ids (the caller's, else msg_, fc_, fco_), and an item_reference in the input is stored as the item it names.
+- A streamed answer's response.completed / response.incomplete frame is held until the record is written, so a client that retrieves on seeing it finds it.
+- conversation stays refused; its message now points at previous_response_id.
+- DELETE also drops the response's items from the in-memory item_reference memory, which is otherwise unchanged (an item id names no response, so the durable keys cannot find it).
+- Architecture invariant I32: the app is the first segment of every storage key and an app name has no slash, so an app can only build keys under its own prefix; ids are resp_ + 122 random bits; no id or body is logged. Mutations I32-* pin the key, both routes, the id shape check, expiry, store: false and the sweep.
+
+Decisions
+- Retention follows history.maxAgeDays (per app or global), 30 days when unset or 0. No new option: one number says how long an app's history lives. 0 means "keep sessions forever" for the session index, but a stored response is a whole conversation with prompts and images, so it gets the 30-day default instead of forever; the count and byte caps would bound it anyway.
+- Bounds per app: 1000 records and 128 MiB; a record over 8 MiB stored is answered but not kept (responses.store_skipped, no ids). A record past its age is a 404 on read at once and deleted; a sweep from request handling (never setup, I3) trims the rest, oldest first, at most every 10 minutes or 50 writes.
+- RouteHost.responses is required, not optional: an optional store made the scripted example server silently 404 every previous id.
+- Rejected: a 400 for an unknown previous_response_id (OpenAI's real status, as far as I know) in favour of the handoff's 404. Rejected: resolving item_reference through the durable store (needs an item index per write).
+
+Tests
+- test/http/responses-stored.test.ts: a chain of 3, tool chain, cross-app 404 on every route, delete then 404, input_items paging and errors, store: false (JSON and stream), retention (default, global, per app, 0), too large, storage failure, restart on shared storage, streaming with previous_response_id, logs carry no id or body.
+- test/unit/responses-state.test.ts: keys, isolation, sweep by age, count and bytes, restart, retentionDaysFor.
+- Conformance: openai.json re-vendored with ResponseItemList (gemini.json left as it was); a chained Response, its GET copy and the input_items list conform.
+- Manifest rows for the three routes; eight I32 mutations.
+- examples: the openai-python and openai-js responses-previous-id scenario is no longer a gap; scripted runs regenerated.
+
+Refs #104
+
+#### Fixes
+
+**fix(responses): unknown previous_response_id is a 400, and CORS allows DELETE** ([`60ac246`](https://github.com/jjjermiah/opencode-plugboard/commit/60ac246a45d7a94b534dbcc4e6a9cea202253948))
+
+OpenAI answers a POST with an unknown previous_response_id with 400 invalid_request_error (code previous_response_not_found, param previous_response_id, message "Previous response with id '<id>' not found."). Plugboard answered 404. It now answers 400, and another app's id gets the byte-identical 400, so isolation (I32) stays indistinguishable. GET, DELETE and input_items on an unknown or foreign id stay 404, which is what OpenAI does there.
+
+The CORS preflight listed GET, POST, OPTIONS, so a browser could not call DELETE /v1/responses/{id}. It now lists DELETE too. A new test sends a DELETE preflight from an allowed origin with a keyed app: 204 without a key, and the real DELETE still 401 without one.
+
+Validation: bun run validate --mutations passes all 7 steps.
+
+Refs #104
+
+#### Tests
+
+**test(responses): ratchet the test-count floors after merging main** ([`58e2ee4`](https://github.com/jjjermiah/opencode-plugboard/commit/58e2ee47e855b9236b693ef0a4e65564fef33957))
+
+The floors file conflicted with main's own ratchet. After the merge, the test gate raised each layer to the combined count of both branches.
+
+Validation: bun run validate --mutations passes all 7 steps (typecheck, test, manifest, pack, docs, examples, mutations).
+
+Refs #104
+
+#### Docs
+
+**docs(site): list the review bot page in the Project sidebar** ([`fd0ce36`](https://github.com/jjjermiah/opencode-plugboard/commit/fd0ce36db97b1dbe4d7742060dd3f4d37767206e))
+
+docs/review-bot.md was reachable only by link. It now sits next to Releasing in the Project group.
+
+Validation: docs build passes in CI.
+
+**docs(examples): regenerate the examples index for the passing Responses rows** ([`e5199f7`](https://github.com/jjjermiah/opencode-plugboard/commit/e5199f7c82bfb7e0ffdf662213352398e3eb0396))
+
+The openai-python and openai-js scripted runs now pass, so their verdict in examples/README.md moved from partial to pass. CI's index check caught the stale table.
+
+Refs #104
+
+#### CI and tooling
+
+**ci(ci): add a review bot so main can require one approval** ([`339d510`](https://github.com/jjjermiah/opencode-plugboard/commit/339d5100e23f9538b26faf81a8441d669f83c7ff))
+
+main cannot require an approving review today: the repository has one maintainer, who cannot approve their own pull requests. The owner chose a dedicated GitHub App plus an LLM API key on GitHub-hosted runners. This adds the workflow, the script, tests and the setup guide. Nothing runs until the App exists.
+
+What changed:
+- .github/workflows/review-gate.yml runs on workflow_run of CI, Commits and CodeQL (completed, success, same-repository only). The last of the three to finish finds every required check green and reviews. Top-level permissions are empty. The App token comes from actions/create-github-app-token (v3.3.0, pinned by SHA) with client-id from vars.REVIEW_APP_CLIENT_ID. Missing variables or secrets skip with a notice, never a failure. Only the script is checked out, from the default branch; pull request code is never checked out, so Dangerous-Workflow stays clean.
+- .github/scripts/review-gate.ts reads the pull request, its diff (diff media type) and AGENTS.md from the base branch through the API. A diff over 200 KB gets a COMMENT. It calls Anthropic Messages (default model claude-sonnet-5-5, vars.REVIEW_LLM_MODEL overrides) for a strict JSON verdict and parses it robustly. It posts one review with commit_id set to the tested head: APPROVE with notes, REQUEST_CHANGES with blockers. A failed call or an unparseable answer posts a COMMENT and never approves. The head is checked again after the model answers, and the required checks are re-read from the API just before an approval.
+- .github/scripts/merge-gate.ts, used by pr-wait.ts and release.ts: when the ruleset requires approvals, both now wait for an approving review on the current head (15 minutes) and stop on changes requested. With strict status checks, pr-wait reports a PR behind main (--merge updates the branch itself) and release stops before merging with the exact commands to update and --resume. With today's ruleset (0 approvals, not strict) behavior is unchanged.
+- docs/review-bot.md: the owner steps (create and install the App, variables and secrets), the proof procedure on a throwaway branch with its own ruleset, the four ruleset fields to flip afterwards, and how pr-wait and release interact. releasing.md and development.md point to it.
+
+Decisions and rejected alternatives:
+- workflow_run over pull_request_target: the script that runs is always the default branch's, and no PR code is needed.
+- Triggering on all three required workflows instead of only CI, because CI can finish before CodeQL; otherwise the approval would never be posted for that head.
+- App permissions: Pull requests rw, Contents read, Checks read (Metadata is implicit). Actions read and commit statuses are not needed because the script reads check runs.
+- Read the diff and rules through the API instead of a checkout; AGENTS.md comes from the base branch so a PR cannot rewrite its own review rules.
+- Judging approvals in merge-gate.ts from the reviews list instead of reviewDecision, whose behavior with rulesets is not documented.
+
+Validation: bun run validate --skip examples (typecheck, test, manifest, pack, docs all pass), 26 review-gate and 6 merge-gate tests, actionlint clean, zizmor clean (one justified ignore for workflow_run). Test-count floors ratcheted by the validate run.
+
+Not verified: the workflow cannot run until the App exists, so the posted review, the App token step, that an App approval counts toward the ruleset, and Dependabot secret handling are unproven. docs/review-bot.md has the procedure.
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.50.0] - 2026-10-17: Every Shape, Every Count
+
+**Full diff:** [v0.49.0...v0.50.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...v0.50.0)
+
+### Added
+
+- Anthropic structured outputs on `POST /v1/messages`. `output_config.format` with `{"type": "json_schema", "schema": {...}}` used to be refused with a 400. It is now answered the way Anthropic does: the JSON is one `text` block with `stop_reason` `end_turn`, and a stream sends it as one `text_delta`. It uses the path Chat Completions `json_schema` uses, a forced `respond` tool with the same rules. A text answer that is the schema's JSON is taken when the model skips the tool (a non-streamed response carries `x-plugboard-structured-fallback: text`). A turn with no answer is a 502 in Messages' error shape. With caller tools, a call to one of them wins. A `tool_choice` that names a tool and a tool named `respond` are 400s. `count_tokens` counts the same request. The schema is not enforced, so validate the answer. The forced-tool recipe still works. Since 0.50.0.
+- Gemini `generationConfig.candidateCount` above 1 is served instead of refused (since 0.50.0). Each candidate is one model call through the same fan-out as `n` on Chat Completions, under the same caps: `maxN` and `apps.<name>.maxN`. Above the cap the answer is a 400 `INVALID_ARGUMENT` on `generationConfig.candidateCount` that names the option. The response has `candidates` in order, each with its `index`, and `usageMetadata` summed over the calls. A stream, as SSE or as a JSON array, interleaves the candidates with their `index` and ends with one chunk of summed usage. If one candidate fails, the request fails and the others are cancelled. The response cache is bypassed, as for `n`.
+- Gemini `streamGenerateContent` without `alt=sse` is served (since 0.50.0). Without `alt` (or with `alt=json`) the response is `application/json`: one JSON array, `[`, the chunks separated by commas, `]`, written as the model answers. It carries the same chunks as the SSE stream. An error after the first chunk is the last element of the array, so the array stays valid JSON. Another `alt` value is still a 400.
+
+### Docs
+
+- The Gemini page lost both refusals and gained notes on several candidates and on the JSON array stream, including what the array form is based on. The APIs page no longer lists `candidateCount` as a known gap.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (5 commits)</summary>
+
+#### Features
+
+**feat(anthropic): answer output_config.format as structured output** ([`49ba93d`](https://github.com/jjjermiah/opencode-plugboard/commit/49ba93df4bf091877e98b406cb2d9c50f1c76645))
+
+Messages refused output_config.format with a 400, so a client that sends it (the Vercel provider does for claude-haiku-4-5, and so do the Anthropic SDK helpers) could not get structured output at all. The only route was the forced-tool recipe in docs/messages.md.
+
+The decoder now turns {"type": "json_schema", "schema": {...}} into the same forced `respond` tool Chat Completions json_schema uses, marks the request structuredTool, and puts the schema on the exchange. The encoder returns the tool input as one text block with stop_reason end_turn (the model ends on the respond call, which is mapped away), and a stream sends it as a single text_delta. The rules mirror Chat Completions:
+
+- a text answer that is the schema's JSON is taken when the model skips the tool, with x-plugboard-structured-fallback on a non-streamed reply;
+- no call and no matching text is a 502 structured_output_missing, in Messages' error shape (an error event once a stream has committed);
+- with caller tools the choice is required and a caller tool call wins; tool_choice none leaves only respond;
+- a tool_choice naming a tool, and a caller tool named respond, are 400s.
+
+count_tokens needed no code: the respond tool is part of the request, so it is counted like the request. A test pins that against the equivalent forced-tool request.
+
+Rejected: wrapping a non-object schema the way Gemini does. Anthropic's examples are objects and Chat Completions passes the schema as is, so this does the same. Also rejected: dropping the forced-tool recipe, which still works and stays in the docs as an alternative.
+
+Tests: decoder and encoder unit tests, HTTP tests for streamed and non-streamed answers, the fallback, the 502 and count_tokens, a conformance check that the Message and stream events match the SDK types, and the Anthropic SDK compat row, which was a gap and now passes. Four mutation entries cover the new guards. The live cells for Messages json and tools-json now send output_config.format.
+
+**feat(gemini): serve candidateCount above 1 and the default JSON-array stream** ([`bf1aa0a`](https://github.com/jjjermiah/opencode-plugboard/commit/bf1aa0ae423e94b83c608a1f9284375f9a922dce))
+
+Both were refused with a 400. Gemini clients that sample several candidates, or read the REST stream without alt=sse, could not use plugboard.
+
+candidateCount above 1:
+- The decoder reads generationConfig.candidateCount and checks it against maxN (or apps.<name>.maxN), as n is checked. Above the cap: 400 INVALID_ARGUMENT on generationConfig.candidateCount, code too_many_choices, message naming the option.
+- The route fans out through serveChoices (src/openai/fanout.ts) with a Gemini ChoiceCodec. The codec adds three optional members: encodeError, merge and wire. Without them the OpenAI forms apply, so Chat Completions and /v1/completions are unchanged.
+- JSON: candidates in order with index 0..n-1, usageMetadata summed over the calls. Stream: candidate chunks interleave with their index and one responseId. Each candidate ends with its own finishReason chunk without usage, then one chunk with only the summed usageMetadata. One failing candidate fails the request and cancels the rest.
+- The response cache is bypassed, as for n.
+
+streamGenerateContent without alt=sse (or alt=json):
+- Same events and chunks as the SSE path, framed as one JSON array: "[", chunks separated by commas, "]". An error after the first chunk is the last element, so the array stays valid. A newline is the keepalive. Another alt value is still a 400.
+- StreamWire (src/http.ts) carries content type, keepalive, frame and end. sseWriter takes it as an optional fourth argument.
+- Basis: a Google AI developer forum report shows the endpoint answering with a JSON array and an error as an array element. Not checked against Google's live server. The SDKs always send alt=sse, so none exercises this form. A failure before any output stays a plain error object with its HTTP status, not an array holding it.
+
+Rejected: routing candidateCount 1 through the fan-out (changes the single path for no gain), and a separate fan-out for Gemini (would copy the cancellation and interleave logic).
+
+Tests: unit (decoder cap, wires, candidate run), HTTP (array stream, fan-out JSON and streams as SSE and array, caps, per-app cap, failure, hang-up, cache bypass), conformance of the new bodies and chunks against the vendored Gemini schema, the @google/genai compat scenario n is now a plain pass, the coverage manifest, and six mutation entries.
+
+Validation: typecheck, test, manifest, pack, docs, examples and mutations pass.
+
+#### Docs
+
+**docs(readme): drop the restart and warm-up step from the front door** ([`bda992c`](https://github.com/jjjermiah/opencode-plugboard/commit/bda992cfe0351a71613cd65c0e2d1953f7828241))
+
+The README's install section ended with an export and an opencode api call to wake the plugin. The owner found it off-putting on the front page. The full steps, including the warm-up after a restart, stay on the Install page of the docs site. Also moves the example pin from 0.48.0 to the current 0.49.0.
+
+Validation: docs only; README renders as before minus the block.
+
+**docs(clients): say Anthropic structured outputs work from 0.50.0** ([`d063e65`](https://github.com/jjjermiah/opencode-plugboard/commit/d063e65aebe0fa45a68bf1125155eff8ab764ce0))
+
+Five client pages still said plugboard refuses output_config.format. #469 serves it (unreleased, since 0.50.0), so the pages now say it is answered from 0.50.0, refused before, and that the examples' forced-tool or jsonTool mode keeps working on every version. The Vercel Anthropic default mode is marked expected to work, not tested: the example was not rerun with it.
+
+Validation: docs build passes.
+
+#### CI and tooling
+
+**ci: raise the OpenSSF Scorecard (vulnerabilities, packaging, provenance, pinning)** ([`6128ac7`](https://github.com/jjjermiah/opencode-plugboard/commit/6128ac73e9dc8b4c55647c1a393fad8a4264cabb))
+
+Four Scorecard checks were costing points: Vulnerabilities 0 (137 advisories), Packaging -1, Signed-Releases 8 and Pinned-Dependencies 9.
+
+Vulnerabilities. osv-scanner 2.7.0 over the whole tree found 138 advisories (Scorecard shows 137): 121 in examples/aider, the rest in the root bun.lock (esbuild, seroval, vite), examples/async-openai, examples/dspy, examples/llamaindex, examples/mastra and examples/semantic-kernel. Fixed:
+- root: vite 6.4.3 through "overrides" (vitepress 1.6.4 asks for vite 5, and vite 5 has no fixed release; this also lifts esbuild), solid-js 1.9.17 (depends on seroval 1.6). The docs build passes.
+- examples/aider: override-dependencies lift aiohttp, anyio, fsspec, gitpython, idna, multidict, pillow, pygments, python-dotenv, requests, soupsieve, starlette and urllib3 past aider-chat 0.86.2's exact pins.
+- examples/semantic-kernel: werkzeug 3.1.9 (openapi-core caps it below 3.1.2).
+- examples/async-openai: rustls 0.23.46. Not fixable, ignored per example with osv-scanner.toml, each entry with a reason and an expiry of 2027-01-17:
+- aider-chat 0.86.2 (2), diskcache 5.6.3 (dspy and aider), nltk 3.10.3 (llamaindex), sprintf-js 1.0.3 (mastra): no fixed release exists.
+- litellm 1.81.10 in aider (24): fixes start at 1.82.0 and Aider refuses to start with any litellm that adds PermissionDeniedError (1.81.16 already does), so it cannot move. Every advisory is in the litellm proxy server; Aider calls only the SDK. The shipped package's own dependencies had no advisories. The scripted examples still pass and no transcript changed. After: 0 with the ignores, 30 without (osv-scanner scan source --no-ignore).
+
+Packaging. Scorecard's npm matcher needs actions/setup-node with registry-url https://registry.npmjs.org and a run step matching npm.*publish in the same job. publish.yml had the publish but no registry-url. Added it; npm trusted publishing keeps working because npm exchanges the OIDC token itself. setup-node's placeholder NODE_AUTH_TOKEN is kept away from the read-only npm commands (NPM_CONFIG_USERCONFIG=/dev/null).
+
+Signed-Releases. The attest job also writes <tarball>.intoto.jsonl, the bundle's DSSE envelope on one line (the signed SLSA provenance v1 statement), checks that its subject is the tarball by name and sha256, and the release job attaches it. The tarball, SBOM and Sigstore bundle are unchanged.
+
+Pinned-Dependencies. Scorecard counts an npm install as pinned only for `npm ci` or a git URL with a commit hash. publish.yml now fetches npm 11.21.0 with `npm pack` and checks its sha512 integrity before running it, instead of `npm install -g npm@11.21.0`. opencode-release.yml fetches the newest CLI with `npm pack` and tar instead of `npm install`; its version is meant to float. Rejected: a committed package-lock.json run with `npm ci` (npm's bundled dependencies would then count against Vulnerabilities).
+
+Validation: bun run validate passes typecheck, test, manifest, pack and docs; the examples step ran every example with no transcript change; actionlint is clean. Scorecard itself reads the default branch, so the new scores show after the merge and the next release.
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.49.0] - 2026-10-17: No Phantom Calls
+
+**Full diff:** [v0.48.0...v0.49.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...v0.49.0)
+
+### Fixed
+
+- A tool call reaches the client only when its name is one the request declared. The host can report a call to a name the request never offered, such as garbled text. Plugboard used to pass that on as a `tool_calls` answer, even when the request had no `tools` at all. Now the call is dropped and logged as `tool_call.undeclared` (warn, with the app, the request id and the name cut to 64 characters). An answer left with neither text nor a valid call fails as a failed model run (`model_run_failed`), and an answer with text finishes as `stop`. `tool_calls` is reported only when a valid call is returned. Server tools are unchanged, and every route is covered because the check sits in the session collector. Since 0.49.0 ([#463](https://github.com/jjjermiah/opencode-plugboard/issues/463)).
+
+### Docs
+
+- The README is a short front door: what plugboard is, install, one request, what it serves, and links. Everything it used to hold moved to the docs site, which now reads in order: get started (landing page, install, connect your app), six task guides (apps and keys; models, aliases and fallbacks; limits, budgets and caching; tools, structured output and images; history, usage and monitoring; serving other machines), the clients grouped by kind, the reference, and the project pages. New pages: Chat Completions, APIs and known gaps, response headers (every `x-plugboard-*` header), security, and a clients overview. The configuration reference opens with a map of its sections by task. Stale statements were fixed along the way: the Anthropic model list works with `x-api-key` since 0.47.0, `tools` with `json_schema` lets the model choose, usage is written on every change, and the CI host matrix. Old page paths still work.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (10 commits)</summary>
+
+#### Fixes
+
+**fix(session): drop tool calls whose name the request did not declare** ([`f2612c6`](https://github.com/jjjermiah/opencode-plugboard/commit/f2612c6a36ff4b21ca53560d323062ae304461bc))
+
+The host can report a tool call to a name the request never offered, such as garbled model text. The session collector passed every such call on as a tool-call event, so a request with no `tools` could get a `tool_calls` answer naming nothing it had declared (#463, seen once in about 20 live requests to `fast`).
+
+What changed: RequestCollector takes the request's caller tools (after the app's tool policy) and drops any call whose name is not one of them. A drop is logged once as `tool_call.undeclared` at warn, with the app, the request id and the name cut to 64 characters, and no other field of the call. When a step or run ends with no valid call and no text after a drop, the request fails with model_run_failed (the existing class for a failed model run). A step that ends tool-calls with no valid call finishes as stop, and the host is stopped before another step. Server tools keep their handling.
+
+Why here: the collector is the one place every route reads host events through, so Chat Completions, legacy completions, Responses, Messages and Gemini are all covered without touching the encoders.
+
+Rejected: checking names in each route encoder (five copies, easy to miss a route); fixing the upstream model (plugboard never sees the raw upstream body, so it cannot confirm the cause).
+
+Validation: bun run validate --mutations passed all 7 steps. New tests fail without the guard (mutation P463-undeclared-call-forwarded, which forwards undeclared calls) and pass with it: test/http/undeclared-tool-calls (non-streamed and streamed, no tools, a different name, mixed text and a garbled call) and test/session/collector.test.ts (#463 block). Existing collector and caller tests now declare the names they emit.
+
+Closes #463
+
+#### Tests
+
+**test(tests): ratchet test count floors for #463** ([`757786e`](https://github.com/jjjermiah/opencode-plugboard/commit/757786e47af14b720af41aa24572b8ff8613a6b1))
+
+`bun run validate` ratcheted the per-layer test-count floors after the new #463 tests were added (test/http and test/session). Committed with the change so CI's floor check passes. No floor was lowered.
+
+Refs #463
+
+#### Docs
+
+**docs(docs): cut the README to a short front door** ([`8df8cad`](https://github.com/jjjermiah/opencode-plugboard/commit/8df8cad3132b434e284face81b01db0897c5b4c8))
+
+The README was 654 lines: quick start, a feature manual, a client table, known gaps, security and a full example. It is also the npm page and the site's landing page, so a new reader met everything at once.
+
+What stays: what plugboard is, the install entry pinned to 0.48.0 (it said 0.42.0), one curl request, the endpoint table, six one-line highlights that link to the guides, and the project links. Everything else moves to the site in the next commits. Each removed section gets a page, listed in the pull request.
+
+Links to the docs site are absolute, because the npm package ships only the README.
+
+**docs(docs): add a landing page, an install page and a connect page** ([`ca35be6`](https://github.com/jjjermiah/opencode-plugboard/commit/ca35be601889c278f80d87cf0c58b586feb16ce3))
+
+The site's front page was the README pasted in with an include. With the README now short, the site needs its own start: what plugboard is, how to install it and call it once, and how to connect an app.
+
+- docs/index.md is a real landing page: hero, six feature cards that link to the guides, how it works, the API table and a reading order.
+- docs/install.md is the install walkthrough from the old README quick start, pinned to 0.48.0, with a table of what a failed first call means.
+- docs/connect.md says which base URL and key header each API takes, and sends readers to a client page by API or by client.
+- config.ts gets a "Get started" sidebar group and a nav entry. Page files keep their paths, so no old link breaks.
+
+The pages these link to (guides, chat completions, apis) come in the next commits.
+
+**docs(docs): add six task guides** ([`fd669e0`](https://github.com/jjjermiah/opencode-plugboard/commit/fd669e07e10f61c5ebfbd451ff71564c45db890e))
+
+Each guide starts with the problem, shows the smallest config that solves it, explains what happens and links to the configuration reference: apps and keys, models and aliases, limits and caching, tools and output, history and monitoring, serving other machines. Built from the old README feature sections. The reference anchors they link to are reorganised in a later commit, and the sidebar entries are not added yet (work halted before that).
+
+**docs(docs): add the reference pages and tell the sidebar as a story** ([`3c4adbe`](https://github.com/jjjermiah/opencode-plugboard/commit/3c4adbedc11be5041f2ab90cb057af337893fc67))
+
+The site had one flat Reference list, one Clients list of about sixty pages, and API pages scattered between them. A new user saw everything at once.
+
+The sidebar now runs in reading order: Get started, Guides, Clients, Reference, Project. Clients are grouped (SDKs, agent frameworks, chat apps and automation, coding tools, evaluation and observability, self-hosted apps) and every group after Get started and Guides starts collapsed. The nav bar follows the same five parts.
+
+New pages fill the links the earlier commits made:
+
+- chat-completions.md: the Chat Completions fields, streaming, tools and structured output, checked against src/openai/request.ts (developer role, four stop sequences, 15 s keep-alive, logprobs refused).
+- apis.md: every API and endpoint, how a request runs, and the known gaps from the old README, with resolved gaps removed (#34, #147 and the stop-sequence one are fixed).
+- headers.md: every x-plugboard-* response header, when it is set and its value, read from the source.
+- security.md: what plugboard guarantees, what the operator must do, and where to report.
+- clients/index.md: the grouped clients overview.
+
+The configuration reference keeps its sections and anchors, so no existing link breaks. It opens with a map of its sections by task, in guide order; the guides' "related options" links land on that map. Moving the sections themselves was rejected: hundreds of long lines to move by hand for the same navigation.
+
+Validation: bun run validate --skip examples,pack passes (typecheck, tests, manifest, docs build). A one-off check of the built site found no link to a missing #anchor apart from five false positives on the clients overview (the anchors exist).
+
+**docs(docs): fix statements that went stale** ([`602ea32`](https://github.com/jjjermiah/opencode-plugboard/commit/602ea324561f4a799c33df572104f2c383917894))
+
+A pass over the docs against the current code and the CHANGELOG.
+
+- Anthropic client pages said GET /v1/models refuses x-api-key and S7 is a gap. Fixed in 0.47.0 (#399); the anthropic-python and anthropic-js live runs on a0efa4b pass S7. The pages now say so and link the new records.
+- messages.md said Claude Code and the Python SDK were never run; both run in the examples now.
+- configuration.md and the tools guide said tools with json_schema returns only the caller's tool calls, or is "changing" (#34). The model may call a caller tool or give the schema answer; tool_choice none leaves only the schema, and a named tool_choice is a 400.
+- configuration.md said the x-plugboard-* headers are not exposed to browsers, contradicting the line above it (exposed since 0.27.0).
+- The history guide said usage reaches storage every ten seconds; it is written on every change since 0.21.2 (#241).
+- development.md named host 2.0.27 and a two-host CI matrix; the pin is 2.0.30 and CI picks the oldest, a middle and the newest host.
+- any-app.md pinned 0.26.0 and pointed at a README section that moved.
+- The apps option row listed only some per-app fields.
+- CHANGELOG: one Docs entry for the restructure.
+
+Validation: docs build passes; the same anchor check finds nothing new.
+
+**docs(examples): record live reruns on main ece50cd, refresh index** ([`3978aa5`](https://github.com/jjjermiah/opencode-plugboard/commit/3978aa540285228171cb5c09aed0d1b46ed3cf42))
+
+Live reruns on main ece50cd (plugboard 0.48.0, served by the dev server after serve-ref.sh main; it was on 0.47.0 before) for the curl, openai-python, openai-js, n8n, pydantic-ai-anthropic and tool-bot examples. curl, n8n, pydantic-ai-anthropic and tool-bot pass now. The older records were stale: the curl S1 fail was intermittent and 12 later plain calls to fast passed, n8n's Responses checks were already unobserved (#343, closed), and pydantic-ai-anthropic's S7 gap was the x-api-key bug fixed in #399.
+
+openai-python and openai-js stay partial. Their only gap is S2 previous_response_id, refused because plugboard is stateless (#104, open). That is a deliberate plugboard limit, not a client one, so the verdict is left as partial.
+
+Filed #463: a tool call the request did not declare is forwarded to the client. The raw upstream body is in the curl 2026-10-12 record; it is not yet known whether plugboard or the upstream model garbled it.
+
+Golden fixtures: examples/curl/runs/scripted (summary and transcripts) is CI-gated by `run.ts all --target scripted` plus git diff, so it already serves as the curl golden set. No new fixtures added.
+
+Validation: examples-index.ts --check passes. The full `bun run validate --skip pack` was started and stopped by a pause before it finished, so it has not passed on this commit.
+
+Refs #7
+
+#### CI and tooling
+
+**ci: approve the runs GitHub holds on host-bump pull requests** ([`82117f8`](https://github.com/jjjermiah/opencode-plugboard/commit/82117f8e0f7594d50b1618f147b6890956fddbfb))
+
+A pull request that GITHUB_TOKEN opens gets its pull_request runs in action_required. The repo's approval policy (first_time_contributors) treats the github-actions bot as a first-time contributor, so the required checks (CI passed, Lint commit messages, Analyze) stay pending until someone approves the runs. #438 hit this: the workflow-dispatched runs on the same SHA passed, the pull_request runs waited, and a person had to approve them before auto-merge fired.
+
+What changed
+- host-bump.yml open-pr: a new step, before the auto-merge step, reads the pull request head SHA, lists the action_required pull_request runs on it (up to six tries, ten seconds apart), and approves each one with POST /repos/{repo}/actions/runs/{id}/approve. A list or approve failure warns and the job continues, so auto-merge and the breakage issue still run. The job already had actions: write.
+- The existing gh workflow run dispatch of ci.yml, commits.yml and codeql.yml stays as it was.
+- The comments in ci.yml, commits.yml and codeql.yml now say the runs are held for approval, not that a token-opened PR starts no workflow.
+- docs/releasing.md: the host bump section says the runs are approved, and no longer that the required checks come from the dispatched runs.
+
+Why this option GitHub's GITHUB_TOKEN docs say a pull_request run from a workflow-created PR waits for approval, and recommend a GitHub App token or a PAT to avoid that. Both need a secret the repo does not have, and the issue asks for a workflow-only change. Approving the runs keeps GITHUB_TOKEN.
+
+Probe (throwaway branch, deleted after): a push-triggered workflow with actions: write called the approve endpoint on a completed run. It got 403 with the body "This workflow run is not waiting for approval", not a permission error, so the token passed the actions: write check. That is evidence, not proof: the first real bump PR is the test.
+
+Rejected
+- Changing the repo approval policy: a repo setting, out of scope here. Left as an option in the report.
+- A GitHub App or PAT for the PR: needs a new secret. Not done here.
+- Dispatching the real bump to test: host-versions reports 2.0.32 against a pin of 2.0.30, so it would open a real PR and enable auto-merge.
+
+Validation
+- bun run validate --skip examples: typecheck, test, manifest, pack and docs all pass.
+- actionlint .github/workflows/*.yml: clean.
+- The approve step, run with a fake gh: approves every run listed; no runs gives a notice; a list failure and an approve failure each warn and exit 0.
+
+Not verified: the approve call succeeding on a real bot PR (only the 403 state check above), and whether auto-merge then lands unattended.
+
+Refs #397
+
+#### Dependencies
+
+**build(deps): support opencode 2.0.32** ([`3122712`](https://github.com/jjjermiah/opencode-plugboard/commit/3122712d80d77c71f48d2b4fb64c6ed489f93ed3))
+
+OpenCode published @opencode/plugin 2.0.32. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.48.0] - 2026-10-16: Turning the Pages
+
+**Full diff:** [v0.47.0...v0.48.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...v0.48.0)
+
+### Fixed
+
+- `GET /v1/models` with `anthropic-version` pages like Anthropic's list. It honours `limit` (default 20, from 1 to 1000), `after_id` and `before_id`, and `has_more` says whether the page's direction has models left. Before, `?limit=2` returned all 388 models on a real deployment, so the SDKs' `models.list()` got one page and no paging. The cost: a caller that reads only the first page now gets 20 models, not the whole catalog. Iterate the list (the SDKs do this for you) to get all of them. An unknown cursor, both cursors, or a limit outside 1 to 1000 is a 400. The OpenAI list is not paged. Since 0.48.0 ([#457](https://github.com/jjjermiah/opencode-plugboard/issues/457)).
+- The `count_tokens` estimate for Claude 5.x counts long prose closer to what the provider bills. A dense prose turn without tools counted 24 percent low on `claude-sonnet-5-5` (0.76 of real). The Claude 5.x rate for prose drops from 3.38 to 3.1 characters per token. Short turns and tool requests move little. Chat Completions and Responses have no count endpoint, by design. Since 0.48.0 ([#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Fixes
+
+**fix(anthropic): page GET /v1/models with limit, after_id and before_id** ([`c351026`](https://github.com/jjjermiah/opencode-plugboard/commit/c3510264452fa875056019d9a8fad00cedea135a))
+
+Since 0.47.0 GET /v1/models with anthropic-version answered Anthropic's list shape but ignored every paging parameter. ?limit=2 returned all 388 models on a real deployment with has_more false. The Anthropic SDKs auto-paginate models.list() through after_id, so they only ever saw the full catalog by accident.
+
+What changed: the Anthropic list now honours limit (default 20, whole numbers from 1 to 1000, as Anthropic documents), after_id (the page after that model) and before_id (the page before it). has_more reports whether the page's direction has models left, and first_id and last_id are the cursors for the next page in each direction. The list keeps catalog order, because the cursors only need to be stable within one catalog.
+
+Decisions: an invalid limit, both cursors together, or a cursor that is not a listed model is a 400 invalid_request. Anthropic's reference does not say what it returns for those, so these are our choices. The OpenAI list is not paged: it has no paging parameters and its clients never send anthropic-version.
+
+Cost, stated in the changelog: a caller that reads only the first page now gets 20 models, not the whole catalog. The SDK iterators walk every page. The examples anthropic-python, anthropic-js and pydantic-ai-anthropic used to read page one only, so they now iterate the list. Their scripted catalogs have three models, so their transcripts did not change. The paging over the real catalog is checked live on the dev server, see the pull request.
+
+Rejected: returning the whole catalog on one page with a large default. It hides the cursor contract from the SDKs and makes limit meaningless.
+
+Validation: test/http/models-anthropic.test.ts gains nine #457 cases over a 45-model catalog (default page, a full walk with after_id, before_id in reverse, limit 1000, out-of-range limits, bad cursors, OpenAI unpaged). They failed before this change (4 failing on the old route) and pass after it. bun test test/http/models-anthropic.test.ts: 12 pass, 0 fail.
+
+Closes #457
+
+**fix(anthropic): count dense Claude 5.x prose closer to the provider's input** ([`4ba7176`](https://github.com/jjjermiah/opencode-plugboard/commit/4ba717623dddad826b76ca748ba7ebc2254439c0))
+
+The count_tokens estimate for claude-sonnet-5-5 ran 24 percent low on long prose with no tools (585 counted, 770 real on the hub, 0.76). The 5.x profile charged 3.38 characters per token for Latin text, fitted to the 2072-character turn of the earlier refit (c762c0a / 2d73407). The hub's prose tokenizes denser than that turn, so the rate was too high for it.
+
+What changed: CLAUDE_5.charsPerToken goes from 3.38 to 3.1. Nothing else in the profile moves: the fixed request cost (35), the message cost, the tool framing (299) and the per-tool cost (40) stay as fitted, so short turns and tool requests barely change.
+
+Why 3.1: the window is set by two measurements. The hub's long no-tool row (about 1846 characters, 770 real) needs a rate at or below 3.2 to count at 80 percent or more of real. A prose sample of about 1770 characters that measured 525 real on the dev server (1.07 at 3.38) stays within 20 percent only at or above about 2.94. 3.1 sits in that window: offline, the hub row counts about 0.82 and the prose sample about 1.16 (both within 20 percent), the hub long-with-tool row about 0.88, and the two-tool and three-turn shapes about 1.05 and 1.07.
+
+Rejected: a single factor on every 5.x count. It would move the tool cases, which the hub table already has within 20 percent. Rejected: a per-model table, the same reason as in 0.47.0.
+
+Not reproduced: my own long prose on the dev server (live, before this change) reads 1.00 under 3.38, not 0.76. The hub text was not available, so the 0.76 row is taken from the issue, and the 3.1 rate is fitted to that number. The live confirmation runs on my shapes, not the hub's, so this commit is a Refs, not a Closes, for #412.
+
+Checked: test/unit/tokens.test.ts (the #412 case now expects 3.1; it fails against 3.38), the whole token file passes (20 tests). The live shape measurements, before and after, are in the pull request body.
+
+Refs #412
+
+#### Tests
+
+**test(examples): check the error type on both the OpenAI and Messages wires** ([`d864871`](https://github.com/jjjermiah/opencode-plugboard/commit/d86487163ba4e3a475095e11b4cf2b12e6b6f589))
+
+The shared E1 and E2 scenarios checked the error code only. The Messages wire has error.type and no error.code, so the Anthropic examples had to mark the code checks unobserved, and a Gemini error has neither: only a status name. The error type is the one identity all of them share, because OpenAI and Messages use the same two strings (authentication_error and not_found_error, src/openai/response.ts and src/anthropic/response.ts).
+
+What changed: examples/_shared/scenarios.json adds an "error type" check to E1 (authentication_error) and E2 (not_found_error), reading the observation "type". Every E1/E2 runner reports that observation: the OpenAI and Messages runners read error.type from the body or the SDK error, and the Gemini runners map Google's status (UNAUTHENTICATED, NOT_FOUND) to the same two values through a per-wire table. The Anthropic code checks stay unobserved, because a Messages error has no code; the type check now carries the identity they used to miss. The harness README names the type check. All scripted runs were regenerated; the four shapes checked twice produce identical bytes. examples/README.md index and the region check are current.
+
+Decision: no new check kind in the three evaluators. The evaluators already apply "equals" to any observed path, so a shared check on "type" needs no new code and no schema change. The per-wire map lives in each runner, where the wire format is known. Rejected: a neutral check kind that reads "type" or "status" itself, because it moves the wire knowledge into the evaluator for no gain. This does not match the issue's literal wording, so it stays a Refs.
+
+Validation: bun test for the examples harness, normaliser and index tests (46 pass, 0 fail). scripted regen: 18 summaries changed (E1/E2 rows and their check lists), all required scenarios pass. openai-python and openai-js were already partial at HEAD on an optional gap, unchanged. sillytavern and zed have no runnable scripted runner at HEAD and are not touched.
+
+Refs #427
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.47.0] - 2026-10-16: Speaks Anthropic Fluently
+
+**Full diff:** [v0.46.0...v0.47.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...v0.47.0)
+
+### Fixed
+
+- `GET /v1/models` and `GET /v1/models/{id}` accept `x-api-key`, as `POST /v1/messages` does, so `client.models.list()` in the Anthropic SDKs works. A request with `anthropic-version` gets Anthropic's list shape (`data`, `has_more`, `first_id`, `last_id`, each model with `type`, `id`, `display_name`, `created_at`); other requests keep the OpenAI shape. Since 0.47.0 ([#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)).
+- Chat Completions, Responses and Gemini now send `x-plugboard-thinking: unavailable` too, when a requested reasoning effort cannot apply because the model has no thinking variant. Until now only Messages said so. `none` never sets it. Since 0.47.0.
+- A redacted reasoning block the provider returns is now sent back on the Messages route as one `redacted_thinking` block with its opaque data, in both the JSON and the stream. Before, the host's redacted reasoning was dropped, so a client never got a block it could replay. Like thinking, it is left out unless the request asked for thinking. Since 0.47.0 ([#385](https://github.com/jjjermiah/opencode-plugboard/issues/385)).
+- The `count_tokens` estimate has its own profile for Claude 5.x models (for example `claude-sonnet-5-5`). The shared Claude profile was 0.51 to 1.42 of the real input count on Sonnet 5.5; Claude 4.x keeps its numbers. Since 0.47.0 ([#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (12 commits)</summary>
+
+#### Features
+
+**feat(openai): send x-plugboard-thinking on Chat, Responses and Gemini when effort cannot apply** ([`b206c59`](https://github.com/jjjermiah/opencode-plugboard/commit/b206c59797d63810f6d941b9be2bdd5a4b36f212))
+
+Until now only the Messages route answered x-plugboard-thinking: unavailable (#410). A request on Chat Completions, Responses or Gemini thinkingConfig that asked for an effort on a model with no thinking variant ran without thinking and said nothing. Those three routes now set the same header, so every front-end with a reasoning effort answers the same way.
+
+The check lives in models.ts as effortUnavailable. It is true when an effort was requested, the effort is not none, and thinkingUnavailable says the resolved model has no thinking variant. none asks for no thinking, so it never sets the header. Each route calls it once the model resolves and before any response bytes, so the header is on the first byte.
+
+Rejected: putting the header on the shared contract. The contract carries no presentation, and the header is a front-end matter (I20). The Messages route keeps its own check, which uses exchange.thinking, so its behaviour is unchanged.
+
+Checked with test/http/thinking-header.test.ts: nine cases, three front-ends by three situations (no thinking variant, a variant it can run, no effort or none). The header cases fail before this change. test/http/messages.test.ts and models-anthropic.test.ts still pass.
+
+Refs #410
+
+**feat(anthropic): return redacted_thinking blocks on Messages when the host reports them** ([`9155d84`](https://github.com/jjjermiah/opencode-plugboard/commit/9155d84a6c3b033fa2e7a141ce955ad8249e6af2))
+
+The host (OpenCode 2.0.30) keeps a redacted reasoning block as its start state, with redactedData in place of a signature. session.reasoning.ended carries that state merged with the end state (publish-llm-event.ts), so the plugin can read it there. Before this change events.ts only read signatures, so a redacted block never reached the Messages encoder, and a client never got a block to send back on the next turn.
+
+The contract's reasoning-delta gains an optional redactedData. events.ts emits it as an empty-text reasoning-delta at the block's end, next to the signature. The Messages encoder turns it into one redacted_thinking block with its data and no deltas, the way the API sends it, in the JSON body and in the stream. Like thinking, it is left out unless the request asked for thinking. The cache stores it as its own event, so a replay keeps it and does not merge it with text.
+
+Rejected: reading redactedData from session.reasoning.started. The ended event already carries the merged state, and the started event is not subscribed to. Rejected: a separate event type. A redacted block is a reasoning part, like a signature, so one more optional field on reasoning-delta is enough.
+
+Checked with test/unit/anthropic-response.test.ts (two cases, the stream and the JSON body), test/session/collector.test.ts (the host state maps to the event) and test/unit/cache.test.ts, test/http/messages.test.ts, test/unit/stop-sequences.test.ts, which still pass (229 tests). The live round trip with the redaction trigger string is checked separately; see the PR.
+
+Refs #385
+
+#### Fixes
+
+**fix(openai): accept x-api-key on GET /v1/models and answer Anthropic's list shape** ([`577c5af`](https://github.com/jjjermiah/opencode-plugboard/commit/577c5afb8693aa2848044e0b8ab7a7c9491caeb2))
+
+GET /v1/models and GET /v1/models/{id} now authenticate through the same rule as POST /v1/messages: Bearer first, then x-api-key. A request that carries anthropic-version gets Anthropic's list shape, with data, has_more (always false), first_id, last_id, and each model as type "model", id, display_name and created_at. Without that header the OpenAI shape is unchanged.
+
+The Anthropic SDKs send x-api-key on models.list() and got a 401 from the OpenAI-routed list, so client.models.list() failed on plugboard. The S7 gap in examples/anthropic-python and examples/anthropic-js is now a pass.
+
+The shape follows the header, not the path, because the same path serves OpenAI clients too. Errors on these paths keep the OpenAI body: the status and type match Anthropic's, and the body shape is a follow-up. The catalog is one page, so limit is accepted and ignored. A separate /v1/models route for Anthropic clients was rejected: a second route table to keep in step, and the SDKs call the same path.
+
+Checked with test/http/models-anthropic.test.ts (5 tests; x-api-key got 401 before the change). The scripted runs of anthropic-python and anthropic-js were regenerated, and S7 passes in both.
+
+Refs #399
+
+**fix(anthropic): give Claude 5.x its own count_tokens profile** ([`c762c0a`](https://github.com/jjjermiah/opencode-plugboard/commit/c762c0a292446cbe438f65756800dd9bef65aa55))
+
+The count_tokens estimate used one Claude profile for every Claude id. The issue's measurements (0.46.0, one request per cell, against real usage.input_tokens) showed that Haiku 4.5 is within target and Claude Sonnet 5.5 is not: its ratios ran from 0.51 to 1.42, with the short no-tool case low and the short tool case high. The gap is in the family, not the request: Claude 5.x packs Latin text into about 2.5 characters per token, not 5, its fixed request cost is larger, and its tool framing is smaller.
+
+The estimator now picks a profile by the model id. A Gemini id keeps the Gemini profile, a Claude 5.x id (claude-<family>-5-...) gets CLAUDE_5, and every other id keeps the Claude profile it had, so Haiku 4.5 is unchanged. CLAUDE_5 is fitted to the claude-sonnet-5-5 rows of the issue: the short and long no-tool requests, and the short and long tool requests. Its numbers are in tokens.ts, next to the profile they replace.
+
+Rejected: a per-model table. Two model ids cannot show a family's tokenizer, and a table would grow with every release. Rejected: one scale factor. The fit needs the characters per token and the tool framing to move on their own, and a single factor misses the tool case.
+
+Checked with test/unit/tokens.test.ts (a new #412 case: the request cost and the characters per token follow the family). The live ratios for claude-sonnet-5-5 and claude-haiku-5-5 are in the PR body, measured against real input tokens on the dev server.
+
+Refs #412
+
+**fix(anthropic): refit the Claude 5.x count profile on live usage** ([`2d73407`](https://github.com/jjjermiah/opencode-plugboard/commit/2d73407f9f1f54af257deb7daf0ec020527a7460))
+
+The first Claude 5.x profile (c762c0a) was fitted to the issue's Sonnet 5.5 rows. Measured live on the dev server at a0efa4b, the same estimate ran 23 to 32 percent high on both claude-sonnet-5-5 and claude-haiku-5-5. The live rows, one request per cell, count from count_tokens and real from usage.input_tokens plus the cache tokens:
+
+    model              shape  tool     count   real   ratio claude-sonnet-5-5  short  no tool    59     46    1.28 claude-sonnet-5-5  short  tool      517    421    1.23 claude-sonnet-5-5  long   no tool   862    652    1.32 claude-sonnet-5-5  long   tool     1320   1027    1.29 claude-haiku-5-5   (same four rows, the same counts and real tokens)
+
+The long turn is 2072 characters. Its real tokens were all in cache_creation (648 of 652), which is why input_tokens alone reads 4. The two models agree row by row, so one profile covers the family.
+
+The refit solves the four rows. The text rate is (2072 - 24) / (652 - 46), about 3.38 characters per token. The fixed request cost is 46 - 4 - 24 / 3.38, about 35. One tool adds 375 real tokens, of which the tool's own text (123 characters, about 36 tokens) is counted separately, so the framing is about 299 with perTool at 40. Offline, the new profile gives 47, 422, 653 and 1028 for the four rows, within 2 percent of real.
+
+This is an in-sample fit: the same rows set the constants. The live counts were taken before the refit, so the post-refit ratios are predicted, not measured. Claude 4.x and Gemini are unchanged.
+
+Rejected: keeping the issue's Sonnet fit. It was off by a quarter on this content.
+
+Refs #412
+
+#### Tests
+
+**test(examples): drop the #399 S7 gap in pydantic-ai-anthropic and ratchet test floors** ([`f15c8c4`](https://github.com/jjjermiah/opencode-plugboard/commit/f15c8c463ce4d9fb08fb867db80bf08af0b55b9f))
+
+With the fix from #399, GET /v1/models accepts x-api-key, so pydantic-ai-anthropic's S7 passes without its gap entry. The gap is removed from run.py, the regenerated scripted run is committed, and the comments that said the route refuses x-api-key are reworded in the Anthropic runners that send Bearer. The live records under runs/live are dated records and stay as they were.
+
+The new tests from #399 and #410 raise the http and unit floors by the same count, so the ratchet is committed with them (.github/floors/test-count-floors.json).
+
+Refs #399
+
+**test(examples): record live S7 runs of anthropic-python and anthropic-js on a0efa4b** ([`bdca4af`](https://github.com/jjjermiah/opencode-plugboard/commit/bdca4af85afdaa17adf1fc5589bc6d5e5ae8c8a1))
+
+Live target runs of the two Anthropic SDK examples on the dev server at a0efa4b (the #399 fix). S7 passes in both: models.list() with x-api-key, the list in Anthropic's shape.
+Refs #399
+
+**test(tests): repoint the I15 mutation anchor at the models auth line** ([`85b4f64`](https://github.com/jjjermiah/opencode-plugboard/commit/85b4f6495a49bbe3d599e6cd6685fc3994bc5748))
+
+Since the change for issue 399 replaced the generic auth line in src/openai/route.ts with a ternary, the I15-unknown-route-before-auth anchor no longer matched. The mutation now targets the new const auth line and places the same guard before it. The mutation still kills, and the full validate with mutations passes.
+
+Refs #399
+
+#### Docs
+
+**docs(changelog): note the Claude 5.x count profile and ratchet the unit floor** ([`a0efa4b`](https://github.com/jjjermiah/opencode-plugboard/commit/a0efa4b38ba66cc11c6b42c413b86bd0d1972da0))
+
+The Claude 5.x count_tokens profile (#412) gets its CHANGELOG entry under Unreleased, with the measured range it replaces. The new #412 unit case raises the unit floor by one, so the ratchet is committed with it (.github/floors/test-count-floors.json).
+
+Refs #412
+
+**docs(examples): regenerate the examples index after the S7 gap flips** ([`ee7ec05`](https://github.com/jjjermiah/opencode-plugboard/commit/ee7ec0570847b6f33f0b330389130f0acf6b2426))
+
+The scripted and newest live columns of examples/README.md come from the run records. The S7 gaps closed for #399 changed three rows: anthropic-js and anthropic-python now pass on their new live records, and pydantic-ai-anthropic passes scripted. The index is regenerated by examples-index.ts, so the examples CI check passes again.
+
+Refs #399
+
+#### CI and tooling
+
+**ci(ci): make pr-wait wait for every required check** ([`e677e2d`](https://github.com/jjjermiah/opencode-plugboard/commit/e677e2d27c5d349e409e52cad7d984fdc8115243))
+
+`bun run pr-wait 454 --merge` reported green with one check, right after a push: only CodeQL had registered on the new head, it had finished, and every listed check being done was the stop condition. The merge was then refused by the ruleset, and the real CI run later failed.
+
+pr-wait now reads the checks the main ruleset requires (`GET /repos/{repo}/rules/branches/main`, `required_status_checks`) and waits until each of them is present on the head and every listed check has finished. A timeout lists the missing and pending names.
+
+Validation: run against #454 at the same head, it waited for the full set and reported `red: 2 of 12 checks did not pass` (CI passed, Examples), the real outcome.
+
+#### Dependencies
+
+**build(deps): support opencode 2.0.30** ([`058a1f2`](https://github.com/jjjermiah/opencode-plugboard/commit/058a1f2e73e300fd8b9cdc3e542808aea3f708f4))
+
+OpenCode published @opencode/plugin 2.0.30. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.46.0] - 2026-10-16: Honest Counts
+
+**Full diff:** [v0.45.0...v0.46.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...v0.46.0)
+
+### Fixed
+
+- A thinking request on a model that lists no variant for its budget ran without thinking and said nothing. Claude Haiku 4.5 lists only `high` and `max`, so a `budget_tokens` of 1500 (effort `low`) was silently ignored. Now a requested effort runs on the nearest variant at or above it, else the model's highest one, on Messages, Responses, Chat Completions and Gemini `thinkingConfig` alike. A model with no thinking variant at all still runs without thinking, and the Messages answer says so with the new `x-plugboard-thinking: unavailable` header (since 0.46.0). [#410](https://github.com/jjjermiah/opencode-plugboard/issues/410)
+- `count_tokens` and Gemini `countTokens` were off by up to 9 times with tools and 13 times with images, and undercounted CJK text by about four times. The estimate is now calibrated against live provider counts for Claude Haiku 4.5 and Gemini 3.x: tool-use framing and a per-tool cost, a fixed cost per request and message, one token per CJK character on Claude, and Anthropic's `width * height / 750` for each image from its header (a flat cost on Gemini). Chat Completions and Responses still have no count endpoint. [#412](https://github.com/jjjermiah/opencode-plugboard/issues/412)
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Fixes
+
+**fix(anthropic): calibrate the count_tokens estimate against live provider counts** ([`e899f29`](https://github.com/jjjermiah/opencode-plugboard/commit/e899f293c8b7018d763ffab26ea5e704e7da939e))
+
+What changed: count_tokens (Anthropic) and countTokens (Gemini) now estimate from counts measured against the providers, not from characters / 4 plus a flat 1600 per image.
+
+The Claude profile (any model id without "gemini") counts about five characters per token, one token per CJK character, 21 tokens per request, 4 per message, 35 per tool_use or tool_result block, and once tools are declared a 534-token tool-use preamble plus 40 per tool. An image costs Anthropic's width * height / 750 after its downscaling, read from the PNG, GIF, WebP or JPEG header; an unreadable one costs 1600.
+
+The Gemini profile (a model id containing "gemini") counts about five characters per token, 0.67 per CJK character, and a flat 1090 per image.
+
+Why: the red-team issue measured a count of 75 against 668 real tokens with two tools, and 1602 against 122 for a small PNG. Measured on claude-haiku-4-5 through the dev server, the old estimate was 5 against 29 for one line, 100 against 705 with two tools, 154 against 1033 for a tool transcript, 90 against 404 for CJK text, and 1604 against 35 to 1552 for images from 32 to 1568 pixels a side. The profile was fitted to those numbers; its live check is in the PR body.
+
+Decisions: an estimate, not the provider's count endpoint, because the host exposes none. The profile is picked by the model id, since the two providers charge images and CJK text differently. Chat Completions and Responses still have no count endpoint.
+
+Rejected: raising the one constant. A single chars-per-token figure cannot fit both the tool preamble and the image cost, which differ by an order of magnitude.
+
+Validation: unit tests for each term of the estimate and for the PNG header reader; the existing count route tests move to the new numbers (same behaviour, arithmetic in the comments). Live before and after numbers are in the PR body.
+
+Refs #412
+
+**fix(anthropic): run a requested thinking effort on the nearest variant the model has** ([`b7e23fc`](https://github.com/jjjermiah/opencode-plugboard/commit/b7e23fc38a1c362de8e0cb8270ac50b9eda79cd5))
+
+What changed: resolveModel picks a variant for a requested effort in three steps: the variant of that name, else the nearest one at or above it, else the model's highest one (effortVariant in src/models.ts). A thinking budget of 1500 is effort "low", and claude-haiku-4-5 lists only high and max, so the request now runs on high instead of silently without thinking. The same rule now applies to Responses and Chat Completions reasoning_effort and to Gemini thinkingConfig, since they share resolveModel.
+
+A model with no thinking variant at all still runs without thinking. Messages now answers x-plugboard-thinking: unavailable in that case (thinkingUnavailable), listed in the CORS exposed headers and documented in messages.md, gemini.md and configuration.md.
+
+Decisions: "none" and names outside minimal, low, medium, high, xhigh, max only match exactly, so a request for no thinking is never turned on. The header is set only on Messages, where the caller asked for thinking by name; Chat, Responses and Gemini ignore an unavailable effort silently, as before. That is a follow-up, not part of this change.
+
+Rejected: mapping the budget to a fixed variant in effortOfBudget. The table is only a hint, and the model's own list decides, so the nearest-variant rule in the resolver is the one place that holds for every front-end.
+
+Validation: unit tests for effortVariant (table), resolveModel with a Haiku-shaped catalog, and thinkingUnavailable; HTTP tests for the high variant on a 1500 budget, the header on a model with no thinking variant, and no header without thinking. The old test that expected max to be ignored now expects the highest variant. Live check on the dev server is in the PR body.
+
+Refs #410
+
+#### Tests
+
+**test(anthropic): cover the image header readers and raise the floors (#412)** ([`aab0c34`](https://github.com/jjjermiah/opencode-plugboard/commit/aab0c3442a210d720b11a44fa28bd18f91a8798e))
+
+The image size readers for GIF, WebP (lossy, lossless, extended) and JPEG were not covered, so line coverage fell below the floor (98.5% against 98.7%) and function coverage below 94.9%. Each format now has a header test, the JPEG one passing a restart marker, a fill byte, an application segment and a table segment before the frame header, and an unknown format, a missing frame header and a truncated PNG are checked to have no size.
+
+The try/catch around the reads is gone: every read is already length-checked, so nothing in the reader can throw. Ratcheted with test-gates --ratchet: the floors only go up, and the new test counts and coverage are committed with the tests.
+
+Refs #412
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.45.0] - 2026-10-16: Clean Endings
+
+**Full diff:** [v0.44.0...v0.45.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...v0.45.0)
+
+### Fixed
+
+- **The Gemini CLI example no longer picks up the laptop's skills** ([#443](https://github.com/jjjermiah/opencode-plugboard/issues/443)). The CLI reads its home from `GEMINI_CLI_HOME` before `HOME`, so a machine that set it put its own skills into the scripted transcript. The example runner now clears every `GEMINI_CLI_*` override and sets its own home and an empty system settings file, so the transcript is the same on a laptop and in CI (since 0.45.0).
+- **A stream committed before the deadline closes after its error frame** ([#441](https://github.com/jjjermiah/opencode-plugboard/issues/441)). When the request deadline passed after the 200 was sent, the stream ended with its error frame, but its socket stayed open until the grace timer cut it two seconds later. Now the socket closes once that final frame is flushed, so a keep-alive client never reuses it (since 0.45.0).
+- **The Responses envelope echoes the caller's `store`** ([#442](https://github.com/jjjermiah/opencode-plugboard/issues/442)). Every response said `store: false`, including for requests that sent `store: true` or left it out. It now echoes the value sent, and `true` when the request leaves it out, as OpenAI does. An answer made with `store: false` is still not kept for retrieval (since 0.45.0).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (5 commits)</summary>
+
+#### Fixes
+
+**fix(examples): isolate the gemini-cli scripted run from the laptop's skills** ([`db3d70b`](https://github.com/jjjermiah/opencode-plugboard/commit/db3d70bf6ac22734c1737773dc6883032a841ac0))
+
+The scripted Gemini CLI transcripts changed on a machine with extra skills present. An antigravity-support skill from the maintainer's laptop went into the <available_skills> block of the system prompt, so the committed S1 and S3 transcripts no longer matched, and CI, which has no such skill, passed while the laptop failed.
+
+The CLI environment is now built in one place, cliEnv in examples/gemini-cli/cli.ts. It drops every GEMINI_CLI_* variable the caller has set, then sets HOME and GEMINI_CLI_HOME to the run's home, and GEMINI_CLI_SYSTEM_SETTINGS_PATH to an empty settings file inside that home.
+
+The CLI finds its user skills and extensions under homedir(), which reads GEMINI_CLI_HOME before HOME (bundle, function homedir). The runner already overrode HOME, but it spread process.env, so a laptop that exported GEMINI_CLI_HOME kept reading its own ~/.gemini and ~/.agents skills. CI does not set it, which is why CI passed.
+
+Setting GEMINI_CLI_HOME explicitly was chosen over only deleting it. Deleting would also work today, since HOME then becomes the home, but an explicit value keeps the run's home first whatever the CLI reads first in a later version. The system settings path is redirected for the same kind of reason: with no override the CLI reads a machine-wide settings file from a fixed path (/Library/Application Support/GeminiCli on macOS, /etc/gemini-cli elsewhere).
+
+The CLI's machine-wide policies directory has no environment override, so a policy installed system-wide still applies. Policies are not skills, and nothing on this laptop installs one. Noted, not handled.
+
+Validation, on the laptop: a scratch home with a user antigravity-support skill was set as GEMINI_CLI_HOME, and the scripted gemini-cli target ran and passed with runs/scripted identical to the committed transcripts (git diff clean). The same run with the previous environment handling (GEMINI_CLI_HOME passed through) changed the transcripts, so the probe does reach the prompt. A run with the ambient environment is also identical. CI sets no GEMINI_CLI_* variable, so its output is unchanged. CI itself was not run here.
+
+Closes #443
+
+**fix(http): close a committed stream's socket once its deadline error is sent** ([`d49225b`](https://github.com/jjjermiah/opencode-plugboard/commit/d49225b54b57a8fdb70bc4c1e6d3012d1a2dd3fe))
+
+A request that had already sent its 200 and streamed before the deadline passed ended its stream with the dialect's error frame. The response then finished, but the socket stayed open, and the grace timer armed at the deadline cut it two seconds later. A keep-alive client could meanwhile send its next request on that socket, which the grace timer then destroyed.
+
+beginRequest now listens for the response's finish once the deadline has fired, and ends the request socket when the finish arrives. The end is a half-close the client answers, so the socket closes right after the final frame has been flushed. The grace timer stays armed as the fallback for a client that stops reading and never flushes, and it is still cleared when the socket closes.
+
+Alternative rejected: clearing the grace timer at finish and leaving the socket open. A client that ignores the close would then hold the socket forever, because the server socket allows a half-open connection.
+
+Alternative rejected: setting connection: close on the response. Headers are already sent on a committed stream, so the header cannot change. The 504 path of #422 keeps using it, since that answer has not been sent yet.
+
+Test: test/http/transport.test.ts, "#441 a stream committed before the deadline ends with its error frame, then its socket closes without waiting for the grace". The handler is the route's shape (sseWriter bounded by the scope, the error frame written on the timeout, then the response ends), with a 60 second grace and a keep-alive client. It failed before this change (the socket stayed open for the whole second), and it passes now.
+
+Closes #441
+
+**fix(responses): echo the caller's store in the response envelope** ([`70ae1c6`](https://github.com/jjjermiah/opencode-plugboard/commit/70ae1c6d02c00466408efd22a4b79e2d355e8365))
+
+Every Responses answer carried store: false in its envelope, whatever the request sent. The value was a constant in src/responses/request.ts, written when plugboard stopped keeping answers for retrieval (#426). A caller that sent store: true, or left the field out, got back a false it had not asked for. OpenAI echoes the value sent and defaults it to true.
+
+The envelope now carries body.store !== false, so an absent or true value echoes true, and false echoes false. The route's keeps check in src/responses/route.ts already reads store the same way, so what the envelope reports and what plugboard keeps for retrieval now agree.
+
+Alternative rejected: echoing the raw body.store value. A non-boolean would then reach the response unchanged. The request decoder has no check for store, and the boolean comparison keeps the echo a boolean without adding one.
+
+Tests: test/http/responses.test.ts gains two cases (the default, an explicit true and an explicit false on the JSON answer, and both on the created and completed stream events). The existing JSON assertion that pinned store false for a request without store now expects true. test/unit/ responses-request.test.ts asserts the envelope for an absent and for a false store, and its old "always says store false" name is replaced.
+
+Wire goldens: test/types/wire.ts is regenerated with bun test/types/generate.ts. The only change is the store field, from false to true, on the response and its stream events. The goldens still satisfy the SDK types, because the store field is typed boolean in the wire type. docs/responses.md and docs/clients/codex-cli.md said the response always reports store: false, and now say it echoes the value sent.
+
+Closes #442
+
+#### Tests
+
+**test(examples): record the echoed store in the scripted Responses transcripts** ([`76f73db`](https://github.com/jjjermiah/opencode-plugboard/commit/76f73db4535dd629029e8597fe50d64f297c93aa))
+
+The scripted runs of the client examples send Responses requests without a store field. Those requests used to get store false back, because the envelope had a constant false. The #442 fix echoes true for an absent store, as OpenAI does, so every scripted Responses transcript now records store true.
+
+What changed: 136 lines across 84 files under examples/*/runs/scripted/ transcripts/, each one "store": false replaced by "store": true. Nothing else moved. The check was made with git diff -U0: every changed line matches "store", every removed line is false and every added line is true. The live runs under runs/live/ are historical records and are not regenerated.
+
+Validation: bun examples/_harness/run.ts all --target scripted ran and wrote these transcripts. The examples step of bun run validate ends with git diff --exit-code examples/, so the committed files must match the run.
+
+Refs #442
+
+**test(mutations): catch a regression of the #441 socket close** ([`558699f`](https://github.com/jjjermiah/opencode-plugboard/commit/558699f5dffd7792e9ab22380fa626052810121a))
+
+The socket close added for #441 ends a committed stream's socket once its response finishes after the deadline. The transport test that pins it fails without the line, but the mutation catalogue had no entry for that line, so a later edit could remove it and the mutation check would not notice. This adds mutation P441, which replaces the socket end with a no-op and must be caught by test/http/transport.test.ts.
+
+The test count floor in .github/floors/test-count-floors.json is raised to the count the new #441 and #442 tests give, as the validate ratchet writes it.
+
+Refs #441
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.44.0] - 2026-10-16: Tools That Remember
+
+**Full diff:** [v0.43.0...v0.44.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...v0.44.0)
+
+### Fixed
+
+- **`tool_choice: "none"` offers no server tool without `tools`** ([#421](https://github.com/jjjermiah/opencode-plugboard/issues/421)). A trusted app's `serverTools` were still offered when a caller sent `tool_choice: "none"` and no `tools` array. The Chat Completions, Responses, Messages and Gemini request decoders dropped the choice in that case. Now `none` reaches the session and means no tools, server tools included (since 0.44.0).
+- **A server tool's result reaches the next step** ([#417](https://github.com/jjjermiah/opencode-plugboard/issues/417)). A trusted app's `serverTools` ran, but the next step lost the call and its result, so the model asked for the same tool again until the step cap failed the request with 502 `server_tool_steps_exceeded`. Each step now keeps the tool call and result the host appended, after the caller's transcript, so the model answers from the result (since 0.44.0).
+- **An app name is at most 255 characters** ([#418](https://github.com/jjjermiah/opencode-plugboard/issues/418)). The admin route minted a runtime key for an app name of any length, but every call with that key then failed with 502 `backend_failed`. The app's directory is named after the app, and a file name takes at most 255 bytes. The admin route now refuses a longer name with 400 `invalid_app`, and the config refuses it at load (since 0.44.0).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (7 commits)</summary>
+
+#### Fixes
+
+**fix: keep tool_choice none when the caller sends no tools** ([`6fc8bbe`](https://github.com/jjjermiah/opencode-plugboard/commit/6fc8bbe4102aa7ccf63730990e90dd78fb5ede46))
+
+With tool_choice "none" and no tools array, the four request decoders (Chat Completions, Responses, Messages and Gemini) dropped the choice. Each one gated toolChoice on tools.length > 0. The session then saw no choice, so remapSeedTools and sessionRequest still offered the app's serverTools. "none" must mean no tools at all, server tools included.
+
+Decision: keep the gate for every other choice (auto, required, a named tool), so "tool_choice without tools is left out" still holds. Only "none" is kept without tools. The same rule covers Messages {type: none}, Gemini functionCallingConfig NONE and Responses "none".
+
+Rejected: dropping serverTools in applyContext when the choice is missing. That would fix one reader of toolChoice and leave the decoders wrong for every other reader.
+
+Validation: decoder tests for the four dialects and the route test in test/http/invariant-surfaces-r2.test.ts (flipped from test.failing) were red before the fix and green after. Full bun test: 2897 pass, 126 skip, 0 fail.
+
+Closes #421
+
+**fix: keep a server tool's call and result on later steps** ([`a0a0206`](https://github.com/jjjermiah/opencode-plugboard/commit/a0a0206fc5b58b6dba40bf494cb8fbec24b9318b))
+
+A trusted app's serverTools run inside the host session. The host calls the context hook once per step, and applyContext replaced session.messages with the caller's transcript each time. Step 1's server tool call and its result were dropped, so the model asked for the same tool again. Every step ran the tool once more until maxServerToolSteps was reached, and the request failed with 502 server_tool_steps_exceeded. The live report reads three successful read calls and then the cap.
+
+Decision: the context hook records how many messages the caller transcript took (RequestState.callerMessages). On a later step it keeps the host's messages from that index on, which are the tool calls and results the host appended, and puts them after the caller transcript. The first step has no record, so it is unchanged. The caller transcript is still rewritten on every step, and the appended messages are kept by identity, not copied.
+
+Rejected: keeping the whole previous session.messages array. That would repeat the caller transcript on each step, and the rewrite would have to be undone. Rejected: a module-level map from session ID to count. The count belongs with the request state, which the store already releases.
+
+Validation: the test.failing in test/session/server-tools.test.ts is now a plain test and was red before this change. A new test checks that a later step carries the caller transcript once, then the appended message by identity. Full bun test: 3024 tests, 0 fail. The live two-step read is in the PR body.
+
+Closes #417
+
+**fix: refuse app names over 255 characters at key creation and config load** ([`2401844`](https://github.com/jjjermiah/opencode-plugboard/commit/2401844b035895b7e022f72d714d2f5805bbc051))
+
+An app name of any length matched APP_NAME_PATTERN, so the admin route minted a runtime key for a 300-character name (201). Every call with that key then failed with 502 backend_failed. ensureAppDir names the app's directory after the app, and a file name takes at most 255 bytes (NAME_MAX on Linux and ext4). A 255-character name worked, a 300-character one did not.
+
+Decision: APP_NAME_MAX = 255 and isAppName(), the pattern plus the length, in config.ts. The config checks (keys and apps) and the admin route use it. The message names the limit, so a refused name says why. The admin route answers 400 invalid_app, the same code as a bad pattern.
+
+Rejected: 63 characters, the DNS label limit suggested in the issue. It is not the limit that breaks here, and it would refuse names that work today. Not checked: the session title, which the issue also names. The 255 boundary matches the directory name limit, which is the path that fails here. Stored key records with a long name are left as they are: the key store already treats an unreadable record as no key.
+
+Validation: a boundary test in test/http/admin.test.ts (255 mints, 256 gets 400 invalid_app and nothing is minted) and 256-character rows in the config and apps tables. All were red before the change. Full bun test green.
+
+Closes #418
+
+**fix: continue a server-tool run from the host's messages, not the caller's** ([`a10374a`](https://github.com/jjjermiah/opencode-plugboard/commit/a10374a2b3a4cb4506e6e3df37cf1d17fd95e4d0))
+
+The review of #448 found that the first #417 fix sliced the host's messages at the caller's message count. The host does not pass back the caller's array. It reloads the session every step, so its messages are the stored prompt, then each earlier call and result. The slice only lined up for a caller transcript of exactly one message, so a system prompt plus history dropped the call and result again and the run looped to the cap.
+
+Decision: the first context call of a request records how many messages the host had (RequestState.hostMessages). A later call keeps the host messages after that index and puts them after the rewritten caller transcript. The continuation is gated on apps with serverTools, so an untrusted app and a caller-tool-only request keep today's behaviour, and the host's synthetic continue or retry messages are not sent to them.
+
+Rejected: recording the caller length, the first fix. It is the bug. Rejected: keeping the first host message by identity. It fails when the host stores more than one prompt message.
+
+Tests: unit tests build step 2 and step 3 as fresh host-shaped arrays with caller transcripts of 1, 2, 3 and 5 messages, and check identity of the appended calls and results. An untrusted app keeps the old behaviour. A route test drives a multi-message request through a fake host that reloads the session each step, with a stub model that asks for read until its history holds the result. It returns one server call and the answer. The test.failing that already existed is still a plain test.
+
+Also .github/floors/test-count-floors.json, ratcheted by the validate run.
+
+**fix: keep tool_choice none for an app with tools false** ([`cba0c09`](https://github.com/jjjermiah/opencode-plugboard/commit/cba0c097cbc6fef2b3737eeacb0d32254fc0ac06))
+
+applyToolPolicy dropped the tool choice for an app with tools: false, and none was among the choices dropped. With no choice, the session offered the app's serverTools. The same hole #421 closed for requests without tools, reached through the app's tools option.
+
+Decision: keep none in that branch. It refers to no tool, so it stays, and the server tools stay out with it. Named and auto choices are still dropped, as before.
+
+Also: plugboard's app name checks go through isAppName (config.ts), so the length cap from #418 applies to the request route, the usage query and the key store, not only to the config and the admin route. docs/configuration.md states the 255 character limit.
+
+Validation: a session request test for tools: false with tool_choice none (it offers no server tool). The tests run green; the red run before this change was not repeated, the failing path was read in the code. Full validate with mutations green.
+
+#### CI and tooling
+
+**ci: wait for a running CI run before the release preflight** ([`ef13629`](https://github.com/jjjermiah/opencode-plugboard/commit/ef136291e15e5b526655d37c50c53b9aa1878a37))
+
+The release preflight refused to start while the newest CI run on main's commit was queued or in progress ("Wait for it to finish"). A release then meant someone had to watch the run and start the script again. The script is a foreground tool, so it can wait.
+
+What changed: waitForMainCi() in .github/scripts/release.ts polls the newest ci.yml push run on origin/main's commit every 20 seconds while it is queued or in progress, up to 40 minutes (MAIN_CI_TIMEOUT_MS). A completed run is judged as before: success proceeds, anything else stops the script with the conclusion and the run URL, and nothing is committed or pushed. No run, or a gh failure, still refuses at once. Dry runs keep the one-shot check, so the preview does not block. docs/releasing.md says the same.
+
+Decision: poll, do not block on a single gh call. gh run watch would need the run id and would not cover a run that has not appeared yet.
+
+Rejected: a longer timeout or no timeout. A stuck run would hold the release terminal indefinitely, and the bound is what lets the wait fail on red.
+
+Validation: no committed test, because release.ts runs at module top level and the repo has none for it; the existing release checks were rehearsed the same way, outside the repo. Throwaway origin, stub gh: a queued run that completes with success proceeds past the preflight and pushes the release branch; a queued run that completes with failure stops with "concluded failure" and pushes nothing. Before the change, the queued run stopped the script at once. The 40 minute timeout branch was not exercised.
+
+**ci: release preflight retries transient gh errors and waits for a new run** ([`822d215`](https://github.com/jjjermiah/opencode-plugboard/commit/822d2159b8e9c18f9dda66e6d76ca19fe251301d))
+
+Review of #448 found two gaps in the preflight wait. A single failing gh run list ended a 40 minute wait, and a commit just pushed to main had no run for a short while, which still refused at once.
+
+What changed: waitForMainCi() tolerates up to three consecutive gh failures before it refuses, and gives a commit with no run listed two minutes to get one. The timeout message derives its minutes from MAIN_CI_TIMEOUT_MS. The wait logs only when the run's status changes, not every poll. The dry run says "warning:" and "A --push run waits for it", since a real run now waits. The header comment and docs/releasing.md describe the behaviour.
+
+Validation: throwaway origin and a stub gh. A flaky first gh call that then succeeds with a green run: it retried, and the release branch was pushed. A red run stops with "concluded failure" and pushes nothing. A green run pushes the branch. The two-minute no-run path and the 40 minute timeout were not rehearsed.
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.43.0] - 2026-10-16: Names, Not Placeholders
+
+**Full diff:** [v0.42.0...v0.43.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...v0.43.0)
+
+### Fixed
+
+- **SECURITY.md lists the dashboard page** ([#419](https://github.com/jjjermiah/opencode-plugboard/issues/419)). A page that rebinds its name to the listener, behind a trusted loopback proxy, reaches the usage dashboard page and its files as well as `/healthz`, `/readyz` and the discovery page. The dashboard holds no data, and its data route still needs a key. SECURITY.md did not list the page (since 0.43.0).
+- **The docs send a new user the right way** ([#413](https://github.com/jjjermiah/opencode-plugboard/issues/413)). The README quick start pins `opencode-plugboard@0.42.0` (it pinned 0.26.0). The README says a Gemini model id with a `/` gets a 404 `NOT_FOUND`, not a 401. `docs/gemini.md` says the Python SDK was not covered by its tests. The Vercel AI SDK page covers `@ai-sdk/anthropic` with a real Claude id, which needs `structuredOutputMode: "jsonTool"` (since 0.43.0).
+- **Reasoning names tools as the caller does** ([#411](https://github.com/jjjermiah/opencode-plugboard/issues/411)). The model sometimes named a tool in its reasoning by the internal placeholder id it was shown (`mcp_` plus an encoding of the name). Plugboard now rewrites those ids to the caller's tool name in reasoning text, on Messages thinking, Chat Completions and Responses `reasoningOutput`, streamed and not, including an id split across stream deltas. Only an id that is one of the request's own tools is rewritten, in the forms the `@ex-machina/opencode-anthropic-auth` plugin sends (`mcp_T` and `mcp_H` for 2.0, the upper-cased name for 1.x). The answer text is not changed, only reasoning. A signed thinking block is replayed with the text it was signed for, from a bounded map in this process, so a later turn still verifies. After a restart or an eviction the block replays as the caller sent it (since 0.43.0). Gemini responses return no thought parts, so there was nothing to rewrite there.
+- **A Messages `tool_use` block carries `caller`** ([#404](https://github.com/jjjermiah/opencode-plugboard/issues/404)). The `@anthropic-ai/sdk` types make `caller` required on a tool_use block. Plugboard sends `"caller": {"type": "direct"}` on each tool call, in the stream and in the final message (since 0.43.0).
+- **A Messages text block carries `citations`** ([#405](https://github.com/jjjermiah/opencode-plugboard/issues/405)). The SDK types require `citations` on a text block, `null` when there are none. Plugboard sends `"citations": null` on each text block, in the stream and in the final message (since 0.43.0).
+- **Messages answers carry the nullable fields the SDK types require** ([#406](https://github.com/jjjermiah/opencode-plugboard/issues/406)). The Message has `container`, `diagnostics` and `stop_details`, and its usage has `cache_creation`, `inference_geo`, `output_tokens_details`, `server_tool_use` and `service_tier`. plugboard sends `null` where it has no value. The message_delta event carries `container` and `stop_details` in its delta, and `output_tokens_details` and `server_tool_use` in its usage (since 0.43.0).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (9 commits)</summary>
+
+#### Fixes
+
+**fix(anthropic): send caller on Messages tool_use blocks** ([`3703d8f`](https://github.com/jjjermiah/opencode-plugboard/commit/3703d8fd79a6198d3ec99c84e8a0791da25f243b))
+
+What changed: a tool_use block in a Messages answer (the final message and the content_block_start of a stream) now carries `caller: {type: "direct"}`.
+
+Why it was needed: the pinned @anthropic-ai/sdk (0.133.0) types make `caller` required on ToolUseBlock, and its doc says "Tool invocation directly from the model". Anthropic's programmatic tool calling docs show a direct tool_use block with `"caller": {"type": "direct"}`. Plugboard only returns direct calls, so the value is fixed.
+
+Decisions made: a fixed value, not a field from the host. Plugboard has no server tool callers. The request decoder ignores `caller` on replayed tool_use blocks (it reads named fields only), so clients that echo the block still work.
+
+Rejected alternative: omitting the field and waiving it in the conformance test. The SDK type says the field is always present, and a client that checks the type sees it missing.
+
+Validation done: test/compat/conformance.test.ts "#404 a tool_use block carries caller" was test.failing and failed with the field missing before this change; it now passes. test/unit/anthropic-response.test.ts updated for the new exact shape. bun test test/compat test/unit/anthropic test/http/anthropic: 355 pass. bun run typecheck clean.
+
+Fixes #404
+
+**fix(anthropic): send citations on Messages text blocks** ([`64f2103`](https://github.com/jjjermiah/opencode-plugboard/commit/64f210348bc2b1e4dbb6aa735fe8bb2f0515d195))
+
+What changed: a text block in a Messages answer (the content of the final message and the content_block_start of a stream) carries `citations: null`. Plugboard never produces citations, so the value is always null.
+
+Why it was needed: the pinned @anthropic-ai/sdk (0.133.0) types make `citations` required on TextBlock: `Array<TextCitation> | null`. A client that checks the type sees the field missing. null is the value the type allows when there are no citations.
+
+Decisions made: null, not an empty array, because the SDK's TextBlock doc says citations are "supporting the text block" and a plugboard answer has none. The same field is set on the stream's content_block_start, so the stream and the final message agree.
+
+Rejected alternative: waiving the field in the conformance test. The type says it is always present.
+
+Also in this commit: the scripted example transcripts under examples/ were regenerated (`bun examples/_harness/run.ts all --target scripted`). The diff is additive only (91 files, 257 insertions, no deletions): each gains `"citations": null` on text blocks, and some gain `"caller"` on tool_use blocks from the previous commit. The wire-format tests in test/types/wire.ts were regenerated with `bun test/types/generate.ts` after GAPS dropped the text citations gap. Exact-shape assertions in test/unit and test/compat now expect `citations: null`.
+
+Validation: test/compat/conformance.test.ts "#405 a text block carries citations" was test.failing and failed with the field missing before this change; it now passes. bun test test/compat test/types test/unit test/http test/session test/runtime: 2870 pass before the examples run. bun run typecheck clean. bun examples/_harness/run.ts all --target scripted exit 0.
+
+Fixes #405
+
+**fix(anthropic): send the nullable fields the SDK requires on Messages answers** ([`ae0252b`](https://github.com/jjjermiah/opencode-plugboard/commit/ae0252b5905b415e869ce6a5819dbbca6cf8cb4a))
+
+What changed: a Messages answer carries the nullable fields that the pinned @anthropic-ai/sdk (0.133.0) types mark required. On the Message (final and message_start): `container`, `diagnostics` and `stop_details`. On the Message usage: `cache_creation`, `inference_geo`, `output_tokens_details`, `server_tool_use` and `service_tier`. On message_delta: `container` and `stop_details` in the delta, and `output_tokens_details` and `server_tool_use` in the usage. Every value is null, because plugboard has no value for any of them.
+
+Why it was needed: the SDK types make each field required, typed as nullable. A client that checks the type sees the field missing. null satisfies the type.
+
+Decisions made: null for all of them, not a computed value. `cache_creation` could carry the cache write split by TTL, and `service_tier` could carry the tier; plugboard does not return those today, so null is honest. The message_delta usage keeps its narrower SDK shape (MessageDeltaUsage has no cache_creation, inference_geo or service_tier), so the strict conformance check accepts it.
+
+Rejected alternative: keep the waivers in the conformance test. The waiver list is now empty, and the wire goldens (test/types/wire.ts) no longer need the ts-expect-error lines for the Message and events.
+
+Not verified: which of these fields a live Anthropic response always carries. The SDK types and Anthropic's docs were the evidence, not a captured response.
+
+Also in this commit: the scripted example transcripts under examples/ were regenerated (`bun examples/_harness/run.ts all --target scripted`). The new fields add lines; the deleted lines are the trailing commas after output_tokens. The summary files are unchanged. The pydantic-ai and smolagents runs are `partial` (the S7 GET /v1/models gap, #399), and the harness exited 1 with them. Its exit code on main was not checked.
+
+Validation: test/compat/conformance.test.ts "#406 a Message carries the SDK's nullable fields" was test.failing and failed before this change; it now passes. bun test test/compat test/unit test/http test/session test/runtime test/types: 2870 pass, 0 fail. bun run typecheck exit 0.
+
+Fixes #406
+
+**fix(session): rewrite tool placeholder ids in reasoning text to tool names** ([`513542a`](https://github.com/jjjermiah/opencode-plugboard/commit/513542a16d24a07cd13782e29ffc063ecfc68b0c))
+
+What changed: the collector (src/session/events.ts) rewrites an id of the form `mcp_` + `T` + base64url(name) in reasoning text to the tool's name, before the text becomes a reasoning-delta. The rewrite is in src/tool-placeholders.ts. It runs on the neutral event, so every route that returns reasoning gets it: Messages thinking (stream and final message), Chat Completions and Responses reasoningOutput (stream and final), and the signed text that is replayed.
+
+Why it was needed: the model sees its tools under these ids and sometimes names them in its thinking (for example "a tool called mcp_TZ2V0X3dlYXRoZXI"). The tool_use block carries the right name, so only the reasoning leaked the encoding. A client that shows thinking exposed plugboard internals, and the mangled name went back to the provider on the next turn.
+
+Decisions made: the rewrite decodes the id, and rewrites only when the decoded name is a plain tool name and re-encodes to the same id. That leaves `mcp_servers` and half ids alone. The decoder strips the leading `T`, which both examples in #411 carry. An id split across deltas is held back until it ends: the held text is only a run of id characters that starts with `mcp_` (or is a prefix of it). It flushes at the end of a reasoning block, before a text or tool event, and before the signature. Gemini returns no thought parts (its route drops reasoning-delta), so there is nothing to rewrite on that route.
+
+Rejected alternatives: a map from the request's tool names. It needs the tool list threaded into three encoders and is no more precise when the encoding decodes cleanly. Rewriting in each encoder: three copies of the held-back logic, and the replay path would stay unrewritten.
+
+Not verified: the leading `T` is inferred from two examples, not from the host source. The live check on the dev server shows whether a real Claude thinking run has no placeholder ids.
+
+Validation: test/unit/tool-placeholders.test.ts (new) and test/session/collector.test.ts (two #411 cases) failed before this change and pass now. bun test (full): 3005 tests, 2879 pass, 0 fail. bun run typecheck exit 0. Mutation entries reasoning-placeholder-ids-not-rewritten, reasoning-placeholder-prefix-not-held and reasoning-held-text-not-flushed-at-block-end are in test/mutations/catalogue.ts; the mutation run is pending.
+
+Fixes #411
+
+**fix(session): replay signed reasoning as signed, rewrite only this request's ids** ([`90de386`](https://github.com/jjjermiah/opencode-plugboard/commit/90de386bfdddc4e5c4d359fe7e345a6b8c2cf1b0))
+
+What changed:
+- The placeholder rewrite (src/tool-placeholders.ts) matches exact ids only. An id is the whole run of id characters after `mcp_`, and it is rewritten only when that run is one of THIS request's aliases: `mcp_T` plus base64url(name) for a name of 44 bytes or fewer, `mcp_H` plus base64url(sha256(name)) for a longer one, and the 1.x form (`mcp_` plus the upper-cased name). The producer is @ex-machina/opencode-anthropic-auth 2.0.0-next.x, read at 2.0.0-next.6. The generic decode fallback is removed, so `mcp_servers`, `mcp_Tbm90` and `mcp_TZ2V0X3dlYXRoZXI_tool` are left as they are.
+- The collector (src/session/events.ts) builds the aliases from the request's caller and server tool names (caller.ts passes `toolNames`).
+- Held reasoning text goes out before a text delta, a tool call, a failure's error, a finish and the end of the stream. A block that ends with a signature and was rewritten is remembered under that signature.
+- src/reasoning-replay.ts keeps those originals in a bounded LRU (1000 blocks, 8M characters, the lru-cache dependency). src/anthropic/request.ts restores the original text when a signed thinking block comes back. A signature the map does not hold replays as received.
+
+Why: the caller sends the reasoning back with the signature the provider made for the original text. Anthropic checks a replayed thinking block against that signature, and a modified block is a 400. Before this change a rewritten block would have failed on the next turn. The aliases come from this request's tools because a text-level decode also changed model text that only looked like an id.
+
+Decisions made: an exact alias lookup, not a decode. The map is per process; a restart or an eviction replays the text as received, which is the same as before the rewrite. Responses drops reasoning items on input, so there is nothing to replay there. Gemini returns no thought parts.
+
+Rejected alternatives: making the rewrite opt-in (it would hide the leak from the default path); proving live that an edited summary replays (it may be accepted on some models and refused on others, and the map covers all of them).
+
+Not verified in this commit: the live two-turn round trip on anthropic/claude-haiku-5-5#high (run after this commit, in the PR body).
+
+Validation: test/unit/tool-placeholders.test.ts (aliases, H form, non-tool text, split ids, hold-back), test/session/collector.test.ts (flush before text, before a tool call, before an error, at the end with no reasoning.ended, after a server tool call; the H form; the replay record), test/unit/anthropic-request.test.ts (replay restores the original, unknown signature unchanged). Full chain: typecheck, bun test, coverage and ratchet (session 409, unit 1428), coverage manifest, pack, docs build, scripted examples, and the foreground-equivalent mutation run: 148 of 148 killed.
+
+Fixes #411
+
+#### Security
+
+**docs(security): list the dashboard page in what a rebinding page reaches** ([`7390c42`](https://github.com/jjjermiah/opencode-plugboard/commit/7390c4271d0425de13ddc3099204d1b769fa54f5))
+
+What changed: SECURITY.md says what a page that rebinds its name to the listener reaches when `listen.trustProxy` trusts a loopback proxy. The sentence listed `/healthz`, `/readyz` and the minimal discovery page. It now also lists the usage dashboard page (`/plugboard/dashboard`) and its files, with usage on, and says the data route `/plugboard/usage` still needs a key.
+
+Why: the reporter (issue #419) reproduced it on plugboard 0.37.0 with listen.trustProxy: true and usage on. A keyless request with a forged Host of `evil.example` and X-Forwarded-Host from a loopback peer got 200 for /plugboard/dashboard and /plugboard/dashboard/app.js, and 401 for /v1/models, /plugboard/usage, /plugboard/status, /plugboard/metrics and /plugboard/admin/keys. The behaviour is correct: the page holds no data. Only the docs were short.
+
+Decisions made: no code change. The reported behaviour is what the design intends (the dashboard page is a static page, as the discovery page is). The docs/configuration.md Reverse proxies section does not list the pages, so it is unchanged.
+
+Validation: the repro in the issue was not re-run in this commit. The docs build (bun run docs:build) is run with the rest of the branch.
+
+Fixes #419
+
+#### Docs
+
+**docs(docs): fix the four places that sent a new user the wrong way** ([`926cc40`](https://github.com/jjjermiah/opencode-plugboard/commit/926cc40a859ac00b9e22eeef8ff12665f6ebbe39))
+
+What changed:
+- README quick start and the full example pin `opencode-plugboard@0.42.0`, the version in package.json. They pinned 0.26.0, so a new user got a version without userHeader, thinking replay or Copilot replay.
+- README Known gaps: a Gemini model id with a `/` from the AI SDK's Google provider or LangChain's google-genai gets a 404 NOT_FOUND that names the expected path. It said 401. docs/gemini.md and compatibility.md already said 404.
+- docs/gemini.md: a paragraph says the tested run covers the JS SDK only. The Python SDK's image requests failed until #401 and #409, both fixed in 0.41.0.
+- docs/clients/vercel-ai-sdk.md: `@ai-sdk/anthropic` with a real Claude id sends output_config.format for `Output.object`, which plugboard refuses with a 400. The page gives `providerOptions: { anthropic: { structuredOutputMode: "jsonTool" } }` and says the alias `fast` hides the problem.
+
+Why: each one was reproduced on the hub by the reporter (issue #413). The README pin is the first thing a new user copies.
+
+Decisions made: the pin is the current package.json version, not the release tag of the moment. The 401 is replaced by the 404 that compatibility.md already documents. The Vercel snippet is the reporter's verified form, not a new example run.
+
+Validation: bun run docs:build exit 0. The Vercel snippet and the Gemini 404 were not re-run in this commit; the reporter's run is the evidence.
+
+Fixes #413
+
+#### CI and tooling
+
+**ci(tests): ratchet the session and unit test-count floors for #411** ([`42a214e`](https://github.com/jjjermiah/opencode-plugboard/commit/42a214efea330e2f9460da86187ad63deadf70bc))
+
+What changed: .github/floors/test-count-floors.json raises session from 400 to 402 and unit from 1414 to 1421, the counts after the #411 tests were added (the placeholder rewriter unit tests and two collector cases). The floors only go up.
+
+Why: the test gate ratchets the per-layer floors with `test-gates.ts --ratchet` on each change that adds tests. This commit carries only that generated change.
+
+Validation: bun test --coverage ... && bun .github/scripts/test-gates.ts .coverage --ratchet exit 0 on this branch.
+
+**ci(ci): add one-command validate and pr-wait scripts** ([`4ff9d98`](https://github.com/jjjermiah/opencode-plugboard/commit/4ff9d985e90b52a1c8974d266aef9f679d943511))
+
+Lanes ran the local validation chain as six separate commands, often in the background, and then polled log files in sleep loops to see when they ended. That wasted turns and wall time: the scripted examples alone take about six minutes, long enough for the shell tool to move a command to the background.
+
+`bun run validate` runs the chain in order in one foreground process: typecheck, tests with the coverage gates (ratchet), the coverage manifest, pack and smoke, the docs build, and the scripted examples with a clean `examples/` diff. `--mutations` adds the mutation run, `--only` and `--skip` pick steps, `--keep-going` continues after a failure. Each step's full output goes to `.agents/validate/<step>.log` (ignored by git); the console shows one line per step with its time, and the last 30 lines of a failed step's log. The plain `bun test` step was dropped: the coverage run already runs every test.
+
+`bun run pr-wait <n> [--merge]` waits in the foreground for every check on a pull request's head, reports a conflicting PR at once (GitHub runs no checks then), prints each failed check with its link and one verdict line, and optionally merges with a merge commit when everything passed.
+
+Rejected: an OpenCode custom tool for this. A package script works for every agent and for humans, needs no plugin registration, and keeps the chain defined next to the code it checks.
+
+Validation: a full `bun run validate` passed all six steps in 399s on this branch (examples 341s, the rest 58s). `bun run pr-wait 445` reported green for 12 checks. `--only`/`--skip` with an unknown or empty selection fail.
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.42.0] - 2026-10-16: Loose Ends Tied
+
+**Full diff:** [v0.41.0...v0.42.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...v0.42.0)
+
+### Added
+
+- **Examples for five more Chat Completions clients** ([#105](https://github.com/jjjermiah/opencode-plugboard/issues/105)). LlamaIndex, Semantic Kernel, Haystack, Mastra and async-openai now run through the examples harness. Each scripted run is byte-identical across two runs. Each has a live run against the dev server, served build `git describe` v0.41.0-32-g9852300 (main); `fast` was served by its second chain entry, `anthropic/claude-haiku-4-5`. The scripted model now answers Semantic Kernel's prefixed tool name (`weather-get_weather`). Mastra's stream usage check is unobserved, because Mastra sends no `stream_options`. S5 to S7 and E1/E2 were not run for these clients. Still open: Cline/Roo, Msty, Raycast and Home Assistant (GUI, or they need a Home Assistant instance), and LangChain4j and Spring AI (no JDK on the machine that ran this).
+- **Examples for the Gemini clients** ([#103](https://github.com/jjjermiah/opencode-plugboard/issues/103)). The Google GenAI JS and Python SDKs, LangChain's `ChatGoogleGenerativeAI`, the Vercel AI SDK's Google provider and the Gemini CLI (headless) each have a runnable example and a client page, with scripted and live runs. The examples show two model-id rules: a `#variant` goes as `%23` (the SDKs treat `#` as a URL fragment), and the Vercel provider needs a `/` in an id sent as `%2F`. The Python SDK's and LangChain's image requests needed [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401), now fixed on main 0.41.0; their live runs pass on 0.41.0.
+- **Anthropic Messages client examples** ([#102](https://github.com/jjjermiah/opencode-plugboard/issues/102)). Runnable examples for the Anthropic Python and TypeScript SDKs, LangChain `ChatAnthropic` (Python and JS), the Vercel AI SDK's `@ai-sdk/anthropic` provider and pydantic-ai's `AnthropicModel`, each with a scripted run and a live run against the isolated dev server. Required rows pass except S7 (`GET /v1/models`, which refuses `x-api-key`, [#399](https://github.com/jjjermiah/opencode-plugboard/issues/399)) for the two Anthropic SDKs and pydantic-ai. The LangChain and Vercel examples list models with a raw `fetch` or `httpx` call, not the client, so their S7 row is not a client check. The error-code checks are not observed (Messages errors carry `error.type`, no `error.code`). Claude Code has a manual `claude -p` probe only, not an example run.
+
+### Fixed
+
+- **A timed-out request no longer cuts the next one on its connection** ([#422](https://github.com/jjjermiah/opencode-plugboard/issues/422)). After a 504, the next request sent on the same keep-alive connection was dropped about 2 seconds in, when the grace timer closed the socket. A timed-out answer now says `Connection: close`, so the client opens a new connection (since 0.42.0).
+- **An `n` > 1 chat stream opens every choice in index order** ([#423](https://github.com/jjjermiah/opencode-plugboard/issues/423)). The first chunk could carry choice index 1, which the OpenAI Python SDK's `stream()` helper rejects with an `IndexError`. Each choice now sends its role chunk, in index order, before any content (since 0.42.0).
+- **Empty stop strings get a 400 that names `stop`; a thinking signature rejection names the signature** ([#424](https://github.com/jjjermiah/opencode-plugboard/issues/424)). `stop: ""` and a list with an empty entry are refused before the model call with `param: "stop"` (Gemini: `generationConfig.stopSequences`). A whitespace stop such as `\n` is matched in the answer text. When a provider rejects a replayed thinking block's signature, the 400 says the signature was rejected, without the provider's text (since 0.42.0).
+- **A Responses answer cut by `max_output_tokens` has an incomplete message item** ([#425](https://github.com/jjjermiah/opencode-plugboard/issues/425)). The item open at the cut is `status: incomplete`, in the stream and in the final response, next to `status: incomplete` on the response (since 0.42.0).
+- **Items of a `store: false` Responses answer cannot be referenced** ([#426](https://github.com/jjjermiah/opencode-plugboard/issues/426)). plugboard no longer keeps their output items, so an `item_reference` to them is the 400 `item_not_found` (since 0.42.0).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (27 commits)</summary>
+
+#### Features
+
+**feat(examples): add Google GenAI JS and Python SDK examples** ([`987338b`](https://github.com/jjjermiah/opencode-plugboard/commit/987338ba7337bc8921b1f54401cb6401db0df362))
+
+The Gemini clients listed in #103 had no example. This adds examples/gemini-js (@google/genai 2.30.0) and examples/gemini-python (google-genai 2.31.0). Each runs S1 to S7 and the two error paths through the harness, and the scripted runs are committed.
+
+The SDKs build the URL, and a bare # starts a fragment, so the runners send the variant as %23. A / goes as it is, because the route decodes the segment. Gemini calls carry no id and errors name UNAUTHENTICATED or NOT_FOUND rather than invalid_api_key or model_not_found, so those checks are marked unobserved with the reason and the status is still checked.
+
+The Python SDK sends inlineData as mime_type, which plugboard rejects. That row is a gap pointing at #401 until it is fixed.
+
+Validation: the gemini-js scripted run passes. The gemini-python scripted run is partial, with only the S5 gap.
+
+Refs #103
+
+**feat(examples): add Gemini client examples and pages** ([`5f1e08c`](https://github.com/jjjermiah/opencode-plugboard/commit/5f1e08ccc0afc959e30137c15742736fba96ffe1))
+
+The Gemini clients listed in #103 had no runnable example. This adds five: the Google GenAI JS SDK (gemini-js), the Google GenAI Python SDK (gemini-python), LangChain's ChatGoogleGenerativeAI (langchain-google-genai), the Vercel AI SDK's Google provider (vercel-ai-google) and the Gemini CLI run headless (gemini-cli). Each runs S1 to S7 and the error paths through the harness, with pinned dependencies, a scripted run committed and rerun for determinism, and a live run against the isolated dev server at 987338b. Each has a client page under docs/clients and a sidebar entry, and docs/gemini.md now points at them.
+
+Two model-id rules came out of the runs. The SDKs build the URL and treat a bare
+# as a fragment, so a variant goes as %23 (the runners do it). The Vercel
+provider adds the models/ prefix only to ids without a /, so an id with a / goes as %2F there. Plugboard is correct in both cases; the examples and docs/gemini.md say so.
+
+Two rows are gaps, not passes. The Python SDK and LangChain send inlineData as mime_type, which plugboard rejects (#401), so S5 is a gap there. The Gemini CLI runs its own built-in tools, so the custom-tool, structured, image and model list scenarios are not applicable to it, and its countTokens calls did not fire in a headless one-shot run.
+
+Refs #103
+
+**feat(examples): run five more Chat Completions clients through the harness** ([`7a7856d`](https://github.com/jjjermiah/opencode-plugboard/commit/7a7856d222730e2e06c5d6109faf024506398d18))
+
+The compat matrix (see the issue for #105) lists Chat Completions clients beyond the first eight. Five of the headless ones had a copyable script but no harness runner, so no scripted or live record. This wires them in, the same way as the other examples: a runner that marks each scenario, scripted output committed and checked twice for determinism, and a live run against the isolated dev server.
+
+What:
+- llamaindex: run.py (pyproject and uv.lock, llama-index-llms-openai-like 0.8.1). S1 to S4. S3 usage left unchecked, because stream_chat sends no include_usage.
+- semantic-kernel: run.py (semantic-kernel 1.45.0). S1 to S4. S2 and S4 are gaps on the scripted target only, see below.
+- haystack: run.py (haystack-ai 3.4.0). S1 to S4. S3 asks for stream_options through generation_kwargs, since Haystack does not send it by default.
+- mastra: run.ts (bun, @mastra/core 1.78.0, zod 4.6.7). S1 to S4. The runner maps Mastra's tool-calls step name to tool_calls for the observation; the wire is still checked by the harness.
+- async-openai: src/bin/runner.rs and run.sh (relay), async-openai pinned to =0.42.2. S1 to S4 with include_usage on S3.
+- Snippet regions in each copyable file, docs sections on the five client pages, examples/README index regenerated, CHANGELOG bullet.
+
+Decisions:
+- Semantic Kernel prefixes every plugin function on the wire (weather-get_weather). The scripted model answers only get_weather, and the client has no plugin-free registration (plugin_name=None and "" both fail in 1.45.0). Rather than change the shared scripted model, S2 and S4 are gaps on the scripted target only (gaps keyed by target), and the live run checks them normally. Live passes both.
+- Scenarios S5 to S7 and E1/E2 are not in these five runners yet. They are left out rather than marked n/a, because n/a means the client lacks the feature. Listed as follow-ups.
+- The async-openai runner is a second binary (src/bin/runner.rs), not a change to src/main.rs, so the copyable demo keeps its own prompts and URL.
+- Mastra's agent.ts keeps its bare-id note; the runner uses plugboard/<id>.
+
+Not done, and why:
+- Cline/Roo, Msty, Raycast: GUI clients, no headless run.
+- Home Assistant: needs a Home Assistant instance.
+- LangChain4j and Spring AI: no JDK on the machine that ran this.
+- Mastra, Haystack, Semantic Kernel and async-openai were not in the issue's list; they already had example directories, so they were wired rather than added.
+
+Validation:
+- Scripted, two runs each, git diff --exit-code clean: llamaindex pass, haystack pass, mastra pass, async-openai pass, semantic-kernel partial (S2, S4 gaps as above).
+- Live against the isolated dev server at plugboard ef5be0e: all five pass. Runs in examples/<client>/runs/live/2026-10-16-ef5be0e.
+- bun run typecheck: root, tui and examples/_harness pass. -p test fails with two errors in test/compat/clients.ts, a file this change does not touch; not checked on main.
+- bun test: 2675 pass, 0 fail, 126 skipped (live suites need a server).
+- coverage gates and coverage-manifest pass; check-pack and smoke-pack pass; docs:build passes; check-regions passes.
+- bun examples/_harness/run.ts all --target scripted: exit 0, git diff --exit-code examples/ clean.
+
+Refs #105
+
+**feat(examples): record the Gemini client live runs on main 0.41.0** ([`c39f79f`](https://github.com/jjjermiah/opencode-plugboard/commit/c39f79fbdbf2d7d2df7922e007d7183704709bbb))
+
+Main 0.41.0 fixed the Python SDK's inlineData (#401 and #409), so the image scenario now passes for gemini-python and langchain-google-genai. Their S5 gaps are removed and both scripted runs are regenerated; the scripted output is the same on a second run.
+
+The five Gemini examples have new live runs on the isolated dev server at plugboard 0.41.0, labelled with the git describe of this branch (2026-10-16-v0.41.0-29-g2d6aac1). All five pass, with no quota-caused row. Each run has a REPORT.md that notes the fast alias falls through to Haiku when the Go provider returns 429, because the harness does not record the served model.
+
+The client pages cite the new runs and no longer describe #401 as open, and the CHANGELOG bullet says the image requests now pass on 0.41.0. The examples index is regenerated.
+
+Refs #103
+
+**feat(examples): fix review findings on the five harness runs** ([`0d0149b`](https://github.com/jjjermiah/opencode-plugboard/commit/0d0149b6a7e538ba03f850f58aeae6bd2d19ebd3))
+
+Review findings on the five-client PR, fixed here:
+
+- The Semantic Kernel tool gap was keyed by target. The scripted model now answers a tool named *-get_weather with the name the client sent, so SK's S2 and S4 pass scripted. The gap, its verdict and its docs paragraph are gone.
+- Mastra's S3 usage check passed with no usage requested on the wire. Mastra's stream() sends no stream_options, so the check is unobserved with the reason.
+- The live records were labelled ef5be0e, which is not the build the shared server runs. They are rerun against the dev server, served build v0.41.0 (main, git describe v0.41.0-32-g9852300), with PLUGBOARD_COMMIT=9852300 because the checkout is the PR branch. The ef5be0e records are removed. Each live run has a REPORT.md with the label, the fallback and the scenarios not run.
+
+Checks: every scripted run was run twice and the outputs were byte-identical, and no other example's scripted output changed. The earlier tsc -p test failure came from a polluted root node_modules (a stray bun add), not from the branch: a clean frozen install passes here, and so does origin/main.
+
+Refs #105
+
+#### Fixes
+
+**fix(examples): pin the Gemini CLI example's session context for scripted runs** ([`a043a1a`](https://github.com/jjjermiah/opencode-plugboard/commit/a043a1abb961e357ccc26620db880b0515931ba9))
+
+The CLI puts its project temp dir, its workspace listing and today's date into a <session_context> block on the wire. The first scripted runs of gemini-cli differed between two runs on the same day, because the temp dir was a random per-run home and the workspace listing included the example's own run folders.
+
+This pins the HOME and workspace to fixed paths under the temp dir, empties the workspace each run, and turns off the directory tree with context.includeDirectoryTree. Two same-day scripted runs now match byte for byte.
+
+Not fixed: the date in the context. The CLI writes "Today's date is ..." and has no setting to turn it off, so a committed scripted run for gemini-cli matches only on the day it was made. This needs a harness decision (redact the session_context block, or leave gemini-cli out of the scripted set); see the PR.
+
+Refs #103
+
+**fix(examples): normalise the Gemini CLI session context in scripted transcripts** ([`99cc82b`](https://github.com/jjjermiah/opencode-plugboard/commit/99cc82b13ca023eb556dddf6eb17cf9b58decfab))
+
+The CLI writes today's date, the operating system, its temp dir and its workspace into a <session_context> block on the wire, and repeats its home path in its system prompt. Those differ by day and by machine, so a committed scripted run matched only on the machine and day it was made, and CI's run failed.
+
+The harness now replaces those values with fixed placeholders when it writes a request body, inside the session context block only (plus the CLI's fixed home and workspace paths anywhere in a request). Nothing else in any transcript changes. The normaliser is tested in test/unit/examples-normalise.test.ts, and the rule is documented in examples/_harness/README.md under Redaction.
+
+Two same-day regenerations of the gemini-cli scripted run are byte-identical, and no other example's scripted run changed.
+
+Refs #103
+
+**fix(examples): address review of the Responses examples** ([`4b47129`](https://github.com/jjjermiah/opencode-plugboard/commit/4b4712920404d2e86228f1dd29432e2b048ab596))
+
+Review of the Responses examples (issue 104) found five things to fix and some nits. This commit changes what the examples and their records say; the runs are regenerated in the next commit.
+
+What changed:
+- vercel-ai-sdk: the store: false call has its own snippet-store-false region, so the docs page no longer imports a ternary that names an undefined variable. The default S2 region is unchanged.
+- vercel-ai-sdk README: store-false claim reworded. Both S2 rows send the same shape (no item_reference, because S2 has no assistant text turn to replay). The item_reference path is described as a multi-turn case that is documented, not run.
+- openai-agents-js: S4 (streamed tool call), S5 (image), E1 and E2 are written. finish_reason is read from the provider response status (providerData, and the response_done event for streams), not fixed to stop. S3 reads the status from its last event.
+- langchain-js: the auto variant's finish_reason checks move from gap to unobserved, the same limitation langchain-python records (issue 104).
+- codex-cli README: session-specific sentence cut to "not run".
+- Removed the openai-python, openai-js, vercel-ai-sdk, langchain-python and openai-agents-js live runs labelled 8ef91b5. Their version label was wrong (the server ran 0.37.0 build, not 8ef91b5's package version).
+
+Validation: openai-agents-js, vercel-ai-sdk and langchain-js pass scripted runs and typecheck (bunx tsc --noEmit). Full validation and the live reruns follow in the next commit.
+
+Refs issue 104
+
+**fix(examples): normalise the Gemini CLI checkout path in scripted transcripts** ([`0b5f1a6`](https://github.com/jjjermiah/opencode-plugboard/commit/0b5f1a66bc3c6810a427f1805bf9bd828a6de565))
+
+The CLI lists its built-in skills by absolute path in its system prompt. That path starts at the checkout, which is /Users/... on a laptop and /home/runner/work/... on CI, so the CI examples job still failed after the session-context rule landed.
+
+The normaliser now replaces only the checkout prefix of a path that runs through examples/gemini-cli/ with <checkout>. The rest of the path stays. It is tested in test/unit/examples-normalise.test.ts. Two same-day regenerations of the gemini-cli scripted run are identical, and no transcript outside gemini-cli changed.
+
+Validated: the full scripted run passed on this commit. Not yet validated: the typecheck and the full test suite, which must run before a push.
+
+Refs #103
+
+**fix(http): close the connection of a 504 so the next request is not cut** ([`d50413a`](https://github.com/jjjermiah/opencode-plugboard/commit/d50413a4835235f449b7e32cb83bcd097edfda8b))
+
+After a request timed out, the route wrote a 504 and the client kept the socket for its next request. The deadline had also armed a grace timer that destroys the socket after 2 s, so that next request was cut about 2 s in (#422). The grace timer is only cleared once the socket is gone, so a kept-alive socket was always cut.
+
+What changed: `beginRequest`'s deadline handler sets `Connection: close` on the response when no headers have gone out yet. Every route then answers its 504 with `connection: close`, and the client opens a new connection. The responses, completions and gemini routes sent a plain 504 and hit the bug; the OpenAI and Messages routes already passed `close` on their timeout error.
+
+Rejected: cancelling the grace timer when the response finishes. The grace timer exists for a response that never flushes to a client that stopped reading, and `finish` can fire before the bytes are out on some runtimes, so that would leave such sockets open.
+
+Known limit: a stream that already committed its 200 before the deadline keeps its socket, and the grace timer still cuts it. That case is not a 504 status. It is left for a follow-up.
+
+Checked: test/http/transport.test.ts reproduces it with a keep-alive agent. Before the change the second request fails with `socket hang up` (ECONNRESET); after it, both requests succeed.
+
+Closes #422
+
+**fix(openai): open every n > 1 chat stream choice in index order before content** ([`d1d1df6`](https://github.com/jjjermiah/opencode-plugboard/commit/d1d1df666dcf7c8fe51dab993758b336d6fdbf8f))
+
+With `n: 2` and `stream: true`, the first chunk of a Chat Completions stream could carry `choices[0].index = 1`, because each choice wrote its own role chunk at its first content. The OpenAI Python SDK's `chat.completions.stream()` helper builds its choice list by appending in arrival order, so index 1 first raises an IndexError (#423).
+
+What changed: the fan-out opens choices itself. `serveChoices` gives each choice an `open` callback through `StreamChoice`, and the encoder calls it before its first chunk instead of writing its own role. Opening choice k first opens every lower index, so the role chunks go out in index order whichever choice answers first, and each is written once. The chat codec supplies the role chunk through a new optional `opening` hook; completions has none and is unchanged. The single-choice stream path does not pass a choice and keeps its lazy role chunk.
+
+Rejected: writing every role chunk up front when the stream commits. That would commit the stream before any model event, so a failure before output would stop getting its HTTP status. Rejected: buffering content until every choice has spoken, which would hold back the stream.
+
+Checked: test/http/fanout.test.ts runs choice 1 first and checks the helper's arrival-order rule and the first two chunks. With the opener disabled the test fails with `Expected: 0, Received: 1`.
+
+Closes #423
+
+**fix(openai): refuse empty stop strings and name a rejected thinking signature** ([`c97c36c`](https://github.com/jjjermiah/opencode-plugboard/commit/c97c36c480111f520afceb495f168509cbf1f884))
+
+Two opaque 400s came back as `provider_rejected_request` with no reason (#424). An empty stop string (`stop: ""`, or a list with an empty entry) matches everywhere, so it reached the model path and the caller got no pointer to `stop`. A replayed thinking block whose signature a provider refused got the generic provider message, so the caller could not tell that the signature was the part rejected.
+
+What changed: the OpenAI parser refuses an empty stop sequence with a 400 on `stop` before any model call, and the Gemini parser does the same on `generationConfig.stopSequences`. A provider 400 or 422 (or one with no status) whose text names a signature is now classed as `provider_rejected_request` with the message "The model provider rejected the signature of a replayed thinking block". The provider's text is not sent; it is still logged once as `model.failed`, as for every class.
+
+Whitespace stops: `\n` already reached the matcher, and `stopAt` already finds it in answer text. The new HTTP test pins that a newline stop passes and ends the answer before the newline. Unverified: I could not reproduce the opaque 400 for `\n` in-process, so the live check on the dev server decides whether the whitespace half of #424 is fixed.
+
+Rejected: sending stop sequences to the host, which would change what the provider sees. Rejected: accepting an empty stop as a no-op, because the caller would get no answer cut where it asked.
+
+Checked: test/http/stop-sequences.test.ts (the 400 before the model call, with the caller never called), test/unit/gemini-request.test.ts and test/session/collector.test.ts (the signature message, with no provider text in the event).
+
+Closes #424
+
+**fix(responses): mark the message item a cut answer leaves open as incomplete** ([`6c414d1`](https://github.com/jjjermiah/opencode-plugboard/commit/6c414d1f92f02df3a848418b10da2287a4fea4b7))
+
+A Responses answer cut by `max_output_tokens` had `status: incomplete` on the response and `incomplete_details.reason: max_output_tokens`, but its last output item still said `status: completed` (#425). OpenAI's Responses API marks the item the cut left open as `incomplete`, so a client reading the item cannot tell it was cut.
+
+What changed: `runResponse` now computes the cut before it closes the open items. When the finish is `length` (`max_output_tokens`) or `content-filter`, the open message item and the open reasoning item close with `status: incomplete`, in the `response.output_item.done` event and in the final response's `output`. `closeMessage` takes the status as an argument, defaulting to `completed`, so an answer that ends normally, or closes early for a tool call, is unchanged. The failure path keeps its own closing and is not changed here.
+
+Rejected: marking only the message item and leaving reasoning `completed`. The reasoning item is open at the same cut, so the same rule applies to it.
+
+Checked: test/unit/responses-response.test.ts runs a cut answer and checks the done event and the response output. Against the old code it fails with the item status `completed`. The Responses unit and HTTP files pass, 59 tests.
+
+Closes #425
+
+**fix(responses): keep no output items of a store:false answer for item_reference** ([`a2159a9`](https://github.com/jjjermiah/opencode-plugboard/commit/a2159a9df333bb0f76011c6fe010ac44f7f9eef8))
+
+An answer sent with `store: false` still had its output items kept in the per-app store, so a later request could refer to them with `item_reference` and get a 200 (#426). OpenAI keeps nothing for `store: false`, so a reference to its items is a 404 or 400.
+
+What changed: the route reads the request's `store` and skips `rememberAnswer` when it is `false`, on both the JSON path and the streamed path. A reference to such an item is then the existing 400 `item_not_found`. The envelope still echoes `store: false` for every request, as before: the wire snapshots in test/types pin that for a request with no `store`, so changing it is a follow-up.
+
+The same commit also carries the shared files of this batch of red-team fixes: the CHANGELOG Fixed bullets for #422 to #426, the mutation catalogue entries for each new guard (P422 to P426), the ratcheted coverage and test-count floors, and the docs that changed (docs/responses.md, docs/architecture.md, docs/clients/codex-cli.md).
+
+Rejected: rejecting `item_reference` by the app's request instead of not storing. Not storing is what OpenAI does and costs nothing extra.
+
+Checked: test/http/responses.test.ts covers a JSON and a streamed store:false answer, each referenced and refused with 400 item_not_found. The P426 mutation (drop the check on the stream path) was killed only after the streamed test was added. Final runs on this branch: full suite 2995 tests, 0 fail; mutations 139 of 139 killed; typecheck, coverage gate, manifest, pack, docs build and the scripted examples all pass.
+
+Closes #426
+
+**fix(session): match a thinking signature rejection only when it names thinking** ([`29ed359`](https://github.com/jjjermiah/opencode-plugboard/commit/29ed359ab5d0b01eecef2fbd1dc5050cd237f2d2))
+
+The classifier for a refused replayed thinking signature matched any provider 400 whose text contained the word "signature" (#424). Review on the pull request pointed out that this also catches unrelated signature errors and labels them as a refused replayed thinking block, which tells the caller the wrong thing.
+
+What changed: the pattern now needs "signature" within 60 characters of "thinking" or "reasoning" on either side. Anthropic's real text for a bad replayed signature ("Invalid `signature` in `thinking` block") still matches, and the existing collector case for it still passes. A new test covers an unrelated signature error ("Invalid request signature"), which keeps the generic provider_rejected_request message. The mutation P424-signature-rejection-named still targets the unchanged guard line.
+
+Rejected: a broader list of phrases. The thinking or reasoning window is the narrowest rule that covers the case the message is for.
+
+Checked: test/session/collector.test.ts, test/http/stop-sequences.test.ts and test/unit/gemini-request.test.ts pass (185 tests). Full chain on this commit: typecheck, bun test (0 fail), coverage gate with ratchet, manifest, pack and smoke-pack, docs build, scripted examples, and mutations 139 of 139 killed. The live probe of the bogus replayed signature returned the same 400 message on the earlier build.
+
+Refs #424
+
+#### Tests
+
+**test(examples): raise the unit test-count floor for the session-context normaliser tests** ([`85691ab`](https://github.com/jjjermiah/opencode-plugboard/commit/85691ab9604f82c1dec9fb6dbaa61fa10c6fadfe))
+
+The coverage ratchet raised the unit floor from 1362 to 1368 for the six new normaliser tests. Floors only move up, so this is the ratchet's value, not a weakened gate.
+
+Refs #103
+
+**test(tests): add round 2 invariant regression suite for surfaces** ([`eb7567f`](https://github.com/jjjermiah/opencode-plugboard/commit/eb7567fc4037958fb4d3001e6383442deb852a6c))
+
+Add HTTP and session-caller regression tests covering the four round 2 configuration areas: serverTools allowlists and permission ordering, remoteImages SSRF address and redirect validation, keyless loopback Host and Origin refusals, and response cache isolation across apps, sampling parameters and reasoningOutput.
+
+The two mismatches reproduced on the isolated server stay as test.failing entries pointing at #417 (context hook drops server tool results on step 2) and #421 (tool_choice none without caller tools still offers serverTools).
+
+Refs #408
+Refs #417
+Refs #421
+
+**test(tests): address PR #428 review findings and re-ratchet floors** ([`aed8810`](https://github.com/jjjermiah/opencode-plugboard/commit/aed8810276f0a099d6df24d997e358775643b400))
+
+Move session-layer serverTools checks (outside-directory permission ordering, unlisted tool stripping, prompt-injection resistance, and #417 step 2 context preservation) into test/session/server-tools.test.ts and assert the exact permission list and last-star index so trailing deny rules fail the test.
+
+Move octal, dotted-hex and shorthand IPv4 address rows and streamed oversize body coverage into test/session/media.test.ts, trim overlapping cases in test/http/invariant-surfaces-r2.test.ts, use test.each for cache key variants without mutating tool_choice, split the #278 end-user cache tests, assert JSON error codes directly, drop stale line-number comments, and re-ratchet test count floors on top of origin/main.
+
+Refs #408
+Refs #417
+Refs #421
+
+**test(examples): raise the unit test-count floor after the merge with main 0.41.0** ([`4d821a2`](https://github.com/jjjermiah/opencode-plugboard/commit/4d821a25f33021bdb070545e2e0c752bcb58040f))
+
+The coverage ratchet raised the unit floor from 1406 to 1412 on the merged tree. Floors only move up, so this is the ratchet's value, not a weakened gate.
+
+Refs #103
+
+**test(tests): count only a fetch's own hits in the maxItems media test** ([`fa4507a`](https://github.com/jjjermiah/opencode-plugboard/commit/fa4507a226f8934139ad6a4c5f57b7a72eb1205c))
+
+The maxItems test in test/session/media.test.ts counted every request the loopback server saw against one shared `hits` counter. The hang test before it aborts a fetch after 1 ms, so its request can reach the server after that test has ended, and then land inside the maxItems window. CI then failed with `Expected: 13, Received: 14` on the OpenCode 2.0.30 host job (#434).
+
+What changed: the maxItems test now fetches its own route, /max-items.png, and counts hits per path with a `served` map. The test also reproduces the race on purpose: it sends a /hang request that the server sees before the maxItems fetch runs, and waits until it arrives. Against the old global counter that run fails with `Expected: 15, Received: 16`, which is the reproduction.
+
+Rejected: making the hang test wait for its request to land before it ends. The request may never arrive, because the 1 ms timeout can fire first, so that wait would hang or stay racy.
+
+Checked: the media test file passes three runs in a row on this branch.
+
+Closes #434
+
+#### Docs
+
+**docs(examples): add Anthropic Messages client examples** ([`06f71b0`](https://github.com/jjjermiah/opencode-plugboard/commit/06f71b0cc899b06943d55c2c04f656ea6041a850))
+
+Adds runnable examples for the Anthropic Messages clients listed in #102: the Anthropic Python SDK (anthropic 1.15.0), the Anthropic TypeScript SDK (@anthropic-ai/sdk 0.135.0), LangChain ChatAnthropic in Python (langchain-anthropic 1.7.6) and JS (@langchain/anthropic 1.5.12), and the Vercel AI SDK's Anthropic provider (@ai-sdk/anthropic 4.0.81).
+
+Each example follows examples/_harness/README.md: nine scenarios from _shared/scenarios.json (S1 to S7, E1, E2), exact pins with a lockfile, a runner, a scripted run that is byte-identical across two runs, and a live run against the isolated dev server at 127.0.0.1:4010 at plugboard 8ef91b5. Each has a docs page that imports its snippet regions.
+
+Decisions:
+- The Messages route speaks Anthropic's error envelope: errors carry error.type and no error.code. E1 and E2 read the type and are gaps, because the shared check expects OpenAI's code vocabulary.
+- GET /v1/models ignores x-api-key, which the Anthropic SDKs send. S7 is a gap for the two SDKs; filed as #399. The LangChain and Vercel examples list models with a Bearer key, which the route accepts.
+- Structured output is a forced tool. Plugboard refuses output_config.format by design (docs/messages.md), and the Vercel provider sends it for claude-haiku-4-5, so that row is a gap.
+- Claude Code has no runner. CI has no claude binary, and a runner would break the scripted job. One manual `claude -p` probe against the dev server printed pong (stop_reason end_turn).
+- Pydantic-ai's Anthropic model (in #102) is not covered.
+
+Validation:
+- bun run typecheck: pass.
+- bun test: 2675 pass, 0 fail, 126 live skipped.
+- coverage ratchet, coverage-manifest, check-pack, smoke-pack: pass.
+- bun run docs:build: pass.
+- examples/_harness/run.ts all --target scripted: exit 0; the new scripted runs are identical across two runs; no other example's committed output changed.
+- live: five runs against 127.0.0.1:4010 at 8ef91b5, each partial with only the gaps above. No key in any written file.
+
+Refs #102
+
+**docs(examples): cover the Responses API in the client examples** ([`22b47df`](https://github.com/jjjermiah/opencode-plugboard/commit/22b47df356e50eaba790f6e979a83bdd44ceb9f9))
+
+The issue 104 list names the clients that should exercise /v1/responses. Before this change, openai-python and openai-js ran only Chat Completions, LangChain Python pinned use_responses_api=False, the Vercel AI SDK ran only store: true, and there was no JS Agents SDK example.
+
+What changed:
+- openai-python, openai-js: a `responses` variant on S1, S2, S3, S5 and S6 (responses.create, responses.stream, responses.parse, output_text, input_image, text.format json_schema). S2 replays the whole history with store: false.
+- openai-python, openai-js: S2 `responses-previous-id` runs previous_response_id. Plugboard refuses it by design (400 unsupported_parameter, docs/responses.md), so it is a gap (issue 104).
+- vercel-ai-sdk: S2 `responses-store-false`, openai(id) with store: false.
+- langchain-python: a `responses` variant (use_responses_api=True) on S1, S2, S3, S5 and S6. LangChain exposes no finish_reason on that route, so those checks are `unobserved`, the same limitation as langchain-js. S6 joins the text blocks the Responses path returns.
+- openai-agents-js: new example, the Agents SDK for JS on the Responses API (S1, S2, S3, S6), pinned to @openai/agents 0.20.0.
+- codex-cli README: states that codex is not installed here, so `codex exec` was not run.
+
+Decisions:
+- A `responses` variant is added beside `chat`, not in place of it, so each row keeps its meaning across runs.
+- A plugboard refusal is recorded as a gap naming #104, not as a failure, because it is documented behaviour.
+- finish_reason that LangChain does not expose is `unobserved`, not a gap. The gap label is for a known incompatibility, and this is a limit of the client.
+
+Validation:
+- Scripted: `bun examples/_harness/run.ts all --target scripted` exits 0 twice, and `git diff --exit-code examples/` is clean after the second run.
+- Live against the isolated dev server (plugboard 8ef91b5, 0.37.0): openai-python partial (only the previous-id gap), openai-js partial (same), vercel-ai-sdk pass, langchain-python pass (finish_reason unobserved), openai-agents-js pass. Runs under runs/live/2026-10-16-8ef91b5.
+- bun run typecheck, bun test on the examples unit tests (30 pass), bun run docs:build, examples-index --check, check-regions all pass.
+
+Not verified: Codex CLI live (not installed), n8n on the Responses path beyond S1 (needs Docker, not run here), the Vercel item_reference 400 after expiry (documented, not triggered), and the Agents SDK streamed tool call and image rows (not written yet).
+
+Refs #104
+
+**docs(examples): document Responses rows and add the openai-agents-js page** ([`b3c958f`](https://github.com/jjjermiah/opencode-plugboard/commit/b3c958f2e0db7eee9d9e57d652a933614077d2f3))
+
+Client pages for openai-python, openai-js, vercel-ai-sdk and langchain-python now import the Responses snippets. A new openai-agents-js page is in the sidebar. The langchain-python responses_model is a snippet region.
+
+Live runs for the five examples are under runs/live/2026-10-16-b41c376, labelled as the commit b41c376 (package.json 0.37.0, git describe v0.37.0-17). Every failing row is the fast model, which returned 429 from the upstream provider. Compatibility rows and the README references to removed run directories are not done yet; this commit is local only.
+
+Refs issue 104
+
+**docs(examples): fix the Responses review findings and record live runs** ([`829132a`](https://github.com/jjjermiah/opencode-plugboard/commit/829132abb8846c1fa0ab7e52e3278a9fbd4c7ad9))
+
+The review of the Responses examples asked for these changes. This commit finishes them.
+
+What changed:
+- Client pages for openai-python, openai-js, vercel-ai-sdk and langchain-python now import the Responses snippets. A new openai-agents-js page is in the sidebar, and the compatibility page has a row for it.
+- vercel-ai-sdk: the store: false call has its own snippet region, and the README and docs page describe what the transcripts show: both S2 rows send the same shape, and item_reference is the multi-turn case, documented and not run.
+- openai-agents-js: S4 (streamed tool call), S5 (image), E1 and E2 are written. finish_reason comes from the provider response status, not a fixed stop; streams read it from the response_done event.
+- langchain-js: the auto variant's finish_reason checks are unobserved, not a gap.
+- Live records are regenerated on the shared dev server at main 95261a4 (git describe v0.41.0-4-g95261a4, plugboard 0.41.0). The records from 8ef91b5 and b41c376 are removed; those labels were wrong or superseded.
+
+Live results (runs/live/2026-10-16-95261a4):
+- Every row on anthropic/claude-haiku-4-5 and openai/gpt-5.6-luna#low passes, in all five examples.
+- Every failing row is on fast. The provider returned 429 (quota), so those rows say nothing about plugboard. The harness runs each example's fixed model list and has no model selection, so fast is in the record.
+- openai-python and openai-js: the previous_response_id refusal is a gap (400 unsupported_parameter), as documented.
+
+Validation (BROWSER=true):
+- Scripted, all examples, run twice: byte-identical (git diff empty).
+- Typecheck: pass. Full bun test: 2979 tests, 0 fail. docs:build: pass.
+- examples-index --check and check-regions: pass.
+
+Not done, left as follow-ups:
+- The previous-id gap is still unconditional: any failure on that row is labelled a gap. Asserting the 400 needs harness support.
+- S6 for Responses reads the raw create result only for the parse call; it is not compared to the raw result.
+- The compatibility page lists only the agents-js row; the Responses variants of the other clients are on their own pages.
+
+Refs issue 104
+
+**docs(examples): rerun live records with the fast fallback** ([`5d07029`](https://github.com/jjjermiah/opencode-plugboard/commit/5d070292c7d90f9c647e69fa916a83d701acaa9d))
+
+The dev server's fast alias now falls back from opencode-go/glm-5.3-flash to anthropic/claude-haiku-4-5. A Go quota 429 is served by Haiku (x-plugboard-model: anthropic/claude-haiku-4-5, x-plugboard-fallbacks: 1).
+
+The live records from the earlier 95261a4 run failed on fast with a quota 429. They are replaced here with reruns of the six examples this PR touches, on the same main commit (95261a4, git describe v0.41.0-4-g95261a4, plugboard 0.41.0):
+
+- openai-agents-js: pass (16 pass, S7 n/a)
+- openai-python: partial (only the S2 responses-previous-id gap, 3 rows)
+- openai-js: partial (same gap, 3 rows)
+- vercel-ai-sdk: pass (48 pass)
+- langchain-python: pass (30 pass)
+- langchain-js: pass (23 pass)
+
+The harness does not record the served model, so each run has a REPORT.md that says fast was served through the fallback chain and that a fast row is not attributed to Go or Haiku. The example READMEs and the client pages say the same.
+
+The README and docs lines that called fast a 429 failure are updated. The compatibility row for the Agents SDK (JS) now reads from this run.
+
+Refs issue 104
+
+**docs(examples): address #415 review on the Anthropic clients** ([`63da3b4`](https://github.com/jjjermiah/opencode-plugboard/commit/63da3b4e2a9b191a4b0f33b27151a67d4dc27a9d))
+
+- E1/E2 code checks are unobserved in the five Anthropic runners; the status checks stay enforced. Follow-up: #427.
+- Vercel S6 sets structuredOutputMode "jsonTool" and passes on haiku.
+- Adds examples/pydantic-ai-anthropic (AnthropicModel), docs page, index entry.
+- Live records on main v0.41.0 (v0.41.0-13-g7e1fdcb): partial (S7 only) for the two SDKs and pydantic-ai; pass for Vercel and both LangChain examples. The fast alias falls back to Haiku on a Go 429, noted in each REPORT.md.
+- Removes my earlier b41c376 records: their fast rows failed on quota.
+- 8ef91b5 records keep REPORT.md label notes (server ran 0.37.0).
+- Claude Code README: dated manual claude -p probe result.
+- Root README client rows; CI typechecks the TS Anthropic examples.
+
+Refs #102
+
+#### CI and tooling
+
+**chore(examples): typecheck the Gemini CLI example like the other TypeScript examples** ([`6c36e84`](https://github.com/jjjermiah/opencode-plugboard/commit/6c36e84c34fbad1e5e99482a5537834e8922d8b3))
+
+The gemini-cli example had TypeScript files but no tsconfig, no typecheck script and no TypeScript dev dependencies, so nothing checked it. This adds the same tsconfig and the same pinned @types/bun 1.4.2 and typescript 7.0.2 as gemini-js, with a typecheck script, and locks them. The example type checks clean with bun run typecheck. Its scripted output does not change.
+
+Refs #103
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.41.0] - 2026-10-16: Gemini Pictures Welcome
+
+**Full diff:** [v0.40.0...v0.41.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...v0.41.0)
+
+### Fixed
+
+- **Gemini `inlineData` from the Python SDK** ([#401](https://github.com/jjjermiah/opencode-plugboard/issues/401), [#409](https://github.com/jjjermiah/opencode-plugboard/issues/409), since 0.41.0). The google-genai Python SDK sends `inlineData` with `mime_type` (snake_case), and plugboard answered 400 `inlineData needs mimeType and base64 data`. The inline MIME type is now read in either case, like the other Gemini fields. The SDK also sends `inlineData.data` as URL-safe base64 (`-` and `_`), which plugboard answered 400 `Image data URL is not valid base64`: it is now normalised to standard base64 before the image check. Data with any other character, or a length no base64 string has, is still refused. `fileData`, `functionCall` and `functionResponse` were already read in both cases and are covered by tests now.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Fixes
+
+**fix(gemini): read inlineData snake_case mime_type and URL-safe base64** ([`7e114e6`](https://github.com/jjjermiah/opencode-plugboard/commit/7e114e6c030c2cc1373e1c0dc7c1bbf7f4bb85f9))
+
+The google-genai Python SDK sends inlineData with mime_type, and its bytes as URL-safe base64 (- and _). Plugboard answered 400 for both (#401, #409).
+
+What: the inline MIME type is read with field(), like the other Gemini fields. inlineData.data is normalised to standard base64 (padded when unpadded) before the image check. Garbage characters and impossible lengths are still refused.
+
+Why: a proto JSON parser accepts both names and both alphabets, so Google's API takes this body; plugboard was stricter than the API it proxies.
+
+Decisions: the normaliser lives in src/gemini/request.ts, not image.ts, so the image check still sees standard base64 only. fileData, functionCall and functionResponse already read snake_case via field(); they gain tests only.
+
+Validation: typecheck clean; bun test 2728 pass, 0 fail; coverage gates pass with the unit floor raised 1362 to 1369; coverage-manifest, check-pack, smoke-pack, docs:build, scripted harness and examples diff all pass. bun run mutations was started and stopped on owner pause; not complete.
+
+Not verified: live run against 127.0.0.1:4010 (examples/gemini-python is not on main, so S5 cannot run). Scripted harness has no Gemini example.
+
+Refs #401, #409
+
+#### Tests
+
+**test(floors): ratchet unit test floor to 1406** ([`7e3ad30`](https://github.com/jjjermiah/opencode-plugboard/commit/7e3ad30ac9bafa70a244887b823aa6534cf0e415))
+
+The Gemini inlineData tests added in this branch (snake_case mime_type, URL-safe base64, the Python SDK body) raise the unit count from 1400 to 1406. Ratchet run after the merge of origin/main; floors are only ever raised.
+
+Refs #401, #409
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.40.0] - 2026-10-16: Quick to Move On
+
+**Full diff:** [v0.39.0...v0.40.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...v0.40.0)
+
+### Added
+
+- **First-event deadline for fallback chains** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.40.0). A fallback chain could not help when its first target hung: a provider that fails upstream with HTTP 520 kept the host retrying, and a request to that target hung for more than 90 seconds with no event and no failure. Option `fallbackAfterMs` sets a deadline for each target that is not the last. A target that has produced no model event within it is aborted (its OpenCode session is interrupted and retired, not left running) and the next target is tried. It is reported like any other fallback: `x-plugboard-fallbacks`, the `model.fallback` log line with reason `first_event_deadline`, and `plugboard_fallbacks_total`. The last target has no first-event deadline and is bounded only by `requestTimeoutMs`. Off by default. Global only, because a list entry is a plain model string. It is refused at load unless it is below `requestTimeoutMs` and below each app's `requestTimeoutMs`. Silence before the first event counts against it, including the setup of the attempt and an app's `serverTools` runs; read the rule in [configuration](docs/configuration.md#aliases-and-fallbacks) before setting it.
+
+### Changed
+
+- **A host retry before any output moves a fallback chain on at once** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.40.0). OpenCode retries a failed provider call itself, after a wait of up to about 84 seconds for an upstream 520. For an alias list with a target after the failing one, that wait now ends the attempt at once with reason `provider_retry`, so the chain falls through in seconds. The last target keeps the host's retries. This applies with or without `fallbackAfterMs`, so a rate limit that the host would retry also moves on at once: a change for alias lists that used to wait. Retries after output has been sent are unchanged, because the answer is committed.
+
+### Fixed
+
+- **An upstream HTTP 520 is answered as 502** ([#391](https://github.com/jjjermiah/opencode-plugboard/issues/391), since 0.40.0). A status that reached the client unchanged could be 520 to 527, which are not HTTP statuses (Cloudflare uses them). Such a status is answered as 502 `provider_unavailable`, the gateway class. Statuses 500 to 511 and the 4xx ones are unchanged.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (4 commits)</summary>
+
+#### Features
+
+**feat(fallback): add fallbackAfterMs, a first-event deadline for fallback chains** ([`9090202`](https://github.com/jjjermiah/opencode-plugboard/commit/9090202b12559b1d9643dae62e49af831186b808))
+
+A list alias could not help when its first target hung. A provider that fails upstream with HTTP 520 kept the host retrying, and a request to that target hung for more than 90 seconds with no event and no failure. The chain only retries a failure that arrives before the first event, so a target that never answers blocked the whole request until requestTimeoutMs.
+
+Option fallbackAfterMs (global, optional, off by default) sets a deadline for each target that is not the last. When a target has produced no model event within it, the chain aborts that attempt and tries the next target with reason first_event_deadline. The attempt's signal is AbortSignal.any of the request signal and the deadline, so the existing caller cleanup runs: the OpenCode session is interrupted and retired, not left running. The timer is cleared at the first event, so an answer that arrives in time is never aborted. The last target is bounded only by requestTimeoutMs, as before.
+
+Reported like any other fallback: x-plugboard-fallbacks, the model.fallback log line with the reason, and plugboard_fallbacks_total. Nothing new in the metrics labels.
+
+Decisions: the option is global only. A list entry is a plain model string, so a per-target deadline would need a new entry shape; that is a larger change and can come later if one deadline does not fit every provider. Rejected: a deadline on the whole attempt (a slow but progressing stream would be cut), and an abort without a reason (the log would not say why the target was skipped).
+
+Validation: fake-host unit tests cover a target that never emits, a target that emits just before the deadline, two hangs before a third answers, and a slow last target. Config tests cover the bounds. The mutation fallback-first-event-deadline-does-not-abort is killed. Live check on an isolated OpenCode server built from this branch, with two loopback fake upstreams (one never answers): the alias hang answered from fast after 2.07 s with x-plugboard-fallbacks: 1, the aborted session ended interrupted, and no request guard was left.
+
+Refs #391
+
+**feat(fallback): fail over at once on a host retry before any output** ([`5179d81`](https://github.com/jjjermiah/opencode-plugboard/commit/5179d81467f3324510084dbb4aaac97379f4e4fe))
+
+When a provider fails with a retryable error before any output (an upstream HTTP 520, a rate limit), OpenCode 2.0.27 schedules its own retries: up to 10 more calls, about 84 seconds of waiting for a 520. Plugboard ignored the session.retry.scheduled event, so an alias list with a next target waited out the whole schedule before it fell through (#391).
+
+Now, for an attempt that has a target after it, the event before any output fails the attempt at once with reason provider_retry, and the chain moves on within seconds. The session caller reads the new CallContext.fallbackNext flag that the chain sets, and passes it to RequestCollector as failFastRetry. The collector emits an error with code provider_retry and stops the turn, so the attempt's OpenCode session is interrupted and retired like any other failed attempt. The last target gets no flag and keeps the host's retries.
+
+Decisions: the behaviour is on for every alias list, with or without fallbackAfterMs, and it also covers rate limits the host would retry. That is a change for lists that used to wait, so the CHANGELOG says so. A retry after output has been sent is left alone, because the answer is committed and a restart would repeat text. To know whether a target follows, the chain now resolves the targets before the first attempt, one uncached model.list host call per list-alias request. Rejected: reading the retry event's delay and waiting less (the host would still run another step); treating it as a failure only when fallbackAfterMs is set (the 520 case needs no timer).
+
+Validation: collector tests cover a retry with a target after it, without one, and after text or reasoning output. Fallback tests cover the fall-through, the flag on each attempt (true, true, false), and a last-target retry standing as the answer. Mutations provider-retry-ignored, provider-retry-after-output, output-not-recorded-for-retry and next-flag-always-set are killed.
+
+Refs #391
+
+#### Fixes
+
+**fix(fallback): answer the review of the first-event deadline** ([`a893a5e`](https://github.com/jjjermiah/opencode-plugboard/commit/a893a5e1bd5959a7a94d9ea9fd0709a34f95ecf3))
+
+The review of #392 asked for tests, docs and a load-time bound for fallbackAfterMs. This commit covers those; the two follow-ups for #391 come in their own commits.
+
+- Tests: a target that streams reasoning first, and one that streams text first, are not aborted when their stream runs past the deadline, and the whole answer arrives. Removing the timer clear now fails a test (mutation fallback-first-event-deadline-never-cleared). The early event moves to 50 ms of a 400 ms deadline, so a slow runner cannot push it past.
+- Docs: configuration.md defines "no event". Any plugboard event stops the clock. Silence includes the setup of the attempt (image fetches, a cold Location, creating the session), hidden reasoning before the answer, and, for an app with serverTools, the time an OpenCode tool runs. A deadline that fires during a tool call can make the next target run the tool again. The deadline is not a hard bound.
+- Load: fallbackAfterMs at or past requestTimeoutMs, or past an app's own requestTimeoutMs, is refused at load, because that deadline ends the request first. The budget of the whole chain (fallbackAfterMs times the targets that are not last) is documented.
+- Small fixes: the fallbacks line in config.ts keeps its indent; the loadCatalog comment says the catalog is read once per chain request. The CHANGELOG entry no longer names a private host.
+
+Rejected: clamping the value to requestTimeoutMs silently. A value that cannot fire should fail at load, not change behaviour. Still open: a per-target or per-app fallbackAfterMs, since a provider's silent-thinking time differs.
+
+Refs #391
+
+**fix(session): answer an upstream status past 511 as a 502** ([`e09a0ec`](https://github.com/jjjermiah/opencode-plugboard/commit/e09a0ec3c08b99203c90cb1a137ed553a6a61a67))
+
+An upstream status that the host passed through reached the client unchanged: a provider that fails with HTTP 520 (Cloudflare uses 520 to 527) made plugboard answer 520, which is not an HTTP status a client can read. The mapping in toPlugError used the upstream status as-is for every 5xx it did not classify.
+
+Now a status of 512 or more is answered as 502 provider_unavailable, the gateway class, and the message is the same fixed text as before. Statuses 500 to 511 pass through as they did, and the 4xx mappings are untouched. The raw host text still goes only to the log (I13).
+
+Decisions: the cut is 511, the last standard 5xx code, so every status the standard defines is kept. Rejected: mapping every 5xx to 502 (it would turn a provider's 503 overload, which the client can act on, into a generic gateway error). This matters for the fallback chain too: 502 with provider_unavailable is retryable, so a chain treats a 520 the same way whatever its status number.
+
+Validation: collector tests cover a 520 reaching the caller (502, code provider_unavailable) and a 503 that keeps its status. Mutation upstream-520-passed-through is killed.
+
+Closes #391
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.39.0] - 2026-10-16: Fair Shares for Everyone
+
+**Full diff:** [v0.38.0...v0.39.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...v0.39.0)
+
+### Fixed
+
+- **Usage of a cut-short run is counted in usage and budgets** (since 0.39.0). A run that ended without its finish, because the caller left or the request timed out after the host had reported usage, was not recorded, so its tokens and cost did not count toward `budgets`. The usage the host reported is now recorded and charged on every route, stream and non-stream. A client that left is given the app's `settleMs` window (default 2000 ms) for its step to end: nothing waits for it, and the usage the host reports inside the window is charged when it arrives. A tool call or a further step inside the window stops the run at once, so no tool runs and no step starts for a client that left. A request timeout or a cancel by plugboard itself interrupts at once. A finish that was already yielded is charged once. A run whose host reported no usage is counted in `plugboard_usage_missing_total{reason="disconnect"}`.
+- **One app's large uploads no longer use up the request-body room of the others** (since 0.39.0). Request bodies were read under one process-wide limit, so one app's large, slow uploads could make every other app's requests fail with 503 `server_busy`. With several apps each app holds a share of `limits.maxBodyBytesInFlight` in proportion to its largest body. The budget is unset by default and then grows with the apps (max of 128 MiB and the sum of the apps' largest bodies), so an upgrade with several apps and no setting keeps working. A set budget that cannot hold one largest body per app is refused at load, and a runtime key for a new app that would not fit is refused with 409 `body_budget_insufficient`. `limits.bodyReadTimeoutMs` is now an idle timer, so a body may take longer as long as its bytes keep arriving, and the new `limits.bodyReadMaxMs` bounds the whole body (5 minutes by default). Both answer 408.
+
+### Changed
+
+- **`apps.<name>.stopSettleMs` is renamed `apps.<name>.settleMs`** (since 0.39.0), because it now also applies to a client that left. Its first release was 0.38.0, so this breaks that option. The metric `plugboard_stop_usage_missing_total{app}` is renamed `plugboard_usage_missing_total{app,reason}`: dashboards that read the old name need updating. `limits.bodyReadTimeoutMs` restarts with every chunk (it was the whole body's deadline in 0.38.0), so slow uploads are admitted longer: that is intended, and the total is now `limits.bodyReadMaxMs`.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (4 commits)</summary>
+
+#### Fixes
+
+**fix(http): charge cut-short runs and cap body reads per app** ([`f75bb6c`](https://github.com/jjjermiah/opencode-plugboard/commit/f75bb6c5b2b1ce0dd41ba8cbb830362e7aa15ad8))
+
+Two fixes on the request path.
+
+Usage of cut-short runs. A run that ended without its finish (the caller left, or the request timed out after the host had reported usage) recorded nothing, so its tokens and cost did not count toward budgets. The session caller now reports the host's running usage through a new CallContext callback (onRunUsage). withUsage records it when the finish is absent, and the recorder charges the tokens whether or not the call was answered. A call that never reported usage is recorded as before. Applies on every route, stream and non-stream.
+
+Per-app body reads. Request bodies were read under one process-wide byte budget, so one app's large, slow uploads could make every other app's requests fail with 503 server_busy. Each app may now hold half of limits.maxBodyBytesInFlight, charged in addition to the global budget and released on every exit path. The global cap and the 408 read deadline are unchanged, so clients that are not hogging the budget see no difference.
+
+Decisions. The per-app share is a fixed half, not a new setting: raising maxBodyBytesInFlight raises both. Charging the share against the app's maxConcurrent was rejected because the body is read before the app's concurrency slot is taken.
+
+Tests. test/session/cancel-usage.test.ts runs the session caller with the fake host: usage is reported, the client cancels, the usage is recorded and the next call is refused by the token budget; a cut-short run with no usage charges nothing. test/http/transport.test.ts covers two stalled uploads from one app (a third is 503, another app is 200, the stalled ones get 408 and free the share) and a stalled upload freeing its slot after the deadline. Mutation catalogue: four new entries, all killed.
+
+Validation: typecheck clean; bun test 2772 pass, 0 fail, 126 skipped (live, no server); coverage ratchet met, floors raised and committed; coverage-manifest, check-pack, smoke-pack, docs:build and the scripted examples pass; bun run mutations 114 of 114 killed.
+
+Docs: configuration.md (body share, usage tokens), architecture.md (I23, I28), errors.md (server_busy).
+
+**fix(http): settle window for a client that left, and settleMs rename** ([`221f877`](https://github.com/jjjermiah/opencode-plugboard/commit/221f877794c094359906c2c46c6a5d1b20019855))
+
+A client that left mid-run was interrupted at once, so the host's step usage was lost whenever the step had not finished. The stop-sequence path already gives the host a window (stopSettleMs) for its step to end. A client that left now gets the same window, and nothing waits for it: the caller is gone, so the usage is recorded when the host reports it.
+
+Flow: a client that leaves (not a timeout, no stop match) is not interrupted. The caller starts a detached task. If the host ends its step (or the execution) within the window, its usage is charged and the host is not interrupted. If not, the host is interrupted and given the drain window to report. A run with no usage reported at all is charged nothing and counted in plugboard_usage_missing_total{reason="disconnect"}. A request timeout still interrupts at once.
+
+Rename: the option is now apps.<name>.settleMs, since it applies to both cases. stopSettleMs was released in 0.38.0 only; the rename is breaking for that option and is noted in the CHANGELOG. The metric plugboard_stop_usage_missing_total{app} is now plugboard_usage_missing_total{app,reason}, reason stop or disconnect.
+
+withUsage: a usage report that arrives after the run's record is charged on its own, once, so the late step usage is not lost.
+
+Tests: test/session/cancel-usage.test.ts gains the window cases (step end inside the window is charged without an interrupt; a silent host is interrupted and counted; timeout still interrupts at once, with its usage charged; settleMs 0 interrupts at once). Two of them failed before this change. Mutation catalogue: three entries for the new behaviour. Full run: 117 of 117 killed.
+
+Validation: typecheck clean; bun test 2776 pass, 0 fail, 126 skipped; coverage ratchet met (functions 94.7%, floors committed); manifest, pack, smoke-pack, docs:build and scripted examples pass.
+
+**fix(http): stop a left client's run at once on a tool call, split the body budget per app** ([`0327ea3`](https://github.com/jjjermiah/opencode-plugboard/commit/0327ea3c6c901c4ebc4e13f4531aeb61de55c50f))
+
+Review follow-ups on the settle window and the body budget.
+
+Client that left. While the settle window runs, a tool call (client or server) or a step that asks for another step (a finish other than a plain stop, or server calls) stops the host at once, as the stop path does. No new step starts for a client that left. A finish already yielded when the client leaves is charged once: the window is only used when no finish was emitted. Only a real client disconnect gets the window. A timeout, and a cancel by plugboard itself (a sibling choice of n failed, now RequestAborted "cancelled"), interrupt at once.
+
+Body budget. The shared pool with a reserve did not hold for a fresh app once two or more apps held bytes, so it is replaced: with several app keys each app may hold its even share of limits.maxBodyBytesInFlight. parseOptions refuses a budget that does not give each share one body of the largest size (limits.maxBodyBytes), and the error names the figure to raise it to. One key or none has no split.
+
+Body deadlines. limits.bodyReadTimeoutMs is an idle timer that restarts with every chunk. The new limits.bodyReadMaxMs (default 5 minutes) bounds the whole body. Defaults keep a 10 MiB upload on a 2 Mbit/s link working (about 42 s). Both answer 408. The changed message is documented.
+
+Tests: cancel-usage gains the tool call, server call, step end, single interrupt, yielded-finish race and internal cancel cases; body-admission covers the idle reset, the ceiling, a chunked body against its share, a body larger than its share, release after 413 and after a client abort, and the config split. The #196 late-call expectations now count the stop at the call. Mutation catalogue: six entries for the new guards. Full run 122 of 122 killed.
+
+Validation: typecheck clean; bun test 2792 pass, 0 fail, 126 skipped; coverage ratchet met (functions 94.8%, floors committed); manifest, pack, smoke-pack, docs:build and scripted examples pass.
+
+**fix(http): size the body budget by apps, not keys, so an unset setting never refuses to start** ([`3b2a8aa`](https://github.com/jjjermiah/opencode-plugboard/commit/3b2a8aaf68cf1b715891ab0d8b09427ea9dd252a))
+
+The even split of the body budget by key count refused to start a config that sets nothing once it had five or more apps (5 x 32 MiB > 128 MiB). Upgrades must not break that config.
+
+Apps, not keys. The split counts apps: the configured keys' apps and the runtime keys' apps, each once. Several keys of one app are one share.
+
+Unset budget. limits.maxBodyBytesInFlight unset is now max(128 MiB, the sum of the apps' largest bodies), so every app always has room for one body of its largest size. The sum uses limits.apps.<name>.maxBodyBytes per app. Each app's share is proportional to its largest body, so a share always holds one body of that size whenever the budget covers the sum.
+
+Set budget. Only an explicitly set budget below the sum fails at load, with the same clear error and the figure to raise it to.
+
+Runtime keys. The admin key API refuses a key for a new app with 409 body_budget_insufficient when a set budget cannot hold it (nothing is created). Unset, the budget grows instead. The code is in PROBLEM_CODES and docs/errors.md.
+
+Tests: six apps with defaults load and each admits a 32 MiB body; an explicit cap below their requirement fails at load; several keys of one app count once in the split; the admin 409 with a set budget and 201 without; the config split checks. Mutation catalogue: entries for the default growth and the admin refusal. Full run 124 of 124 killed.
+
+Validation: typecheck clean; bun test 2797 pass, 0 fail, 126 skipped; coverage ratchet met; manifest, pack, smoke-pack, docs:build and scripted examples pass.
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.38.0] - 2026-10-16: Stops Where It Should
+
+**Full diff:** [v0.37.0...v0.38.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...v0.38.0)
+
+### Security
+
+- **A crafted end-user value could corrupt shared counters** (since 0.38.0). Later requests could fail until restart, and usage stopped recording. Per-user records no longer resolve inherited names, and the reserved names (`__proto__`, `prototype`, `constructor`, `_other`) are refused as end users. The `?user=` filter still accepts them, so a name an older version stored stays queryable.
+- **A metrics or usage write that fails no longer changes a request's answer** (since 0.38.0). The failure is logged once, with the write's name, and the access log line is still written.
+
+### Fixed
+
+- **Stop sequences apply to the answer text, not the reasoning** ([#390](https://github.com/jjjermiah/opencode-plugboard/issues/390), since 0.38.0). A reasoning model that quoted the prompt in its reasoning could end with no answer: `fast` (glm-5.3-flash) matched `END` inside its reasoning, the provider stopped there, and the client got an empty answer with `finish_reason` `stop` (2 of 8 calls on the dev server, 0 of 8 without the stop). Plugboard no longer sends stop sequences to the model. It scans the answer text as it streams, on every route, and the first sequence ends the answer: the text before it is returned, the sequence is removed, and reasoning is never matched. The app's `sampling.stop` default applies the same way, Responses included (Responses has no stop parameter of its own).
+
+  Behaviour changes with it. A sequence anywhere in the answer ends it, not only at the end, and under `length` too. A tool call after the sequence is not sent. A tool call before it makes the turn a tool turn (`tool_use` on Messages, `tool_calls` on Chat Completions), with no `stop_sequence`. The response cache keys on the stop sequences, so a stop request is never answered from a no-stop entry.
+
+  The host reports a step's usage only when the step finishes, so after a match the host gets up to 2 seconds to finish the step on its own, and only then is it interrupted. The window is set per app with `apps.<name>.stopSettleMs` (0 interrupts at once, and the step's usage is then lost). Inside the window a tool call or a step end ends the run at once, so no tool runs after the match, and a host failure finishes the answer as `stop` with a warning. The host answers the interrupt with an aborted step failure (`Step interrupted`), which is the expected end (Messages `stop_sequence`). A stop answer that closes without the host's usage is logged and counted in `plugboard_stop_usage_missing_total`; its usage fields are zeros, not an estimate. Chat (single choice and `n` > 1 streams), Responses and Messages always carry `usage`, zeros when the host reported none. The window never runs past the request deadline: a stop match close to the deadline finishes as `stop` with the usage so far, before the 504 would fire (the window is clamped to the time left, minus 250 ms).
+- **A malformed client value is a 400 on every decoder** (since 0.38.0). A request whose `type` or `role` is an object with no usable `toString` used to throw `No default value` while the error message was built, and the request ended as an unhandled error. Chat, Messages, Gemini and Responses now name such a value as `object` in a 400. Found by the property tests in CI.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (18 commits)</summary>
+
+#### Fixes
+
+**fix(openai): match stop sequences on the answer text, never reasoning** ([`6745835`](https://github.com/jjjermiah/opencode-plugboard/commit/674583533803c2bf7ea49faaf95f3ade1935bf9a))
+
+On aihub, `fast` (glm-5.3-flash) sometimes quoted the prompt in its reasoning, and the caller's stop word `END` matched there. The provider stopped the stream inside the reasoning, so the client got an empty answer with finish_reason "stop" (2 of 8 calls on the dev server; 0 of 8 without the stop word).
+
+Cause: plugboard passed the caller's stop sequences to the host (appGeneration -> PlugRequest.generation -> session prompt options), and the provider applies a stop to every token it emits, reasoning included. The plugboard matcher (src/stop.ts) only saw answer text, so it could not help.
+
+What changed:
+- appGeneration (src/openai/sampling.ts) removes `stop` from the generation the model gets, on every route that calls it. Responses included.
+- stopOf() gives the effective list the answer is matched on: the caller's stops, else the app default (apps.<name>.sampling.stop). Chat, completions, Gemini and Messages set it on their exchange.
+- src/stop.ts: StopHoldback and stripStopTail are replaced by StopScan, which scans streamed answer text as it arrives. The first sequence ends the answer: text before it is sent, the sequence and what follows are not, and the route stops reading, so the session caller interrupts the host run.
+- Chat, completions, Gemini and Messages (streamed and not) use StopScan. A match breaks the loop; reasoning and tool calls never reach the scan.
+
+Decisions and rejected alternatives:
+- Stop matching on the answer, not forwarding stops "when the model reasons". The route cannot know before the stream starts whether a model reasons, and a provider stop cannot be scoped to answer text, so forwarding stays wrong for any reasoning model.
+- Scan the whole answer, not just its tail. The old tail rule relied on the provider cutting mid-answer stops; without a forwarded stop, a middle match must end the answer here. Changed behaviour: a sequence anywhere in the answer ends it, and a sequence ends it under finish_reason length too (the model produced it). A tool call after a sequence is not produced.
+- Known gap, not fixed here: Responses has no stop parameter. An app's sampling.stop default used to reach the provider on Responses; it now neither reaches the provider nor is matched there. Matching needs a scan in src/responses/response.ts (follow-up on #390).
+
+Validation:
+- test/unit/stop-not-in-reasoning.test.ts (new): a provider that honours the forwarded stop, run through each route. Reproduced before the change: the quoted-reasoning cases fail on chat (streamed and not), completions, Gemini and Messages. Passes after.
+- test/unit/stop-sequences.test.ts, anthropic-stop.test.ts, per-app-sampling updated for the new rule (listed in the PR).
+- Mutations P390-stop-sent-to-model, P390-answer-scan-off and P390-app-default-stop-dropped: each killed. Full catalogue 89 of 89 killed.
+- Live (dev server runs main, so it shows the bug only): 8 calls with stop ["END"] gave 2 empty answers with finish stop; 8 calls without gave none.
+
+Refs #390
+
+**fix(openai): apply stop sequences to the answer in one wrapper, count usage after a match** ([`e7d40e5`](https://github.com/jjjermiah/opencode-plugboard/commit/e7d40e59ed7b629451bdd1368267a51c76f49a25))
+
+Review of #395 (stop sequences matched on the answer text) found that a stop match dropped the usage of the call, because the routes stopped reading at the match and the finish event (the only place usage comes from) never arrived. The response cache keyed on a request that no longer carried the stop. The Responses route ignored the app's sampling.stop default. A tool call before a sequence gave a stop_sequence where Anthropic reports a tool turn.
+
+What changed:
+- withStopSequences (src/stop.ts) wraps the session caller in index.ts, under the response cache. It scans the streamed answer text, and on a match it aborts CallContext.stopAnswer and keeps reading to the finish. Reasoning and tool calls are never matched; text, tool calls and reasoning after the match are not sent. The finish is passed on with the run's usage, forced to stop, and carries stopSequence.
+- The session caller (src/session/caller.ts) interrupts the host run on stopAnswer and keeps the stream open. If the host does not end the run within 5 seconds, the collector finishes with the usage counted so far (RequestCollector.finishNow).
+- The stop sequences stay on the request (appGeneration no longer strips them), so the cache key includes them. The host hook drops them before the host (src/session/context.ts), so the provider never stops inside reasoning.
+- Responses gets the same scan through the wrapper, for the app's default.
+- The four response encoders no longer scan. Messages reads stopSequence from the finish. A tool call before the sequence makes the turn tool_use with stop_sequence null (Anthropic does not report a stop after a call in the same turn), and chat reports tool_calls.
+- Reasoning between text chunks no longer flushes a partial match (the wrapper never releases held text on reasoning).
+
+Decisions and rejected alternatives:
+- Usage by draining the stream to the finish, not by a synthetic finish from the route: the host's finish carries the real tokens, and the collector's running total is kept only as the 5 second fallback.
+- The wrapper sits innermost, so the cache stores the answer as cut, under a key that includes the stop. Rejected: scanning per dialect in each encoder, which is how Responses was missed.
+- Structured output (a forced respond call) is not scanned: its arguments are the answer, as before.
+
+Validation: typecheck clean; bun test 2710 pass, 0 fail, 126 skip (live suite); coverage ratchet passes; mutation catalogue 93 of 93 killed, including P390-stop-sent-to-model, P390-answer-scan-off, P390-app-default-stop-dropped, P390-usage-after-stop and P390-cache-key-no-stop. The live check was not run: the isolated copy never loaded the worktree plugin (see the PR).
+
+Refs #390
+
+**fix(usage): keep end-user counters off the object prototype** ([`d37ebfc`](https://github.com/jjjermiah/opencode-plugboard/commit/d37ebfcec07ccf36c37340e8f0260a543fd1e559))
+
+A crafted end-user value could write onto Object.prototype of the whole OpenCode process, after which later model requests failed (500) and metrics and usage stopped recording until restart.
+
+Why: per-user records were plain objects, and the user slot lookup returned inherited properties for names like `__proto__`, `constructor`, `toString`, `hasOwnProperty` and `valueOf`. The `++` and `+=` on the counters then wrote onto the prototype chain. The metrics library also iterates inherited label keys, so every metrics write threw.
+
+What: per-user and per-model records are null-prototype objects (in emptyDay, fromJson and sumUsers, and the report apps map). The slot lookup uses Object.hasOwn. The sanitizer refuses `__proto__`, `prototype`, `constructor` and `_other` like any other invalid user, so they get the existing x-plugboard-user-dropped header. `_other` is reserved so it cannot collide with the overflow slot. JSON on disk keeps its shape. Other lookups keyed by request-derived strings were checked (see PR body); the endpoint-by-route table and the dashboard asset table now use hasOwn too.
+
+Also: the metrics and usage writes in the request finally block are wrapped. A throw there is logged once at error level and no longer replaces the answer or stops the access log.
+
+Rejected: prefixing user keys (changes the stored shape and the query filter); only rejecting the names (leaves the store unsafe for any future name); a Map (the JSON shape and the existing report code would all change).
+
+Validation: typecheck; bun test (full suite) with the new tests in test/unit/end-user.test.ts and test/http/end-user.test.ts; test gates with ratchet; coverage manifest; check-pack; smoke-pack; docs:build; examples scripted run with no diff. Mutation entries added for the null-prototype store, the sanitizer, and the write guard.
+
+**fix(session): finish a stop-sequence run as stop when the host reports the interrupt** ([`b2e5478`](https://github.com/jjjermiah/opencode-plugboard/commit/b2e5478c800417df0106a29e4efa05246669eb58))
+
+OpenCode 2.0.27 answers the interrupt that ends a stop-sequence run with an aborted step failure ("Step interrupted", no tokens) and execution.interrupted. The collector treated the aborted failure as an error, so every request whose answer contained a stop sequence failed with 502 model_run_failed on main.
+
+markStopped (set when the wrapper matches a stop) makes that failure and the interrupt the expected end: the answer finishes with stop, with the usage of the step, else the running total. Any other failure still surfaces as an error.
+
+Tests: the fake host answers the interrupt the way 2.0.27 does. The new test fails without the fix. Mutation P390-interrupt-stop-is-error is killed.
+
+Refs #390
+
+**fix(session): let the host finish a stop-sequence step before interrupting it** ([`16f3249`](https://github.com/jjjermiah/opencode-plugboard/commit/16f3249e6d9376fe9e4f18ae101517e1d7f891e9))
+
+The live check on main (2026-10-16) showed the 502 gone but no usage on the Anthropic provider: chat non-stream had no usage, chat stream had no usage chunk, and Messages reported zero tokens. The host publishes a step's usage only when the step finishes. Anthropic reports input tokens on message_start and output tokens on message_delta; an interrupted step never reaches message_delta, so the usage is lost. Copilot's Claude reported usage because its stream finished before the interrupt landed.
+
+Decision (a) from the review: after a stop match the caller no longer interrupts at once. It gives the host STOP_SETTLE_MS (2 seconds) to finish the step on its own, so the step's usage arrives with its finish. Only then is it interrupted. The fallback closes the stream with the running usage STOP_DRAIN_MS later.
+
+The model writes what follows the sequence during the settle window; nothing of it reaches the caller. Rejected for now: (b), estimating usage from token counts. It would put estimated numbers in billing, and only needed if the window is too short.
+
+Tests: the Anthropic event order is modelled (usage on message_start, text past the sequence, step end with output tokens). A new test fails on the previous caller (it interrupted at once). A second test covers a host that stays running past the window: it is interrupted, and the aborted failure ends with stop. Mutation P390-no-settle-window is killed.
+
+Refs #390
+
+**fix(openai): chat answers always carry usage, zeros when the host reported none** ([`654b8ae`](https://github.com/jjjermiah/opencode-plugboard/commit/654b8ae9f0f5247a1917ac64379c69cb73ac01c1))
+
+After the settle-window change the live check showed usage on every stop answer. The one remaining gap is the chat body and its include_usage chunk, which dropped usage whenever the finish carried none. The contract says a chat answer always has usage, so the fields are now zeros in that case. Zeros are only the fallback for a host that reported no usage for the run; a real count is never replaced.
+
+Tests: the non-stream body and the include_usage chunk assert zeros when the host reports none. Mutation P390-chat-usage-always (the previous behaviour) is killed.
+
+Refs #390
+
+**fix(responses): a malformed input item is a 400, not a crash** ([`d17402b`](https://github.com/jjjermiah/opencode-plugboard/commit/d17402b0b7159754f6dd6d14a0b7599c7e2a5a3b))
+
+CI on the #429 head failed the #130 property test ("any request-shaped body is a 400 or a request"). The counterexample was an input item whose role is an object with a null toString. The decoder built its error message with String(item.role), and String() of that object throws "No default value", so the request ended as an unhandled error instead of a 400. The same String() sat in five other error messages in src/responses/request.ts (content part type, assistant part type, tool type, text.format type, input item type).
+
+Decision: a helper `show` renders primitives as before and objects as "object". Messages for string and number values are unchanged. Rejected: validating every field type up front, which is a larger change for the same outcome.
+
+Tests: a regression test for the counterexample (400) and an object type named as "object". Mutation P130-responses-message-string-throws is killed.
+
+The property test was flaky only because fast-check rarely generates this shape; the fix is in the decoder, not the test. The test is unchanged.
+
+Refs #390
+
+**fix(session): finish a stop run at once inside the settle window** ([`67113b7`](https://github.com/jjjermiah/opencode-plugboard/commit/67113b793bc614c56d530d532dd6399d4354154e))
+
+Review of #429: the settle window let a server tool call run after the match and start a next step, and discarded a complete answer when the host failed inside it.
+
+Changes:
+- The collector scans the text it emits for the request's stop sequences and marks the match itself (the stop wrapper only saw the text when it read it, so a tool call queued behind the matching text was not stopped). The owner starts the settle window from that hook.
+- Inside the window a tool call ends the run at once with finish stop: no tool runs after the match, and the host is interrupted now. A plain step end finishes as stop with the step's usage and does not interrupt (the host ends the run). A pending client tool call still interrupts.
+- A non-aborted host failure inside the window finishes as stop with the usage so far, and logs request.stop_step_failed. Failures before any match still surface.
+- finishStopped finishes before it interrupts: an interrupt that reports back synchronously must find the run already over.
+- A stop answer closed without the host's usage is logged (request.stop_usage_missing) and counted in plugboard_stop_usage_missing_total{app}. No estimate.
+- apps.<name>.stopSettleMs (0 to 2147483647, default 2000): 0 interrupts at once. The default and the test seams are unchanged.
+- n > 1 stream include_usage and the Responses object always carry usage, zeros when no host usage was reported, as the chat body does.
+- The client-value helper moved to src/client-value.ts (show), and it is applied at every String(client value) site in the anthropic, openai and gemini decoders, not only Responses. One regression test per decoder.
+- Tests: the window tests use a small stopSettleMs; the host fake answers an interrupt once (a fake that answers every interrupt with a failure looped when a guard was removed, which made the mutation hang instead of fail).
+
+Not done: a stop match close to the request deadline still answers 504. The deadline is enforced by the request scope (http.ts boundEvents writes the 504 and ignores later events), so a complete answer past the deadline is not returned. Documented in the CHANGELOG.
+
+Validation: typecheck clean; bun test 2747 pass, 0 fail, 126 skip; coverage ratchet passes (floors raised); mutations 104 of 104 killed, including the new guards P390-tool-in-window-runs, P390-step-failure-in-window-errors, P390-collector-scan-off, P390-no-stop-usage-count, P390-settle-option-ignored, P390-responses-usage-always, P390-fanout-usage-always, P130-shared-show-throws; manifest, pack, smoke, docs and the examples harness exit 0.
+
+Refs #390
+
+**fix(session): a stop match near the request deadline finishes as stop before the 504** ([`4d92bcb`](https://github.com/jjjermiah/opencode-plugboard/commit/4d92bcba6ada313f67fa0204cadd41d457d30fc7))
+
+The stop settle window (2 s by default) could run past the request deadline, so a complete answer near the deadline was answered 504. The window does not need an HTTP change: the caller clamps it.
+
+The caller now computes the time left before the request deadline (its own start plus the app's requestTimeoutMs, else the global one, passed in as requestTimeoutMs) minus a 250 ms margin. The settle window is min(stopSettleMs, time left), and the drain timer is clamped to the time left too. With no time left the window is 0: the host is interrupted at once and the answer finishes as stop.
+
+Notes:
+- The settle clamp alone is not observable: the drain clamp finishes the answer at the same moment. The mutation that is killed removes the drain clamp (P390-deadline-clamp-off); the settle clamp is kept because it stops the host run at the same point the answer ends.
+- The margin is a constant (250 ms): the request starts in the HTTP layer before the caller's start time, and the margin covers that gap.
+
+Tests: a short deadline (400 ms) with a match and a host that never reports the end finishes as stop with the usage so far, well before the deadline.
+
+Refs #390
+
+**fix(usage): the user filter accepts stored and reserved names** ([`06adb3b`](https://github.com/jjjermiah/opencode-plugboard/commit/06adb3bbcf5e467ddab27d450e3639b1fa411b06))
+
+The `?user=` filter of GET /plugboard/usage and the usage RPC used the end-user sanitizer, so the reserved names (`_other`, `prototype`, `constructor`, `__proto__`) became 400 there. A day an older version wrote can hold those as users, and they could no longer be queried.
+
+The filter now checks the charset and length only (validEndUser). The sanitizer still refuses the reserved names as end users.
+
+Also: the write guard logs which write failed (`write` field on metrics.record_failed), the user.ts header comment lists the reserved names, the architecture I23 entry says a failed metrics or usage write never changes the answer or the access log, and the CHANGELOG bullets carry bold lead lines.
+
+Checked: the filter tests cover the four names in the store, the route and the RPC; the userHeader path has a reserved-name row; the mutation catalogue has an entry that restores the reserved list on the filter. Full validation passed (typecheck, tests with ratchet gates, manifest, pack, smoke, docs, examples, mutations 110 of 110).
+
+#### Tests
+
+**test(session): name history.hidden tests for 0.30.0, not 0.29.0** ([`f1c5f92`](https://github.com/jjjermiah/opencode-plugboard/commit/f1c5f924a45c55f875bc3e4f9769f523e75bc9c1))
+
+The describe title in test/unit/history-hidden-config.test.ts and the header comment of test/session/hidden.test.ts said "since 0.29.0". history.hidden shipped in 0.30.0 (CHANGELOG [0.30.0], #340), so both now say 0.30.0. Only the names changed. No assertion changed.
+
+The lane named test/session/history-hidden-config.test.ts, but that file is at test/unit/history-hidden-config.test.ts, so that is the file edited.
+
+Refs #337
+
+**test(anthropic): pin thinking budget 2048 to the low variant** ([`0703c7b`](https://github.com/jjjermiah/opencode-plugboard/commit/0703c7bf3c6aee6f79118704c3f5c3a035826a73))
+
+Reported in #394: a Messages `thinking.budget_tokens: 1024` on github-copilot/claude-haiku-5.5 got a provider 404 with tools, while 2048 worked. The mapping in src/anthropic/request.ts (effortOfBudget: budget <= 4096 -> low) sends both 1024 and 2048 to the `low` variant, so the mapping cannot explain a 1024-only failure. The existing table pinned 1024 and 4096 but not 2048. This adds 2048.
+
+Live probe against the isolated dev server (/v1/messages, model github-copilot/claude-haiku-5.5, max_tokens 4096, 3 attempts each):
+
+  budget  tools  attempts  status 1024    no     3         200 x3 1024    yes    3         200 x3 2048    no     3         200 x3 2048    yes    3         200 x3
+
+All 12 served github-copilot/claude-haiku-5.5#low (server.log). No 404 reproduced, so no behaviour change. The probe sessions were deleted with DELETE /api/session/:id.
+
+Test-only change: one new row in the existing test.each table. It passes before and after the change, since the behaviour is unchanged; it pins the 2048 boundary the issue is about.
+
+Refs #394
+
+**test(compat): validate Anthropic Messages responses against SDK-derived schemas** ([`6a7411b`](https://github.com/jjjermiah/opencode-plugboard/commit/6a7411b618fd908581ae241d07aa709ecc457fcd))
+
+Anthropic publishes no machine-readable Messages spec. The Stainless spec URL the SDK repos once recorded in .stats.yml is gone from every version, and the copies on GitHub and in gists are not Anthropic's. The pinned SDK's types are what Anthropic ships, so test/fixtures/specs/vendor-anthropic.ts derives anthropic.json from @anthropic-ai/sdk 0.133.0 with the TypeScript compiler API (already a devDependency). The version is pinned and the generator fails if the installed SDK differs.
+
+The conformance test now validates, over loopback with the fake host: one Message (text and tool_use), every stream event (text, thinking with signature_delta, tool_use with input_json_delta, error mid-stream, and ping checked as {type: "ping"} because the SDK's stream union omits it), the error body (401, 400, provider 429) and MessageTokensCount.
+
+Each union variant is a $ref, so the strict unknown-field check applies to every content block and stream event. The existing rule that exempts composition branches is skipped for Anthropic, since its unions are discriminated by type. A negative test shows a stray field, including one in a content block, is a violation.
+
+Three mismatches are open and named as test.failing cases, each with a bug issue: tool_use omits caller (#404), text blocks omit citations (#405), and the Message and usage omit nullable fields the SDK requires (#406). Plugboard is not changed. The Anthropic stream check is against the SDK types, not a live provider.
+
+Validation: typecheck clean; bun test 2686 pass, 0 fail; conformance 23 pass; coverage gates met with ratcheted test-count floor; coverage-manifest, pack and smoke-pack, docs:build, and examples scripted run with no diff.
+
+Closes #107
+
+#### Docs
+
+**docs(docs): answer whether SiYuan Q/A needs embeddings** ([`1524b81`](https://github.com/jjjermiah/opencode-plugboard/commit/1524b81aee1eec6f6bb716891ab6da2d45c54609))
+
+The SiYuan page now says Q/A chat needs no embedding provider. Only semantic search uses embeddings, and it stays off until ai.embedding.enabled is turned on in the AI settings. Each claim cites a file:line from SiYuan at 7a7430d.
+
+The issue asked which features fail without embeddings. The page said "Whether Q/A needs it was not checked", which was the one open acceptance item. The chat path (kernel/model/ai.go:53-59) and kernel/agent contain no embedding call, and the agent's fulltext search works without embeddings (kernel/mcp/tools/search.go:64-65). The semantic action is the only consumer (kernel/mcp/tools/search.go:50,66-67; search dialog method 4 in app/src/search/util.ts:119; isEmbeddingEnabled at kernel/model/embedding.go:624-627). The SIYUAN_OPENAI_EMBEDDING_* env vars set the config (kernel/conf/ai.go:508-518), but Enabled stays false (kernel/conf/ai.go:113-115), so an operator has to turn it on.
+
+A live run was not used. Plugboard serves no embeddings route, so the source is the evidence. Not verified: a running SiYuan instance.
+
+Closes #248
+
+**docs(docs): say the four client pages run scripted in CI** ([`b110254`](https://github.com/jjjermiah/opencode-plugboard/commit/b1102540f4e4546c6463c4401fe08120003c78c1))
+
+The go-openai, openai-dotnet, langfuse and smolagents pages no longer say there is no scripted test. Each now points to the "Client examples in CI" section of compatibility.md and to its committed runs/scripted/ directory. PRs #368 and #379 put these clients in the examples CI job, so the old sentence was wrong.
+
+The smolagents page now states its turn-2 finish_reason gap as a gap. In the scripted run 5 of 6 round-trip checks pass. The sixth, that the final turn finishes with stop, fails because smolagents ends a run with a final_answer call, which finishes with tool_calls. I accepted the gap as the verdict and said so on the page, rather than weakening the check. The check is a real expectation, and changing it would hide how smolagents differs from the other clients. It is not a plugboard fault.
+
+Closes #362
+
+**docs(docs): fix the opencode dialect note on reasoning** ([`39be9d0`](https://github.com/jjjermiah/opencode-plugboard/commit/39be9d01416ad5ddc493bfb00d201a49cce162c0))
+
+The opencode page said Chat Completions and Responses drop reasoning. Since 0.36.0, reasoningOutput: true returns it on both routes, as an opt-in. The line now says so and links the Reasoning output section. The advice to prefer the Anthropic dialect stays, with its reason: the Messages route keeps reasoning and thinking replay with no setting.
+
+Whether OpenCode sends the returned reasoning back on the next turn over Chat Completions or Responses was not checked, and the page now says so. #255 stays open for it.
+
+Refs #255
+
+**docs(changelog): move the #390 entry under Unreleased as since 0.38.0** ([`369eb8d`](https://github.com/jjjermiah/opencode-plugboard/commit/369eb8d42162b2ba14f31d0af3ec607aadeb7182))
+
+Main released 0.37.0 while this branch was in review, and the merge put the #390 bullet under the released 0.37.0 section. The fix ships in the next minor, so the bullet moves to Unreleased and its version marker becomes 0.38.0.
+
+Refs #390
+
+#### CI and tooling
+
+**ci(ci): lint a dispatched branch's own commits, not the whole history** ([`0c0444c`](https://github.com/jjjermiah/opencode-plugboard/commit/0c0444cb5d07a1fc3283d0aa4bbad3e8bd81638c))
+
+host-bump.yml starts ci.yml, commits.yml and codeql.yml on its pull request branch, because a PR opened with GITHUB_TOKEN starts no workflow. Those dispatched runs reported CI passed and Analyze, but Lint commit messages failed on both bump runs for deps/opencode-2.0.29 (2026-10-14 and 2026-10-15).
+
+Why it failed: commits.yml picks the lint range from github.event_name. A workflow_dispatch has no before or base SHA, so it fell through to the push branch, which set from to the cutoff a54a703. The range became a54a703..HEAD: 426 commits of history, not the one commit the bump adds. Some older commit in that history fails the rules, so the check went red, while the bump's own commit passes (the pull_request run on the same head linted 1 commit, 0 problems).
+
+What changed: a workflow_dispatch run now lints from the merge base of origin/<default branch> and the dispatched head, to the head. That is the commits the branch adds. The cutoff still applies: a base older than the cutoff starts at the cutoff, as before. push and pull_request keep their ranges.
+
+Rejected: passing the PR base as a dispatch input. host-bump.yml would have to know it, and the merge base needs no input. Rejected: skipping the commit lint on dispatched runs. The required check must still mean "these commits are linted".
+
+Check names: the dispatched runs report the names the ruleset requires. Checked on the 2.0.29 head 17db836: "CI passed", "Lint commit messages" and "Analyze (javascript-typescript)". No rename needed.
+
+host-bump.yml: the warning for a failed dispatch no longer tells the reader to push an empty commit. It names the exact gh workflow run command.
+
+docs/releasing.md: the host bump entry said Mondays (the schedule is daily at 06:23 UTC) and told the reader to push an empty commit or close and reopen the PR. Both now describe the dispatch.
+
+Not changed: the bump version. host-versions.ts --latest already returns the newest stable version in the peer range (2.0.30 now). The 2.0.29 bump ran at 11:43 UTC on 2026-10-15, and 2.0.30 was published at 19:46 UTC that day.
+
+Refs #397
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.37.0] - 2026-10-15: Copilot Thinks Too
+
+**Full diff:** [v0.36.0...v0.37.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...v0.37.0)
+
+### Fixed
+
+- **Signed thinking replays to Copilot Claude** ([#386](https://github.com/jjjermiah/opencode-plugboard/issues/386), since 0.37.0). Replay of a client's signed `thinking` blocks was gated on the provider being `anthropic`, so Copilot's Claude models got the history without their earlier reasoning, even though Copilot serves Claude on the Anthropic messages route with the same `anthropic` metadata key. The gate now also admits `github-copilot` models whose id starts with `claude-`. The hook event carries only the model's provider and id, not its route, so plugboard cannot ask which route a model uses. The other Copilot routes (chat completions, responses) do not read that key, so a signature sent to them is dropped. Other Copilot models stay out.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Fixes
+
+**fix(session): replay signed thinking to Copilot Claude models** ([`86a4818`](https://github.com/jjjermiah/opencode-plugboard/commit/86a4818bd46d4a3f2f41c8c2f8560409699c2c3d))
+
+Replay of a client's signed thinking blocks was gated on the request's provider being `anthropic` (#374). Copilot's Claude models were excluded, but Copilot serves Claude on the Anthropic messages route with the same `anthropic` providerMetadata key (github-copilot/models.ts in OpenCode v2.0.27 picks that route when a model lists /v1/messages), so the signature replays there as well.
+
+Decision: the context hook event carries only model.providerID and model.id (the Model.Ref), not the route, package or protocol, so plugboard cannot ask which route a model uses. The gate is replaysSignedThinking(): provider `anthropic`, or provider `github-copilot` with an id starting `claude-`. Copilot's chat-completions and responses converters read only the copilot providerOptions and skip reasoning without an item id, so an anthropic-keyed signature is not sent on those routes even if a Claude model were served there. Other Copilot models stay out.
+
+Rejected: an explicit list of Copilot Claude model ids (it goes stale with each new model); exposing the route on the hook event (needs an OpenCode change, out of scope here).
+
+Validation: typecheck; bun test 2675 pass, 0 fail (live tests skipped); coverage ratchet raised test/session floor 351 to 353; mutations 88 of 88 killed, with two new P386 entries. Live, on an isolated server built from this branch, github-copilot/claude-haiku-5.5, a two-turn thinking plus record_answer tool round trip: turn 1 returns a signed thinking block (signature 932 bytes); turn 2 with the real signature returns 200; the same history with a forged same-length signature returns 400 from the provider; a control with thinking stripped returns 200. The same script on main (old gate) returns 200 for the forged signature, so the difference is the gate.
+
+Closes #386
+
+#### Docs
+
+**docs(config): state that apps.<name>.maxN must not exceed maxN** ([`e6f7017`](https://github.com/jjjermiah/opencode-plugboard/commit/e6f7017bd1ecbba98eec4b758ea44ad9173c9e5e))
+
+The two maxN rows said the per-app cap cannot be higher than the global one, but not what happens when it is. Source: parseApps in src/config.ts checks apps.<name>.maxN with positiveInt against the global maxN as the upper bound, so a larger per-app value throws while the options load and the plugin stops. Both rows now say so: the global row names the per-app rule, and the per-app row says it is a load error. The advice for letting one app take a larger n (raise the global maxN, then lower it for the other apps) is unchanged.
+
+Rejected: clamping the per-app value to the global one. The code already fails loudly at config time, and a silent clamp would hide a config mistake.
+
+Docs only. No behaviour change.
+
+#### Dependencies
+
+**build(deps): support opencode 2.0.29** ([`17db836`](https://github.com/jjjermiah/opencode-plugboard/commit/17db83617f02ebaa0e0cbce9e749ecfdecaf2ce5))
+
+OpenCode published @opencode/plugin 2.0.29. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.36.0] - 2026-10-13: Show Your Work
+
+**Full diff:** [v0.35.0...v0.36.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...v0.36.0)
+
+### Added
+
+- **Reasoning output, opt-in** ([#375](https://github.com/jjjermiah/opencode-plugboard/issues/375), since 0.36.0). Plugboard dropped the model's reasoning on Chat Completions and Responses. Option `reasoningOutput: true` returns it: `reasoning_content` and `reasoning` on Chat Completions deltas and messages (both, because clients split between the two names), and a `reasoning` output item with a `summary_text` part on Responses. Off by default, so existing clients see the same bytes. Per app, `apps.<name>.reasoningOutput` overrides the global switch in either direction. Structured output never carries reasoning, because its content is the answer. Checked with the option on against a scripted plugboard: openai-node and openai-python both read Chat Completions and Responses bodies and streams without error. Sending both chat names doubles the reasoning bytes, and a client that concatenates both shows the text twice; the docs say so.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (3 commits)</summary>
+
+#### Features
+
+**feat(openai): return reasoning on Chat Completions and Responses, opt-in** ([`af38b1a`](https://github.com/jjjermiah/opencode-plugboard/commit/af38b1aacc77f53bb5783fe35e51203226a7da0f))
+
+Plugboard dropped the model's reasoning on Chat Completions and Responses, so a client that shows thinking got nothing. This adds the option `reasoningOutput` (default false, since 0.34.0) that returns it.
+
+What it does when on:
+- Chat Completions: `reasoning_content` and `reasoning` on each stream delta and on the final message, both with the same text. Clients split between the two names (DeepSeek and LiteLLM read `reasoning_content`; vLLM and OpenRouter read `reasoning`), and vLLM's docs warn that a client reading the wrong name silently gets nothing.
+- Responses: one `reasoning` output item per run of reasoning, with one `summary_text` part, placed before the message or tool call. Streamed as `response.reasoning_summary_part.*` and `response.reasoning_summary_text.*` events, the shape the OpenAI spec and openai-agents use.
+- Structured output (json_schema) never carries reasoning: its content is the answer's arguments.
+
+Why opt-in and not on by default:
+- The field name is not settled across clients, so a default-on change would add fields existing clients do not expect, for every app at once.
+- Off keeps the bytes identical, so the scripted example transcripts did not change (`git diff --exit-code examples/` is clean; the scripted model emits no reasoning, so the transcripts could not change either way).
+
+Checked against the official SDKs with the option on, against a scripted plugboard: openai-node (chat JSON and stream, responses JSON and stream) and openai-python (same paths) both read the responses without error. The extra fields land in the SDK's extra data, not in a typed field.
+
+Rejected:
+- Emitting reasoning_details (OpenRouter's structured form): only some models have it, and it needs replay rules not in scope here.
+- Accepting reasoning items as replay input: already done (they were accepted and dropped). Chat assistant reasoning_content is ignored too.
+
+Validation: typecheck clean; bun test 2650 pass, 0 fail, 126 skipped (live); coverage floors ratcheted (test-count-floors.json); manifest, pack smoke and docs build pass; examples scripted run exits 0 with no transcript diff; mutations 83 of 83 killed (new entry reasoning-output-off-still-returned).
+
+Not verified: the live dev server runs main, so the option is checked only against the scripted fake and the loopback tests until this merges.
+
+Refs #375
+
+**feat(openai): per-app reasoningOutput and the review fixes for reasoning output** ([`d078de7`](https://github.com/jjjermiah/opencode-plugboard/commit/d078de76f01349f49433fb0e2475b9b4863fb11a))
+
+Review of #384 asked for five changes and a few corrections. This commit makes them.
+
+Per app: `apps.<name>.reasoningOutput` overrides the global switch. The app's value wins when set, in both directions, so an app can turn reasoning off while the global switch is on, or on while it is off (the same rule as history.hidden). The route resolves it with `reasoningOutputFor`, because the request decoders do not know the app. Covered by config tests and by HTTP tests on Chat Completions and Responses.
+
+Tests added:
+- n: 2 with reasoning, JSON and SSE: each choice keeps its own reasoning.
+- Responses: a returned rs_ item sent back as item_reference is accepted, and its reasoning is not replayed to the model.
+- Chat SSE: reasoning then a tool call (reasoning first, tool_calls finish); reasoning then a stop sequence (cut only where the text ends with it); held back text is flushed before reasoning arrives.
+- Mutation entry reasoning-output-off-still-returned-responses for the Responses guard (the Chat entry already covered the JSON guard).
+
+Behaviour: a Responses reasoning item cut short by a failure closes with status `incomplete`, not `completed`.
+
+Docs: the Reasoning output section moved below the apps.<name>.model paragraph, so it no longer splits Models. It now says that sending both chat names doubles the reasoning bytes, that a client concatenating both fields shows the text twice, and that the Responses text is the provider's reasoning rather than a generated summary, with the item present whether or not reasoning.summary was set. The config row says Chat Completions and Responses.
+
+CHANGELOG: the SDK line now says what was run. openai-node and openai-python were run with the option on against a scripted plugboard (chat JSON and stream, Responses JSON and stream); both read the bodies and streams without error. The earlier wording said the SDKs were not tested.
+
+Validation: typecheck clean; bun test 2786 tests, 0 fail, 126 skipped (live); coverage ratchet passes (floors raised in .github/floors/test-count-floors.json); manifest, pack smoke and docs build pass; examples scripted run exits 0 with no transcript diff; mutations 84 of 84 killed.
+
+Not verified: the live dev server runs main and has the option off, so the live check happens after merge, with reasoningOutput set in a config.
+
+Refs #375
+
+#### Docs
+
+**docs(configuration): date the /v1/models fields to 0.35.0** ([`8cdd218`](https://github.com/jjjermiah/opencode-plugboard/commit/8cdd218a5aa96d403cf60969c3cd5eb96dbff8bc))
+
+The configuration page said the context_length and pricing fields on /v1/models arrived in 0.34.0. They were merged after the 0.34.0 release was cut and shipped in 0.35.0, as the 0.35.0 changelog section says.
+
+Refs #376
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.35.0] - 2026-10-13: Know Every Model
+
+**Full diff:** [v0.34.0...v0.35.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...v0.35.0)
+
+### Added
+
+- **`/v1/models` carries `context_length`, `max_output_tokens` and `pricing`, and a generator writes OpenCode's `models` block** ([#376](https://github.com/jjjermiah/opencode-plugboard/issues/376), since 0.35.0). Each entry (and `GET /v1/models/{id}`) now has `context_length` and `pricing` under OpenRouter's names, so clients that read OpenRouter's list can read these too: `pricing` holds `prompt` and `completion` as USD-per-token decimal strings, plus `input_cache_read` and `input_cache_write` when the catalog reports them. `max_output_tokens` is plugboard's name for the output cap; OpenRouter puts that cap at `top_provider.max_completion_tokens`, which plugboard does not send. Context tiers are not in `pricing`; they stay in `plugboard.cost`. A fact the catalog does not know is left out, never zero. `bun .github/scripts/opencode-models.ts <hub>` turns a hub's `/v1/models` into an OpenCode client `models` block with `limit` and `cost`, so a custom provider stops getting OpenCode's 200k/32k default and zero cost.
+- **Setting up OpenCode as a client of plugboard** ([#373](https://github.com/jjjermiah/opencode-plugboard/issues/373)). [docs/clients/opencode.md](docs/clients/opencode.md) has a custom OpenAI-compatible provider and the built-in Anthropic provider pointed at a hub, verified with OpenCode 2.0.27 on both: answers, a tool round trip, and the `maxTools` 400.
+
+### Changed
+
+- **Unknown cache prices are left out of `/v1/models`, not reported as zero** ([#376](https://github.com/jjjermiah/opencode-plugboard/issues/376), since 0.35.0). A catalog model with no cache price used to list `cache: { read: 0, write: 0 }` under `plugboard.cost`. It now omits the fields it does not know. The usage estimate still prices an unknown cache read or write at zero, as before, so `/plugboard/usage` costs do not change.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Features
+
+**feat(openai): add context_length and pricing to /v1/models, plus the opencode page** ([`1ae7695`](https://github.com/jjjermiah/opencode-plugboard/commit/1ae7695111c7450e826fc4b29808b4e6ae5807b9))
+
+This commit holds all of #376 and the #373 client page. Earlier commits on this branch carried the page only, and the #376 code in the first commit shows up here, so this message describes the whole change.
+
+#376: each /v1/models entry, and GET /v1/models/{id}, carries context_length and pricing under OpenRouter's names, plus max_output_tokens. pricing holds prompt and completion as USD-per-token decimal strings, and input_cache_read and input_cache_write when the catalog reports them. max_output_tokens is plugboard's name for the output cap; OpenRouter puts that cap at top_provider.max_completion_tokens, which plugboard does not send. Context tiers stay in plugboard.cost; pricing is the base entry only.
+
+.github/scripts/opencode-models.ts turns a hub's /v1/models into an OpenCode models block with limit and cost. It skips ids with a #variant suffix, because OpenCode reads provider/model#variant as the base model plus a variant. It keeps limit.input.
+
+Decisions:
+- A fact the catalog does not know is omitted, never zero. Cache prices were coerced to 0 in host.ts; they are optional in CatalogCost now. plugboard.cost.cache omits unknown read and write. The usage estimate still prices an unknown cache at 0, so /plugboard/usage does not move.
+- Prices print as plain decimals with no exponent. Numbers are rounded to 13 significant digits first, because float division leaves noise past the 16th digit (1e-13 came out as 9.9999...e-14).
+- The #373 page writes OpenCode's `providers` key. The first draft wrote `provider`, which OpenCode v2 ignores, and that caused the failed checks.
+- The page states 12 built-in tools, and that maxTools is reached only when a server sets codemode: false (MCP tools go through Code Mode by default).
+
+Validation (branch merged with origin/main, no conflicts):
+- bun run typecheck: clean
+- bun test: 2635 pass, 0 fail
+- coverage floors met, test-count floors raised and committed
+- coverage-manifest: 0 gaps; check-pack and smoke-pack ok
+- bun run docs:build: ok; scripted examples leave no diff
+- Live, OpenCode 2.0.27, scratch HOME, opencode run --standalone, dev server 127.0.0.1:4010: anthropic/fast and plugboard/fast both answered pong; the reviewer's tool prompt, the 72-tool maxTools 400 and the 170-entry generated block were run on the PR worktree (see the page).
+- mutations not run: no mutation entry pins the changed text
+
+Not verified: opencode attach.
+
+Closes #376
+Closes #373
+
+#### Docs
+
+**docs(clients): add the opencode client page** ([`8afc736`](https://github.com/jjjermiah/opencode-plugboard/commit/8afc73630c0e51f48334044a49e70f88ad2d526f))
+
+Adds docs/clients/opencode.md, the page #373 asked for: an openai-compatible block and an Anthropic block for OpenCode's custom and built-in providers, maxTools guidance for MCP-heavy clients, declaring limit and cost per model (with the generator from #376), the promptCache anchor on the hub, the Anthropic dialect for reasoning, and opencode attach as the alternative.
+
+Decision: the blocks follow OpenCode v2.0.27's config schema. The issue body wrote options.baseURL; the schema uses settings.baseURL, so the page uses settings.
+
+Findings from the live run (not passed; the page says so):
+- @ai-sdk/openai-compatible is not in OpenCode v2.0.26's native provider map. A v2.0.26 client fails with "Unsupported package for <model>".
+- The built-in anthropic provider returned "invalid x-api-key" on v2.0.26 with ANTHROPIC_API_KEY set, with and without settings.apiKey, and with ANTHROPIC_BASE_URL. The hub returns 200 pong to the same key sent as x-api-key with curl. The cause is not found.
+- The tool-using prompt and the maxTools 400 check were not run.
+
+Rejected: marking the page verified. The issue asks for a passing run, and none passed.
+
+Validation:
+- bun run docs:build: ok
+- bun test: 2633 pass, 0 fail
+- scratch OpenCode client home deleted after the run
+
+Refs #373
+
+</details>
+<!-- commit-detail:end -->
+
+## [0.34.0] - 2026-10-13: Thinking Carries Over
+
+**Full diff:** [v0.33.0...v0.34.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...v0.34.0)
+
 ### Added
 
 - **Go, .NET, Langfuse and smolagents examples run in CI against the scripted fake** ([#362](https://github.com/jjjermiah/opencode-plugboard/issues/362)). Until now these four clients were checked only by hand against the dev server. Each example now has a runner, so `run.ts all --target scripted` covers it and CI fails on a stale or non-deterministic run. The Go and .NET runners print raw observations, and a shared relay applies the same checks as the Python and TypeScript runners. The `examples` job installs Go 1.27.2 and the .NET SDK 8.0.423 for them. go-openai and openai-dotnet pass text, stream and a tool round trip. Langfuse passes the same three. smolagents passes text. Its stream and tool round trip are recorded as gaps, not passes: smolagents' stream does not return the finish reason, and the scripted fake answers a tool turn only after a `tool`-role message.
+
+- **Signed reasoning replays to Anthropic models across turns** ([#374](https://github.com/jjjermiah/opencode-plugboard/issues/374), since 0.34.0). A client's `thinking` block with its `signature`, and each `redacted_thinking` block, now reach an `anthropic` model in the history. Until now plugboard dropped every thinking block, so the model lost its earlier reasoning on the next turn. Why: with the reasoning in context, the model keeps thinking across turns. Measured on `claude-opus-4-5`: turn 2 thought again only when the replayed block was sent. Dropping the block does not make Anthropic reject the request, since plugboard's host sends the interleaved-thinking beta. A forged signature gets a provider 400, so the provider checks it. Unsigned thinking is still dropped, and every other model still gets the history without reasoning, because a signature is only valid for the provider that issued it. Plugboard does not return `redacted_thinking` yet, so only a block the client got from elsewhere replays.
 
 ### Changed
 
 - **Prompt-cache reads by provider, measured again** ([#277](https://github.com/jjjermiah/opencode-plugboard/issues/277)). The [prompt-cache affinity](docs/configuration.md#prompt-cache-affinity) section has a table for ChatGPT, GLM and Copilot Gemini: what OpenCode sends, what each provider documents, and cached tokens with and without `anchor`. `anchor` helped ChatGPT in both runs. GLM and Copilot Gemini showed no cache reads with `anchor` in this run. Their causes are not established.
 - The client checks moved from `compat/` into `examples/`: each client has a runnable example with a scripted run that CI keeps current, and its dated live runs. The client pages now import their code and results from there. `compat/` is gone: its Python checks are examples too (`examples/aider`, `dspy`, `instructor`, `litellm-client` and `openai-agents`), each with a runner, a lockfile and a scripted run that CI keeps current. Why: the old kit's code and results could drift apart, and the results were prose nobody could diff. ([#174](https://github.com/jjjermiah/opencode-plugboard/issues/174), [#186](https://github.com/jjjermiah/opencode-plugboard/issues/186), [#187](https://github.com/jjjermiah/opencode-plugboard/issues/187), [#366](https://github.com/jjjermiah/opencode-plugboard/issues/366))
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (31 commits)</summary>
+
+#### Features
+
+**feat(examples): finish the examples docs and retire compat/ (#186, #187, #366)** ([`27f71e6`](https://github.com/jjjermiah/opencode-plugboard/commit/27f71e666c51e8dea6b3ef8070433499eae42e8a))
+
+What changed
+- The five remaining Python client checks are harness examples: aider, dspy, instructor, litellm-client and openai-agents. Each has a pyproject.toml with exact pins, a uv.lock, a runner (run.py, or run.sh for aider), scenario files with snippet regions, and a committed runs/scripted/ that run.ts writes and CI keeps current. Their 2026-10-12 live records were already migrated byte-identical in #367.
+- The scripted plugboard answers DSPy's [[ ## answer ## ]] field format (only requests with those markers take this path, so the other examples' transcripts are unchanged).
+- The five client pages (dspy, instructor, litellm-client, openai-agents, aider) are snippet includes. Their Tested lines point at the live record.
+- compat/ is deleted, with test/support/fake-server.ts (its only caller was the compat runner). package.json loses compat:python. CI loses the compat job, and ci-passed no longer needs it. The shell syntax check moved into the examples job. Dependabot: /compat/py is replaced by one uv entry for each new example.
+- docs: the examples overview (docs/examples.md) and an ExampleResult component on each client page. Both read docs/.vitepress/examples.json, which `bun .github/scripts/examples-index.ts --json` writes before every docs build (docs:build and docs:dev). A VitePress data loader was tried first; it put node:fs into the browser bundle, so the build writes plain JSON instead. The reader (docs/.vitepress/examples-model.ts) is shared with the generator, so the README table and the site show the same verdicts. The sidebar has an Examples overview entry.
+- examples/README.md: the status tables are generated between examples-index markers. examples/_harness/index.json holds the Shows text per example. examples-index.ts --check fails when the table is stale, when an example has no Shows text, or when a <<< import in docs/ names a missing file or region. CI runs --check in the examples job.
+- Docs and root files no longer name compat/ (AGENTS.md, STRUCTURE.md, docs/compatibility.md, test/README.md, bunfig.toml comment, CHANGELOG).
+
+Decisions
+- Scenario mapping. Each runner covers the scenarios its record covered, with the same prompts as scenarios.json. Structured output (S6) uses the scenario prompt and a Meal model, so the scripted answers match; the old "What is 6 times 7?" prompts are gone. Scenarios outside the record are n/a with a reason, not silently dropped.
+- finish_reason and usage. DSPy 3.4 and the Agents SDK do not expose the wire finish_reason. DSPy reads its normalised response; the Agents SDK maps a function call in the last output to tool_calls and otherwise to stop, and the example says so. Aider sees only its answer, so its one check is "answer contains pong"; the transcript keeps the wire fields.
+- Aider's message is the S1 prompt, not the old edit request, because the scripted model answers the scenario prompts only. A file edit is not checked by the example; the docs say so.
+- Client helpers in each example are defined outside the snippet regions they use. Each page lists the names a snippet uses.
+- The examples job timeout is now 30 minutes: the Python examples resolve and install their locked environments on first run.
+
+Rejected
+- A VitePress .data.ts loader imported by the components (see above).
+- Keeping compat/py for the Agents and LiteLLM pins. Each example pins its own openai version, so no shared environment is needed.
+
+Validation
+- bun run typecheck, bun test (2704 pass, 0 fail), coverage-manifest, check-pack, smoke-pack, bun run docs:build: all pass.
+- bun .github/scripts/examples-index.ts --check: current; 38 examples; all <<< imports in docs/ resolve.
+- bun examples/_harness/check-regions.ts: pass.
+- bun examples/_harness/run.ts all --target scripted run twice: every file under runs/scripted has the same sha256 both times.
+- The #187 acceptance demo is recorded on the PR, separately.
+
+Closes #186
+Closes #187
+Closes #366
+
+**feat(examples): unobserved checks keyed by scenario id, in TypeScript and Python** ([`dfc19d4`](https://github.com/jjjermiah/opencode-plugboard/commit/dfc19d4f37fa187cb9ef0e8a2a17e7a2457dc45b))
+
+RunOptions.unobserved only worked per variant, and the Python helpers had no unobserved at all. smolagents' S3 needs one: generate_stream does not return finish_reason, so that check cannot be observed. It was recorded as a gap, which reads as a fault, and the row never passed.
+
+An unobserved entry may now be keyed by scenario id alone, which covers every model and variant of the scenario, or by id|variant as before. A check left out of its row is named in the note. An entry that names no planned scenario or check, or that would drop every check of its row, is refused before anything runs. The Python helpers, py/harness.py, get the same rules, and smolagents uses them for S3.
+
+smolagents S3 now passes three of three checks, and its note says which check it does not make. Its S2 row keeps its gap: the final_answer turn finishes with tool_calls by design, so that check describes a different protocol and is not an unobservable check.
+
+Tests: test/unit/examples-unobserved.test.ts covers the id-only entry, the missing entry, and the two refusals and the unplanned scenario. The Python path is exercised by the smolagents scripted run.
+
+Refs #370
+
+**feat(examples): the relay scores rows with the runAll rule, gaps and n/a included** ([`b4debc4`](https://github.com/jjjermiah/opencode-plugboard/commit/b4debc4383bd77a587ab35eac6767eed2ff40fd9))
+
+The Go and .NET relay scored rows with its own copy of the status rule. It had no known gaps, no n/a scenarios and no unobserved checks, so a Go or .NET runner could not state a limit the way a TypeScript or Python runner can. The two paths could also drift.
+
+The rule now lives in one place: scoreRow in ts/harness.ts. runAll and the relay both call it. The relay's plan line carries the runner's gaps, na, unobserved and variants, with the same meaning as RunOptions. The relay checks them against the planned scenarios with checkUnobserved, which is also exported now, and it emits the n/a rows itself, one per model and variant of each declared scenario. A runner still cannot print a result line. Only the plan line is trusted to declare limits, and the checks still decide every verdict.
+
+runAll's output is unchanged: openai-js regenerates byte-identical.
+
+Tests: test/unit/examples-relay.test.ts adds parity cases for a declared gap, declared n/a rows, an unobserved check with its note, and a refused unobserved entry that prints nothing.
+
+Refs #370
+
+**feat(anthropic): replay signed thinking to Anthropic models across turns** ([`d7e6074`](https://github.com/jjjermiah/opencode-plugboard/commit/d7e6074256347d8988e810d4f812d83a1e44d5dc))
+
+Plugboard dropped every thinking and redacted_thinking block a client sent. A tool-use turn after thinking then failed Anthropic's rule that thinking comes before tool_use, because the reasoning was gone.
+
+What changed:
+- The neutral contract has a `reasoning` part (text, signature, redactedData). The Messages decoder keeps a `thinking` block that has a signature, and every `redacted_thinking` block. An unsigned thinking block is still dropped, because its empty signature is rejected.
+- The context hook replays reasoning parts as host reasoning parts with providerMetadata.anthropic, which the host's Anthropic protocol lowers back to signed thinking and redacted_thinking blocks.
+- Replay is gated on the request's model being provider `anthropic`. A signature is proof issued by one provider and is sent to no other. Other providers get the history with reasoning removed, as before.
+- The stored transcript and token estimate handle the new part.
+
+Decisions:
+- Replay goes through the context hook, not the stored transcript. The stored transcript is text, so structured replay needs the hook.
+- The gate reads `model.providerID` from the hook event. The event type gets an optional `model`, so a host that omits it replays nothing.
+
+Rejected:
+- Replaying unsigned thinking with an empty signature. Anthropic rejects it, and the decoder already dropped it for that reason.
+
+Validation: typecheck, full bun test (2631 pass), coverage gates (floors raised to current counts), coverage manifest, pack and smoke pack, docs build, scripted examples (no diff), mutations (84 of 84 killed, two new #374 entries).
+
+Not verified: a live Anthropic round trip. The dev server runs main, not this branch, so the live check runs after merge.
+
+Refs #374
+
+#### Fixes
+
+**fix(examples): refuse runner verdicts in the relay and pin the .NET SDK** ([`c1922d6`](https://github.com/jjjermiah/opencode-plugboard/commit/c1922d61c1a5a4405e30d80a2294bda87d631cc2))
+
+The relay passed any line that was not an observation through unchanged, so a runner could print a result line that said pass with no checks. It now accepts only plan, client and done from a runner, and it refuses the whole input before printing anything when another kind appears. Two tests cover a forged result line, one before done and one after it.
+
+CI built the .NET runner with whichever SDK dotnet run found, not 8.0.423. examples/openai-dotnet/global.json now pins 8.0.423 with rollForward latestFeature, setup-dotnet installs from that file, and the job prints dotnet --version from the example directory. The Go setup now caches against examples/go-openai/go.sum, so setup-go no longer warns that there is no go.mod at the root. The job timeout goes back to 10 minutes; the last run took 86 seconds.
+
+The copyable openai-dotnet example now needs an 8.0.4xx SDK. A reader with only a newer SDK gets an SDK-not-found error from global.json. That is the cost of one pinned version, and it is stated in the PR.
+
+Refs #362
+
+**fix(examples): pin the .NET SDK exactly, not to a feature band** ([`5840420`](https://github.com/jjjermiah/opencode-plugboard/commit/5840420513cbd4d89c2311f8a1960136509e8a8c))
+
+The previous global.json used rollForward latestFeature. The CI check printed dotnet --version as 8.0.425, not 8.0.423: the runner image already has 8.0.425, and latestFeature resolves to the newest 8.0.4xx at or above the pin. The pin was not exact, so the runner did not build with the SDK the docs and CHANGELOG name.
+
+global.json now uses rollForward disable, so only SDK 8.0.423 resolves. The cost is for readers: anyone on another 8.0.x SDK gets an SDK-not-found error from global.json and must install 8.0.423. That is the trade for a CI build that is reproducible. The local SDK is 8.0.423, and the four scripted runs are byte-identical after the change.
+
+Refs #362
+
+**fix(examples): pin aider's edit format so its scripted run is the same on every host** ([`e94c237`](https://github.com/jjjermiah/opencode-plugboard/commit/e94c2373c7dc50eb41df919bd52c24186eb37e26))
+
+The examples job failed on the first CI run of #371. The file examples/aider/runs/scripted/transcripts/S1.anthropic-claude-haiku-4-5.json differed from a fresh run in CI. Aider chooses its edit format (editblock or whole) from model metadata, and the metadata it reads differs by host. The chosen format changes the system prompt the transcript records.
+
+What changed
+- examples/aider/run.sh: --edit-format whole on every call, so the prompt does not depend on the model metadata. LITELLM_LOCAL_MODEL_COST_MAP=True, so LiteLLM uses its bundled price map and does not fetch one from GitHub.
+- examples/aider/runs/scripted: the anthropic transcript is regenerated (the other transcripts and the summary are unchanged).
+
+Decisions
+- whole, not editblock: the scripted model answers in plain text and the example checks only the answer, so the simpler format is enough. editblock would need the model to answer in SEARCH/REPLACE blocks, which the scripted model does not do.
+- Pinning the edit format in run.sh rather than in a .aider.conf.yml in the temp repo: the runner creates the repo, so the flag is the one place it is set.
+
+Validation
+- bun examples/_harness/run.ts aider --target scripted, run twice: every file under examples/aider/runs/scripted has the same sha256 both times.
+- Closes nothing: part of #187, whose examples job this keeps green.
+
+Refs #187
+
+**fix(examples): address review of #371: one shell check, docs links, unit tests** ([`7fb91eb`](https://github.com/jjjermiah/opencode-plugboard/commit/7fb91ebf2438eeb69188948ce7faba25646d2de0))
+
+Review of #371 at ab26177. Refs #186, #187, #366.
+
+What changed
+- ci.yml: the "Syntax-check shell scripts" step was left in the host job when the compat job was removed, so it ran three times. The examples job runs it once; the step is gone from host. Examples job timeout: 15 minutes (a cold run takes under two).
+- docs/releasing.md: the CI gate list no longer names "compat kit checks" (job gone), and the required-check replacement list drops "Compat kit checks". The release order names examples.
+- docs/examples.md: the closing link goes to examples/README.md without the historical-records anchor; the rerun instructions are at the top of that file.
+- ExampleResult.vue: the plugboard version and commit print as plain text, not inside markdown backticks (they showed literally on the built page). The stale comment names examples.json.
+- test/unit/examples-scripted-model.test.ts: DSPy branch cases (S1 and S6 answers, the reasoning prefix, an unknown DSPy prompt gets the error, plain S1 unchanged).
+- test/unit/examples-index.test.ts (new): renderTable rows and the no-Shows-text marker; snippet import checks (resolves, renamed region, missing file); readExamples (directories only, the newest live run by date then plugboard version, the scripted run, empty example).
+
+Decisions
+- examples/README.md:66 and :68 keep their compat/ paths. They are the migration notes that say where a removed script is (git show 3d3735c:<path>). Rewording them would lose the path. The PR body states that the acceptance greps match them on purpose.
+- The generated README table does not check scenario statuses. The table prints only the verdict; scenario rows show on the client pages, from the same summary. The PR body says so.
+
+Validation
+- bun test test/unit/examples-index.test.ts test/unit/examples-scripted-model.test.ts: 20 pass.
+- bun run typecheck, bun test, coverage-manifest, check-pack, docs:build, examples-index --check and check-regions: run after the merge (see the merge commit).
+
+**fix(examples): decide a stream's done from the wire, not the runner's flag** ([`f0b6f4a`](https://github.com/jjjermiah/opencode-plugboard/commit/f0b6f4a2aea872551ace1972cde2aaeca145794b))
+
+Every runner set done to true after its stream loop, so the S3 check "stream ended with [DONE]" could not fail. A stream cut off mid-answer passed. The capture proxy already has the bytes, so run.ts now decides the check from the wire: a chat completions stream must end with data: [DONE], a Responses stream with response.completed, a Messages stream with message_stop, and a Gemini stream with a finishReason. A row whose stream did not end normally is downgraded from pass to fail, and its done check is replaced by the harness's answer. The runners still send done, but the harness no longer uses it.
+
+The check is renamed "stream ended normally", since it now covers four protocols. Eighteen summary.json files change name only. No row changed status, so every existing stream ended on the wire the way its runner claimed.
+
+Tests: test/unit/examples-stream-end.test.ts covers a complete and a truncated stream for each protocol, and the rule that a row needs at least one stream. The downgrade itself is wired into writeExample and is exercised by the scripted run, not by a unit test.
+
+Refs #370
+
+**fix(examples): answer smolagents' tool observation with final_answer** ([`ac4ddf3`](https://github.com/jjjermiah/opencode-plugboard/commit/ac4ddf38ed99962d97a4da6fed28aea57eb8e413))
+
+smolagents sends a tool result as user text ("Observation:") and ends a run only when the model calls final_answer. The scripted fake answered the tool turn only after a tool-role message, so the smolagents S2 run looped to max_steps and its final answer never came back. The fake now answers an Observation: turn with a final_answer call when the request offers that tool. Requests without the tool keep the old path, so other clients' runs are unchanged.
+
+smolagents S2 now passes five of six checks: the tool call, its name, city and id, the first finish reason, and the final answer. The sixth, "turn 2 finish_reason is stop", stays a gap. The final_answer turn finishes with tool_calls by design, so the check does not describe smolagents' protocol. Calling that unobserved would hide a real difference, so the row keeps its gap and the note says why.
+
+Only the smolagents S2 transcripts change (three models). Every other run is byte-identical.
+
+Tests: test/unit/examples-scripted-model.test.ts covers the final_answer answer and the unchanged path without the tool.
+
+Refs #370
+
+**fix(examples): stop the aider runner opening a browser page** ([`aa1ae23`](https://github.com/jjjermiah/opencode-plugboard/commit/aa1ae2310bae45cb298a7ce14dd7fcc7f7367c86))
+
+Every scripted or live run of the Aider example starts Aider in a fresh uv environment, so Aider treats it as the first run of its version and offers to open its release notes. The runner passes --yes-always, which accepts that offer, so each run opened a browser tab on the machine running it. Lanes regenerate the scripted runs often, so the owner's browser kept opening the Aider page.
+
+The runner now passes --no-show-release-notes, which removes the offer, and exports BROWSER=true, so any other webbrowser.open Aider might reach (an "open URL for more info?" prompt under --yes-always) runs `true` instead of a browser. Nothing Aider sends to plugboard changes, so the scripted transcripts are unchanged.
+
+Validation: bash -n on run.sh; the aider scripted run regenerated with no diff under examples/aider/runs and no browser tab opened.
+
+**fix(examples): declare the scenario checks in run.ts's spec type** ([`11a2bc9`](https://github.com/jjjermiah/opencode-plugboard/commit/11a2bc949496bdbc266cb6301abfa86316d62b0e))
+
+Item 1 (f0b6f4a) looked up a scenario's done check through the spec type, which did not declare checks. The examples typecheck (tsc -p examples/_harness) failed with an implicit any, so that commit was not typecheck-clean. ScenarioSpec now declares checks, and the typecheck passes.
+
+Refs #370
+
+**fix(examples): harden the harness checks the PR review flagged** ([`d9598cd`](https://github.com/jjjermiah/opencode-plugboard/commit/d9598cd37d6e90a440255739d9c20761564d5f75))
+
+Review of #379 found five places where a check accepted something it should refuse. Each is fixed, and each has a test.
+
+- A stream counts as ended only once its last SSE event's blank line has arrived. A capture cut inside "data: [DONE]" or a final event no longer passes. The WHATWG SSE rule dispatches an event at its blank line.
+- Gemini's end is read from the last chunk's candidate finishReason, not by searching the payload text. A text part that says "finishReason" no longer passes.
+- A row that failed only on the runner's own done flag becomes a pass when the wire shows a complete stream, so the wire decides. A pass whose stream did not end is still a fail.
+- An unobserved key with more than one "|" is refused in TypeScript, and an empty variant ("S1|") is refused in Python. Before, the extra part was dropped and the exclusion was silently ignored.
+- The relay refuses an observation for a scenario the plan does not run, including an n/a one, and refuses an error that is not text. Before, a malformed error was scored as a success.
+
+The committed scripted runs are byte-identical after the change, so no existing row was downgraded by the stricter rules. The unit test floor moves with the new tests.
+
+Refs #370
+
+**fix(examples): a failed chat stream is not a normal end; pin aider to C.UTF-8** ([`41d8f8e`](https://github.com/jjjermiah/opencode-plugboard/commit/41d8f8e13f13043f9008450744b57835805d4f37))
+
+The stream check accepted a chat completions stream that ended with an error frame and then [DONE]. That is what plugboard sends when a committed stream fails (src/openai/fanout.ts), so a late upstream failure could pass S3 and, with the done-only lift, turn a failing row into a pass. A chat or legacy completions stream now counts as ended only when its last frame is [DONE] and no data frame has a top-level error. A text delta or a non-JSON line does not count as an error. The Responses, Messages and Gemini checks already failed on their own error frames, and the doc comment now says response.incomplete does not count as ended.
+
+"stream ended normally" can no longer be named in unobserved. The stream check is decided from the captured wire, so a runner cannot leave it out. TypeScript and Python both refuse it.
+
+The aider runner pins LANG and LC_ALL to C.UTF-8. en_US.UTF-8 adds a "Reply in English." line to aider's prompt, which changes the committed transcripts, so C.UTF-8 is the pin. The comment says CI is the reference and that a host without C.UTF-8 fails the drift check.
+
+The relay and README now say that the plan line's limits are trusted with the same reach as the TypeScript and Python options.
+
+Tests: examples-stream-end covers the real failed-stream body for chat and legacy completions, a successful stream, a quoted "error" in a delta, and a non-JSON line. examples-unobserved covers refusing the stream check.
+
+Refs #370
+
+**fix(anthropic): state the measured reason for replaying signed thinking** ([`f0c1fa2`](https://github.com/jjjermiah/opencode-plugboard/commit/f0c1fa284aecde16b337309b17c3b79f6ab87fcd))
+
+The first commit said Anthropic rejects a tool-use turn whose thinking is missing or unsigned. Live runs did not show that. The host always sends the interleaved-thinking beta, and a turn-2 history with the thinking block stripped returned 200 on claude-haiku-5-5, claude-sonnet-4-6, claude-haiku-4-5 and claude-opus-4-5.
+
+What was measured (isolated dev server, plugboard from this branch, OpenCode v2.0.27, non-stream, thinking enabled with budget 2048):
+- claude-opus-4-5: with the signed thinking block replayed, turn 2 kept thinking (signature 472). With it stripped, turn 2 had no thinking.
+- A replaced signature (same length, junk value) returns 400 from the provider. The real signature returns 200. So the replayed signature reaches the host request, and the provider checks it.
+- A forged redacted_thinking data value returns 400, so the redacted block also reaches the request.
+- An unsigned block (signature "") returns 200, because it is dropped.
+- A non-anthropic model (opencode-go/glm-5.3-flash) and Copilot Claude get the history without reasoning and return 200.
+
+What this change does, then: the signed block reaches an anthropic model, so the model keeps its earlier reasoning across turns. It is a quality gain, not the fix for a 400. The reason text in CHANGELOG.md and docs/messages.md is corrected to match.
+
+Also in this commit:
+- Docs: plugboard never emits redacted_thinking on a response (follow-up #385), so a client replays one only if it got it from elsewhere. Copilot Claude is not replayed yet (follow-up #386).
+- Tests: a host event without a model replays no reasoning and does not throw; an omitted-thinking block (empty text, signature) is kept as a signed reasoning part.
+- Coverage floor for test/session ratcheted from 350 to 351; test/unit is unchanged at 1313.
+
+Validation: typecheck, bun test (2632 pass, 0 fail, 126 live skips), coverage gates with ratchet, coverage-manifest, check-pack and smoke-pack, docs build, scripted examples (no diff), mutations (84 of 84 killed).
+
+Refs #374
+
+#### Tests
+
+**test(examples): run the Go, .NET, Langfuse and smolagents clients in scripted CI** ([`ebdefb1`](https://github.com/jjjermiah/opencode-plugboard/commit/ebdefb1fc6cd296569a37c870fe721f2387f0548))
+
+Four clients were checked only by hand against the dev server (#234, #236, #240, #228). Their pages said there was no scripted test, and CI could not notice if one broke. The examples job now runs each of them against the scripted fake, the same way it runs the other example runners.
+
+Each example gets a runner. Langfuse and smolagents are Python: a pyproject.toml and uv.lock, pinned as the docs record, like openai-python. Go and .NET keep their example program untouched and add a runner sub-program (examples/go-openai/runner, examples/openai-dotnet/runner), built with go run and dotnet run. Those two print raw observations, and examples/_harness/ts/relay.ts applies the checks from scenarios.json, so the check logic is not copied into each language. The .NET example csproj excludes runner/** so the example keeps one entry point.
+
+On the fake, go-openai, openai-dotnet and Langfuse pass text, stream and tool round trip on every model the scenario lists. smolagents passes text. Its stream and tool round trip are gaps, not passes. generate_stream does not return finish_reason. The fake answers a tool turn only after a tool-role message, and smolagents sends the observation as user text, so the agent runs to max_steps. The gap notes say this, and so does docs/compatibility.md.
+
+Decisions: the shared fake is not changed. It sits outside examples/<client>, and changing it would make the smolagents tool gap pass without fixing the client. Runtime versions are recorded by major version only (Go 1, .NET 8, Python 3). setup-go is pinned to Go 1.27.2 and setup-dotnet to 8.0.423, the versions the runners were checked against.
+
+Refs #362
+
+**test(session): pin the agent's system prompt in the stored session prompt** ([`1d38c93`](https://github.com/jjjermiah/opencode-plugboard/commit/1d38c9342670adb2b7d8e5029dcf727f7b8a088e))
+
+The session test for an `agent/<name>` request now reads the prompt the session receives (the text passed to `port.prompt`, rendered by `renderTranscript`). It asserts the transcript opens with `## system` and the agent's prompt, and that the caller's system text never appears in it. The Agents section of docs/configuration.md states the same shape and says it was checked live.
+
+Issue #6 asked whether an agent's own persona is applied, not only whether the session is created as that agent. The caller-side tests already checked the session's agent name and the replaced `system` array, but nothing pinned the text the host receives, so a regression in the transcript could pass them.
+
+Live proof on the isolated dev server (main, with a throwaway agent whose prompt is "Always answer in exactly three words, the last being BANANA." and a caller that sends "CALLER SYSTEM: reply in German."):
+- `/v1/chat/completions` answered "Yellow ripe BANANA".
+- `/v1/messages` answered "SUNNY RIPE BANANA".
+- `/v1/responses` answered "It's a BANANA." (three words).
+- Control, plain alias `fast`, same question: "The capital of France is Paris."
+- OpenCode session via the dev API `/api/session/<id>/message`: agent `banana`, and the user text starts with "## system" then the agent's prompt, with no caller system text. Session permissions are `deny *` then the `plugboard_seed_*` allow.
+
+No src change: the behaviour already held. Rejected: a live test in CI, because it needs a real model and key.
+
+Validation: typecheck, bun test (2727 tests, 0 fail), coverage gates with ratchet (session and unit floors raised by the ratchet), coverage-manifest, check-pack, smoke-pack, docs:build, and the examples harness scripted with no diff under examples/.
+
+Refs #6
+
+#### Docs
+
+**docs(examples): build client pages from examples/ snippets** ([`f85ad4d`](https://github.com/jjjermiah/opencode-plugboard/commit/f85ad4dc1635a601551a1b6413d9453fd6d88eeb))
+
+Part of #174, step 1 of #186. Client pages showed code copied by hand from examples/ and a Tested line dated to older runs. Now the code is imported from the example's snippet region, and the Tested line links the newest live run in examples/<client>/runs/live/.
+
+What changed
+- docs/clients/{openai-python,openai-js,vercel-ai-sdk,langchain-python, langchain-js,pydantic-ai}.md: code blocks are <<< imports of the snippet regions (langchain-python tools use snippet-tool and snippet-round-trip). Prose and gotchas are kept.
+- docs/clients/{n8n,open-webui}.md: Tested line points at the newest live run (n8n b92fb6f, partial; open-webui 0cf8030, pass). open-webui shows docker-compose.yml, not a docker run copy, and the compat/ link now points at examples/open-webui/README.md.
+- examples/open-webui/docker-compose.yml: a snippet region around the services and volumes, so the page can import it. No change to the file's content.
+
+Decisions
+- Setup lines for openai-python, openai-js and pydantic-ai stay as short hand-written blocks. Their examples build the client inside an indented __main__ block, and a region there would paste with indentation.
+- Snippets that sit inside a function keep that indentation in the page. VitePress does not dedent regions. Fixing it needs a markdown plugin or moved regions, so it is a follow-up.
+- langchain-python's Tested line uses the live run already committed (2026-10-13-c97ac66). The 2026-10-11 record is migrated in the cleanup step.
+
+Rejected
+- Rewriting every dated claim in the prose. Only the Tested line is refreshed here, so gotchas that mention older runs may still read as dated.
+
+Validation
+- bun run docs:build passes. Rendered client pages contain the region text and not the whole example file (no "S1, plain chat" header in the output).
+- bun examples/_harness/run.ts all --target scripted leaves git diff examples/ clean.
+- bun examples/_harness/check-regions.ts passes.
+
+**docs(examples): index every example with its run status** ([`ab2cade`](https://github.com/jjjermiah/opencode-plugboard/commit/ab2cade9c852c252975730c66ac5c3cfbee5e7b3))
+
+Part of #174, step 2 of #186. examples/README.md listed 33 directories, left out the six client examples that have runs, and kept a curl section that duplicated examples/curl/. Now the README has two status tables that cover every example directory: the harness examples with their scripted verdict and newest live run, and the rest as "not run" or docs-verified.
+
+What changed
+- examples/README.md: a short section on what runs/scripted and runs/live hold, and how to rerun one example or all of them. The status tables. The curl section links to examples/curl/ (its README and runs/), which replaces the hand-written curl list. The line that said examples are kept out of compat/ is gone with compat's README.
+
+Decisions
+- Hand-written tables, not a generator. The generator and its --check belong to the examples-index part of #186 and are not in this commit. A tree that adds an example or a run changes this file by hand until then.
+- Verdicts are copied from each newest summary.json (scripted and live). The curl live run is listed as fail, which is what its record says.
+- A run's date and commit are read from the directory name. Same-day runs of different commits are listed by the name the harness gave them.
+
+Rejected
+- Listing "Last run" from the directory sort alone. Same-day runs sort by sha, not by time, so the index names the run it shows.
+
+Validation
+- Every link in the tables resolves to a file in the tree (checked by listing each path with git ls-files).
+- The tables cover every directory under examples/ except _harness, _shared, _tools and _release.
+
+**docs(cache): table of provider cache reads with and without anchor affinity** ([`3a0d858`](https://github.com/jjjermiah/opencode-plugboard/commit/3a0d858cb6627e37e9ec75babfa59f67c753e2ea))
+
+The report in #277 said there were no prompt-cache reads from ChatGPT, GLM and Copilot Gemini. Anchor affinity has shipped since, so this re-measures all three on the isolated dev server with promptCache off and anchor, and writes down what each provider's cache is driven by.
+
+The change is a table in the prompt-cache affinity section of docs/configuration.md (what OpenCode sends, what each provider documents, cached tokens per run with and without anchor, and the likely reason), plus a CHANGELOG bullet under Unreleased. There is no code change, so no "since" marker.
+
+The result is that anchor helps ChatGPT (3712 cached tokens on repeat runs) and changes nothing for GLM or Copilot Gemini. Plugboard sends no key that would change GLM, and Copilot Gemini's affinity header is the same in both arms.
+
+Google documents a 4,096-token minimum for Gemini 3.8 Flash. The doc does not claim it explains the Gemini result, because a 5,103-token repeat still got no reads. The 2026-10-12 paragraph stays in place, with the new run beside it.
+
+Changing plugboard's cache routing for GLM or Gemini was rejected. Neither has a plugboard-side key to fix, so a code change would be a guess.
+
+Validation ran typecheck, bun test (2704 tests, 0 fail), the coverage gates, coverage-manifest, check-pack and smoke-pack, docs:build, and the scripted examples with git diff examples/ clean. The live measurements are in the PR.
+
+Refs #277
+
+**docs(examples): fix review findings on the client pages and the index** ([`79ef3f8`](https://github.com/jjjermiah/opencode-plugboard/commit/79ef3f8feb0c20652243c467af4fa9ccffafe77e))
+
+Review of #367 at 5412c51 (follow-up commit, Refs #174, #186, #187).
+
+Dead links and snippets
+- examples/_release/release-candidate.md: three link targets now point at the moved records (langchain-python and vercel-ai-sdk 2026-10-11 REPORT.md) and at examples/open-webui/README.md (was ../docker/README.md). Only link targets change; the text is otherwise the same.
+- The seven historical 2026-10-11 REPORT.md copies still link release-candidate.md by a relative path. They are not edited, because a live directory is never rewritten. examples/README.md has a "Historical records" section that maps the old path.
+- examples/langchain-python/llm.py: the snippet region now wraps the whole chat_model function (it was inside the body, so the page showed a bare return). Comment-only change, scripted runs unchanged.
+- docs/clients/langchain-python.md: the snippet's module-level names (os, NO_RETRIES) and the names used by the chat and tool snippets are stated.
+- docs/clients/pydantic-ai.md: the setup block has the pydantic-ai and asyncio imports, and the page says the snippets are the body of an async function taking client and model.
+- docs/clients/{openai-python,openai-js,vercel-ai-sdk,langchain-js}.md: each snippet names the variables and imports it uses that are not in the region (client, model, messages, TOOL, PROMPT, Meal, variant, wireFinish).
+- docs/clients/pydantic-ai.md: the Tested line names the two run directories (2026-10-13-c97ac66 fail, 2026-10-13-c97ac66-2 pass) instead of "the earlier record".
+
+Index and records
+- examples/README.md: the five clients with a 2026-10-12 live record and no scripted run are marked "live record only (compat/py/clients)".
+- examples/_harness/README.md: "Record-keeping" section restores the rules from the old compat/README.md (template pointer, superseded-note convention, no session chatter, captures are sensitive, sessions.py).
+
+CI and config
+- .github/workflows/docs.yml: examples/** added to the trigger paths, so an example change rebuilds the client pages.
+- .github/dependabot.yml: the comment now says what is covered and what is not (the smoke projects, async-openai, compat/py-litellm). No new entries.
+
+Validation
+- check-regions, bun run docs:build and bun run typecheck pass.
+- bun examples/_harness/run.ts all --target scripted leaves no change under examples/*/runs.
+
+**docs(cache): table of provider cache reads with and without anchor affinity** ([`f4a9fc3`](https://github.com/jjjermiah/opencode-plugboard/commit/f4a9fc3ae8aa57743b0af53124d7f6bf71fbefc0))
+
+The report in #277 said there were no prompt-cache reads from ChatGPT, GLM and Copilot Gemini. Anchor affinity has shipped since, so this re-measures all three on the isolated dev server with promptCache off and anchor, and records what each provider's cache is driven by.
+
+The change is a table in the prompt-cache affinity section of docs/configuration.md (what OpenCode sends, what each provider documents, cached tokens per run with and without anchor, and the likely reason), plus a CHANGELOG bullet under Unreleased, in the Changed section. There is no code change, so no "since" marker.
+
+ChatGPT: anchor cached 2 of 3 later runs and off cached 0 of 3 in this run. Earlier, anchor cached 8 of 9 repeats and off 2 of 9. The mechanism comes from OpenCode's source comment, not from provider documentation.
+
+GLM: OpenCode sends no body cache key, but it sends the affinity headers on every request, and anchor kept them stable. No reads followed. Whether the OpenCode Go route uses zai-chat, forwards these headers, or applies Z.ai's implicit cache is not established.
+
+Copilot Gemini: below Google's 4,096-token minimum no read is expected. At 5,103 tokens both arms got HTTP 400 on run 1 and no reads on the repeats after it. Google's caching is best effort, so this is recorded as an open question, not a finding.
+
+Changing plugboard's cache routing for GLM or Gemini was rejected. Nothing in plugboard has been shown to change either result, so a code change would be a guess.
+
+Validation ran typecheck, bun test (2704 tests, 0 fail), the coverage gates, coverage-manifest, check-pack and smoke-pack, docs:build, and the scripted examples with git diff examples/ clean. The live measurements are in the PR.
+
+Refs #277
+
+**docs(examples): describe the stream check, gaps and unobserved checks** ([`aeab2c0`](https://github.com/jjjermiah/opencode-plugboard/commit/aeab2c03633736b39ba43a55b8ad7c3fcabd0d51))
+
+The harness README now explains the four row outcomes (gap, unobserved, n/a, and the wire-decided stream check) and the relay's plan options. A reader who writes a runner no longer has to read run.ts to learn what a gap or an unobserved check does. docs/compatibility.md's smolagents row gives the current result: text and stream pass, five of six tool round-trip checks pass, and the sixth is a gap with its reason.
+
+The unit test-count floor moves with the new tests (relay, unobserved, stream end, scripted model final_answer), recorded by test-gates --ratchet.
+
+Refs #370
+
+**docs(config): document the measured cost of the maxTools seed pool** ([`d6ca97f`](https://github.com/jjjermiah/opencode-plugboard/commit/d6ca97f9bad24f5d97297f9dd5b4125e78e86f2f))
+
+The issue asks what each maxTools slot costs, because every slot is a registered placeholder tool in each app Location (src/session/context.ts, installSessionHooks). The cost was measured instead of guessed, and the numbers are small enough that no code change is needed.
+
+Measured with the real installSessionHooks, the spy plugin context and a fake host transform editor (scratch harness, not committed): one Location per registration, a 36-tool Claude Code style request per hook call. Four runs agreed within a few microseconds.
+
+- registration: 4 to 13 us per Location up to 256 slots, 16 to 19 us at 512, 25 to 29 us at 1024
+- retained heap per Location: about 20 KiB at 64, 38 KiB at 128, 72 KiB at 256, 146 KiB at 512, 285 KiB at 1024 (linear, about 0.28 KiB per slot)
+- context hook per request: 6 to 13 us up to 256, 30 to 37 us at 1024
+- tool list sent to the host: 36 entries, 9,773 bytes at every cap; the seed pool size only changes what is handed to the hook, never what the model gets
+
+Decision: at 256 the cost is negligible (about 70 KiB and under 15 us per Location), so lazy registration is not implemented. Lazy registration would rebuild the host tool transform on demand and change the descriptor-identity mapping in remapSeedTools, a riskier change than the cost justifies. The maxTools row in docs/configuration.md now gives the numbers in place of the stale "a few KiB per Location" claim. Rejected: the bench suite (test/bench) was not extended, because mitata measures request latency and this cost is per Location registration and memory, which it does not capture.
+
+Validation: bun run typecheck ok; bun test 2627 pass, 0 fail; coverage gate ok with floors unchanged; coverage-manifest, check-pack, smoke-pack, docs:build and the scripted examples harness (git diff --exit-code examples/) all exit 0.
+
+Closes #377
+
+**docs(config): move the seed pool numbers into their own section** ([`6483833`](https://github.com/jjjermiah/opencode-plugboard/commit/648383359c2781f73c86f6626dcfd8ebc2652f68))
+
+The maxTools row in docs/configuration.md held about 190 words of measurements, which is hard to read in the rendered table and in the source. The row now keeps the default and one sentence with the per-Location cost at 256, and links to a new "Cost of the seed pool" subsection that holds the method and a five-row table (64 to 1024).
+
+The review asked for two notes, now in that subsection. The harness excludes the host's own per-tool cost and the seed descriptors the host hands the hook (about 35 KB at 256 and 140 KB at 1024). The retained heap includes about 2.6 KiB of harness baseline. The figures are unchanged from the earlier commit.
+
+Validation: bun run docs:build exit 0, no dead-link warnings. No code changed.
+
+Refs #377
+
+#### CI and tooling
+
+**chore(examples): retire compat/ except the Python checks with no example** ([`5412c51`](https://github.com/jjjermiah/opencode-plugboard/commit/5412c517d4b35f88c082e4760b086a9f8d290a07))
+
+Part of #174, step 3 of #187. The client checks now live in examples/: each client has a runnable example, a scripted run that CI keeps current, and its dated live runs. compat/ keeps only the Python checks that have no example yet (aider, DSPy, Instructor, LiteLLM, OpenAI Agents SDK), tracked in #366. compat/ cannot be deleted until #366 is done.
+
+Where each compat/ path went
+- compat/results/{openai-python,openai-js,vercel-ai-sdk,pydantic-ai, langchain,n8n,open-webui}.md: already migrated byte-identical to examples/<client>/runs/live/<2026-10-11 dir>/REPORT.md. Checked with cmp before removing the copies here.
+- compat/results/aider.md, dspy.md, instructor.md, litellm.md, openai-agents.md: git mv to examples/<client>/runs/live/2026-10-12-a67e176/ REPORT.md (aider, dspy, instructor, litellm-client, openai-agents).
+- compat/results/release-candidate.md: git mv (verbatim) to examples/_release/release-candidate.md.
+- compat/results/_template.md: git mv to examples/_release/_template.md, Env and Scripts lines now point at the examples.
+- compat/fixtures/*: already in examples/_shared/ (byte-identical, checked).
+- compat/docker/n8n/*.json: already in examples/n8n/workflows/ (checked; run.sh is replaced by the harness --docker option).
+- compat/docker/open-webui.sh and compat/docker/README.md: replaced by examples/open-webui/docker-compose.yml, README.md and the harness.
+- compat/js/*: replaced by examples/{openai-js,langchain-js,vercel-ai-sdk}.
+- compat/py/{openai_py.py,langchain_py.py,pydantic_ai_check.py,smoke.py}: replaced by examples/{openai-python,langchain-python,pydantic-ai} and the examples/_harness smoke ports.
+- compat/tools/logproxy.py: replaced by examples/_harness/capture.ts.
+- compat/tools/sessions.py: already in examples/_tools/sessions.py (checked).
+- compat/README.md: replaced by examples/README.md; a short README for the remaining files is kept.
+- KEPT: compat/py/clients/* (aider, dspy, instructor, litellm, openai_agents, _common.py, run_all.py), compat/py/pyproject.toml, compat/py/uv.lock, compat/py-litellm/. No replacement yet; see #366.
+
+CI and tooling
+- ci.yml: the compat job lost the compat/js typecheck (the folder is gone) and keeps only the py_compile of compat/py/*.py. The examples job already ran the scripted runs and the region check; it now also runs the docs build and uploads the regenerated scripted runs as an artifact, so a contributor without uv can copy a fix. Docker examples are skipped (they need --docker and a daemon).
+- dependabot.yml: /compat/js removed; /compat/py kept; one uv or npm entry for each example with a lockfile (openai-python, langchain-python, pydantic-ai, openai-js, vercel-ai-sdk, langchain-js, tool-bot).
+- Docs and root files that named compat/ paths now name examples/ (AGENTS.md, CONTRIBUTING.md, STRUCTURE.md, README.md, docs/architecture.md, docs/development.md, docs/releasing.md, docs/history.md, docs/compatibility.md, bunfig.toml comment, test/README.md, example metadata). Historical runs/live REPORT.md files keep their text, as the migration rule requires, and so does release-candidate.md (verbatim).
+- CHANGELOG [Unreleased]: one entry for the move.
+
+Decisions
+- compat/ is not deleted. The four clients and aider have no harness runner, so deleting their scripts would delete the only way to run them. Their pages in docs/clients still name compat/py/clients, which exists.
+- release-candidate.md keeps links to deleted per-client records and to compat/docker/README.md. It is verbatim on purpose; those links are dead in examples/_release/ and need a follow-up decision.
+
+Rejected
+- Deleting the Python checks outright. That removes checks no example covers, and the epic does not allow it.
+- Editing the historical REPORT.md files to fix their compat/ paths. The migration rule says byte-identical.
+
+Validation
+- bun run typecheck, bun test (2704 pass, 0 fail), coverage-manifest (67 covered, 0 gaps), check-pack and smoke-pack, bun run docs:build all pass.
+- bun examples/_harness/check-regions.ts passes.
+- bun examples/_harness/run.ts all --target scripted runs clean: git diff shows no change under examples/ from the scripted runs.
+- python3 -m py_compile on the remaining compat/py files and bash -n on all tracked shell scripts pass.
+- git grep for compat/ outside the allowed paths lists only the kept checks, the migration notes and test/compat. See the PR body.
+
+**chore(tests): raise the unit test-count floor for the relay tests** ([`af9f0a2`](https://github.com/jjjermiah/opencode-plugboard/commit/af9f0a2b571c5d09b644688b09b9da7d3832d2b4))
+
+The examples relay gained seven unit tests (test/unit/examples-relay.test.ts), so the unit floor moves from 1262 to 1269. The ratchet only raises floors, and this commit records the new count with the tests that raised it.
+
+Validation: bun test passed with 2585 pass, 126 skip, 0 fail, and test-gates --ratchet reported all floors met.
+
+**chore(examples): scratch, hand-edit a scripted summary (#187 demo)** ([`deb39d8`](https://github.com/jjjermiah/opencode-plugboard/commit/deb39d8d7681a3675099281c0a37e577425bd61b))
+
+Demo only: changes the instructor scripted verdict by hand, so the examples job must fail. The next commit reverts this one. Not for merge.
+
+**chore(examples): revert the #187 demo commit** ([`f915e3a`](https://github.com/jjjermiah/opencode-plugboard/commit/f915e3afa67f83c16c8c10f437ad6d7113e03ba6))
+
+The scratch commit hand-edited examples/instructor/runs/scripted/summary.json to fail, and the examples job check failed on it as intended. This restores the regenerated run, so the tree matches the committed scripted output again. Refs #187.
+
+**ci(examples): rerun the pull request checks on the review-fix head** ([`b062bcc`](https://github.com/jjjermiah/opencode-plugboard/commit/b062bcceb62c8a32d5c04092f285f64e9f4a1104))
+
+GitHub sent no pull_request events for d9598cd. The push, and a close and reopen of the PR, both produced none, so the required checks never started on that head. A workflow_dispatch run of the same commit passed every job, including CI passed (run 38447420741). This empty commit gives the PR a new head that starts the checks. It changes no file.
+
+Refs #370
+
+#### Dependencies
+
+**build(deps): support opencode 2.0.28** ([`de63d9b`](https://github.com/jjjermiah/opencode-plugboard/commit/de63d9b0122ae97bd87babd6419ba9e99d1ea037))
+
+OpenCode published @opencode/plugin 2.0.28. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.33.0] - 2026-10-13: Stays Awake
 
@@ -6083,7 +8672,26 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.52.0...HEAD
+[0.52.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.51.0...v0.52.0
+[0.51.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.50.0...v0.51.0
+[0.50.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.49.0...v0.50.0
+[0.49.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.48.0...v0.49.0
+[0.48.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.47.0...v0.48.0
+[0.47.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.46.0...v0.47.0
+[0.46.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.45.0...v0.46.0
+[0.45.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.44.0...v0.45.0
+[0.44.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.43.0...v0.44.0
+[0.43.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.42.0...v0.43.0
+[0.42.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.41.0...v0.42.0
+[0.41.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.40.0...v0.41.0
+[0.40.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.39.0...v0.40.0
+[0.39.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.38.0...v0.39.0
+[0.38.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.37.0...v0.38.0
+[0.37.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.36.0...v0.37.0
+[0.36.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.35.0...v0.36.0
+[0.35.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.34.0...v0.35.0
+[0.34.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.30.0...v0.31.0

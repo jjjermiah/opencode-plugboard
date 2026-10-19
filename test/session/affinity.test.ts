@@ -240,9 +240,7 @@ describe("replace: a stored anchor reported missing is replaced once, never anot
     await storage.put("affinity/bot/anchor/app/", JSON.stringify({ sessionID: "ses_stale" }))
     const affinity = createAffinity({ storage })
     let made = 0
-    const results = await Promise.all(
-      [1, 2, 3].map(() => affinity.replace("bot", "app", "", "ses_stale", CAP, async () => `ses_made_${++made}`)),
-    )
+    const results = await Promise.all([1, 2, 3].map(() => affinity.replace("bot", "app", "", "ses_stale", CAP, async () => `ses_made_${++made}`)))
     expect(made).toBe(1)
     expect(new Set(results)).toEqual(new Set(["ses_made_1"]))
   })

@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { APP_NAME_PATTERN, DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
+import { DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, isAppName, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { debugEnabled, log, logDebug, logError, logRequest, logWarn } from "../log.js"
 import { checkAppModel, type Persona } from "../models.js"
@@ -57,10 +57,34 @@ export interface SessionCallerDeps {
   readonly affinity?: Affinity
   /** Global `history.hidden` (since 0.29.0, #337); an app's `apps.<name>.history.hidden` overrides it. Absent: off. */
   readonly historyHidden?: boolean
+  /** The global `requestTimeoutMs` (the route's deadline; an app's own value wins). Absent: no deadline to keep clear of (#390). */
+  readonly requestTimeoutMs?: number
+  /** Test seams for the settle timers (#390): defaults are `SETTLE_MS` and `STOP_DRAIN_MS`. */
+  readonly settleMs?: number
+  readonly stopDrainMs?: number
+  /** Called once for a run whose usage the host never reported (`reason` `disconnect`, see `settleMs`). Counted, never estimated. */
+  readonly onUsageMissing?: (app: string) => void
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
 const CLEANUP_TIMEOUT_MS = 30_000
+
+/**
+ * After a stop sequence ended the answer (`CallContext.stopAnswer`, #390), how long the host may run the step on its own before it is
+ * interrupted. The host reports a step's usage only when the step finishes: an interrupted step has none (OpenCode 2.0.27 publishes
+ * `session.step.failed` without tokens), so the step is let to finish. The model writes what follows the sequence meanwhile; nothing
+ * of it reaches the caller.
+ *
+ * The same window is given to a client that left mid-run (`settleMs`, option `apps.<name>.settleMs`): nobody waits for it, and the
+ * usage the host reports inside it is recorded when it arrives.
+ */
+const SETTLE_MS = 2_000
+
+/** After the interrupt, how long the host may take to report the end before the stream closes with the usage counted so far. */
+const STOP_DRAIN_MS = 5_000
+
+/** Kept clear of the request deadline when a stop match is near it: the answer must finish before the route answers 504 (#390 review). */
+const STOP_DEADLINE_MARGIN_MS = 250
 
 const failure = (status: number, message: string, code: string): PlugEvent => ({
   type: "error",
@@ -74,8 +98,7 @@ const hiddenParentTitle = (app: string): string => `plugboard: ${app}`
 
 const notFound = (message: string): PlugError => ({ status: 404, kind: "not_found", message, code: "model_not_found", param: "model" })
 
-const countMedia = (request: PlugRequest): number =>
-  request.messages.reduce((sum, message) => sum + message.content.filter((part) => part.type === "media").length, 0)
+const countMedia = (request: PlugRequest): number => request.messages.reduce((sum, message) => sum + message.content.filter((part) => part.type === "media").length, 0)
 
 /** Everything the hook will need must exist before dispatch: one prompt file per image, one seed tool per offered tool. */
 function checkPreparation(request: PlugRequest, images: number, maxTools: number): PlugError | undefined {
@@ -109,8 +132,9 @@ function applyToolPolicy(request: PlugRequest, policy: AppPolicy | undefined): {
   const structured = request.structuredTool
   const kept = structured === undefined ? [] : request.tools.filter((tool) => tool.name === structured)
   if (structured === undefined || kept.length === 0) {
-    const { toolChoice: _dropped, ...rest } = request
-    return { request: { ...rest, tools: [] }, stripped: request.tools.length > 0 }
+    // `none` refers to no tool at all, so it stays (#421): the server tools stay out too.
+    const { toolChoice: dropped, ...rest } = request
+    return { request: { ...rest, tools: [], ...(dropped === "none" ? { toolChoice: "none" as const } : {}) }, stripped: request.tools.length > 0 }
   }
   return { request: { ...request, tools: kept, toolChoice: { type: "tool", name: structured } }, stripped: request.tools.length > kept.length }
 }
@@ -199,13 +223,7 @@ export type SessionPromptDeps = Pick<SessionCallerDeps, "port" | "persona" | "en
  * the Location may boot (`ensureAppDir`, `ensureBackend`), and a backend that is not ready answers 503. Image preparation (remote
  * fetches) is not run. `app` is the authenticated app name, validated by config, so the caller's name check is not repeated.
  */
-export async function sessionRequest(
-  deps: SessionPromptDeps | undefined,
-  app: string,
-  called: PlugRequest,
-  policy: AppPolicy | undefined,
-  signal: AbortSignal,
-): Promise<PlugRequest | PlugError> {
+export async function sessionRequest(deps: SessionPromptDeps | undefined, app: string, called: PlugRequest, policy: AppPolicy | undefined, signal: AbortSignal): Promise<PlugRequest | PlugError> {
   // The pure refusals first, in the order `stream` makes them: a count never sizes a request that would be refused.
   const outOfScope = checkAppModel(policy, called.model, called.ref)
   if (outOfScope) return outOfScope
@@ -249,7 +267,6 @@ export async function sessionRequest(
   }
 }
 
-
 export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
   const { port, sessions, maxTools, ensureBackend } = deps
   const affinity = deps.affinity
@@ -260,7 +277,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
 
   return {
     async *stream(called: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
-      const app = APP_NAME_PATTERN.test(context.app) || context.app === DEFAULT_APP ? context.app : undefined
+      const app = isAppName(context.app) || context.app === DEFAULT_APP ? context.app : undefined
       if (!app) return yield failure(400, `Invalid app name: ${context.app}`, "invalid_app")
       if (context.signal.aborted) return
 
@@ -309,9 +326,74 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           void port.interrupt(sessionID).catch((error) => logError("session.interrupt_failed", { requestID, app, error: describeError(error) }))
         }
       }
+      // Time left before the request deadline (the route's own timeout, from this request's start) minus a margin: a window never
+      // runs past it, so a complete answer near the deadline finishes before the 504 fires (#390 review).
+      const roomLeft = (): number => {
+        const timeout = policy?.requestTimeoutMs ?? deps.requestTimeoutMs
+        return timeout === undefined ? Infinity : Math.max(0, startedAt + timeout - STOP_DEADLINE_MARGIN_MS - Date.now())
+      }
+      // The window a client that left gets: the app's `settleMs` (0 = interrupt at once), else the seam, else the default.
+      const disconnectWindow = (): number => Math.min(policy?.settleMs ?? deps.settleMs ?? SETTLE_MS, roomLeft())
+      // Only a client that left gets the window. A timeout or a cancel by plugboard (a sibling choice of `n` failed) is interrupted at once.
+      const interruptAtOnce = () => {
+        const kind = (context.signal.reason as { kind?: unknown } | undefined)?.kind
+        return kind === "timeout" || kind === "cancelled"
+      }
+      let stopFired = false
       const onAbort = () => {
         collector?.cancel()
-        interrupt()
+        if (!collector || stopFired || interruptAtOnce() || disconnectWindow() === 0) interrupt()
+      }
+      // A stop sequence ended the answer (#390): let the host finish the step for up to `SETTLE_MS` (its usage comes with the
+      // finish), then interrupt it, and close with the running usage if the host still has not ended it `STOP_DRAIN_MS` later.
+      let settle: ReturnType<typeof setTimeout> | undefined
+      let drain: ReturnType<typeof setTimeout> | undefined
+      const onStopAnswer = () => {
+        collector?.markStopped()
+        // Called by the collector (the match in its text) and by the stop wrapper (the same match): once.
+        if (stopFired) return
+        stopFired = true
+        // The app's `settleMs` (0 = interrupt at once), else the seam for tests, else the default (#390 review).
+        const configured = policy?.settleMs ?? deps.settleMs ?? SETTLE_MS
+        const room = roomLeft()
+        const settleMs = Math.min(configured, room)
+        if (settleMs === 0) interrupt()
+        else {
+          settle = setTimeout(interrupt, settleMs)
+          settle.unref?.()
+        }
+        drain = setTimeout(() => collector?.finishNow(), Math.min(settleMs + (deps.stopDrainMs ?? STOP_DRAIN_MS), room))
+        drain.unref?.()
+      }
+
+      // Resolves true when the host reports the end of a step or of the execution (its usage is final then) within `ms`.
+      const reportedWithin = (run: RequestCollector, ms: number): Promise<boolean> =>
+        new Promise<boolean>((resolve) => {
+          if (run.executionEnded || run.turnSettled) return resolve(true)
+          const timer = setTimeout(() => resolve(false), ms)
+          timer.unref?.()
+          run.whenReported(() => {
+            clearTimeout(timer)
+            resolve(true)
+          })
+        })
+      // The client left: give the host `windowMs` to end its step, then interrupt it and give it `STOP_DRAIN_MS` to report. Nothing
+      // waits for this (the response is over). A run with no usage reported at all is counted as missing, and nothing is charged.
+      const settleAfterDisconnect = (run: RequestCollector, windowMs: number) => {
+        void (async () => {
+          try {
+            if (!(await reportedWithin(run, windowMs))) {
+              interrupt()
+              await reportedWithin(run, deps.stopDrainMs ?? STOP_DRAIN_MS)
+            }
+            if (run.spent === undefined) {
+              logWarn("request.usage_missing", { requestID, app, reason: "disconnect" })
+              deps.onUsageMissing?.(app)
+            } else context.onRunUsage?.(run.spent)
+          } catch (error) {
+            logError("request.usage_settle_failed", { requestID, app, error: describeError(error) })
+          }
+        })()
       }
 
       try {
@@ -356,6 +438,13 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           stopTurn: interrupt,
           requestID,
           app,
+          // The ids the model may name a tool by are rewritten only for this request's tools (#411).
+          toolNames: [...request.tools.map((tool) => tool.name), ...(policy?.serverTools ?? [])],
+          // The caller tools the session offers (after the tool policy): a tool call must name one of them (#463).
+          callerTools: request.tools.map((tool) => tool.name),
+          ...(context.fallbackNext ? { failFastRetry: true } : {}),
+          // The collector sees the match in the text it emits, so calls queued behind it are already after it (#390 review).
+          ...(request.structuredTool === undefined ? { stopSequences: request.generation.stop ?? [], onStopAnswer } : {}),
           ...(request.parallelToolCalls === false ? { singleToolCall: true } : {}),
           ...(policy?.serverTools
             ? {
@@ -365,6 +454,9 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
               }
             : {}),
         })
+
+        context.stopAnswer?.addEventListener("abort", onStopAnswer, { once: true })
+        if (context.stopAnswer?.aborted) onStopAnswer()
 
         // 3c. Prompt-cache affinity (#80): under an anchor the request session is its child, so the provider cache key
         // stays the anchor's id across requests (src/session/affinity.ts). `history.hidden` (#337) uses the same parent
@@ -376,13 +468,15 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const scope = affinity && anchored ? (hidden ? "" : scopeKey(cache, called)) : undefined
         const modelRef = { providerID: request.ref.providerID, id: request.ref.id, ...(request.ref.variant ? { variant: request.ref.variant } : {}) }
         const makeAnchor = (): Promise<string> =>
-          port.create({
-            directory,
-            model: modelRef,
-            title: hidden ? hiddenParentTitle(app) : anchorTitle(app, scope ?? ""),
-            metadata: { plugboard: { app, anchor: true } },
-            permissions: requestPermissions([]),
-          }).then((made) => String(made.id))
+          port
+            .create({
+              directory,
+              model: modelRef,
+              title: hidden ? hiddenParentTitle(app) : anchorTitle(app, scope ?? ""),
+              metadata: { plugboard: { app, anchor: true } },
+              permissions: requestPermissions([]),
+            })
+            .then((made) => String(made.id))
         let parentID: string | undefined
         const maxAnchors = maxAnchorsOf(cache)
         if (affinity && scope !== undefined) parentID = await raceAbort(affinity.anchor(app, keyScope, scope, maxAnchors, makeAnchor), context.signal)
@@ -469,13 +563,33 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
       } finally {
         context.signal.removeEventListener("abort", onAbort)
+        context.stopAnswer?.removeEventListener("abort", onStopAnswer)
+        clearTimeout(settle)
+        clearTimeout(drain)
+        // A client that left mid-run gets its window (see `disconnectWindow`): the usage is recorded when the host reports it, later.
+        // A finish already emitted ends the run for the caller: its usage is charged now, not again later (no double charge).
+        const waiting =
+          sessionID !== undefined &&
+          collector !== undefined &&
+          promptStarted &&
+          context.signal.aborted &&
+          !interruptAtOnce() &&
+          !stopFired &&
+          finish === undefined &&
+          !collector.executionEnded &&
+          !collector.turnSettled &&
+          !interruptRequested &&
+          disconnectWindow() > 0
+        if (waiting && collector) settleAfterDisconnect(collector, disconnectWindow())
+        // What the host has spent on the run so far: the usage record charges it when the run ends without a finish (timeout).
+        else if (collector?.spent) context.onRunUsage?.(collector.spent)
         if (sessionID && collector) {
           // The response may be over (consumer left early, error, timeout, a failed step) while the
           // host keeps running the session: interrupt unless it reported the end of the execution
           // or the step ended plainly (the runner stops by itself), and only if no interrupt went
           // out yet (the tool-calls path asked at the step end already).
           if (!collector.terminal) collector.cancel()
-          if (!collector.executionEnded && !collector.turnSettled && !interruptRequested) interrupt()
+          if (!waiting && !collector.executionEnded && !collector.turnSettled && !interruptRequested) interrupt()
           // The response ends here, the host execution may not have: the guard is kept until it does.
           if (promptStarted) sessions.retire(sessionID, { timeoutMs: CLEANUP_TIMEOUT_MS, onTimeout: interrupt })
           else sessions.release(sessionID)
@@ -491,7 +605,15 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         // A turn that stopped with nothing in it is kept as a session for inspection: the session id finds it.
         if (outcome === "finish:stop" && !produced) logWarn("answer.empty", { requestID, app, model: request.model, sessionID, tools: request.tools.length })
         if (debugEnabled())
-          logDebug("model.finished", { requestID, app, outcome, finish: finish?.reason, inputTokens: finish?.usage?.inputTokens, outputTokens: finish?.usage?.outputTokens, durationMs: Date.now() - startedAt })
+          logDebug("model.finished", {
+            requestID,
+            app,
+            outcome,
+            finish: finish?.reason,
+            inputTokens: finish?.usage?.inputTokens,
+            outputTokens: finish?.usage?.outputTokens,
+            durationMs: Date.now() - startedAt,
+          })
         logRequest("request.finished", { requestID, app, model: request.model, durationMs: Date.now() - startedAt, outcome })
       }
     },

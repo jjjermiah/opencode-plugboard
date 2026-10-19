@@ -52,4 +52,15 @@ Keep `/v1` in `api_base`. The OpenAI client appends `/chat/completions`.
 
 ## Verified
 
-Run against the fake, as above. The live dev server was not up, so a live run is still open.
+Run against the fake, as above. The live run is in [Harness runs](#harness-runs-2026-10-16) below.
+
+## Harness runs (2026-10-16)
+
+`examples/llamaindex/run.py` runs through the examples harness with `llama-index-llms-openai-like` 0.8.1, pinned in `uv.lock`. It covers S1 text, S2 tool round trip, S3 stream and S4 streamed tool call on `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low` (S3 and S4 on `fast`). S5 to S7 and E1/E2 were not run. The S3 usage check is left out: `stream_chat` does not request a usage chunk.
+
+- Scripted, byte-identical across two runs: [runs/scripted](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/llamaindex/runs/scripted). Pass.
+- Live against the dev server, served build `git describe` v0.41.0-32-g9852300 (main): [runs/live/2026-10-16-9852300](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/llamaindex/runs/live/2026-10-16-9852300). Pass. `fast` was served by `anthropic/claude-haiku-4-5` (see its REPORT.md).
+
+The copyable part of `example.py`:
+
+<<< @/../examples/llamaindex/example.py#snippet

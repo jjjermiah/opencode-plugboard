@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { PlugErrorKind, PlugEvent } from "../../src/contract.js"
-import { encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk, type GeminiExchange } from "../../src/gemini/response.js"
+import { arrayWire, encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, runGenerate, sseChunk, sseWire, type GeminiExchange } from "../../src/gemini/response.js"
 import { listAvailableModels } from "../../src/models.js"
 import { CATALOG, ev, events, testOptions } from "../support/fixtures.js"
 
@@ -17,16 +17,29 @@ async function run(exchange: GeminiExchange, ...list: PlugEvent[]) {
 
 describe("runGenerate: GenerateContentResponse chunks and the aggregated body", () => {
   test("one chunk per piece of output, then a final chunk with finishReason, usage and an empty text part", async () => {
-    const { chunks, parts, response } = await run(plain, ev.reasoning("x"), ev.text("Hel"), ev.text("lo"), ev.finish("stop", { inputTokens: 10, outputTokens: 7, reasoningTokens: 3, cacheReadTokens: 2 }))
+    const { chunks, parts, response } = await run(
+      plain,
+      ev.reasoning("x"),
+      ev.text("Hel"),
+      ev.text("lo"),
+      ev.finish("stop", { inputTokens: 10, outputTokens: 7, reasoningTokens: 3, cacheReadTokens: 2 }),
+    )
     expect(parts).toEqual([{ text: "Hel" }, { text: "lo" }, { text: "" }])
-    expect(chunks.at(-1)).toMatchObject({ candidates: [{ finishReason: "STOP", index: 0 }], modelVersion: "fast", usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, totalTokenCount: 17, cachedContentTokenCount: 2, thoughtsTokenCount: 3 } })
+    expect(chunks.at(-1)).toMatchObject({
+      candidates: [{ finishReason: "STOP", index: 0 }],
+      modelVersion: "fast",
+      usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, totalTokenCount: 17, cachedContentTokenCount: 2, thoughtsTokenCount: 3 },
+    })
     expect(new Set(chunks.map((chunk) => chunk.responseId)).size).toBe(1)
     expect(response).toMatchObject({ candidates: [{ content: { role: "model", parts: [{ text: "Hello" }] }, finishReason: "STOP" }], modelVersion: "fast" })
   })
 
   test("a tool call is a functionCall part with object args; Gemini reports STOP after one", async () => {
     const { response } = await run(plain, ev.call("c1", "weather", { city: "Oslo" }), ev.call("c2", "raw", "not an object"), ev.finish("tool-calls"))
-    expect(response.candidates[0]).toMatchObject({ finishReason: "STOP", content: { parts: [{ functionCall: { name: "weather", args: { city: "Oslo" } } }, { functionCall: { name: "raw", args: { value: "not an object" } } }] } })
+    expect(response.candidates[0]).toMatchObject({
+      finishReason: "STOP",
+      content: { parts: [{ functionCall: { name: "weather", args: { city: "Oslo" } } }, { functionCall: { name: "raw", args: { value: "not an object" } } }] },
+    })
   })
 
   test.each([
@@ -93,7 +106,12 @@ describe("Google error bodies and model entries", () => {
 
   test("an error with a param carries a BadRequest field violation", () => {
     expect(encodeGeminiError({ status: 400, kind: "invalid_request", message: "bad", param: "contents" })).toEqual({
-      error: { code: 400, message: "bad", status: "INVALID_ARGUMENT", details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: "contents", description: "bad" }] }] },
+      error: {
+        code: 400,
+        message: "bad",
+        status: "INVALID_ARGUMENT",
+        details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: "contents", description: "bad" }] }],
+      },
     })
   })
 
@@ -101,7 +119,14 @@ describe("Google error bodies and model entries", () => {
     const listed = listAvailableModels(testOptions({ models: ["test/echo"] }), CATALOG)
     expect(encodeGeminiModelList(listed)).toEqual({
       models: [
-        { name: "models/test/echo", version: "plugboard", displayName: "Echo", description: "test model served by opencode-plugboard", inputTokenLimit: 8192, supportedGenerationMethods: ["generateContent", "streamGenerateContent"] },
+        {
+          name: "models/test/echo",
+          version: "plugboard",
+          displayName: "Echo",
+          description: "test model served by opencode-plugboard",
+          inputTokenLimit: 8192,
+          supportedGenerationMethods: ["generateContent", "streamGenerateContent"],
+        },
         expect.objectContaining({ name: "models/test/echo#low" }),
         expect.objectContaining({ name: "models/test/echo#high" }),
       ],
@@ -155,5 +180,49 @@ describe("#173 runGenerate: a text answer and the 502 for every finish", () => {
 
   test.each(["length", "content-filter"] as const)("#173 a %s finish with no answer is a 502, not a candidate with no content", async (reason) => {
     expect((await run(withSchema, ev.finish(reason))).failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+  })
+})
+
+describe("runGenerate: one candidate of several (candidateCount > 1)", () => {
+  const streamed: GeminiExchange = { model: "fast", stream: true }
+
+  test("chunks carry the candidate's index and the shared responseId; the last chunk has no usage, the run reports it", async () => {
+    const chunks: any[] = []
+    const result = await runGenerate(events(ev.text("x"), ev.finish("stop", { inputTokens: 5, outputTokens: 2 })), streamed, (chunk) => void chunks.push(JSON.parse(JSON.stringify(chunk))), {
+      index: 2,
+      responseId: "shared",
+    })
+    expect(chunks.map((chunk) => [chunk.candidates[0].index, chunk.responseId])).toEqual([
+      [2, "shared"],
+      [2, "shared"],
+    ])
+    expect(chunks.at(-1)).toMatchObject({ candidates: [{ finishReason: "STOP", index: 2 }] })
+    expect(chunks.at(-1)).not.toHaveProperty("usageMetadata")
+    expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 2 })
+  })
+})
+
+describe("stream wires", () => {
+  test("sse: one data frame per chunk, nothing at the end", () => {
+    const wire = sseWire()
+    expect(wire.frame({ a: 1 })).toBe('data: {"a":1}\n\n')
+    expect(wire.end()).toBe("")
+  })
+
+  test("array: [ opens with the first chunk, commas separate, ] closes; the whole text is one JSON array", () => {
+    const wire = arrayWire()
+    const text = wire.keepalive + wire.frame({ a: 1 }) + wire.keepalive + wire.frame({ b: 2 }) + wire.frame({ error: { code: 502 } }) + wire.end()
+    expect(JSON.parse(text)).toEqual([{ a: 1 }, { b: 2 }, { error: { code: 502 } }])
+    expect(text.startsWith("\n[")).toBe(true)
+  })
+
+  test("array: an error with no earlier chunk is a one-element array", () => {
+    const wire = arrayWire()
+    expect(JSON.parse(wire.frame({ error: {} }) + wire.end())).toEqual([{ error: {} }])
+  })
+
+  test("each array wire has its own state", () => {
+    arrayWire().frame({})
+    expect(arrayWire().frame({})).toStartWith("[")
   })
 })

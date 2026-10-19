@@ -10,9 +10,12 @@
 // Every release needs a title: 2 to 5 words, at most 40 characters, no trailing
 // period. It lands in the heading (`## [0.3.0] - <date>: Title`) and names the GitHub release.
 //
+// The release commit also replaces the `(since next)` placeholder (and `Since next` at a sentence start) with the version,
+// in the [Unreleased] notes and in docs/**/*.md (since-next.ts). CI refuses a placeholder in a released section.
+//
 // main is protected (a ruleset requires a pull request and the CI checks), so the script never
 // commits to main or pushes it. --push does this, from a clean main that equals origin/main and whose
-// newest CI run passed (docs/releasing.md):
+// newest CI run passed, waited for while it runs (docs/releasing.md):
 //   1. commits the release on release/vX.Y.Z and pushes that branch,
 //   2. opens a pull request into main, with the release notes as its body,
 //   3. watches every check on that pull request (the advisory benchmark aside). A check that fails
@@ -35,11 +38,12 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import semver from "semver"
 import { changelogBlock, collectCommits } from "./commit-detail.ts"
+import { approvalState, mergeRules, type GhReview } from "./merge-gate.ts"
+import { replaceSinceNext } from "./since-next.ts"
 
 const PLACEHOLDER = "Nothing yet."
 
-const USAGE =
-  'usage: bun run release <version> --title "Short Creative Title" (--push [--no-watch] [--resume] | --dry-run)\n       bun run release <version> --watch-only'
+const USAGE = 'usage: bun run release <version> --title "Short Creative Title" (--push [--no-watch] [--resume] | --dry-run)\n       bun run release <version> --watch-only'
 let title: string | undefined
 const flags = new Set<string>()
 const positional: string[] = []
@@ -89,9 +93,18 @@ const CHECKS_TIMEOUT_MS = 60 * 60_000
 const CHECKS_POLL_MS = 20_000
 // How long a required check may take to report on the pull request before the release fails.
 const CHECKS_GRACE_MS = 10 * 60_000
+// How long after the checks pass the approving review may take to appear (docs/review-bot.md).
+const APPROVAL_TIMEOUT_MS = 15 * 60_000
 // The ci.yml run on the merge commit: its wait, and the poll.
 const MERGE_CI_TIMEOUT_MS = 45 * 60_000
 const MERGE_CI_POLL_MS = 20_000
+// The preflight's wait for a CI run on main that is queued or in progress, and how often it looks.
+const MAIN_CI_TIMEOUT_MS = 40 * 60_000
+const MAIN_CI_POLL_MS = 20_000
+// A just-pushed main commit may have no CI run listed for a short while: wait this long for one. gh may fail transiently:
+// this many consecutive failures are tolerated before the preflight refuses.
+const MAIN_CI_NO_RUN_MS = 2 * 60_000
+const MAIN_CI_GH_FAILURES = 3
 // The checks that must have reported before the release can merge: the required checks of the main
 // ruleset (docs/releasing.md). A check that never appears is not a pass.
 const EXPECTED_CHECKS = ["CI passed", "Lint commit messages", "Analyze (javascript-typescript)"]
@@ -156,9 +169,40 @@ function latestCiRun(sha: string): { run?: CiRun; problem?: string } {
 function ciProblemOn(sha: string): string | undefined {
   const { run, problem } = latestCiRun(sha)
   if (!run) return problem
-  if (run.status !== "completed") return `the newest CI run for ${sha.slice(0, 7)} is ${run.status} (${run.url}). Wait for it to finish.`
+  if (run.status !== "completed") return `the newest CI run for ${sha.slice(0, 7)} is ${run.status} (${run.url}). A --push run waits for it.`
   if (run.conclusion !== "success") return `the newest CI run for ${sha.slice(0, 7)} concluded ${run.conclusion} (${run.url}).`
   return undefined
+}
+
+// The preflight on main. A run that is queued or in progress is waited for in the foreground, up to MAIN_CI_TIMEOUT_MS,
+// then judged as ciProblemOn judges a finished run. A commit with no run listed gets MAIN_CI_NO_RUN_MS to get one. A gh
+// failure is retried: MAIN_CI_GH_FAILURES consecutive failures refuse.
+async function waitForMainCi(sha: string): Promise<string | undefined> {
+  const start = Date.now()
+  let ghFailures = 0
+  let shown = ""
+  for (;;) {
+    const { run, problem } = latestCiRun(sha)
+    if (run) {
+      ghFailures = 0
+      if (run.status === "completed") {
+        return run.conclusion === "success" ? undefined : `the newest CI run for ${sha.slice(0, 7)} concluded ${run.conclusion} (${run.url}).`
+      }
+      if (Date.now() - start > MAIN_CI_TIMEOUT_MS) {
+        return `the newest CI run for ${sha.slice(0, 7)} is still ${run.status} after ${MAIN_CI_TIMEOUT_MS / 60_000} minutes (${run.url}).`
+      }
+      if (run.status !== shown) console.log(`waiting for ${run.url}: ${run.status}`)
+      shown = run.status
+    } else if (problem?.startsWith("gh run list failed")) {
+      ghFailures++
+      if (ghFailures > MAIN_CI_GH_FAILURES) return problem
+      console.log(`waiting: ${problem} (failure ${ghFailures} of ${MAIN_CI_GH_FAILURES})`)
+    } else {
+      ghFailures = 0
+      if (Date.now() - start > MAIN_CI_NO_RUN_MS) return problem
+    }
+    await Bun.sleep(MAIN_CI_POLL_MS)
+  }
 }
 
 // Returns the pull request URL once its head is `sha`, the commit this run fetched or pushed. Right after a push
@@ -204,7 +248,9 @@ async function waitForChecks(branch: string, url: string): Promise<void> {
     if (failing.length) {
       console.error(`release: ${failing.length} check(s) did not pass on ${url}. Nothing is merged or tagged; the pull request stays open.`)
       for (const c of failing) console.error(`  ${c.bucket}: ${c.name} ${c.link}`)
-      console.error(`Fix it on the release branch and push (git switch ${branch}, commit, git push), then run bun run release ${version} --title "..." --push --resume from main. See docs/releasing.md, "When a check fails".`)
+      console.error(
+        `Fix it on the release branch and push (git switch ${branch}, commit, git push), then run bun run release ${version} --title "..." --push --resume from main. See docs/releasing.md, "When a check fails".`,
+      )
       process.exit(1)
     }
     const pending = gating.filter((c) => c.bucket === "pending")
@@ -235,6 +281,51 @@ async function mergedCommit(branch: string): Promise<string> {
   }
 }
 
+// The rest of what the main ruleset asks before a merge, once the checks passed (docs/review-bot.md): an up-to-date
+// branch (strict status checks) and the approving review the review gate posts. Neither is a check, so both are read
+// from the ruleset and the pull request. With no such rule this returns at once. A branch behind main stops the release:
+// updating it moves the head, so the checks and the review start over. A pull request with changes requested stops it too.
+async function waitForMergeGate(branch: string, url: string): Promise<void> {
+  const ruleset = gh("api", "repos/{owner}/{repo}/rules/branches/main")
+  if (!ruleset.ok) {
+    console.log(`warning: could not read the main ruleset (${ruleset.err}); merging without waiting for a review`)
+    return
+  }
+  const rules = mergeRules(JSON.parse(ruleset.out) as Parameters<typeof mergeRules>[0])
+  const start = Date.now()
+  for (;;) {
+    const view = gh("pr", "view", branch, "--json", "headRefOid,mergeStateStatus,reviews")
+    if (view.ok) {
+      const pr = JSON.parse(view.out) as { headRefOid: string; mergeStateStatus: string; reviews: GhReview[] }
+      if (rules.strict && pr.mergeStateStatus === "BEHIND") {
+        fail(
+          `main moved while the checks ran, and the ruleset requires an up-to-date branch: ${url} is behind main. Nothing is merged or tagged. Run gh pr update-branch ${branch}, then bun run release ${version} --title "..." --push --resume from main: it waits for the checks and the review on the new head. See docs/releasing.md.`,
+        )
+      }
+      if (rules.approvals === 0) return
+      const approval = approvalState(pr.reviews, pr.headRefOid, rules.approvals)
+      if (approval.state === "approved") {
+        console.log(`${url} has ${rules.approvals} approving review(s) on ${pr.headRefOid.slice(0, 7)}`)
+        return
+      }
+      if (approval.state === "changes-requested") {
+        fail(
+          `changes requested on ${url} by ${approval.by.join(", ")}. Nothing is merged or tagged. Fix it on ${branch} and push, then run bun run release ${version} --title "..." --push --resume from main.`,
+        )
+      }
+      console.log(`waiting: ${rules.approvals} approving review(s) needed on ${pr.headRefOid.slice(0, 7)}, have ${approval.have}`)
+    } else {
+      console.log(`waiting: gh pr view ${branch} failed (${view.err || "no output"})`)
+    }
+    if (Date.now() - start > APPROVAL_TIMEOUT_MS) {
+      fail(
+        `${url} has no approving review after 15 minutes. Nothing is merged or tagged. Is the review gate set up (docs/review-bot.md)? Once it is approved, run bun run release ${version} --title "..." --push --resume from main.`,
+      )
+    }
+    await Bun.sleep(CHECKS_POLL_MS)
+  }
+}
+
 // Waits for the ci.yml push run on the merge commit: the run that tests the exact commit the tag will point at.
 // Gh errors and a run that has not appeared yet keep the wait going, up to MERGE_CI_TIMEOUT_MS.
 async function waitForMergeCi(sha: string): Promise<CiRun> {
@@ -255,10 +346,14 @@ async function tagAfterMergeCi(mergeSha: string): Promise<void> {
   const short = mergeSha.slice(0, 7)
   const mergeRun = await waitForMergeCi(mergeSha)
   if (mergeRun.conclusion === "cancelled") {
-    fail(`CI on the merge commit ${short} was cancelled (${mergeRun.url}). Nothing is tagged and npm has nothing. Re-run it with gh run rerun ${mergeRun.databaseId}. Once that run concludes success, run bun run release ${version} --title "..." --push --resume: it tags ${short} after the re-run passes. If the re-run fails, fix forward on main and cut the next patch.`)
+    fail(
+      `CI on the merge commit ${short} was cancelled (${mergeRun.url}). Nothing is tagged and npm has nothing. Re-run it with gh run rerun ${mergeRun.databaseId}. Once that run concludes success, run bun run release ${version} --title "..." --push --resume: it tags ${short} after the re-run passes. If the re-run fails, fix forward on main and cut the next patch.`,
+    )
   }
   if (mergeRun.conclusion !== "success") {
-    fail(`CI on the merge commit ${short} concluded ${mergeRun.conclusion} (${mergeRun.url}). Nothing is tagged and npm has nothing. main now carries the release commit: fix forward through a pull request and cut the next patch. Do not tag ${short}.`)
+    fail(
+      `CI on the merge commit ${short} concluded ${mergeRun.conclusion} (${mergeRun.url}). Nothing is tagged and npm has nothing. main now carries the release commit: fix forward through a pull request and cut the next patch. Do not tag ${short}.`,
+    )
   }
   // A local tag at this commit is left from an earlier run whose push failed: push it, do not create it again.
   if (tryGit("rev-list", "-n1", tag) !== mergeSha) git("tag", "-a", tag, mergeSha, "-m", `Release ${version}`)
@@ -375,7 +470,8 @@ if (resume && push) {
     if (pkgVersion !== version) fail(`package.json at merge commit ${short} says ${pkgVersion}, not ${version}. Nothing is tagged.`)
     fastForwardMain()
     const localAt = tryGit("rev-list", "-n1", tag)
-    if (localAt && localAt !== mergeSha) fail(`local tag ${tag} is at ${localAt.slice(0, 7)}, not at the merge commit ${short}. Nothing is tagged or pushed. Check it, and delete the local tag if it is wrong.`)
+    if (localAt && localAt !== mergeSha)
+      fail(`local tag ${tag} is at ${localAt.slice(0, 7)}, not at the merge commit ${short}. Nothing is tagged or pushed. Check it, and delete the local tag if it is wrong.`)
     if (tryGit("ls-remote", "--tags", "origin", `refs/tags/${tag}`)) {
       fetchOrFail("origin", `refs/tags/${tag}:refs/tags/${tag}`)
       const tagAt = git("rev-list", "-n1", tag)
@@ -406,8 +502,19 @@ const unreleasedAt = lines.findIndex((l) => l.startsWith("## [Unreleased]"))
 if (unreleasedAt < 0) fail('CHANGELOG.md has no "## [Unreleased]" heading')
 let sectionEnd = lines.findIndex((l, i) => i > unreleasedAt && /^(## \[|\[[^\]]+\]: )/.test(l))
 if (sectionEnd < 0) sectionEnd = lines.length
-const body = lines.slice(unreleasedAt + 1, sectionEnd).join("\n").trim()
-if (!body || body === PLACEHOLDER) fail("[Unreleased] in CHANGELOG.md is empty, nothing to release")
+const rawBody = lines
+  .slice(unreleasedAt + 1, sectionEnd)
+  .join("\n")
+  .trim()
+if (!rawBody || rawBody === PLACEHOLDER) fail("[Unreleased] in CHANGELOG.md is empty, nothing to release")
+// Lanes write `(since next)` because they cannot know the version (docs/releasing.md): it becomes this version here, in the
+// release commit, in the notes and in docs/**/*.md.
+const body = replaceSinceNext(rawBody, version)
+const docRewrites = [...new Bun.Glob("docs/**/*.md").scanSync(".")]
+  .sort()
+  .map((file) => ({ file, before: readFileSync(file, "utf8") }))
+  .map(({ file, before }) => ({ file, before, after: replaceSinceNext(before, version) }))
+  .filter(({ before, after }) => before !== after)
 
 const linkAt = lines.findIndex((l) => l.startsWith("[Unreleased]: "))
 const link = /^\[Unreleased\]: (.+)\/compare\/v(.+)\.\.\.HEAD$/.exec(lines[linkAt] ?? "")
@@ -445,7 +552,7 @@ const nextPkg = pkgText.replace(/("version"\s*:\s*")[^"]+(")/, `$1${version}$2`)
 if (nextPkg === pkgText) fail("could not find the version field in package.json")
 
 const commitSubject = `chore(release): ${version}`
-const commitBody = `${title}. Moves [Unreleased] under ${version} in CHANGELOG.md and bumps package.json.`
+const commitBody = `${title}. Moves [Unreleased] under ${version} in CHANGELOG.md and bumps package.json.${docRewrites.length ? ` Replaces the (since next) placeholder with ${version} in ${docRewrites.length} doc file(s).` : ""}`
 
 if (dryRun) {
   for (const p of problems) console.log(`warning (would refuse without --dry-run): ${p}`)
@@ -456,6 +563,12 @@ if (dryRun) {
     writeFileSync(join(dir, "a/package.json"), pkgText)
     writeFileSync(join(dir, "b/CHANGELOG.md"), next)
     writeFileSync(join(dir, "b/package.json"), nextPkg)
+    for (const { file, before, after } of docRewrites) {
+      mkdirSync(join(dir, "a", file, ".."), { recursive: true })
+      mkdirSync(join(dir, "b", file, ".."), { recursive: true })
+      writeFileSync(join(dir, "a", file), before)
+      writeFileSync(join(dir, "b", file), after)
+    }
     const diff = Bun.spawnSync(["git", "diff", "--no-index", "--no-color", "a", "b"], { cwd: dir })
     console.log(diff.stdout.toString())
   } finally {
@@ -465,9 +578,11 @@ if (dryRun) {
   fetchOrigin("-q", "origin", "main")
   const mainSha = tryGit("rev-parse", "--verify", "-q", "origin/main")
   const ci = mainSha ? ciProblemOn(mainSha) : "origin/main is not known locally (git fetch origin main)."
-  console.log(ci ? `warning (would refuse with --push): ${ci}` : `CI on origin/main ${mainSha.slice(0, 7)} is green`)
+  console.log(ci ? `warning: ${ci}` : `CI on origin/main ${mainSha.slice(0, 7)} is green`)
   if (push) {
-    console.log(`dry run: would create ${releaseBranch} and commit "${commitSubject}", push it, open a pull request into main, wait until every check on it passes (the advisory benchmark aside; a failure stops there with the pull request open), merge that exact commit, wait for the CI run on the merge commit, and tag the merge commit as ${tag} only if that run succeeded, then push the tag${watch ? ", then watch the release" : ""}`)
+    console.log(
+      `dry run: would create ${releaseBranch} and commit "${commitSubject}", push it, open a pull request into main, wait until every check on it passes (the advisory benchmark aside; a failure stops there with the pull request open), merge that exact commit, wait for the CI run on the merge commit, and tag the merge commit as ${tag} only if that run succeeded, then push the tag${watch ? ", then watch the release" : ""}`,
+    )
   } else {
     console.log(`dry run: a real run needs --push (releases go through a pull request). It would commit "${commitSubject}" on ${releaseBranch} and open the pull request`)
   }
@@ -483,8 +598,9 @@ if (!existsSync(".git")) fail("run this from the repository root")
 // ride along in it, so refuse until the two agree.
 fetchOrFail("origin", "main")
 if (git("rev-parse", "main") !== git("rev-parse", "origin/main")) fail("local main differs from origin/main. Pull or push it first, so the release pull request carries only the release.")
-// A release is cut only from a green main: the newest CI run on origin/main's commit must have passed.
-const mainCiProblem = ciProblemOn(git("rev-parse", "origin/main"))
+// A release is cut only from a green main: the newest CI run on origin/main's commit must have passed. A run still
+// queued or in progress is waited for, up to 40 minutes.
+const mainCiProblem = await waitForMainCi(git("rev-parse", "origin/main"))
 if (mainCiProblem) fail(`${mainCiProblem} Nothing was committed or pushed.`)
 
 let prUrl: string
@@ -497,12 +613,14 @@ if (resume) {
   console.log(`resuming ${releaseBranch} at ${headSha.slice(0, 7)}`)
 } else {
   if (git("branch", "--list", releaseBranch)) fail(`branch ${releaseBranch} already exists locally; delete it first`)
-  if (tryGit("ls-remote", "--heads", "origin", releaseBranch)) fail(`branch ${releaseBranch} already exists on origin. If its pull request is open and failed a check, fix it there and run with --resume.`)
+  if (tryGit("ls-remote", "--heads", "origin", releaseBranch))
+    fail(`branch ${releaseBranch} already exists on origin. If its pull request is open and failed a check, fix it there and run with --resume.`)
 
   git("switch", "-c", releaseBranch)
   writeFileSync("CHANGELOG.md", next)
   writeFileSync("package.json", nextPkg)
-  git("add", "CHANGELOG.md", "package.json")
+  for (const { file, after } of docRewrites) writeFileSync(file, after)
+  git("add", "CHANGELOG.md", "package.json", ...docRewrites.map(({ file }) => file))
   git("commit", "-m", commitSubject, "-m", commitBody)
   console.log(`committed "${commitSubject}" on ${releaseBranch}`)
   git("push", "-u", "origin", releaseBranch)
@@ -527,6 +645,7 @@ if (resume) {
 // The checks judged below are the ones for headSha: waitForHead returns only once the pull request is at that commit.
 prUrl = await waitForHead(releaseBranch, headSha)
 await waitForChecks(releaseBranch, prUrl)
+await waitForMergeGate(releaseBranch, prUrl)
 
 // Merge only the commit that passed. The switch to main is needed because --delete-branch removes the
 // local release branch, which must not be the one checked out.
@@ -537,7 +656,9 @@ const mergeSha = await mergedCommit(releaseBranch)
 const short = mergeSha.slice(0, 7)
 const fetched = fetchOrigin("origin", "main")
 if (!fetched.ok) {
-  fail(`merged to main at ${short}, but git fetch origin main failed after ${FETCH_ATTEMPTS} attempts: ${fetched.err}. Nothing is tagged. Once the fetch works, run bun run release ${version} --title "..." --push --resume: it finds the merged pull request and tags its merge commit after that commit's CI passes.`)
+  fail(
+    `merged to main at ${short}, but git fetch origin main failed after ${FETCH_ATTEMPTS} attempts: ${fetched.err}. Nothing is tagged. Once the fetch works, run bun run release ${version} --title "..." --push --resume: it finds the merged pull request and tags its merge commit after that commit's CI passes.`,
+  )
 }
 // Back on main, fast-forwarded to the merge, and the local release branch removed (it is merged).
 git("merge", "--ff-only", "origin/main")

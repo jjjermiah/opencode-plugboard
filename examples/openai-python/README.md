@@ -1,17 +1,17 @@
 # OpenAI Python SDK
 
-The OpenAI Python SDK against plugboard: plain chat, a tool round trip, streaming (raw and through the SDK's helper), streaming tool calls, an image, structured output, the model list, and the two error paths. Each scenario is one file you can copy, and the copyable part sits between `# region snippet` markers. Part of the runnable-examples epic [#174](https://github.com/jjjermiah/opencode-plugboard/issues/174).
+The OpenAI Python SDK against plugboard: plain chat, a tool round trip, streaming (raw and through the SDK's helper), streaming tool calls, an image, structured output, the model list, and the two error paths. The Chat Completions scenarios also run on the Responses API (`responses.create`, `responses.stream`, `responses.parse`, `output_text`), as the `responses` variant. Each scenario is one file you can copy, and the copyable part sits between `# region snippet` markers. Part of the runnable-examples epic [#174](https://github.com/jjjermiah/opencode-plugboard/issues/174).
 
 ## What it shows
 
 | File | Scenario | What the snippet does |
 | --- | --- | --- |
-| `chat.py` | S1 | one non-streamed chat call |
-| `tools.py` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id |
-| `stream.py` | S3 | raw stream with `include_usage`, and the stream helper that must agree with it |
+| `chat.py` | S1 | one non-streamed chat call; `run_responses`, one `responses.create` call read through `output_text` |
+| `tools.py` | S2 | `get_weather` call, the assistant turn sent back, the tool result under the same id; `run_responses` sends the whole history back with `store=False`; `run_responses_previous_id` sends `previous_response_id` instead (since 0.51.0, see below) |
+| `stream.py` | S3 | raw stream with `include_usage`, and the stream helper that must agree with it; `run_responses` streams `responses.stream` events and checks the final response |
 | `stream_tools.py` | S4 | streamed tool call, arguments accumulated across deltas |
-| `image.py` | S5 | a red PNG as a data URL in a multi-part message |
-| `structured.py` | S6 | `beta.chat.completions.parse` with a Pydantic model, `chat.completions.parse`, and the raw `json_schema` form |
+| `image.py` | S5 | a red PNG as a data URL in a multi-part message; `run_responses` as an `input_image` part |
+| `structured.py` | S6 | `beta.chat.completions.parse` with a Pydantic model, `chat.completions.parse`, and the raw `json_schema` form; `run_responses` with `responses.parse` and a `text.format` `json_schema` |
 | `models.py` | S7 | `models.list()` and `models.retrieve("fast")` |
 | `wrong_key.py` | E1 | a wrong key (401) |
 | `unknown_model.py` | E2 | an unknown model (404) |
@@ -57,7 +57,7 @@ bun examples/_harness/run.ts openai-python --target live       # the isolated se
 
 ## Known gaps
 
-None. Both targets pass every scenario.
+`S2 (responses-previous-id)` was a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)) until 0.51.0: plugboard now keeps each answer made with `store` on and continues from it with `previous_response_id` (see [responses.md](../../docs/responses.md#stored-responses-since-0-51-0)). The scripted run passes it; the live run `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0) predates it and still records the refusal. Every other row passes on both targets. `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`).
 
 ## Historical record
 

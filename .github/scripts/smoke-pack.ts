@@ -88,10 +88,7 @@ try {
   const host = join(project, "host")
   mkdirSync(host)
   writeFileSync(join(host, "package.json"), JSON.stringify({ name: "plugboard-smoke-host", private: true, type: "module" }))
-  run(
-    ["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", `effect@${pkg.devDependencies.effect}`, `@opencode/plugin@${pkg.devDependencies["@opencode/plugin"]}`],
-    host,
-  )
+  run(["npm", "install", "--ignore-scripts", "--no-audit", "--no-fund", `effect@${pkg.devDependencies.effect}`, `@opencode/plugin@${pkg.devDependencies["@opencode/plugin"]}`], host)
 
   copyFileSync(join(import.meta.dir, "smoke-probe.ts"), join(project, "probe.ts"))
   const probe = Bun.spawnSync(["bun", "probe.ts"], { cwd: project, stdout: "inherit", stderr: "inherit" })

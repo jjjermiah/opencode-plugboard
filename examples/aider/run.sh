@@ -13,6 +13,21 @@ set -euo pipefail
 # Aider picks its edit format and prompts from model metadata, which the host can change (a fetched price map differs
 # between machines). Pin both so the prompts in the transcripts are the same on every host.
 export LITELLM_LOCAL_MODEL_COST_MAP=True
+# Aider adds a "Reply in <language>" line from the locale. C.UTF-8 adds none, which is what the committed run and CI show, so the
+# pin reproduces CI's prompt. en_US.UTF-8 adds the line and would change the transcript. CI is the reference: if a host has no
+# C.UTF-8, its run will differ from the committed one and the drift check fails, which is the intended signal.
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+# Every run uses a fresh environment, so Aider treats it as a first run and offers to open its release notes in a browser;
+# --yes-always accepts that offer. --no-show-release-notes stops the offer, and BROWSER=true makes any other
+# webbrowser.open a no-op, so a run never opens a page on the machine running it.
+export BROWSER=true
+
+# Aider keeps state under $HOME/.aider (installs.json, caches), shared by every run on the machine, and a second run in
+# another worktree would read and rewrite it at the same time. Each aider process gets its own HOME. uv finds its cache and its
+# Python under HOME, so those two are pinned to the real ones first, or every run would download them again.
+UV_CACHE_DIR="${UV_CACHE_DIR:-$(uv cache dir)}"
+UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-$(uv python dir)}"
+export UV_CACHE_DIR UV_PYTHON_INSTALL_DIR
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 : "${PLUGBOARD_BASE_URL:?run through examples/_harness/run.ts}"
@@ -29,6 +44,7 @@ for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
     -d "{\"scenario\":\"S1\",\"model\":\"$MODEL\"}" -o /dev/null
 
   DIR="$(mktemp -d)"
+  AIDER_HOME="$(mktemp -d)"
   (
     cd "$DIR"
     git init -q .
@@ -40,12 +56,12 @@ for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
   )
 
   set +e
-  OUT="$(cd "$DIR" && OPENAI_API_BASE="$PLUGBOARD_BASE_URL" OPENAI_API_KEY="$PLUGBOARD_KEY" uv run --frozen --project "$HERE" aider \
+  OUT="$(cd "$DIR" && HOME="$AIDER_HOME" OPENAI_API_BASE="$PLUGBOARD_BASE_URL" OPENAI_API_KEY="$PLUGBOARD_KEY" uv run --frozen --project "$HERE" aider \
     --model "openai/$MODEL" --weak-model "openai/$MODEL" --edit-format whole --yes-always --no-auto-commits --no-analytics \
-    --no-check-update --no-show-model-warnings --message 'Reply with exactly: pong' hello.py 2>&1)"
+    --no-check-update --no-show-model-warnings --no-show-release-notes --message 'Reply with exactly: pong' hello.py 2>&1)"
   RC=$?
   set -e
-  rm -rf "$DIR"
+  rm -rf "$DIR" "$AIDER_HOME"
 
   if [ "$RC" -ne 0 ]; then
     echo "$OUT" | tail -20 >&2

@@ -2,11 +2,11 @@
  * Neutral results -> OpenAI wire objects: Chat Completions as one JSON body or SSE chunks, the
  * `/v1/models` list, and error bodies.
  *
- * Reasoning deltas are dropped: Chat Completions has no standard field for them.
+ * Reasoning deltas are dropped unless the exchange asks for them (option `reasoningOutput`): Chat
+ * Completions has no standard field, so they go out as `reasoning_content` and `reasoning` (`reasoningFields`).
  */
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { ListedModel } from "../models.js"
-import { StopHoldback, stripStopTail } from "../stop.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
 
@@ -34,10 +34,10 @@ export interface OpenAiExchange {
    * stripped from the content (`unfence`).
    */
   readonly jsonObject?: boolean
-  /** The request's `stop`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). Not applied to structured output. */
-  readonly stop?: ReadonlyArray<string>
   /** The caller's `json_schema`, checked against a text answer when the model skipped the respond call (`textFallback`). */
   readonly structuredSchema?: Readonly<Record<string, unknown>>
+  /** Option `reasoningOutput` (since 0.36.0): reasoning text is returned, not dropped. Never in structured output. */
+  readonly reasoningOutput?: boolean
 }
 
 /** Set on a complete answer that came from the final text, not the respond call (`textFallback`). */
@@ -71,6 +71,11 @@ export interface StreamChoice {
   readonly id: string
   readonly created: number
   readonly index: number
+  /**
+   * Called before this choice writes its first chunk. The fan-out writes the opening chunks (the role delta) of every
+   * choice up to this one, in index order (#423). Absent: the encoder writes its own role chunk.
+   */
+  readonly open?: () => void
 }
 
 const ERROR_TYPES: Record<PlugErrorKind, string> = {
@@ -122,6 +127,43 @@ const encodePlugboard = (model: ListedModel["model"]) => ({
   released: isoDate(model.released),
 })
 
+/** USD per million tokens -> OpenRouter's price per token as a decimal string (`0.000003`), never an exponent. */
+const perToken = (usdPerMillion: number): string => {
+  // Plain decimal digits of the value (never an exponent), so a tiny non-zero price stays non-zero.
+  const value = usdPerMillion / 1_000_000
+  if (value === 0) return "0"
+  // 13 significant digits: the float division leaves noise past the 16th (1e-13 comes out as 9.9999...e-14).
+  const [mantissa = "0", exponent = "0"] = value.toExponential(12).split("e")
+  const digits = mantissa.replace(".", "").replace(/0+$/, "")
+  const point = Number(exponent)
+  if (point < 0) return `0.${"0".repeat(-point - 1)}${digits}`
+  return digits.length <= point + 1 ? digits.padEnd(point + 1, "0") : `${digits.slice(0, point + 1)}.${digits.slice(point + 1)}`
+}
+
+/**
+ * The OpenRouter names a client may already read: `context_length` and `pricing` (USD per token, base entry only; `aboveContext`
+ * tiers are not in it), plus `max_output_tokens`. A fact the catalog does not know is left out, never zero.
+ */
+const standardFields = (model: ListedModel["model"]) => {
+  const context = model.limits?.context ?? model.contextLimit
+  const output = model.limits?.output
+  const base = model.cost?.find((entry) => entry.aboveContext === undefined)
+  return {
+    ...(context === undefined ? {} : { context_length: context }),
+    ...(output === undefined ? {} : { max_output_tokens: output }),
+    ...(base === undefined
+      ? {}
+      : {
+          pricing: {
+            prompt: perToken(base.input),
+            completion: perToken(base.output),
+            ...(base.cacheRead === undefined ? {} : { input_cache_read: perToken(base.cacheRead) }),
+            ...(base.cacheWrite === undefined ? {} : { input_cache_write: perToken(base.cacheWrite) }),
+          },
+        }),
+  }
+}
+
 /** `GET /v1/models` body. */
 export const encodeModelList = (models: ReadonlyArray<ListedModel>): object => ({
   object: "list",
@@ -130,6 +172,7 @@ export const encodeModelList = (models: ReadonlyArray<ListedModel>): object => (
     object: "model",
     created: 0,
     owned_by: ref.providerID,
+    ...standardFields(model),
     plugboard: { ...encodePlugboard(model), ...(skill === undefined ? {} : { skill }), ...(agent === undefined ? {} : { agent }) },
   })),
 })
@@ -188,13 +231,12 @@ const structured = {
   isAnswer: (exchange: OpenAiExchange, call: ToolCall) => exchange.structuredTool !== undefined && call.name === exchange.structuredTool,
   content: (call: ToolCall) => args(call.input),
   /** The failure for a finished structured exchange, if any. */
-  failure: (exchange: OpenAiExchange, answered: boolean): PlugError | undefined =>
-    exchange.structuredTool === undefined || answered ? undefined : structuredMissing(),
+  failure: (exchange: OpenAiExchange, answered: boolean): PlugError | undefined => (exchange.structuredTool === undefined || answered ? undefined : structuredMissing()),
 }
 
 const isObjectValue = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
-const hasOwn = (value: Record<string, unknown>, key: string) => Object.prototype.hasOwnProperty.call(value, key)
+const hasOwn = (value: Record<string, unknown>, key: string) => Object.hasOwn(value, key)
 
 /** Whether a parsed JSON value has one JSON Schema type (`integer` is a whole number; an unknown type matches anything). */
 const hasType = (value: unknown, type: unknown): boolean => {
@@ -280,11 +322,19 @@ export function unfence(text: string): string {
   }
 }
 
+/**
+ * The reasoning text of a delta or message under both names in use: `reasoning_content` (DeepSeek's original, read by
+ * LiteLLM and the Vercel AI SDK) and `reasoning` (vLLM, OpenRouter). vLLM's own docs warn that a client reading one
+ * name silently gets nothing, so both carry the same text.
+ */
+const reasoningFields = (text: string) => ({ reasoning_content: text, reasoning: text })
+
 const newId = () => `chatcmpl-${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`
 const now = () => Math.floor(Date.now() / 1000)
 
 export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchange: OpenAiExchange): Promise<CollectedChoice> {
   let text = ""
+  let reasoning = ""
   const calls: ToolCall[] = []
   let finish: Exclude<PlugFinish, "error"> | undefined
   let usage: PlugUsage | undefined
@@ -292,6 +342,7 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
 
   for await (const event of events) {
     if (event.type === "text-delta") text += event.text
+    else if (event.type === "reasoning-delta") reasoning += event.text
     else if (event.type === "tool-call") calls.push(event)
     else if (event.type === "finish") {
       usage = event.usage ?? usage
@@ -307,7 +358,6 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
     const error = failure ?? noFinish()
     return { status: error.status, body: encodeError(error), retryAfterSeconds: error.retryAfterSeconds }
   }
-  if (finish === "stop" && calls.length === 0 && exchange.structuredTool === undefined) text = stripStopTail(text, exchange.stop ?? []).text
 
   const answer = calls.find((call) => structured.isAnswer(exchange, call))
   const others = calls.filter((call) => !structured.isAnswer(exchange, call))
@@ -320,17 +370,10 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
   const toolCalls = isStructured ? [] : others
   const message: Record<string, unknown> = {
     role: "assistant",
-    content: isStructured
-      ? answer
-        ? structured.content(answer)
-        : (fallback ?? null)
-      : exchange.structuredTool === undefined && text.length > 0
-        ? exchange.jsonObject
-          ? unfence(text)
-          : text
-        : null,
+    content: isStructured ? (answer ? structured.content(answer) : (fallback ?? null)) : exchange.structuredTool === undefined && text.length > 0 ? (exchange.jsonObject ? unfence(text) : text) : null,
     refusal: null,
   }
+  if (exchange.reasoningOutput && exchange.structuredTool === undefined && reasoning.length > 0) Object.assign(message, reasoningFields(reasoning))
   if (toolCalls.length > 0)
     message.tool_calls = toolCalls.map((call) => ({
       id: call.id,
@@ -345,11 +388,25 @@ export async function collectCompletion(events: AsyncIterable<PlugEvent>, exchan
       created: now(),
       model: exchange.model,
       choices: [{ index: 0, message, logprobs: null, finish_reason: finishReason(finish, toolCalls.length, isStructured) }],
-      ...(usage ? { usage: encodeUsage(usage) } : {}),
+      // Always present (#390): a host that reported no usage for the run gives zeros rather than an absent field.
+      usage: encodeUsage(usage ?? {}),
     },
     ...(fallback !== undefined ? { structuredFallback: true } : {}),
   }
 }
+
+/** One chunk of a chat stream: the shared envelope around one choice's `delta`. */
+const chatChunk = (exchange: OpenAiExchange, id: string, created: number, index: number, delta: Record<string, unknown>, finish: string | null = null) => ({
+  id,
+  object: "chat.completion.chunk",
+  created,
+  model: exchange.model,
+  choices: [{ index, delta, finish_reason: finish, logprobs: null }],
+  ...(exchange.includeUsage ? { usage: null } : {}),
+})
+
+/** The opening chunk of one choice of a fanned-out stream: its role delta, before any content (#423). */
+export const roleChunk = (exchange: OpenAiExchange, choice: StreamChoice): object => chatChunk(exchange, choice.id, choice.created, choice.index, { role: "assistant", content: "" })
 
 /** The final chunk of a stream with `include_usage`: no choices, the totals. */
 export const chatUsageChunk = (model: string, id: string, created: number, usage: PlugUsage): object => ({
@@ -367,25 +424,12 @@ export const chatUsageChunk = (model: string, id: string, created: number, usage
  * output decides the HTTP status: see `StreamResult`); a failure after it is written as an
  * `error` frame and then `data: [DONE]`.
  */
-export async function streamCompletion(
-  events: AsyncIterable<PlugEvent>,
-  exchange: OpenAiExchange,
-  write: (chunk: string) => void,
-  choice?: StreamChoice,
-): Promise<StreamResult> {
+export async function streamCompletion(events: AsyncIterable<PlugEvent>, exchange: OpenAiExchange, write: (chunk: string) => void, choice?: StreamChoice): Promise<StreamResult> {
   const id = choice?.id ?? newId()
   const created = choice?.created ?? now()
   const index = choice?.index ?? 0
   const frame = (value: object) => write(`data: ${JSON.stringify(value)}\n\n`)
-  const chunk = (delta: Record<string, unknown>, finish: string | null = null) =>
-    frame({
-      id,
-      object: "chat.completion.chunk",
-      created,
-      model: exchange.model,
-      choices: [{ index, delta, finish_reason: finish, logprobs: null }],
-      ...(exchange.includeUsage ? { usage: null } : {}),
-    })
+  const chunk = (delta: Record<string, unknown>, finish: string | null = null) => frame(chatChunk(exchange, id, created, index, delta, finish))
 
   let started = false
   let calls = 0
@@ -400,13 +444,11 @@ export async function streamCompletion(
   const start = () => {
     if (started) return
     started = true
-    chunk({ role: "assistant", content: "" })
+    if (choice?.open) choice.open()
+    else chunk({ role: "assistant", content: "" })
   }
-  // A stop sequence is held back until the finish decides it (src/stop.ts). Structured output has none.
-  const holdback = exchange.structuredTool === undefined ? new StopHoldback(exchange.stop ?? []) : undefined
   const send = (text: string) => {
-    const out = holdback ? holdback.push(text) : text
-    if (out.length > 0) chunk({ content: out })
+    if (text.length > 0) chunk({ content: text })
   }
   // json_object: text that opens with a backtick may be a fenced answer, so it waits (as `pending`)
   // until a tool call or the finish shows the whole text; anything else streams as it comes. A
@@ -432,7 +474,15 @@ export async function streamCompletion(
       else finish = event.reason
       continue
     }
-    if (event.type === "reasoning-delta") continue
+    if (event.type === "reasoning-delta") {
+      // Not in structured output: its content is the answer's arguments.
+      if (exchange.reasoningOutput && exchange.structuredTool === undefined && event.text.length > 0) {
+        flush()
+        start()
+        chunk(reasoningFields(event.text))
+      }
+      continue
+    }
     if (exchange.structuredTool !== undefined) {
       // Structured mode: only the first answer is content; prose and other tool calls are
       // suppressed, except the caller's own tools when they are offered.
@@ -459,15 +509,10 @@ export async function streamCompletion(
       }
       continue
     }
-    if (event.type !== "text-delta") {
-      flush()
-      const rest = holdback?.release() ?? ""
-      if (rest.length > 0) chunk({ content: rest })
-    }
+    if (event.type !== "text-delta") flush()
     start()
-    if (event.type === "text-delta") {
-      send(event.text)
-    } else {
+    if (event.type === "text-delta") send(event.text)
+    else {
       // Tool calls arrive whole, so each goes out as one chunk with the next index.
       chunk({ tool_calls: [{ index: calls++, id: event.id, type: "function", function: { name: event.name, arguments: args(event.input) } }] })
     }
@@ -487,15 +532,11 @@ export async function streamCompletion(
   }
   flush()
   start()
-  if (holdback) {
-    const rest = holdback.finish(finish === "stop" && calls === 0).text
-    if (rest.length > 0) chunk({ content: rest })
-  }
   if (held && isStructured) chunk({ content: structured.content(held) })
   if (fallback !== undefined) chunk({ content: fallback })
   chunk({}, finishReason(finish!, calls, isStructured))
   if (choice) return { started, ...(usage ? { usage } : {}) }
-  if (exchange.includeUsage && usage) frame(chatUsageChunk(exchange.model, id, created, usage))
+  if (exchange.includeUsage) frame(chatUsageChunk(exchange.model, id, created, usage ?? {}))
   write("data: [DONE]\n\n")
   return { started }
 }

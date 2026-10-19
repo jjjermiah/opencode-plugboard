@@ -23,8 +23,7 @@ async function history(apps: Record<string, number>) {
   return port
 }
 
-const sweep = (port: FakeHistoryPort, input: Partial<SweepInput> = {}) =>
-  sweepHistory({ port, limits: {}, sessions: createSessionStore(), now: NOW, signal: new AbortController().signal, ...input })
+const sweep = (port: FakeHistoryPort, input: Partial<SweepInput> = {}) => sweepHistory({ port, limits: {}, sessions: createSessionStore(), now: NOW, signal: new AbortController().signal, ...input })
 
 describe("the history index", () => {
   test("keys sort by app, then creation time, then session id", () => {

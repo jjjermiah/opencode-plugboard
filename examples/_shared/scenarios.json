@@ -48,7 +48,7 @@
         { "name": "streamed text contains pong", "path": "text", "containsAny": ["pong"] },
         { "name": "finish_reason is stop", "path": "finish_reason", "equals": "stop" },
         { "name": "usage chunk present when requested", "path": "usage", "present": true },
-        { "name": "stream ended with [DONE]", "path": "done", "equals": true }
+        { "name": "stream ended normally", "path": "done", "equals": true }
       ]
     },
     {
@@ -111,9 +111,10 @@
       "models": ["fast"],
       "routes": "generate",
       "prompt": "Reply with exactly: pong",
-      "observes": ["status", "code"],
+      "observes": ["status", "code", "type"],
       "checks": [
         { "name": "status is 401", "path": "status", "equals": 401 },
+        { "name": "error type is authentication_error", "path": "type", "equals": "authentication_error" },
         { "name": "code is invalid_api_key", "path": "code", "equals": "invalid_api_key" }
       ]
     },
@@ -124,9 +125,10 @@
       "models": ["nope"],
       "routes": "generate",
       "prompt": "Reply with exactly: pong",
-      "observes": ["status", "code"],
+      "observes": ["status", "code", "type"],
       "checks": [
         { "name": "status is 404", "path": "status", "equals": 404 },
+        { "name": "error type is not_found_error", "path": "type", "equals": "not_found_error" },
         { "name": "code is model_not_found", "path": "code", "equals": "model_not_found" }
       ]
     }

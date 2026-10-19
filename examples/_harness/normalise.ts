@@ -82,6 +82,45 @@ export function redactPath(path: string): string {
   return kept.length === 0 ? base : `${base}?${kept.join("&")}`
 }
 
+/**
+ * The Gemini CLI puts a `<session_context>` block into its first user turn: today's date, the operating system, its temp
+ * dir and the workspace. Those differ by day and by machine, so the values inside that block become fixed placeholders.
+ * Nothing outside the block changes.
+ */
+const SESSION_CONTEXT = /<session_context>[\s\S]*?<\/session_context>/g
+const SESSION_FIELDS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/Today's date is [^\n(]*/g, "Today's date is <date> "],
+  [/My operating system is: [^\n]*/g, "My operating system is: <os>"],
+  [/The project's temporary directory is: [^\n]*/g, "The project's temporary directory is: <temp-dir>"],
+  [/(- \*\*Workspace Directories:\*\*\n  - )[^\n]*/g, "$1<workspace>"],
+]
+
+/**
+ * The CLI's home and workspace (examples/gemini-cli/cli.ts) under the machine's temp dir, each named with the runner's pid so
+ * concurrent runs do not share them. The CLI repeats the home path in its system prompt (memory-file locations), outside the
+ * session context, so this rule covers the whole request text. A name without the pid (an older run) matches too.
+ */
+const CLI_PATHS = /(?:\/[^\s"'`]*)?\/plugboard-gemini-cli-(home|workspace)(?:-\d+)?/g
+/** The checkout prefix of the CLI's own install path (its built-in skills are listed by absolute path). Only that prefix changes. */
+const CLI_INSTALL = /(?:\/[^\s"'`<>]*)?\/examples\/gemini-cli\//g
+
+/**
+ * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, and the Gemini CLI's
+ * fixed home and workspace paths anywhere in it. Nothing else changes.
+ */
+export function normaliseSessionContext(text: string): string {
+  const inBlocks = text.replace(SESSION_CONTEXT, (block) => SESSION_FIELDS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), block))
+  return inBlocks.replace(CLI_PATHS, (_match, name: string) => `<gemini-cli-${name}>`).replace(CLI_INSTALL, "<checkout>/examples/gemini-cli/")
+}
+
+/** The same, applied to every string in a parsed JSON value. */
+export function normaliseSessionContextValue(value: unknown): unknown {
+  if (typeof value === "string") return normaliseSessionContext(value)
+  if (Array.isArray(value)) return value.map(normaliseSessionContextValue)
+  if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, normaliseSessionContextValue(child)]))
+  return value
+}
+
 const parseJson = (text: string): unknown | undefined => {
   try {
     return JSON.parse(text)
@@ -135,7 +174,7 @@ export function normaliseTranscript(exchanges: ReadonlyArray<Exchange>): Transcr
           method: exchange.method,
           path: normaliseValue(redactPath(exchange.path), ids, false) as string,
           headers: normaliseValue(reqHeaders, ids, false) as Record<string, string>,
-          body: normaliseValue(normaliseRequestBody(exchange.reqBody), ids, idKeys),
+          body: normaliseValue(normaliseSessionContextValue(normaliseRequestBody(exchange.reqBody)), ids, idKeys),
         },
         response: {
           status: exchange.status,

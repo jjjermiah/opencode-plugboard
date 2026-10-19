@@ -7,7 +7,7 @@ import { at, call, type Owui } from "./owui.ts"
  */
 export async function run(owui: Owui) {
   const { status, json } = await call(owui, "POST", "/openai/verify", { url: owui.upstream, key: "wrongkey" })
-  return { status, code: at(json, "error", "code") ?? null }
+  return { status, code: at(json, "error", "code") ?? null, type: at(json, "error", "type") ?? null }
 }
 // #endregion snippet
 

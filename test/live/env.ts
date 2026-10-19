@@ -17,7 +17,9 @@ export const LIVE_KEY = process.env.PLUGBOARD_LIVE_KEY ?? ""
 export const DEFAULT_MODELS = ["opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5", "openai/gpt-5.6-luna#low", "github-copilot/gpt-5.5"]
 
 export const LIVE_MODELS = process.env.PLUGBOARD_LIVE_MODELS
-  ? process.env.PLUGBOARD_LIVE_MODELS.split(",").map((model) => model.trim()).filter(Boolean)
+  ? process.env.PLUGBOARD_LIVE_MODELS.split(",")
+      .map((model) => model.trim())
+      .filter(Boolean)
   : DEFAULT_MODELS
 
 /**

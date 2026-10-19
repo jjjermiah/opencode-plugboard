@@ -163,6 +163,7 @@ export const chatModelList = {
       "object": "model",
       "created": 0,
       "owned_by": "test",
+      "context_length": 8192,
       "plugboard": {
         "capabilities": {
           "tools": true
@@ -171,7 +172,7 @@ export const chatModelList = {
       }
     }
   ]
-} satisfies Wire<{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown }> }>
+} satisfies Wire<{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown; context_length?: number; max_output_tokens?: number; pricing?: { prompt: string; completion: string; input_cache_read?: string; input_cache_write?: string } }> }>
 
 export const responsesResponse = {
   "id": "resp_ID",
@@ -214,7 +215,7 @@ export const responsesResponse = {
     "effort": null,
     "summary": null
   },
-  "store": false,
+  "store": true,
   "temperature": 0.5,
   "text": {
     "format": {
@@ -275,7 +276,7 @@ export const responsesEvents = [
         "effort": null,
         "summary": null
       },
-      "store": false,
+      "store": true,
       "temperature": 0.5,
       "text": {
         "format": {
@@ -324,7 +325,7 @@ export const responsesEvents = [
         "effort": null,
         "summary": null
       },
-      "store": false,
+      "store": true,
       "temperature": 0.5,
       "text": {
         "format": {
@@ -512,7 +513,7 @@ export const responsesEvents = [
         "effort": null,
         "summary": null
       },
-      "store": false,
+      "store": true,
       "temperature": 0.5,
       "text": {
         "format": {
@@ -617,12 +618,16 @@ export const anthropicMessage = {
     },
     {
       "type": "text",
-      "text": "Checking."
+      "text": "Checking.",
+      "citations": null
     },
     {
       "type": "tool_use",
       "id": "toolu_call_1",
       "name": "weather",
+      "caller": {
+        "type": "direct"
+      },
       "input": {
         "city": "Oslo"
       }
@@ -630,11 +635,19 @@ export const anthropicMessage = {
   ],
   "stop_reason": "tool_use",
   "stop_sequence": null,
+  "container": null,
+  "diagnostics": null,
+  "stop_details": null,
   "usage": {
     "input_tokens": 8,
     "output_tokens": 7,
     "cache_creation_input_tokens": 0,
-    "cache_read_input_tokens": 4
+    "cache_read_input_tokens": 4,
+    "output_tokens_details": null,
+    "server_tool_use": null,
+    "cache_creation": null,
+    "inference_geo": null,
+    "service_tier": null
   }
 } satisfies Wire<Anthropic.Message>
 
@@ -649,11 +662,19 @@ export const anthropicEvents = [
       "content": [],
       "stop_reason": null,
       "stop_sequence": null,
+      "container": null,
+      "diagnostics": null,
+      "stop_details": null,
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_creation_input_tokens": 0,
-        "cache_read_input_tokens": 0
+        "cache_read_input_tokens": 0,
+        "output_tokens_details": null,
+        "server_tool_use": null,
+        "cache_creation": null,
+        "inference_geo": null,
+        "service_tier": null
       }
     }
   },
@@ -686,7 +707,8 @@ export const anthropicEvents = [
     "index": 1,
     "content_block": {
       "type": "text",
-      "text": ""
+      "text": "",
+      "citations": null
     }
   },
   {
@@ -708,6 +730,9 @@ export const anthropicEvents = [
       "type": "tool_use",
       "id": "toolu_call_1",
       "name": "weather",
+      "caller": {
+        "type": "direct"
+      },
       "input": {}
     }
   },
@@ -727,13 +752,17 @@ export const anthropicEvents = [
     "type": "message_delta",
     "delta": {
       "stop_reason": "tool_use",
-      "stop_sequence": null
+      "stop_sequence": null,
+      "container": null,
+      "stop_details": null
     },
     "usage": {
       "input_tokens": 8,
       "output_tokens": 7,
       "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 4
+      "cache_read_input_tokens": 4,
+      "output_tokens_details": null,
+      "server_tool_use": null
     }
   },
   {
@@ -854,7 +883,7 @@ export const geminiChunks = [
 exact<OpenAI.Chat.Completions.ChatCompletion>(chatCompletion)
 exact<OpenAI.Chat.Completions.ChatCompletionChunk[]>(chatCompletionChunks)
 exact<{ error: OpenAI.ErrorObject }>(chatError)
-exact<{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown }> }>(chatModelList)
+exact<{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown; context_length?: number; max_output_tokens?: number; pricing?: { prompt: string; completion: string; input_cache_read?: string; input_cache_write?: string } }> }>(chatModelList)
 // @ts-expect-error plugboard omits output_text (the SDK computes it client-side), access_programs and usage.input_tokens_details.cache_write_tokens
 exact<OpenAI.Responses.Response & { store: boolean }>(responsesResponse)
 // @ts-expect-error the response objects in created/in_progress/completed omit output_text, access_programs and cache_write_tokens (see responsesResponse)
@@ -862,9 +891,7 @@ exact<Array<(OpenAI.Responses.ResponseStreamEvent & { response?: { store: boolea
 exact<OpenAI.Completions.Completion>(completion)
 // @ts-expect-error stream chunks carry finish_reason null until the last; the SDK types chunks as Completion, whose finish_reason is never null
 exact<OpenAI.Completions.Completion[]>(completionChunks)
-// @ts-expect-error plugboard omits nullable fields Anthropic always sends: container, diagnostics, stop_details, text citations, usage cache_creation, inference_geo, output_tokens_details, server_tool_use, service_tier
 exact<Anthropic.Message>(anthropicMessage)
-// @ts-expect-error message_start and message_delta omit the same nullable fields as anthropicMessage (container, stop_details, usage details)
 exact<Array<Anthropic.RawMessageStreamEvent | { type: "ping" }>>(anthropicEvents)
 // @ts-expect-error request_id is sent as the request-id header, not in the body
 exact<Anthropic.ErrorResponse>(anthropicError)

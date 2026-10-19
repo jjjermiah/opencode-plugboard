@@ -9,9 +9,35 @@ bun install
 bun run typecheck
 ```
 
+Biome formats and lints the code (`biome.jsonc`). CI runs both checks, and the `pre-commit` hook (`bunx lefthook install`) runs them on the staged files:
+
+```sh
+bun run lint            # lint
+bun run format          # check the format
+bun run format:write    # fix the format
+```
+
+`mise.toml` pins Bun and Node to the versions CI uses (`mise install`). The reformat that introduced Biome is in `.git-blame-ignore-revs`.
+
+Before a pull request, run the whole local chain in one foreground command: lint and format check, typecheck, tests with the coverage gates, the coverage manifest, the package checks, the docs build and the scripted examples.
+
+```sh
+bun run validate                   # about 7 minutes; logs in .agents/validate/<step>.log
+bun run validate --mutations       # also the mutation run, after touching a guard
+bun run validate --skip examples   # while iterating
+```
+
+After you merge `main` into a branch, run `bun run regen` before you commit the merge. It is one foreground command (as long as the `test` step above) that regenerates what conflicts between parallel branches: a floors file with conflict markers in `.github/floors/` becomes the per-key maximum of both sides, then it runs the tests with the coverage gates and the floor ratchet, rewrites `docs/compatibility.md` from the compatibility results, rewrites the table in `examples/README.md` (`.github/scripts/examples-index.ts`), and prints which of those files changed. It stages and commits nothing. `CHANGELOG.md` needs no step: `.gitattributes` gives it `merge=union`, so bullets added by two branches under `[Unreleased]` both stay in a local merge. GitHub's web merge ignores that attribute, so merge `main` into the branch locally and push.
+
+`bun run validate` runs from different worktrees at the same time are independent: the scripted examples use ephemeral ports and per-run temp directories, and the Gemini CLI and Aider runners each get their own home, so nothing they write is shared. A new runner that writes outside its own directory must do the same: use a per-run directory, never a fixed name under the temp dir or `~`.
+
+Write a new option's version marker as the placeholder `(since next)` (`Since next` at the start of a sentence), in `CHANGELOG.md` and `docs/**/*.md`; the release script fills in the version. See [releasing.md](releasing.md#version-markers-the-since-next-placeholder).
+
+After you push, `bun run pr-wait <number>` waits for every check the main branch requires and prints one verdict. When the ruleset requires an approving review, it also waits for the review bot's approval, and with the up-to-date rule on, a pull request behind `main` is red until its branch is updated (`--merge` does that); see [review-bot.md](review-bot.md#pr-wait-and-release-with-a-required-approval).
+
 The `/plugboard` TUI page loads from `dist/tui.js` when the package is installed from npm, and from `tui.ts` (which re-exports it) when it is configured by local path. Run `bun run build:tui` once after a change to `src/tui.tsx`, before you test the TUI page against a local checkout. `bun run typecheck` and `bun test` do not need the build. See [packaging.md](packaging.md) for why the file is compiled.
 
-The type check is also the host-compatibility gate: it fails when the `@opencode/plugin` types change shape. The devDependencies are pinned to the newest host (`@opencode/plugin` 2.0.27 with `effect` 4.0.1). The peer range `>=2.0.26 <2.1` allows 2.0.x patch releases; CI runs the typecheck and tests against 2.0.26 (with `effect` 4.0.0-rc.112) and 2.0.27, and the other releases in the range are not tested.
+The type check is also the host-compatibility gate: it fails when the `@opencode/plugin` types change shape. The devDependencies are pinned to a recent host (`@opencode/plugin` 2.0.32 with `effect` 4.0.1), and a weekly workflow opens a pull request for each new host release. The peer range `>=2.0.26 <2.1` allows 2.0.x patch releases. CI picks three hosts from the range with `.github/scripts/host-versions.ts` (the oldest, a middle one and the newest published) and runs the typecheck and tests against each; the other releases are not tested.
 
 ## Isolated server
 

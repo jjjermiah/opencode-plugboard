@@ -76,10 +76,7 @@ function UsagePage(props: { context: Plugin.Context; onClose: () => void }) {
             {report() ? `${report()!.from} to ${report()!.to} (UTC)` : PRESET_LABEL(query().preset)}
             {" · "}t today · w 7 days · m 30 days · q 90 days · r refresh · esc back
           </text>
-          <Show
-            when={!report.error}
-            fallback={<text fg={theme.text.feedback.error.base}>{unavailableMessage(report.error)}</text>}
-          >
+          <Show when={!report.error} fallback={<text fg={theme.text.feedback.error.base}>{unavailableMessage(report.error)}</text>}>
             <Show when={report()} fallback={<text fg={theme.text.muted}>Loading usage…</text>}>
               <UsageBody report={report()!} theme={theme} />
             </Show>
@@ -111,7 +108,12 @@ function UsageBody(props: { report: UsageReport; theme: Theme }) {
         Apps
       </text>
       <Show when={apps().length > 0} fallback={<text fg={props.theme.text.muted}>No requests in this range.</text>}>
-        <text fg={props.theme.text.muted}>{formatLine(APP_COLUMNS.map((column) => column.title), APP_COLUMNS)}</text>
+        <text fg={props.theme.text.muted}>
+          {formatLine(
+            APP_COLUMNS.map((column) => column.title),
+            APP_COLUMNS,
+          )}
+        </text>
         <For each={apps()}>
           {(row) => (
             <box flexDirection="row">
@@ -125,10 +127,13 @@ function UsageBody(props: { report: UsageReport; theme: Theme }) {
         Models
       </text>
       <Show when={models().length > 0} fallback={<text fg={props.theme.text.muted}>No model calls in this range.</text>}>
-        <text fg={props.theme.text.muted}>{formatLine(MODEL_COLUMNS.map((column) => column.title), MODEL_COLUMNS)}</text>
-        <For each={models()}>
-          {(row) => <text fg={props.theme.text.base}>{formatLine(modelValues(row), MODEL_COLUMNS)}</text>}
-        </For>
+        <text fg={props.theme.text.muted}>
+          {formatLine(
+            MODEL_COLUMNS.map((column) => column.title),
+            MODEL_COLUMNS,
+          )}
+        </text>
+        <For each={models()}>{(row) => <text fg={props.theme.text.base}>{formatLine(modelValues(row), MODEL_COLUMNS)}</text>}</For>
       </Show>
     </box>
   )

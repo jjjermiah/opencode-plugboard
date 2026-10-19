@@ -39,3 +39,34 @@ The snippet uses `client`, `model`, and `zodResponseFormat` from `openai/helpers
 - Streaming usage needs `stream_options: { include_usage: true }`. The `.stream()` helper assembles the single-delta tool call correctly.
 - `models.list()` and `client.models.retrieve(id)` (`GET /v1/models/{id}`) are both served. `retrieve` was added after the 2026-10-11 run; it passes live with this SDK (S7 in `examples/openai-js/runs/live/`).
 - A wrong key throws `AuthenticationError` (401). An unknown model throws `NotFoundError` (404), also with `stream: true`.
+
+## Responses API
+
+The same scenarios on `client.responses` (`/v1/responses`), as the `responses` variant of the example. Each turn can send the whole conversation in `input`, or continue a stored answer with `previous_response_id` (since 0.51.0).
+
+Text. The snippet uses `client` and `model`.
+
+<<< @/../examples/openai-js/chat.ts#snippet-responses
+
+Tool call. The snippet uses `client`, `model`, `PROMPT`, `TOOL_RESULT` and `responsesTool` (`get_weather` in the Responses shape, the name at the top level). `store: false` sends the whole history back in `input`.
+
+<<< @/../examples/openai-js/tools.ts#snippet-responses
+
+Streaming. The snippet uses `client` and `model`. The text comes from the `response.output_text.delta` events, and the final response must agree with them.
+
+<<< @/../examples/openai-js/stream.ts#snippet-responses
+
+Image. The snippet uses `client` and `model`; it reads `examples/_shared/red32.dataurl.txt`.
+
+<<< @/../examples/openai-js/image.ts#snippet-responses
+
+Structured output with `responses.parse` and `zodTextFormat`, then the raw `text.format` `json_schema` form. The snippets use `client`, `model` and `Meal` (a zod schema, as in `structured.ts`).
+
+<<< @/../examples/openai-js/structured.ts#snippet-responses
+
+<<< @/../examples/openai-js/structured.ts#snippet-responses-raw
+
+Gotchas (Responses):
+
+- The Responses API has no `finish_reason`. The example maps it from the response: `tool_calls` if a function call is in the output, else `stop` when the status is `completed`.
+- `previous_response_id` works since 0.51.0: plugboard keeps each answer made with `store` on, per app. Before 0.51.0 it was refused with a 400 `unsupported_parameter`, and the recorded live run still shows that. See [Responses API](../responses.md#stored-responses-since-0-51-0).

@@ -1,0 +1,232 @@
+{
+  "client": {
+    "name": "@google/gemini-cli",
+    "runtime": {
+      "name": "bun",
+      "version": "1"
+    },
+    "version": "0.64.0"
+  },
+  "example": "gemini-cli",
+  "models": [
+    "fast",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-5.6-luna#low",
+    "nope"
+  ],
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "fast",
+      "note": "not checked, finish_reason is stop: the CLI's output carries no finish reason; the status is recorded as success or error",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.fast.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "not checked, finish_reason is stop: the CLI's output carries no finish reason; the status is recorded as success or error",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.anthropic-claude-haiku-4-5.json"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "not checked, finish_reason is stop: the CLI's output carries no finish reason; the status is recorded as success or error",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.openai-gpt-5.6-luna-low.json"
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "fast",
+      "note": "the CLI runs its own built-in tools; a custom get_weather tool cannot be added to a headless run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "the CLI runs its own built-in tools; a custom get_weather tool cannot be added to a headless run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "the CLI runs its own built-in tools; a custom get_weather tool cannot be added to a headless run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [
+        {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage chunk present when requested",
+          "ok": true
+        },
+        {
+          "name": "stream ended normally",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S3",
+      "model": "fast",
+      "note": "not checked, finish_reason is stop: the CLI's output carries no finish reason; the status is recorded as success or error",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S3.fast.json"
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S4",
+      "model": "fast",
+      "note": "the CLI runs its own built-in tools; a custom get_weather tool cannot be added to a headless run",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "fast",
+      "note": "the CLI takes an image only as a file reference in the prompt, not a data URL, so S5 is not run through it",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "the CLI takes an image only as a file reference in the prompt, not a data URL, so S5 is not run through it",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S5",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "the CLI takes an image only as a file reference in the prompt, not a data URL, so S5 is not run through it",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S6",
+      "model": "fast",
+      "note": "the CLI has no JSON-schema output option",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S6",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "the CLI has no JSON-schema output option",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S6",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "the CLI has no JSON-schema output option",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "S7",
+      "model": "-",
+      "note": "the CLI does not list models",
+      "required": true,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "E1",
+      "model": "fast",
+      "note": "not run: the CLI prints API errors as text, and its JSON output was not checked for a status",
+      "required": false,
+      "status": "n/a",
+      "transcript": null
+    },
+    {
+      "checks": [],
+      "error": null,
+      "id": "E2",
+      "model": "nope",
+      "note": "not run: the CLI prints API errors as text, and its JSON output was not checked for a status",
+      "required": false,
+      "status": "n/a",
+      "transcript": null
+    }
+  ],
+  "schema": 1,
+  "target": "scripted",
+  "verdict": "pass"
+}

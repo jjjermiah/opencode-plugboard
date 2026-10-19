@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions } from "../../src/config.js"
+import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, isLoopbackHost, maxNFor, parseOptions, reasoningOutputFor } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -22,6 +22,7 @@ describe("parseOptions: defaults", () => {
       logLevel: "info",
       logRequests: true,
       metrics: false,
+      reasoningOutput: false,
       modelIds: "canonical",
       usage: { enabled: true, retentionDays: 90 },
     })
@@ -64,9 +65,14 @@ describe("parseOptions: defaults", () => {
   test("#156 the body limits are kept when set, and default to 128 MiB in flight and 30 s when not", () => {
     expect(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }).limits).toEqual({ maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 })
     // `maxBodyBytes` (#258) is the largest body, 32 MiB unless `limits.maxBodyBytes` or the app's own cap lowers it.
-    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({ maxBytesInFlight: 1024, readTimeoutMs: 500, maxBodyBytes: 33_554_432 })
-    expect(bodyLimits(parseOptions({ limits: { maxConcurrent: 2 } }))).toEqual({ maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, maxBodyBytes: 33_554_432 })
-    expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000, maxBodyBytes: 33_554_432 })
+    expect(bodyLimits(parseOptions({ limits: { maxBodyBytesInFlight: 1024, bodyReadTimeoutMs: 500 } }))).toEqual({
+      maxBytesInFlight: 1024,
+      readTimeoutMs: 500,
+      readCeilingMs: 300_000,
+      maxBodyBytes: 33_554_432,
+    })
+    expect(bodyLimits(parseOptions({ limits: { maxConcurrent: 2 } }))).toEqual({ maxBytesInFlight: 128 * 1024 * 1024, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
+    expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
   })
 
   test("#158 history keeps 30 days by default; maxAgeDays 0 is the explicit opt-out to no age limit", () => {
@@ -89,6 +95,7 @@ describe("parseOptions: every rejection names the option", () => {
     ["keys that are not an object", { keys: ["k"] }, /`keys` must be an object/],
     ["the reserved app name default", { keys: { default: "k" } }, /reserved/],
     ["an app name with capitals", { keys: { MyApp: "k" } }, /must match/],
+    ["an app name longer than 255 characters (#418)", { keys: { ["x".repeat(256)]: "k" } }, /at most 255 characters/],
     ["an empty key (unset {env:VAR})", { keys: { app: "" } }, /non-empty string/],
     ["a key that is not a string", { keys: { app: 1 } }, /non-empty string/],
     ["two apps sharing one key", { keys: { a: "same", b: "same" } }, /`a` and `b` have the same value/],
@@ -106,6 +113,8 @@ describe("parseOptions: every rejection names the option", () => {
     ["a maxTools above 1024", { maxTools: 1025 }, /`maxTools`/],
     ["a requestTimeoutMs past the timer limit", { requestTimeoutMs: 2 ** 31 }, /`requestTimeoutMs`/],
     ["a string requestTimeoutMs", { requestTimeoutMs: "1000" }, /`requestTimeoutMs`/],
+    ["a fallbackAfterMs past the timer limit", { fallbackAfterMs: 2 ** 31 }, /`fallbackAfterMs`/],
+    ["a string fallbackAfterMs", { fallbackAfterMs: "500" }, /`fallbackAfterMs`/],
     ["a remoteImages that is not a boolean", { remoteImages: "yes" }, /`remoteImages` must be a boolean/],
     ["a dropUnsupportedParams that is not a boolean", { dropUnsupportedParams: 1 }, /`dropUnsupportedParams` must be a boolean/],
     ["a history that is not an object", { history: 5 }, /`history` must be an object/],
@@ -266,7 +275,7 @@ describe("#258 limits.maxBodyBytes and limits.apps.<name>.maxBodyBytes", () => {
 
   test("the app cap is kept in limits.apps and does not change the other app limits", () => {
     const limits = bodyLimits(parseOptions({ keys: { widget: "k-widget" }, limits: { apps: { widget: { maxBodyBytes: 1000, maxConcurrent: 2 } } } }), "widget")
-    expect(limits).toEqual({ maxBytesInFlight: 128 * MIB, readTimeoutMs: 30_000, maxBodyBytes: 1000 })
+    expect(limits).toEqual({ maxBytesInFlight: 128 * MIB, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 1000 })
   })
 
   test.each([
@@ -441,9 +450,9 @@ describe("parseOptions: skill aliases (#79)", () => {
   })
 
   test("#79 a skill target cannot be part of a list of fallbacks", () => {
-    expect(() =>
-      parseOptions({ models: MODELS, aliases: { "invoice-parser": ["skill:invoice-parser@anthropic/claude-sonnet-4-6", "openai/gpt-mini"] } }),
-    ).toThrow(/binds a skill, so it takes one target and no list of fallbacks/)
+    expect(() => parseOptions({ models: MODELS, aliases: { "invoice-parser": ["skill:invoice-parser@anthropic/claude-sonnet-4-6", "openai/gpt-mini"] } })).toThrow(
+      /binds a skill, so it takes one target and no list of fallbacks/,
+    )
   })
 })
 
@@ -467,7 +476,12 @@ describe("parseOptions: agents (#6)", () => {
     ["an unknown field", { agents: [{ name: "review", model: "anthropic/claude-sonnet-4-6", tools: true }] }, /Unknown plugboard option `agents.tools`/],
     [
       "the same name twice",
-      { agents: [{ name: "review", model: "anthropic/claude-sonnet-4-6" }, { name: "review", model: "openai/gpt-mini" }] },
+      {
+        agents: [
+          { name: "review", model: "anthropic/claude-sonnet-4-6" },
+          { name: "review", model: "openai/gpt-mini" },
+        ],
+      },
       /listed more than once/,
     ],
   ])("#6 an agent option with %s is rejected at load", (_name, extra, message) => {
@@ -598,5 +612,58 @@ describe("#270 review NIT 8: maxN edge cases", () => {
     const options = parseOptions({ keys: { chat: "k" }, maxN: 3, apps: { chat: { maxN: 1 } } })
     expect(maxNFor(options, "nobody")).toBe(3)
     expect(maxNFor(options, "constructor")).toBe(3)
+  })
+})
+
+describe("reasoningOutput (since 0.36.0)", () => {
+  test("defaults to off, so reasoning stays dropped", () => {
+    expect(parseOptions({}).reasoningOutput).toBe(false)
+  })
+
+  test("true is kept, false is kept", () => {
+    expect(parseOptions({ reasoningOutput: true }).reasoningOutput).toBe(true)
+    expect(parseOptions({ reasoningOutput: false }).reasoningOutput).toBe(false)
+  })
+
+  test("must be a boolean, and the message names the option", () => {
+    expect(() => parseOptions({ reasoningOutput: "yes" })).toThrow("plugboard option `reasoningOutput` must be a boolean")
+  })
+
+  test("per app: apps.<name>.reasoningOutput is kept, and must be a boolean", () => {
+    expect(parseOptions({ keys: { a: "k" }, apps: { a: { reasoningOutput: false } } }).apps.a).toMatchObject({ reasoningOutput: false })
+    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { reasoningOutput: 1 } } })).toThrow("plugboard option `apps.a.reasoningOutput` must be a boolean")
+  })
+
+  test("the effective value: the app's own value wins over the global one, both ways, and the global one applies when the app has none", () => {
+    const options = parseOptions({
+      keys: { off: "k1", on: "k2", none: "k3" },
+      reasoningOutput: true,
+      apps: { off: { reasoningOutput: false }, on: { reasoningOutput: true } },
+    })
+    expect(reasoningOutputFor(options, "off")).toBe(false)
+    expect(reasoningOutputFor(options, "none")).toBe(true)
+    expect(reasoningOutputFor(parseOptions({ keys: { on: "k2" }, apps: { on: { reasoningOutput: true } } }), "on")).toBe(true)
+    expect(reasoningOutputFor(parseOptions({ keys: { none: "k3" } }), "none")).toBe(false)
+    expect(reasoningOutputFor(options, "on")).toBe(true)
+  })
+})
+
+describe("#391 fallbackAfterMs", () => {
+  test("absent by default; set, it is the global first-event deadline", () => {
+    expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("fallbackAfterMs")
+    expect(() => parseOptions({ models: ["a/*"], fallbackAfterMs: 0 })).toThrow(/`fallbackAfterMs` must be an integer between 1/)
+    expect(parseOptions({ models: ["a/*"], fallbackAfterMs: 1500 }).fallbackAfterMs).toBe(1500)
+  })
+
+  test("refused at load when it is not below requestTimeoutMs, which would never let it fire", () => {
+    expect(() => parseOptions({ models: ["a/*"], requestTimeoutMs: 5000, fallbackAfterMs: 5000 })).toThrow(/must be below `requestTimeoutMs` \(5000\)/)
+    expect(() => parseOptions({ models: ["a/*"], fallbackAfterMs: 600_000 })).toThrow(/must be below `requestTimeoutMs` \(600000\)/)
+    expect(parseOptions({ models: ["a/*"], requestTimeoutMs: 5000, fallbackAfterMs: 4999 }).fallbackAfterMs).toBe(4999)
+  })
+
+  test("refused at load when an app's own requestTimeoutMs is not above it; the global deadline is checked against the app's too", () => {
+    const base = { models: ["a/*"], keys: { bot: "k-bot" } }
+    expect(() => parseOptions({ ...base, fallbackAfterMs: 1000, apps: { bot: { requestTimeoutMs: 1000 } } })).toThrow(/must be below `apps\.bot\.requestTimeoutMs` \(1000\)/)
+    expect(parseOptions({ ...base, fallbackAfterMs: 1000, apps: { bot: { requestTimeoutMs: 5000 } } }).fallbackAfterMs).toBe(1000)
   })
 })

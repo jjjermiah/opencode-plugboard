@@ -4,7 +4,8 @@
  *
  * One state machine (`runResponse`) serves both: it emits stream events as it goes and returns
  * the final response object, so the JSON body and the stream never disagree. A non-streaming
- * call passes a no-op `emit`. Reasoning deltas are dropped (no reasoning items are produced).
+ * call passes a no-op `emit`. Reasoning deltas are dropped unless the exchange asks for them (option
+ * `reasoningOutput`): then each run of them is one `reasoning` output item with a `summary_text` part, as OpenAI sends.
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import { structuredMissing, textFallback } from "../openai/response.js"
@@ -28,6 +29,8 @@ export interface ResponsesExchange {
   readonly callerTools?: boolean
   /** The caller's `text.format` schema: a text answer is taken when the model skipped the respond call (`textFallback`, #173). */
   readonly structuredSchema?: Readonly<Record<string, unknown>>
+  /** Option `reasoningOutput` (since 0.36.0): reasoning is returned as a `reasoning` item. Never in structured output. */
+  readonly reasoningOutput?: boolean
 }
 
 /** A stream event as emitted: `type` is also the SSE event name. */
@@ -68,7 +71,6 @@ const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Mod
 /** SSE frame of one stream event: `event: <type>` then `data: <json>`. */
 export const sseFrame = (event: ResponsesStreamEvent): string => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
 
-
 /**
  * `committed`: whether the transport already committed a 200 stream before any event was emitted
  * (the SSE writer does at the first reasoning event, #49). A failure then still opens the response
@@ -101,6 +103,8 @@ export async function runResponse(
   /** Output items that are open or done: the next item's `output_index`. */
   let nextIndex = 0
   let open: { id: string; index: number; text: string } | undefined
+  /** The open reasoning item: a run of reasoning deltas (summary part 0). Closed before any message or tool call. */
+  let reasoning: { id: string; index: number; text: string } | undefined
   let started = false
   let calls = 0
   let answered = false
@@ -125,9 +129,38 @@ export async function runResponse(
     role: "assistant",
     content: text === undefined ? [] : [{ type: "output_text", text, annotations: [], logprobs: [] }],
   })
+  const reasoningDelta = (delta: string) => {
+    if (delta.length === 0) return
+    start()
+    if (!reasoning) {
+      closeMessage()
+      reasoning = { id: newId("rs"), index: nextIndex++, text: "" }
+      send("response.output_item.added", { output_index: reasoning.index, item: { id: reasoning.id, type: "reasoning", status: "in_progress", summary: [] } })
+      send("response.reasoning_summary_part.added", {
+        item_id: reasoning.id,
+        output_index: reasoning.index,
+        summary_index: 0,
+        part: { type: "summary_text", text: "" },
+      })
+    }
+    reasoning.text += delta
+    send("response.reasoning_summary_text.delta", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, delta })
+  }
+  /** `incomplete` when a failure cut the run short, else `completed` (the item's own status, as OpenAI sends it). */
+  const closeReasoning = (status: "completed" | "incomplete" = "completed") => {
+    if (!reasoning) return
+    const part = { type: "summary_text", text: reasoning.text }
+    send("response.reasoning_summary_text.done", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, text: reasoning.text })
+    send("response.reasoning_summary_part.done", { item_id: reasoning.id, output_index: reasoning.index, summary_index: 0, part })
+    const item = { id: reasoning.id, type: "reasoning", status, summary: [part] }
+    send("response.output_item.done", { output_index: reasoning.index, item })
+    items.push(item)
+    reasoning = undefined
+  }
   const text = (delta: string) => {
     if (delta.length === 0) return
     start()
+    closeReasoning()
     if (!open) {
       open = { id: newId("msg"), index: nextIndex++, text: "" }
       send("response.output_item.added", { output_index: open.index, item: messageItem(open.id, "in_progress", undefined) })
@@ -141,12 +174,13 @@ export async function runResponse(
     open.text += delta
     send("response.output_text.delta", { item_id: open.id, output_index: open.index, content_index: 0, delta, logprobs: [] })
   }
-  const closeMessage = () => {
+  /** `incomplete` when the answer was cut by a limit or a filter: the item open at the cut is cut too (#425). */
+  const closeMessage = (status: "completed" | "incomplete" = "completed") => {
     if (!open) return
     const part = { type: "output_text", text: open.text, annotations: [], logprobs: [] }
     send("response.output_text.done", { item_id: open.id, output_index: open.index, content_index: 0, text: open.text, logprobs: [] })
     send("response.content_part.done", { item_id: open.id, output_index: open.index, content_index: 0, part })
-    const item = messageItem(open.id, "completed", open.text)
+    const item = messageItem(open.id, status, open.text)
     send("response.output_item.done", { output_index: open.index, item })
     items.push(item)
     open = undefined
@@ -154,6 +188,7 @@ export async function runResponse(
   /** Tool calls arrive whole, so each goes out as one arguments delta. */
   const toolCall = (call: ToolCall) => {
     start()
+    closeReasoning()
     closeMessage()
     const index = nextIndex++
     const itemId = newId("fc")
@@ -179,7 +214,11 @@ export async function runResponse(
       else finish = event.reason
       continue
     }
-    if (event.type === "reasoning-delta") continue
+    if (event.type === "reasoning-delta") {
+      // Not in structured output: its content is the answer's arguments.
+      if (exchange.reasoningOutput && exchange.structuredTool === undefined) reasoningDelta(event.text)
+      continue
+    }
     if (exchange.structuredTool !== undefined) {
       // Structured mode: only the first answer is content; prose and other tool calls are
       // suppressed, except the caller's own tools when they are offered.
@@ -206,6 +245,7 @@ export async function runResponse(
   if (failure) {
     if (!started && !committed()) return { failure, started }
     start()
+    closeReasoning("incomplete")
     closeMessage()
     const response = envelope("failed", items, {
       error: { code: failure.code ?? failure.kind, message: failure.message },
@@ -217,11 +257,13 @@ export async function runResponse(
   start()
   if (held && structuredAnswer) text(args(held.input))
   if (fallback !== undefined) text(fallback)
-  closeMessage()
   const incomplete = finish === "length" ? "max_output_tokens" : finish === "content-filter" ? "content_filter" : undefined
+  closeReasoning(incomplete ? "incomplete" : "completed")
+  closeMessage(incomplete ? "incomplete" : "completed")
   const response = envelope(incomplete ? "incomplete" : "completed", items, {
     ...(incomplete ? { incomplete_details: { reason: incomplete } } : {}),
-    ...(usage ? { usage: encodeUsage(usage) } : {}),
+    // Always present (#390): zeros when the host reported none for the run, as the chat body does.
+    usage: encodeUsage(usage ?? {}),
   })
   send(incomplete ? "response.incomplete" : "response.completed", { response })
   return { started, response, ...(fallback !== undefined ? { structuredFallback: true } : {}) }

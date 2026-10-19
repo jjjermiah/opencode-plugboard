@@ -46,9 +46,7 @@ const run = Bun.spawnSync(["npm", "pack", "--dry-run", "--json", "--ignore-scrip
   stderr: "inherit",
 })
 if (run.exitCode !== 0) throw new Error(`npm pack failed with exit code ${run.exitCode}`)
-const packed = new Set<string>(
-  (JSON.parse(run.stdout.toString()) as [{ files: { path: string }[] }])[0].files.map((f) => f.path),
-)
+const packed = new Set<string>((JSON.parse(run.stdout.toString()) as [{ files: { path: string }[] }])[0].files.map((f) => f.path))
 
 const unexpected = [...packed].filter((p) => !expected.has(p)).sort()
 const missing = [...expected].filter((p) => !packed.has(p)).sort()

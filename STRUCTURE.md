@@ -14,6 +14,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `.github/floors/` | Ratcheting CI floors: tests per layer and coverage. Raised with `.github/scripts/test-gates.ts --ratchet`. |
 | `.github/` | CI, release scripts, the pack check, the test gates and the compatibility matrix renderer. Not published. |
 | `CONTRIBUTING.md`, `AGENTS.md` | Rules for people and for coding agents. |
+| `biome.jsonc`, `lefthook.yml`, `mise.toml`, `.git-blame-ignore-revs` | Tooling: Biome format and lint settings, the git hooks (Biome on staged files, commitlint), the Bun and Node pin CI uses, and the commits `git blame` skips. `.github/CODEOWNERS` names the owner. |
 
 ## `src/` top-level files
 
@@ -23,7 +24,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `config.ts` | The options type, defaults, `parseOptions`, `authenticate`, `authenticateUsage` (the admin key) and the loopback host check. |
 | `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. |
 | `limits.ts` | Concurrency caps and requests per minute per app (option `limits`): a `ModelCaller` wrapper outside the fallbacks, with its queues on the runtime. |
-| `stop.ts` | Caller stop sequences on the answer text: the tail check of a plain stop and the streamed holdback, shared by every front-end that has `stop` (#145, #149). |
+| `stop.ts` | Caller stop sequences on the answer text (#145, #149, #390). `withStopSequences` wraps the session caller in `index.ts`: it scans the streamed text, interrupts the host run on a match, and passes the finish on with its usage. Reasoning and tool calls are never matched. |
 | `budgets.ts` | Per-app budgets (option `budgets`): requests, tokens and cost per UTC day, week or month, read from the usage records. A `ModelCaller` wrapper outside `limits.ts`, with its warning state on the runtime. |
 | `forwarded.ts` | Reverse-proxy headers (#266): `listen.trustProxy` parsing, the client address for the log, the forwarded host and origin. Read only from a trusted peer, never for authentication. |
 | `http.ts` | Ingress and transport: body limits, Host and Origin checks, disconnect abort, the one deadline, JSON and SSE writers. |
@@ -50,7 +51,8 @@ Each API front-end has the same three files: `request.ts` decodes the wire body 
 |---|---|
 | `admin/` | The admin routes for runtime keys (`/plugboard/admin/keys`), served only when `adminKey` is set (#55). |
 | `openai/` | Chat Completions and `/v1/models`. `route.ts` is also the front door: it checks Host and Origin, authenticates, and hands every other API to its own route. Also holds `fanout.ts` (`n` above 1: one call per choice, merged) and `sampling.ts` (sampling parameters a model rejects). |
-| `responses/` | `POST /v1/responses`. Stateless except `store.ts`: the output items of recent answers per app (1000 for an hour, in memory), so an `item_reference` resolves (#147). |
+| `responses/` | `POST /v1/responses`, plus `GET` and `DELETE /v1/responses/{id}` and `GET /v1/responses/{id}/input_items`. `state.ts` is the durable store of stored responses per app on the host storage, behind `previous_response_id` (I32). `store.ts` keeps the output items of recent answers per app (1000 for an hour, in memory), so an `item_reference` resolves (#147). |
+| `files/` | The Files APIs (since next, I33). `state.ts` is the per-app store of uploaded files on the host storage. `content.ts` decides a file's type from its bytes. `refs.ts` finds the `file_id` and `fileUri` references in a request body and replaces them with the inline form of the stored file, before a decoder runs. `route.ts` serves `/v1/files` (OpenAI and Anthropic shapes) and `inlineRequestFiles`. `gemini/route.ts` serves Gemini's upload (resumable and multipart) and `/v1beta/files`. `wire.ts` has the three file objects and the paging. `multipart.ts` parses an upload body. |
 | `anthropic/` | `POST /v1/messages`. Takes the request over early: Anthropic error bodies and `x-api-key` auth. |
 | `gemini/` | `generateContent`, `streamGenerateContent` and the Gemini model list. The model is in the URL, errors use Google's body. |
 | `completions/` | Legacy `POST /v1/completions`. Always goes through the fan-out. |

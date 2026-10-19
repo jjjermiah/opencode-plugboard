@@ -1,0 +1,360 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            }
+          ],
+          "model": "fast",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "tools": [
+            {
+              "function": {
+                "description": "Get the current weather for a city. Input: the city name.",
+                "name": "get_weather",
+                "parameters": {
+                  "$schema": "http://json-schema.org/draft-07/schema#",
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "strict": false
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "",
+                      "role": "assistant"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-1>",
+                "id": "<id-2>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "tool_calls": [
+                        {
+                          "function": {
+                            "arguments": "{\"input\":\"Paris\"}",
+                            "name": "get_weather"
+                          },
+                          "id": "<id-3>",
+                          "index": 0,
+                          "type": "function"
+                        }
+                      ]
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-2>",
+                "id": "<id-2>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {},
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-3>",
+                "id": "<id-2>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [],
+                "created": "<time-4>",
+                "id": "<id-2>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": {
+                  "completion_tokens": 69,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 628,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 697
+                }
+              }
+            },
+            {
+              "data": "[DONE]"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-1>"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "What is the weather in Paris? Use the tool.",
+              "role": "user"
+            },
+            {
+              "content": [],
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"input\":\"Paris\"}",
+                    "name": "get_weather"
+                  },
+                  "id": "<id-3>",
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "content": "[{\"response\":\"{\\\"temp_c\\\":18,\\\"sky\\\":\\\"cloudy\\\",\\\"city\\\":\\\"Paris\\\"}\"}]",
+              "role": "tool",
+              "tool_call_id": "<id-3>"
+            }
+          ],
+          "model": "fast",
+          "stream": true,
+          "stream_options": {
+            "include_usage": true
+          },
+          "tools": [
+            {
+              "function": {
+                "description": "Get the current weather for a city. Input: the city name.",
+                "name": "get_weather",
+                "parameters": {
+                  "$schema": "http://json-schema.org/draft-07/schema#",
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "strict": false
+              },
+              "type": "function"
+            }
+          ]
+        },
+        "headers": {
+          "accept": "application/json",
+          "content-type": "application/json"
+        },
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      },
+      "response": {
+        "body": {
+          "sse": [
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "",
+                      "role": "assistant"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-5>",
+                "id": "<id-5>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "The"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-6>",
+                "id": "<id-5>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": " current weather in Paris is:\n- **Temperature:** 18°C\n- **Conditions:** Cloudy\n\nIt's a"
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-7>",
+                "id": "<id-5>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": " mild, cloudy day in Paris with temperatures around 18 "
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-8>",
+                "id": "<id-5>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {
+                      "content": "degrees Celsius (about 64°F)."
+                    },
+                    "finish_reason": null,
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-9>",
+                "id": "<id-5>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [
+                  {
+                    "delta": {},
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "logprobs": null
+                  }
+                ],
+                "created": "<time-10>",
+                "id": "<id-5>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": null
+              }
+            },
+            {
+              "data": {
+                "choices": [],
+                "created": "<time-11>",
+                "id": "<id-5>",
+                "model": "anthropic/claude-haiku-4-5",
+                "object": "chat.completion.chunk",
+                "usage": {
+                  "completion_tokens": 55,
+                  "completion_tokens_details": {
+                    "reasoning_tokens": 0
+                  },
+                  "prompt_tokens": 737,
+                  "prompt_tokens_details": {
+                    "cached_tokens": 0
+                  },
+                  "total_tokens": 792
+                }
+              }
+            },
+            {
+              "data": "[DONE]"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "text/event-stream; charset=utf-8",
+          "x-plugboard-fallbacks": "1",
+          "x-plugboard-model": "anthropic/claude-haiku-4-5",
+          "x-plugboard-session": "<id-4>"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

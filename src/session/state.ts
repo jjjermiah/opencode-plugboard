@@ -34,6 +34,8 @@ export interface RequestState {
   readonly collector: EventSink
   /** System parts placed before the app's and the caller's (a skill's content, option `skill:` alias). Empty or absent for a plain model. */
   readonly prelude?: ReadonlyArray<string>
+  /** How many messages the host had before the first context call of this request (#417). Set by the context hook, for apps with serverTools only. */
+  hostMessages?: number
 }
 
 export interface Retirement {

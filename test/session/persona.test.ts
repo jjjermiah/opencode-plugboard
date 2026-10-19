@@ -54,8 +54,7 @@ function setup(persona: (model: string) => Persona | undefined = (model) => pers
     queueMicrotask(() => [bus(input.sessionID).textDelta("ok"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)))
   }
   const caller = createSessionCaller({ port, sessions, maxTools: 4, persona })
-  const call = (request: PlugRequest, context: Partial<CallContext> = {}) =>
-    drain(caller.stream(request, { app: "app", signal: new AbortController().signal, ...context }))
+  const call = (request: PlugRequest, context: Partial<CallContext> = {}) => drain(caller.stream(request, { app: "app", signal: new AbortController().signal, ...context }))
   return { port, states, call }
 }
 
@@ -77,9 +76,7 @@ describe("#79 a skill alias in the session caller", () => {
     const run = setup()
     const events = await run.call(plugRequest({ model: "invoice-parser", ref: echoLow }))
 
-    expect(events).toEqual([
-      { type: "error", error: { status: 404, kind: "not_found", message: "Skill invoice-parser is not available", code: "model_not_found", param: "model" } },
-    ])
+    expect(events).toEqual([{ type: "error", error: { status: 404, kind: "not_found", message: "Skill invoice-parser is not available", code: "model_not_found", param: "model" } }])
     expect(run.port.created).toEqual([])
   })
 
@@ -102,6 +99,16 @@ describe("#6 an agent in the session caller", () => {
     // Caller tools are still returned unexecuted: they reach the model as seeds, and no OpenCode tool is allowed.
     expect(run.states[0]!.request.tools).toEqual([lookup])
     expect(run.states[0]!.prelude).toEqual([])
+  })
+
+  test("the prompt stored in the session opens with the agent's system prompt, and the caller's system text never reaches it (#6 live proof)", async () => {
+    const run = setup()
+    run.port.agents.set("review", { system: "Always answer in exactly three words, the last being BANANA." })
+    await run.call(plugRequest({ model: "agent/review", ref: echoHigh, system: ["CALLER SYSTEM: reply in German."] }))
+
+    const stored = run.port.prompted[0]!.text
+    expect(stored.startsWith("## system\nAlways answer in exactly three words, the last being BANANA.\n\n## ")).toBe(true)
+    expect(stored).not.toContain("CALLER SYSTEM")
   })
 
   test("an agent with no system prompt runs with none, not with the caller's", async () => {

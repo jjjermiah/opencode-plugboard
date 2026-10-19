@@ -22,8 +22,22 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     expect(message).toMatchObject({ content: [{ type: "text", text: "Hello" }], stop_reason: "end_turn", stop_sequence: null })
     expect(message.id).toMatch(/^msg_[0-9a-f]{32}$/)
     // input_tokens excludes the cached parts, which are reported on their own.
-    expect(message.usage).toEqual({ input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3 })
-    expect(emitted.at(-2)).toMatchObject({ delta: { stop_reason: "end_turn" }, usage: message.usage })
+    expect(message.usage).toEqual({
+      input_tokens: 6,
+      output_tokens: 2,
+      cache_creation_input_tokens: 1,
+      cache_read_input_tokens: 3,
+      cache_creation: null,
+      inference_geo: null,
+      service_tier: null,
+      output_tokens_details: null,
+      server_tool_use: null,
+    })
+    // message_delta carries the narrower MessageDeltaUsage: the same counts, without cache_creation, inference_geo and service_tier.
+    expect(emitted.at(-2)).toMatchObject({
+      delta: { stop_reason: "end_turn" },
+      usage: { input_tokens: 6, output_tokens: 2, cache_creation_input_tokens: 1, cache_read_input_tokens: 3, output_tokens_details: null, server_tool_use: null },
+    })
   })
 
   test("#203 message_start carries zero usage, because the host reports counts at the end; message_delta carries the real ones", async () => {
@@ -45,7 +59,24 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
     const signed: PlugEvent = { type: "reasoning-delta", text: "", signature: "sig_abc" }
     const { types, message } = await run(plain, ev.reasoning("hmm"), signed, ev.text("answer"), ev.finish())
     expect(types).not.toContain("signature_delta")
-    expect(message.content).toEqual([{ type: "text", text: "answer" }])
+    expect(message.content).toEqual([{ type: "text", text: "answer", citations: null }])
+  })
+
+  test("#385 a redacted reasoning event is one redacted_thinking block with its opaque data, and no deltas", async () => {
+    const redacted: PlugEvent = { type: "reasoning-delta", text: "", redactedData: "opaque_1" }
+    const { emitted, message, types } = await run(thinking, redacted, ev.text("answer"), ev.finish())
+    expect(emitted.find((event) => event.type === "content_block_start")).toEqual({ type: "content_block_start", index: 0, content_block: { type: "redacted_thinking", data: "opaque_1" } })
+    expect(types.filter((type) => type === "content_block_delta")).toHaveLength(1)
+    expect(message.content).toEqual([
+      { type: "redacted_thinking", data: "opaque_1" },
+      { type: "text", text: "answer", citations: null },
+    ])
+  })
+
+  test("#385 a redacted block is left out when the caller did not ask for thinking", async () => {
+    const redacted: PlugEvent = { type: "reasoning-delta", text: "", redactedData: "opaque_1" }
+    const { message } = await run(plain, redacted, ev.text("answer"), ev.finish())
+    expect(message.content).toEqual([{ type: "text", text: "answer", citations: null }])
   })
 
   test("a tool call is one tool_use block with the whole input as one input_json_delta; stop_reason tool_use", async () => {
@@ -59,7 +90,7 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
       ["content_block_stop", 1],
     ])
     expect(emitted.find((event) => event.type === "content_block_delta" && event.index === 1)).toMatchObject({ delta: { type: "input_json_delta", partial_json: '{"path":"a"}' } })
-    expect(message.content[1]).toEqual({ type: "tool_use", id: "toolu_call_1", name: "read", input: { path: "a" } })
+    expect(message.content[1]).toEqual({ type: "tool_use", id: "toolu_call_1", name: "read", caller: { type: "direct" }, input: { path: "a" } })
     expect(message.stop_reason).toBe("tool_use")
   })
 
@@ -80,10 +111,13 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
 
   test("reasoning becomes a thinking block only when thinking was asked for", async () => {
     const on = await run(thinking, ev.reasoning("hmm"), ev.text("answer"), ev.finish())
-    expect(on.message.content).toEqual([{ type: "thinking", thinking: "hmm", signature: "" }, { type: "text", text: "answer" }])
+    expect(on.message.content).toEqual([
+      { type: "thinking", thinking: "hmm", signature: "" },
+      { type: "text", text: "answer", citations: null },
+    ])
     expect(on.emitted.find((event) => event.type === "content_block_delta")).toMatchObject({ delta: { type: "thinking_delta", thinking: "hmm" } })
     const off = await run(plain, ev.reasoning("hmm"), ev.text("answer"), ev.finish())
-    expect(off.message.content).toEqual([{ type: "text", text: "answer" }])
+    expect(off.message.content).toEqual([{ type: "text", text: "answer", citations: null }])
   })
 
   test.each([
@@ -157,6 +191,99 @@ describe("#153 a stream keeps no aggregate", () => {
 
   test("a non-streamed answer keeps its content for the JSON body", async () => {
     const { message } = await run({ ...plain, stream: false }, ev.text("Hi"), ev.finish("stop"))
-    expect(message.content).toEqual([{ type: "text", text: "Hi" }])
+    expect(message.content).toEqual([{ type: "text", text: "Hi", citations: null }])
+  })
+})
+
+describe("output_config.format: the answer is a text block of JSON", () => {
+  const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] }
+  const structured: MessagesExchange = { ...plain, structuredTool: "respond", structuredSchema: schema }
+  const withCaller: MessagesExchange = { ...structured, callerTools: true }
+  const ANSWER = { answer: "42" }
+
+  test("the respond call's input is one text block with end_turn, not a tool_use block", async () => {
+    const { message, emitted, failure } = await run(structured, ev.call("c1", "respond", ANSWER), ev.finish("tool-calls"))
+    expect(failure).toBeUndefined()
+    expect(message.content).toEqual([{ type: "text", text: '{"answer":"42"}', citations: null }])
+    expect(message.stop_reason).toBe("end_turn")
+    expect(message.stop_sequence).toBeNull()
+    expect(emitted.find((event) => event.type === "content_block_delta")).toEqual({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: '{"answer":"42"}' } })
+  })
+
+  test("a streamed answer is one text_delta with the same sequence as a text answer", async () => {
+    const { types, emitted } = await run({ ...structured, stream: true }, ev.call("c1", "respond", ANSWER), ev.finish("tool-calls"))
+    expect(types).toEqual(["message_start", "content_block_start", "ping", "content_block_delta", "content_block_stop", "message_delta", "message_stop"])
+    expect(emitted[1]).toMatchObject({ content_block: { type: "text" } })
+    expect(emitted.find((event) => event.type === "message_delta")).toMatchObject({ delta: { stop_reason: "end_turn" } })
+  })
+
+  test("prose around the call, a second respond call and other tool calls are dropped", async () => {
+    const { message } = await run(structured, ev.text("sure"), ev.call("c1", "respond", ANSWER), ev.call("c2", "respond", { answer: "no" }), ev.call("c3", "other"), ev.finish("tool-calls"))
+    expect(message.content).toEqual([{ type: "text", text: '{"answer":"42"}', citations: null }])
+  })
+
+  test("a string input is already the JSON text", async () => {
+    expect((await run(structured, ev.call("c1", "respond", '{"answer":"7"}'), ev.finish("tool-calls"))).message.content[0].text).toBe('{"answer":"7"}')
+  })
+
+  test("thinking blocks still come first when the caller asked for thinking", async () => {
+    const { message } = await run({ ...structured, thinking: true }, ev.reasoning("hmm"), ev.call("c1", "respond", ANSWER), ev.finish("tool-calls"))
+    expect(message.content.map((block: { type: string }) => block.type)).toEqual(["thinking", "text"])
+  })
+
+  test("a length finish keeps its stop_reason", async () => {
+    expect((await run(structured, ev.call("c1", "respond", ANSWER), ev.finish("length"))).message.stop_reason).toBe("max_tokens")
+  })
+
+  test("without the call, text that is the schema's JSON is the answer, and the run says it was a fallback", async () => {
+    const { message, structuredFallback } = await run(structured, ev.text('Here it is:\n```json\n{"answer":"42"}\n```'), ev.finish("stop"))
+    expect(message.content).toEqual([{ type: "text", text: '{"answer":"42"}', citations: null }])
+    expect(message.stop_reason).toBe("end_turn")
+    expect(structuredFallback).toBe(true)
+  })
+
+  test("without the call, prose that does not match the schema is a 502 structured_output_missing and emits nothing", async () => {
+    const result = await run(structured, ev.text("I cannot do that"), ev.finish("stop"))
+    expect(result.emitted).toEqual([])
+    expect(result).toMatchObject({ started: false, failure: { status: 502, code: "structured_output_missing" } })
+  })
+
+  test("a length or content-filter finish with no answer is a 502 too", async () => {
+    for (const reason of ["length", "content-filter"] as const) expect((await run(structured, ev.finish(reason))).failure).toMatchObject({ status: 502, code: "structured_output_missing" })
+  })
+
+  test("a missing answer after a streamed thinking block ends the stream with an error event, no message_stop", async () => {
+    const { types, emitted } = await run({ ...structured, stream: true, thinking: true }, ev.reasoning("hmm"), ev.text("nope"), ev.finish("stop"))
+    expect(types).not.toContain("message_stop")
+    expect(emitted.at(-1)).toMatchObject({ type: "error", error: { type: "api_error" } })
+  })
+
+  test("with caller tools offered, a call to one of them wins: tool_use, no structured text", async () => {
+    const { message } = await run(withCaller, ev.text("checking"), ev.call("c1", "respond", ANSWER), ev.call("c2", "get_weather", { city: "Oslo" }), ev.finish("tool-calls"))
+    expect(message.content).toEqual([{ type: "tool_use", id: "toolu_c2", name: "get_weather", caller: { type: "direct" }, input: { city: "Oslo" } }])
+    expect(message.stop_reason).toBe("tool_use")
+  })
+
+  test("with caller tools offered and none called, the respond call is the text answer", async () => {
+    const { message } = await run(withCaller, ev.call("c1", "respond", ANSWER), ev.finish("tool-calls"))
+    expect(message.content).toEqual([{ type: "text", text: '{"answer":"42"}', citations: null }])
+    expect(message.stop_reason).toBe("end_turn")
+  })
+
+  test("with caller tools offered, a streamed answer waits for the finish", async () => {
+    const { emitted } = await run({ ...withCaller, stream: true }, ev.call("c1", "respond", ANSWER), ev.call("c2", "get_weather"), ev.finish("tool-calls"))
+    expect(emitted.some((event) => (event as { delta?: { type?: string } }).delta?.type === "text_delta")).toBe(false)
+  })
+
+  test("with caller tools offered, the text fallback applies when no tool was called", async () => {
+    const { message, structuredFallback } = await run(withCaller, ev.text('{"answer":"42"}'), ev.finish("stop"))
+    expect(message.content[0].text).toBe('{"answer":"42"}')
+    expect(structuredFallback).toBe(true)
+  })
+
+  test("a request without output_config.format is unchanged: prose stays text and no fallback is reported", async () => {
+    const { message, structuredFallback } = await run(plain, ev.text("hello"), ev.finish("stop"))
+    expect(message.content).toEqual([{ type: "text", text: "hello", citations: null }])
+    expect(structuredFallback).toBeUndefined()
   })
 })

@@ -1,0 +1,82 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": "",
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "GET",
+        "path": "/v1beta/models"
+      },
+      "response": {
+        "body": {
+          "models": [
+            {
+              "description": "anthropic model served by opencode-plugboard",
+              "displayName": "anthropic/claude-haiku-4-5",
+              "name": "models/anthropic/claude-haiku-4-5",
+              "supportedGenerationMethods": [
+                "generateContent",
+                "streamGenerateContent"
+              ],
+              "version": "plugboard"
+            },
+            {
+              "description": "openai model served by opencode-plugboard",
+              "displayName": "openai/gpt-5.6-luna#low",
+              "name": "models/openai/gpt-5.6-luna#low",
+              "supportedGenerationMethods": [
+                "generateContent",
+                "streamGenerateContent"
+              ],
+              "version": "plugboard"
+            },
+            {
+              "description": "anthropic model served by opencode-plugboard",
+              "displayName": "fast",
+              "name": "models/fast",
+              "supportedGenerationMethods": [
+                "generateContent",
+                "streamGenerateContent"
+              ],
+              "version": "plugboard"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": "",
+        "headers": {
+          "accept": "*/*",
+          "content-type": "application/json"
+        },
+        "method": "GET",
+        "path": "/v1beta/models/fast"
+      },
+      "response": {
+        "body": {
+          "description": "anthropic model served by opencode-plugboard",
+          "displayName": "fast",
+          "name": "models/fast",
+          "supportedGenerationMethods": [
+            "generateContent",
+            "streamGenerateContent"
+          ],
+          "version": "plugboard"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

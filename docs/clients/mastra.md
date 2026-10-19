@@ -58,4 +58,15 @@ A possible alternative, not run here, is the AI SDK route: `createOpenAICompatib
 
 ## Verified
 
-Run against the fake, as above. The live dev server was not up, so a live run is still open.
+Run against the fake, as above. The live run is in [Harness runs](#harness-runs-2026-10-16) below.
+
+## Harness runs (2026-10-16)
+
+`examples/mastra/run.ts` runs through the examples harness with `@mastra/core` 1.78.0 and `zod` 4.6.7, pinned in `package.json` and `bun.lock`. It covers S1 text, S2 tool round trip, S3 stream and S4 streamed tool call on `plugboard/fast`, `plugboard/anthropic/claude-haiku-4-5` and `plugboard/openai/gpt-5.6-luna#low` (S3 and S4 on `fast`). S5 to S7 and E1/E2 were not run. Mastra names a tool-call step `tool-calls` (the AI SDK name); the runner maps it to `tool_calls` for the observation. The harness still checks the wire. S3's usage check is unobserved: Mastra sends no `stream_options`, so no usage chunk is requested.
+
+- Scripted, byte-identical across two runs: [runs/scripted](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/mastra/runs/scripted). Pass.
+- Live against the dev server, served build `git describe` v0.41.0-32-g9852300 (main): [runs/live/2026-10-16-9852300](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/mastra/runs/live/2026-10-16-9852300). Pass. `fast` was served by `anthropic/claude-haiku-4-5` (see its REPORT.md).
+
+The copyable agent in `agent.ts`:
+
+<<< @/../examples/mastra/agent.ts#snippet

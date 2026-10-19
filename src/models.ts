@@ -121,20 +121,52 @@ function find(catalog: ReadonlyArray<CatalogModel>, ref: ModelRef): CatalogModel
   return model && (ref.variant === undefined || model.variants.includes(ref.variant)) ? model : undefined
 }
 
+/** Thinking variant names from least to most effort (#410). A name outside this list only ever matches exactly. */
+const EFFORT_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max"]
+
+/**
+ * The variant a requested effort runs on (#410): the same name when the model has it, else the nearest variant at or
+ * above that effort, else the highest variant. `none` and names outside `EFFORT_ORDER` only match exactly, so a request
+ * for no thinking is never turned on. Undefined when the model has no thinking variant at all.
+ */
+export function effortVariant(variants: ReadonlyArray<string>, effort: string): string | undefined {
+  if (variants.includes(effort)) return effort
+  const want = EFFORT_ORDER.indexOf(effort)
+  const ranks = variants.map((variant) => EFFORT_ORDER.indexOf(variant)).filter((rank) => rank >= 0)
+  if (want < 0 || ranks.length === 0) return undefined
+  const rank = Math.min(...ranks.filter((r) => r >= want)) // the nearest at or above
+  return EFFORT_ORDER[Number.isFinite(rank) ? rank : Math.max(...ranks)]
+}
+
+/**
+ * True when a request that asks for thinking gets none: the model it resolves to has no thinking variant, so the request
+ * runs without thinking (the `x-plugboard-thinking: unavailable` header, #410).
+ */
+export function thinkingUnavailable(catalog: ReadonlyArray<CatalogModel>, ref: ModelRef): boolean {
+  const model = catalog.find((m) => m.providerID === ref.providerID && m.id === ref.id)
+  return model !== undefined && !model.variants.some((variant) => EFFORT_ORDER.includes(variant))
+}
+
+/** The response header that says a requested thinking did not apply (#410). Every front-end that takes an effort sends it. */
+export const THINKING_HEADER = "x-plugboard-thinking"
+
+/**
+ * True when a requested reasoning effort cannot apply: the request asked for thinking (`none` asks for none) and the model
+ * it resolves to has no thinking variant. The caller then sets `THINKING_HEADER` to `unavailable`.
+ */
+export function effortUnavailable(catalog: ReadonlyArray<CatalogModel>, ref: ModelRef, effort: string | undefined): boolean {
+  return effort !== undefined && effort !== "none" && thinkingUnavailable(catalog, ref)
+}
+
 function own(map: Readonly<Record<string, string>>, key: string): string | undefined {
   return Object.hasOwn(map, key) ? map[key] : undefined
 }
 
 /**
- * Alias or `provider/model[#variant]` -> ModelRef. `reasoningEffort` picks the variant of that name when the
- * ref has none and the model offers it. Errors: 403 when nothing is allowed, 404 for unknown/not-allowed models.
+ * Alias or `provider/model[#variant]` -> ModelRef. `reasoningEffort` picks a variant when the ref has none: the
+ * one of that name, else the nearest at or above it, else the highest (`effortVariant`, #410). Errors: 403 when nothing is allowed, 404 for unknown/not-allowed models.
  */
-export function resolveModel(
-  options: PlugboardOptions,
-  model: string,
-  catalog: ReadonlyArray<CatalogModel>,
-  reasoningEffort?: string,
-): ModelRef | PlugError {
+export function resolveModel(options: PlugboardOptions, model: string, catalog: ReadonlyArray<CatalogModel>, reasoningEffort?: string): ModelRef | PlugError {
   if (options.models.length === 0)
     return {
       status: 403,
@@ -153,15 +185,14 @@ export function resolveModel(
   // An agent runs on the model its `agents` entry names (the allowlist still applies below).
   const target = own(options.aliases, model)
   const persona = personaOf(options, model)
-  let ref =
-    target !== undefined
-      ? parseAliasTarget(target)?.ref
-      : persona?.kind === "agent"
-        ? parseModelRef(options.agents[persona.agent]!)
-        : parseModelRef(fromSlug(model) ?? model)
+  let ref = target !== undefined ? parseAliasTarget(target)?.ref : persona?.kind === "agent" ? parseModelRef(options.agents[persona.agent]!) : parseModelRef(fromSlug(model) ?? model)
   if (!ref) return notAvailable
-  if (!ref.variant && reasoningEffort && find(catalog, { ...ref, variant: reasoningEffort }))
-    ref = { ...ref, variant: reasoningEffort }
+  if (!ref.variant && reasoningEffort) {
+    const { providerID, id } = ref
+    const model = catalog.find((m) => m.providerID === providerID && m.id === id)
+    const variant = model && effortVariant(model.variants, reasoningEffort)
+    if (variant) ref = { ...ref, variant }
+  }
   return allowed(options, ref) && find(catalog, ref) ? ref : notAvailable
 }
 

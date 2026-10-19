@@ -145,7 +145,20 @@ describe("the real session caller behind the route", () => {
 
   test("an in-scope request with tools succeeds without them, and says so", async () => {
     const { port, seen } = await real()
-    const reply = await server!.send(post("/v1/chat/completions", { model: "fast", messages: [{ role: "system", content: "caller" }, { role: "user", content: "hi" }], ...withTools }, BOT))
+    const reply = await server!.send(
+      post(
+        "/v1/chat/completions",
+        {
+          model: "fast",
+          messages: [
+            { role: "system", content: "caller" },
+            { role: "user", content: "hi" },
+          ],
+          ...withTools,
+        },
+        BOT,
+      ),
+    )
     expect(reply.status).toBe(200)
     expect(reply.json().choices[0].message.content).toBe("ok")
     expect(reply.headers["x-plugboard-policy"]).toBe("tools-stripped")

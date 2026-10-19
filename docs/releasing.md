@@ -18,9 +18,25 @@ The release script writes the full story into `CHANGELOG.md` as a collapsed `<de
 
 The script refuses when the working tree is dirty, the branch is not `main`, local `main` differs from `origin/main`, `[Unreleased]` is empty, the version is not valid semver or does not increase on the last release, the tag or the branch `release/v0.3.0` already exists, or `--title` is missing or invalid. It moves the `[Unreleased]` text under `## [0.3.0] - <today>: Your Title`, appends the commit-level detail block, leaves an empty `[Unreleased]` behind, fixes the compare links, bumps `package.json` and commits `chore(release): 0.3.0` on `release/v0.3.0`. The annotated tag `v0.3.0` is made on the merge commit, not on the release branch. Without `--push` the script refuses, because a release now always goes through a pull request; use `--dry-run` to preview.
 
+### Version markers: the `(since next)` placeholder
+
+A change that adds an option or behavior says which release has it: `(since 0.50.0)`. Parallel lanes cannot know that version, and when every lane guessed the next minor, a release later someone rewrote the markers by hand. So a lane writes the placeholder `(since next)`, and `Since next` where a sentence starts, in `CHANGELOG.md` and in `docs/**/*.md`:
+
+```md
+- `historyUrl` sets the link in the dashboard (since next).
+Since next, the default is on.
+```
+
+The release script replaces both forms with the version being released. It does this in the release commit, before the pull request: in the `[Unreleased]` notes that move under the version heading, and in every `docs/**/*.md` file. The pull request, the release notes and the commit therefore only ever show the real number. `--dry-run` shows the doc rewrites in its diff.
+
+- Text inside backticks or a fenced block is left alone, so a doc can show the placeholder, as this section does. A line that must stay as the placeholder after release goes in code.
+- `Since next` counts only at the start of a line, a bullet or a sentence. "Since next week" in the middle of a sentence is prose.
+- CI fails (`bun .github/scripts/since-next.ts --check`, also in `bun run validate`) when a placeholder sits in a released `CHANGELOG.md` section. That happens when a lane merges after the release with a placeholder it wrote before it: write the real version there. A placeholder in `docs/` after a release is not checked; it becomes the next release's version, which is right when the change ships in it.
+- The placeholder is not replaced in `README.md`, `CONTRIBUTING.md` or source comments. Write a real version there (the next minor), as before.
+
 ### The release rule
 
-- A release is cut only from a fully green `main`. `--push` refuses before it commits anything unless the newest CI run on `origin/main`'s commit has completed and passed.
+- A release is cut only from a fully green `main`. `--push` refuses before it commits anything unless the newest CI run on `origin/main`'s commit has completed and passed. A run that is still queued or in progress is waited for in the foreground, up to 40 minutes, then judged the same way. A commit with no run listed yet gets two minutes for one. A failing `gh` call is retried: three consecutive failures stop the release.
 - The release pull request merges only when every check on it is green. `--push` watches all of them (the advisory benchmark aside) and merges nothing while one fails, is pending, or has not reported.
 - The tag goes only on a commit whose own CI run passed. The checks on the pull request ran on the pull request head. The merge commit is a new commit, so the script waits for the `ci.yml` push run on it and tags only when that run succeeds.
 - The GitHub release appears only after npm has the version. The `release` job of the Publish run needs the `publish` and `attest` jobs, so a publish that fails leaves no release.
@@ -45,7 +61,7 @@ The required status checks are the names GitHub shows on a pull request:
 
 Not required: `Request-path benchmarks (advisory)` (it never blocks), the individual CI jobs (`CI passed` reports them), the nightly and flake-hunt jobs, and Scorecard. `Build the site` is not a pull request check: the docs build is a step of `Typecheck, test and pack`.
 
-The repository needs two settings for this: "Allow auto-merge" (General), which `host-bump.yml` uses for its pull requests, and a ruleset that requires no approving review. A solo maintainer cannot approve their own pull request, so a required approval would block every release.
+The repository needs two settings for this: "Allow auto-merge" (General), which `host-bump.yml` uses for its pull requests, and a ruleset whose required approvals the review bot can satisfy. A solo maintainer cannot approve their own pull request, so until the bot is set up and proven the ruleset requires no approving review (today it requires none). After the owner flips it, the release script also waits for the bot's approval and for an up-to-date branch; see [review-bot.md](review-bot.md#pr-wait-and-release-with-a-required-approval).
 
 ### Changing the ruleset
 
@@ -79,8 +95,8 @@ A prerelease such as `0.3.0-rc.1` publishes with the `next` dist-tag and a GitHu
 1. The CI jobs from `ci.yml` (typecheck, tests, pack check, pack smoke test, host matrix, examples) run through `workflow_call`, so a release has exactly the same gates as CI. The `CI passed` job must succeed for `publish` to run.
 2. It checks that the tag equals `v<package.json version>` and that the commit is on `main`.
 3. It builds the release notes from the changelog section and the git history with `.github/scripts/release-notes.ts`. A missing or empty section, a heading without a title, or a previous tag missing from the clone fails here, before anything is published. The checkout uses `fetch-depth: 0` so the tag range is available.
-4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow installs it. If the version is already on npm, it skips the publish.
-5. The `publish` job packs the tarball once, publishes that exact file, and writes its SBOM. The `attest` job checks that the file's sha256 matches the one the publish job packed, then that its sha512 matches the integrity npm serves for that version, and only then attests it with GitHub build provenance. The `release` job creates the GitHub release, named `v0.3.0: Your Title` (marked as a prerelease when the version has a `-`), with the notes, the tarball, the SBOM and the attestation bundle attached. If the release exists, it attaches the files to it with `--clobber` and leaves the notes alone.
+4. It runs `npm publish --access public` (plus `--tag next` for a prerelease). npm authenticates the run through GitHub's OIDC identity (trusted publishing, no token), which needs npm 11.5.1 or newer; the workflow fetches npm 11.21.0 with `npm pack` and checks the tarball against a sha512 integrity written in `publish.yml` before it uses it. To bump it, change the version and the integrity (`npm view npm@<version> dist.integrity`) together. If the version is already on npm, it skips the publish.
+5. The `publish` job packs the tarball once, publishes that exact file, and writes its SBOM. The `attest` job checks that the file's sha256 matches the one the publish job packed, then that its sha512 matches the integrity npm serves for that version, and only then attests it with GitHub build provenance. The `release` job creates the GitHub release, named `v0.3.0: Your Title` (marked as a prerelease when the version has a `-`), with the notes, the tarball, the SBOM, the attestation bundle and its provenance attached. If the release exists, it attaches the files to it with `--clobber` and leaves the notes alone.
 
 Both writes are safe to retry: re-run the failed run, or "Run workflow" on the tag with `dry_run` unticked.
 
@@ -101,11 +117,12 @@ Every check on the release pull request passed before the merge, and the merge c
 
 ## Release files and how to verify them
 
-Each GitHub release has three files:
+Each GitHub release has four files:
 
 - `opencode-plugboard-X.Y.Z.tgz`: the npm tarball, the same file npm serves.
 - `opencode-plugboard-X.Y.Z.cdx.json`: a CycloneDX SBOM of the production dependencies (`npm sbom --sbom-format cyclonedx --omit dev`).
 - `opencode-plugboard-X.Y.Z.tgz.sigstore.json`: the GitHub build-provenance attestation bundle for the tarball.
+- `opencode-plugboard-X.Y.Z.tgz.intoto.jsonl`: the same attestation as one DSSE envelope per line, holding the signed in-toto statement (SLSA provenance v1) for the tarball. It is the file name OpenSSF Scorecard's Signed-Releases check counts as release provenance. The `attest` job checks that its subject is this tarball's name and sha256 before it is attached. Releases made before it was added (up to 0.49.0) do not have it.
 
 To check a downloaded tarball was built by this repository's Publish workflow:
 
@@ -117,8 +134,9 @@ gh attestation verify opencode-plugboard-X.Y.Z.tgz --repo jjjermiah/opencode-plu
 
 - **Pack smoke test** (`bun run smoke:pack`, in `ci.yml` and `nightly.yml`): `.github/scripts/smoke-pack.ts` packs the tarball, installs it into a throwaway project with npm (so the peer dependencies resolve like a user's install), imports the entry, runs the plugin effect against a spy context and checks that setup registers its hooks and returns synchronously, and that `effect` and `@opencode/plugin` each resolve to one copy.
 - **Host matrix** (`host` job in `ci.yml`): typecheck and tests against the published `@opencode/plugin` versions inside the peer range (oldest, middle and newest, picked by `.github/scripts/host-versions.ts` from the npm registry). While only one version is in range, it is a single job.
+- **Review gate** (`review-gate.yml`): after CI, Commits or CodeQL completes on a pull request, a GitHub App posts one LLM review of the diff, so `main` can require an approval from a one-person repository. It does nothing until the App exists. Setup, the proof on a throwaway pull request and the ruleset flip are in [review-bot.md](review-bot.md). Not required.
 - **Nightly** (`nightly.yml`, 03:17 UTC, also "Run workflow"): a fresh install without `bun.lock` or the package cache, then typecheck, tests, pack check and the smoke test. It catches drift in unpinned dependencies. Not required.
-- **Host bump** (`host-bump.yml`, Mondays, also "Run workflow"): when a newer 2.0.x is published, opens a PR that bumps the pinned `@opencode/plugin` and `effect` dev dependencies, with the typecheck and test result in the body (a draft when either failed). Not required. The repository setting "Allow GitHub Actions to create and approve pull requests" must be on, and a PR made with the default token does not start CI by itself, so push an empty commit to it or close and reopen it.
+- **Host bump** (`host-bump.yml`, daily at 06:23 UTC, also "Run workflow"): when a newer 2.0.x is published, opens a PR that bumps the pinned `@opencode/plugin` and `effect` dev dependencies, with the typecheck and test result in the body (a draft when either failed). Not required. The repository setting "Allow GitHub Actions to create and approve pull requests" must be on. A PR made with the default token gets its `pull_request` runs in `action_required`: the repository's approval policy (`first_time_contributors`) treats the bot as a first-time contributor, so the required checks wait until someone approves them. `host-bump.yml` approves those runs on the head commit (`actions: write`), then starts `ci.yml`, `commits.yml` and `codeql.yml` on its branch (`gh workflow run`). If an approval or a start fails, the run warns: approve the runs under the PR's merge box (Approve workflows to run), or start the workflow by hand with `gh workflow run <file> --ref deps/opencode-<v>`.
 
 ## OpenCode releases
 
@@ -129,7 +147,7 @@ Two daily jobs watch for a new OpenCode, so a host release reaches a pull reques
 
 What happens:
 
-- **All gates green.** The pull request is labelled `dependencies` and set to auto-merge. A pull request opened with `GITHUB_TOKEN` starts no workflow, so `host-bump.yml` starts `ci.yml`, `commits.yml` and `codeql.yml` on its branch. `CI passed`, `Lint commit messages` and `Analyze (javascript-typescript)` are the required checks. `host-bump.yml` starts `ci.yml`, `commits.yml` and `codeql.yml` on its branch, so all three report, and the merge waits for them and lands on its own.
+- **All gates green.** The pull request is labelled `dependencies` and set to auto-merge. Its `CI passed`, `Lint commit messages` and `Analyze (javascript-typescript)` checks come from the approved `pull_request` runs and the dispatched runs on its branch (see above), so the merge waits for them and lands on its own. `commits.yml` lints the commits the branch adds to the default branch, because a dispatch has no pull request base.
 - **A gate red.** The pull request is a draft with the failing log tails, and the issue `OpenCode <v> breaks plugboard` links the run. A host type change usually shows in `src/session/host.ts` (`HostContextMatches`). Fix it on the branch, or close the pull request and keep the issue.
 - **The load check red** (`opencode-release.yml`). No pull request, only the issue. Plugboard does not load in that host: reproduce with the command above.
 - **A new major of `@opencode/plugin`.** `host-bump.ts` stops, because the peer range for a new major is a decision. The run fails and the issue is filed.

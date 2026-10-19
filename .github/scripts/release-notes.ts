@@ -72,8 +72,6 @@ if (changelogDetail) {
   process.exit(0)
 }
 
-const diff = previous
-  ? `[v${previous}...v${version}](${repoUrl}/compare/v${previous}...v${version})`
-  : `[v${version}](${repoUrl}/tree/v${version})`
+const diff = previous ? `[v${previous}...v${version}](${repoUrl}/compare/v${previous}...v${version})` : `[v${version}](${repoUrl}/tree/v${version})`
 const story = fullStory(commits, repoUrl, previous)
 console.log(`${notes}\n\n${story ? `${story}\n\n` : ""}---\n\n**Full diff:** ${diff}`)

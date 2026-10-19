@@ -50,11 +50,11 @@ A copyable version is in [examples/codex-cli/](https://github.com/jjjermiah/open
 ## Features exercised
 
 - `/v1/responses` with streaming, and function tool calls, which Codex's shell tool uses. Each call comes back to Codex unexecuted.
-- Reasoning: plugboard accepts reasoning items in the input and drops them. It does not return reasoning text.
+- Reasoning: plugboard accepts reasoning items in the input and drops them. It does not return reasoning text unless the server sets `reasoningOutput` (since 0.36.0). Codex is not tested with that setting on.
 
 ## Quirks
 
-- Plugboard keeps no conversation. `previous_response_id` and `conversation` are rejected with 400 `unsupported_parameter`. This page assumes Codex resends the whole conversation on each turn, as the issue that asked for it states. That was not checked against Codex's source. If a turn fails with a 400 that names `previous_response_id`, this is the cause.
+- `previous_response_id` works since 0.51.0 (plugboard keeps each answer made with `store` on, per app, for the app's history retention), so Codex can resend the whole conversation or chain from the last answer. `conversation` is rejected with 400 `unsupported_parameter`. Which of the two Codex does was not checked against Codex's source. A 400 `previous_response_not_found` that names `previous_response_id` means the answer is gone: expired, deleted, sent with `store: false`, or from another app's key.
 - Plugboard accepts only `function` tools. A tool Codex sends with type `custom` (a freeform tool) is refused with 400. Which tool types Codex sends depends on the model, and was not checked. A live run should confirm a file edit goes through.
 - Hosted tools (`web_search`, `file_search`, `code_interpreter`, and the like) are refused with 400. They run on OpenAI's side, which plugboard does not reach.
-- `store`, `include` and `parallel_tool_calls` are accepted and ignored. The response always reports `store: false`.
+- `include` and `parallel_tool_calls` are accepted and ignored. `store: false` keeps nothing, so its output items cannot be referenced later (#426). The response echoes the `store` you sent, `true` when you leave it out (#442).

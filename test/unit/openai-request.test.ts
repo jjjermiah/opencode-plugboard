@@ -4,6 +4,13 @@ import { parseChatRequest, type ParsedChat } from "../../src/openai/request.js"
 import { testOptions } from "../support/fixtures.js"
 
 const options = testOptions({ maxTools: 3 })
+
+// #390 review: a client value with no usable toString is a 400, never a thrown TypeError (show, src/client-value.ts).
+test("openai: a message role with a null toString is a 400, not a crash", () => {
+  const result = parseChatRequest({ model: "test/echo", messages: [{ role: { toString: null }, content: "hi" }] }, options)
+  expect(isPlugError(result)).toBe(true)
+  expect(result).toMatchObject({ status: 400, message: expect.stringContaining('"object"') })
+})
 const user = (content: unknown = "hi") => ({ role: "user", content })
 const body = (extra: Record<string, unknown> = {}) => ({ model: "test/echo", messages: [user()], ...extra })
 const fn = (name: string, extra: Record<string, unknown> = {}) => ({ type: "function", function: { name, ...extra } })
@@ -53,10 +60,22 @@ describe("parseChatRequest: every validation rule answers 400 with its param", (
     ["an unsupported response_format type", body({ response_format: { type: "yaml" } }), { param: "response_format.type" }],
     ["json_schema without json_schema", body({ response_format: { type: "json_schema" } }), { param: "response_format.json_schema" }],
     ["json_schema with a non-string name", body({ response_format: { type: "json_schema", json_schema: { name: 1, schema: {} } } }), { param: "response_format.json_schema.name" }],
-    ["json_schema with a non-string description", body({ response_format: { type: "json_schema", json_schema: { description: 1, schema: {} } } }), { param: "response_format.json_schema.description" }],
+    [
+      "json_schema with a non-string description",
+      body({ response_format: { type: "json_schema", json_schema: { description: 1, schema: {} } } }),
+      { param: "response_format.json_schema.description" },
+    ],
     ["json_schema without a schema object", body({ response_format: { type: "json_schema", json_schema: { name: "x" } } }), { param: "response_format.json_schema.schema" }],
-    ["json_schema next to a tool named respond", body({ tools: [fn("respond")], response_format: { type: "json_schema", json_schema: { schema: {} } } }), { param: "tools", code: "reserved_tool_name" }],
-    ["json_schema with a tool_choice naming a tool", body({ tools: [fn("a")], tool_choice: { type: "function", function: { name: "a" } }, response_format: { type: "json_schema", json_schema: { schema: {} } } }), { param: "tool_choice", code: "unsupported_parameter" }],
+    [
+      "json_schema next to a tool named respond",
+      body({ tools: [fn("respond")], response_format: { type: "json_schema", json_schema: { schema: {} } } }),
+      { param: "tools", code: "reserved_tool_name" },
+    ],
+    [
+      "json_schema with a tool_choice naming a tool",
+      body({ tools: [fn("a")], tool_choice: { type: "function", function: { name: "a" } }, response_format: { type: "json_schema", json_schema: { schema: {} } } }),
+      { param: "tool_choice", code: "unsupported_parameter" },
+    ],
     ["temperature above 2", body({ temperature: 2.1 }), { param: "temperature" }],
     ["a string temperature", body({ temperature: "1" }), { param: "temperature" }],
     ["top_p above 1", body({ top_p: 1.5 }), { param: "top_p" }],
@@ -77,7 +96,22 @@ describe("parseChatRequest: every validation rule answers 400 with its param", (
 
 describe("parseChatRequest: messages", () => {
   test("system and developer messages become the system list; empty ones are dropped", () => {
-    const { request } = parse(body({ messages: [{ role: "system", content: "be brief" }, { role: "developer", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }, { role: "system", content: "" }, user()] }))
+    const { request } = parse(
+      body({
+        messages: [
+          { role: "system", content: "be brief" },
+          {
+            role: "developer",
+            content: [
+              { type: "text", text: "a" },
+              { type: "text", text: "b" },
+            ],
+          },
+          { role: "system", content: "" },
+          user(),
+        ],
+      }),
+    )
     expect(request.system).toEqual(["be brief", "a\nb"])
   })
 
@@ -108,7 +142,11 @@ describe("parseChatRequest: messages", () => {
   test("#288 a file part keeps a PDF data URL and refuses bare base64 or another type as invalid_file", () => {
     const pdf = "data:application/pdf;base64,JVBERi0xLjQK"
     expect(parse(body({ messages: [user([{ type: "file", file: { file_data: pdf } }])] })).request.messages[0]!.content).toEqual([{ type: "media", url: pdf, mediaType: "application/pdf" }])
-    expect(parseChatRequest(body({ messages: [user([{ type: "file", file: { file_data: "JVBERi0xLjQK" } }])] }), options)).toMatchObject({ status: 400, code: "invalid_file", param: "messages[0].content[0].file.file_data" })
+    expect(parseChatRequest(body({ messages: [user([{ type: "file", file: { file_data: "JVBERi0xLjQK" } }])] }), options)).toMatchObject({
+      status: 400,
+      code: "invalid_file",
+      param: "messages[0].content[0].file.file_data",
+    })
     expect(parseChatRequest(body({ messages: [user([{ type: "file", file: { file_data: "data:text/plain;base64,JVBERi0xLjQK" } }])] }), options)).toMatchObject({ status: 400, code: "invalid_file" })
   })
 
@@ -117,7 +155,14 @@ describe("parseChatRequest: messages", () => {
       body({
         messages: [
           user(),
-          { role: "assistant", content: [{ type: "text", text: "let me check" }, { type: "refusal", refusal: "no" }], tool_calls: [call("c1", "lookup", '{"q":1}'), call("c2", "lookup", "not json")] },
+          {
+            role: "assistant",
+            content: [
+              { type: "text", text: "let me check" },
+              { type: "refusal", refusal: "no" },
+            ],
+            tool_calls: [call("c1", "lookup", '{"q":1}'), call("c2", "lookup", "not json")],
+          },
           { role: "tool", tool_call_id: "c1", content: "one" },
           { role: "tool", tool_call_id: "c2", content: [{ type: "text", text: "two" }] },
         ],
@@ -169,6 +214,10 @@ describe("parseChatRequest: tools and tool_choice", () => {
 
   test("a named tool_choice becomes { type: tool, name }", () => {
     expect(parse(body({ tools: [fn("a")], tool_choice: { type: "function", function: { name: "a" } } })).request.toolChoice).toEqual({ type: "tool", name: "a" })
+  })
+
+  test("#421 tool_choice none without tools is kept, so the session offers no server tool", () => {
+    expect(parse(body({ tool_choice: "none" })).request.toolChoice).toBe("none")
   })
 
   test("tool_choice without tools is left out", () => {
@@ -248,5 +297,13 @@ describe("parseChatRequest: generation and exchange", () => {
   test("reasoning_effort is passed on for variant selection", () => {
     expect(parse(body({ reasoning_effort: "high" })).reasoningEffort).toBe("high")
     expect(parse(body())).not.toHaveProperty("reasoningEffort")
+  })
+})
+
+describe("reasoningOutput (since 0.36.0): reasoning in a replayed history", () => {
+  test("an assistant message's reasoning_content and reasoning (a client replaying a reply) are ignored, not rejected", () => {
+    const parsed = parse(body({ messages: [user(), { role: "assistant", content: "A", reasoning_content: "r", reasoning: "r" }, user("again")] }))
+    expect(JSON.stringify(parsed.request.messages)).not.toContain('"r"')
+    expect(JSON.stringify(parsed.request.messages)).toContain('"A"')
   })
 })

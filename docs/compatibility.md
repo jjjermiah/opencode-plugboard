@@ -14,28 +14,26 @@ Each official SDK runs the same scenarios against plugboard, in CI on every push
 | openai | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | pass | pass | pass | n/a | n/a | pass | pass | n/a | pass | pass |
 | openai | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass | pass | n/a | n/a | pass |
 | openai | `POST /v1/completions` | pass | pass | n/a | n/a | n/a | n/a | pass | pass | n/a | n/a | pass | pass | pass | n/a | pass | n/a | n/a | pass | pass | pass | pass |
-| @anthropic-ai/sdk | `POST /v1/messages` | pass | pass | pass | pass | pass | gap [1] | pass | pass | pass | pass | pass | n/a | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
-| @google/genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | gap [2] | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
+| @anthropic-ai/sdk | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
+| @google/genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | pass | pass | n/a | n/a | pass | pass | pass | n/a | n/a | pass |
 | ai + @ai-sdk/openai (chat) | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
 | ai + @ai-sdk/openai (responses) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
 | ai + @ai-sdk/openai (responses, store: false) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
 | ai + @ai-sdk/openai-compatible | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
 | ai + @ai-sdk/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | n/a | n/a | pass | pass | n/a | n/a | pass |
-| ai + @ai-sdk/google | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | pass | gap [3] | n/a | n/a | pass |
+| ai + @ai-sdk/google | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | pass | gap [1] | n/a | n/a | pass |
 | @langchain/openai (chat) | `POST /v1/chat/completions` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | pass | pass | pass | n/a | n/a | n/a | n/a | pass | n/a | pass | pass |
 | @langchain/openai (responses) | `POST /v1/responses` | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | n/a | n/a | pass | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
-| @langchain/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [4] | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
-| @langchain/google-genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | n/a | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | n/a | gap [5] | n/a | n/a | gap [6] |
+| @langchain/anthropic | `POST /v1/messages` | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | pass | n/a | gap [2] | n/a | n/a | n/a | n/a | pass | n/a | n/a | pass |
+| @langchain/google-genai | `POST /v1beta/models/{model}:generateContent` | pass | pass | pass | pass | n/a | pass | pass | pass | pass | n/a | pass | n/a | pass | n/a | n/a | n/a | n/a | gap [3] | n/a | n/a | gap [4] |
 | @langchain/openai (completions) | `POST /v1/completions` | pass | pass | n/a | n/a | n/a | n/a | pass | pass | n/a | n/a | pass | pass | n/a | n/a | n/a | n/a | n/a | pass | pass | n/a | pass |
 
-213 pass, 6 gap, 0 fail, 117 n/a, 0 todo.
+215 pass, 4 gap, 0 fail, 117 n/a, 0 todo.
 
-1. @anthropic-ai/sdk, structured: output_config.format (structured outputs) is refused with a 400; plugboard maps json_schema only on the OpenAI and Gemini endpoints
-2. @google/genai, n: candidateCount above 1 is refused with a 400 (only one candidate is served); the OpenAI endpoints serve n
-3. ai + @ai-sdk/google, model-id: the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass
-4. @langchain/anthropic, stream-usage: message_start reports input_tokens 0; the real input count arrives only in message_delta, so a client that reads usage from message_start sees 0
-5. @langchain/google-genai, model-id: LangChain's Google class sends the model id without the models/ prefix, so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass
-6. @langchain/google-genai, cancel: the @google/generative-ai SDK that LangChain uses reports the client's abort as an unhandled 'Error reading from the stream'
+1. ai + @ai-sdk/google, model-id: the AI SDK sends an id with a slash without the models/ prefix (it treats a slash as a full resource name), so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass
+2. @langchain/anthropic, stream-usage: message_start reports input_tokens 0; the real input count arrives only in message_delta, so a client that reads usage from message_start sees 0
+3. @langchain/google-genai, model-id: LangChain's Google class sends the model id without the models/ prefix, so the request misses the Gemini route (404 naming the expected path, #150); the @google/genai rows pass
+4. @langchain/google-genai, cancel: the @google/generative-ai SDK that LangChain uses reports the client's abort as an unhandled 'Error reading from the stream'
 
 Scenarios:
 
@@ -68,6 +66,7 @@ The Python clients are examples: each has a runner in `examples/<client>/` (its 
 | Client | Package | Fake (2026-10-12) | Live (isolated dev server, 2026-10-12) |
 |---|---|---|---|
 | [OpenAI Agents SDK](clients/openai-agents.md), Responses and Chat Completions | `openai-agents` 0.23.1 | 8 pass, 0 fail | 8 pass, 0 fail (`fast`) |
+| [OpenAI Agents SDK (JS)](clients/openai-agents-js.md), Responses | `@openai/agents` 0.20.0 | 16 pass, 0 fail, 1 n/a (S7) | 16 pass on the live dev server (plugboard 0.41.0); `fast` served by Haiku via the fallback |
 | [LiteLLM as a client](clients/litellm-client.md) | `litellm` 1.105.0 | 4 pass, 0 fail | 4 pass, 0 fail (`fast`) |
 | [Instructor](clients/instructor.md), TOOLS, JSON_SCHEMA and partial stream | `instructor` 1.17.0 | 3 pass, 0 fail | 3 pass, 0 fail (`fast`) |
 | [DSPy](clients/dspy.md), predict, chain-of-thought and typed output | `dspy` 3.4.0 | 3 pass, 0 fail | 3 pass, 0 fail (`fast`) |
@@ -84,4 +83,20 @@ Four clients run against the scripted fake in the `examples` CI job, through `bu
 | [Go (go-openai)](clients/go-openai.md), go-openai 1.43.0 on Go 1 | [examples/go-openai](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/go-openai) | text, stream and tool round trip: 7 pass, 0 fail (text and tool round trip on 3 models, stream on `fast`) |
 | [.NET (openai-dotnet)](clients/openai-dotnet.md), OpenAI 2.14.0 on .NET 8 | [examples/openai-dotnet](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-dotnet) | text, stream and tool round trip: 7 pass, 0 fail (same models as Go) |
 | [Langfuse](clients/langfuse.md), langfuse 4.17.0 with tracing off | [examples/langfuse](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langfuse) | text, stream and tool round trip: 7 pass, 0 fail (same models as Go) |
-| [smolagents](clients/smolagents.md), smolagents 1.26.0 | [examples/smolagents](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/smolagents) | text: 3 pass. Stream: gap, because `generate_stream` does not return `finish_reason`. Tool round trip: gap, because the fake answers the tool turn only after a `tool`-role message and smolagents sends the observation as user text, so the tool call passes and the final answer does not (#362) |
+| [smolagents](clients/smolagents.md), smolagents 1.26.0 | [examples/smolagents](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/smolagents) | text and stream: 6 pass. The stream's `finish_reason` is not checked, because `generate_stream` does not return it. Tool round trip: 5 of 6 checks pass, including the tool call and the final answer. The sixth, the final turn's `finish_reason` is `stop`, stays a gap: smolagents ends a run with a `final_answer` call, which finishes with `tool_calls` (#362, #370) |
+
+## Conformance
+
+`test/compat/conformance.test.ts` (#107) sends plugboard's responses and stream events over loopback and validates each one against an upstream schema. The schemas are vendored under `test/fixtures/specs/` with their source and retrieval date, and the tests never fetch them. Unknown fields fail, and so do missing required fields. A known gap is a `test.failing` case, so it flips to a failure once fixed.
+
+| Endpoint | Schema | What is validated |
+|---|---|---|
+| `POST /v1/chat/completions`, `POST /v1/completions`, `POST /v1/responses`, `GET /v1/models` | OpenAI OpenAPI 3.1, `openai.json` (retrieved 2026-10-11) | One answer, every stream chunk, the Response, the model list |
+| `POST /v1beta/models/{model}:generateContent`, `:countTokens` | Gemini discovery document, `gemini.json` (retrieved 2026-10-11) | One answer, token count |
+| `POST /v1/messages`, `POST /v1/messages/count_tokens` | `@anthropic-ai/sdk` 0.133.0 types, `anthropic.json` (2026-10-15) | One Message (text and tool_use), every stream event (text, thinking with `signature_delta`, tool_use with `input_json_delta`, error mid-stream), the error body (401, 400, 429), the token count |
+
+Anthropic publishes no machine-readable Messages spec, so `anthropic.json` is generated from the pinned SDK's types by `test/fixtures/specs/vendor-anthropic.ts`. Run it by hand when the SDK is bumped. The SDK's stream union has no `ping` event, so a keep-alive is checked as `{"type": "ping"}` exactly, the same as the SDK's own type check (#132).
+
+No Anthropic gap is open. The Message and usage fields the SDK types require are sent, `null` where plugboard has no value.
+
+The schemas are upstream definitions, not a live provider's. A passing check shows plugboard's shape matches the type. It does not show what Anthropic sends. The live provider matrix is tracked in #99.

@@ -368,6 +368,42 @@
       ],
       "error": null,
       "id": "S2",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.responses-store-false.fast.json",
+      "variant": "responses-store-false"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
       "note": null,
       "required": true,
@@ -446,6 +482,42 @@
       "status": "pass",
       "transcript": "transcripts/S2.responses.anthropic-claude-haiku-4-5.json",
       "variant": "responses"
+    },
+    {
+      "checks": [
+        {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.responses-store-false.anthropic-claude-haiku-4-5.json",
+      "variant": "responses-store-false"
     },
     {
       "checks": [
@@ -558,6 +630,42 @@
     {
       "checks": [
         {
+          "name": "turn 1 finish_reason is tool_calls",
+          "ok": true
+        },
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        },
+        {
+          "name": "turn 2 finish_reason is stop",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.responses-store-false.openai-gpt-5.6-luna-low.json",
+      "variant": "responses-store-false"
+    },
+    {
+      "checks": [
+        {
           "name": "streamed text contains pong",
           "ok": true
         },
@@ -570,7 +678,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -598,7 +706,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -626,7 +734,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -1113,6 +1221,10 @@
           "ok": true
         },
         {
+          "name": "error type is authentication_error",
+          "ok": true
+        },
+        {
           "name": "code is invalid_api_key",
           "ok": true
         }
@@ -1129,6 +1241,10 @@
       "checks": [
         {
           "name": "status is 404",
+          "ok": true
+        },
+        {
+          "name": "error type is not_found_error",
           "ok": true
         },
         {

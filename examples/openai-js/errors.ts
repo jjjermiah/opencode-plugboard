@@ -8,7 +8,7 @@ export async function runWrongKey(client: OpenAI, model: string) {
   try {
     await wrong.chat.completions.create({ model, messages: [{ role: "user", content: "Reply with exactly: pong" }], max_tokens: 1024 })
   } catch (error) {
-    if (error instanceof OpenAI.AuthenticationError) return { status: error.status ?? null, code: error.code ?? null }
+    if (error instanceof OpenAI.AuthenticationError) return { status: error.status ?? null, code: error.code ?? null, type: error.type ?? null }
     throw error
   }
   // #endregion snippet-wrong-key
@@ -20,7 +20,7 @@ export async function runUnknownModel(client: OpenAI, model: string) {
   try {
     await client.chat.completions.create({ model, messages: [{ role: "user", content: "Reply with exactly: pong" }], max_tokens: 1024 })
   } catch (error) {
-    if (error instanceof OpenAI.NotFoundError) return { status: error.status ?? null, code: error.code ?? null }
+    if (error instanceof OpenAI.NotFoundError) return { status: error.status ?? null, code: error.code ?? null, type: error.type ?? null }
     throw error
   }
   // #endregion snippet-unknown-model

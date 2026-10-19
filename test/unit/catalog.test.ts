@@ -15,15 +15,9 @@ const load = (data: unknown[]) => loadCatalog(spyContext({ directory: "/p", resp
 
 describe("loadCatalog", () => {
   test("disabled models and entries without provider or id are dropped; modelID wins over id", async () => {
-    expect(
-      await load([
-        { providerID: "a", id: "off", enabled: false },
-        { providerID: "a" },
-        { id: "x" },
-        "junk",
-        { providerID: "a", id: "internal", modelID: "public" },
-      ]),
-    ).toEqual([{ providerID: "a", id: "public", variants: [] }])
+    expect(await load([{ providerID: "a", id: "off", enabled: false }, { providerID: "a" }, { id: "x" }, "junk", { providerID: "a", id: "internal", modelID: "public" }])).toEqual([
+      { providerID: "a", id: "public", variants: [] },
+    ])
   })
 
   test("variants may be strings or { id }; duplicates and empties are dropped", async () => {
@@ -38,11 +32,7 @@ describe("loadCatalog", () => {
         name: "Model M",
         capabilities: { tools: true, input: ["text", "image", 3], output: ["text"] },
         limit: { context: 200_000, output: 8_000, input: "x" },
-        cost: [
-          { input: 3, output: 15, cache: { read: 0.3, write: 3.75 } },
-          { input: 6, output: 22.5, tier: { type: "context", size: 200_000 } },
-          { input: "free" },
-        ],
+        cost: [{ input: 3, output: 15, cache: { read: 0.3, write: 3.75 } }, { input: 6, output: 22.5, tier: { type: "context", size: 200_000 } }, { input: "free" }],
         status: "beta",
         family: "m-family",
         time: { released: Date.UTC(2026, 0, 2) },
@@ -59,7 +49,7 @@ describe("loadCatalog", () => {
       modalities: { input: ["text", "image"], output: ["text"] },
       cost: [
         { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-        { input: 6, output: 22.5, cacheRead: 0, cacheWrite: 0, aboveContext: 200_000 },
+        { input: 6, output: 22.5, aboveContext: 200_000 },
       ],
       status: "beta",
       family: "m-family",
@@ -77,7 +67,17 @@ describe("loadCatalog", () => {
 describe("#74 /v1/models entries carry the catalog metadata", () => {
   test("cost per million tokens with cache and context tiers, release date as ISO 8601", async () => {
     const catalog = await load([
-      { providerID: "a", id: "m", limit: { context: 1000 }, cost: [{ input: 1, output: 2, cache: { read: 0.1 } }, { input: 2, output: 4, tier: { type: "context", size: 500 } }], time: { released: Date.UTC(2026, 0, 2) }, family: "f" },
+      {
+        providerID: "a",
+        id: "m",
+        limit: { context: 1000 },
+        cost: [
+          { input: 1, output: 2, cache: { read: 0.1 } },
+          { input: 2, output: 4, tier: { type: "context", size: 500 } },
+        ],
+        time: { released: Date.UTC(2026, 0, 2) },
+        family: "f",
+      },
     ])
     const body = encodeModelList(listAvailableModels(testOptions({ models: ["a/*"] }), catalog)) as { data: Array<{ plugboard: unknown }> }
     expect(body.data[0]!.plugboard).toEqual({
@@ -86,12 +86,59 @@ describe("#74 /v1/models entries carry the catalog metadata", () => {
       limit: { context: 1000 },
       modalities: undefined,
       cost: [
-        { input: 1, output: 2, cache: { read: 0.1, write: 0 } },
-        { input: 2, output: 4, cache: { read: 0, write: 0 }, aboveContext: 500 },
+        { input: 1, output: 2, cache: { read: 0.1 } },
+        { input: 2, output: 4, cache: {}, aboveContext: 500 },
       ],
       status: undefined,
       family: "f",
       released: "2026-01-02T00:00:00.000Z",
     })
+  })
+})
+
+describe("#376 /v1/models entries carry context_length, max_output_tokens and OpenRouter pricing", () => {
+  const list = async (entry: Record<string, unknown>) => {
+    const catalog = await load([{ providerID: "a", id: "m", ...entry }])
+    return (encodeModelList(listAvailableModels(testOptions({ models: ["a/*"] }), catalog)) as { data: Array<Record<string, unknown>> }).data[0]!
+  }
+
+  test("known limits and base price: USD per token as decimal strings, cache prices when reported", async () => {
+    const body = await list({
+      limit: { context: 200_000, output: 8_000 },
+      cost: [
+        { input: 6, output: 22.5, cache: { read: 0.6 }, tier: { type: "context", size: 200_000 } },
+        { input: 3, output: 15, cache: { read: 0.3, write: 3.75 } },
+      ],
+    })
+    expect(body).toMatchObject({
+      context_length: 200_000,
+      max_output_tokens: 8_000,
+      pricing: { prompt: "0.000003", completion: "0.000015", input_cache_read: "0.0000003", input_cache_write: "0.00000375" },
+    })
+    expect(body.plugboard).toMatchObject({ contextLimit: 200_000, limit: { context: 200_000, output: 8_000 } })
+  })
+
+  test("unknown facts are left out, never zero", async () => {
+    const bare = await list({})
+    expect(bare).not.toHaveProperty("context_length")
+    expect(bare).not.toHaveProperty("max_output_tokens")
+    expect(bare).not.toHaveProperty("pricing")
+    expect(bare.plugboard).toMatchObject({ capabilities: {} })
+
+    const noCache = await list({ cost: [{ input: 0.15, output: 0.6 }] })
+    expect(noCache.pricing).toEqual({ prompt: "0.00000015", completion: "0.0000006" })
+
+    const tierOnly = await list({ cost: [{ input: 6, output: 22.5, tier: { type: "context", size: 200_000 } }] })
+    expect(tierOnly).not.toHaveProperty("pricing")
+  })
+
+  test("a tiny non-zero price stays non-zero, printed as plain decimals", async () => {
+    const tiny = await list({ cost: [{ input: 0.0000001, output: 1e-9 }] })
+    expect(tiny.pricing).toEqual({ prompt: "0.0000000000001", completion: "0.000000000000001" })
+  })
+
+  test("an explicit zero price stays a price (a free model), not a missing one", async () => {
+    const free = await list({ limit: { context: 1000 }, cost: [{ input: 0, output: 0 }] })
+    expect(free).toMatchObject({ context_length: 1000, pricing: { prompt: "0", completion: "0" } })
   })
 })

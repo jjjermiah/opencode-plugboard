@@ -89,7 +89,9 @@ export function createCacheStore(limits: CacheLimits): CacheStore {
 export function cacheKey(app: string, request: PlugRequest): string {
   const { ref } = request
   const canonical = stableStringify([app, ref.providerID, ref.id, ref.variant ?? null, request.system, request.messages, request.tools, request.toolChoice ?? null, request.generation])
-  return createHash("sha256").update(canonical ?? "").digest("hex")
+  return createHash("sha256")
+    .update(canonical ?? "")
+    .digest("hex")
 }
 
 /** Called once per call the cache applies to. */
@@ -112,11 +114,17 @@ export function reportCache(response: ServerResponse): (result: "hit" | "miss") 
 const CACHEABLE_FINISH: ReadonlySet<PlugFinish> = new Set<PlugFinish>(["stop", "length"])
 
 /** Appends a delta to the list, merging it into the previous event when that is the same kind. */
-function append(events: PlugEvent[], event: { readonly type: "text-delta" | "reasoning-delta"; readonly text: string; readonly signature?: string }): void {
-  // A signature is its own event, so a replay puts it back after the block it closes (#146).
-  if (event.signature !== undefined) return void events.push({ type: event.type, text: event.text, signature: event.signature })
-  const last = events.at(-1)
-  if (last && last.type === event.type && (last as { signature?: string }).signature === undefined) events[events.length - 1] = { type: event.type, text: (last as { text: string }).text + event.text }
+function append(events: PlugEvent[], event: { readonly type: "text-delta" | "reasoning-delta"; readonly text: string; readonly signature?: string; readonly redactedData?: string }): void {
+  // A signature or a redacted payload is its own event, so a replay puts it back after the block it closes (#146, #385).
+  if (event.signature !== undefined || event.redactedData !== undefined)
+    return void events.push({
+      type: event.type,
+      text: event.text,
+      ...(event.signature === undefined ? {} : { signature: event.signature }),
+      ...(event.redactedData === undefined ? {} : { redactedData: event.redactedData }),
+    })
+  const last = events.at(-1) as { type: string; text: string; signature?: string; redactedData?: string } | undefined
+  if (last && last.type === event.type && last.signature === undefined && last.redactedData === undefined) events[events.length - 1] = { type: event.type, text: last.text + event.text }
   else events.push({ type: event.type, text: event.text })
 }
 
@@ -125,13 +133,7 @@ function append(events: PlugEvent[], event: { readonly type: "text-delta" | "rea
  * decides per call that the cache is not used: a persona model, or an app whose answers depend on live OpenCode
  * tool output (`serverTools`, #82). Both conditions live in the one predicate the runtime passes.
  */
-export function cachedCaller(
-  inner: ModelCaller,
-  config: CacheConfig,
-  store: CacheStore,
-  count?: CacheCounter,
-  bypass?: (model: string, app: string) => boolean,
-): ModelCaller {
+export function cachedCaller(inner: ModelCaller, config: CacheConfig, store: CacheStore, count?: CacheCounter, bypass?: (model: string, app: string) => boolean): ModelCaller {
   const apps = config.apps ? new Set(config.apps) : undefined
   return {
     async *stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
@@ -145,7 +147,9 @@ export function cachedCaller(
         if (hit.policy) context.onPolicy?.(hit.policy)
         for (const event of hit.events) {
           if (context.signal.aborted) return
-          yield event.type === "finish" ? { type: "finish", reason: event.reason, usage: { inputTokens: 0, outputTokens: 0 } } : event
+          yield event.type === "finish"
+            ? { type: "finish", reason: event.reason, usage: { inputTokens: 0, outputTokens: 0 }, ...(event.stopSequence === undefined ? {} : { stopSequence: event.stopSequence }) }
+            : event
         }
         return
       }
@@ -179,7 +183,11 @@ export function cachedCaller(
         } else if (event.type === "finish") {
           // Stored before the event is handed on, so a consumer that stops reading at `finish` still fills the cache.
           if (storable && CACHEABLE_FINISH.has(event.reason) && recorded.length > 0 && !context.signal.aborted)
-            store.set(key, { events: [...recorded, { type: "finish", reason: event.reason }], ...(served ? { served } : {}), ...(policy?.length ? { policy } : {}) })
+            store.set(key, {
+              events: [...recorded, { type: "finish", reason: event.reason, ...(event.stopSequence === undefined ? {} : { stopSequence: event.stopSequence }) }],
+              ...(served ? { served } : {}),
+              ...(policy?.length ? { policy } : {}),
+            })
         } else storable = false
         yield event
       }

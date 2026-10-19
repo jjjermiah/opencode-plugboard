@@ -39,7 +39,7 @@ interface Asset {
 const loaded = new Map<string, Promise<Asset>>()
 
 async function load(name: string): Promise<Asset> {
-  const file = ASSETS[name]
+  const file = Object.hasOwn(ASSETS, name) ? ASSETS[name] : undefined
   if (!file) throw new Error(`no dashboard asset ${name}`)
   const body = await readFile(file.path(), "utf8")
   const digest = createHash("sha256").update(body).digest("hex").slice(0, 32)

@@ -8,10 +8,7 @@ import { historyTemplate, parseOptions } from "../../src/config.js"
 import { sessionUrl } from "../../src/session/link.js"
 
 describe("#77 option historyUrl: validated at load", () => {
-  test.each([
-    "http://opencode.lan:4096/session/{id}",
-    "https://ops.example/{directory}/session/{id}",
-  ])("#77 %s is accepted", (historyUrl) => {
+  test.each(["http://opencode.lan:4096/session/{id}", "https://ops.example/{directory}/session/{id}"])("#77 %s is accepted", (historyUrl) => {
     expect(parseOptions({ historyUrl }).historyUrl).toBe(historyUrl)
   })
 
@@ -60,7 +57,11 @@ describe("#280 option apps.<name>.historyUrl: a per-app template, or false for n
   })
 
   test("#280 historyTemplate: an app's own template, none for false, the global one when unset", () => {
-    const options = parseOptions({ historyUrl: GLOBAL, keys: { alpha: "ka", beta: "kb", gamma: "kc" }, apps: { alpha: { historyUrl: "http://alpha.lan/s/{id}" }, beta: { historyUrl: false }, gamma: { tools: false } } })
+    const options = parseOptions({
+      historyUrl: GLOBAL,
+      keys: { alpha: "ka", beta: "kb", gamma: "kc" },
+      apps: { alpha: { historyUrl: "http://alpha.lan/s/{id}" }, beta: { historyUrl: false }, gamma: { tools: false } },
+    })
     expect(historyTemplate(options, "alpha")).toBe("http://alpha.lan/s/{id}")
     expect(historyTemplate(options, "beta")).toBeUndefined()
     expect(historyTemplate(options, "gamma")).toBe(GLOBAL)

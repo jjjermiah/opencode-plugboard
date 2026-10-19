@@ -42,6 +42,18 @@ describe("the usage RPC handler", () => {
     expect(result).toEqual(report({ from: "2026-10-01", to: "2026-10-30" }))
   })
 
+  test("the user filter passes through unchanged, reserved and stored names included", async () => {
+    const seen: UsageQuery[] = []
+    const get = usageHandlers({
+      query: async (query) => {
+        seen.push(query)
+        return report(query)
+      },
+    }).get
+    for (const user of ["_other", "prototype", "constructor", "__proto__"]) await Effect.runPromise(get({ user }, context as never))
+    expect(seen.map((query) => query.user)).toEqual(["_other", "prototype", "constructor", "__proto__"])
+  })
+
   test("no input, or fields of the wrong type, read as no filter (every app, the default range)", async () => {
     const seen: UsageQuery[] = []
     const get = usageHandlers({

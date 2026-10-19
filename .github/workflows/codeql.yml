@@ -9,7 +9,7 @@ on:
   pull_request:
   schedule:
     - cron: "41 4 * * 1"
-  # host-bump.yml starts it on its branch: a pull request opened with GITHUB_TOKEN starts no workflow, and the required Analyze check would never report.
+  # host-bump.yml approves it on its branch: a pull request opened with GITHUB_TOKEN holds its pull_request runs for approval, and the required Analyze check would never report until then.
   workflow_dispatch:
 
 permissions: {}
@@ -31,10 +31,10 @@ jobs:
         with:
           persist-credentials: false
       # JavaScript and TypeScript need no build step, so the analysis reads the sources directly.
-      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: javascript-typescript
           build-mode: none
-      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           category: "/language:javascript-typescript"

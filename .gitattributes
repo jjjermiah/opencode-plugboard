@@ -1,0 +1,4 @@
+# Two lanes add bullets under `## [Unreleased]` in the same merge window. git's built-in union driver keeps both
+# sides' lines instead of stopping on a conflict. The release script rewrites CHANGELOG.md in one place, so a union
+# merge that left a duplicate or out-of-order bullet is fixed in review, not by a conflict marker.
+CHANGELOG.md merge=union

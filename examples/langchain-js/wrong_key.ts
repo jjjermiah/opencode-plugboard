@@ -8,8 +8,8 @@ export async function run(client: { baseURL: string; apiKey: string }, model: st
   try {
     await llm.invoke("Reply with exactly: pong")
   } catch (error) {
-    const { status, code } = error as { status?: number; code?: string }
-    return { status: status ?? null, code: code ?? null }
+    const { status, code, type } = error as { status?: number; code?: string; type?: string }
+    return { status: status ?? null, code: code ?? null, type: type ?? null }
   }
   // #endregion snippet
   throw new Error("a wrong key was accepted")

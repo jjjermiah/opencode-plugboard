@@ -75,13 +75,16 @@ function post(server: RouteServer, path: string, body: unknown, options: { agent
 function firstByte(server: RouteServer, path: string, body: unknown) {
   return new Promise<void>((resolve, reject) => {
     const payload = JSON.stringify(body)
-    const client = httpRequest({ host: "127.0.0.1", port: server.port, method: "POST", path, agent: false, headers: { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } }, (response) => {
-      response.once("data", () => {
-        client.destroy()
-        resolve()
-      })
-      response.on("error", () => resolve())
-    })
+    const client = httpRequest(
+      { host: "127.0.0.1", port: server.port, method: "POST", path, agent: false, headers: { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } },
+      (response) => {
+        response.once("data", () => {
+          client.destroy()
+          resolve()
+        })
+        response.on("error", () => resolve())
+      },
+    )
     client.on("error", (error) => (client.destroyed ? resolve() : reject(error)))
     client.end(payload)
   })
@@ -145,6 +148,14 @@ bench("resolve a model in the test catalog", () => {
 
 const { benchmarks } = await run({ print: write })
 // The gate compares medians: means on a shared runner move with every GC pause (p99 is in milliseconds).
-if (jsonFile) writeFileSync(jsonFile, `${JSON.stringify(benchmarks.map((trial) => ({ name: trial.runs[0]!.name, p50Ns: trial.runs[0]!.stats!.p50 })), null, 2)}\n`)
+if (jsonFile)
+  writeFileSync(
+    jsonFile,
+    `${JSON.stringify(
+      benchmarks.map((trial) => ({ name: trial.runs[0]!.name, p50Ns: trial.runs[0]!.stats!.p50 })),
+      null,
+      2,
+    )}\n`,
+  )
 agent.destroy()
 await Promise.all(servers.map((server) => server.close()))

@@ -19,7 +19,11 @@ const GOLDENS: ReadonlyArray<readonly [string, (s: Scenarios) => unknown, string
   ["chatCompletion", (s) => s.chat.completion, "OpenAI.Chat.Completions.ChatCompletion"],
   ["chatCompletionChunks", (s) => s.chat.chunks, "OpenAI.Chat.Completions.ChatCompletionChunk[]"],
   ["chatError", (s) => s.chat.error, "{ error: OpenAI.ErrorObject }"],
-  ["chatModelList", (s) => s.chat.models, "{ object: \"list\"; data: Array<OpenAI.Models.Model & { plugboard: unknown }> }"],
+  [
+    "chatModelList",
+    (s) => s.chat.models,
+    '{ object: "list"; data: Array<OpenAI.Models.Model & { plugboard: unknown; context_length?: number; max_output_tokens?: number; pricing?: { prompt: string; completion: string; input_cache_read?: string; input_cache_write?: string } }> }',
+  ],
   // `store` and `name` (on function_call_arguments.done) are in OpenAI's API reference but not in the SDK's types.
   ["responsesResponse", (s) => s.responses.response, "OpenAI.Responses.Response & { store: boolean }"],
   [
@@ -30,7 +34,7 @@ const GOLDENS: ReadonlyArray<readonly [string, (s: Scenarios) => unknown, string
   ["completion", (s) => s.completions.completion, "OpenAI.Completions.Completion"],
   ["completionChunks", (s) => s.completions.chunks, "OpenAI.Completions.Completion[]"],
   ["anthropicMessage", (s) => s.messages.message, "Anthropic.Message"],
-  ["anthropicEvents", (s) => s.messages.events, "Array<Anthropic.RawMessageStreamEvent | { type: \"ping\" }>"],
+  ["anthropicEvents", (s) => s.messages.events, 'Array<Anthropic.RawMessageStreamEvent | { type: "ping" }>'],
   ["anthropicError", (s) => s.messages.error, "Anthropic.ErrorResponse"],
   ["geminiResponse", (s) => s.gemini.response, "GeminiResponse"],
   ["geminiChunks", (s) => s.gemini.chunks, "GeminiResponse[]"],
@@ -41,8 +45,6 @@ const GAPS: Readonly<Record<string, string>> = {
   responsesResponse: "plugboard omits output_text (the SDK computes it client-side), access_programs and usage.input_tokens_details.cache_write_tokens",
   responsesEvents: "the response objects in created/in_progress/completed omit output_text, access_programs and cache_write_tokens (see responsesResponse)",
   completionChunks: "stream chunks carry finish_reason null until the last; the SDK types chunks as Completion, whose finish_reason is never null",
-  anthropicMessage: "plugboard omits nullable fields Anthropic always sends: container, diagnostics, stop_details, text citations, usage cache_creation, inference_geo, output_tokens_details, server_tool_use, service_tier",
-  anthropicEvents: "message_start and message_delta omit the same nullable fields as anthropicMessage (container, stop_details, usage details)",
   anthropicError: "request_id is sent as the request-id header, not in the body",
 }
 

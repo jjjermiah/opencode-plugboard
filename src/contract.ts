@@ -27,8 +27,9 @@ export interface ModelRef {
 export interface CatalogCost {
   readonly input: number
   readonly output: number
-  readonly cacheRead: number
-  readonly cacheWrite: number
+  /** Cache prices when the host reports them; absent means unknown (not free). */
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
   readonly aboveContext?: number
 }
 
@@ -90,7 +91,18 @@ export interface ToolResultPart {
   readonly cacheTtl?: "1h"
 }
 
-export type PlugPart = TextPart | MediaPart | ToolCallPart | ToolResultPart
+/**
+ * Replayable reasoning from a caller's history (#374): a signed `thinking` block (`signature`, with its `text`) or a
+ * `redacted_thinking` block (`redactedData`, empty `text`). Unsigned thinking is not a part: the decoder drops it, as before.
+ */
+export interface ReasoningPart {
+  readonly type: "reasoning"
+  readonly text: string
+  readonly signature?: string
+  readonly redactedData?: string
+}
+
+export type PlugPart = TextPart | MediaPart | ToolCallPart | ToolResultPart | ReasoningPart
 
 export interface PlugMessage {
   readonly role: "user" | "assistant" | "tool"
@@ -157,9 +169,9 @@ export type PlugFinish = "stop" | "length" | "tool-calls" | "content-filter" | "
 export type PlugEvent =
   | { readonly type: "text-delta"; readonly text: string }
   // `signature` marks the end of a reasoning block: an empty-text event carrying the provider's signature for it (#146).
-  | { readonly type: "reasoning-delta"; readonly text: string; readonly signature?: string }
+  | { readonly type: "reasoning-delta"; readonly text: string; readonly signature?: string; readonly redactedData?: string }
   | { readonly type: "tool-call"; readonly id: string; readonly name: string; readonly input: unknown }
-  | { readonly type: "finish"; readonly reason: PlugFinish; readonly usage?: PlugUsage }
+  | { readonly type: "finish"; readonly reason: PlugFinish; readonly usage?: PlugUsage; readonly stopSequence?: string }
   | { readonly type: "error"; readonly error: PlugError }
 
 export type PlugErrorKind = "invalid_request" | "authentication" | "permission" | "not_found" | "rate_limit" | "server" | "timeout"
@@ -180,8 +192,7 @@ export interface PlugError {
 }
 
 /** The one discriminator for `PlugError` values returned in place of a result. */
-export const isPlugError = (value: unknown): value is PlugError =>
-  typeof value === "object" && value !== null && "status" in value && "kind" in value && "message" in value
+export const isPlugError = (value: unknown): value is PlugError => typeof value === "object" && value !== null && "status" in value && "kind" in value && "message" in value
 
 // ---------------------------------------------------------------- caller
 
@@ -193,6 +204,11 @@ export interface CallContext {
   readonly app: string
   /** Aborted on client disconnect or timeout. */
   readonly signal: AbortSignal
+  /**
+   * Aborted when a caller stop sequence ended the answer (#390, src/stop.ts). The session caller then interrupts the host run
+   * and keeps the stream open until its finish, so the usage of the run is counted.
+   */
+  readonly stopAnswer?: AbortSignal
   /** Called once, before the first event, with the id of the history record this call writes (if any). */
   readonly onRecord?: (recordID: string, directory?: string) => void
   /**
@@ -201,6 +217,12 @@ export interface CallContext {
    * it echoes when `chain` is set. A call that fails never reports it.
    */
   readonly onServed?: (served: ServedModel) => void
+  /**
+   * A fallback target follows this call (`src/fallback.ts` sets it when the chain has one). A retry the host schedules
+   * for the call before any output then fails the call at once (`provider_retry`), so the chain moves on. Without it the
+   * host's own retries run. Set by the chain only (#391).
+   */
+  readonly fallbackNext?: boolean
   /** Called once, before the first event, with each change the app's policy made that the caller sent for. Front-ends report them in the `x-plugboard-policy` header. */
   readonly onPolicy?: (notes: ReadonlyArray<PolicyNote>) => void
   /** Called once, before the first event, when the response cache applies to the call: `hit` replays a stored answer (no session, no record), `miss` runs the model. Not called when the cache is off, skipped for the app, or `noCache` is set. */
@@ -215,6 +237,12 @@ export interface CallContext {
    * headers are open, so a stream (headers sent first) never gets it.
    */
   readonly onUsage?: (totals: CallTotals) => void
+  /**
+   * Called once when the call ends without a finish event (client gone, timeout, or a stop sequence cut the run short), with
+   * the host's usage for the run up to then. `withUsage` records it, so the tokens are charged to the app's budgets. The
+   * finish's own usage takes precedence when there is one.
+   */
+  readonly onRunUsage?: (usage: PlugUsage) => void
   /**
    * Called once when the call ends, only if OpenCode ran server tools for it (option `apps.<name>.serverTools`),
    * with how many. Front-ends set `x-plugboard-server-tools` from it while the headers are open, so a stream

@@ -5,7 +5,7 @@
  * so every wait here is a few milliseconds.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import { request as httpRequest, type ClientRequest, type IncomingMessage, type ServerResponse } from "node:http"
+import { Agent, request as httpRequest, type ClientRequest, type IncomingMessage, type ServerResponse } from "node:http"
 import type { BodyLimits } from "../../src/config.js"
 import type { PlugEvent } from "../../src/contract.js"
 import { BodyError, RequestAborted, beginRequest, boundEvents, bodyPlugError, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../../src/http.js"
@@ -84,6 +84,72 @@ describe("beginRequest: one deadline and disconnect abort per request", () => {
     const stream = await open()
     await stream.ended
     expect(stream.status).toBe(200)
+  })
+
+  test("#422 a 504 that keeps the connection does not cut the next request sent on it", async () => {
+    let calls = 0
+    const { port } = await serve(async (request, response) => {
+      calls++
+      if (calls > 1) {
+        // Slower than the grace: a socket cut by the first request's grace timer fails this one.
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        sendJson(response, 200, { ok: true })
+        return
+      }
+      const scope = beginRequest(request, response, 5, 10)
+      await new Promise((resolve) => scope.signal.addEventListener("abort", resolve))
+      // A 504 without `connection: close`, as the responses, completions and gemini routes send it.
+      sendJson(response, 504, scope.timeoutError)
+      scope.dispose()
+    })
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 })
+    const status = () =>
+      new Promise<number>((resolve, reject) => {
+        const client = httpRequest({ host: "127.0.0.1", port, path: "/", agent }, (response) => {
+          response.resume()
+          response.on("end", () => resolve(response.statusCode ?? 0))
+        })
+        client.on("error", reject)
+        client.end()
+      })
+    try {
+      expect(await status()).toBe(504)
+      expect(await status()).toBe(200)
+    } finally {
+      agent.destroy()
+    }
+  })
+
+  test("#441 a stream committed before the deadline ends with its error frame, then its socket closes without waiting for the grace", async () => {
+    let socketClosed = false
+    const { port } = await serve(async (request, response) => {
+      request.socket.once("close", () => (socketClosed = true))
+      const scope = beginRequest(request, response, 20, 60_000)
+      // The route's shape: an SSE writer bounded by the scope, the error frame written on the timeout, then the response ends.
+      const sse = sseWriter(response, scope.signal, 60_000)
+      for await (const event of sse.paced(boundEvents(script(ev.reasoning("x"), new Promise(() => {})), scope))) if (event.type === "error") sse.write('data: {"error":"timeout"}\n\n')
+      response.end()
+      scope.dispose()
+    })
+    // A keep-alive client, so the socket stays pooled unless the server closes it.
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 })
+    try {
+      const body = await new Promise<string>((resolve, reject) => {
+        const client = httpRequest({ host: "127.0.0.1", port, path: "/", agent }, (response) => {
+          let text = ""
+          response.setEncoding("utf8")
+          response.on("data", (chunk: string) => (text += chunk))
+          response.on("end", () => resolve(text))
+          response.on("error", reject)
+        })
+        client.on("error", reject)
+        client.end()
+      })
+      expect(body).toContain('data: {"error":"timeout"}')
+      await until(() => socketClosed, 1_000, "the socket to close once the committed stream ended")
+    } finally {
+      agent.destroy()
+    }
   })
 
   test("race settles like the promise, or rejects with the abort reason", async () => {
@@ -175,9 +241,9 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
   const small: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 5_000 }
 
   /** Reads with `limits` and answers the way a route does: 200 when read, the refusal's status and Retry-After otherwise. */
-  function answerWith(limits: BodyLimits, probe?: (request: IncomingMessage) => void): Handler {
+  function answerWith(limits: BodyLimits, probe?: (request: IncomingMessage) => void, appOf?: (request: IncomingMessage) => string | undefined): Handler {
     return (request, response) => {
-      const read = readJsonBody(request, new AbortController().signal, limits)
+      const read = readJsonBody(request, new AbortController().signal, { ...limits, app: appOf?.(request) })
       probe?.(request)
       void read.then(
         () => sendJson(response, 200, { ok: true }),
@@ -262,7 +328,7 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
     stalled.write("{")
     const reply = await stalledReply
     expect(reply.statusCode).toBe(408)
-    expect(JSON.parse(await textOf(reply))).toEqual({ error: "Request body was not received within 5 ms (option limits.bodyReadTimeoutMs)" })
+    expect(JSON.parse(await textOf(reply))).toEqual({ error: "Request body stopped arriving for 5 ms (option limits.bodyReadTimeoutMs)" })
     stalled.destroy()
 
     // The stalled body held all 100 bytes; once it timed out they are free, so a body of 92 bytes fits.
@@ -274,6 +340,51 @@ describe("#156 readJsonBody: a process-wide budget and a read timeout, both befo
     expect(bodyPlugError(new BodyError(503, "busy", "server_busy", 1))).toEqual({ status: 503, kind: "server", message: "busy", code: "server_busy", retryAfterSeconds: 1 })
     expect(bodyPlugError(new BodyError(408, "slow", "body_read_timeout"))).toEqual({ status: 408, kind: "timeout", message: "slow", code: "body_read_timeout" })
     expect(bodyPlugError(new BodyError(413, "big"))).toEqual({ status: 413, kind: "invalid_request", message: "big" })
+  })
+
+  /** A JSON body of exactly `bytes` bytes. */
+  const bodyOf = (bytes: number) => JSON.stringify({ text: "a".repeat(bytes - 11) })
+  const byApp = (request: IncomingMessage) => (request.headers["x-app"] === undefined ? undefined : String(request.headers["x-app"]))
+
+  test("a stalled upload from app a holds only a's share: a's excess is a 503, and app b is still admitted", async () => {
+    // Two stalled bodies of 250 bytes fill a's share (half of 1000). A third from a is refused; b (400 bytes) fits in the rest.
+    const limits: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 500, appShare: 500 }
+    let entered = 0
+    const { port, send } = await serve(answerWith(limits, () => void entered++, byApp))
+    const stalled = [0, 1].map(() => openPost(port, { "content-type": "application/json", "content-length": 250, "x-app": "a" }))
+    const replies = stalled.map(replyOf)
+    for (const client of stalled) client.write("{")
+    await until(() => entered === 2)
+
+    const excess = bodyOf(250)
+    const refused = await send({ method: "POST", body: excess, headers: { "content-length": 250, "x-app": "a" } })
+    expect(refused.status).toBe(503)
+    expect(refused.json()).toEqual({ error: "Too many request bodies are being read; retry shortly" })
+
+    const other = bodyOf(400)
+    expect((await send({ method: "POST", body: other, headers: { "content-length": 400, "x-app": "b" } })).status).toBe(200)
+
+    // The stalled bodies answer 408 at the read deadline, and their bytes go back to a's share.
+    for (const reply of await Promise.all(replies)) expect(reply.statusCode).toBe(408)
+    expect((await send({ method: "POST", body: excess, headers: { "content-length": 250, "x-app": "a" } })).status).toBe(200)
+  })
+
+  test("a stalled upload gets 408 after the read deadline and frees its app's slot for the next upload", async () => {
+    const limits: BodyLimits = { maxBytesInFlight: 1_000, readTimeoutMs: 50, appShare: 500 }
+    let entered = 0
+    const { port, send } = await serve(answerWith(limits, () => void entered++, byApp))
+    const stalled = openPost(port, { "content-type": "application/json", "content-length": 500, "x-app": "a" })
+    const reply = replyOf(stalled)
+    stalled.write("{")
+    await until(() => entered === 1)
+    // Only 1 byte has arrived; the declared 500 holds a's whole share, so a second upload from a waits for the timeout.
+    expect((await send({ method: "POST", body: bodyOf(100), headers: { "content-length": 100, "x-app": "a" } })).status).toBe(503)
+
+    const answer = await reply
+    expect(answer.statusCode).toBe(408)
+    expect(JSON.parse(await textOf(answer))).toEqual({ error: "Request body stopped arriving for 50 ms (option limits.bodyReadTimeoutMs)" })
+    stalled.destroy()
+    expect((await send({ method: "POST", body: bodyOf(500), headers: { "content-length": 500, "x-app": "a" } })).status).toBe(200)
   })
 })
 
@@ -360,7 +471,10 @@ describe("sseWriter: commit rules and keepalive", () => {
       destroyed: false,
       writableEnded: false,
       headersSent: false,
-      writeHead() { this.headersSent = true; return this },
+      writeHead() {
+        this.headersSent = true
+        return this
+      },
       flushHeaders() {},
       setHeader() {},
       write: () => false,
@@ -370,7 +484,9 @@ describe("sseWriter: commit rules and keepalive", () => {
     const scope = new AbortController()
     const sse = sseWriter(response as unknown as Parameters<typeof sseWriter>[0], scope.signal)
     sse.write("data: x\n\n")
-    const waiting = sse.drained().then(() => { state = "drained" })
+    const waiting = sse.drained().then(() => {
+      state = "drained"
+    })
     await new Promise((resolve) => setTimeout(resolve, 5))
     expect(state).toBe("pending")
     scope.abort()

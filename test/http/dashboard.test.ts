@@ -28,10 +28,7 @@ afterEach(async () => {
 /** A route answering chat calls with 10 input and 5 output tokens, with usage on unless `usage` is false. */
 async function start(options: Record<string, unknown> = { keys: { probeapp: KEY } }, usage = true): Promise<RouteServer> {
   const recorder = usage ? createUsageRecorder({ state: createUsageState(), storage: new FakeStorage(), loadCatalog: async () => CATALOG, retentionDays: 90 }) : undefined
-  const caller = withUsage(
-    new FakeModelCaller(() => [ev.text("hi"), ev.finish("stop", { inputTokens: 10, outputTokens: 5 })]),
-    recorder,
-  )
+  const caller = withUsage(new FakeModelCaller(() => [ev.text("hi"), ev.finish("stop", { inputTokens: 10, outputTokens: 5 })]), recorder)
   server = await startRoute({ caller, options, ...(recorder ? { usage: recorder } : {}) })
   return server
 }

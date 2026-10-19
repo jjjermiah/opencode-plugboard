@@ -65,6 +65,48 @@ describe("#55 admin routes: who may call them", () => {
   })
 })
 
+describe("the body budget and the admin key API (since 0.39.0)", () => {
+  const MIB = 1024 * 1024
+  const threeApps = { alpha: ALPHA, beta: "beta-config-secret", gamma: "gamma-config-secret" }
+
+  test("an explicit budget that cannot hold one more app's body refuses the new key with 409, and creates nothing", async () => {
+    const keys = createKeyStore({ state: createKeyState(), storage: new FakeStorage() })
+    server = await startRoute({
+      caller: new FakeModelCaller(() => [ev.text("hi"), ev.finish()]),
+      options: { keys: threeApps, adminKey: ADMIN, limits: { maxBodyBytesInFlight: 96 * MIB } },
+      keys,
+    })
+    const srv = server
+    const refused = await srv.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "delta" } })
+    expect(refused.status).toBe(409)
+    expect(refused.json().code).toBe("body_budget_insufficient")
+    expect((await srv.send({ path: "/plugboard/admin/keys", headers: bearer(ADMIN) })).json().keys).toHaveLength(3)
+  })
+
+  test("without an explicit budget the new app is accepted: the budget grows with it", async () => {
+    const keys = createKeyStore({ state: createKeyState(), storage: new FakeStorage() })
+    server = await startRoute({
+      caller: new FakeModelCaller(() => [ev.text("hi"), ev.finish()]),
+      options: { keys: threeApps, adminKey: ADMIN },
+      keys,
+    })
+    expect((await server.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "delta" } })).status).toBe(201)
+  })
+})
+
+describe("#418 an app name is at most 255 characters, the longest file name a filesystem takes", () => {
+  test("a 255-character name mints a key; a 256-character name is refused with 400 invalid_app and mints nothing", async () => {
+    const srv = await start()
+    const created = await srv.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "x".repeat(255) } })
+    expect(created.status).toBe(201)
+    const refused = await srv.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "x".repeat(256) } })
+    expect(refused.status).toBe(400)
+    expect(refused.json()).toMatchObject({ code: "invalid_app", status: 400 })
+    expect(JSON.stringify(refused.json())).toContain("255")
+    expect((await srv.send({ path: "/plugboard/admin/keys", headers: bearer(ADMIN) })).json().keys).toHaveLength(2)
+  })
+})
+
 describe("#55 admin routes: create, list, revoke", () => {
   test("#55 GET lists the config key and no runtime keys on a fresh server", async () => {
     const srv = await start()

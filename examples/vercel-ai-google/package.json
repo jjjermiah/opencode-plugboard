@@ -1,0 +1,19 @@
+{
+  "name": "plugboard-example-vercel-ai-google",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Vercel AI SDK's Google provider (@ai-sdk/google) against plugboard's Gemini route: S1 to S7 and the error paths. Exact pins, locked in bun.lock.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "4.0.98",
+    "ai": "7.0.137",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

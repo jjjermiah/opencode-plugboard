@@ -11,7 +11,7 @@ export async function run(client: Client) {
   } catch (error) {
     if (!APICallError.isInstance(error)) throw error
     const body = JSON.parse(error.responseBody ?? "{}") as { error?: { code?: string } }
-    return { status: error.statusCode ?? null, code: body.error?.code ?? null }
+    return { status: error.statusCode ?? null, code: body.error?.code ?? null, type: body.error?.type ?? null }
   }
   // #endregion snippet
   throw new Error("model nope was accepted")

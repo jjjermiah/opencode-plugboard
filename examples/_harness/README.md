@@ -24,8 +24,10 @@ The scripted model answers only the exact prompts in `_shared/scenarios.json`. A
 | S5 | image as data URL (answer says red) | yes |
 | S6 | structured output (as text and as a forced tool) | yes |
 | S7 | list models | yes |
-| E1 | wrong key (401 `invalid_api_key`) | no |
-| E2 | unknown model (404 `model_not_found`) | no |
+| E1 | wrong key (401 `invalid_api_key`, type `authentication_error`) | no |
+| E2 | unknown model (404 `model_not_found`, type `not_found_error`) | no |
+
+The error `type` is checked on both wires. Each runner reports the neutral type: the OpenAI and Messages wires send it as `error.type`, and a Gemini runner maps the status (`UNAUTHENTICATED`, `NOT_FOUND`) to the same two values (#427).
 
 Model ids: `fast`, `anthropic/claude-haiku-4-5` and `openai/gpt-5.6-luna#low`. In a directory name `/` and `#` become `-`.
 
@@ -69,6 +71,14 @@ The run exits 1 when a required scenario fails. A verdict is `fail` on a require
 
 Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `transcripts/_background.json`. That file is written but not compared in CI.
 
+## Gaps, unobserved checks and the stream check
+
+- **gap**: a row that fails and is listed in `gaps` (by `id`, `id|model` or `id|variant`) is reported as `gap` with its note. Use it for a known incompatibility, with an issue. The row's checks are still recorded.
+- **unobserved**: a check the client cannot observe, listed by `id` (every model and variant) or `id|variant`, is left out of its row, and the note names it with the reason. Use it for a permanent client limitation, not a bug. An entry must name a planned check, and may not drop every check of its row. The runners' `TS` and `Python` helpers and the relay all refuse a bad entry before anything runs.
+- **n/a**: a scenario the client does not have, with the reason. Nothing is sent.
+- **The stream check** (`stream ended normally`) is decided by the harness from the captured wire, not from the runner's `done` flag. A chat completions stream must end with `data: [DONE]`, a Responses stream with a `response.completed` event, a Messages stream with `message_stop`, and a Gemini stream with a `finishReason`. A stream that did not end that way downgrades its row from pass to fail (#370).
+- **Runners that cannot import the helpers** (Go, .NET) print `plan`, `client`, `observation` and `done` lines through `ts/relay.ts`. The plan line may carry `gaps`, `na`, `unobserved` and `variants`, with the meanings above, and those limits are trusted with the same reach as in the TypeScript and Python helpers. A runner may not print a `result` line. A chat or legacy completions stream with an error frame before `[DONE]` did not end normally, and neither did one that ends with `response.incomplete` (Responses). The stream check cannot be left out with `unobserved`.
+
 ## Redaction
 
 - Request headers: only `accept`, `anthropic-version`, `content-type` and `openai-beta`. Response headers: `content-type` and `x-plugboard-*` except `x-plugboard-request-id`. `authorization`, `x-api-key`, `x-goog-api-key`, `date`, `host`, `user-agent`, `x-stainless-*` and `content-length` are never written.
@@ -76,6 +86,7 @@ Requests outside a scenario's routes (a UI refreshing `/v1/models`) go to `trans
 - Ids are replaced by placeholders numbered by first appearance in each file, so one id keeps one placeholder across turns. A GET of a models route keeps its model ids.
 - `http://127.0.0.1:<port>` becomes `<plugboard>`, error text included.
 - The writer refuses any file that contains the app key. Live runs use only the prompts in `scenarios.json`.
+- **Gemini CLI session context** (`normaliseSessionContext`, applied to request bodies only): the CLI's `<session_context>` block carries today's date, the operating system and the temp dir and workspace. Inside that block, the date becomes `<date>`, the OS `<os>`, the temp dir `<temp-dir>` and the workspace `<workspace>`. Anywhere in a request, the CLI's fixed home and workspace paths (`plugboard-gemini-cli-home`, `plugboard-gemini-cli-workspace` under the temp dir) become `<gemini-cli-home>` and `<gemini-cli-workspace>`, because the CLI repeats the home path in its system prompt. Nothing else changes. Tested in `test/unit/examples-normalise.test.ts`.
 
 ## Adding an example
 

@@ -98,28 +98,28 @@ function createState(): LogState {
   })
   const build = (level: string): Logger =>
     pino(
-    {
-      level,
-      base: { service: SERVICE },
-      timestamp: pino.stdTimeFunctions.isoTime,
-      formatters: { level: (label) => ({ level: label }) },
-      mixin: () => {
-        const id = requests.getStore()?.id
-        return id === undefined ? {} : { id }
+      {
+        level,
+        base: { service: SERVICE },
+        timestamp: pino.stdTimeFunctions.isoTime,
+        formatters: { level: (label) => ({ level: label }) },
+        mixin: () => {
+          const id = requests.getStore()?.id
+          return id === undefined ? {} : { id }
+        },
+        redact: { paths: REDACT_PATHS, censor: "[redacted]" },
       },
-      redact: { paths: REDACT_PATHS, censor: "[redacted]" },
-    },
-    // dedupe: a record goes to the highest-level destination it reaches, so errors only to stderr.
-    pino.multistream(
-      [
-        // `debug` has its own entry so a debug record (logLevel `debug`, #262) reaches stdout; dedupe keeps one copy per line.
-        { level: "debug", stream: destination("log") },
-        { level: "info", stream: destination("log") },
-        { level: "error", stream: destination("error") },
-      ],
-      { dedupe: true },
-    ),
-  )
+      // dedupe: a record goes to the highest-level destination it reaches, so errors only to stderr.
+      pino.multistream(
+        [
+          // `debug` has its own entry so a debug record (logLevel `debug`, #262) reaches stdout; dedupe keeps one copy per line.
+          { level: "debug", stream: destination("log") },
+          { level: "info", stream: destination("log") },
+          { level: "error", stream: destination("error") },
+        ],
+        { dedupe: true },
+      ),
+    )
   state.logger = build("info")
   state.audit = build("info")
   return state

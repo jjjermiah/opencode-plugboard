@@ -16,8 +16,10 @@
  * request's).
  *
  * The wire encoders stay per-choice and come in through `ChoiceCodec`: Chat Completions here,
- * legacy completions in `src/completions/response.ts`. This module owns what is shared: the
- * group cancellation, the merge of JSON bodies and the interleaving of SSE chunks.
+ * legacy completions in `src/completions/response.ts`, Gemini candidates in `src/gemini/response.ts`.
+ * This module owns what is shared: the group cancellation, the merge of JSON bodies and the
+ * interleaving of stream chunks. A codec with its own error body, merge or stream wire (Gemini) says so
+ * in the optional members; without them the OpenAI forms apply.
  */
 
 import type { ServerResponse } from "node:http"
@@ -28,10 +30,11 @@ import { reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { historyTemplate } from "../config.js"
 import { SESSION_URL_HEADER, sessionUrl } from "../session/link.js"
-import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
+import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope, type StreamWire } from "../http.js"
 import {
   STRUCTURED_FALLBACK_HEADER,
   chatUsageChunk,
+  roleChunk,
   collectCompletion,
   encodeError,
   streamCompletion,
@@ -54,10 +57,18 @@ export interface ChoiceCodec {
   collect(events: AsyncIterable<PlugEvent>, index: number): Promise<CollectedChoice>
   /** One choice of the shared stream: this choice's chunks only (see `StreamChoice`). */
   streamChoice(events: AsyncIterable<PlugEvent>, write: (chunk: string) => void, choice: StreamChoice): Promise<StreamResult>
+  /** The chunk that opens one choice before its first chunk (chat's role delta). Absent: no opening chunk. */
+  opening?(choice: StreamChoice): object
   /** The final chunk with the summed usage (`include_usage`). */
   usageChunk(choice: Omit<StreamChoice, "index">, usage: PlugUsage): object
   /** Echo the served model of an alias with fallbacks as the response model. Used for a single call only: with several choices the body keeps the requested model. */
   setModel(model: string): void
+  /** The error body of a request that fails before it answers (OpenAI's `encodeError` when absent). */
+  encodeError?(error: PlugError): object
+  /** The successful choice bodies as one (OpenAI's `choices` / `usage` merge when absent). */
+  merge?(bodies: ReadonlyArray<object>): object
+  /** The stream's wire form (SSE `data:` frames ended by `[DONE]` when absent). */
+  readonly wire?: StreamWire
 }
 
 /** The Chat Completions encoder as a `ChoiceCodec`. */
@@ -67,6 +78,7 @@ export const chatCodec = (exchange: OpenAiExchange): ChoiceCodec => ({
   idPrefix: "chatcmpl-",
   collect: (events) => collectCompletion(events, exchange),
   streamChoice: (events, write, choice) => streamCompletion(events, exchange, write, choice),
+  opening: (choice) => roleChunk(exchange, choice),
   usageChunk: (choice, usage) => chatUsageChunk(exchange.model, choice.id, choice.created, usage),
   setModel: (model) => void (exchange.model = model),
 })
@@ -168,12 +180,13 @@ const addUsage = (a: PlugUsage, b: PlugUsage): PlugUsage => {
 }
 
 export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, { app, calls, response, scope, info, codec }: ChoicesCall): Promise<void> {
-  const fail = (error: PlugError) => sendError(response, error, encodeError(error))
+  const errorBody = codec.encodeError ?? encodeError
+  const fail = (error: PlugError) => sendError(response, error, errorBody(error))
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason
 
   const group = new AbortController()
-  const cancel = () => group.abort(new RequestAborted("disconnected"))
+  const cancel = () => group.abort(new RequestAborted("cancelled"))
   const gscope = groupScope(scope, AbortSignal.any([scope.signal, group.signal]))
   /** History record ids as the callers report them, in choice order, for the response header (comma separated). */
   const records: Array<string | undefined> = []
@@ -239,16 +252,30 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
     })
     const first = results[0]!
     if (results.some((result) => result.structuredFallback)) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
-    return sendJson(response, first.status, results.length === 1 ? first.body : mergeBodies(results.map((result) => result.body)), { retryAfterSeconds: first.retryAfterSeconds })
+    return sendJson(response, first.status, results.length === 1 ? first.body : (codec.merge ?? mergeBodies)(results.map((result) => result.body)), { retryAfterSeconds: first.retryAfterSeconds })
   }
 
-  const sse = sseWriter(response, scope.signal)
+  const sse = sseWriter(response, scope.signal, undefined, codec.wire)
+  const frame = (payload: object) => codec.wire?.frame(payload) ?? `data: ${JSON.stringify(payload)}\n\n`
+  const end = () => codec.wire?.end() ?? "data: [DONE]\n\n"
   const shared = { id: `${codec.idPrefix}${crypto.randomUUID().replaceAll("-", "").slice(0, 29)}`, created: Math.floor(Date.now() / 1000) }
+  // Each choice opens with its role chunk before its first chunk, in index order (#423). Opening a choice opens every
+  // lower index first, so the openers go out in order whichever choice answers first; a choice that never writes is opened only by a later one.
+  const opening = codec.opening
+  const opened = new Set<number>()
+  const openUpTo = (index: number) => {
+    if (opening === undefined) return
+    for (let next = 0; next <= index; next++) {
+      if (opened.has(next)) continue
+      opened.add(next)
+      sse.write(`data: ${JSON.stringify(opening({ ...shared, index: next }))}\n\n`)
+    }
+  }
   const channels = calls.map(() => channel<PlugEvent>())
   let failure: PlugError | undefined
   let usage: PlugUsage | undefined
   const runs = channels.map((events, index) =>
-    codec.streamChoice(events, sse.write, { ...shared, index }).then((result) => {
+    codec.streamChoice(events, sse.write, { ...shared, index, ...(opening === undefined ? {} : { open: () => openUpTo(index) }) }).then((result) => {
       if (result.failure && !failure) {
         failure = result.failure
         cancel()
@@ -312,12 +339,13 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
       if (!scope.signal.aborted || scope.timedOut) fail(failure)
     } else {
       info.failed = failure.code ?? failure.kind
-      sse.write(`data: ${JSON.stringify(encodeError(failure))}\n\ndata: [DONE]\n\n`)
+      sse.write(frame(errorBody(failure)) + end())
       if (!response.writableEnded) response.end()
     }
     return
   }
-  if (codec.includeUsage && usage) sse.write(`data: ${JSON.stringify(codec.usageChunk(shared, usage))}\n\n`)
-  sse.write("data: [DONE]\n\n")
+  // Always, with zeros when no choice reported usage (#390): the same rule as a single choice.
+  if (codec.includeUsage) sse.write(frame(codec.usageChunk(shared, usage ?? {})))
+  sse.write(end())
   if (!response.writableEnded) response.end()
 }

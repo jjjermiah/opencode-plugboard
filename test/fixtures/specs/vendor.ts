@@ -13,8 +13,8 @@
  */
 import { mkdir } from "node:fs/promises"
 
-const RETRIEVED = "2026-10-11"
-const OPENAI = { url: "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml", roots: ["CreateChatCompletionResponse", "CreateChatCompletionStreamResponse", "CreateCompletionResponse", "ListModelsResponse", "Response"] }
+const RETRIEVED = "2026-10-17"
+const OPENAI = { url: "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml", roots: ["CreateChatCompletionResponse", "CreateChatCompletionStreamResponse", "CreateCompletionResponse", "ListModelsResponse", "Response", "ResponseItemList"] }
 const GEMINI = { url: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta", roots: ["GenerateContentResponse", "CountTokensResponse"] }
 
 type Json = Record<string, unknown>

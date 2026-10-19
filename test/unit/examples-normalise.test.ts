@@ -7,7 +7,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Exchange } from "../../examples/_harness/capture.ts"
-import { canonicalJson, normaliseTranscript, parseFrames, redactPath } from "../../examples/_harness/normalise.ts"
+import { canonicalJson, normaliseSessionContext, normaliseSessionContextValue, normaliseTranscript, parseFrames, redactPath } from "../../examples/_harness/normalise.ts"
 import { verdictOf, writeRun, type RunSummary, type ScenarioRow } from "../../examples/_harness/render.ts"
 
 const exchange = (overrides: Partial<Exchange>): Exchange => ({
@@ -70,7 +70,13 @@ describe("placeholders for ids", () => {
       method: "GET",
       path: "/v1/models",
       reqBody: "",
-      resBody: JSON.stringify({ object: "list", data: [{ id: "fast", object: "model", created: 0 }, { id: "anthropic/claude-haiku-4-5", object: "model", created: 0 }] }),
+      resBody: JSON.stringify({
+        object: "list",
+        data: [
+          { id: "fast", object: "model", created: 0 },
+          { id: "anthropic/claude-haiku-4-5", object: "model", created: 0 },
+        ],
+      }),
     })
     const body = normaliseTranscript([list]).exchanges[0]!.response.body as { data: Array<{ id: string; created: number }> }
     expect(body.data.map((model) => model.id)).toEqual(["fast", "anthropic/claude-haiku-4-5"])
@@ -86,7 +92,9 @@ describe("URLs, headers and secrets", () => {
 
   test("only allow-listed request headers survive; the bearer key never does", () => {
     const { exchanges } = normaliseTranscript([
-      exchange({ reqHeaders: { authorization: "Bearer sk-secret-app-key", "x-api-key": "sk-secret-app-key", "content-type": "application/json", "user-agent": "OpenAI/Python", "x-stainless-os": "MacOS" } }),
+      exchange({
+        reqHeaders: { authorization: "Bearer sk-secret-app-key", "x-api-key": "sk-secret-app-key", "content-type": "application/json", "user-agent": "OpenAI/Python", "x-stainless-os": "MacOS" },
+      }),
     ])
     expect(exchanges[0]!.request.headers).toEqual({ "content-type": "application/json" })
   })
@@ -110,6 +118,71 @@ describe("SSE and files", () => {
 
   test("canonical JSON sorts keys at every depth, indents two spaces and ends with a newline", () => {
     expect(canonicalJson({ b: 1, a: { d: 2, c: [{ z: 1, y: 2 }] } })).toBe('{\n  "a": {\n    "c": [\n      {\n        "y": 2,\n        "z": 1\n      }\n    ],\n    "d": 2\n  },\n  "b": 1\n}\n')
+  })
+})
+
+describe("Gemini CLI session context", () => {
+  const block = [
+    "<session_context>",
+    "This is the Gemini CLI. We are setting up the context for our chat.",
+    "Today's date is Thursday, October 15, 2026 (formatted according to the user's locale).",
+    "My operating system is: darwin",
+    "The project's temporary directory is: /var/folders/xn/abc/T/plugboard-gemini-cli-home/.gemini/tmp/x",
+    "- **Workspace Directories:**",
+    "  - /Users/someone/work/plugboard-gemini-cli-workspace",
+    "</session_context>",
+  ].join("\n")
+
+  test("replaces the date, OS, temp dir and workspace inside the block with fixed placeholders", () => {
+    const out = normaliseSessionContext(`Preamble with 2026-10-15 and darwin.\n${block}\nAfter.`)
+    expect(out).toBe(
+      [
+        "Preamble with 2026-10-15 and darwin.",
+        "<session_context>",
+        "This is the Gemini CLI. We are setting up the context for our chat.",
+        "Today's date is <date> (formatted according to the user's locale).",
+        "My operating system is: <os>",
+        "The project's temporary directory is: <temp-dir>",
+        "- **Workspace Directories:**",
+        "  - <workspace>",
+        "</session_context>",
+        "After.",
+      ].join("\n"),
+    )
+  })
+
+  test("two runs on different days and machines give the same text", () => {
+    const other = block.replace("Thursday, October 15, 2026", "Friday, October 16, 2026").replace("darwin", "linux").replace("/var/folders/xn/abc/T", "/tmp")
+    expect(normaliseSessionContext(other)).toBe(normaliseSessionContext(block))
+  })
+
+  test("leaves text outside the block alone, and text without the block unchanged", () => {
+    expect(normaliseSessionContext("Today's date is 2026-10-15 and darwin")).toBe("Today's date is 2026-10-15 and darwin")
+  })
+
+  test("replaces the CLI's home and workspace paths wherever they appear in the request text", () => {
+    const prompt = "Memory at (/var/folders/xn/T/plugboard-gemini-cli-home/.gemini/GEMINI.md) and /tmp/plugboard-gemini-cli-workspace/x"
+    expect(normaliseSessionContext(prompt)).toBe("Memory at (<gemini-cli-home>/.gemini/GEMINI.md) and <gemini-cli-workspace>/x")
+  })
+
+  test("the pid in the home and workspace names does not reach the text", () => {
+    const prompt = "Memory at (/var/folders/xn/T/plugboard-gemini-cli-home-48213/.gemini/GEMINI.md) and /tmp/plugboard-gemini-cli-workspace-7/x"
+    expect(normaliseSessionContext(prompt)).toBe(normaliseSessionContext("Memory at (/var/folders/xn/T/plugboard-gemini-cli-home/.gemini/GEMINI.md) and /tmp/plugboard-gemini-cli-workspace/x"))
+  })
+
+  test("replaces only the checkout prefix of the CLI's install path, so a local and a CI checkout give the same text", () => {
+    const local = "<location>/Users/a/work/opencode-plugboard/examples/gemini-cli/node_modules/@google/gemini-cli/bundle/builtin/skill-creator/SKILL.md</location>"
+    const ci = "<location>/home/runner/work/opencode-plugboard/opencode-plugboard/examples/gemini-cli/node_modules/@google/gemini-cli/bundle/builtin/skill-creator/SKILL.md</location>"
+    expect(normaliseSessionContext(local)).toBe("<location><checkout>/examples/gemini-cli/node_modules/@google/gemini-cli/bundle/builtin/skill-creator/SKILL.md</location>")
+    expect(normaliseSessionContext(ci)).toBe(normaliseSessionContext(local))
+  })
+
+  test("applies to every string of a parsed body and keeps its structure", () => {
+    const body = { contents: [{ parts: [{ text: block }, { text: "Reply with exactly: pong" }] }], n: 3 }
+    const out = normaliseSessionContextValue(body) as typeof body
+    expect(out.contents[0]!.parts[0]!.text).toContain("My operating system is: <os>")
+    expect(out.contents[0]!.parts[1]!.text).toBe("Reply with exactly: pong")
+    expect(out.n).toBe(3)
   })
 })
 

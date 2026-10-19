@@ -23,7 +23,7 @@ async def run(client, model):
             await agent.run(PROMPT)
         except ModelHTTPError as error:
             body = error.body if isinstance(error.body, dict) else {}
-            return {"status": error.status_code, "code": body.get("code")}
+            return {"status": error.status_code, "code": body.get("code"), "type": body.get("type")}
     # endregion snippet
     raise AssertionError("a wrong key was accepted")
 

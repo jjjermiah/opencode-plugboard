@@ -128,8 +128,7 @@ export function parseAllowEntry(entry: string): AllowEntry | undefined {
   return HOSTNAME.test(text) && !text.includes("/") ? { kind: "host", name: text } : undefined
 }
 
-const hostMatches = (entry: { readonly name: string }, host: string): boolean =>
-  entry.name.startsWith("*.") ? host.endsWith(entry.name.slice(1)) : host === entry.name
+const hostMatches = (entry: { readonly name: string }, host: string): boolean => (entry.name.startsWith("*.") ? host.endsWith(entry.name.slice(1)) : host === entry.name)
 
 /** All addresses of `host`, in resolver order; rejects when `signal` aborts (the lookup itself cannot be cancelled). */
 function resolveAddresses(host: string, signal: AbortSignal): Promise<string[]> {
@@ -215,8 +214,7 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
     return url
   }
   if (!/^https?:\/\//i.test(url)) throw new ImageError("unsupported_image_url", "Unsupported image URL scheme; use a data: URL or an http(s) URL")
-  if (remoteImages === false)
-    throw new ImageError("remote_images_disabled", "Remote image URLs are disabled; send a data: URL or set the plugboard `remoteImages` option")
+  if (remoteImages === false) throw new ImageError("remote_images_disabled", "Remote image URLs are disabled; send a data: URL or set the plugboard `remoteImages` option")
 
   // The object form tightens the defaults (#259); `true` and the absent fields keep today's bounds.
   const options: RemoteImageOptions = typeof remoteImages === "object" ? remoteImages : {}
@@ -271,9 +269,7 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
   const budgetRaw = Math.floor((budget.remaining * 3) / 4)
   const limit = Math.min(maxBytes, budgetRaw)
   const tooLarge = () =>
-    limit < maxBytes
-      ? TOO_MANY()
-      : new ImageError("image_too_large", maxBytes === MAX_REMOTE_IMAGE_BYTES ? "Image is larger than 20 MB" : "Image is larger than the remoteImages.maxBytes limit")
+    limit < maxBytes ? TOO_MANY() : new ImageError("image_too_large", maxBytes === MAX_REMOTE_IMAGE_BYTES ? "Image is larger than 20 MB" : "Image is larger than the remoteImages.maxBytes limit")
   if (Number.isFinite(declared) && declared > limit) {
     response.destroy()
     throw tooLarge()
@@ -296,11 +292,7 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
 }
 
 /** Prompt files for every image in the request, in message order, named `image-1`, `image-2`, ... Throws `ImageError`. */
-export async function prepareImages(
-  request: PlugRequest,
-  signal: AbortSignal,
-  remoteImages: RemoteImages,
-): Promise<Array<{ uri: string; name: string }>> {
+export async function prepareImages(request: PlugRequest, signal: AbortSignal, remoteImages: RemoteImages): Promise<Array<{ uri: string; name: string }>> {
   const images: Array<{ uri: string; name: string }> = []
   const budget: Budget = { remaining: MAX_TOTAL_IMAGE_BYTES }
   // `remoteImages.maxItems` caps the http(s) URLs of one request (#259); data URLs are not counted.

@@ -1,5 +1,5 @@
 /**
- * `history.hidden` (since 0.29.0, #337): a request session is a child of one per-app parent titled `plugboard: <app>`, which
+ * `history.hidden` (since 0.30.0, #337): a request session is a child of one per-app parent titled `plugboard: <app>`, which
  * OpenCode's top-level lists do not show. The parent is the app-scope anchor (src/session/affinity.ts): made once, recreated
  * once if it was deleted, and shared with a promptCache app-scope anchor. Checked on the fake host's `parentID`; the live
  * session list is not checkable from here (see the PR).
@@ -42,9 +42,7 @@ function setup(options: Setup = {}) {
     promptCache: options.promptCache,
   })
   port.script.prompt = async (input) => {
-    queueMicrotask(() =>
-      [bus(input.sessionID).textDelta("Hi"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)),
-    )
+    queueMicrotask(() => [bus(input.sessionID).textDelta("Hi"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)))
   }
   return { port, sessions, caller, storage }
 }

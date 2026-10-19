@@ -7,9 +7,10 @@
  * non-streaming call passes a no-op `emit`. Reasoning deltas are dropped (no thought parts).
  */
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
+import type { StreamWire } from "../http.js"
 import type { ListedModel } from "../models.js"
-import { structuredMissing, textFallback, unfence } from "../openai/response.js"
-import { StopHoldback } from "../stop.js"
+import type { ChoiceCodec } from "../openai/fanout.js"
+import { structuredMissing, textFallback, unfence, type CollectedChoice } from "../openai/response.js"
 import { WRAP_KEY } from "./request.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
@@ -31,8 +32,6 @@ export interface GeminiExchange {
   readonly callerTools?: boolean
   /** `responseMimeType: application/json` without a schema: a single code fence around JSON text is stripped. */
   readonly jsonObject?: boolean
-  /** The request's `generationConfig.stopSequences`. A plain stop whose text ends with one of these leaves the sequence out (src/stop.ts). Not applied to structured output. */
-  readonly stop?: ReadonlyArray<string>
   /** The caller's schema as sent (converted): a text answer is taken when the model skipped the call (`textFallback`, #173). */
   readonly structuredSchema?: Readonly<Record<string, unknown>>
 }
@@ -46,6 +45,17 @@ export interface GenerateRun {
   readonly response?: object
   /** The structured answer came from the final text, not the respond call (`textFallback`). */
   readonly structuredFallback?: boolean
+  /** The usage the model reported, when the exchange succeeded. */
+  readonly usage?: PlugUsage
+}
+
+/**
+ * One candidate of several (`candidateCount` > 1, see `src/openai/fanout.ts`): its chunks carry this `index` and the
+ * shared `responseId`, and its last chunk leaves out `usageMetadata`, which the fan-out sums into one final chunk.
+ */
+export interface GeminiCandidate {
+  readonly index: number
+  readonly responseId: string
 }
 
 type Part = Record<string, unknown>
@@ -68,9 +78,7 @@ export const encodeGeminiError = (error: PlugError): object => ({
     code: error.status,
     message: error.message,
     status: error.status === 503 ? "UNAVAILABLE" : STATUSES[error.kind],
-    ...(error.param
-      ? { details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: error.param, description: error.message }] }] }
-      : {}),
+    ...(error.param ? { details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: error.param, description: error.message }] }] } : {}),
   },
 })
 
@@ -115,9 +123,9 @@ const encodeUsage = (usage: PlugUsage) => {
 
 const noFinish = (): PlugError => ({ status: 500, kind: "server", message: "Model stream ended without a finish event" })
 const failedRun = (): PlugError => ({ status: 500, kind: "server", message: "Model run failed" })
+export const noResponse = (): PlugError => ({ status: 502, kind: "server", message: "No response from the model" })
 
-const argsOf = (input: unknown): Record<string, unknown> =>
-  typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>) : { value: input }
+const argsOf = (input: unknown): Record<string, unknown> => (typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>) : { value: input })
 
 /** The text of a structured answer: the tool input as JSON, or its wrapped property. */
 const structuredText = (exchange: GeminiExchange, call: ToolCall): string => {
@@ -125,11 +133,10 @@ const structuredText = (exchange: GeminiExchange, call: ToolCall): string => {
   return typeof input === "string" && !exchange.wrapped ? input : JSON.stringify(input ?? {})
 }
 
-
-export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: GeminiExchange, emit: (chunk: object) => void): Promise<GenerateRun> {
-  const responseId = crypto.randomUUID().replaceAll("-", "").slice(0, 22)
+export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: GeminiExchange, emit: (chunk: object) => void, of?: GeminiCandidate): Promise<GenerateRun> {
+  const responseId = of?.responseId ?? crypto.randomUUID().replaceAll("-", "").slice(0, 22)
   const envelope = (parts: Part[], extra: Record<string, unknown> = {}, candidate: Record<string, unknown> = {}) => ({
-    candidates: [{ content: { role: "model", parts }, ...candidate, index: 0 }],
+    candidates: [{ content: { role: "model", parts }, ...candidate, index: of?.index ?? 0 }],
     ...extra,
     modelVersion: exchange.model,
     responseId,
@@ -159,18 +166,10 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
     }
     emit(envelope([part]))
   }
-  // A stop sequence is held back until the finish decides it (src/stop.ts). Structured output has none.
-  const holdback = exchange.structuredTool === undefined ? new StopHoldback(exchange.stop ?? []) : undefined
   const text = (delta: string) => {
-    const out = holdback ? holdback.push(delta) : delta
-    if (out.length > 0) push({ text: out })
-  }
-  const releaseHeld = () => {
-    const rest = holdback?.release() ?? ""
-    if (rest.length > 0) push({ text: rest })
+    if (delta.length > 0) push({ text: delta })
   }
   const toolCall = (call: ToolCall) => {
-    releaseHeld()
     push({ functionCall: { name: call.name, args: argsOf(call.input) } })
     calls++
   }
@@ -231,19 +230,82 @@ export async function runGenerate(events: AsyncIterable<PlugEvent>, exchange: Ge
   failure ??= finish ? missing : noFinish()
   if (failure) return { failure, started }
   flush()
-  if (holdback) {
-    const rest = holdback.finish(finish === "stop" && calls === 0).text
-    if (rest.length > 0) push({ text: rest })
-  }
   if (held && !passthrough) text(structuredText(exchange, held))
   if (fallback !== undefined) text(fallback)
   const candidate = { finishReason: FINISH_REASONS[finish!] }
-  const extra = usage ? { usageMetadata: encodeUsage(usage) } : {}
+  const extra = usage && !of ? { usageMetadata: encodeUsage(usage) } : {}
   // The last chunk carries the finish reason and usage, with an empty text part as Google's does.
   emit(envelope([{ text: "" }], extra, candidate))
   started = true
-  return { started, response: envelope(parts.length > 0 ? parts : [{ text: "" }], extra, candidate), ...(fallback !== undefined ? { structuredFallback: true } : {}) }
+  return { started, response: envelope(parts.length > 0 ? parts : [{ text: "" }], extra, candidate), ...(usage ? { usage } : {}), ...(fallback !== undefined ? { structuredFallback: true } : {}) }
 }
 
 /** SSE frame of one stream chunk (`alt=sse`): `data: <json>`, no event name and no `[DONE]`. */
 export const sseChunk = (chunk: object): string => `data: ${JSON.stringify(chunk)}\n\n`
+
+/** `alt=sse`: one `data:` frame per chunk, nothing at the end (an error is one more frame). */
+export const sseWire = (): StreamWire => ({ contentType: "text/event-stream; charset=utf-8", keepalive: ": keepalive\n\n", frame: sseChunk, end: () => "" })
+
+/**
+ * No `alt` (Google's default): the stream is one JSON array, written as it goes. `[` opens it with the first chunk,
+ * each next chunk follows a comma, `]` closes it. An error after the first chunk is one more element, so the array
+ * stays valid JSON to the end. A newline is the keepalive: whitespace is allowed anywhere between JSON tokens.
+ */
+export const arrayWire = (): StreamWire => {
+  let opened = false
+  return {
+    contentType: "application/json; charset=utf-8",
+    keepalive: "\n",
+    frame(chunk) {
+      const lead = opened ? "," : "["
+      opened = true
+      return `${lead}\n${JSON.stringify(chunk)}`
+    },
+    end: () => "\n]\n",
+  }
+}
+
+/** Numbers add up per key; a key only one side has is kept. */
+const addCounts = (a: Record<string, number>, b: Record<string, number>): Record<string, number> => {
+  const total = { ...a }
+  for (const [key, value] of Object.entries(b)) total[key] = (total[key] ?? 0) + value
+  return total
+}
+
+/** The bodies of successful candidates as one: `candidates` in order with their `index`, `usageMetadata` summed, the rest from the first. */
+function mergeCandidates(bodies: ReadonlyArray<object>): object {
+  const list = bodies as ReadonlyArray<{ candidates: object[]; usageMetadata?: Record<string, number> }>
+  const usage = list.reduce<Record<string, number> | undefined>(
+    (total, body) => (body.usageMetadata === undefined ? total : total === undefined ? body.usageMetadata : addCounts(total, body.usageMetadata)),
+    undefined,
+  )
+  return { ...list[0], candidates: list.map((body, index) => ({ ...body.candidates[0], index })), ...(usage === undefined ? {} : { usageMetadata: usage }) }
+}
+
+/**
+ * The Gemini encoder as a `ChoiceCodec`, for `candidateCount` > 1: one model call per candidate, merged by the
+ * shared fan-out. A streamed candidate writes its own chunks (with its `index`) and no usage; the fan-out ends the
+ * stream with one chunk of the summed `usageMetadata`, then the wire's end.
+ */
+export const geminiCodec = (exchange: GeminiExchange, wire: StreamWire): ChoiceCodec => ({
+  stream: exchange.stream,
+  includeUsage: true,
+  idPrefix: "",
+  async collect(events): Promise<CollectedChoice> {
+    const run = await runGenerate(events, exchange, () => {})
+    if (run.failure || !run.response) {
+      const failure = run.failure ?? noResponse()
+      return { status: failure.status, body: encodeGeminiError(failure), retryAfterSeconds: failure.retryAfterSeconds }
+    }
+    return { status: 200, body: run.response, ...(run.structuredFallback ? { structuredFallback: true } : {}) }
+  },
+  async streamChoice(events, write, choice) {
+    const run = await runGenerate(events, exchange, (chunk) => write(wire.frame(chunk)), { index: choice.index, responseId: choice.id })
+    return { started: run.started, ...(run.failure ? { failure: run.failure } : {}), ...(run.usage ? { usage: run.usage } : {}) }
+  },
+  usageChunk: (choice, usage) => ({ usageMetadata: encodeUsage(usage), modelVersion: exchange.model, responseId: choice.id }),
+  setModel: (model) => void (exchange.model = model),
+  encodeError: encodeGeminiError,
+  merge: mergeCandidates,
+  wire,
+})

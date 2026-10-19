@@ -75,7 +75,12 @@ describe("#75 the text_completion codec", () => {
   test("collect: one choice as a text_completion body; echo prefixes the choice's own prompt", async () => {
     const result = (await codec.collect(events(ev.reasoning("x"), ev.text("lived"), ev.call("c", "f"), ev.finish("stop", { inputTokens: 3, outputTokens: 1 })), 2)) as { status: number; body: any }
     expect(result.status).toBe(200)
-    expect(result.body).toMatchObject({ object: "text_completion", model: "fast", choices: [{ text: "P1 lived", index: 0, logprobs: null, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 } })
+    expect(result.body).toMatchObject({
+      object: "text_completion",
+      model: "fast",
+      choices: [{ text: "P1 lived", index: 0, logprobs: null, finish_reason: "stop" }],
+      usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+    })
     expect(result.body.id).toMatch(/^cmpl-/)
   })
 
@@ -173,7 +178,10 @@ describe("#169 the text_completion codec with structured output", () => {
   const fenced: CompletionsExchange = { model: "fast", stream: false, includeUsage: false, perPrompt: 1, jsonObject: true }
 
   test("collect: the text is the respond call's arguments; prose and other calls are dropped", async () => {
-    const result = (await completionsCodec(structured).collect(events(ev.text("thinking"), ev.call("c0", "other"), ev.call("c1", "respond", { a: 42 }), ev.finish("tool-calls")), 0)) as { status: number; body: any }
+    const result = (await completionsCodec(structured).collect(events(ev.text("thinking"), ev.call("c0", "other"), ev.call("c1", "respond", { a: 42 }), ev.finish("tool-calls")), 0)) as {
+      status: number
+      body: any
+    }
     expect(result.status).toBe(200)
     expect(result.body.choices[0]).toMatchObject({ text: '{"a":42}', finish_reason: "stop" })
   })
@@ -181,7 +189,14 @@ describe("#169 the text_completion codec with structured output", () => {
   test("collect: no respond call is a 502 structured_output_missing", async () => {
     expect(await completionsCodec(structured).collect(events(ev.text("6 × 7 = 42"), ev.finish("stop")), 0)).toEqual({
       status: 502,
-      body: { error: { message: "The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt.", type: "server_error", param: null, code: "structured_output_missing" } },
+      body: {
+        error: {
+          message: "The model did not return JSON matching the response schema. Say the expected JSON, with its keys and types, in the prompt.",
+          type: "server_error",
+          param: null,
+          code: "structured_output_missing",
+        },
+      },
     })
   })
 
@@ -192,7 +207,11 @@ describe("#169 the text_completion codec with structured output", () => {
 
   test("streamChoice: a structured answer is one text chunk, then the finish chunk", async () => {
     let text = ""
-    const result = await completionsCodec(structured).streamChoice(events(ev.text("prose"), ev.call("c1", "respond", { a: 1 }), ev.finish("tool-calls")), (chunk) => void (text += chunk), { id: "cmpl-s", created: 1, index: 0 })
+    const result = await completionsCodec(structured).streamChoice(events(ev.text("prose"), ev.call("c1", "respond", { a: 1 }), ev.finish("tool-calls")), (chunk) => void (text += chunk), {
+      id: "cmpl-s",
+      created: 1,
+      index: 0,
+    })
     expect(sseData(text).map((chunk) => [chunk.choices[0].text, chunk.choices[0].finish_reason])).toEqual([
       ['{"a":1}', null],
       ["", "stop"],

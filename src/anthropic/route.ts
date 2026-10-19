@@ -16,21 +16,9 @@ import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate, 
 import { liveOptions } from "../runtime.js"
 import { bodyUserId, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
-import {
-  BodyError,
-  bodyPlugError,
-  RequestAborted,
-  boundEvents,
-  checkJsonContentType,
-  checkOrigin,
-  readJsonBody,
-  sendError,
-  sendJson,
-  sseWriter,
-  type RequestScope,
-} from "../http.js"
+import { BodyError, bodyPlugError, RequestAborted, boundEvents, checkJsonContentType, checkOrigin, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { resolveModel } from "../models.js"
+import { resolveModel, thinkingUnavailable } from "../models.js"
 import { reportCache } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
@@ -39,6 +27,8 @@ import { sessionRequest } from "../session/caller.js"
 import { reportAffinity } from "../session/affinity.js"
 import { appGeneration, dropRejected } from "../openai/sampling.js"
 import type { RouteHost } from "../openai/route.js"
+import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
+import { inlineRequestFiles } from "../files/route.js"
 import { parseMessagesRequest } from "./request.js"
 import { estimateTokens } from "./tokens.js"
 import { encodeError, messagesStatus, runMessage, sseFrame } from "./response.js"
@@ -47,6 +37,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
+/** `unavailable` when a request asks for thinking and the model it resolves to has no thinking variant (#410). */
+const THINKING_HEADER = "x-plugboard-thinking"
 const MESSAGES = "/v1/messages"
 /** The 400 `parseThinking` gives when the budget is not below `max_tokens` (src/anthropic/request.ts). */
 const BUDGET_REFUSAL = "thinking.budget_tokens: must be less than max_tokens"
@@ -105,15 +97,14 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const auth = await authenticateRequest(host, request)
     if (isPlugError(auth)) return fail(auth)
     info.app = auth.app
-    if (request.method !== "POST")
-      return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}; use POST` })
+    if (request.method !== "POST") return fail({ status: 405, kind: "invalid_request", code: "method_not_allowed", message: `Method ${request.method} is not allowed for ${path}; use POST` })
     // An app may be limited to some endpoints (#268): refused after authentication and the method check, in this shape.
     const refused = endpointRefusal(host.options, auth.app, "messages")
     if (refused) return fail(refused)
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
 
-    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app))
+    const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app, host.keys?.appNames()))
     // The end user: the app's `userHeader` when the request sends it (#272), else the body's `metadata.user_id`.
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUserId(sent))
     const body = withEndUser(sent, user, "metadata")
@@ -125,14 +116,13 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const cap = path === COUNT_TOKENS ? undefined : appPolicy(host.options, auth.app)?.maxOutputTokens
     const capped = cap !== undefined && isRecord(body) && typeof body.max_tokens === "number" && body.max_tokens > cap ? { ...body, max_tokens: cap } : body
     const sized = path === COUNT_TOKENS && isRecord(body) && body.max_tokens === undefined ? { ...body, max_tokens: Number.MAX_SAFE_INTEGER } : capped
-    const parsed = parseMessagesRequest(sized, host.options)
+    // A `source: {type: "file"}` block is replaced by the inline form of the stored file before the decoder runs (since next).
+    const inlined = await inlineRequestFiles(host, auth.app, "messages", sized, scope)
+    if (isPlugError(inlined)) return fail(inlined)
+    const parsed = parseMessagesRequest(inlined, host.options)
     // A budget refused because the app's cap lowered `max_tokens` says so: the same 400, with the option named (#263).
     if (isPlugError(parsed))
-      return fail(
-        capped !== body && parsed.message === BUDGET_REFUSAL
-          ? { ...parsed, message: `${BUDGET_REFUSAL}; apps.${auth.app}.maxOutputTokens (${cap}) lowers max_tokens` }
-          : parsed,
-      )
+      return fail(capped !== body && parsed.message === BUDGET_REFUSAL ? { ...parsed, message: `${BUDGET_REFUSAL}; apps.${auth.app}.maxOutputTokens (${cap}) lowers max_tokens` } : parsed)
     const catalog = await scope.race(host.loadCatalog())
     const requested = requestedModel(host.options, auth.app, parsed.request.model, parsed.reasoningEffort)
     const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
@@ -142,7 +132,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     if (path === COUNT_TOKENS) {
       const counted = await scope.race(sessionRequest(host.session, auth.app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, auth.app), scope.signal))
       if (isPlugError(counted)) return fail(counted)
-      return sendJson(response, 200, { input_tokens: estimateTokens(counted) })
+      return sendJson(response, 200, { input_tokens: estimateTokens(counted, ref.id) })
     }
     // Sampling parameters the model is known to reject are dropped; `top_k` has no neutral
     // equivalent and is always dropped. Both are reported before any response bytes.
@@ -153,6 +143,8 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
       info.dropped = dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
     }
+    // A thinking request on a model with no thinking variant runs without thinking: say so (#410).
+    if (parsed.exchange.thinking && thinkingUnavailable(catalog, ref)) response.setHeader(THINKING_HEADER, "unavailable")
     const model: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
     reportParallelTools(response, model)
     const { exchange } = parsed
@@ -198,6 +190,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
 
     const run = await runMessage(events, exchange, () => {})
     if (run.failure || !run.message) return fail(run.failure ?? { status: 502, kind: "server", message: "No response from the model" })
+    if (run.structuredFallback) response.setHeader(STRUCTURED_FALLBACK_HEADER, "text")
     sendJson(response, 200, run.message)
   }
 }

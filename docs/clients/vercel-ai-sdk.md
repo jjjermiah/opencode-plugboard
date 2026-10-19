@@ -32,4 +32,25 @@ The snippet uses `Meal`, a zod `strictObject` with `calories` and `protein_g`, a
 
 - Set `supportsStructuredOutputs: true`. Without it the SDK sends `response_format: json_object` with no schema anywhere, the model guesses the keys, and `Output.object` throws `NoObjectGeneratedError`.
 - `@ai-sdk/openai`: the default `openai(id)` calls `/v1/responses`, which plugboard serves (see [Responses API](../responses.md)). The 2026-10-11 record failed every scenario on it with a 404 (`No route for POST /v1/responses`), because the route did not exist yet. The 2026-10-13 live run passes all 45 rows on it, the same as on `openai.chat(id)` and `createOpenAICompatible`. Multi-turn chats work with the default `store: true`: plugboard keeps the output items of recent answers and resolves the `item_reference`s the SDK sends back (#147). `providerOptions: { openai: { store: false } }` also works and sends the earlier turns in full. `openai.chat(id)` still works if you prefer Chat Completions.
+- `@ai-sdk/anthropic` with a real Claude id, such as `anthropic/claude-haiku-4-5`: `Output.object` sends `output_config.format`. Plugboard answers it from 0.50.0; older versions answer 400 `output_config.format: structured outputs are not supported` (see [Messages](../messages.md)). On any version, setting `structuredOutputMode` to `"jsonTool"` in `providerOptions` asks for the answer through a tool instead:
+
+```ts
+const result = await generateText({
+  model: anthropic("anthropic/claude-haiku-4-5"),
+  output: Output.object({ schema: Meal }),
+  providerOptions: { anthropic: { structuredOutputMode: "jsonTool" } },
+  prompt: PROMPT,
+})
+```
+
+  Checked with `ai` 7.0.142 and `anthropic/claude-haiku-4-5`: the answer was `{"title":"Pancakes","servings":4}`. The alias `fast` is not a model the SDK knows, so it already uses a tool and hides the problem until a real id is used.
+- `@ai-sdk/google` with `google("fast")` and a Zod schema works on the first try. A model id with a `/` does not: see [Gemini model names](../gemini.md#model-names).
 - The SDK has no model list call. `GET /v1/models` with `fetch` works.
+
+## Store off
+
+`openai(id)` sends `store: true` by default, so a multi-turn chat replays earlier answers as `item_reference` items. Plugboard resolves those only while it holds the answer (one hour, the last 1000 per app). With `providerOptions: { openai: { store: false } }` the SDK sends the earlier turns in full instead. The example's `responses-store-false` row of the tool-call scenario passes on the same wire shape; it does not replay an `item_reference`.
+
+The snippet uses `client` and `model`, and `tool`, `generateText` and `isStepCount` from `ai`, with `z` from `zod`.
+
+<<< @/../examples/vercel-ai-sdk/tools.ts#snippet-store-false

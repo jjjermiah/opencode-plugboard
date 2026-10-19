@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import type { PlugRequest } from "../../src/contract.js"
-import { installSessionHooks } from "../../src/session/context.js"
+import { installSessionHooks, replaysSignedThinking } from "../../src/session/context.js"
 import type { ContextHookEvent, HostToolDescriptor } from "../../src/session/host.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { captureLogs } from "../support/logs.js"
@@ -88,10 +88,10 @@ describe("the context hook", () => {
     expect(run(event()).system.at(-1)).toEqual({ type: "text", text: instruction })
   })
 
-  test("generation options are merged into the host's options", () => {
+  test("generation options are merged into the host's options; stop sequences are not (#390)", () => {
     const { run } = hook(plugRequest({ generation: { maxTokens: 9, temperature: 0.2, topP: 0.5, stop: ["END"], presencePenalty: 1, frequencyPenalty: -1 } }))
-    expect(run(event()).options).toEqual({ keep: true, maxTokens: 9, temperature: 0.2, topP: 0.5, stop: ["END"], presencePenalty: 1, frequencyPenalty: -1 })
-    expect(run(event({ options: undefined })).options).toEqual({ maxTokens: 9, temperature: 0.2, topP: 0.5, stop: ["END"], presencePenalty: 1, frequencyPenalty: -1 })
+    expect(run(event()).options).toEqual({ keep: true, maxTokens: 9, temperature: 0.2, topP: 0.5, presencePenalty: 1, frequencyPenalty: -1 })
+    expect(run(event({ options: undefined })).options).toEqual({ maxTokens: 9, temperature: 0.2, topP: 0.5, presencePenalty: 1, frequencyPenalty: -1 })
   })
 
   test("#275 a caller cache breakpoint on a text, image or tool result becomes the host's ephemeral cache hint; a block without one has none", () => {
@@ -99,21 +99,143 @@ describe("the context hook", () => {
     const { run } = hook(
       plugRequest({
         messages: [
-          { role: "user", content: [{ type: "text", text: "cached", cache: true }, { type: "text", text: "plain" }, { type: "media", url: "data:x", cache: true }] },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "cached", cache: true },
+              { type: "text", text: "plain" },
+              { type: "media", url: "data:x", cache: true },
+            ],
+          },
           { role: "tool", content: [{ type: "tool-result", id: "c1", name: "lookup", result: "42", cache: true }] },
         ],
       }),
     )
     const after = run(event({ messages: [{ content: [{ type: "text", text: "transcript" }, ...hostMedia] }, { content: [{ type: "tool-result", id: "c1", name: "lookup" }] }] }))
     expect(after.messages as unknown).toEqual([
-      { role: "user", content: [{ type: "text", text: "cached", cache: { type: "ephemeral" } }, { type: "text", text: "plain" }, { ...hostMedia[0], cache: { type: "ephemeral" } }] },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "cached", cache: { type: "ephemeral" } },
+          { type: "text", text: "plain" },
+          { ...hostMedia[0], cache: { type: "ephemeral" } },
+        ],
+      },
       { role: "tool", content: [{ type: "tool-result", id: "c1", name: "lookup", result: { type: "text", value: "42" }, cache: { type: "ephemeral" } }] },
     ])
   })
 
+  test("#374 signed reasoning reaches the host as a reasoning part with the Anthropic signature, on an anthropic model only; elsewhere it is dropped, and a turn left empty with it", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          { role: "user", content: [{ type: "text", text: "hi" }] },
+          {
+            role: "assistant",
+            content: [
+              { type: "reasoning", text: "plan", signature: "sig_1" },
+              { type: "reasoning", text: "", redactedData: "opaque" },
+              { type: "text", text: "done" },
+            ],
+          },
+          { role: "assistant", content: [{ type: "reasoning", text: "alone", signature: "sig_2" }] },
+        ],
+      }),
+    )
+    expect(run(event({ model: { providerID: "anthropic" } })).messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "plan", providerMetadata: { anthropic: { signature: "sig_1" } } },
+          { type: "reasoning", text: "", providerMetadata: { anthropic: { redactedData: "opaque" } } },
+          { type: "text", text: "done" },
+        ],
+      },
+      { role: "assistant", content: [{ type: "reasoning", text: "alone", providerMetadata: { anthropic: { signature: "sig_2" } } }] },
+    ])
+    expect(run(event({ model: { providerID: "openai" } })).messages as unknown).toEqual([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      { role: "assistant", content: [{ type: "text", text: "done" }] },
+    ])
+  })
+
+  test("#374 a host event without a model replays no reasoning and does not throw", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              { type: "reasoning", text: "plan", signature: "sig_1" },
+              { type: "text", text: "done" },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(run(event()).messages as unknown).toEqual([{ role: "assistant", content: [{ type: "text", text: "done" }] }])
+  })
+
+  test("#386 signed reasoning replays to a Copilot Claude model; other Copilot models and other providers' Claude ids get none", () => {
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              { type: "reasoning", text: "plan", signature: "sig_1" },
+              { type: "text", text: "done" },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(run(event({ model: { providerID: "github-copilot", id: "claude-haiku-5.5" } })).messages as unknown).toEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "plan", providerMetadata: { anthropic: { signature: "sig_1" } } },
+          { type: "text", text: "done" },
+        ],
+      },
+    ])
+    for (const model of [
+      { providerID: "github-copilot", id: "gpt-5.2" },
+      { providerID: "openrouter", id: "claude-haiku-5.5" },
+    ]) {
+      expect(run(event({ model })).messages as unknown).toEqual([{ role: "assistant", content: [{ type: "text", text: "done" }] }])
+    }
+  })
+
+  test("#386 the replay gate: anthropic, and Copilot's claude-* models only", () => {
+    expect(replaysSignedThinking({ providerID: "anthropic", id: "claude-opus-4-5" })).toBe(true)
+    expect(replaysSignedThinking({ providerID: "github-copilot", id: "claude-haiku-5.5" })).toBe(true)
+    expect(replaysSignedThinking({ providerID: "github-copilot", id: "gpt-5.2" })).toBe(false)
+    expect(replaysSignedThinking({ providerID: "github-copilot" })).toBe(false)
+    expect(replaysSignedThinking({ providerID: "openrouter", id: "anthropic/claude-haiku-5.5" })).toBe(false)
+    expect(replaysSignedThinking(undefined)).toBe(false)
+  })
+
   test("caller images are the host-built media parts of the prompt files, in order", () => {
-    const hostMedia = [{ type: "media", asset: "A" }, { type: "media", asset: "B" }]
-    const { run } = hook(plugRequest({ messages: [{ role: "user", content: [{ type: "media", url: "data:x" }, { type: "text", text: "and" }, { type: "media", url: "data:y" }] }] }))
+    const hostMedia = [
+      { type: "media", asset: "A" },
+      { type: "media", asset: "B" },
+    ]
+    const { run } = hook(
+      plugRequest({
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "media", url: "data:x" },
+              { type: "text", text: "and" },
+              { type: "media", url: "data:y" },
+            ],
+          },
+        ],
+      }),
+    )
     const after = run(event({ messages: [{ content: [{ type: "text", text: "transcript" }, ...hostMedia] }] }))
     expect(after.messages as unknown).toEqual([{ role: "user", content: [hostMedia[0], { type: "text", text: "and" }, hostMedia[1]] }])
   })
@@ -151,7 +273,9 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
         ],
       }),
     )
-    const after = run(event({ system: ["x", "y", "z"], messages: [{ content: [{ type: "text", text: "t" }] }, { content: [{ type: "text", text: "t" }] }, { content: [{ type: "text", text: "t" }] }] }))
+    const after = run(
+      event({ system: ["x", "y", "z"], messages: [{ content: [{ type: "text", text: "t" }] }, { content: [{ type: "text", text: "t" }] }, { content: [{ type: "text", text: "t" }] }] }),
+    )
     expect(after.system).toEqual([
       { type: "text", text: "one", cache: hour },
       { type: "text", text: "two" },
@@ -197,7 +321,12 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
         ],
       }),
     )
-    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }] }, { content: [{ type: "text", text: "b" }] }, { content: [{ type: "text", text: "c" }] }, { content: [{ type: "text", text: "d" }] }] }))
+    const after = run(
+      event({
+        system: [],
+        messages: [{ content: [{ type: "text", text: "a" }] }, { content: [{ type: "text", text: "b" }] }, { content: [{ type: "text", text: "c" }] }, { content: [{ type: "text", text: "d" }] }],
+      }),
+    )
     expect(after.messages as unknown).toEqual([
       { role: "user", content: [{ type: "text", text: "first", cache: hour }] },
       { role: "user", content: [{ type: "text", text: "between", cache: hour }] },
@@ -211,22 +340,78 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
   test("no tools: a whitespace-only text part with a hint before the 1h block is raised like any other part (the lowering skips it, but it is a hinted part on the host)", () => {
     const { run } = hook(
       plugRequest({
-        messages: [{ role: "user", content: [{ type: "text", text: "   ", cache: true }, { type: "text", text: "ctx", cache: true, cacheTtl: "1h" }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "   ", cache: true },
+              { type: "text", text: "ctx", cache: true, cacheTtl: "1h" },
+            ],
+          },
+        ],
       }),
     )
-    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }] }))
-    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "   ", cache: hour }, { type: "text", text: "ctx", cache: hour }] }])
+    const after = run(
+      event({
+        system: [],
+        messages: [
+          {
+            content: [
+              { type: "text", text: "a" },
+              { type: "text", text: "b" },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(after.messages as unknown).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "   ", cache: hour },
+          { type: "text", text: "ctx", cache: hour },
+        ],
+      },
+    ])
     expect(wireTtls(after)).toEqual([3600, 3600])
   })
 
   test("no tools: a whitespace-only hinted text part as the tail, after the 1h block, stays 5m and is not pinned", () => {
     const { run } = hook(
       plugRequest({
-        messages: [{ role: "user", content: [{ type: "text", text: "ctx", cache: true, cacheTtl: "1h" }, { type: "text", text: "  ", cache: true }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "ctx", cache: true, cacheTtl: "1h" },
+              { type: "text", text: "  ", cache: true },
+            ],
+          },
+        ],
       }),
     )
-    const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }] }))
-    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: hour }, { type: "text", text: "  ", cache: five }] }])
+    const after = run(
+      event({
+        system: [],
+        messages: [
+          {
+            content: [
+              { type: "text", text: "a" },
+              { type: "text", text: "b" },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(after.messages as unknown).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "ctx", cache: hour },
+          { type: "text", text: "  ", cache: five },
+        ],
+      },
+    ])
     expect(wireTtls(after)).toEqual([3600, 300])
     expect(oneHourBeforeFiveMinute(wireTtls(after))).toBe(true)
   })
@@ -235,11 +420,27 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
     const hostMedia = { type: "media", asset: "A" }
     const { run } = hook(
       plugRequest({
-        messages: [{ role: "user", content: [{ type: "text", text: "question" }, { type: "media", url: "data:x", cache: true, cacheTtl: "1h" }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "question" },
+              { type: "media", url: "data:x", cache: true, cacheTtl: "1h" },
+            ],
+          },
+        ],
       }),
     )
     const after = run(event({ system: [], messages: [{ content: [{ type: "text", text: "transcript" }, hostMedia] }] }))
-    expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "question", cache: hour }, { ...hostMedia, cache: hour }] }])
+    expect(after.messages as unknown).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "question", cache: hour },
+          { ...hostMedia, cache: hour },
+        ],
+      },
+    ])
     expect(wireTtls(after)).toEqual([3600, 3600])
   })
 
@@ -248,12 +449,42 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
       plugRequest({
         system: ["s"],
         messages: [
-          { role: "user", content: [{ type: "text", text: "a", cache: true }, { type: "text", text: "b", cache: true }] },
-          { role: "user", content: [{ type: "text", text: "c", cache: true }, { type: "text", text: "d", cache: true, cacheTtl: "1h" }] },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "a", cache: true },
+              { type: "text", text: "b", cache: true },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "c", cache: true },
+              { type: "text", text: "d", cache: true, cacheTtl: "1h" },
+            ],
+          },
         ],
       }),
     )
-    const after = run(event({ system: ["s"], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] }, { content: [{ type: "text", text: "c" }, { type: "text", text: "d" }] }] }))
+    const after = run(
+      event({
+        system: ["s"],
+        messages: [
+          {
+            content: [
+              { type: "text", text: "a" },
+              { type: "text", text: "b" },
+            ],
+          },
+          {
+            content: [
+              { type: "text", text: "c" },
+              { type: "text", text: "d" },
+            ],
+          },
+        ],
+      }),
+    )
     expect(after.system).toEqual([{ type: "text", text: "s" }])
     expect(wireTtls(after)).toEqual([3600, 3600, 3600, 3600])
   })
@@ -262,11 +493,36 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
     const { run } = hook(
       plugRequest({
         system: ["s1", "s2"],
-        messages: [{ role: "user", content: [{ type: "text", text: "a", cache: true }, { type: "text", text: "b", cache: true }, { type: "text", text: "c", cache: true, cacheTtl: "1h" }] }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "a", cache: true },
+              { type: "text", text: "b", cache: true },
+              { type: "text", text: "c", cache: true, cacheTtl: "1h" },
+            ],
+          },
+        ],
       }),
     )
-    const after = run(event({ system: ["s1", "s2"], messages: [{ content: [{ type: "text", text: "a" }, { type: "text", text: "b" }, { type: "text", text: "c" }] }] }))
-    expect(after.system).toEqual([{ type: "text", text: "s1", cache: hour }, { type: "text", text: "s2" }])
+    const after = run(
+      event({
+        system: ["s1", "s2"],
+        messages: [
+          {
+            content: [
+              { type: "text", text: "a" },
+              { type: "text", text: "b" },
+              { type: "text", text: "c" },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(after.system).toEqual([
+      { type: "text", text: "s1", cache: hour },
+      { type: "text", text: "s2" },
+    ])
     expect(wireTtls(after)).toEqual([3600, 3600, 3600, 3600])
   })
 
@@ -279,7 +535,10 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
       }),
     )
     const after = run(event({ system: ["x", "y"], messages: [{ content: [{ type: "text", text: "t" }] }] }))
-    expect(after.system).toEqual([{ type: "text", text: "one" }, { type: "text", text: "two" }])
+    expect(after.system).toEqual([
+      { type: "text", text: "one" },
+      { type: "text", text: "two" },
+    ])
     expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: five }] }])
     expect(Object.keys(after.tools!)).toEqual(["lookup"])
   })
@@ -295,14 +554,20 @@ describe("#275 the 1h TTL reaches the host only on a request without tools", () 
     )
     const after = run(event({ system: ["x", "y"], messages: [{ content: [{ type: "text", text: "t" }] }] }))
     expect(after.tools).toEqual({})
-    expect(after.system).toEqual([{ type: "text", text: "one", cache: hour }, { type: "text", text: "two", cache: hour }])
+    expect(after.system).toEqual([
+      { type: "text", text: "one", cache: hour },
+      { type: "text", text: "two", cache: hour },
+    ])
     expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: hour }] }])
   })
 
   test("no 1h block: the system and tail keep OpenCode's own 5m placement (nothing pinned)", () => {
     const { run } = hook(plugRequest({ system: ["one", "two"], messages: [{ role: "user", content: [{ type: "text", text: "ctx", cache: true }] }] }))
     const after = run(event({ system: ["x", "y"], messages: [{ content: [{ type: "text", text: "t" }] }] }))
-    expect(after.system).toEqual([{ type: "text", text: "one" }, { type: "text", text: "two" }])
+    expect(after.system).toEqual([
+      { type: "text", text: "one" },
+      { type: "text", text: "two" },
+    ])
     expect(after.messages as unknown).toEqual([{ role: "user", content: [{ type: "text", text: "ctx", cache: five }] }])
   })
 })

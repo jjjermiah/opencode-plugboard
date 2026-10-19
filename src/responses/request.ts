@@ -4,24 +4,17 @@
  *
  * Pure function: no I/O. The caller sends the whole conversation in `input` each time, which is
  * how history already works. An `item_reference` is resolved through the `resolve` argument (the
- * route passes the per-app store of recent answers, src/responses/store.ts; #147). Anything else that
- * needs server-side state (`previous_response_id`, `conversation`, `background`) or a hosted tool
- * is rejected with 400 `unsupported_parameter` naming the field. The route resolves `model` to a
+ * route passes the per-app store of recent answers, src/responses/store.ts; #147). A
+ * `previous_response_id` is resolved by the route (src/responses/state.ts), which passes the stored
+ * items as `history`. Anything else that needs server-side state (`conversation`, `background`) or a
+ * hosted tool is rejected with 400 `unsupported_parameter` naming the field. The route resolves `model` to a
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { show } from "../client-value.js"
 import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
-import {
-  isPlugError,
-  type PlugError,
-  type PlugGeneration,
-  type PlugMessage,
-  type PlugPart,
-  type PlugRequest,
-  type PlugTool,
-  type PlugToolChoice,
-} from "../contract.js"
+import { isPlugError, type PlugError, type PlugGeneration, type PlugMessage, type PlugPart, type PlugRequest, type PlugTool, type PlugToolChoice } from "../contract.js"
 import type { ResponsesExchange } from "./response.js"
 
 type JsonObject = Record<string, unknown>
@@ -29,6 +22,8 @@ type JsonObject = Record<string, unknown>
 export interface ParsedResponses {
   /** The model call, minus the model ref the route resolves from `request.model`. */
   readonly request: Omit<PlugRequest, "ref">
+  /** The new `input` as items, with `item_reference`s replaced by the items they name (what a stored response keeps). */
+  readonly inputItems: ReadonlyArray<JsonObject>
   /** Response presentation state for the encoder; never reaches the model call. */
   readonly exchange: ResponsesExchange
   readonly reasoningEffort?: string
@@ -87,8 +82,7 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
     } else if (item.type === "input_image" || item.type === "image_url") {
       // `image_url` is the Chat Completions part type; @langchain/openai sends it in Responses input for standard image blocks.
       const url = typeof item.image_url === "string" ? item.image_url : isRecord(item.image_url) ? item.image_url.url : undefined
-      if (typeof url !== "string")
-        return unsupported(item.file_id != null ? "input_image.file_id is not supported (stateless); send image_url" : "input_image needs an image_url", `${at}.image_url`)
+      if (typeof url !== "string") return unsupported(item.file_id != null ? "input_image.file_id is not supported (stateless); send image_url" : "input_image needs an image_url", `${at}.image_url`)
       const problem = imageProblem(url)
       if (problem) return bad(problem, `${at}.image_url`, "invalid_image")
       parts.push({ type: "media", url, ...(dataUrlType(url) ? { mediaType: dataUrlType(url) } : {}) })
@@ -103,7 +97,7 @@ const userParts = (content: unknown, param: string): PlugPart[] | PlugError => {
       } else if (typeof item.file_url === "string") {
         parts.push({ type: "media", url: item.file_url })
       } else return unsupported("input_file needs file_data or file_url; file_id is not supported (stateless)", `${at}.file_data`)
-    } else return unsupported(`Unsupported content part type "${String(item.type)}"`, `${at}.type`)
+    } else return unsupported(`Unsupported content part type "${show(item.type)}"`, `${at}.type`)
   }
   return parts
 }
@@ -117,7 +111,7 @@ const assistantText = (content: unknown, param: string): string | PlugError => {
     if (!isRecord(item)) return bad("Content part must be an object", `${param}[${index}]`)
     if (item.type === "refusal") continue
     if ((item.type !== "output_text" && item.type !== "input_text") || typeof item.text !== "string")
-      return unsupported(`Unsupported assistant content part type "${String(item.type)}"`, `${param}[${index}].type`)
+      return unsupported(`Unsupported assistant content part type "${show(item.type)}"`, `${param}[${index}].type`)
     texts.push(item.text)
   }
   return texts.join("")
@@ -144,9 +138,18 @@ const resolveReference = (item: JsonObject, param: string, resolve: ItemResolver
   return found
 }
 
-const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system: string[]; messages: PlugMessage[] } | PlugError => {
-  if (typeof input === "string") return { system: [], messages: [{ role: "user", content: [{ type: "text", text: input }] }] }
-  if (!Array.isArray(input) || input.length === 0) return bad("input must be a string or a non-empty array of items", "input")
+/** A string `input` as the item list OpenAI treats it as: one user message. */
+const userItem = (text: string): JsonObject => ({ type: "message", role: "user", content: [{ type: "input_text", text }] })
+
+/**
+ * The items of a stored response's chain (`history`: its input, then its output) and the new `input`, as neutral messages.
+ * `resolved` is the new input with its `item_reference`s replaced by the items they name: with `history`, the input the
+ * model saw (src/responses/state.ts).
+ */
+const parseInput = (input: unknown, resolve: ItemResolver | undefined, history: ReadonlyArray<JsonObject> = []): { system: string[]; messages: PlugMessage[]; resolved: JsonObject[] } | PlugError => {
+  const fresh = typeof input === "string" ? [userItem(input)] : input
+  if (!Array.isArray(fresh) || fresh.length === 0) return bad("input must be a string or a non-empty array of items", "input")
+  const resolved: JsonObject[] = []
 
   const system: string[] = []
   const messages: PlugMessage[] = []
@@ -157,11 +160,13 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system
     pending = undefined
   }
 
-  for (const [index, given] of input.entries()) {
+  for (const [position, given] of [...history, ...fresh].entries()) {
+    const index = position - history.length
     const param = `input[${index}]`
     if (!isRecord(given)) return bad("Each input item must be an object", param)
     const item = given.type === "item_reference" ? resolveReference(given, param, resolve) : given
     if (isPlugError(item)) return item
+    if (index >= 0) resolved.push(item)
     const type = item.type ?? (item.role !== undefined ? "message" : undefined)
     switch (type) {
       case "message": {
@@ -187,7 +192,7 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system
             break
           }
           default:
-            return bad(`Unsupported message role "${String(item.role)}"`, `${param}.role`)
+            return bad(`Unsupported message role "${show(item.role)}"`, `${param}.role`)
         }
         break
       }
@@ -209,8 +214,7 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system
         const result = textOf(item.output)
         if (result === undefined) return bad("function_call_output output must be a string or an array of text parts", `${param}.output`)
         const name = toolNames.get(item.call_id)
-        if (name === undefined)
-          return bad(`function_call_output answers call_id "${item.call_id}", which no earlier function_call item has`, `${param}.call_id`)
+        if (name === undefined) return bad(`function_call_output answers call_id "${item.call_id}", which no earlier function_call item has`, `${param}.call_id`)
         messages.push({ role: "tool", content: [{ type: "tool-result", id: item.call_id, name, result }] })
         break
       }
@@ -218,12 +222,12 @@ const parseInput = (input: unknown, resolve: ItemResolver | undefined): { system
       case "reasoning":
         break
       default:
-        return unsupported(`Unsupported input item type "${String(type)}"`, `${param}.type`)
+        return unsupported(`Unsupported input item type "${show(type)}"`, `${param}.type`)
     }
   }
   flush()
   if (messages.length === 0) return bad("input has no user, assistant or tool items", "input")
-  return { system, messages }
+  return { system, messages, resolved }
 }
 
 const parseTools = (raw: unknown): PlugTool[] | PlugError => {
@@ -235,7 +239,7 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
     const at = `tools[${index}]`
     if (!isRecord(entry)) return bad("Each tool must be an object", at)
     if (entry.type !== "function")
-      return unsupported(`Unsupported tool type "${String(entry.type)}": only function tools are supported (built-in tools such as web_search and file_search run on OpenAI's servers)`, `${at}.type`)
+      return unsupported(`Unsupported tool type "${show(entry.type)}": only function tools are supported (built-in tools such as web_search and file_search run on OpenAI's servers)`, `${at}.type`)
     if (typeof entry.name !== "string" || entry.name.length === 0) return bad('Each function tool needs a "name"', `${at}.name`)
     if (names.has(entry.name)) return bad(`Duplicate tool name "${entry.name}"`, `${at}.name`)
     if (entry.description != null && typeof entry.description !== "string") return bad("Tool description must be a string", `${at}.description`)
@@ -262,7 +266,7 @@ const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError =
   if (raw == null) return undefined
   if (raw === "auto" || raw === "none" || raw === "required") return raw
   if (isRecord(raw) && raw.type === "function" && typeof raw.name === "string") return { type: "tool", name: raw.name }
-  return unsupported("Unsupported tool_choice: use auto, none, required or {type:\"function\", name}", "tool_choice")
+  return unsupported('Unsupported tool_choice: use auto, none, required or {type:"function", name}', "tool_choice")
 }
 
 /**
@@ -284,14 +288,12 @@ const parseTextFormat = (raw: unknown): { structured?: PlugTool; instruction?: s
       structured: {
         name: RESPOND_TOOL,
         // With caller tools also on offer, this description is what tells the model which call is the final answer.
-        description:
-          "Give your final answer by calling this tool with JSON matching its schema." +
-          (typeof format.description === "string" ? ` ${format.description}` : ""),
+        description: "Give your final answer by calling this tool with JSON matching its schema." + (typeof format.description === "string" ? ` ${format.description}` : ""),
         parameters: format.schema,
       },
     }
   }
-  return bad(`Unsupported text.format type "${String(format.type)}"`, "text.format.type")
+  return bad(`Unsupported text.format type "${show(format.type)}"`, "text.format.type")
 }
 
 const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
@@ -305,8 +307,7 @@ const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
     if (value == null) continue
     if (typeof value !== "number" || !Number.isFinite(value)) return bad(`${key} must be a number`, key)
     if (integer && !Number.isInteger(value)) return bad(`${key} must be an integer`, key)
-    if (value < min || value > max)
-      return bad(max === Number.MAX_SAFE_INTEGER ? `${key} must be at least ${min}` : `${key} must be between ${min} and ${max}`, key)
+    if (value < min || value > max) return bad(max === Number.MAX_SAFE_INTEGER ? `${key} must be at least ${min}` : `${key} must be between ${min} and ${max}`, key)
     out[field] = value
   }
   return out
@@ -314,16 +315,18 @@ const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
 
 /** Fields that need server-side state or features plugboard does not have. */
 const checkUnsupported = (body: JsonObject): PlugError | undefined => {
-  if (body.previous_response_id != null)
-    return unsupported("previous_response_id is not supported: plugboard is stateless, send the full conversation in input", "previous_response_id")
-  if (body.conversation != null) return unsupported("conversation is not supported: plugboard is stateless", "conversation")
+  if (body.conversation != null) return unsupported("conversation is not supported: continue a stored response with previous_response_id, or send the full conversation in input", "conversation")
   if (body.background === true) return unsupported("background mode is not supported", "background")
   if (body.prompt != null) return unsupported("Stored prompts (prompt) are not supported", "prompt")
   if (body.top_logprobs != null && body.top_logprobs !== 0) return unsupported("top_logprobs is not supported", "top_logprobs")
   if (body.truncation != null && body.truncation !== "disabled") return unsupported('Only truncation "disabled" is supported', "truncation")
 }
 
-export function parseResponsesRequest(body: unknown, options: PlugboardOptions, resolve?: ItemResolver): ParsedResponses | PlugError {
+/**
+ * `history` is the stored response `previous_response_id` named: its input and output items, ahead of the new `input`.
+ * The route looks it up (src/responses/state.ts); this decoder only checks the field's type. `instructions` are never carried over.
+ */
+export function parseResponsesRequest(body: unknown, options: PlugboardOptions, resolve?: ItemResolver, history?: ReadonlyArray<JsonObject>): ParsedResponses | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (body.input == null) return bad("input is required", "input")
@@ -332,8 +335,10 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   if (body.instructions != null && typeof body.instructions !== "string") return bad("instructions must be a string", "instructions")
   if (body.reasoning != null && !isRecord(body.reasoning)) return bad("reasoning must be an object", "reasoning")
   if (body.stream != null && typeof body.stream !== "boolean") return bad("stream must be a boolean", "stream")
+  if (body.previous_response_id != null && (typeof body.previous_response_id !== "string" || body.previous_response_id.length === 0))
+    return bad("previous_response_id must be the id of a response", "previous_response_id")
 
-  const parsed = parseInput(body.input, resolve)
+  const parsed = parseInput(body.input, resolve, history)
   if (isPlugError(parsed)) return parsed
   const callerTools = parseTools(body.tools)
   if (!Array.isArray(callerTools)) return callerTools
@@ -345,23 +350,16 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   const generation = parseGeneration(body)
   if (isPlugError(generation)) return generation
 
-  if (typeof toolChoice === "object" && !callerTools.some((tool) => tool.name === toolChoice.name))
-    return bad(`tool_choice names "${toolChoice.name}", which is not in tools`, "tool_choice.name")
+  if (typeof toolChoice === "object" && !callerTools.some((tool) => tool.name === toolChoice.name)) return bad(`tool_choice names "${toolChoice.name}", which is not in tools`, "tool_choice.name")
   if (respond && callerTools.some((tool) => tool.name === RESPOND_TOOL))
-    return bad(
-      `A tool named "${RESPOND_TOOL}" collides with text.format json_schema, which plugboard answers through that name`,
-      "tools",
-      "reserved_tool_name",
-    )
+    return bad(`A tool named "${RESPOND_TOOL}" collides with text.format json_schema, which plugboard answers through that name`, "tools", "reserved_tool_name")
   // json_schema + caller tools: the model may call a caller tool or `respond`, so `tool_choice` is
   // `required` (not forced to `respond`). `tool_choice: none` leaves only `respond`; naming a tool
   // contradicts a structured answer.
-  if (respond && typeof toolChoice === "object")
-    return unsupported("A tool_choice that names a tool cannot be combined with text.format json_schema", "tool_choice")
+  if (respond && typeof toolChoice === "object") return unsupported("A tool_choice that names a tool cannot be combined with text.format json_schema", "tool_choice")
   const withCallerTools = respond !== undefined && callerTools.length > 0 && toolChoice !== "none"
   const tools = respond ? (withCallerTools ? [...callerTools, respond] : [respond]) : callerTools
-  if (tools.length > options.maxTools)
-    return bad(`Request has ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`, "tools", "too_many_tools")
+  if (tools.length > options.maxTools) return bad(`Request has ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`, "tools", "too_many_tools")
 
   const forced: PlugToolChoice | undefined = respond ? (withCallerTools ? "required" : { type: "tool", name: RESPOND_TOOL }) : toolChoice
   const instructions = typeof body.instructions === "string" && body.instructions.length > 0 ? [body.instructions] : []
@@ -372,7 +370,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
     system,
     messages: parsed.messages,
     tools,
-    ...(forced && tools.length > 0 ? { toolChoice: forced } : {}),
+    ...(forced && (tools.length > 0 || forced === "none") ? { toolChoice: forced } : {}),
     ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
     generation,
     ...(body.parallel_tool_calls === false ? { parallelToolCalls: false } : {}),
@@ -381,18 +379,19 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   const text = isRecord(body.text) ? body.text : undefined
   return {
     request,
+    inputItems: parsed.resolved,
     exchange: {
       model: body.model,
       stream: body.stream === true,
-      // Echoed in the response object, as OpenAI does. `store` is always false: nothing is kept for retrieval.
+      // Echoed in the response object as the caller sent it, true by default as OpenAI has it (#442). `store: false` keeps nothing for retrieval (#426, src/responses/route.ts).
       envelope: {
         instructions: typeof body.instructions === "string" ? body.instructions : null,
         max_output_tokens: generation.maxTokens ?? null,
         metadata: isRecord(body.metadata) ? body.metadata : {},
         parallel_tool_calls: body.parallel_tool_calls !== false,
-        previous_response_id: null,
+        previous_response_id: typeof body.previous_response_id === "string" ? body.previous_response_id : null,
         reasoning: { effort: reasoningEffort ?? null, summary: null },
-        store: false,
+        store: body.store !== false,
         temperature: generation.temperature ?? null,
         text: { format: isRecord(text?.format) ? text.format : { type: "text" } },
         tool_choice: body.tool_choice ?? "auto",

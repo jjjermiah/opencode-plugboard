@@ -714,7 +714,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -742,7 +742,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -770,7 +770,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -954,6 +954,10 @@
           "ok": true
         },
         {
+          "name": "error type is authentication_error",
+          "ok": true
+        },
+        {
           "name": "code is invalid_api_key",
           "ok": true
         }
@@ -970,6 +974,10 @@
       "checks": [
         {
           "name": "status is 404",
+          "ok": true
+        },
+        {
+          "name": "error type is not_found_error",
           "ok": true
         },
         {

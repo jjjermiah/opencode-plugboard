@@ -47,9 +47,13 @@ export function bodyPlugError(error: BodyError): PlugError {
   }
 }
 
-/** Process-wide bytes of request bodies being read. On `globalThis` under a versioned key (I6), so every plugin generation shares one budget. */
+/**
+ * Process-wide bytes of request bodies being read, and the bytes each app holds of them. On `globalThis` under a versioned
+ * key (I6), so every plugin generation shares one budget. `apps` is added by a later generation: an older one ignores it.
+ */
 interface BodyBudget {
   inFlight: number
+  apps?: Map<string, number>
 }
 const BODY_BUDGET = Symbol.for("opencode-plugboard.body-budget/1")
 const bodyBudget = (): BodyBudget => {
@@ -57,10 +61,14 @@ const bodyBudget = (): BodyBudget => {
   return (slot[BODY_BUDGET] ??= { inFlight: 0 })
 }
 
-/** Why a request's work was abandoned: the client went away, or the deadline passed. It is the abort reason of `RequestScope.signal`. */
+/**
+ * Why a request's work was abandoned: the client went away (`disconnected`), the deadline passed (`timeout`), or the work was
+ * cancelled by plugboard itself (`cancelled`: a sibling choice of `n` failed). Only a client that left gets the settle window
+ * (`settleMs`, src/session/caller.ts); the other two stop the host at once.
+ */
 export class RequestAborted extends Error {
-  constructor(readonly kind: "disconnected" | "timeout") {
-    super(kind === "timeout" ? "Request deadline exceeded" : "Client disconnected")
+  constructor(readonly kind: "disconnected" | "timeout" | "cancelled") {
+    super(kind === "timeout" ? "Request deadline exceeded" : kind === "cancelled" ? "Request cancelled" : "Client disconnected")
   }
 }
 
@@ -96,6 +104,8 @@ export function beginRequest(
   let graceTimer: ReturnType<typeof setTimeout> | undefined
   const onDeadline = () => {
     abort("timeout")
+    // A 504 answered after this point closes its connection (#422): the grace below cuts the socket, so a client must not reuse it.
+    if (!response.headersSent) response.setHeader("connection", "close")
     // The error response (or the rest of a stream) may never flush to a client that stopped reading: cut the transport.
     // Cleared only once the socket is gone: on some runtimes the response reports finished/closed
     // after `end()` while bytes are still queued for a client that stopped reading, so neither
@@ -106,6 +116,11 @@ export function beginRequest(
       request.socket?.destroy()
     }, graceMs)
     graceTimer.unref?.()
+    // A stream committed before the deadline ends with its error frame, then the route ends it. Close the socket once that
+    // is flushed (a half-close the client answers), so a keep-alive client never reuses it and the grace is not needed (#441).
+    response.once("finish", () => {
+      if (!request.socket?.destroyed) request.socket?.end()
+    })
   }
   timer = setTimeout(onDeadline, Math.min(Math.max(timeoutMs, 1), MAX_TIMER_MS))
   timer.unref?.()
@@ -145,11 +160,27 @@ export function beginRequest(
  * buffered, so the response can still be delivered (see `finishRequest`).
  *
  * Bounded before it is buffered (#156, invariant I28). The bytes held by every body being read in the
- * process stay within `limits.maxBytesInFlight`: a declared Content-Length is charged before the first
- * byte is read, a body without one as it arrives, and a body that would go over is refused with 503
- * `server_busy` (Retry-After 1). A body not complete within `limits.readTimeoutMs` is refused with 408.
+ * process stay within `limits.maxBytesInFlight`: a declared Content-Length is charged before the first byte
+ * is read, a body without one as it arrives, and a body that would go over is refused with 503 `server_busy`
+ * (Retry-After 1). A body that stops arriving for `limits.readTimeoutMs`, or is not complete within
+ * `limits.readCeilingMs`, is refused with 408, and its bytes go back to the budget.
  */
 export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<unknown> {
+  return readBody(request, signal, limits).then((raw) => {
+    try {
+      return raw.length === 0 ? {} : JSON.parse(raw.toString("utf8"))
+    } catch {
+      throw new BodyError(400, "Request body is not valid JSON")
+    }
+  })
+}
+
+/**
+ * Reads the whole body as bytes under the same admission as `readJsonBody` (I28): the Content-Length is charged before the
+ * first byte, a body without one as it arrives, the idle and total timers apply, and the bytes go back to the budget on every
+ * exit. File uploads (`src/files/`) use it, so an upload is bounded exactly like a JSON body. Rejects with `BodyError`.
+ */
+export function readBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const maxBodyBytes = limits.maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes
     const declared = Math.max(0, Number(request.headers["content-length"]) || 0)
@@ -159,21 +190,34 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     }
     if (signal.aborted) return reject(signal.reason)
     const budget = bodyBudget()
+    const apps = (budget.apps ??= new Map<string, number>())
+    const app = limits.app
     const chunks: Buffer[] = []
     let size = 0
     // Bytes this read holds in the budget. Released on every exit: complete, refused or abandoned.
     let held = 0
     const charge = (bytes: number): boolean => {
       if (budget.inFlight + bytes > limits.maxBytesInFlight) return false
+      const mine = app === undefined ? 0 : (apps.get(app) ?? 0)
+      if (app !== undefined && limits.appShare !== undefined && mine + bytes > limits.appShare) return false
       budget.inFlight += bytes
+      if (app !== undefined) apps.set(app, mine + bytes)
       held += bytes
       return true
     }
     const busy = () => new BodyError(503, "Too many request bodies are being read; retry shortly", "server_busy", 1)
-    let timer: ReturnType<typeof setTimeout> | undefined
+    // The idle timer restarts with every chunk; the ceiling runs once, from the start, whatever arrives.
+    let idle: ReturnType<typeof setTimeout> | undefined
+    let ceiling: ReturnType<typeof setTimeout> | undefined
     const cleanup = () => {
-      clearTimeout(timer)
+      clearTimeout(idle)
+      clearTimeout(ceiling)
       budget.inFlight -= held
+      if (app !== undefined) {
+        const left = (apps.get(app) ?? 0) - held
+        if (left > 0) apps.set(app, left)
+        else apps.delete(app)
+      }
       held = 0
       request.off("data", onData)
       request.off("error", onError)
@@ -186,7 +230,14 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
       request.resume()
       reject(error)
     }
+    const armIdle = () => {
+      clearTimeout(idle)
+      idle = setTimeout(() => stop(new BodyError(408, `Request body stopped arriving for ${limits.readTimeoutMs} ms (option limits.bodyReadTimeoutMs)`, "body_read_timeout")), limits.readTimeoutMs)
+      idle.unref?.()
+    }
+    const ceilingMs = limits.readCeilingMs ?? BODY_LIMIT_DEFAULTS.readCeilingMs
     const onData = (chunk: Buffer) => {
+      armIdle()
       size += chunk.length
       if (size > maxBodyBytes) return stop(new BodyError(413, "Request body too large", "request_body_too_large"))
       if (size > held && !charge(size - held)) return stop(busy())
@@ -196,22 +247,16 @@ export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limi
     const onAbort = () => stop(signal.reason)
     const onEnd = () => {
       cleanup()
-      try {
-        resolve(chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString("utf8")))
-      } catch {
-        reject(new BodyError(400, "Request body is not valid JSON"))
-      }
+      resolve(Buffer.concat(chunks))
     }
     // The declared length is charged before the first byte is read, so a refusal costs no buffering.
     if (declared > 0 && !charge(declared)) {
       request.resume()
       return reject(busy())
     }
-    timer = setTimeout(
-      () => stop(new BodyError(408, `Request body was not received within ${limits.readTimeoutMs} ms (option limits.bodyReadTimeoutMs)`, "body_read_timeout")),
-      limits.readTimeoutMs,
-    )
-    timer.unref?.()
+    armIdle()
+    ceiling = setTimeout(() => stop(new BodyError(408, `Request body was not complete within ${ceilingMs} ms (option limits.bodyReadMaxMs)`, "body_read_timeout")), ceilingMs)
+    ceiling.unref?.()
     request.on("data", onData)
     request.on("error", onError)
     request.on("end", onEnd)
@@ -249,6 +294,7 @@ export const CORS_EXPOSED_HEADERS = [
   "x-plugboard-server-tools",
   "x-plugboard-parallel-tools",
   "x-plugboard-dropped-params",
+  "x-plugboard-thinking",
   "x-plugboard-cache",
   "x-plugboard-affinity",
   "x-plugboard-user-dropped",
@@ -307,6 +353,7 @@ export const PROBLEM_CODES: ReadonlySet<string> = new Set([
   "config_key",
   "app_has_server_tools",
   "app_has_config_key",
+  "body_budget_insufficient",
   "not_ready",
   "body_read_timeout",
   "request_body_too_large",
@@ -336,6 +383,20 @@ export const sendProblem = (response: ServerResponse, error: PlugError, instance
 }
 
 /**
+ * How a stream is put on the wire when it is not plain SSE with a `[DONE]` frame: the content type and idle
+ * keepalive of the response, one payload as a frame, and what closes the stream (Gemini: SSE without `[DONE]`, or
+ * a streamed JSON array, see `src/gemini/response.ts`). `frame` may keep state (the array's first element).
+ */
+export interface StreamWire {
+  readonly contentType: string
+  /** Written while the stream is idle; must be ignorable between frames. */
+  readonly keepalive: string
+  frame(payload: object): string
+  /** What ends a stream that finished (after the last frame, or after an error frame). */
+  end(): string
+}
+
+/**
  * SSE response writer. Headers go out with the first chunk, so nothing is committed until there
  * is something to send; chunks after the client is gone are dropped. `write` is synchronous (the
  * encoder's contract); backpressure is honoured by `paced`, which holds back the next event while
@@ -347,7 +408,7 @@ export const sendProblem = (response: ServerResponse, error: PlugError, instance
  * HTTP status; after it, the caller must report failures as SSE frames. A tick is skipped while
  * the socket buffer is full, and stops when the client is gone or the scope aborted.
  */
-export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepaliveMs = KEEPALIVE_MS) {
+export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepaliveMs = KEEPALIVE_MS, wire?: Pick<StreamWire, "contentType" | "keepalive">) {
   let started = false
   let blocked = false
   let lastWrite = Date.now()
@@ -363,7 +424,7 @@ export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepal
     if (started || response.destroyed || response.writableEnded) return
     started = true
     response.writeHead(200, {
-      "content-type": "text/event-stream; charset=utf-8",
+      "content-type": wire?.contentType ?? "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
       "x-accel-buffering": "no",
@@ -388,7 +449,7 @@ export function sseWriter(response: ServerResponse, signal?: AbortSignal, keepal
     if (response.destroyed || response.writableEnded || signal?.aborted) return
     const idle = Date.now() - lastWrite
     if (idle < keepaliveMs) return arm(keepaliveMs - idle)
-    if (!blocked) send(": keepalive\n\n")
+    if (!blocked) send(wire?.keepalive ?? ": keepalive\n\n")
     arm(keepaliveMs)
   }
   const beginKeepalive = () => {
@@ -489,8 +550,7 @@ function hostAllowed(options: PlugboardOptions, hostHeader: string | undefined):
  */
 export function checkHost(request: IncomingMessage, options: PlugboardOptions): PlugError | undefined {
   if (Object.keys(options.keys).length > 0 && forwardedHost(request, options.listen.trustProxy) !== undefined) return undefined
-  if (!hostAllowed(options, request.headers.host))
-    return { status: 403, kind: "permission", code: "invalid_host", message: "Host header not allowed" }
+  if (!hostAllowed(options, request.headers.host)) return { status: 403, kind: "permission", code: "invalid_host", message: "Host header not allowed" }
 }
 
 /**

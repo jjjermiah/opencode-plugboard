@@ -50,6 +50,7 @@ describe("apps: parsing", () => {
     ["an app that is not an object", { keys: { a: "k" }, apps: { a: "x" } }, /`apps.a` must be an object/],
     ["an unknown app field", { keys: { a: "k" }, apps: { a: { allowTools: false } } }, /Unknown plugboard option `apps.a.allowTools`/],
     ["an app name with capitals", { apps: { MyApp: { key: "k" } } }, /must match/],
+    ["an app name longer than 255 characters (#418)", { apps: { ["x".repeat(256)]: { key: "k" } } }, /at most 255 characters/],
     ["a key that differs between keys and apps", { keys: { a: "one" }, apps: { a: { key: "two" } } }, /different key in `keys` and in `apps.a.key`/],
     ["an empty apps key (unset {env:VAR})", { apps: { a: { key: "" } } }, /non-empty string/],
     ["two apps sharing a key value across keys and apps", { keys: { a: "same" }, apps: { b: { key: "same" } } }, /`a` and `b` have the same value/],

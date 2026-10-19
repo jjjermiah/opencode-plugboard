@@ -13,7 +13,7 @@ describe("region names", () => {
   test("a name outside the form is reported (openai-js wrong-key, parse, Raw, snippet_x)", () => {
     for (const name of ["wrong-key", "parse", "snippet_x", "snippet-Raw", "snippet-", "snippet-a--b"]) {
       const text = `// #region ${name}\nx\n// #endregion ${name}`
-      expect(regionProblems("a.ts", text).some((problem) => problem.includes("must be \"snippet\" or \"snippet-<name>\""))).toBe(true)
+      expect(regionProblems("a.ts", text).some((problem) => problem.includes('must be "snippet" or "snippet-<name>"'))).toBe(true)
     }
   })
 })

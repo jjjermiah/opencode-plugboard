@@ -4,7 +4,7 @@
 
 Plugboard is stateless: every request carries the whole conversation in `messages`.
 
-Tested with `@anthropic-ai/sdk` 0.133.0 against a fake model caller (plain, streamed and tool-loop calls, errors, both auth headers). Claude Code and the Python SDK were not run against it.
+The Anthropic Python and TypeScript SDKs, LangChain, pydantic-ai, the Vercel AI SDK and Claude Code all run against it: see their [client pages](clients/index.md).
 
 ```ts
 import Anthropic from "@anthropic-ai/sdk"
@@ -17,6 +17,10 @@ const m = await client.messages.create({ model: "fast", max_tokens: 256, message
 ## Auth
 
 Send the plugboard key as `x-api-key` (what the Anthropic SDKs do) or as `Authorization: Bearer` (what Claude Code does with `ANTHROPIC_AUTH_TOKEN`). Both check the same key store. If both headers are present and the bearer token is not a key, `x-api-key` is tried next. Without `keys` on a loopback listener no header is needed. `anthropic-version` and `anthropic-beta` are accepted and ignored.
+
+## Model list
+
+`GET /v1/models` answers Anthropic's list shape when the request carries `anthropic-version` (the SDKs send it). It pages like Anthropic: `limit` (default 20, from 1 to 1000), `after_id` and `before_id`, using the ids in `first_id` and `last_id`. `has_more` says whether the page's direction has models left. An unknown cursor, both cursors, or a limit outside 1 to 1000 is a 400. Without `anthropic-version` the list is OpenAI's, unpaged.
 
 ## Claude Code
 
@@ -37,14 +41,15 @@ Define the aliases in the plugboard `aliases` option (for example `"claude-sonne
 | `model` | Same as Chat Completions: an alias or `provider/model[#variant]`. The response echoes the string you sent. |
 | `max_tokens` | Required, a positive integer, passed to the model. |
 | `system` | A string, or text blocks. `cache_control` on a system block is accepted and ignored: the app's policy and OpenCode's own placement decide the system cache. The one exception is a caller's `ttl: "1h"` block later in `messages`, which can set the 1-hour TTL on the system's first and last part (see [Prompt caching](#prompt-caching)). |
-| `messages` | `user` and `assistant` turns with a string or content blocks: `text`, `image` (`base64` or `url` source), `document` (`base64`, `url` or `text` source), `tool_use` (assistant), `tool_result` (user). `thinking` and `redacted_thinking` blocks are accepted and dropped. `cache_control` (`ephemeral`) on a `text`, `image`, `document` or `tool_result` block is a cache breakpoint the caller chose: it is kept, and OpenCode fills the rest of its own budget, so the caller controls what is cached but cannot turn caching off. A `ttl` of `1h` is carried only on a request without tools; otherwise it is the 5-minute default. See [Prompt caching](#prompt-caching). `cache_control` on `tools` is ignored: the context hook can rewrite a tool's name, description and schema but not its cache hint. |
+| `messages` | `user` and `assistant` turns with a string or content blocks: `text`, `image` (`base64`, `url` or, since next, `file` source), `document` (`base64`, `url`, `text` or, since next, `file` source: a file id from the [Files API](files.md)), `tool_use` (assistant), `tool_result` (user). `thinking` blocks with a `signature` and `redacted_thinking` blocks are replayed to an `anthropic` model, so the model keeps its earlier reasoning across turns (since 0.34.0, [#374](https://github.com/jjjermiah/opencode-plugboard/issues/374)). Copilot's Claude models (provider `github-copilot`, id `claude-*`) are replayed the same way (since 0.37.0, [#386](https://github.com/jjjermiah/opencode-plugboard/issues/386)). Plugboard never returns `redacted_thinking` (follow-up issue), so only a block the client got from another source replays. An unsigned `thinking` block is dropped, since it has no signature to replay. On any other model every thinking block is dropped, including other Copilot models. `cache_control` (`ephemeral`) on a `text`, `image`, `document` or `tool_result` block is a cache breakpoint the caller chose: it is kept, and OpenCode fills the rest of its own budget, so the caller controls what is cached but cannot turn caching off. A `ttl` of `1h` is carried only on a request without tools; otherwise it is the 5-minute default. See [Prompt caching](#prompt-caching). `cache_control` on `tools` is ignored: the context hook can rewrite a tool's name, description and schema but not its cache hint. |
 | `tool_result` | `content` as a string or text and image blocks, `is_error` passed on. Each result must answer a `tool_use` block from an earlier assistant turn. Images inside a result are passed as user media after the results. |
 | `tools` | Custom tools with `name`, `description` and `input_schema`. |
 | `tool_choice` | `auto`, `any`, `none`, `{"type":"tool","name":"..."}`. `disable_parallel_tool_use: true` keeps only the first tool call of the answer, as `parallel_tool_calls: false` does on Chat Completions; the response carries `x-plugboard-parallel-tools: limited`. |
 | `temperature`, `top_p` | Passed to the model, minus the ones the model is known to reject (see below). |
 | `top_k` | Ignored. Plugboard has no `top_k` option. The response header `x-plugboard-dropped-params` lists it. |
-| `stop_sequences` | Passed to the model. |
-| `thinking`, `output_config.effort` | `thinking` is validated like Anthropic does (`budget_tokens` at least 1024 and below `max_tokens`). It picks a model variant when the model has one and the id carries none: `output_config.effort` names the variant directly, otherwise `budget_tokens` up to 4096 means `low`, up to 16384 `medium`, above that `high`. A model without that variant is called as is. With `enabled` or `adaptive` thinking, the model's reasoning text comes back as `thinking` blocks. |
+| `stop_sequences` | Matched by plugboard on the answer text, and not sent to the model (#390). |
+| `thinking`, `output_config.effort` | `thinking` is validated like Anthropic does (`budget_tokens` at least 1024 and below `max_tokens`). It picks a model variant when the model has one and the id carries none: `output_config.effort` names the variant directly, otherwise `budget_tokens` up to 4096 means `low`, up to 16384 `medium`, above that `high`. A model without that variant gets the nearest one above it, or its highest one (since 0.46.0, #410), so Haiku 4.5, which lists `high` and `max`, thinks on a small budget too. A model with no thinking variant at all runs without thinking, and the answer carries `x-plugboard-thinking: unavailable` (since 0.46.0). With `enabled` or `adaptive` thinking, the model's reasoning text comes back as `thinking` blocks. |
+| `output_config.format` | `{"type": "json_schema", "schema": {...}}`: structured outputs (since 0.50.0). See [Structured outputs](#structured-outputs). |
 | `stream` | The standard event sequence, below. |
 | `metadata`, `service_tier`, `context_management`, `container` | Accepted and ignored. |
 
@@ -75,15 +80,16 @@ Pricing: Anthropic bills a 1-hour cache write at 2 times the base input price an
 A 400 `invalid_request_error` whose message names the field, for example `tools.0.type: "web_search_20250305" is not supported`:
 
 - Tools that are not custom tools: server tools (`web_search`, `web_fetch`, `code_execution`, ...) run on Anthropic's side, and the versioned `computer`, `bash` and `text_editor` tools are not available.
-- `mcp_servers`, `output_config.format` (structured outputs). For JSON, see [structured extraction with a forced tool](#structured-extraction-with-a-forced-tool).
-- Content blocks plugboard cannot use: `server_tool_use`, `web_search_tool_result`, `mcp_tool_use`, `search_result`, files by `file_id`, and so on.
+- `mcp_servers`.
+- An `output_config.format` that is not `{"type": "json_schema", "schema": {...}}`, one that comes with a tool named `respond` (plugboard answers through that name), and one that comes with a `tool_choice` naming a tool. See [Structured outputs](#structured-outputs).
+- Content blocks plugboard cannot use: `server_tool_use`, `web_search_tool_result`, `mcp_tool_use`, `search_result`, and so on. A `file` source naming a file the app does not hold is a 404 `not_found_error` (since next, [Files API](files.md)).
 - A `tool_result` whose `tool_use_id` no earlier `tool_use` block has, and `tool_choice` naming a tool that is not in `tools`.
 - A missing `max_tokens`, `messages` or `model`, values out of range, and more tools than the `maxTools` option.
 
-`POST /v1/messages/count_tokens` answers `{ "input_tokens": N }`: an estimate of the input the session would send (characters / 4, plus a fixed cost per image or file). It follows the request's path (#201):
+`POST /v1/messages/count_tokens` answers `{ "input_tokens": N }`: an estimate of the input the session would send. It follows the request's path (#201). Since 0.46.0 (#412) the estimate is calibrated against live counts of Claude Haiku 4.5 (`usage.input_tokens` for the same request): about five characters per token, one token per CJK character, a fixed cost per request and per message, about 530 tokens for the tool-use preamble once tools are declared plus about 40 per tool and 35 per tool call or result, and each image at Anthropic's `width * height / 750` (after its downscaling to about 1.15 megapixels), read from the image header. An image whose size cannot be read, or a file, costs 1600. Against live counts the estimate is within about 20% for the shapes measured (text, CJK, tools, transcripts and images of 32 to 1568 pixels a side). It does not count the provider's own tokenizer per model, and a Chat Completions or Responses request has no count endpoint.
 
 - **System:** the app's `system` policy, the tool-choice steering, a skill's content for a skill alias, or an agent's prompt for `agent/<name>` (which replaces the caller's system prompt).
-- **Tools:** the caller's tools the session offers (none for `tool_choice: none`, only the named one for a named choice, none with `tools: false`), and the app's `serverTools` schemas (none with `tool_choice: none`).
+- **Tools:** the caller's tools the session offers (none for `tool_choice: none`, only the named one for a named choice, none with `tools: false`), and the app's `serverTools` schemas (none with `tool_choice: none`). With `output_config.format`, the schema is counted as the tool the model is given for it (since 0.50.0).
 - **Refusals:** the same 400s and 404s as the request, so no size is given for a refused request: a model outside the app's `models`, too many tools for `maxTools`, a server-tool name clash, a server tool the location does not offer or the operator's agent does not grant, and an unknown skill or agent.
 
 A count for an app with a persona or `serverTools` has side effects, as the request has: the app directory is created, the Location may boot, and a backend that is not ready answers 503. Each such count also reads the app's tool and agent lists from OpenCode. Image downloads are not run, and the server-tool schemas are converted without OpenCode's draft-07 normalisation, so they can differ a little. Plugboard has no tokenizer for the model behind an id, so treat the count as a budget hint, not the provider's exact count.
@@ -99,7 +105,7 @@ A message object: `id` (`msg_...`), `type: "message"`, `role: "assistant"`, `mod
 | `max_tokens` | The model hit the token limit. |
 | `refusal` | The provider filtered the content. |
 
-`stop_reason: "stop_sequence"` is returned when the answer text ends with one of the request's `stop_sequences`. That sequence is removed from the text and given as `stop_sequence`. The host reports only that the turn stopped, so a sequence the provider ended on without returning it shows as `end_turn`, with `stop_sequence` `null`.
+`stop_reason: "stop_sequence"` is returned when the answer text contains one of the request's `stop_sequences`. The answer ends at the first one: the text before it is returned, the sequence is removed and given as `stop_sequence`, and nothing after it is produced. Reasoning is never matched (#390). A tool call before the sequence makes the turn a tool turn: `stop_reason` is `tool_use` and `stop_sequence` is `null`, as Anthropic reports a turn that ended on a call. `usage` is the usage of the run, also after a match.
 
 `usage` has `input_tokens`, `output_tokens` (including reasoning), `cache_read_input_tokens` and `cache_creation_input_tokens`. As in Anthropic's API, `input_tokens` excludes the cached tokens that the other two fields report. The `x-plugboard-session` header works as on Chat Completions, and every response carries a `request-id` header.
 
@@ -122,11 +128,49 @@ message_delta                (stop_reason, and the final usage: input_tokens, ca
 message_stop
 ```
 
-Tool calls arrive whole from the model, so each call is a single `input_json_delta`. A thinking block carries the provider's `signature` when the host reports one (Anthropic's does), streamed as a `signature_delta` before the block stops (#146). Otherwise the signature is empty. Plugboard drops `thinking` and `redacted_thinking` blocks from the messages a client sends, so a replayed block never reaches a provider, and a next turn cannot fail on its signature. Nothing is sent until there is output, so a failure before the first token is a real HTTP error. A failure after that ends the stream with an `event: error` frame (`{"type":"error","error":{"type","message"}}`) and no `message_stop`.
+Tool calls arrive whole from the model, so each call is a single `input_json_delta`. A thinking block carries the provider's `signature` when the host reports one (Anthropic's does), streamed as a `signature_delta` before the block stops (#146). Otherwise the signature is empty. A redacted reasoning block the provider returns comes back as one `redacted_thinking` block with its opaque `data`, with no deltas (since 0.47.0, #385). Like thinking, it is left out unless the request asked for thinking. A client's `thinking` blocks come back to the model as they were sent, with their signature (since 0.34.0, #374), but only when the model is `anthropic` or a Copilot Claude model (since 0.37.0, #386): the signature is the provider's proof and is sent to no other provider. An unsigned `thinking` block is dropped, so no empty signature reaches a provider. Plugboard's own thinking blocks carry an empty signature when the host reports none, and such a block is not replayed. Reasoning text that names a tool by its internal placeholder id is rewritten to the tool's name before it leaves plugboard (#411). Plugboard never emits `redacted_thinking` on a response, so a client replays one only if it got it from another source. Nothing is sent until there is output, so a failure before the first token is a real HTTP error. A failure after that ends the stream with an `event: error` frame (`{"type":"error","error":{"type","message"}}`) and no `message_stop`.
+
+## Structured outputs
+
+`output_config.format` takes `{"type": "json_schema", "schema": {...}}` and answers with JSON as one `text` block and `stop_reason: "end_turn"`, as Anthropic does (since 0.50.0). A stream sends the JSON as a single `text_delta`.
+
+```python
+import json
+import os
+
+import anthropic
+
+client = anthropic.Anthropic(base_url="http://localhost:4010", api_key=os.environ["PLUGBOARD_KEY"])
+
+schema = {
+    "type": "object",
+    "properties": {"vendor": {"type": "string"}, "total": {"type": "number"}},
+    "required": ["vendor", "total"],
+    "additionalProperties": False,
+}
+r = client.messages.create(
+    model="fast",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Invoice from Acme, total 120.50 EUR"}],
+    output_config={"format": {"type": "json_schema", "schema": schema}},
+)
+data = json.loads(r.content[0].text)
+```
+
+Plugboard maps it to the path Chat Completions uses for `json_schema`: the model is given a forced tool named `respond` whose input schema is yours, and the tool call's input becomes the text. The rules are the same as there:
+
+- **The schema is not enforced.** Anthropic constrains decoding. Here the model is asked for the schema and the answer is passed on, so validate it. A schema other than an object is sent as it is.
+- **A model that answers in text.** If the model skips the tool and its final text is the JSON the schema asks for (one code fence is stripped), that text is the answer. A non-streamed response then carries `x-plugboard-structured-fallback: text`. The check covers the top-level `type`, the top-level `required` keys and the `type` of each top-level property.
+- **No answer.** A turn with neither the tool call nor matching text is a 502 `api_error` whose message says the model did not return JSON matching the response schema, for any finish reason. A stream is committed by its first event (the answer is held back until the turn ends), so there the failure is an `event: error` frame and no `message_stop`.
+- **Caller tools.** With `tools`, the model may call one of them or answer. A call to one of your tools is a normal `tool_use` turn, and the structured answer is dropped. `tool_choice: none` leaves only the answer.
+- **Refused.** A `tool_choice` that names a tool, and a tool named `respond`, are 400s.
+- **Thinking.** `thinking` blocks still come first when the request asked for thinking.
+- **Token counts.** `count_tokens` counts the request the model gets, including the tool.
+- **Not covered.** Prefilling and citations next to `output_config.format` are not checked.
 
 ## Structured extraction with a forced tool
 
-Anthropic structured outputs (`output_config.format`) are refused here. A client that speaks only the Anthropic API can still get JSON: define a tool whose `input_schema` is the schema you want, and set `tool_choice` to that tool. The `input` of the tool call is the answer.
+An alternative for clients that already define their schema as a tool: define a tool whose `input_schema` is the schema you want, and set `tool_choice` to that tool. The `input` of the tool call is the answer.
 
 Plugboard applies a named `tool_choice` as an instruction, because the OpenCode session has no tool-choice control. So the model can still answer in text. Handle a reply with no `tool_use` block, and check the input against the schema in your own code: the schema is not enforced, the same as `json_schema` on the other routes. One optional field came back as the string `"null"` in one of three samples, for example.
 

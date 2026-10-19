@@ -10,6 +10,25 @@ const message = (role: string, content: unknown) => ({ type: "message", role, co
 const fnCall = (call_id: string, name: string, args: unknown = "{}") => ({ type: "function_call", call_id, name, arguments: args })
 const fnOutput = (call_id: string, output: unknown) => ({ type: "function_call_output", call_id, output })
 
+describe("a client value that cannot be turned into a string is a 400, not a crash (property test counterexample)", () => {
+  test("an input item whose role is an object with a null toString is refused as a 400 (not a TypeError)", () => {
+    const result = parseResponsesRequest(body({ input: [{ type: "message", role: { toString: null }, content: [] }] }), options)
+    expect(isPlugError(result)).toBe(true)
+    expect(result).toMatchObject({ status: 400 })
+  })
+
+  test("an unsupported input item type that is an object is named as an object", () => {
+    const result = parseResponsesRequest(body({ input: [{ type: { toString: null } }] }), options)
+    expect(result).toMatchObject({ status: 400, message: 'Unsupported input item type "object"' })
+  })
+})
+
+describe("#421 tool_choice none without tools", () => {
+  test("is kept as the neutral none, so the session offers no server tool", () => {
+    expect(parse(body({ tool_choice: "none" })).request.toolChoice).toBe("none")
+  })
+})
+
 describe("#202 parallel_tool_calls", () => {
   test("false asks for one tool call per answer; true and absent do not", () => {
     expect(parse(body({ parallel_tool_calls: false })).request.parallelToolCalls).toBe(false)
@@ -26,7 +45,6 @@ function parse(raw: unknown): ParsedResponses {
 
 describe("parseResponsesRequest: stateless and hosted features are refused with unsupported_parameter", () => {
   const refusals: Array<[string, Record<string, unknown>, string]> = [
-    ["previous_response_id", { previous_response_id: "resp_1" }, "previous_response_id"],
     ["conversation", { conversation: "conv_1" }, "conversation"],
     ["background mode", { background: true }, "background"],
     ["stored prompts", { prompt: { id: "p" } }, "prompt"],
@@ -47,6 +65,52 @@ describe("parseResponsesRequest: stateless and hosted features are refused with 
 
   test("background false, top_logprobs 0 and truncation disabled are accepted", () => {
     expect(isPlugError(parseResponsesRequest(body({ background: false, top_logprobs: 0, truncation: "disabled" }), options))).toBe(false)
+  })
+
+  test("conversation is refused with a message that points at previous_response_id", () => {
+    expect(parseResponsesRequest(body({ conversation: "conv_1" }), options)).toMatchObject({ message: expect.stringContaining("previous_response_id") })
+  })
+})
+
+describe("previous_response_id: the stored chain is the context ahead of the new input", () => {
+  const earlierInput = { id: "msg_a", type: "message", role: "user", content: [{ type: "input_text", text: "first" }] }
+  const earlierOutput = { id: "msg_b", type: "message", status: "completed", role: "assistant", content: [{ type: "output_text", text: "one", annotations: [] }] }
+
+  test("the history comes first, then the new input, and the echoed object names the previous id", () => {
+    const parsed = parseResponsesRequest(body({ input: "second", previous_response_id: "resp_x" }), options, undefined, [earlierInput, earlierOutput])
+    expect(isPlugError(parsed)).toBe(false)
+    const { request, exchange, inputItems } = parsed as ParsedResponses
+    expect(request.messages.map((m) => m.role)).toEqual(["user", "assistant", "user"])
+    expect(exchange.envelope.previous_response_id).toBe("resp_x")
+    // Only the new input comes back as items: the route keeps the history it already holds.
+    expect(inputItems).toEqual([{ type: "message", role: "user", content: [{ type: "input_text", text: "second" }] }])
+  })
+
+  test("instructions are the request's own: the history carries none", () => {
+    const parsed = parse(body({ instructions: "now", previous_response_id: "resp_x" }))
+    expect(parsed.request.system).toEqual(["now"])
+    expect(parse(body()).request.system).toEqual([])
+  })
+
+  test("a function_call_output answers a call from the history", () => {
+    const call = { id: "fc_1", type: "function_call", status: "completed", call_id: "call_1", name: "weather", arguments: "{}" }
+    const parsed = parseResponsesRequest(body({ input: [fnOutput("call_1", "sunny")], previous_response_id: "resp_x" }), options, undefined, [earlierInput, call])
+    expect((parsed as ParsedResponses).request.messages.map((m) => m.role)).toEqual(["user", "assistant", "tool"])
+  })
+
+  test("an error in the new input counts its index from the new input, not the history", () => {
+    expect(parseResponsesRequest(body({ input: [{ type: "web_search_call" }] }), options, undefined, [earlierInput, earlierOutput])).toMatchObject({ param: "input[0].type" })
+  })
+
+  test("a previous_response_id that is not a string is a 400 on that field", () => {
+    expect(parseResponsesRequest(body({ previous_response_id: 5 }), options)).toMatchObject({ status: 400, param: "previous_response_id" })
+    expect(parseResponsesRequest(body({ previous_response_id: "" }), options)).toMatchObject({ status: 400, param: "previous_response_id" })
+  })
+
+  test("item_references in the new input come back resolved, so a stored response keeps the items", () => {
+    const known = new Map([["msg_b", earlierOutput as Record<string, unknown>]])
+    const parsed = parseResponsesRequest(body({ input: [{ type: "item_reference", id: "msg_b" }, message("user", "again")] }), options, (id) => known.get(id))
+    expect((parsed as ParsedResponses).inputItems[0]).toEqual(earlierOutput)
   })
 })
 
@@ -173,8 +237,15 @@ describe("parseResponsesRequest: input items", () => {
   })
 
   test("#288 input_file data that is not a PDF is a 400 invalid_file, not sent to backend preparation", () => {
-    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "AAAA" }])] }), options)).toMatchObject({ status: 400, code: "invalid_file", param: "input[0].content[0].file_data" })
-    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "data:text/plain;base64,JVBERi0xLjQK" }])] }), options)).toMatchObject({ status: 400, code: "invalid_file" })
+    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "AAAA" }])] }), options)).toMatchObject({
+      status: 400,
+      code: "invalid_file",
+      param: "input[0].content[0].file_data",
+    })
+    expect(parseResponsesRequest(body({ input: [message("user", [{ type: "input_file", file_data: "data:text/plain;base64,JVBERi0xLjQK" }])] }), options)).toMatchObject({
+      status: 400,
+      code: "invalid_file",
+    })
   })
 
   test("adjacent assistant text and function calls become one assistant message, followed by the results", () => {
@@ -182,7 +253,10 @@ describe("parseResponsesRequest: input items", () => {
       body({
         input: [
           message("user", "weather?"),
-          message("assistant", [{ type: "output_text", text: "Checking" }, { type: "refusal", refusal: "x" }]),
+          message("assistant", [
+            { type: "output_text", text: "Checking" },
+            { type: "refusal", refusal: "x" },
+          ]),
           fnCall("c1", "weather", '{"city":"Oslo"}'),
           fnCall("c2", "weather", { city: "Rome" }),
           { type: "reasoning", summary: [] },
@@ -236,9 +310,14 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
     expect(parsed.exchange.envelope.reasoning).toEqual({ effort: "high", summary: null })
   })
 
-  test("the envelope echoes the request and always says store false", () => {
+  test("the envelope echoes the request, its store included (#442): true when the request leaves it out", () => {
+    expect(parse(body({})).exchange.envelope.store).toBe(true)
+    expect(parse(body({ store: false })).exchange.envelope.store).toBe(false)
     const tools = [fn("a")]
-    expect(parse(body({ instructions: "i", max_output_tokens: 9, temperature: 0.5, top_p: 0.5, metadata: { k: "v" }, parallel_tool_calls: false, tools, tool_choice: "auto", user: "u", store: true })).exchange).toEqual({
+    expect(
+      parse(body({ instructions: "i", max_output_tokens: 9, temperature: 0.5, top_p: 0.5, metadata: { k: "v" }, parallel_tool_calls: false, tools, tool_choice: "auto", user: "u", store: true }))
+        .exchange,
+    ).toEqual({
       model: "test/echo",
       stream: false,
       envelope: {
@@ -248,7 +327,7 @@ describe("parseResponsesRequest: tools, text.format and the echoed envelope", ()
         parallel_tool_calls: false,
         previous_response_id: null,
         reasoning: { effort: null, summary: null },
-        store: false,
+        store: true,
         temperature: 0.5,
         text: { format: { type: "text" } },
         tool_choice: "auto",

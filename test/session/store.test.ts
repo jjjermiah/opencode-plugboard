@@ -39,7 +39,13 @@ describe("session store", () => {
 
   test("a sink that throws is logged and the store keeps working", () => {
     const store = createSessionStore()
-    store.register(state("ses_1", { push: () => { throw new Error("bad sink") } }))
+    store.register(
+      state("ses_1", {
+        push: () => {
+          throw new Error("bad sink")
+        },
+      }),
+    )
     store.dispatch(bus("ses_1").textDelta("x"))
     expect(logs.of("session.event_failed")[0]!.fields.error).toBe("bad sink")
   })
@@ -49,7 +55,11 @@ describe("session store", () => {
     const store = createSessionStore({ onRegister: (registered) => void seen.push(registered.sessionID) })
     store.register(state("ses_1"))
     expect(seen).toEqual(["ses_1"])
-    const failing = createSessionStore({ onRegister: () => { throw new Error("index down") } })
+    const failing = createSessionStore({
+      onRegister: () => {
+        throw new Error("index down")
+      },
+    })
     failing.register(state("ses_2"))
     expect(failing.lookup("ses_2")).toBeDefined()
     expect(logs.of("session.register_hook_failed")).toHaveLength(1)
@@ -115,7 +125,12 @@ describe("#33 retire: the guard outlives the response, boundedly", () => {
     try {
       const store = createSessionStore()
       store.register(state("ses_1"))
-      store.retire("ses_1", { timeoutMs: 10, onTimeout: () => { throw new Error("interrupt failed") } })
+      store.retire("ses_1", {
+        timeoutMs: 10,
+        onTimeout: () => {
+          throw new Error("interrupt failed")
+        },
+      })
       jest.advanceTimersByTime(10)
       expect(store.lookup("ses_1")).toBeUndefined()
       expect(logs.of("session.cleanup_failed")).toHaveLength(1)

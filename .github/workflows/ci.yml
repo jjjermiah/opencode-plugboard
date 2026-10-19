@@ -6,7 +6,7 @@ on:
   pull_request:
   # Reused by publish.yml so a release runs the same gates as CI.
   workflow_call:
-  # host-bump.yml starts this on its own pull request: a PR opened with GITHUB_TOKEN starts no workflow.
+  # host-bump.yml approves this on its own pull request: a PR opened with GITHUB_TOKEN holds its pull_request runs for approval.
   workflow_dispatch:
 
 permissions: {}
@@ -33,6 +33,11 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      # #114: Biome lint and format check (biome.jsonc). `bun run format:write` fixes a format failure.
+      - name: Lint
+        run: bun run lint
+      - name: Format check
+        run: bun run format
       - name: Typecheck
         run: bun run typecheck
       - name: Test
@@ -60,6 +65,9 @@ jobs:
         run: bun .github/scripts/check-pack.ts
       - name: Smoke-test the packed tarball
         run: bun .github/scripts/smoke-pack.ts
+      # The `(since next)` placeholder is replaced at release time (docs/releasing.md): none may sit in a released CHANGELOG section.
+      - name: No since-next placeholder in a released section
+        run: bun .github/scripts/since-next.ts --check
       # #167: docs.yml builds the site only on push to main, so a broken link or VitePress error shows here on the pull request.
       - name: Build the docs site
         run: bun run docs:build
@@ -158,10 +166,13 @@ jobs:
       # stop conflicting on this list).
       - name: Scripted runs of every example
         run: bun examples/_harness/run.ts all --target scripted
-      - name: Type check the OpenAI JS example and the tool bot
+      - name: Type check the TypeScript examples
         run: |
           (cd examples/openai-js && bunx tsc --noEmit)
           (cd examples/tool-bot && bunx tsc --noEmit)
+          (cd examples/anthropic-js && bunx tsc --noEmit)
+          (cd examples/langchain-anthropic-js && bunx tsc --noEmit)
+          (cd examples/vercel-ai-sdk-anthropic && bunx tsc --noEmit)
       # The examples index (examples/README.md) and every <<< snippet import in docs/ must match the tree. The docs build
       # below reads the same records.
       - name: Examples index is current and every snippet import resolves

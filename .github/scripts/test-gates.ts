@@ -37,7 +37,9 @@ interface Suite {
   readonly tests?: number
   readonly skipped?: number
 }
-const junit = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", parseAttributeValue: true, isArray: (name) => name === "testsuite" }).parse(readFileSync(join(dir, "junit.xml"), "utf8")) as {
+const junit = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", parseAttributeValue: true, isArray: (name) => name === "testsuite" }).parse(
+  readFileSync(join(dir, "junit.xml"), "utf8"),
+) as {
   testsuites: { testsuite?: Suite[] }
 }
 /** Tests that ran per layer: top-level suites are files; skipped and todo tests do not count. */
@@ -81,8 +83,7 @@ for (const layer of layers) {
   const floor = countFloors[layer] ?? 0
   if ((counts[layer] ?? 0) < floor) failures.push(`test/${layer}: ${counts[layer] ?? 0} tests ran, the floor is ${floor}`)
 }
-for (const metric of ["lines", "functions"] as const)
-  if (total[metric] < coverageFloor[metric]) failures.push(`${metric} coverage ${total[metric]}% is below the floor of ${coverageFloor[metric]}%`)
+for (const metric of ["lines", "functions"] as const) if (total[metric] < coverageFloor[metric]) failures.push(`${metric} coverage ${total[metric]}% is below the floor of ${coverageFloor[metric]}%`)
 
 const mark = (value: number, floor: number) => (value < floor ? "below" : value > floor ? "raise" : "at")
 const report = [
@@ -99,13 +100,17 @@ const report = [
   "",
   "| Area | Lines | Functions |",
   "|---|--:|--:|",
-  ...[...areas.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([area, group]) => {
-    const coverage = measure(group)
-    return `| \`${area === "." ? "index.ts" : area}\` | ${coverage.lines}% | ${coverage.functions}% |`
-  }),
+  ...[...areas.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([area, group]) => {
+      const coverage = measure(group)
+      return `| \`${area === "." ? "index.ts" : area}\` | ${coverage.lines}% | ${coverage.functions}% |`
+    }),
   `| **total** | **${total.lines}%** (floor ${coverageFloor.lines}%) | **${total.functions}%** (floor ${coverageFloor.functions}%) |`,
   "",
-  failures.length > 0 ? `**Failed:**\n\n${failures.map((failure) => `- ${failure}`).join("\n")}` : "All floors met. Rows marked `raise` are above their floor: run `--ratchet` and commit the new floors with the tests.",
+  failures.length > 0
+    ? `**Failed:**\n\n${failures.map((failure) => `- ${failure}`).join("\n")}`
+    : "All floors met. Rows marked `raise` are above their floor: run `--ratchet` and commit the new floors with the tests.",
   "",
 ].join("\n")
 

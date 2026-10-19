@@ -9,18 +9,11 @@
  * afterwards, which is why the request omits `ref`.
  */
 import type { PlugboardOptions } from "../config.js"
+import { show } from "../client-value.js"
 import { imageProblem } from "../image.js"
+import { replayedReasoning } from "../reasoning-replay.js"
 import { bodyUserId, userField } from "../user.js"
-import {
-  isPlugError,
-  type PlugError,
-  type PlugGeneration,
-  type PlugMessage,
-  type PlugPart,
-  type PlugRequest,
-  type PlugTool,
-  type PlugToolChoice,
-} from "../contract.js"
+import { isPlugError, type PlugError, type PlugGeneration, type PlugMessage, type PlugPart, type PlugRequest, type PlugTool, type PlugToolChoice } from "../contract.js"
 import type { MessagesExchange } from "./response.js"
 
 type JsonObject = Record<string, unknown>
@@ -40,10 +33,13 @@ const isRecord = (value: unknown): value is JsonObject => typeof value === "obje
 
 const bad = (message: string): PlugError => ({ status: 400, kind: "invalid_request", message })
 
+/** Name of the forced tool that carries structured output (same as the other front-ends). */
+const RESPOND_TOOL = "respond"
+
 /** Anthropic's own minimum for `thinking.budget_tokens`. */
 const MIN_THINKING_BUDGET = 1024
 
-/** Budget ranges -> the variant names OpenCode models commonly offer (`low`, `medium`, `high`). Unknown names are ignored by the resolver. */
+/** Budget ranges -> the variant names OpenCode models commonly offer (`low`, `medium`, `high`). A model without that variant gets the nearest one above it (`effortVariant`, #410). */
 const effortOfBudget = (budget: number) => (budget <= 4096 ? "low" : budget <= 16384 ? "medium" : "high")
 
 const MEDIA_TYPE = /^[\w.+-]+\/[\w.+-]+$/
@@ -68,11 +64,22 @@ const mediaPart = (block: JsonObject, at: string, what: "image" | "document"): P
     if (typeof source.data !== "string") return bad(`${at}.source.data: must be a string`)
     return { type: "text", text: source.data }
   }
-  return bad(`${at}.source.type: "${String(source.type)}" is not supported for ${what} blocks (use base64 or url)`)
+  return bad(`${at}.source.type: "${show(source.type)}" is not supported for ${what} blocks (use base64 or url)`)
 }
 
-/** Blocks that carry nothing plugboard can replay or act on. */
-const IGNORED = new Set(["thinking", "redacted_thinking"])
+/**
+ * A `thinking` block with a signature, or a `redacted_thinking` block: the reasoning a provider can verify on replay (#374). An
+ * unsigned `thinking` block is dropped (undefined): it has no signature to replay. Malformed blocks are dropped too,
+ * as they were before this change, so a request that used to pass still passes.
+ */
+const reasoningPart = (block: JsonObject): PlugPart | undefined => {
+  if (block.type === "redacted_thinking") {
+    return typeof block.data === "string" && block.data.length > 0 ? { type: "reasoning", text: "", redactedData: block.data } : undefined
+  }
+  if (typeof block.thinking !== "string" || typeof block.signature !== "string" || block.signature.length === 0) return undefined
+  // The text the provider signed: a block whose text plugboard rewrote (#411) is replayed as it was signed.
+  return { type: "reasoning", text: replayedReasoning(block.signature, block.thinking), signature: block.signature }
+}
 
 /** Text of a tool_result `content`: a string, or text blocks; image blocks are returned separately. */
 const toolResultContent = (content: unknown, at: string): { text: string; media: PlugPart[] } | PlugError => {
@@ -90,7 +97,7 @@ const toolResultContent = (content: unknown, at: string): { text: string; media:
       if (isPlugError(part)) return part
       if (part.type === "text") texts.push(part.text)
       else media.push(part)
-    } else return bad(`${here}.type: "${String(block.type)}" is not supported in tool_result content (use text or image)`)
+    } else return bad(`${here}.type: "${show(block.type)}" is not supported in tool_result content (use text or image)`)
   }
   return { text: texts.join("\n"), media }
 }
@@ -117,7 +124,7 @@ const userBlock = (block: JsonObject, at: string): PlugPart | undefined | PlugEr
       return isPlugError(part) ? part : { ...part, ...cached(block) }
     }
     default:
-      return bad(`${at}.type: "${String(block.type)}" is not supported in user messages (use text, image, document or tool_result)`)
+      return bad(`${at}.type: "${show(block.type)}" is not supported in user messages (use text, image, document or tool_result)`)
   }
 }
 
@@ -141,8 +148,10 @@ const parseMessages = (raw: unknown): PlugMessage[] | PlugError => {
       for (const [i, block] of blocks.entries()) {
         const here = `${at}.content.${i}`
         if (!isRecord(block)) return bad(`${here}: must be an object`)
-        if (typeof block.type === "string" && IGNORED.has(block.type)) continue
-        if (block.type === "text") {
+        if (block.type === "thinking" || block.type === "redacted_thinking") {
+          const part = reasoningPart(block)
+          if (part) parts.push(part)
+        } else if (block.type === "text") {
           if (typeof block.text !== "string") return bad(`${here}.text: must be a string`)
           if (block.text.length > 0) parts.push({ type: "text", text: block.text, ...cached(block) })
         } else if (block.type === "tool_use") {
@@ -151,7 +160,7 @@ const parseMessages = (raw: unknown): PlugMessage[] | PlugError => {
           if (block.input != null && !isRecord(block.input)) return bad(`${here}.input: must be an object`)
           toolNames.set(block.id, block.name)
           parts.push({ type: "tool-call", id: block.id, name: block.name, input: block.input ?? {} })
-        } else return bad(`${here}.type: "${String(block.type)}" is not supported in assistant messages (use text or tool_use)`)
+        } else return bad(`${here}.type: "${show(block.type)}" is not supported in assistant messages (use text, thinking, redacted_thinking or tool_use)`)
       }
       if (parts.length > 0) messages.push({ role: "assistant", content: parts })
       continue
@@ -223,7 +232,7 @@ const parseTools = (raw: unknown): PlugTool[] | PlugError => {
     if (!isRecord(entry)) return bad(`${at}: must be an object`)
     if (entry.type != null && entry.type !== "custom")
       return bad(
-        `${at}.type: "${String(entry.type)}" is not supported. Only custom tools with an input_schema are: server tools (web_search, web_fetch, code_execution, ...) run on Anthropic's side, and computer use, bash and text editor tools are not available through plugboard`,
+        `${at}.type: "${show(entry.type)}" is not supported. Only custom tools with an input_schema are: server tools (web_search, web_fetch, code_execution, ...) run on Anthropic's side, and computer use, bash and text editor tools are not available through plugboard`,
       )
     if (typeof entry.name !== "string" || entry.name.length === 0) return bad(`${at}.name: Field required`)
     if (names.has(entry.name)) return bad(`${at}.name: duplicate tool name "${entry.name}"`)
@@ -253,6 +262,25 @@ const parseToolChoice = (raw: unknown): PlugToolChoice | undefined | PlugError =
   }
 }
 
+/**
+ * `output_config.format` (`{type: "json_schema", schema}`) -> the `respond` tool, forced unless the caller also sends tools; the
+ * same mapping as `response_format` json_schema in Chat Completions. `null` or absent: no structured output.
+ */
+const parseOutputFormat = (body: JsonObject): PlugTool | undefined | PlugError => {
+  const config = body.output_config
+  if (!isRecord(config) || config.format == null) return undefined
+  const format = config.format
+  if (!isRecord(format)) return bad("output_config.format: must be an object")
+  if (format.type !== "json_schema") return bad(`output_config.format.type: "${show(format.type)}" is not supported (use "json_schema")`)
+  if (!isRecord(format.schema)) return bad("output_config.format.schema: Field required (a JSON Schema object)")
+  return {
+    name: RESPOND_TOOL,
+    // With caller tools also on offer, this description is what tells the model which call is the final answer.
+    description: "Give your final answer by calling this tool with JSON matching its schema.",
+    parameters: format.schema,
+  }
+}
+
 const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
   const out: { -readonly [K in keyof PlugGeneration]: PlugGeneration[K] } = {}
   if (typeof body.max_tokens !== "number" || !Number.isInteger(body.max_tokens)) {
@@ -272,8 +300,7 @@ const parseGeneration = (body: JsonObject): PlugGeneration | PlugError => {
   }
   if (body.top_k != null && (typeof body.top_k !== "number" || !Number.isInteger(body.top_k) || body.top_k < 0)) return bad("top_k: must be a non-negative integer")
   if (body.stop_sequences != null) {
-    if (!Array.isArray(body.stop_sequences) || body.stop_sequences.some((s) => typeof s !== "string" || s.length === 0))
-      return bad("stop_sequences: must be an array of non-empty strings")
+    if (!Array.isArray(body.stop_sequences) || body.stop_sequences.some((s) => typeof s !== "string" || s.length === 0)) return bad("stop_sequences: must be an array of non-empty strings")
     if (body.stop_sequences.length > 0) out.stop = body.stop_sequences as string[]
   }
   return out
@@ -299,7 +326,6 @@ const parseThinking = (body: JsonObject, maxTokens: number): { enabled: boolean;
   const config = body.output_config
   if (config != null) {
     if (!isRecord(config)) return bad("output_config: must be an object")
-    if (config.format != null) return bad("output_config.format: structured outputs are not supported")
     if (config.effort != null) {
       if (typeof config.effort !== "string" || config.effort.length === 0) return bad("output_config.effort: must be a string")
       effort = config.effort
@@ -338,25 +364,40 @@ export function parseMessagesRequest(body: unknown, options: PlugboardOptions): 
   const thinking = parseThinking(body, generation.maxTokens ?? 1)
   if (isPlugError(thinking)) return thinking
 
-  if (tools.length > options.maxTools) return bad(`tools: ${tools.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`)
+  const respond = parseOutputFormat(body)
+  if (isPlugError(respond)) return respond
+
   if (toolChoice !== undefined && toolChoice !== "none" && toolChoice !== "auto" && tools.length === 0) return bad("tool_choice: needs at least one tool in tools")
-  if (typeof toolChoice === "object" && !tools.some((tool) => tool.name === toolChoice.name))
-    return bad(`tool_choice.name: "${toolChoice.name}" is not in tools`)
+  if (typeof toolChoice === "object" && !tools.some((tool) => tool.name === toolChoice.name)) return bad(`tool_choice.name: "${toolChoice.name}" is not in tools`)
+  if (respond && tools.some((tool) => tool.name === RESPOND_TOOL)) return bad(`tools: a tool named "${RESPOND_TOOL}" collides with output_config.format, which plugboard answers through that name`)
+  // output_config.format + caller tools: the model may call a caller tool or `respond`, so `tool_choice` is `required` (not forced to
+  // `respond`). `tool_choice: none` leaves only `respond`; naming a tool contradicts a structured answer.
+  if (respond && typeof toolChoice === "object") return bad("tool_choice: a tool_choice that names a tool cannot be combined with output_config.format")
+  const withCallerTools = respond !== undefined && tools.length > 0 && toolChoice !== "none"
+  const offered = respond ? (withCallerTools ? [...tools, respond] : [respond]) : tools
+  if (offered.length > options.maxTools) return bad(`tools: ${offered.length} tools; plugboard allows ${options.maxTools} (option \`maxTools\`)`)
+  const forced: PlugToolChoice | undefined = respond ? (withCallerTools ? "required" : { type: "tool", name: RESPOND_TOOL }) : toolChoice
 
   const request: Omit<PlugRequest, "ref"> = {
     ...userField(bodyUserId(body)),
     model: body.model,
     system,
     messages,
-    tools,
-    ...(toolChoice && tools.length > 0 ? { toolChoice } : {}),
+    tools: offered,
+    ...(forced && (offered.length > 0 || forced === "none") ? { toolChoice: forced } : {}),
+    ...(respond ? { structuredTool: RESPOND_TOOL } : {}),
     generation,
     // `tool_choice.disable_parallel_tool_use` (#202): one tool call per answer.
     ...(isRecord(body.tool_choice) && body.tool_choice.disable_parallel_tool_use === true ? { parallelToolCalls: false } : {}),
   }
   return {
     request,
-    exchange: { model: body.model, stream: body.stream === true, thinking: thinking.enabled, stop: generation.stop },
+    exchange: {
+      model: body.model,
+      stream: body.stream === true,
+      thinking: thinking.enabled,
+      ...(respond ? { structuredTool: RESPOND_TOOL, structuredSchema: respond.parameters, ...(withCallerTools ? { callerTools: true } : {}) } : {}),
+    },
     ...(thinking.effort ? { reasoningEffort: thinking.effort } : {}),
     topKIgnored: body.top_k != null,
   }

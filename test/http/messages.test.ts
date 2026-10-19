@@ -3,7 +3,7 @@
  * stream, on the same route, deadline and model caller as the OpenAI front-ends.
  */
 import { afterEach, describe, expect, test } from "bun:test"
-import { CATALOG, ev, gate } from "../support/fixtures.js"
+import { CATALOG, ev, gate, model } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { parseSse, startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller, type Script } from "../support/model-caller.js"
@@ -79,7 +79,7 @@ describe("#4 the route", () => {
     await server!.close()
     await route([ev.finish()], { apps: { default: { system: "P".repeat(400), systemMode: "prepend" } } })
     const withPolicy = (await server!.send({ ...messages(), path: "/v1/messages/count_tokens" })).json().input_tokens
-    expect(withPolicy - plain).toBe(100)
+    expect(withPolicy - plain).toBe(80)
   })
 
   test("#275 a caller's cache_control breakpoint reaches the model call; the request is still answered", async () => {
@@ -144,7 +144,14 @@ describe("#4 answers", () => {
     const reply = await server!.send(messages())
     expect(reply.status).toBe(200)
     expect(reply.headers["x-plugboard-session"]).toBe("ses_9")
-    expect(reply.json()).toMatchObject({ type: "message", role: "assistant", model: "test/echo", content: [{ type: "text", text: "Hi" }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 1 } })
+    expect(reply.json()).toMatchObject({
+      type: "message",
+      role: "assistant",
+      model: "test/echo",
+      content: [{ type: "text", text: "Hi" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 5, output_tokens: 1 },
+    })
   })
 
   test("a model error keeps its status in Anthropic's shape", async () => {
@@ -229,6 +236,86 @@ describe("#4 answers", () => {
   })
 })
 
+describe("output_config.format (structured outputs)", () => {
+  const SCHEMA = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false }
+  const format = { format: { type: "json_schema", schema: SCHEMA } }
+  const structured = (extra: Record<string, unknown> = {}) => messages({ output_config: format, ...extra })
+  const WEATHER = { name: "get_weather", description: "Weather.", input_schema: { type: "object", properties: { city: { type: "string" } } } }
+
+  test("a non-streamed answer is the JSON as a text block with end_turn, and the model call is the forced respond tool", async () => {
+    const caller = await route([ev.call("c1", "respond", { answer: "42" }), ev.finish("tool-calls", { inputTokens: 5, outputTokens: 3 })])
+    const reply = await server!.send(structured())
+    expect(reply.status).toBe(200)
+    expect(reply.json()).toMatchObject({ type: "message", content: [{ type: "text", text: '{"answer":"42"}' }], stop_reason: "end_turn", usage: { input_tokens: 5, output_tokens: 3 } })
+    expect(reply.headers).not.toHaveProperty("x-plugboard-structured-fallback")
+    expect(caller.call.request.tools).toEqual([{ name: "respond", description: expect.any(String), parameters: SCHEMA }])
+    expect(caller.call.request.toolChoice).toEqual({ type: "tool", name: "respond" })
+    expect(caller.call.request.structuredTool).toBe("respond")
+  })
+
+  test("a streamed answer is one text_delta of the JSON, then end_turn, with no tool_use block", async () => {
+    await route([ev.call("c1", "respond", { answer: "42" }), ev.finish("tool-calls")])
+    const events = eventsOf(await (await server!.open(structured({ stream: true }))).ended)
+    expect(events.map(({ event }) => event)).toEqual(["message_start", "content_block_start", "ping", "content_block_delta", "content_block_stop", "message_delta", "message_stop"])
+    expect(events[1]!.data.content_block).toMatchObject({ type: "text" })
+    expect(events[3]!.data.delta).toEqual({ type: "text_delta", text: '{"answer":"42"}' })
+    expect(events[5]!.data.delta).toMatchObject({ stop_reason: "end_turn" })
+  })
+
+  test("a text answer that is the schema's JSON is taken, and a non-streamed reply says so in x-plugboard-structured-fallback", async () => {
+    await route([ev.text('```json\n{"answer":"42"}\n```'), ev.finish("stop")])
+    const reply = await server!.send(structured())
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-plugboard-structured-fallback"]).toBe("text")
+    expect(reply.json().content).toMatchObject([{ type: "text", text: '{"answer":"42"}' }])
+  })
+
+  test("no respond call and no matching text is a 502 structured_output_missing in Messages' error shape", async () => {
+    await route([ev.text("I refuse"), ev.finish("stop")])
+    const reply = await server!.send(structured())
+    expect(reply.status).toBe(502)
+    expect(reply.json()).toEqual({ type: "error", error: { type: "api_error", message: expect.stringContaining("did not return JSON matching the response schema") } })
+  })
+
+  test("a streamed turn with no answer is committed by its first event, so it ends as an error event with no content and no message_stop", async () => {
+    await route([ev.text("I refuse"), ev.finish("stop")])
+    const events = eventsOf(await (await server!.open(structured({ stream: true }))).ended)
+    expect(events).toEqual([{ event: "error", data: { type: "error", error: { type: "api_error", message: expect.stringContaining("did not return JSON matching the response schema") } } }])
+    expect(logs.of("request.failed")[0]!.fields).toMatchObject({ route: "POST /v1/messages", outcome: "error", error: "structured_output_missing" })
+  })
+
+  test("with caller tools offered, a caller tool call is a normal tool_use turn and the model may choose", async () => {
+    const caller = await route([ev.call("c1", "get_weather", { city: "Oslo" }), ev.finish("tool-calls")])
+    const reply = await server!.send(structured({ tools: [WEATHER] }))
+    expect(reply.json()).toMatchObject({ content: [{ type: "tool_use", name: "get_weather", input: { city: "Oslo" } }], stop_reason: "tool_use" })
+    expect(caller.call.request.tools.map((tool) => tool.name)).toEqual(["get_weather", "respond"])
+    expect(caller.call.request.toolChoice).toBe("required")
+  })
+
+  test.each([
+    ["a tool named respond", { tools: [{ name: "respond", input_schema: { type: "object" } }] }, /collides with output_config\.format/],
+    ["a tool_choice that names a tool", { tools: [WEATHER], tool_choice: { type: "tool", name: "get_weather" } }, /cannot be combined with output_config\.format/],
+    ["a format of another type", { output_config: { format: { type: "json_object" } } }, /output_config\.format\.type/],
+  ])("%s is a 400 invalid_request_error and never reaches the model", async (_name, extra, message) => {
+    const caller = await route([ev.finish()])
+    const reply = await server!.send(structured(extra))
+    expect(reply.status).toBe(400)
+    expect(reply.json()).toEqual({ type: "error", error: { type: "invalid_request_error", message: expect.stringMatching(message) } })
+    expect(caller.calls).toEqual([])
+  })
+
+  test("count_tokens counts the request the model gets: the same as the equivalent request that declares and names the respond tool", async () => {
+    await route([ev.finish()])
+    const count = async (init: SendInit) => (await server!.send({ ...init, path: "/v1/messages/count_tokens" })).json().input_tokens as number
+    const plain = await count(messages())
+    const withFormat = await count(structured())
+    const respond = { name: "respond", description: "Give your final answer by calling this tool with JSON matching its schema.", input_schema: SCHEMA }
+    expect(withFormat).toBeGreaterThan(plain)
+    // The named choice is part of the request the model gets: its steering sentence is counted too.
+    expect(withFormat).toBe(await count(messages({ tools: [respond], tool_choice: { type: "tool", name: "respond" } })))
+  })
+})
+
 describe("#201 count_tokens counts the persona, skill and server tools the session sends", () => {
   /** Starts the route with a session port; the persona lookup reads the options the server parsed. */
   async function countServerWith(options: Record<string, unknown>, port: FakeSessionPort, ensureBackend?: () => Promise<PlugError | undefined>) {
@@ -243,9 +330,9 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const port = new FakeSessionPort()
     port.skills.set("invoice-parser", "S".repeat(400))
     await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, port)
-    // ceil((400 skill characters + 2 for "hi") / 4)
-    expect((await countOf("invoice-parser")).body).toEqual({ input_tokens: 101 })
-    expect((await countOf("test/echo")).body).toEqual({ input_tokens: 1 })
+    // 21 request + 4 message + (400 skill characters + 2 for "hi") / 5, rounded up
+    expect((await countOf("invoice-parser")).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 402 / 5) })
+    expect((await countOf("test/echo")).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 2 / 5) })
   })
 
   test("an agent's prompt replaces the caller's system prompt in the count", async () => {
@@ -253,8 +340,8 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     port.agents.set("review", { system: "A".repeat(400) })
     await countServerWith({ models: ["test/*"], agents: [{ name: "review", model: "test/echo" }] }, port)
     const system = "C".repeat(800)
-    expect((await countOf("agent/review", { system })).body).toEqual({ input_tokens: 101 })
-    expect((await countOf("test/echo", { system })).body).toEqual({ input_tokens: 201 })
+    expect((await countOf("agent/review", { system })).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 402 / 5) })
+    expect((await countOf("test/echo", { system })).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 802 / 5) })
   })
 
   test("a skill missing from the app directory is the 404 the request would get", async () => {
@@ -271,11 +358,11 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
     await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
     const headers = { "x-api-key": "secret" }
-    // ceil((2 for "hi" + name + description + JSON schema characters) / 4)
-    expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil((2 + "websearch".length + 200 + JSON.stringify(input).length) / 4) })
+    // 21 request + 4 message + 534 tool preamble + 40 per tool + (2 for "hi" + name + description + JSON schema characters) / 5
+    expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 534 + 40 + (2 + "websearch".length + 200 + JSON.stringify(input).length) / 5) })
     // tool_choice is kept only with a caller tool (src/anthropic/request.ts). `none` offers no caller tool and no server tool.
     const caller = { name: "lookup", description: "Looks up", input_schema: { type: "object" } }
-    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({ input_tokens: 1 })
+    expect((await countOf("test/echo", { tools: [caller], tool_choice: { type: "none" } }, headers)).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 2 / 5) })
   })
 
   test("a named tool choice counts only that caller tool, its steering sentence, and the server tools", async () => {
@@ -288,8 +375,9 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const fetch = { name: "fetch", description: "Fetches", input_schema: { type: "object" } }
     const steering = "You must respond by calling the `fetch` tool."
     const chars = 2 + steering.length + "fetch".length + "Fetches".length + JSON.stringify(fetch.input_schema).length + "websearch".length + 200 + JSON.stringify(input).length
+    // Two tools (fetch and websearch): the preamble and 40 per tool, on top of the characters
     expect((await countOf("test/echo", { tools: [lookup, fetch], tool_choice: { type: "tool", name: "fetch" } }, { "x-api-key": "secret" })).body).toEqual({
-      input_tokens: Math.ceil(chars / 4),
+      input_tokens: Math.ceil(21 + 4 + 534 + 2 * 40 + chars / 5),
     })
   })
 
@@ -304,5 +392,37 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     const refused: PlugError = { status: 503, kind: "server", code: "backend_unavailable", message: "Not ready" }
     await countServerWith({ models: ["test/*"], aliases: { "invoice-parser": "skill:invoice-parser@test/echo" } }, new FakeSessionPort(), async () => refused)
     expect((await countOf("invoice-parser")).status).toBe(503)
+  })
+})
+
+describe("#410 a thinking budget that maps to no variant of the model", () => {
+  /** A thinking request for `budget` tokens on a model with `variants`; the caller sees the ref the request runs on. */
+  async function thinking(variants: string[], budget: number) {
+    const caller = new FakeModelCaller([ev.finish()])
+    const catalog = [model("anthropic", "claude-haiku-4-5", { variants })]
+    server = await startRoute({ caller, options: { models: ["anthropic/*"] }, catalog })
+    const reply = await server!.send(messages({ model: "anthropic/claude-haiku-4-5", max_tokens: 20000, thinking: { type: "enabled", budget_tokens: budget } }))
+    return { reply, ref: caller.call.request.ref }
+  }
+
+  test("a budget of 1500 on Haiku 4.5 (high and max only) runs on high, with no unavailable header", async () => {
+    const { reply, ref } = await thinking(["high", "max"], 1500)
+    expect(reply.status).toBe(200)
+    expect(ref).toMatchObject({ providerID: "anthropic", id: "claude-haiku-4-5", variant: "high" })
+    expect(reply.headers).not.toHaveProperty("x-plugboard-thinking")
+  })
+
+  test("a model with no thinking variant runs without thinking and says so in x-plugboard-thinking", async () => {
+    const { reply, ref } = await thinking(["fast"], 1500)
+    expect(reply.status).toBe(200)
+    expect(ref.variant).toBeUndefined()
+    expect(reply.headers["x-plugboard-thinking"]).toBe("unavailable")
+  })
+
+  test("a request without thinking never gets the header", async () => {
+    const caller = new FakeModelCaller([ev.finish()])
+    server = await startRoute({ caller, options: { models: ["anthropic/*"] }, catalog: [model("anthropic", "claude-haiku-4-5", { variants: ["fast"] })] })
+    const reply = await server!.send(messages({ model: "anthropic/claude-haiku-4-5" }))
+    expect(reply.headers).not.toHaveProperty("x-plugboard-thinking")
   })
 })

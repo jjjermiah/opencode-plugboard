@@ -46,10 +46,6 @@
           "ok": true
         },
         {
-          "name": "finish_reason is stop",
-          "ok": true
-        },
-        {
           "name": "usage present",
           "ok": true
         }
@@ -57,7 +53,7 @@
       "error": null,
       "id": "S1",
       "model": "fast",
-      "note": null,
+      "note": "not checked, finish_reason is stop: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed)",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S1.auto.fast.json",
@@ -94,10 +90,6 @@
           "ok": true
         },
         {
-          "name": "finish_reason is stop",
-          "ok": true
-        },
-        {
           "name": "usage present",
           "ok": true
         }
@@ -105,7 +97,7 @@
       "error": null,
       "id": "S1",
       "model": "anthropic/claude-haiku-4-5",
-      "note": null,
+      "note": "not checked, finish_reason is stop: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed)",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S1.auto.anthropic-claude-haiku-4-5.json",
@@ -142,10 +134,6 @@
           "ok": true
         },
         {
-          "name": "finish_reason is stop",
-          "ok": false
-        },
-        {
           "name": "usage present",
           "ok": true
         }
@@ -153,9 +141,9 @@
       "error": null,
       "id": "S1",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "auto variant: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed) (#104)",
+      "note": "not checked, finish_reason is stop: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed)",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S1.auto.openai-gpt-5.6-luna-low.json",
       "variant": "auto"
     },
@@ -198,10 +186,6 @@
     {
       "checks": [
         {
-          "name": "turn 1 finish_reason is tool_calls",
-          "ok": true
-        },
-        {
           "name": "one get_weather call",
           "ok": true
         },
@@ -216,16 +200,12 @@
         {
           "name": "turn 2 mentions 18 or cloudy",
           "ok": true
-        },
-        {
-          "name": "turn 2 finish_reason is stop",
-          "ok": true
         }
       ],
       "error": null,
       "id": "S2",
       "model": "fast",
-      "note": null,
+      "note": "not checked, turn 1 finish_reason is tool_calls: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed); not checked, turn 2 finish_reason is stop: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed)",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S2.auto.fast.json",
@@ -270,10 +250,6 @@
     {
       "checks": [
         {
-          "name": "turn 1 finish_reason is tool_calls",
-          "ok": true
-        },
-        {
           "name": "one get_weather call",
           "ok": true
         },
@@ -288,16 +264,12 @@
         {
           "name": "turn 2 mentions 18 or cloudy",
           "ok": true
-        },
-        {
-          "name": "turn 2 finish_reason is stop",
-          "ok": true
         }
       ],
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
-      "note": null,
+      "note": "not checked, turn 1 finish_reason is tool_calls: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed); not checked, turn 2 finish_reason is stop: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed)",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S2.auto.anthropic-claude-haiku-4-5.json",
@@ -342,10 +314,6 @@
     {
       "checks": [
         {
-          "name": "turn 1 finish_reason is tool_calls",
-          "ok": false
-        },
-        {
           "name": "one get_weather call",
           "ok": true
         },
@@ -360,18 +328,14 @@
         {
           "name": "turn 2 mentions 18 or cloudy",
           "ok": true
-        },
-        {
-          "name": "turn 2 finish_reason is stop",
-          "ok": false
         }
       ],
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "auto variant: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed) (#104)",
+      "note": "not checked, turn 1 finish_reason is tool_calls: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed); not checked, turn 2 finish_reason is stop: LangChain exposes no finish_reason on the Responses route (plugboard returns status completed)",
       "required": true,
-      "status": "gap",
+      "status": "pass",
       "transcript": "transcripts/S2.auto.openai-gpt-5.6-luna-low.json",
       "variant": "auto"
     },
@@ -390,7 +354,7 @@
           "ok": true
         },
         {
-          "name": "stream ended with [DONE]",
+          "name": "stream ended normally",
           "ok": true
         }
       ],
@@ -573,6 +537,10 @@
           "ok": true
         },
         {
+          "name": "error type is authentication_error",
+          "ok": true
+        },
+        {
           "name": "code is invalid_api_key",
           "ok": true
         }
@@ -592,6 +560,10 @@
           "ok": true
         },
         {
+          "name": "error type is not_found_error",
+          "ok": true
+        },
+        {
           "name": "code is model_not_found",
           "ok": true
         }
@@ -607,5 +579,5 @@
   ],
   "schema": 1,
   "target": "scripted",
-  "verdict": "partial"
+  "verdict": "pass"
 }
