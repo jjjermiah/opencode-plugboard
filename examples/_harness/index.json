@@ -12,7 +12,7 @@
   "crewai": "CrewAI with a text call, a stream and a crew task that calls one tool. A PEP 723 script, run with `uv run`; passes against plugboard",
   "curl": "One request per API in plain shell: chat, responses, Anthropic Messages, Gemini, legacy completions and models",
   "dspy": "DSPy (through its LiteLLM route, `openai/` prefix): a Predict and a ChainOfThought on one question, and a typed output",
-  "gemini-cli": "The Gemini CLI, headless (`gemini -p`), with an API key and a base URL from the environment and no login: a chat and a stream. Its built-in tools make the other scenarios not applicable",
+  "gemini-cli": "The Gemini CLI, headless (`gemini -p`), with an API key and a base URL from the environment and no login: a chat, a stream and the token count the CLI asks for when a prompt holds an image. Its built-in tools make the other scenarios not applicable",
   "gemini-js": "The Google GenAI JS SDK (`@google/genai`) on plugboard's Gemini route: S1 to S7 and the error paths in TypeScript. A `#variant` id goes as `%23`",
   "gemini-python": "The Google GenAI Python SDK (`google-genai`) on plugboard's Gemini route: S1 to S7 and the error paths. A `uv run` project with exact pins",
   "go-openai": "go-openai (Go) with a text call, a stream and one tool round trip. Run with `go run .`; passes against plugboard",

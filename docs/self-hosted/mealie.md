@@ -2,6 +2,8 @@
 
 Mealie is a recipe manager. Its AI features import recipes from text, URLs and photos, parse ingredients, and match tags, categories and tools. You set the provider in the UI, not in env vars.
 
+Upstream: [source](https://github.com/mealie-recipes/mealie).
+
 ## Plugboard options
 
 Give Mealie its own key. `default` serves every AI feature. `image` is optional and only photo imports use it, so it must accept images. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

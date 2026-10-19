@@ -2,6 +2,8 @@
 
 Tandoor Recipes is a recipe manager. Its AI features import recipes from text, images and PDFs, sort steps, and extract nutrition. Every AI call goes through LiteLLM.
 
+Upstream: [source](https://github.com/TandoorRecipes/recipes), [docs](https://docs.tandoor.dev/).
+
 ## Plugboard options
 
 Give Tandoor its own key. `import` must accept images for photo import. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

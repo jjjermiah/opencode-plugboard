@@ -114,9 +114,9 @@ describe("scripted model tool choices", () => {
   })
 })
 
-describe("scripted model Aider file edit (S10)", () => {
+describe("scripted model Aider file edit (S11)", () => {
   const fence = "```"
-  const edit = (system: string): PlugRequest => plugRequest({ system: [system], messages: [user(prompt("S10"))] })
+  const edit = (system: string): PlugRequest => plugRequest({ system: [system], messages: [user(prompt("S11"))] })
 
   test("a prompt that names the whole-file listing gets the whole file", () => {
     const text = textOf(answer(edit("You MUST use this *file listing* format")))

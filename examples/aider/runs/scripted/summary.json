@@ -71,12 +71,12 @@
         }
       ],
       "error": null,
-      "id": "S10",
+      "id": "S11",
       "model": "fast",
       "note": null,
       "required": false,
       "status": "pass",
-      "transcript": "transcripts/S10.fast.json"
+      "transcript": "transcripts/S11.fast.json"
     },
     {
       "checks": [
@@ -90,12 +90,12 @@
         }
       ],
       "error": null,
-      "id": "S10",
+      "id": "S11",
       "model": "anthropic/claude-haiku-4-5",
       "note": null,
       "required": false,
       "status": "pass",
-      "transcript": "transcripts/S10.anthropic-claude-haiku-4-5.json"
+      "transcript": "transcripts/S11.anthropic-claude-haiku-4-5.json"
     },
     {
       "checks": [
@@ -109,12 +109,12 @@
         }
       ],
       "error": null,
-      "id": "S10",
+      "id": "S11",
       "model": "openai/gpt-5.6-luna#low",
       "note": null,
       "required": false,
       "status": "pass",
-      "transcript": "transcripts/S10.openai-gpt-5.6-luna-low.json"
+      "transcript": "transcripts/S11.openai-gpt-5.6-luna-low.json"
     }
   ],
   "schema": 1,

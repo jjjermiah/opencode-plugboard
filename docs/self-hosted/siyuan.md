@@ -2,6 +2,8 @@
 
 SiYuan is a block-based personal knowledge base. Its AI features are writing help, Q/A chat and an agent, over OpenAI-compatible APIs.
 
+Upstream: [source](https://github.com/siyuan-note/siyuan).
+
 ## Plugboard options
 
 Give SiYuan its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

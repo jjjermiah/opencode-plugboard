@@ -58,7 +58,7 @@ function say(answer: string): PlugEvent[] {
 }
 
 /**
- * Aider's edit reply to S10, in the format its prompt asks for. A model Aider knows to prefer `diff` gets SEARCH/REPLACE blocks; any other
+ * Aider's edit reply to S11, in the format its prompt asks for. A model Aider knows to prefer `diff` gets SEARCH/REPLACE blocks; any other
  * gets the whole file. Aider's file is `hello.py`, which holds `print("hi")`.
  */
 function aiderEdit(prompts: string): PlugEvent[] {
@@ -118,7 +118,7 @@ export function answer(request: PlugRequest): PlugEvent[] {
       return [ev.call(CALL_ID, "exec", { input: 'text(JSON.stringify(await tools.mcp__weather__get_weather({ city: "Paris" })))' }), ev.finish("tool-calls", USAGE)]
     }
   }
-  if (text.includes(prompt("S10"))) return aiderEdit(`${request.system.join("\n")}\n${text}`)
+  if (text.includes(prompt("S11"))) return aiderEdit(`${request.system.join("\n")}\n${text}`)
   if (text.includes(prompt("S5"))) return say(hasPngPart(request) ? "red" : "no image")
   if (text.includes(prompt("S6"))) return say(JSON.stringify(wantsOutputWrapper(text) ? { output: MEAL } : MEAL))
   return [ev.error({ status: 500, kind: "server", message: `scripted model has no answer for this prompt: ${text.slice(0, 80)}` })]

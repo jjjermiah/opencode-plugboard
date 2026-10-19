@@ -2,6 +2,8 @@
 
 Frigate is a network video recorder with object detection. Its Generative AI feature writes object and review descriptions from snapshots, and it has a chat.
 
+Upstream: [source](https://github.com/blakeblackshear/frigate), [docs](https://docs.frigate.video/).
+
 ## Plugboard options
 
 Give Frigate its own key and a vision alias, because descriptions are image-based. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

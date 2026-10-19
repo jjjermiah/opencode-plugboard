@@ -7,6 +7,6 @@ Verdict: **pass** · aider-chat 0.86.2 on bash 5 · models: fast, anthropic/clau
 | S1 | fast | yes | pass | 1/1 |
 | S1 | anthropic/claude-haiku-4-5 | yes | pass | 1/1 |
 | S1 | openai/gpt-5.6-luna#low | yes | pass | 1/1 |
-| S10 | fast | no | pass | 2/2 |
-| S10 | anthropic/claude-haiku-4-5 | no | pass | 2/2 |
-| S10 | openai/gpt-5.6-luna#low | no | pass | 2/2 |
+| S11 | fast | no | pass | 2/2 |
+| S11 | anthropic/claude-haiku-4-5 | no | pass | 2/2 |
+| S11 | openai/gpt-5.6-luna#low | no | pass | 2/2 |

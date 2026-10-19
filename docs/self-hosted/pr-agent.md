@@ -2,6 +2,8 @@
 
 PR-Agent (Qodo) reviews pull requests with an LLM. Its commands are `/review`, `/describe`, `/improve` and `/ask`. It runs as a GitHub Action, a webhook server or a CLI.
 
+Upstream: [source](https://github.com/The-PR-Agent/pr-agent), [docs](https://docs.qodo.ai/code-review).
+
 ## Plugboard options
 
 Give PR-Agent its own key. The review sends the whole diff and asks for a YAML reply, so use a model with a long context. The runner must reach plugboard ([Serving other machines](../guides/serving-other-machines.md)).
