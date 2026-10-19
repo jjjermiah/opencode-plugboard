@@ -2,6 +2,8 @@
 
 Onyx (formerly Danswer) is an enterprise search and chat app. Connectors index your documents, and chat answers with an LLM over that index.
 
+Upstream: [source](https://github.com/onyx-dot-app/onyx), [docs](https://docs.onyx.app/welcome).
+
 ## Plugboard options
 
 Plugboard serves the LLM role. Indexing and search need an embedding model, which plugboard does not serve, so Onyx uses its own local model or a cloud provider for that.

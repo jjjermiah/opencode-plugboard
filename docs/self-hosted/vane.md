@@ -2,6 +2,8 @@
 
 Vane is a self-hosted answering engine. It searches the web through SearXNG and answers with cited sources, using an LLM for the answer and an embedding model for ranking.
 
+Upstream: [source](https://github.com/ItzCrazyKns/Vane).
+
 ## Plugboard options
 
 Plugboard serves the answer model only. Vane's chat and search requests also carry an embedding model, and plugboard has no `/v1/embeddings`. Pick a second provider for embeddings before you install.

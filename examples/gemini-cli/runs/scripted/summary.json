@@ -206,6 +206,25 @@
       "transcript": null
     },
     {
+      "checks": [
+        {
+          "name": "count is a number",
+          "ok": true
+        },
+        {
+          "name": "count is above zero",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S10",
+      "model": "fast",
+      "note": null,
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S10.fast.json"
+    },
+    {
       "checks": [],
       "error": null,
       "id": "E1",

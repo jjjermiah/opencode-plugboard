@@ -2,6 +2,8 @@
 
 LLM Vision is a Home Assistant integration, installed through HACS. It sends camera snapshots, images and video frames to a multimodal model and writes the answer to a sensor or the timeline. Frigate events can go through it.
 
+Upstream: [source](https://github.com/valentinfrlch/ha-llmvision), [docs](https://llmvision.org/).
+
 For text conversation, use [Extended OpenAI Conversation](../clients/home-assistant-extended-openai.md). Core Home Assistant's OpenAI integration cannot point at a compatible endpoint.
 
 ## Plugboard options

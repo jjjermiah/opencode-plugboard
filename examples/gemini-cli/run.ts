@@ -5,6 +5,7 @@
 import { cliHome, cliVersion } from "./cli.ts"
 import { emitClient, runAll } from "../_harness/ts/harness.ts"
 import * as chat from "./chat.ts"
+import * as count from "./count.ts"
 import * as stream from "./stream.ts"
 
 const NOT_CLI = "the CLI runs its own built-in tools; a custom get_weather tool cannot be added to a headless run"
@@ -21,6 +22,7 @@ await runAll(
   {
     S1: (model) => chat.run(home, model),
     S3: (model) => stream.run(home, model),
+    S10: (model) => count.run(home, model),
   },
   {
     na: {

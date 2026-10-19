@@ -2,6 +2,8 @@
 
 Karakeep saves bookmarks, pages and PDFs. An LLM tags them and, if you turn it on, summarizes them.
 
+Upstream: [source](https://github.com/karakeep-app/karakeep), [docs](https://docs.karakeep.app/).
+
 ## Plugboard options
 
 Give Karakeep its own key and two aliases. `vision` must accept images, because `INFERENCE_IMAGE_MODEL` sends them. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

@@ -39,3 +39,4 @@ A `#` in a model name must be sent as `%23`; a `/` goes as it is. See [Gemini mo
 ## Limits
 
 - Errors raise `ChatGoogleGenerativeAIError`, with Google's error body in the message.
+- The JavaScript package `@langchain/google-genai` cannot cancel a stream cleanly: an abort reports `Error reading from the stream`, raised by the `@google/generative-ai` SDK it uses. To cancel a stream from JavaScript, use [`@google/genai`](google-genai-js.md).
