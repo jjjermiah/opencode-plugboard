@@ -61,7 +61,7 @@ Scenarios:
 
 ## Python clients
 
-The Python clients are examples: each has a runner in `examples/<client>/` (its `pyproject.toml` and `uv.lock` pin the client), and CI runs the scripted plugboard for it on every change. Live results for each client are in its example's `runs/live/` directory, see [examples/](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/README.md).
+The Python clients are examples: each has a runner in `examples/<client>/` (its `pyproject.toml` pins the client, and a `uv.lock` pins the rest, except for Aider, which has no lockfile), and CI runs the scripted plugboard for it on every change. Live results for each client are in its example's `runs/live/` directory, see [examples/](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/README.md).
 
 | Client | Package | Fake (2026-10-12) | Live (isolated dev server, 2026-10-12) |
 |---|---|---|---|

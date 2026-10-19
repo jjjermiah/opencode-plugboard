@@ -10,7 +10,7 @@ updates:
     open-pull-requests-limit: 5
 
   # One entry per example project with a lockfile. Not listed: the examples/_harness smoke projects (harness test fixtures)
-  # and examples/async-openai (Cargo). Add one there if its dependencies need automatic bumps.
+  # examples/async-openai (Cargo) and examples/aider (no lockfile: Aider needs an old litellm). Add one there if its dependencies need automatic bumps.
   - package-ecosystem: uv
     directory: /examples/instructor
     schedule:
@@ -31,12 +31,6 @@ updates:
 
   - package-ecosystem: uv
     directory: /examples/openai-agents
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: uv
-    directory: /examples/aider
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

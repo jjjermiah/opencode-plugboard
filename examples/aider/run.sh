@@ -2,8 +2,8 @@
 # Runner for the Aider example. Started by examples/_harness/run.ts, which captures the traffic and writes the run.
 # This script writes nothing: it prints JSON lines (plan, client, one result per model, done) like the Python runners.
 #
-#   uv run --frozen --project examples/aider aider --version      # the pinned Aider (pyproject.toml, uv.lock)
-#   bash examples/aider/run.sh                                    # through the harness, with the env run.ts sets
+#   uv run --isolated --project examples/aider aider --version      # the pinned Aider (pyproject.toml; no lockfile)
+#   bash examples/aider/run.sh                                      # through the harness, with the env run.ts sets
 #
 # Aider is a terminal tool that edits files, so it is a scripted check, not a harness client: it sends one message in a
 # throwaway git repo and reads the answer. It cannot see the wire finish_reason or usage, so the one check here is
@@ -28,13 +28,14 @@ export BROWSER=true
 UV_CACHE_DIR="${UV_CACHE_DIR:-$(uv cache dir)}"
 UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-$(uv python dir)}"
 export UV_CACHE_DIR UV_PYTHON_INSTALL_DIR
+# There is no uv.lock. --isolated resolves into a temporary environment on every call and writes no lockfile into the tree.
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 : "${PLUGBOARD_BASE_URL:?run through examples/_harness/run.ts}"
 : "${PLUGBOARD_KEY:?run through examples/_harness/run.ts}"
 : "${PLUGBOARD_CAPTURE_URL:?run through examples/_harness/run.ts}"
 
-VERSION="$(uv run --frozen --project "$HERE" python -c 'import importlib.metadata as m; print(m.version("aider-chat"))')"
+VERSION="$(uv run --isolated --project "$HERE" python -c 'import importlib.metadata as m; print(m.version("aider-chat"))')"
 printf '{"kind":"client","name":"aider-chat","version":"%s","runtime":{"name":"bash","version":"%s"}}\n' "$VERSION" "${BASH_VERSINFO[0]}"
 printf '{"kind":"plan","scenarios":["S1"]}\n'
 
@@ -56,7 +57,7 @@ for MODEL in fast anthropic/claude-haiku-4-5 openai/gpt-5.6-luna#low; do
   )
 
   set +e
-  OUT="$(cd "$DIR" && HOME="$AIDER_HOME" OPENAI_API_BASE="$PLUGBOARD_BASE_URL" OPENAI_API_KEY="$PLUGBOARD_KEY" uv run --frozen --project "$HERE" aider \
+  OUT="$(cd "$DIR" && HOME="$AIDER_HOME" OPENAI_API_BASE="$PLUGBOARD_BASE_URL" OPENAI_API_KEY="$PLUGBOARD_KEY" uv run --isolated --project "$HERE" aider \
     --model "openai/$MODEL" --weak-model "openai/$MODEL" --edit-format whole --yes-always --no-auto-commits --no-analytics \
     --no-check-update --no-show-model-warnings --no-show-release-notes --message 'Reply with exactly: pong' hello.py 2>&1)"
   RC=$?

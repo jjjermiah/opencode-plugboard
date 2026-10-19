@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- Dropped the lockfile of the Aider example ([#526](https://github.com/jjjermiah/opencode-plugboard/issues/526)). It pinned litellm 1.81.10, which carries about 25 advisories that cannot be fixed, because Aider refuses to start with any newer litellm. `examples/aider/pyproject.toml` still pins `aider-chat` exactly and caps litellm at 1.81.10, so a fresh resolve starts and the scripted run is unchanged. The runner calls `uv run --isolated`, which resolves in a temporary environment and writes no lockfile, and Dependabot no longer watches the example. The example ships in no package.
 
 ## [0.58.0] - 2026-10-19: Overloaded, Not Stuck
 
