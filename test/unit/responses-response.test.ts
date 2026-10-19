@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import type { PlugEvent } from "../../src/contract.js"
 import { runResponse, sseFrame, type ResponsesExchange, type ResponsesStreamEvent } from "../../src/responses/response.js"
+import { setLogLevel } from "../../src/log.js"
 import { ev, events } from "../support/fixtures.js"
+import { captureLogs } from "../support/logs.js"
 
 const plain: ResponsesExchange = { model: "fast", stream: true, envelope: { store: false, tools: [] } }
 const structured: ResponsesExchange = { ...plain, structuredTool: "respond" }
@@ -330,10 +332,30 @@ describe("#498 calls to flattened tools go back in the shape Codex parses", () =
     expect(response.output).toEqual([{ id: expect.stringMatching(/^ctc_/), type: "custom_tool_call", status: "completed", call_id: "c1", name: "exec", input: "text('hi')" }])
   })
 
-  test("a custom call in a namespace has both; a model that sent text or other arguments still gives Codex a string", async () => {
-    const { response } = await run(routed, ev.call("c1", "n__p", "raw text"), ev.call("c2", "n__p", { code: 1 }), ev.finish("tool-calls"))
+  test("a custom call in a namespace has both; a model that sent text instead of arguments gives Codex that text", async () => {
+    const { response } = await run(routed, ev.call("c1", "n__p", "raw text"), ev.finish("tool-calls"))
     expect(response.output[0]).toMatchObject({ type: "custom_tool_call", name: "p", namespace: "n", input: "raw text" })
-    expect(response.output[1]).toMatchObject({ type: "custom_tool_call", name: "p", namespace: "n", input: '{"code":1}' })
+  })
+
+  describe("a model that left the input out", () => {
+    const logs = captureLogs()
+    afterEach(() => setLogLevel("info"))
+
+    test("gives an empty input, not the JSON of the arguments, and says so in a debug line with the tool name only", async () => {
+      setLogLevel("debug")
+      const { response, emitted } = await run(routed, ev.call("c1", "exec", {}), ev.call("c2", "n__p", { code: 1 }), ev.finish("tool-calls"))
+      expect(response.output[0]).toMatchObject({ type: "custom_tool_call", name: "exec", input: "" })
+      expect(response.output[1]).toMatchObject({ type: "custom_tool_call", name: "p", namespace: "n", input: "" })
+      expect(emitted.find((event) => event.type === "response.custom_tool_call_input.done")).toMatchObject({ input: "" })
+      expect(logs.of("responses.custom_input_missing").map((line) => line.fields)).toEqual([{ tool: "exec" }, { tool: "n__p" }])
+    })
+
+    test("at info, nothing is logged; a call with its input logs nothing at any level", async () => {
+      await run(routed, ev.call("c1", "exec", {}), ev.finish("tool-calls"))
+      setLogLevel("debug")
+      await run(routed, ev.call("c2", "exec", { input: "text('hi')" }), ev.finish("tool-calls"))
+      expect(logs.of("responses.custom_input_missing")).toEqual([])
+    })
   })
 
   test("a tool with no route keeps its name and has no namespace field", async () => {

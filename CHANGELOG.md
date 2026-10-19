@@ -14,7 +14,17 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `apps.<name>.hostedTools` is `"drop"` (the default) or `"refuse"` ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)). It decides what the Responses route does with a hosted tool (`web_search`, `file_search`, `code_interpreter`, `image_generation`, `mcp`) sent next to function tools: drop it and name it in `x-plugboard-dropped-tools`, or answer 400 `unsupported_parameter`.
+
+### Fixed
+
+- Tool names over 64 characters no longer break on a provider ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)). A Codex MCP tool is named `<server>__<tool>`, and a long server name with a long tool name goes past the 64 characters OpenAI and Anthropic accept. A name over 64 characters is now cut to 55 characters and ends in `_` and 8 hex characters of a hash of the namespace and the name. It is the same name on every request, in the offer, in the history and in `tool_choice`, and the call goes back to the client under the name it declared.
+- Hosted tools alone are refused again ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)). A request whose only tools are hosted ones, such as `web_search`, gets the 400 `unsupported_parameter` it got before, with any `tool_choice`, instead of running with no tools or with `tool_choice: required` and nothing to call. Hosted tools are left out only when function tools come with them, which is what Codex sends.
+- A stored chain whose tool changed its description between turns no longer fails with `Duplicate tool name` ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)). With `previous_response_id` every earlier turn's `additional_tools` list comes first, and the newest declaration of a name now wins. A name twice in one list, or in `tools` and in an `additional_tools` item, is still a duplicate.
+- A freeform tool call the model made without its `input` now goes back to Codex with an empty `input` and a debug log line (`responses.custom_input_missing`, the tool name only). It was the JSON text `{}`, which Codex would have run as the tool's own language.
+- The `tools` echoed in a Responses answer now leave out the hosted tools plugboard dropped and include the tools declared in `additional_tools` items ([#498](https://github.com/jjjermiah/opencode-plugboard/issues/498)).
 
 ## [0.53.0] - 2026-10-18: First Run, Fast Recovery
 

@@ -468,15 +468,37 @@ describe("#498 Codex tool shapes: namespace, custom, additional_tools and hosted
     expect(parsed.inputItems[0]).toMatchObject({ type: "additional_tools" })
   })
 
-  test("additional_tools next to tools is one list; the same declaration sent again is not a duplicate, a different one is", () => {
+  test("additional_tools next to tools is one list; the same list sent again counts once, and the newest declaration of a name wins", () => {
     const item = { type: "additional_tools", role: "developer", tools: [fn("a")] }
     expect(parseWide(body({ input: [item, message("user", "x"), item], tools: [fn("b")] })).request.tools.map((tool) => tool.name)).toEqual(["b", "a"])
-    expect(parseResponsesRequest(body({ input: [item, message("user", "x"), { ...item, tools: [fn("a", { description: "other" })] }] }), wide)).toMatchObject({ param: "input[2].tools[0].name" })
+    // A tool whose description changed between turns (a stored chain resends the old list, then the new one): no error, the newer one is offered.
+    const older = { ...item, tools: [fn("a", { description: "old" }), fn("c")] }
+    const newer = { ...item, tools: [fn("a", { description: "new" })] }
+    const chained = parseResponsesRequest(body({ input: [newer, message("user", "y")] }), wide, undefined, [older, message("user", "x")]) as ParsedResponses
+    expect(chained.request.tools.map((tool) => [tool.name, tool.description])).toEqual([
+      ["a", "new"],
+      ["c", ""],
+    ])
+    expect((chained.exchange.envelope.tools as Array<{ name: string; description?: string }>).map((tool) => [tool.name, tool.description])).toEqual([
+      ["a", "new"],
+      ["c", undefined],
+    ])
+    // Every other repeat is a duplicate: a name twice in one list, or in the tools field and an additional_tools list.
+    expect(parseResponsesRequest(body({ input: [{ ...item, tools: [fn("a"), fn("a", { description: "other" })] }, message("user", "x")] }), wide)).toMatchObject({ message: 'Duplicate tool name "a"' })
     expect(parseResponsesRequest(body({ input: [item, message("user", "x")], tools: [fn("a", { description: "other" })] }), wide)).toMatchObject({ message: 'Duplicate tool name "a"' })
     expect(parseResponsesRequest(body({ input: [{ type: "additional_tools", tools: "x" }, message("user", "x")] }), wide)).toMatchObject({ param: "input[0].tools" })
   })
 
-  test("hosted tools are left out and named, never counted; the rest of the request is unchanged", () => {
+  test("a replaced declaration takes the route of the newer one", () => {
+    const older = { type: "additional_tools", tools: [fn("a")] }
+    const newer = { type: "additional_tools", tools: [{ type: "custom", name: "a" }] }
+    const both = parseWide(body({ input: [older, newer, message("user", "x")] }))
+    expect([...both.exchange.toolRoutes!]).toEqual([["a", { name: "a", custom: true }]])
+    const back = parseWide(body({ input: [newer, older, message("user", "x")] }))
+    expect(back.exchange.toolRoutes).toBeUndefined()
+  })
+
+  test("hosted tools next to function tools are left out and named, never counted", () => {
     const parsed = parseWide(
       body({
         tools: [{ type: "web_search", external_web_access: false }, fn("a"), { type: "file_search" }, { type: "web_search" }],
@@ -486,8 +508,105 @@ describe("#498 Codex tool shapes: namespace, custom, additional_tools and hosted
     expect(parsed.request.tools.map((tool) => tool.name)).toEqual(["a"])
     expect(parsed.droppedTools).toEqual(["web_search", "file_search", "image_generation"])
     expect(parseWide(body({ tools: [fn("a")] })).droppedTools).toEqual([])
-    // The echoed object shows the tools as the caller sent them.
-    expect((parsed.exchange.envelope.tools as unknown[]).length).toBe(4)
     expect(parseWide(body({ tools: [{ type: "web_search" }, fn("a"), fn("b"), fn("c"), fn("d")] })).request.tools).toHaveLength(4)
+  })
+
+  test("the echoed tools leave the dropped hosted tools out and include the tools of additional_tools, in the caller's shape", () => {
+    const parsed = parseWide(
+      body({
+        tools: [{ type: "web_search" }, fn("a", { strict: true }), weather],
+        input: [{ type: "additional_tools", tools: [{ type: "namespace", name: "functions", tools: [exec] }, { type: "web_search" }] }, message("user", "hi")],
+      }),
+    )
+    expect(parsed.exchange.envelope.tools).toEqual([
+      fn("a", { strict: true }),
+      { ...weather, tools: [{ ...weather.tools[0], strict: false }] },
+      { type: "namespace", name: "functions", tools: [exec] },
+    ])
+  })
+
+  test("hosted tools alone are refused as before, even with tool_choice required: there is nothing left to call", () => {
+    for (const choice of [undefined, "required", "auto"]) {
+      expect(parseResponsesRequest(body({ tools: [{ type: "web_search" }, { type: "file_search" }], ...(choice ? { tool_choice: choice } : {}) }), wide)).toMatchObject({
+        status: 400,
+        code: "unsupported_parameter",
+        param: "tools[0].type",
+        message: expect.stringContaining('"web_search"'),
+      })
+    }
+    expect(parseResponsesRequest(body({ input: [{ type: "additional_tools", tools: [{ type: "web_search" }] }, message("user", "x")], tool_choice: "required" }), wide)).toMatchObject({
+      param: "input[0].tools[0].type",
+    })
+    // An empty namespace next to a hosted tool leaves no function either.
+    expect(parseResponsesRequest(body({ tools: [{ type: "namespace", name: "n", tools: [] }, { type: "web_search" }] }), wide)).toMatchObject({ param: "tools[1].type" })
+  })
+
+  test('hostedTools "refuse" refuses a hosted tool even next to function tools; "drop" is the default', () => {
+    const raw = body({ tools: [fn("a"), { type: "web_search" }] })
+    expect(parseResponsesRequest(raw, wide, undefined, undefined, "refuse")).toMatchObject({
+      status: 400,
+      code: "unsupported_parameter",
+      param: "tools[1].type",
+      message: expect.stringContaining("hostedTools"),
+    })
+    expect(isPlugError(parseResponsesRequest(raw, wide, undefined, undefined, "drop"))).toBe(false)
+    expect(isPlugError(parseResponsesRequest(raw, wide))).toBe(false)
+    expect(isPlugError(parseResponsesRequest(body({ tools: [fn("a")] }), wide, undefined, undefined, "refuse"))).toBe(false)
+  })
+})
+
+describe("#498 review: a name over 64 characters is cut and ends in a hash", () => {
+  const wide = testOptions({ maxTools: 8 })
+  const server = "mcp__corporate_knowledge_base_search_and_retrieval_server"
+  const long = "retrieve_and_summarise_documents_by_semantic_similarity_with_filters"
+  const parseWide = (raw: unknown): ParsedResponses => {
+    const parsed = parseResponsesRequest(raw, wide)
+    if (isPlugError(parsed)) throw new Error(`unexpected rejection: ${parsed.message} (${parsed.param})`)
+    return parsed
+  }
+  const space = (namespace: string, ...names: string[]) => ({ type: "namespace", name: namespace, tools: names.map((name) => fn(name)) })
+
+  test("a long MCP server and tool name give a 64-character function name that the call and the history agree on", () => {
+    const parsed = parseWide(body({ tools: [space(server, long)] }))
+    const name = parsed.request.tools[0]!.name
+    expect(name).toHaveLength(64)
+    expect(name).toMatch(/^mcp__corporate_knowledge_base_search_and_retrieval_serv_[0-9a-f]{8}$/)
+    // The way back: the call item names the tool as the client declared it.
+    expect(parsed.exchange.toolRoutes!.get(name)).toEqual({ name: long, namespace: server })
+    // The way in: a history call by namespace and name is the same flat name, and its result pairs with it.
+    const call = { type: "function_call", call_id: "c1", name: long, namespace: server, arguments: "{}" }
+    const again = parseWide(body({ input: [message("user", "x"), call, fnOutput("c1", "ok")], tools: [space(server, long)] }))
+    expect(again.request.messages.map((m) => m.content[0])).toEqual([
+      { type: "text", text: "x" },
+      { type: "tool-call", id: "c1", name, input: {} },
+      { type: "tool-result", id: "c1", name, result: "ok" },
+    ])
+    // tool_choice names it too.
+    expect(parseWide(body({ tools: [space(server, long)], tool_choice: { type: "function", namespace: server, name: long } })).request.toolChoice).toEqual({ type: "tool", name })
+  })
+
+  test("the name is the same on every request, and two long names that share their first 55 characters stay apart", () => {
+    const first = parseWide(body({ tools: [space(server, long + "_alpha", long + "_beta")] })).request.tools.map((tool) => tool.name)
+    const second = parseWide(body({ tools: [space(server, long + "_alpha")] })).request.tools.map((tool) => tool.name)
+    expect(first[0]).toBe(second[0])
+    expect(first[0]).not.toBe(first[1])
+    expect(first.every((name) => name.length === 64)).toBe(true)
+  })
+
+  test("a name of exactly 64 characters is kept, one of 65 is cut", () => {
+    expect(parseWide(body({ tools: [fn("a".repeat(64))] })).request.tools[0]!.name).toBe("a".repeat(64))
+    expect(parseWide(body({ tools: [fn("a".repeat(65))] })).request.tools[0]!.name).toHaveLength(64)
+    expect(parseWide(body({ tools: [space("n".repeat(60), "x")] })).request.tools[0]!.name).toBe(`${"n".repeat(60)}__x`)
+    expect(parseWide(body({ tools: [space("n".repeat(60), "xxx")] })).request.tools[0]!.name).toHaveLength(64)
+  })
+
+  test("a long top-level function name is cut too, and its call goes back under the name the client sent", () => {
+    const name = "f".repeat(70)
+    const parsed = parseWide(body({ tools: [fn(name)] }))
+    const flat = parsed.request.tools[0]!.name
+    expect(flat).toHaveLength(64)
+    expect(parsed.exchange.toolRoutes!.get(flat)).toEqual({ name })
+    const call = { type: "function_call", call_id: "c1", name, arguments: "{}" }
+    expect(parseWide(body({ input: [message("user", "x"), call], tools: [fn(name)] })).request.messages[1]).toMatchObject({ content: [{ name: flat }] })
   })
 })

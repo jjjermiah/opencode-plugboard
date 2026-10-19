@@ -8,6 +8,7 @@
  * `reasoningOutput`): then each run of them is one `reasoning` output item with a `summary_text` part, as OpenAI sends.
  */
 import type { PlugError, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
+import { debugEnabled, logDebug } from "../log.js"
 import { structuredMissing, textFallback } from "../openai/response.js"
 
 type ToolCall = Extract<PlugEvent, { type: "tool-call" }>
@@ -66,11 +67,17 @@ const args = (input: unknown) => (typeof input === "string" ? input : JSON.strin
 /** The one argument that carries the raw text of a freeform (`custom`) tool through the function the model sees. */
 export const FREEFORM_ARGUMENT = "input"
 
-/** The raw text of a freeform tool call: the argument the model gave, else whatever it sent as text. */
-const freeformInput = (input: unknown): string => {
-  if (typeof input === "string") return input
-  const value = typeof input === "object" && input !== null ? (input as Record<string, unknown>)[FREEFORM_ARGUMENT] : undefined
-  return typeof value === "string" ? value : args(input)
+/**
+ * The raw text of a freeform tool call: the argument the model gave, or the text it sent instead of arguments. A model that left the
+ * argument out gets an empty input, which the client runs as an empty program: JSON of the arguments would be run as the tool's own
+ * language. The gap is a debug line (the tool name only).
+ */
+const freeformInput = (call: ToolCall): string => {
+  if (typeof call.input === "string") return call.input
+  const value = typeof call.input === "object" && call.input !== null ? (call.input as Record<string, unknown>)[FREEFORM_ARGUMENT] : undefined
+  if (typeof value === "string") return value
+  if (debugEnabled()) logDebug("responses.custom_input_missing", { tool: call.name })
+  return ""
 }
 
 const newId = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`
@@ -218,7 +225,7 @@ export async function runResponse(
     const where = route?.namespace === undefined ? {} : { namespace: route.namespace }
     if (route?.custom) {
       const itemId = newId("ctc")
-      const input = freeformInput(call.input)
+      const input = freeformInput(call)
       const item = (status: string, text: string): Item => ({ id: itemId, type: "custom_tool_call", status, call_id: call.id, name, ...where, input: text })
       send("response.output_item.added", { output_index: index, item: item("in_progress", "") })
       send("response.custom_tool_call_input.delta", { item_id: itemId, output_index: index, delta: input })
