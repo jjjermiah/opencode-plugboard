@@ -25,8 +25,8 @@ features:
   - title: Limits and spend
     details: Cap concurrency, rate and budget per app, and replay repeated answers from a cache.
     link: /guides/limits-budgets-and-caching
-  - title: Tools, output and images
-    details: Tool calls go back to the caller. JSON schema output and images work through the usual SDK calls.
+  - title: Tools, output, images and files
+    details: Tool calls go back to the caller. JSON schema output, images, PDFs and uploaded files work through the usual SDK calls.
     link: /guides/tools-output-and-images
   - title: See what happened
     details: Every request is a session. Usage by app, a dashboard, a TUI page and Prometheus metrics.
@@ -55,9 +55,10 @@ Each request becomes an OpenCode session in a directory for its app, so provider
 | API | Endpoint | Page |
 | --- | --- | --- |
 | OpenAI Chat Completions | `POST /v1/chat/completions` | [Chat Completions](chat-completions.md) |
-| OpenAI Responses | `POST /v1/responses` | [Responses](responses.md) |
+| OpenAI Responses | `POST /v1/responses`, `GET`/`DELETE /v1/responses/{id}` | [Responses](responses.md) |
 | Anthropic Messages | `POST /v1/messages`, `POST /v1/messages/count_tokens` | [Messages](messages.md) |
 | Gemini | `POST /v1beta/models/{model}:generateContent`, `:streamGenerateContent`, `:countTokens` | [Gemini](gemini.md) |
+| Files | `/v1/files`, `/v1beta/files` | [Files](files.md) |
 | Legacy completions | `POST /v1/completions` | [Completions](completions.md) |
 | Models | `GET /v1/models`, `GET /v1/models/{id}` | [APIs](apis.md) |
 
@@ -65,7 +66,7 @@ Plugboard does not serve embeddings, audio, image generation or `logprobs`. See 
 
 ## Where to go next
 
-1. [Install and first request](install.md): about five minutes.
+1. [Install and first request](install.md).
 2. [Connect your app](connect.md): pick your API or your client.
 3. The guides, one task each: [apps and keys](guides/apps-and-keys.md), [models and aliases](guides/models-and-aliases.md), [limits, budgets and caching](guides/limits-budgets-and-caching.md), [tools, output and images](guides/tools-output-and-images.md), [history, usage and monitoring](guides/history-usage-and-monitoring.md), [serving other machines](guides/serving-other-machines.md).
 4. The [configuration reference](configuration.md) when you need an exact option.

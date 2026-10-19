@@ -8,7 +8,7 @@ const repo = "https://github.com/jjjermiah/opencode-plugboard"
 const latest: string = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version
 
 // The site is built from docs/. The sidebar tells one story: get started, then one guide per task, then the
-// clients, the reference and the project pages. Page files keep their old paths, so old links still work.
+// clients and the reference. Page files keep their old paths, so old links still work.
 export default defineConfig({
   title: "opencode-plugboard",
   description:
@@ -16,7 +16,31 @@ export default defineConfig({
   base: "/opencode-plugboard/",
   cleanUrls: true,
   lastUpdated: false,
-  vite: { define: { __PLUGBOARD_LATEST__: JSON.stringify(latest) } },
+  // Maintainer and test pages live in docs/ next to the code they describe, but are not part of the user site.
+  srcExclude: [
+    "architecture.md",
+    "best-practices.md",
+    "compatibility.md",
+    "development.md",
+    "examples.md",
+    "live-matrix.md",
+    "packaging.md",
+    "red-team.md",
+    "releasing.md",
+    "review-bot.md",
+    "security-reviews.md",
+  ],
+  vite: {
+    define: { __PLUGBOARD_LATEST__: JSON.stringify(latest) },
+    // `__PLUGBOARD_VERSION__` in a page, code blocks included, becomes the latest release, so install snippets never go stale.
+    plugins: [
+      {
+        name: "plugboard-version",
+        enforce: "pre",
+        transform: (code: string, id: string) => (id.endsWith(".md") ? code.replaceAll("__PLUGBOARD_VERSION__", latest) : undefined),
+      },
+    ],
+  },
   themeConfig: {
     nav: [
       { text: "Get started", link: "/install" },
@@ -67,7 +91,6 @@ export default defineConfig({
         items: [
           { text: "All clients", link: "/clients/" },
           { text: "Any OpenAI-compatible app", link: "/clients/any-app" },
-          { text: "Test results", link: "/examples" },
           {
             text: "SDKs",
             collapsed: true,
@@ -186,7 +209,7 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: "Configuration", link: "/configuration" },
-          { text: "APIs and known gaps", link: "/apis" },
+          { text: "APIs", link: "/apis" },
           { text: "Chat Completions", link: "/chat-completions" },
           { text: "Responses", link: "/responses" },
           { text: "Anthropic Messages", link: "/messages" },
@@ -199,23 +222,7 @@ export default defineConfig({
           { text: "Remote access", link: "/remote-access" },
           { text: "Warm-up and keep-alive", link: "/warm-up" },
           { text: "TUI usage page", link: "/tui" },
-        ],
-      },
-      {
-        text: "Project",
-        collapsed: true,
-        items: [
-          { text: "Architecture", link: "/architecture" },
-          { text: "Development", link: "/development" },
-          { text: "Releasing", link: "/releasing" },
-          { text: "Review bot", link: "/review-bot" },
-          { text: "Packaging", link: "/packaging" },
           { text: "Security", link: "/security" },
-          { text: "Security reviews", link: "/security-reviews" },
-          { text: "Red team", link: "/red-team" },
-          { text: "Best practices", link: "/best-practices" },
-          { text: "Compatibility matrix", link: "/compatibility" },
-          { text: "Live matrix", link: "/live-matrix" },
         ],
       },
     ],

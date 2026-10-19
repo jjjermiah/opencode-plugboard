@@ -33,6 +33,14 @@ export function replaceSinceNext(text: string, version: string): string {
   return inProse(text, (prose) => prose.replace(PLACEHOLDER, (found) => (found.startsWith("(") ? `(since ${version})` : `Since ${version}`)))
 }
 
+/**
+ * The text with every install pin, `opencode-plugboard@X.Y.Z` directly followed by a quote (the `"package"` value in a
+ * config snippet), moved to `version`. Prose such as `opencode-plugboard@0.3.0` in a sentence is left alone.
+ */
+export function bumpInstallPins(text: string, version: string): string {
+  return text.replace(/opencode-plugboard@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?=["'])/g, `opencode-plugboard@${version}`)
+}
+
 /** Whether the text holds a placeholder outside code. */
 export function hasSinceNext(text: string): boolean {
   let found = false

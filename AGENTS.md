@@ -41,7 +41,18 @@ A plugin effect that blocked once froze every prompt in the project that loaded 
 - Semantic versioning; update `CHANGELOG.md` (keep `[Unreleased]` at the top, with context and reasoning, not a commit dump) with every user-visible change.
 - Parallel agent lanes use git worktrees under `.agents/worktrees/` (gitignored) with disjoint file sets; merge into `main`.
 - Prose (README, docs, issues, changelog): plain and short, no em or en dashes as punctuation. Nothing machine- or homelab-specific in the repo (no private IPs, `/Users/...` paths, keys).
-- Tested hosts: OpenCode 2.0.26 and 2.0.27 (dev dependencies pinned to 2.0.27 with `effect` 4.0.1; CI also runs 2.0.26 with `effect` 4.0.0-rc.112; peer range `>=2.0.26 <2.1`). Host source for reading: a shallow clone of anomalyco/opencode at the `v2.0.27` tag (or `v2.0.26`).
+- Host versions: the peer range is `>=2.0.26 <2.1`; the dev pin is in `package.json`; CI tests three hosts picked by `.github/scripts/host-versions.ts`. Host source for reading: a shallow clone of anomalyco/opencode at the matching `v2.0.x` tag.
+
+## User docs (`README.md`, the site under `docs/`)
+
+The site is for people using plugboard. It describes the project as it is now, as if it had always been this way.
+
+- **No history.** No "(since X.Y.Z)" or "(since next)" markers, no "before 0.N", "used to", "no longer", "now", "was refused", "was added after". History lives only in `CHANGELOG.md` and release notes.
+- **No test reports.** Client pages are setup guides, not records: no pass/fail lines, tested versions, live-run links, scenario ids (S1..S7), harness or fake-server details, "worked on every model tested". Test evidence stays in `examples/` and `test/`.
+- **Client page shape:** one line on what the client is; Connect (base URL, key, model, the smallest working config or code, imported from the example with `<<<` when one exists); What works (short bullets: streaming, tools, structured output, images, files); Limits (only what is true today, each with the workaround). Nothing else.
+- **Install pins** are written `opencode-plugboard@X.Y.Z` inside a quoted `"package"` value; `bun run release` moves them to the released version. In site pages `__PLUGBOARD_VERSION__` also expands to the latest release.
+- **Voice:** second person, present tense, short sentences, the answer first. No filler ("note that", "simply", "it is worth"), no hedging lists of what was or was not checked, no repeating a fact the linked reference page already states.
+- **Maintainer pages** (`architecture.md`, `development.md`, `releasing.md`, `packaging.md`, `review-bot.md`, `red-team.md`, `best-practices.md`, `security-reviews.md`, and the generated `compatibility.md`, `live-matrix.md`, `examples.md`) stay in `docs/` but are excluded from the site (`srcExclude` in `docs/.vitepress/config.ts`). Link to them from user pages only with a GitHub URL.
 
 ## Client checks (`examples/`)
 

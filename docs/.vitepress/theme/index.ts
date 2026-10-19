@@ -1,10 +1,7 @@
-// The default VitePress theme, with wider pages (see custom.css) and a banner above every page. The
-// docs deploy from main, so they can describe options the latest release does not have.
+// The default VitePress theme, with wider pages (see custom.css) and a banner above every page naming the latest release.
 import type { Theme } from "vitepress"
 import DefaultTheme from "vitepress/theme"
 import { h } from "vue"
-import ExampleResult from "./ExampleResult.vue"
-import ExamplesIndex from "./ExamplesIndex.vue"
 import "./custom.css"
 
 // Set at build time from package.json (vite.define in config.ts).
@@ -16,16 +13,10 @@ const theme: Theme = {
     h(DefaultTheme.Layout, null, {
       "layout-top": () =>
         h("div", { class: "version-banner" }, [
-          `These docs follow main; the latest release is v${__PLUGBOARD_LATEST__} (see `,
-          h("a", { href: "https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md" }, "changelog"),
-          ").",
+          `Latest release: v${__PLUGBOARD_LATEST__} · `,
+          h("a", { href: "https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md" }, "what's new"),
         ]),
     }),
-}
-
-theme.enhanceApp = ({ app }) => {
-  app.component("ExampleResult", ExampleResult)
-  app.component("ExamplesIndex", ExamplesIndex)
 }
 
 export default theme
