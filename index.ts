@@ -32,6 +32,7 @@ import {
   ensureBackend,
   ensurePump,
   loadServingCatalog,
+  processBreaker,
   processBudgets,
   processKeys,
   processLimits,
@@ -131,9 +132,13 @@ export default Plugin.define({
                   {
                     options,
                     loadCatalog: servingCatalog,
+                    breaker: processBreaker(),
                     onFallback: (app) => {
                       if (options.metrics) processMetrics().fallback(app)
                       usage?.fallback(app)
+                    },
+                    onCooldown: (event, app) => {
+                      if (options.metrics) processMetrics().cooldown(app, event)
                     },
                   },
                 ),

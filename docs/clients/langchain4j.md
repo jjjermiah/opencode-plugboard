@@ -8,7 +8,7 @@ LangChain4j's `langchain4j-open-ai` module.
 <dependency>
     <groupId>dev.langchain4j</groupId>
     <artifactId>langchain4j-open-ai</artifactId>
-    <version>1.23.0</version>
+    <version>1.22.0</version>
 </dependency>
 ```
 
@@ -20,12 +20,8 @@ ChatModel model = OpenAiChatModel.builder()
     .build();
 ```
 
-For streaming use `OpenAiStreamingChatModel` with the same builder.
+`baseUrl` ends in `/v1`. For streaming use `OpenAiStreamingChatModel` with the same builder. A runnable example is in [examples/langchain4j/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain4j).
 
 ## What works
 
-Chat, streaming, tool calls (`@Tool` with AI Services) and structured output.
-
-## Limits
-
-- Use 1.23.0 or later; earlier versions need HTTP/1.1 set explicitly on the client.
+Chat, streaming, tool calls (`@Tool` with AI Services, or `ToolExecutionResultMessage` by hand), streamed tool calls and structured output.

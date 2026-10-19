@@ -10,20 +10,20 @@ Spring AI's OpenAI chat module.
 spring:
   ai:
     openai:
-      base-url: http://127.0.0.1:4010
+      base-url: http://127.0.0.1:4010/v1
       api-key: ${PLUGBOARD_KEY}
       chat:
         options:
           model: fast
 ```
 
-Spring AI appends `/v1/chat/completions` to `base-url`, so leave `/v1` off. If your version doubles the path, set `spring.ai.openai.chat.completions-path`. `spring.ai.openai.chat.base-url` overrides the base for chat only.
+`base-url` must end in `/v1` (Spring AI 2.x uses the official OpenAI Java SDK, which appends `/chat/completions`). Without `/v1` every call is a 404.
 
-In code, set the model per call with `OpenAiChatOptions.builder().model("fast")`.
+Set the model per call with `.options(OpenAiChatOptions.builder().model("fast"))`. Model names with `/` or `#` need no escaping. A runnable app is in [examples/spring-ai/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/spring-ai).
 
 ## What works
 
-Chat Completions with streaming, tool calling and `response-format` JSON schema.
+Chat, streaming (with usage), and `@Tool` methods, which Spring AI runs itself before it answers.
 
 ## Limits
 
