@@ -12,13 +12,11 @@ const r = await ai.models.generateContent({ model: "fast", contents: "Reply with
 console.log(r.text)
 ```
 
-The base URL has no `/v1beta`: the SDK adds it. With the REST API directly:
+The base URL has no `/v1beta`: the SDK adds it. With the REST API directly, use curl and `jq`. `ORIGIN` is `http://127.0.0.1:4010` and `PLUGBOARD_KEY` is your key. `post` takes the model and a JSON body:
 
-```sh
-curl -s "http://localhost:4010/v1beta/models/fast:generateContent" \
-  -H "x-goog-api-key: $PLUGBOARD_KEY" -H "content-type: application/json" \
-  -d '{"contents":[{"role":"user","parts":[{"text":"Reply with exactly: pong"}]}]}'
-```
+<<< @/../examples/curl/gemini.sh#snippet
+
+<<< @/../examples/curl/gemini.sh#snippet-s1
 
 ## Model names
 

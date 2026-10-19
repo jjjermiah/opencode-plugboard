@@ -21,19 +21,18 @@ Any model works, not only Claude: point the aliases at whatever your OpenCode se
 
 ## Connect
 
-```sh
-export ANTHROPIC_BASE_URL="http://127.0.0.1:4010"
-export ANTHROPIC_AUTH_TOKEN="$PLUGBOARD_KEY_CLAUDE_CODE"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="fast"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="smart"
-export ANTHROPIC_DEFAULT_OPUS_MODEL="smart"
-claude
-```
+<<< @/../examples/claude-code/env.sh#snippet
+
+Then run `claude`.
 
 - The base URL has no `/v1`; Claude Code adds `/v1/messages`.
 - Set all three `ANTHROPIC_DEFAULT_*_MODEL` variables. The haiku tier also runs background calls (titles, summaries), and a name plugboard doesn't serve fails them with 404.
 
-To keep the settings, put the same variables under `env` in `~/.claude/settings.json` and `chmod 600` the file, since it then holds the key. Copyable versions are in [examples/claude-code/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/claude-code).
+To keep the settings, put the same variables under `env` in `~/.claude/settings.json` and `chmod 600` the file, since it then holds the key:
+
+<<< @/../examples/claude-code/settings.json
+
+Both files are in [examples/claude-code/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/claude-code).
 
 ## What works
 

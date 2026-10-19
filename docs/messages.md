@@ -12,6 +12,12 @@ const client = new Anthropic({ baseURL: "http://localhost:4010", apiKey: process
 const m = await client.messages.create({ model: "fast", max_tokens: 256, messages: [{ role: "user", content: "Reply with exactly: pong" }] })
 ```
 
+The same with curl and `jq`. `PLUGBOARD_BASE_URL` is `http://127.0.0.1:4010/v1` and `PLUGBOARD_KEY` is your key. The key goes in `x-api-key`:
+
+<<< @/../examples/curl/messages.sh#snippet
+
+<<< @/../examples/curl/messages.sh#snippet-s1
+
 ## Auth
 
 Send the plugboard key as `x-api-key` (what the Anthropic SDKs do) or as `Authorization: Bearer` (what Claude Code does with `ANTHROPIC_AUTH_TOKEN`). Both check the same key store. If both headers are present and the bearer token is not a key, `x-api-key` is tried next. Without `keys` on a loopback listener no header is needed. `anthropic-version` and `anthropic-beta` are accepted and ignored.

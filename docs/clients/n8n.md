@@ -8,6 +8,16 @@ n8n's OpenAI Chat Model node, used by the Basic LLM Chain and the AI Agent.
 2. Add an OpenAI Chat Model node with that credential. If the model list shows only OpenAI names, switch Model to "By ID" and type an alias such as `fast` or any allowed `provider/model[#variant]`.
 3. Turn **Use Responses API** off in the node. Chat Completions is the path to use from n8n.
 
+To run n8n in Docker beside plugboard:
+
+<<< @/../examples/n8n/docker-compose.yml#snippet
+
+A Basic LLM Chain workflow you can import. `__CRED_ID__` is the id of your OpenAI credential, and `responsesApiEnabled` is the **Use Responses API** switch:
+
+<<< @/../examples/n8n/workflows/s1-chain.json
+
+More workflows (an AI Agent with a tool, streaming, images, structured output) are in [examples/n8n/workflows/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/n8n/workflows).
+
 ## What works
 
 - Basic LLM Chain and AI Agent, including tools (Code, Calculator, HTTP Request and others) and streaming webhooks. n8n runs the tools.

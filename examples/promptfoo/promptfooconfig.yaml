@@ -2,6 +2,7 @@
 # default to OpenAI as the grader unless defaultTest.options.provider points at plugboard.
 # Run: PLUGBOARD_URL=http://127.0.0.1:4010/v1 PLUGBOARD_KEY=<app key> npx promptfoo@latest eval --no-cache
 # Docs: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/promptfoo.md
+# region snippet
 prompts:
   - "{{input}}"
 
@@ -35,3 +36,4 @@ tests:
       - type: is-valid-openai-tools-call
       - type: javascript
         value: "Array.isArray(output.tool_calls ?? output) && (output.tool_calls ?? output).length > 0"
+# endregion snippet

@@ -25,26 +25,15 @@ Give Karakeep its own key and two aliases. `vision` must accept images, because 
 
 Set these in the `.env` that Karakeep's compose file reads:
 
-```sh
-OPENAI_API_KEY=<the karakeep key>
-OPENAI_BASE_URL=http://host.docker.internal:4010/v1
-INFERENCE_TEXT_MODEL=tag
-INFERENCE_IMAGE_MODEL=vision
-SEMANTIC_SEARCH_ENABLED=false
-```
+<<< @/../examples/self-hosted/karakeep/.env.example#snippet{ini}
 
 `OPENAI_API_KEY` takes the plugboard key. `SEMANTIC_SEARCH_ENABLED=false` hides the semantic and hybrid search modes, which need embeddings.
 
 On Linux, add the host name to the `web` service in `docker-compose.override.yml`:
 
-```yaml
-services:
-  web:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-```
+<<< @/../examples/self-hosted/karakeep/docker-compose.override.yml#snippet
 
-A runnable copy is in [`examples/self-hosted/karakeep/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/karakeep/README.md).
+The files are in [`examples/self-hosted/karakeep/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/karakeep/README.md).
 
 ## What works
 

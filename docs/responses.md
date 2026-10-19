@@ -12,6 +12,12 @@ const r = await client.responses.create({ model: "fast", instructions: "Be terse
 console.log(r.output_text)
 ```
 
+The same with curl and `jq`. `PLUGBOARD_BASE_URL` is `http://127.0.0.1:4010/v1` and `PLUGBOARD_KEY` is your key:
+
+<<< @/../examples/curl/responses.sh#snippet
+
+<<< @/../examples/curl/responses.sh#snippet-s1
+
 ## What is supported
 
 | Request field | How it is handled |

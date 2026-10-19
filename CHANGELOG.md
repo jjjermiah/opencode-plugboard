@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Changed
+
+- The code on the client and API pages now comes from the examples that CI runs, not from text written by hand. Every example under `examples/` is used by a docs page: SDK and framework pages import their snippets, config-only apps import their config file, and the API pages show the curl examples. A check (`examples-index.ts --check`, also in `bun run validate`) fails when an example is in no page of the site or when a `<<<` import names a missing file or region.
+
 ### Security
 
 - The LangChain4j example now builds against Jackson 2.22.3 instead of 2.22.1, which fixes the seven advisories that OpenSSF Scorecard reported in its `pom.xml` ([#523](https://github.com/jjjermiah/opencode-plugboard/issues/523)). The shipped package was never affected.

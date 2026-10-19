@@ -19,18 +19,9 @@ Use any model your OpenCode server is signed in to. ChatGPT models need a varian
 
 In `~/.codex/config.toml`:
 
-```toml
-model = "fast"
-model_provider = "plugboard"
+<<< @/../examples/codex-cli/config.toml#snippet
 
-[model_providers.plugboard]
-name = "Plugboard"
-base_url = "http://127.0.0.1:4010/v1"
-env_key = "PLUGBOARD_KEY_CODEX_CLI"
-wire_api = "responses"
-```
-
-Then export the key and run `codex` or `codex exec "..."`. `base_url` ends in `/v1`; `env_key` names the variable Codex reads the key from. For an alias such as `fast`, Codex warns that it has no model metadata; the warning is harmless. A copy is in [examples/codex-cli/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/codex-cli).
+Then export the key and run `codex` or `codex exec "..."`. `base_url` ends in `/v1`; `env_key` names the variable Codex reads the key from. For an alias such as `fast`, Codex warns that it has no model metadata; the warning is harmless. The file is in [examples/codex-cli/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/codex-cli).
 
 For MCP servers in headless `codex exec`, set `default_tools_approval_mode = "approve"` on the server, or each tool call comes back as an approval error.
 

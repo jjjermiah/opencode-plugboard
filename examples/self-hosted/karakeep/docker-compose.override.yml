@@ -1,7 +1,9 @@
 # Merge with the upstream docker-compose.yml from karakeep-app/karakeep (docker/docker-compose.yml).
 # Compose appends this list to the web service's own settings.
+# region snippet
 services:
   web:
     extra_hosts:
       # Linux needs this to resolve host.docker.internal. Docker Desktop and Colima already provide it.
       - "host.docker.internal:host-gateway"
+# endregion snippet

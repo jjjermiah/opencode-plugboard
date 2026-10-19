@@ -4,13 +4,15 @@ A terminal pair-programming tool. It reaches any OpenAI-compatible endpoint thro
 
 ## Connect
 
-```sh
-export OPENAI_API_BASE=http://127.0.0.1:4010/v1
-export OPENAI_API_KEY=<your plugboard key>
-aider --model openai/fast --weak-model openai/fast
-```
+Put the endpoint and key in `.env`, next to your config:
 
-The `openai/` prefix makes Aider use `OPENAI_API_BASE`; without it the request goes elsewhere. The same settings as files (`.aider.conf.yml` and `.env.example`) are in [examples/aider/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/aider).
+<<< @/../examples/aider/.env.example#snippet{ini}
+
+Then set the models in `.aider.conf.yml` and run `aider`:
+
+<<< @/../examples/aider/.aider.conf.yml#snippet
+
+The `openai/` prefix makes Aider use `OPENAI_API_BASE`; without it the request goes elsewhere. Both files are in [examples/aider/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/aider).
 
 ## What works
 

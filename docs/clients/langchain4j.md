@@ -4,23 +4,29 @@ LangChain4j's `langchain4j-open-ai` module.
 
 ## Connect
 
-```xml
-<dependency>
-    <groupId>dev.langchain4j</groupId>
-    <artifactId>langchain4j-open-ai</artifactId>
-    <version>1.22.0</version>
-</dependency>
-```
+Add `dev.langchain4j:langchain4j-open-ai` to your build (the version is in the example's [`pom.xml`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/langchain4j/pom.xml)). `BASE_URL` is `http://127.0.0.1:4010/v1` and `KEY` is your plugboard key.
 
-```java
-ChatModel model = OpenAiChatModel.builder()
-    .baseUrl("http://127.0.0.1:4010/v1")
-    .apiKey(System.getenv("PLUGBOARD_KEY"))
-    .modelName("fast")
-    .build();
-```
+<<< @/../examples/langchain4j/src/main/java/example/plugboard/langchain4j/Runner.java#snippet-model
 
-`baseUrl` ends in `/v1`. For streaming use `OpenAiStreamingChatModel` with the same builder. A runnable example is in [examples/langchain4j/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain4j).
+`baseUrl` ends in `/v1`; `modelName` is an alias such as `fast`.
+
+## Chat
+
+<<< @/../examples/langchain4j/src/main/java/example/plugboard/langchain4j/Runner.java#snippet
+
+## Tool calls
+
+Plugboard returns the call. Your code runs the tool and sends the result back.
+
+<<< @/../examples/langchain4j/src/main/java/example/plugboard/langchain4j/Runner.java#snippet-tool
+
+<<< @/../examples/langchain4j/src/main/java/example/plugboard/langchain4j/Runner.java#snippet-tools
+
+## Streaming
+
+<<< @/../examples/langchain4j/src/main/java/example/plugboard/langchain4j/Runner.java#snippet-stream
+
+The runnable project is in [examples/langchain4j/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/langchain4j).
 
 ## What works
 

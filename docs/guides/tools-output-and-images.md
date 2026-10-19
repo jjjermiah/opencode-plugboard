@@ -13,20 +13,27 @@ Plugboard returns the model's tool calls to the caller and never runs them. The 
 
 Send the answer back as a `{"role": "tool", "tool_call_id": "call_1", "content": "..."}` message. Tool call ids differ by model, so do not parse them.
 
+### A tool-calling bot
+
+A bot declares its tools and runs the ones the model calls. Here the tool is a stub; a real bot would call a weather API. `client` is an OpenAI SDK client pointed at plugboard.
+
+<<< @/../examples/tool-bot/index.ts#snippet-tool
+
+The loop asks the model, runs each tool call, sends the results back as `tool` messages, and repeats until the model answers in text. Every `tool_call` id needs a matching `tool` message, or the next request is rejected.
+
+<<< @/../examples/tool-bot/index.ts#snippet
+
+The full bot is in [examples/tool-bot/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/tool-bot).
+
 - `maxTools` (default 64) caps the tools one request may carry. Claude Code sends 36.
 - `parallel_tool_calls: false` keeps the first call of an answer and drops the rest. The response says so with `x-plugboard-parallel-tools: limited`.
 - To let OpenCode run a tool on the server instead, an app can list it in `serverTools`. This gives that app's key real power on the server. Read the warning in the reference first.
 
 ## Streaming
 
-Set `stream: true` and read the server-sent events. Ask for usage in the last chunk with `stream_options`.
+Set `stream: true` and read the server-sent events. Ask for usage in the last chunk with `stream_options`. With curl, `PLUGBOARD_BASE_URL` is `http://127.0.0.1:4010/v1` and `PLUGBOARD_KEY` is your key:
 
-```sh
-curl -N http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "fast", "stream": true, "stream_options": {"include_usage": true},
-       "messages": [{"role": "user", "content": "count to three"}]}'
-```
+<<< @/../examples/curl/chat.sh#snippet-s3
 
 Headers go out with the first model event, and a slow model gets a keep-alive comment every 15 seconds. If the stream fails after it has started, the client gets an `error` event and then `data: [DONE]`.
 

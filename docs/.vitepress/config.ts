@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { defineConfig } from "vitepress"
 import { fullConfigPlugin } from "./full-config.ts"
+import { MAINTAINER_PAGES } from "./maintainer-pages.ts"
 
 const repo = "https://github.com/jjjermiah/opencode-plugboard"
 
@@ -21,19 +22,7 @@ export default defineConfig({
   markdown: { theme: { light: "vitesse-light", dark: "vitesse-dark" }, config: (md) => md.use(fullConfigPlugin(latest)) },
   lastUpdated: false,
   // Maintainer and test pages live in docs/ next to the code they describe, but are not part of the user site.
-  srcExclude: [
-    "architecture.md",
-    "best-practices.md",
-    "compatibility.md",
-    "development.md",
-    "examples.md",
-    "live-matrix.md",
-    "packaging.md",
-    "red-team.md",
-    "releasing.md",
-    "review-bot.md",
-    "security-reviews.md",
-  ],
+  srcExclude: [...MAINTAINER_PAGES],
   vite: {
     define: { __PLUGBOARD_LATEST__: JSON.stringify(latest) },
     // `__PLUGBOARD_VERSION__` in a page, code blocks included, becomes the latest release, so install snippets never go stale.

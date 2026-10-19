@@ -13,6 +13,7 @@ const client = new OpenAI({
 })
 const model = process.env.PLUGBOARD_MODEL ?? "fast"
 
+// #region snippet-tool
 const tools: OpenAI.ChatCompletionTool[] = [{
   type: "function",
   function: {
@@ -26,11 +27,13 @@ const tools: OpenAI.ChatCompletionTool[] = [{
 const runTool: Record<string, (args: { city: string }) => unknown> = {
   get_weather: ({ city }) => ({ city, temp_c: 18, sky: "cloudy" }),
 }
+// #endregion snippet-tool
 
 const messages: OpenAI.ChatCompletionMessageParam[] = [
   { role: "user", content: process.argv[2] ?? "What is the weather in Paris? Use the tool." },
 ]
 
+// #region snippet
 for (let turn = 1; turn <= 5; turn++) {
   const res = await client.chat.completions.create({ model, messages, tools })
   const msg = res.choices[0]!.message
@@ -49,4 +52,5 @@ for (let turn = 1; turn <= 5; turn++) {
     messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) })
   }
 }
+// #endregion snippet
 throw new Error("no text answer after 5 turns")

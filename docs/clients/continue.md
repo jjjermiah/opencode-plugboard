@@ -4,30 +4,18 @@ An open-source coding assistant for VS Code and JetBrains, configured in `config
 
 ## Connect
 
-```yaml
-name: Plugboard
-version: 1.0.0
-schema: v1
-models:
-  - name: Plugboard fast
-    provider: openai
-    model: fast
-    apiBase: http://127.0.0.1:4010/v1
-    apiKey: <your plugboard key>
-    capabilities:
-      - tool_use
-      - image_input
-```
+<<< @/../examples/continue/config.yaml#snippet
 
+- The first entry uses Chat Completions, the second the [Responses API](../responses.md). Keep the one you need.
 - `apiBase` ends in `/v1`.
 - Continue can't detect capabilities for an alias, so list them: `tool_use` (needed for Agent mode) and `image_input`, only if the model really supports them.
 - The file holds the key in plain text; keep it out of version control.
 
-A copy is in [examples/continue/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/continue).
+The file is in [examples/continue/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/continue).
 
 ## What works
 
-Chat with streaming, Agent mode tool calls and images. `useResponsesApi: true` switches the entry to the [Responses API](../responses.md); `useLegacyCompletionsEndpoint: true` to [legacy completions](../completions.md).
+Chat with streaming, Agent mode tool calls and images. `useLegacyCompletionsEndpoint: true` switches an entry to [legacy completions](../completions.md).
 
 ## Limits
 

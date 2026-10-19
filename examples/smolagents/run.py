@@ -38,6 +38,7 @@ UNOBSERVED = {
 }
 
 
+# region snippet-tool
 @tool
 def get_weather(city: str) -> str:
     """Current weather for a city.
@@ -46,11 +47,14 @@ def get_weather(city: str) -> str:
         city: The city name.
     """
     return '{"temp_c": 18, "sky": "cloudy"}'
+# endregion snippet-tool
 
 
 def s1(model_id: str):
+    # region snippet
     model = OpenAIModel(model_id=model_id, api_base=BASE, api_key=KEY, max_completion_tokens=1024)
     message = model.generate([{"role": "user", "content": [{"type": "text", "text": PROMPT}]}])
+    # endregion snippet
     response = message.raw  # the ChatCompletion smolagents got back
     choice = response.choices[0]
     return {
@@ -62,8 +66,10 @@ def s1(model_id: str):
 
 def s2(model_id: str):
     model = OpenAIModel(model_id=model_id, api_base=BASE, api_key=KEY, max_completion_tokens=1024)
+    # region snippet-agent
     agent = ToolCallingAgent(tools=[get_weather], model=model, max_steps=4, verbosity_level=LogLevel.OFF)
     answer = agent.run(TOOL_PROMPT)
+    # endregion snippet-agent
     steps = [step for step in agent.memory.steps if isinstance(step, ActionStep)]
     first = steps[0]
     call = first.tool_calls[0]
@@ -83,7 +89,9 @@ def s2(model_id: str):
 
 def s3(model_id: str):
     model = OpenAIModel(model_id=model_id, api_base=BASE, api_key=KEY, max_completion_tokens=1024)
+    # region snippet-stream
     deltas = list(model.generate_stream([{"role": "user", "content": [{"type": "text", "text": PROMPT}]}]))
+    # endregion snippet-stream
     usage = next((delta.token_usage for delta in deltas if delta.token_usage is not None), None)
     return {
         "text": "".join(delta.content or "" for delta in deltas),
