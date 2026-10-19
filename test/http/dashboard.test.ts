@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { createUsageRecorder, createUsageState, withUsage } from "../../src/usage.js"
-import { CATALOG, ev, until } from "../support/fixtures.js"
+import { CATALOG, ev, model, until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { startRoute, type RouteServer, type SendInit } from "../support/loopback.js"
 import { FakeModelCaller } from "../support/model-caller.js"
@@ -110,6 +110,72 @@ describe("#141 the dashboard files", () => {
     const srv = await start({})
     expect((await srv.send({ path: "/plugboard/dashboard/../../package.json" })).status).not.toBe(200)
     expect((await srv.send({ path: "/plugboard/dashboard/nope.js" })).status).toBe(404)
+  })
+})
+
+describe("#141 the dashboard's Usage and Models tabs", () => {
+  test("the page has the Usage and Models tabs, a range picker for 1, 7, 30 and 90 days, and its empty and error states", async () => {
+    const srv = await start()
+    const page = (await srv.send({ path: "/plugboard/dashboard" })).text
+    for (const marker of [
+      'data-tab="usage"',
+      'data-tab="models"',
+      'id="view-models"',
+      'data-days="1"',
+      'data-days="7"',
+      'data-days="30"',
+      'data-days="90"',
+      'id="usage-empty"',
+      'id="banner"',
+      'id="catalog-auth"',
+    ])
+      expect(page).toContain(marker)
+  })
+
+  test("the script calls only endpoints plugboard has (/plugboard/usage, /v1/models) and sets no inline style, which the CSP would refuse", async () => {
+    const srv = await start()
+    const js = (await srv.send({ path: "/plugboard/dashboard/app.js" })).text
+    expect(js).toContain('fetch("/v1/models"')
+    expect([...js.matchAll(/fetch\("([^"?]+)/g)].map((match) => match[1]).sort()).toEqual(["/plugboard/usage", "/v1/models"])
+    expect(js).not.toMatch(/\.style\b|cssText|setAttribute\("style"|"style":/)
+    // The snippets name a variable for the key, never a key.
+    expect(js).toContain("PLUGBOARD_API_KEY")
+  })
+
+  test("the stylesheet follows prefers-color-scheme and has a phone layout", async () => {
+    const srv = await start()
+    const css = (await srv.send({ path: "/plugboard/dashboard/app.css" })).text
+    expect(css).toContain("@media (prefers-color-scheme: dark)")
+    expect(css).toMatch(/@media \(max-width: \d+rem\)/)
+  })
+
+  test("/v1/models answers an app key with the fields the Models tab reads, and the admin key with 401", async () => {
+    const priced = model("test", "echo", {
+      variants: ["high"],
+      capabilities: { tools: true, image: true },
+      contextLimit: 200_000,
+      limits: { context: 200_000, output: 64_000 },
+      modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+      cost: [{ input: 3, output: 15 }],
+      status: "beta",
+    })
+    server = await startRoute({
+      caller: new FakeModelCaller([]),
+      options: { keys: { probeapp: KEY }, adminKey: "admin-secret", aliases: { fast: "test/echo" } },
+      catalog: [priced],
+    })
+    const listed = await server.send({ path: "/v1/models", headers: bearer })
+    expect(listed.status).toBe(200)
+    const byId = Object.fromEntries((listed.json().data as Array<{ id: string }>).map((entry) => [entry.id, entry]))
+    expect(Object.keys(byId).sort()).toEqual(["fast", "test/echo", "test/echo#high"])
+    expect(byId["test/echo"]).toMatchObject({
+      owned_by: "test",
+      context_length: 200_000,
+      max_output_tokens: 64_000,
+      plugboard: { capabilities: { tools: true, image: true }, modalities: { input: ["text", "image", "pdf"] }, cost: [{ input: 3, output: 15 }], status: "beta" },
+    })
+    // A keyed server refuses the admin key on the model routes, so the page asks for an app key.
+    expect((await server.send({ path: "/v1/models", headers: { authorization: "Bearer admin-secret" } })).status).toBe(401)
   })
 })
 

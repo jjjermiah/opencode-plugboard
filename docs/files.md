@@ -1,6 +1,6 @@
 # Files API
 
-Plugboard keeps files per app, so a request can name a file by id instead of carrying its bytes every time (since 0.52.0). Upload once, then use the file in Chat Completions, Responses, Messages or Gemini. The three Files APIs share one store: a file uploaded through the OpenAI SDK can be named in a Gemini request.
+Plugboard keeps files per app, so a request can name a file by id instead of carrying its bytes every time. Upload once, then use the file in Chat Completions, Responses, Messages or Gemini. The three Files APIs share one store: a file uploaded through the OpenAI SDK can be named in a Gemini request.
 
 Files are stored on the OpenCode server's host storage, so they survive a restart. An app sees only its own files. Another app's id gets the same 404 as an id that never existed.
 
@@ -23,10 +23,10 @@ The type comes from the bytes. An image or a PDF is told by its first bytes, wha
 | One file | The app's body cap (`limits.maxBodyBytes`, 32 MiB by default) and never more than 32 MiB. Text and JSON: 4 MiB. |
 | Files per app | 1000 |
 | Bytes per app | 1 GiB |
-| Kept for | The app's `history.maxAgeDays`, 30 days when unset or `0`. The same rule as [stored responses](responses.md#stored-responses-since-0-51-0). |
+| Kept for | The app's `history.maxAgeDays`, 30 days when unset or `0`. The same rule as [stored responses](responses.md#stored-responses). |
 | Files in one request | 32 |
 
-An upload past the file or byte limit is a 400 (`file_limit_exceeded`, `file_storage_full`). Plugboard never deletes a file to make room, because a caller may still be using it. An upload is read under the same body admission as any request body (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`), so a large upload cannot take more memory than the cap. There are no new options: the limits above are fixed, and `apps.<name>.endpoints` can list `files` to allow or refuse every Files route (see [Endpoint names](configuration.md#endpoint-names-since-0-26-0)).
+An upload past the file or byte limit is a 400 (`file_limit_exceeded`, `file_storage_full`). Plugboard never deletes a file to make room, because a caller may still be using it. An upload is read under the same body admission as any request body (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`), so a large upload cannot take more memory than the cap. The limits above are fixed. `apps.<name>.endpoints` can list `files` to allow or refuse every Files route (see [Endpoint names](configuration.md#endpoint-names)).
 
 ## OpenAI
 
@@ -108,7 +108,7 @@ file = client.files.upload(file="report.pdf")
 client.models.generate_content(model="fast", contents=["Summarize it.", file])
 ```
 
-`fileUri` is `files/<hex>` or the `uri` an upload returned. The file's type comes from the store, so a `mimeType` in `fileData` is not used. Any other `http(s)` `fileUri` is fetched as before, under the `remoteImages` rules.
+`fileUri` is `files/<hex>` or the `uri` an upload returned. The file's type comes from the store, so a `mimeType` in `fileData` is not used. Any other `http(s)` `fileUri` is fetched under the `remoteImages` rules.
 
 ## Notes
 

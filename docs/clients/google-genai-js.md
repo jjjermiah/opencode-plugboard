@@ -1,12 +1,10 @@
 # Google GenAI JS SDK
 
-<ExampleResult example="gemini-js" />
+The official `@google/genai` package, on plugboard's [Gemini API](../gemini.md).
 
-Tested: `@google/genai` 2.30.0, live run [`2026-10-16-v0.41.0-29-g2d6aac1`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/gemini-js/runs/live/2026-10-16-v0.41.0-29-g2d6aac1) at plugboard 0.41.0: pass. The code below is the example's snippets. The run's summary and transcripts are in the example directory.
+## Connect
 
-## Setup
-
-The SDK adds `/v1beta` itself, so the base URL is the plugboard origin, without `/v1`:
+The SDK adds `/v1beta` itself, so the base URL is the plugboard origin:
 
 ```ts
 import { GoogleGenAI } from "@google/genai"
@@ -14,15 +12,13 @@ import { GoogleGenAI } from "@google/genai"
 const ai = new GoogleGenAI({ apiKey: process.env.PLUGBOARD_KEY, httpOptions: { baseUrl: "http://127.0.0.1:4010" } })
 ```
 
-The snippets use `ai` (above) and `model`, `"fast"` in the examples. `fast` is an alias from the plugboard `aliases` option.
-
 ## Chat
 
 <<< @/../examples/gemini-js/chat.ts#snippet
 
-## Tool call
+## Tool calls
 
-The model asks for `get_weather`, the app answers with a `functionResponse`, and the model finishes. Gemini calls carry no id, so the name pairs the result with its call.
+Gemini calls carry no id: the function name pairs a `functionResponse` with its call.
 
 <<< @/../examples/gemini-js/tools.ts#snippet
 
@@ -30,34 +26,30 @@ The model asks for `get_weather`, the app answers with a `functionResponse`, and
 
 <<< @/../examples/gemini-js/stream.ts#snippet
 
-Streamed tool calls arrive whole, in one chunk with their full `args`:
+A streamed tool call arrives whole, in one chunk with its full `args`:
 
 <<< @/../examples/gemini-js/stream_tools.ts#snippet
 
-## Image
+## Images
 
 <<< @/../examples/gemini-js/image.ts#snippet
 
 ## Structured output
 
-Pass a JSON schema as `responseJsonSchema` with `responseMimeType: "application/json"`. Gemini enforces the schema on the model's output.
+Pass a JSON schema as `responseJsonSchema` with `responseMimeType: "application/json"`:
 
 <<< @/../examples/gemini-js/structured.ts#snippet
 
-## Model ids
+## Files
 
-A bare `#` starts a URL fragment in the SDK, so `openai/gpt-5.6-luna#low` must be sent as `openai/gpt-5.6-luna%23low`. A `/` goes as it is: `anthropic/claude-haiku-4-5` works. The example's `run.ts` does this for every scenario. Aliases avoid both problems; see [Gemini API](../gemini.md#model-names).
+`ai.files.upload({ file: "doc.pdf" })` uploads through plugboard; pass the returned file's `uri` in a `fileData` part. See [Files](../files.md).
 
-## Errors
+## Model names
 
-A wrong key and an unknown model both throw `ApiError` with the HTTP status. Google's error body names the status (`UNAUTHENTICATED`, `NOT_FOUND`), not the OpenAI codes, so the example checks the status.
+A `#` in a model name must be sent as `%23` (`openai/gpt-5.6-luna%23low`); a `/` goes as it is. Aliases avoid both. See [Gemini model names](../gemini.md#model-names).
 
-<<< @/../examples/gemini-js/errors.ts#snippet-wrong-key
+## Limits
 
-<<< @/../examples/gemini-js/errors.ts#snippet-unknown-model
-
-## Gotchas
-
-- `ai.models.list()` and `ai.models.get()` are served. Names carry a `models/` prefix, which the example drops.
-- Gemini reports `STOP` on a function call too. A turn that holds a call is a `tool_calls` turn for the example's checks.
-- `countTokens` is served (an estimate). This example does not call it.
+- A wrong key or an unknown model throws `ApiError` with the HTTP status; the body names Google's status (`UNAUTHENTICATED`, `NOT_FOUND`).
+- Gemini reports `STOP` on a turn with a function call too; check the parts for a `functionCall`.
+- The schema in structured output is not enforced by the provider. Validate the answer.

@@ -57,7 +57,7 @@ bun examples/_harness/run.ts openai-python --target live       # the isolated se
 
 ## Known gaps
 
-`S2 (responses-previous-id)` was a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)) until 0.51.0: plugboard now keeps each answer made with `store` on and continues from it with `previous_response_id` (see [responses.md](../../docs/responses.md#stored-responses-since-0-51-0)). The scripted run passes it; the live run `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0) predates it and still records the refusal. Every other row passes on both targets. `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`).
+`S2 (responses-previous-id)` was a gap ([#104](https://github.com/jjjermiah/opencode-plugboard/issues/104)) until 0.51.0: plugboard now keeps each answer made with `store` on and continues from it with `previous_response_id` (see [responses.md](../../docs/responses.md#stored-responses)). The scripted run passes it; the live run `runs/live/2026-10-16-95261a4/` (plugboard 0.41.0) predates it and still records the refusal. Every other row passes on both targets. `fast` was served from `anthropic/claude-haiku-4-5` through the dev server's fallback (see its `REPORT.md`).
 
 ## Historical record
 

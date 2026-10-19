@@ -29,6 +29,22 @@ describe("resolveModel: allowlist patterns", () => {
     expect(resolveModel(testOptions({ models: [] }), "test/echo", CATALOG)).toMatchObject({ status: 403, code: "no_models_configured" })
   })
 
+  test("connected allows every model the catalog has, and only those", () => {
+    const options = testOptions({ models: "connected" })
+    expect(resolveModel(options, "other/model", CATALOG)).toEqual({ providerID: "other", id: "model" })
+    expect(resolveModel(options, "test/echo#high", CATALOG)).toEqual({ providerID: "test", id: "echo", variant: "high" })
+    expect(resolveModel(options, "test/ghost", CATALOG)).toEqual(notAvailable("test/ghost"))
+    expect(resolveModel(options, "test/echo#max", CATALOG)).toEqual(notAvailable("test/echo#max"))
+    expect(resolveModel(options, "echo", CATALOG)).toEqual(notAvailable("echo"))
+  })
+
+  test("connected lists the whole catalog, plus aliases whose target is in it", () => {
+    const options = testOptions({ models: "connected", aliases: { fast: "other/model", gone: "ghost/model" } })
+    expect(listAvailableModels(options, CATALOG).map((entry) => entry.id)).toEqual(["test/echo", "test/echo#low", "test/echo#high", "test/vision", "other/model", "fast"])
+    expect(resolveModel(options, "fast", CATALOG)).toEqual({ providerID: "other", id: "model" })
+    expect(resolveModel(options, "gone", CATALOG)).toEqual(notAvailable("gone"))
+  })
+
   test("model ids may contain slashes (openrouter/vendor/model)", () => {
     const catalog = [model("openrouter", "vendor/model")]
     expect(resolveModel(testOptions({ models: ["openrouter/*"] }), "openrouter/vendor/model", catalog)).toEqual({ providerID: "openrouter", id: "vendor/model" })

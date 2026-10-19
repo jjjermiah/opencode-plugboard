@@ -7,6 +7,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | Path | Job |
 |---|---|
 | `index.ts` | The plugin. Parses options and composes one generation: route, session caller, generation registration, context hook. Registers and returns, nothing else (I1). |
+| `bin/` | The command line entry (`bunx opencode-plugboard init`); the logic is `src/cli.ts`. Published. |
 | `src/` | All runtime code. This is what gets published. |
 | `docs/` | Architecture, configuration, per-API field lists, history, development and release notes. |
 | `test/` | The `bun test` suite, including the automated client matrix (`test/compat`) and SDK wire-type goldens (`test/types`). See [test/README.md](test/README.md). Not published. |
@@ -22,7 +23,8 @@ Where things live and where new code goes. How the pieces fit together, and why,
 |---|---|
 | `contract.ts` | The neutral vocabulary: `PlugRequest`, `PlugEvent`, `PlugError`, `CatalogModel` and the `ModelCaller` seam every front-end calls. |
 | `config.ts` | The options type, defaults, `parseOptions`, `authenticate`, `authenticateUsage` (the admin key) and the loopback host check. |
-| `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. |
+| `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. The `models` value `connected` (`CONNECTED` in `config.ts`) allows every catalog model. |
+| `cli.ts` | The `init` command: adds the plugin entry to an OpenCode config as JSONC (`jsonc-parser`), with a pinned version and a generated key. Not loaded by the plugin. |
 | `limits.ts` | Concurrency caps and requests per minute per app (option `limits`): a `ModelCaller` wrapper outside the fallbacks, with its queues on the runtime. |
 | `stop.ts` | Caller stop sequences on the answer text (#145, #149, #390). `withStopSequences` wraps the session caller in `index.ts`: it scans the streamed text, interrupts the host run on a match, and passes the finish on with its usage. Reasoning and tool calls are never matched. |
 | `budgets.ts` | Per-app budgets (option `budgets`): requests, tokens and cost per UTC day, week or month, read from the usage records. A `ModelCaller` wrapper outside `limits.ts`, with its warning state on the runtime. |

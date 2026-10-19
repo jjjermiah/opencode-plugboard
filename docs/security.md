@@ -21,6 +21,6 @@ Plugboard runs inside your OpenCode server, next to your provider logins. These 
 ## Reporting and reviews
 
 - Report a vulnerability privately, as [SECURITY.md](https://github.com/jjjermiah/opencode-plugboard/blob/main/SECURITY.md) explains. Do not open a public issue.
-- [Security reviews](security-reviews.md): what was reviewed, by whom, and what was found. They are AI-assisted reviews, not an audit.
-- [Red team](red-team.md): how the red-team rounds are run.
-- [Best practices](best-practices.md): the OpenSSF Best Practices answers.
+- [Security reviews](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/security-reviews.md): what was reviewed, by whom, and what was found. They are AI-assisted reviews, not an audit.
+- [Red team](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/red-team.md): how the red-team rounds are run.
+- [Best practices](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/best-practices.md): the OpenSSF Best Practices answers.

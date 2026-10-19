@@ -37,6 +37,13 @@ describe("apps: parsing", () => {
     expect(appPolicy(options, "constructor")).toBeUndefined()
   })
 
+  test('apps.<name>.models: "connected" is no narrowing: the app inherits the global list and gets no policy for it', () => {
+    const options = parseOptions({ ...base, apps: { open: { key: "k1", models: "connected" }, sys: { key: "k2", models: "connected", system: "S" } } })
+    expect(options.apps.open).toBeUndefined()
+    expect(options.apps.sys).toEqual({ system: "S", systemMode: "prepend", tools: true })
+    expect(ids(options, "open")).toEqual(ids(options))
+  })
+
   test("the keyless default app can be configured", () => {
     expect(parseOptions({ ...base, apps: { default: { system: "S", maxTools: 2 } } }).apps.default).toMatchObject({ system: "S", maxTools: 2 })
   })
@@ -58,6 +65,7 @@ describe("apps: parsing", () => {
     ["a policy for a non-default app on a keyless setup", { apps: { b: { tools: false } } }, /`apps.b` has no key/],
     ["apps.default next to keys", { keys: { a: "k" }, apps: { default: { tools: false } } }, /cannot be used together with `keys`/],
     ["a key on apps.default", { apps: { default: { key: "k" } } }, /reserved/],
+    ["an app models string other than connected", { ...base, keys: { a: "k" }, apps: { a: { models: "a/*" } } }, /`apps.a`.models must be a non-empty array or `"connected"`/],
     ["empty models", { ...base, keys: { a: "k" }, apps: { a: { models: [] } } }, /`apps.a`.models must be a non-empty array/],
     ["a models entry that is neither a pattern nor an alias", { ...base, keys: { a: "k" }, apps: { a: { models: ["nope"] } } }, /models entry `nope`/],
     ["a models entry with a wildcard id prefix", { ...base, keys: { a: "k" }, apps: { a: { models: ["a/x-*"] } } }, /models entry/],

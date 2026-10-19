@@ -18,7 +18,7 @@ Put it in your global config, `~/.config/opencode/opencode.jsonc`. Keep it globa
 {
   "plugins": [
     {
-      "package": "opencode-plugboard@0.48.0",
+      "package": "opencode-plugboard@__PLUGBOARD_VERSION__",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
         "models": ["anthropic/claude-sonnet-4-6", "github-copilot/*", "opencode-go/glm-5.3-flash"],
@@ -33,9 +33,9 @@ Put it in your global config, `~/.config/opencode/opencode.jsonc`. Keep it globa
 - `models` is the allowlist. A model that is not listed answers 404. Use your own providers here.
 - `aliases` gives a short name to a model. Every alias target must also be in `models`.
 
-Keep the version pinned. A bare `"opencode-plugboard"` means `latest`, so a cache refresh can load code you have not read. Change the number on purpose, after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md). The banner at the top of every page names the latest release.
+Keep the version pinned. A bare `"opencode-plugboard"` means `latest`, so a cache refresh can load code you have not read. Change the number on purpose, after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md). The snippet above always shows the latest release.
 
-OpenCode versions: the peer range is `>=2.0.26 <2.1`. CI runs the tests against the oldest, a middle and the newest 2.0.x release in that range.
+Plugboard needs OpenCode 2.0.26 or later in the 2.0 line.
 
 ## 3. Restart OpenCode and touch the server once
 
