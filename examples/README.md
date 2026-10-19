@@ -7,12 +7,12 @@ The table below is generated from the run records by `bun .github/scripts/exampl
 <!-- examples-index:start -->
 | Example | Shows | Scripted | Newest live run |
 | --- | --- | --- | --- |
-| [aider/](aider/) | Aider (a terminal coding tool) through plugboard's OpenAI-compatible endpoint. A runner checks one message on three models | pass | [`2026-10-12-a67e176`](aider/runs/live/2026-10-12-a67e176/), historical record |
+| [aider/](aider/) | Aider (a terminal coding tool) through plugboard's OpenAI-compatible endpoint. A runner checks one message and one file edit, in the edit format Aider picks for the model, on three models | pass | [`2026-10-12-a67e176`](aider/runs/live/2026-10-12-a67e176/), historical record |
 | [anthropic-js/](anthropic-js/) | The Anthropic TypeScript SDK (`@anthropic-ai/sdk`) on plugboard's Messages route: chat, tools, streaming, images, structured output as a forced tool, models and the error paths | pass | [`2026-10-16-a0efa4b`](anthropic-js/runs/live/2026-10-16-a0efa4b/), pass |
 | [anthropic-python/](anthropic-python/) | The Anthropic Python SDK (`anthropic`) on plugboard's Messages route: chat, tools, streaming, images, structured output as a forced tool, models and the error paths | pass | [`2026-10-16-a0efa4b`](anthropic-python/runs/live/2026-10-16-a0efa4b/), pass |
 | [anythingllm/](anythingllm/) | AnythingLLM in Docker with the Generic OpenAI provider's env vars | not run | not run |
 | [async-openai/](async-openai/) | async-openai (Rust) with a text call, a stream and one tool round trip. Run with `cargo run`; passes against plugboard | pass | [`2026-10-16-9852300`](async-openai/runs/live/2026-10-16-9852300/), pass |
-| [autogen/](autogen/) | AutoGen (autogen 0.14.1, the classic `config_list` API) with a text call, a stream and a two-agent tool round. A PEP 723 script, run with `uv run`; passes on the OpenAI route, Anthropic route not run | not run | not run |
+| [autogen/](autogen/) | AutoGen (autogen 0.14.1, the classic `config_list` API) on the Chat Completions route (`api_type: openai`) and the Messages route (`api_type: anthropic`): a text call, a two-agent tool round and, on Chat Completions, a stream. A `uv run` project with exact pins | pass | not run |
 | [claude-code/](claude-code/) | Claude Code through `ANTHROPIC_BASE_URL`: shell exports and a `settings.json` `env` block | not run | not run |
 | [codex-cli/](codex-cli/) | Codex CLI (`@openai/codex`), headless (`codex exec`), through a custom `responses` provider with an `env_key` and no login: a chat and a stream. A tool call and a known model slug are gaps (#498) | pass | not run |
 | [continue/](continue/) | Continue `config.yaml` with one plugboard model on Chat Completions and one on Responses | not run | not run |

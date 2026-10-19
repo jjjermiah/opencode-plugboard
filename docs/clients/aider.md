@@ -16,7 +16,7 @@ The `openai/` prefix makes Aider use `OPENAI_API_BASE`; without it the request g
 
 ## What works
 
-Chat, edits and commit messages. Aider sends several requests per turn (repo map, edits, commit message).
+Chat, file edits and commit messages. Aider picks the edit format for the model id: `whole` for `fast` and for ids it does not know, `diff` (SEARCH/REPLACE blocks) for Claude ids. Plugboard passes either through as text, and Aider applies it to your files. Aider sends several requests per turn (repo map, edits, commit message).
 
 ## Limits
 

@@ -14,6 +14,11 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- The Aider example now checks a file edit through plugboard ([#215](https://github.com/jjjermiah/opencode-plugboard/issues/215)). A new shared scenario, S8, asks Aider to change a file in a throwaway git repo. The scripted model answers in the edit format Aider picks for the model, whole file for `fast` and `openai/gpt-5.6-luna#low`, SEARCH/REPLACE blocks for `anthropic/claude-haiku-4-5`, and the runner checks that the file changed. The committed scripted run has the three transcripts, and the Aider page says which edit formats work.
+- The AutoGen example now runs on the Anthropic Messages route as well ([#230](https://github.com/jjjermiah/opencode-plugboard/issues/230)). It is a `uv run` project with exact pins and a lockfile, and its runner is part of the scripted CI check. Chat and the two-agent tool round trip run on Chat Completions (`api_type: openai`) and on Messages (`api_type: anthropic`, `base_url` without `/v1`), and the stream runs on Chat Completions. The AutoGen page shows both configs.
+
 ### Security
 
 - Dropped the lockfile of the Aider example ([#526](https://github.com/jjjermiah/opencode-plugboard/issues/526)). It pinned litellm 1.81.10, which carries about 25 advisories that cannot be fixed, because Aider refuses to start with any newer litellm. `examples/aider/pyproject.toml` still pins `aider-chat` exactly and caps litellm at 1.81.10, so a fresh resolve starts and the scripted run is unchanged. The runner calls `uv run --isolated`, which resolves in a temporary environment and writes no lockfile, and Dependabot no longer watches the example. The example ships in no package.

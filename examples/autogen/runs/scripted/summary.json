@@ -1,0 +1,329 @@
+{
+  "client": {
+    "name": "autogen",
+    "runtime": {
+      "name": "python",
+      "version": "3"
+    },
+    "version": "0.14.1"
+  },
+  "example": "autogen",
+  "models": [
+    "fast",
+    "anthropic/claude-haiku-4-5",
+    "openai/gpt-5.6-luna#low"
+  ],
+  "scenarios": [
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "fast",
+      "note": "not checked, finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "fast",
+      "note": "not checked, finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.messages.fast.json",
+      "variant": "messages"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "not checked, finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.chat.anthropic-claude-haiku-4-5.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "not checked, finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.messages.anthropic-claude-haiku-4-5.json",
+      "variant": "messages"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "not checked, finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.chat.openai-gpt-5.6-luna-low.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "answer contains pong",
+          "ok": true
+        },
+        {
+          "name": "usage present",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S1",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "not checked, finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S1.messages.openai-gpt-5.6-luna-low.json",
+      "variant": "messages"
+    },
+    {
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "fast",
+      "note": "not checked, turn 1 finish_reason is tool_calls: AutoGen returns the reply text, not the finish reason; not checked, turn 2 finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.chat.fast.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "fast",
+      "note": "not checked, turn 1 finish_reason is tool_calls: AutoGen returns the reply text, not the finish reason; not checked, turn 2 finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.messages.fast.json",
+      "variant": "messages"
+    },
+    {
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "not checked, turn 1 finish_reason is tool_calls: AutoGen returns the reply text, not the finish reason; not checked, turn 2 finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.chat.anthropic-claude-haiku-4-5.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "anthropic/claude-haiku-4-5",
+      "note": "not checked, turn 1 finish_reason is tool_calls: AutoGen returns the reply text, not the finish reason; not checked, turn 2 finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.messages.anthropic-claude-haiku-4-5.json",
+      "variant": "messages"
+    },
+    {
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "not checked, turn 1 finish_reason is tool_calls: AutoGen returns the reply text, not the finish reason; not checked, turn 2 finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.chat.openai-gpt-5.6-luna-low.json",
+      "variant": "chat"
+    },
+    {
+      "checks": [
+        {
+          "name": "one get_weather call",
+          "ok": true
+        },
+        {
+          "name": "city is Paris",
+          "ok": true
+        },
+        {
+          "name": "call id present",
+          "ok": true
+        },
+        {
+          "name": "turn 2 mentions 18 or cloudy",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S2",
+      "model": "openai/gpt-5.6-luna#low",
+      "note": "not checked, turn 1 finish_reason is tool_calls: AutoGen returns the reply text, not the finish reason; not checked, turn 2 finish_reason is stop: AutoGen returns the reply text, not the finish reason",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S2.messages.openai-gpt-5.6-luna-low.json",
+      "variant": "messages"
+    },
+    {
+      "checks": [
+        {
+          "name": "streamed text contains pong",
+          "ok": true
+        },
+        {
+          "name": "stream ended normally",
+          "ok": true
+        }
+      ],
+      "error": null,
+      "id": "S3",
+      "model": "fast",
+      "note": "not checked, finish_reason is stop: AutoGen returns the reply text, not the finish reason; not checked, usage chunk present when requested: AutoGen returns no usage for a streamed reply",
+      "required": true,
+      "status": "pass",
+      "transcript": "transcripts/S3.chat.fast.json",
+      "variant": "chat"
+    }
+  ],
+  "schema": 1,
+  "target": "scripted",
+  "verdict": "pass"
+}

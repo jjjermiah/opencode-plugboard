@@ -1,0 +1,7 @@
+[project]
+name = "plugboard-example-autogen"
+version = "0.1.0"
+description = "AutoGen (autogen 0.14.1, the classic config_list / ConversableAgent API) against plugboard on the OpenAI and Anthropic routes: chat and a two-agent tool round trip. Exact pin, locked in uv.lock."
+requires-python = ">=3.12"
+# Exact pin: the direct dependency, with the OpenAI and Anthropic client extras. uv.lock pins everything else.
+dependencies = ["autogen[openai,anthropic]==0.14.1"]

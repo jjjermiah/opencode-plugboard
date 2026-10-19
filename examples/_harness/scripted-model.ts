@@ -34,6 +34,18 @@ function say(answer: string): PlugEvent[] {
   return [ev.text(answer.slice(0, half)), ev.text(answer.slice(half)), ev.finish("stop", USAGE)]
 }
 
+/**
+ * Aider's edit reply to S8, in the format its prompt asks for. A model Aider knows to prefer `diff` gets SEARCH/REPLACE blocks; any other
+ * gets the whole file. Aider's file is `hello.py`, which holds `print("hi")`.
+ */
+function aiderEdit(prompts: string): PlugEvent[] {
+  const fence = "```"
+  if (prompts.includes("SEARCH/REPLACE")) {
+    return say(`I will change the greeting.\n\nhello.py\n${fence}python\n<<<<<<< SEARCH\nprint("hi")\n=======\nprint("hello from plugboard")\n>>>>>>> REPLACE\n${fence}\n`)
+  }
+  return say(`I will change the greeting.\n\nhello.py\n${fence}\nprint("hello from plugboard")\n${fence}\n`)
+}
+
 const propertiesOf = (schema: unknown): object => (schema as { properties?: object } | undefined)?.properties ?? {}
 
 /**
@@ -82,6 +94,7 @@ export function answer(request: PlugRequest): PlugEvent[] {
       return [ev.call(CALL_ID, "exec", { input: 'text(JSON.stringify(await tools.mcp__weather__get_weather({ city: "Paris" })))' }), ev.finish("tool-calls", USAGE)]
     }
   }
+  if (text.includes(prompt("S8"))) return aiderEdit(`${request.system.join("\n")}\n${text}`)
   if (text.includes(prompt("S5"))) return say(hasPngPart(request) ? "red" : "no image")
   if (text.includes(prompt("S6"))) return say(JSON.stringify(wantsOutputWrapper(text) ? { output: MEAL } : MEAL))
   return [ev.error({ status: 500, kind: "server", message: `scripted model has no answer for this prompt: ${text.slice(0, 80)}` })]
