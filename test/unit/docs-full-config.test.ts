@@ -28,14 +28,14 @@ describe("an options fragment", () => {
     expect(config.plugins).toHaveLength(1)
     expect(config.plugins[0].package).toBe(`opencode-plugboard@${VERSION}`)
     expect(config.plugins[0].options).toEqual({ listen: { host: "127.0.0.1", port: 4010 }, keys: { bot: "{env:KEY}" }, models: ["anthropic/*"] })
-    expect(file).not.toContain("added so the file works")
+    expect(file).not.toContain("one key per app")
   })
 
   test("a fragment with no keys and no models gets both, each marked", () => {
     const file = fullConfig(`"aliases": { "fast": "anthropic/claude-haiku-4-5" }`, "options", VERSION)
     expect(options(file)).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "connected", aliases: { fast: "anthropic/claude-haiku-4-5" } })
-    expect(file).toContain(`"keys": { "my-app": "{env:PLUGBOARD_KEY}" }, // added so the file works`)
-    expect(file).toContain(`"models": "connected", // added so the file works`)
+    expect(file).toContain(`"keys": { "my-app": "{env:PLUGBOARD_KEY}" }, // one key per app; callers send it as their API key`)
+    expect(file).toContain(`"models": "connected", // which models apps may use: every model you are logged in to`)
   })
 
   test("a fragment that has keys only gets models; one that has models only gets keys", () => {
@@ -77,13 +77,13 @@ describe("an options fragment", () => {
     const file = fullConfig(`"apps": {\n  "discord-bot": { "models": ["fast"] },\n  "coding": { "models": ["anthropic/*"] }\n}`, "options", VERSION)
     expect(options(file).keys).toEqual({ "discord-bot": "{env:PLUGBOARD_KEY_DISCORD_BOT}", coding: "{env:PLUGBOARD_KEY_CODING}" })
     // Several keys are written one to a line, with the marker on the opening line.
-    expect(file).toContain(`"keys": { // added so the file works\n          "discord-bot": "{env:PLUGBOARD_KEY_DISCORD_BOT}",\n`)
+    expect(file).toContain(`"keys": { // one key per app; callers send it as their API key\n          "discord-bot": "{env:PLUGBOARD_KEY_DISCORD_BOT}",\n`)
   })
 
   test("several added keys in an entry fragment are indented and still parse", () => {
     const file = fullConfig(`"options": {\n  "apps": { "a": {}, "b": {} }\n}`, "entry", VERSION)
     expect(options(file).keys).toEqual({ a: "{env:PLUGBOARD_KEY_A}", b: "{env:PLUGBOARD_KEY_B}" })
-    expect(file).toContain(`        "keys": { // added so the file works\n          "a": "{env:PLUGBOARD_KEY_A}",\n          "b": "{env:PLUGBOARD_KEY_B}"\n        },\n`)
+    expect(file).toContain(`        "keys": { // one key per app; callers send it as their API key\n          "a": "{env:PLUGBOARD_KEY_A}",\n          "b": "{env:PLUGBOARD_KEY_B}"\n        },\n`)
   })
 
   test("app names in limits, budgets and cache count too", () => {
@@ -117,13 +117,13 @@ describe("an entry fragment", () => {
     const config = load(file)
     expect(config.plugins[0].package).toBe(`opencode-plugboard@${VERSION}`)
     expect(config.plugins[0].options).toEqual({ keys: { "claude-code": "{env:K}" }, models: ["anthropic/*"] })
-    expect(file).not.toContain("added so the file works")
+    expect(file).not.toContain("one key per app")
   })
 
   test("the missing members go at the top of options, marked, and the rest stays as written", () => {
     const file = fullConfig(`"options": {\n  // the proxy\n  "listen": { "host": "0.0.0.0", "port": 4010 },\n  "aliases": { "fast": "a/b" }\n}`, "entry", VERSION)
     expect(options(file)).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "connected", listen: { host: "0.0.0.0", port: 4010 }, aliases: { fast: "a/b" } })
-    expect(file).toContain(`"models": "connected", // added so the file works\n        // the proxy\n        "listen"`)
+    expect(file).toContain(`"models": "connected", // which models apps may use: every model you are logged in to\n        // the proxy\n        "listen"`)
   })
 
   test("a wrapped fragment, as the self-hosted pages write it", () => {
