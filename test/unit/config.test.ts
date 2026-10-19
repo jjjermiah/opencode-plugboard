@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { appHistoryLimits, authenticate, authenticateUsage, bodyLimits, CONNECTED, isLoopbackHost, maxNFor, parseOptions, reasoningOutputFor } from "../../src/config.js"
+import { appHistoryLimits, appPolicy, authenticate, authenticateUsage, bodyLimits, CONNECTED, hostedToolsFor, isLoopbackHost, maxNFor, parseOptions, reasoningOutputFor } from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -653,6 +653,16 @@ describe("reasoningOutput (since 0.36.0)", () => {
   test("per app: apps.<name>.reasoningOutput is kept, and must be a boolean", () => {
     expect(parseOptions({ keys: { a: "k" }, apps: { a: { reasoningOutput: false } } }).apps.a).toMatchObject({ reasoningOutput: false })
     expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { reasoningOutput: 1 } } })).toThrow("plugboard option `apps.a.reasoningOutput` must be a boolean")
+  })
+
+  test("per app: apps.<name>.hostedTools is drop or refuse, drop when unset, and alone it makes a policy", () => {
+    const options = parseOptions({ keys: { a: "k1", b: "k2", c: "k3" }, apps: { a: { hostedTools: "refuse" }, b: { hostedTools: "drop" } } })
+    expect(appPolicy(options, "a")).toMatchObject({ hostedTools: "refuse" })
+    expect(hostedToolsFor(options, "a")).toBe("refuse")
+    expect(hostedToolsFor(options, "b")).toBe("drop")
+    expect(hostedToolsFor(options, "c")).toBe("drop")
+    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { hostedTools: "keep" } } })).toThrow("plugboard option `apps.a.hostedTools` must be `drop` or `refuse`")
+    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { hostedTools: true } } })).toThrow("`apps.a.hostedTools`")
   })
 
   test("the effective value: the app's own value wins over the global one, both ways, and the global one applies when the app has none", () => {

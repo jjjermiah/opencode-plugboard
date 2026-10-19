@@ -10,7 +10,7 @@
 
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
-import { appPolicy, historyTemplate, reasoningOutputFor, requestedModel } from "../config.js"
+import { appPolicy, historyTemplate, hostedToolsFor, reasoningOutputFor, requestedModel } from "../config.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { effortUnavailable, resolveModel, THINKING_HEADER } from "../models.js"
@@ -73,7 +73,13 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   if (isPlugError(inlined)) return fail(inlined)
   const inlinedChain = history === undefined ? undefined : inlineFiles("responses", { input: history }, loaded)
   if (inlinedChain !== undefined && isPlugError(inlinedChain)) return fail(inlinedChain)
-  const parsed = parseResponsesRequest(inlined, host.options, (itemId) => findItem(app, itemId), (inlinedChain as { input: ReadonlyArray<Record<string, unknown>> } | undefined)?.input)
+  const parsed = parseResponsesRequest(
+    inlined,
+    host.options,
+    (itemId) => findItem(app, itemId),
+    (inlinedChain as { input: ReadonlyArray<Record<string, unknown>> } | undefined)?.input,
+    hostedToolsFor(host.options, app),
+  )
   if (isPlugError(parsed)) return fail(parsed)
   // `store: false` keeps nothing for retrieval, so its output items cannot be referenced later (#426).
   const keeps = (body as { store?: unknown }).store !== false

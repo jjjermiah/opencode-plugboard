@@ -375,3 +375,75 @@ describe("#498 Codex CLI: namespace, custom, additional_tools and hosted tools",
     expect(caller.calls).toEqual([])
   })
 })
+
+describe("#498 review: hosted tools, long names and stored chains", () => {
+  const fnTool = (name: string) => ({ type: "function", name, parameters: { type: "object" } })
+
+  test("hosted tools alone are a 400 naming the field, whatever tool_choice says, and the model is never called", async () => {
+    const caller = await route([ev.finish()])
+    for (const tool_choice of ["auto", "required"]) {
+      const reply = await server!.send(responses({ tools: [{ type: "web_search" }], tool_choice }))
+      expect(reply.status).toBe(400)
+      expect(reply.json().error).toMatchObject({ code: "unsupported_parameter", param: "tools[0].type" })
+      expect(reply.headers).not.toHaveProperty("x-plugboard-dropped-tools")
+    }
+    expect(caller.calls).toEqual([])
+  })
+
+  test('apps.<name>.hostedTools "refuse" refuses a hosted tool next to function tools; another app, and the default, drop it', async () => {
+    const caller = await route([ev.text("ok"), ev.finish()], { keys: { strict: "k-strict", lax: "k-lax" }, apps: { strict: { hostedTools: "refuse" }, lax: { hostedTools: "drop" } } })
+    const send = (key: string) => server!.send({ ...responses({ tools: [fnTool("a"), { type: "web_search" }] }), headers: { authorization: `Bearer ${key}` } })
+    const strict = await send("k-strict")
+    expect(strict.status).toBe(400)
+    expect(strict.json().error).toMatchObject({ code: "unsupported_parameter", param: "tools[1].type", message: expect.stringContaining("hostedTools") })
+    expect(caller.calls).toEqual([])
+    const lax = await send("k-lax")
+    expect(lax.status).toBe(200)
+    expect(lax.headers["x-plugboard-dropped-tools"]).toBe("web_search")
+  })
+
+  test("a long MCP server and tool name: the model gets a 64-character name, and the call comes back under the name the client declared", async () => {
+    const server64 = "mcp__corporate_knowledge_base_search_and_retrieval_server"
+    const tool = "retrieve_and_summarise_documents_by_semantic_similarity_with_filters"
+    const caller = new FakeModelCaller((request) => [ev.call("call_1", request.tools[0]!.name, { q: 1 }), ev.finish("tool-calls")])
+    const started = await startRoute({ caller, options: {} })
+    try {
+      const body = { model: "test/echo", tools: [{ type: "namespace", name: server64, tools: [fnTool(tool)] }] }
+      const reply = await started.send({ method: "POST", path: "/v1/responses", body: { ...body, input: "go" } })
+      const flat = caller.call.request.tools[0]!.name
+      expect(flat).toHaveLength(64)
+      expect(reply.json().output).toEqual([{ id: expect.stringMatching(/^fc_/), type: "function_call", status: "completed", call_id: "call_1", name: tool, namespace: server64, arguments: '{"q":1}' }])
+      // The next turn: the call as the client sends it back is the same flat name, so its result pairs with it.
+      const next = await started.send({
+        method: "POST",
+        path: "/v1/responses",
+        body: {
+          ...body,
+          input: [
+            { type: "message", role: "user", content: [{ type: "input_text", text: "go" }] },
+            { type: "function_call", call_id: "call_1", name: tool, namespace: server64, arguments: '{"q":1}' },
+            { type: "function_call_output", call_id: "call_1", output: "found" },
+          ],
+        },
+      })
+      expect(next.status).toBe(200)
+      expect(caller.calls[1]!.request.messages[1]).toMatchObject({ content: [{ type: "tool-call", name: flat }] })
+      expect(caller.calls[1]!.request.messages[2]).toMatchObject({ content: [{ type: "tool-result", name: flat }] })
+    } finally {
+      await started.close()
+    }
+  })
+
+  test("previous_response_id: an additional_tools item whose tool changed description between turns is not a duplicate, and the newer one is offered", async () => {
+    const caller = await route([ev.text("one"), ev.finish(), ev.text("two"), ev.finish()])
+    const user = { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }
+    const first = await server!.send(responses({ input: [{ type: "additional_tools", role: "developer", tools: [{ ...fnTool("a"), description: "old" }] }, user] }))
+    expect(first.status).toBe(200)
+    const second = await server!.send(
+      responses({ previous_response_id: first.json().id, input: [{ type: "additional_tools", role: "developer", tools: [{ ...fnTool("a"), description: "new" }] }, user] }),
+    )
+    expect(second.status).toBe(200)
+    expect(caller.calls[1]!.request.tools.map((tool) => [tool.name, tool.description])).toEqual([["a", "new"]])
+    expect(second.json().tools).toEqual([{ ...fnTool("a"), description: "new", strict: false }])
+  })
+})

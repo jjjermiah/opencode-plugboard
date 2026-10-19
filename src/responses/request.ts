@@ -12,7 +12,8 @@
  * input item is a tool list; hosted tools are left out and reported. The route resolves `model` to a
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
-import type { PlugboardOptions } from "../config.js"
+import { createHash } from "node:crypto"
+import type { HostedTools, PlugboardOptions } from "../config.js"
 import { show } from "../client-value.js"
 import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
@@ -270,22 +271,42 @@ interface DeclaredTools {
   readonly routes: Map<string, ToolRoute>
   /** Hosted tool types that were left out. */
   readonly dropped: string[]
+  /** The declared tools as the response object echoes them: the caller's own entries, hosted tools left out, `additional_tools` lists included. */
+  readonly echo: unknown[]
 }
 
 /** The namespace Codex gives to top-level tools; a tool in it keeps its bare name. */
 const DEFAULT_NAMESPACE = "functions"
 
+/** The longest function name OpenAI and Anthropic take. */
+const MAX_TOOL_NAME = 64
+/** Hex characters of the hash that ends a shortened name. */
+const NAME_HASH_LENGTH = 8
+
 /**
- * Tool types that run on OpenAI's servers: nothing in plugboard can run them, and a client cannot know that, so they are
- * left out and reported (`x-plugboard-dropped-tools`). Other types (`local_shell`, `tool_search`, `computer_use_preview`, ...)
- * need a client-side round trip plugboard has no shape for, and stay refused.
+ * Tool types that run on OpenAI's servers: nothing in plugboard can run them, and a client cannot know that, so next to function
+ * tools they are left out and reported (`x-plugboard-dropped-tools`; app option `hostedTools`). Other types (`local_shell`,
+ * `tool_search`, `computer_use_preview`, ...) need a client-side round trip plugboard has no shape for, and stay refused.
  */
 const HOSTED_TOOLS = new Set(["web_search", "web_search_preview", "web_search_preview_2025_03_11", "file_search", "code_interpreter", "image_generation", "mcp"])
 
 const isDefaultNamespace = (namespace: string | undefined): boolean => namespace === undefined || namespace === "" || namespace === DEFAULT_NAMESPACE
 
-/** The function name the model sees for a tool of a `namespace`: the namespace and the name, joined by `__` (`mcp__weather__get_weather`). */
-const flatName = (namespace: string | undefined, name: string): string => (isDefaultNamespace(namespace) ? name : `${namespace}${namespace!.endsWith("__") ? "" : "__"}${name}`)
+/**
+ * The function name the model sees for a tool: the namespace and the name, joined by `__` (`mcp__weather__get_weather`). A name
+ * over 64 characters (an MCP server name and a long tool name make one) is cut and ends in a hash of the namespace and the name, so
+ * two long names stay apart and the same tool gets the same name in the offer, in a call and in the history.
+ */
+const flatName = (namespace: string | undefined, name: string): string => {
+  const own = isDefaultNamespace(namespace)
+  const full = own ? name : `${namespace}${namespace!.endsWith("__") ? "" : "__"}${name}`
+  if (full.length <= MAX_TOOL_NAME) return full
+  const hash = createHash("sha256")
+    .update(`${own ? "" : namespace}\0${name}`)
+    .digest("hex")
+    .slice(0, NAME_HASH_LENGTH)
+  return `${full.slice(0, MAX_TOOL_NAME - NAME_HASH_LENGTH - 1)}_${hash}`
+}
 
 /** A freeform tool as a function tool taking one string: its grammar, when it has one, goes into the description. */
 const customTool = (name: string, entry: JsonObject): PlugTool => {
@@ -302,51 +323,62 @@ const customTool = (name: string, entry: JsonObject): PlugTool => {
 /**
  * Tool declarations -> function tools. A `namespace` tool (Codex sends every MCP server's tools as one) is flattened into
  * one function per tool, named by `flatName`. A `custom` tool becomes a function with one string argument. `routes` records
- * how a call to each goes back to the client. Hosted tool types are dropped; any other type is refused. The names are the
- * flat ones, so the duplicate, reserved-name and `maxTools` checks count what the model gets.
+ * how a call to each goes back to the client. Hosted tool types are dropped (`hosted: "drop"`, and only when function tools come
+ * with them) or refused (`"refuse"`); any other type is refused. The names are the flat ones, so the duplicate, reserved-name and
+ * `maxTools` checks count what the model gets. A name declared again by a later `additional_tools` item replaces the earlier
+ * declaration, because Codex sends the list again with each turn and a description may change between turns; any other repeat is a duplicate.
  */
-const parseTools = (sources: ReadonlyArray<ToolSource>): DeclaredTools | PlugError => {
+const parseTools = (sources: ReadonlyArray<ToolSource>, hosted: HostedTools): DeclaredTools | PlugError => {
   const tools: PlugTool[] = []
   const routes = new Map<string, ToolRoute>()
   const dropped: string[] = []
-  // The flat name and the declaration it came from. A client may send the same `additional_tools` item again with its history.
-  const seen = new Map<string, string>()
+  let firstHosted: { type: string; at: string } | undefined
+  /** The declarations in force, in the order of `tools`: the entry and the namespace it sat in, for the echo. */
+  const slots: Array<{ namespace?: JsonObject; entry: JsonObject }> = []
+  const seen = new Map<string, { index: number; source: number; additional: boolean }>()
 
-  const add = (entry: JsonObject, at: string, namespace: string | undefined, additional: boolean): PlugError | undefined => {
+  const add = (entry: JsonObject, at: string, namespace: JsonObject | undefined, source: number, additional: boolean): PlugError | undefined => {
     if (typeof entry.name !== "string" || entry.name.length === 0) return bad(`Each ${entry.type} tool needs a "name"`, `${at}.name`)
-    const name = flatName(namespace, entry.name)
-    const declaration = JSON.stringify([namespace, entry])
-    if (seen.has(name)) {
-      if (additional && seen.get(name) === declaration) return undefined
-      return bad(`Duplicate tool name "${name}"`, `${at}.name`)
-    }
+    const space = namespace?.name as string | undefined
+    const name = flatName(space, entry.name)
+    const known = seen.get(name)
+    if (known && !(additional && known.additional && known.source !== source)) return bad(`Duplicate tool name "${name}"`, `${at}.name`)
     if (entry.description != null && typeof entry.description !== "string") return bad("Tool description must be a string", `${at}.description`)
     // `parameters` may be null (strict mode with no arguments): a tool without arguments.
     if (entry.parameters != null && !isRecord(entry.parameters)) return bad("Tool parameters must be a JSON Schema object", `${at}.parameters`)
-    seen.set(name, declaration)
     const custom = entry.type === "custom"
-    tools.push(
-      custom
-        ? customTool(name, entry)
-        : {
-            name,
-            description: typeof entry.description === "string" ? entry.description : "",
-            parameters: isRecord(entry.parameters) ? entry.parameters : { type: "object", properties: {} },
-          },
-    )
-    const target = isDefaultNamespace(namespace) ? undefined : namespace
-    if (custom || target !== undefined) routes.set(name, { name: entry.name, ...(target !== undefined ? { namespace: target } : {}), ...(custom ? { custom: true } : {}) })
+    const tool: PlugTool = custom
+      ? customTool(name, entry)
+      : {
+          name,
+          description: typeof entry.description === "string" ? entry.description : "",
+          parameters: isRecord(entry.parameters) ? entry.parameters : { type: "object", properties: {} },
+        }
+    const slot = { ...(namespace ? { namespace } : {}), entry }
+    if (known) {
+      tools[known.index] = tool
+      slots[known.index] = slot
+      seen.set(name, { ...known, source })
+      routes.delete(name)
+    } else {
+      seen.set(name, { index: tools.length, source, additional })
+      tools.push(tool)
+      slots.push(slot)
+    }
+    const target = isDefaultNamespace(space) ? undefined : space
+    // A call goes back under its own name, in its namespace, as a custom call; a shortened name is restored the same way.
+    if (custom || target !== undefined || name !== entry.name) routes.set(name, { name: entry.name, ...(target !== undefined ? { namespace: target } : {}), ...(custom ? { custom: true } : {}) })
     return undefined
   }
 
-  for (const { raw, param, additional } of sources) {
+  for (const [source, { raw, param, additional }] of sources.entries()) {
     if (raw == null) continue
     if (!Array.isArray(raw)) return bad(`${param} must be an array`, param)
     for (const [index, entry] of raw.entries()) {
       const at = `${param}[${index}]`
       if (!isRecord(entry)) return bad("Each tool must be an object", at)
       if (entry.type === "function" || entry.type === "custom") {
-        const problem = add(entry, at, undefined, additional)
+        const problem = add(entry, at, undefined, source, additional)
         if (problem) return problem
       } else if (entry.type === "namespace") {
         if (typeof entry.name !== "string" || entry.name.length === 0) return bad('Each namespace tool needs a "name"', `${at}.name`)
@@ -356,10 +388,12 @@ const parseTools = (sources: ReadonlyArray<ToolSource>): DeclaredTools | PlugErr
           if (!isRecord(inner)) return bad("Each tool must be an object", innerAt)
           if (inner.type !== "function" && inner.type !== "custom")
             return unsupported(`Unsupported tool type "${show(inner.type)}" in a namespace: only function and custom tools are supported`, `${innerAt}.type`)
-          const problem = add(inner, innerAt, entry.name, additional)
+          const problem = add(inner, innerAt, entry, source, additional)
           if (problem) return problem
         }
       } else if (typeof entry.type === "string" && HOSTED_TOOLS.has(entry.type)) {
+        if (hosted === "refuse") return unsupported(`Unsupported tool type "${entry.type}": hosted tools run on OpenAI's servers, and this app refuses them (option \`hostedTools\`)`, `${at}.type`)
+        firstHosted ??= { type: entry.type, at }
         if (!dropped.includes(entry.type)) dropped.push(entry.type)
       } else {
         return unsupported(
@@ -369,7 +403,32 @@ const parseTools = (sources: ReadonlyArray<ToolSource>): DeclaredTools | PlugErr
       }
     }
   }
-  return { tools, routes, dropped }
+  // A hosted tool is left out only because the function tools next to it can still be offered. With none, the request would run with a
+  // tool list it did not ask for (or with `tool_choice: required` and nothing to call), so it is refused, as it was before.
+  if (firstHosted && tools.length === 0) {
+    return unsupported(
+      `Unsupported tool type "${firstHosted.type}": hosted tools run on OpenAI's servers and plugboard has none. They are left out only when function tools are sent with them`,
+      `${firstHosted.at}.type`,
+    )
+  }
+
+  // The echo keeps the caller's shape: top-level tools as sent, and each namespace once, with the tools of it that are in force.
+  const echo: unknown[] = []
+  const groups = new Map<string, { group: JsonObject; tools: unknown[] }>()
+  for (const { namespace, entry } of slots) {
+    if (!namespace) echo.push(echoTool(entry))
+    else {
+      let found = groups.get(namespace.name as string)
+      if (!found) {
+        found = { group: { ...namespace }, tools: [] }
+        found.group.tools = found.tools
+        groups.set(namespace.name as string, found)
+        echo.push(found.group)
+      }
+      found.tools.push(echoTool(entry))
+    }
+  }
+  return { tools, routes, dropped, echo }
 }
 
 /**
@@ -443,8 +502,15 @@ const checkUnsupported = (body: JsonObject): PlugError | undefined => {
 /**
  * `history` is the stored response `previous_response_id` named: its input and output items, ahead of the new `input`.
  * The route looks it up (src/responses/state.ts); this decoder only checks the field's type. `instructions` are never carried over.
+ * `hosted` is the app's `hostedTools` option: what happens to a hosted tool next to function tools.
  */
-export function parseResponsesRequest(body: unknown, options: PlugboardOptions, resolve?: ItemResolver, history?: ReadonlyArray<JsonObject>): ParsedResponses | PlugError {
+export function parseResponsesRequest(
+  body: unknown,
+  options: PlugboardOptions,
+  resolve?: ItemResolver,
+  history?: ReadonlyArray<JsonObject>,
+  hosted: HostedTools = "drop",
+): ParsedResponses | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (body.input == null) return bad("input is required", "input")
@@ -459,7 +525,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
   const parsed = parseInput(body.input, resolve, history)
   if (isPlugError(parsed)) return parsed
   // `additional_tools` items are tool lists too: with one, `tools` may be absent (Codex sends it so for a model it knows, #498).
-  const declared = parseTools([{ raw: body.tools, param: "tools", additional: false }, ...parsed.toolSources])
+  const declared = parseTools([{ raw: body.tools, param: "tools", additional: false }, ...parsed.toolSources], hosted)
   if (isPlugError(declared)) return declared
   const callerTools = declared.tools
   const toolChoice = parseToolChoice(body.tool_choice)
@@ -516,7 +582,7 @@ export function parseResponsesRequest(body: unknown, options: PlugboardOptions, 
         temperature: generation.temperature ?? null,
         text: { format: isRecord(text?.format) ? text.format : { type: "text" } },
         tool_choice: body.tool_choice ?? "auto",
-        tools: Array.isArray(body.tools) ? body.tools.map(echoTool) : [],
+        tools: declared.echo,
         top_p: generation.topP ?? null,
         truncation: "disabled",
         user: typeof body.user === "string" ? body.user : null,
