@@ -196,6 +196,15 @@ describe("Gemini CLI session context", () => {
     expect(normaliseSessionContext("Today's Date: 2026-10-19")).toBe("Today's Date: 2026-10-19")
   })
 
+  test("puts the Gemini CLI's available skills in name order, whatever order the filesystem listed them", () => {
+    const skill = (name: string) => `  <skill>\n    <name>${name}</name>\n    <description>About ${name}.</description>\n  </skill>`
+    const prompt = (...names: Array<string>) => `Before.\n<available_skills>\n${names.map(skill).join("\n")}\n</available_skills>\nAfter.`
+    expect(normaliseSessionContext(prompt("skill-creator", "antigravity-support"))).toBe(prompt("antigravity-support", "skill-creator"))
+    expect(normaliseSessionContext(prompt("b", "c", "a"))).toBe(normaliseSessionContext(prompt("c", "a", "b")))
+    expect(normaliseSessionContext(prompt("b", "c", "a"))).toBe(prompt("a", "b", "c"))
+    expect(normaliseSessionContext("<skill><name>z</name></skill><skill><name>a</name></skill>")).toBe("<skill><name>z</name></skill><skill><name>a</name></skill>")
+  })
+
   test("applies to every string of a parsed body and keeps its structure", () => {
     const body = { contents: [{ parts: [{ text: block }, { text: "Reply with exactly: pong" }] }], n: 3 }
     const out = normaliseSessionContextValue(body) as typeof body

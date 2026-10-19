@@ -117,12 +117,29 @@ const CODEX_WALL_TIME = /(Wall time:? )[0-9.]+( seconds)/g
 /** PR-Agent puts the day it runs in the review prompt (`Today's Date: 2026-10-19`), right after its `--PR Info--` header. */
 const PR_AGENT_DATE = /(--PR Info--\n\nToday's Date: )\d{4}-\d{2}-\d{2}/g
 
+/** The Gemini CLI lists its skills in the order the filesystem returns them, which changes from run to run. */
+const AVAILABLE_SKILLS = /<available_skills>[\s\S]*?<\/available_skills>/g
+const SKILL_ENTRY = /[ \t]*<skill>[\s\S]*?<\/skill>/g
+const SKILL_NAME = /<name>([^<]*)<\/name>/
+
+const skillName = (entry: string): string => SKILL_NAME.exec(entry)?.[1] ?? entry
+
+/** Puts the `<skill>` entries of each `<available_skills>` block in name order. Text outside the entries stays where it is. */
+function sortAvailableSkills(text: string): string {
+  return text.replace(AVAILABLE_SKILLS, (block) => {
+    const sorted = (block.match(SKILL_ENTRY) ?? []).toSorted((a, b) => (skillName(a) < skillName(b) ? -1 : skillName(a) > skillName(b) ? 1 : a < b ? -1 : a > b ? 1 : 0))
+    let next = 0
+    return block.replace(SKILL_ENTRY, () => sorted[next++] ?? "")
+  })
+}
+
 /**
  * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, the Gemini CLI's
- * fixed home and workspace paths and Codex CLI's turn start time and sandbox, and PR-Agent's date, anywhere in it. Nothing else changes.
+ * fixed home and workspace paths and Codex CLI's turn start time and sandbox, and PR-Agent's date, anywhere in it,
+ * and puts the Gemini CLI's skill list in name order. Nothing else changes.
  */
 export function normaliseSessionContext(text: string): string {
-  const inBlocks = text.replace(SESSION_CONTEXT, (block) => SESSION_FIELDS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), block))
+  const inBlocks = sortAvailableSkills(text.replace(SESSION_CONTEXT, (block) => SESSION_FIELDS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), block)))
   return inBlocks
     .replace(CLI_PATHS, (_match, name: string) => `<gemini-cli-${name}>`)
     .replace(CLI_INSTALL, "<checkout>/examples/gemini-cli/")
