@@ -1,17 +1,10 @@
 # Karakeep
 
-Karakeep saves bookmarks, pages and PDFs, and uses an LLM to tag them and, if you turn it on, to summarize them. This page covers the LLM side only.
-
-| | |
-| --- | --- |
-| Upstream | [karakeep-app/karakeep](https://github.com/karakeep-app/karakeep) (about 29.6k stars) |
-| Config source | `docs/docs/03-configuration/01-environment-variables.md` and `02-different-ai-providers.md` in the same repo |
-| Plugboard API | `/v1/chat/completions`, with images for vision inference |
-| Status | Works for tagging, summaries and image tagging. No embeddings. docs-verified, not run (checked 2026-10-11) |
+Karakeep saves bookmarks, pages and PDFs. An LLM tags them and, if you turn it on, summarizes them.
 
 ## Plugboard options
 
-Add the app key and a model alias to the plugin entry in `~/.config/opencode/opencode.jsonc`:
+Give Karakeep its own key and two aliases. `vision` must accept images, because `INFERENCE_IMAGE_MODEL` sends them. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
 ```jsonc
 {
@@ -28,26 +21,23 @@ Add the app key and a model alias to the plugin entry in `~/.config/opencode/ope
 }
 ```
 
-Use models you are signed in to. `vision` must accept images, because `INFERENCE_IMAGE_MODEL` sends them. Non-loopback `listen` needs `keys` and a restart. See [Remote access](../remote-access.md).
+## Connect
 
-## Karakeep config
-
-Karakeep reads `.env` through its compose file. Set these, with the plugboard app key:
+Set these in the `.env` that Karakeep's compose file reads:
 
 ```sh
-OPENAI_API_KEY=<the karakeep app key>
+OPENAI_API_KEY=<the karakeep key>
 OPENAI_BASE_URL=http://host.docker.internal:4010/v1
 INFERENCE_TEXT_MODEL=tag
 INFERENCE_IMAGE_MODEL=vision
 SEMANTIC_SEARCH_ENABLED=false
 ```
 
-`OPENAI_API_KEY` is the plugboard key, not an OpenAI key. The variable name is Karakeep's. With `OPENAI_BASE_URL` set, Karakeep turns embedding auto-indexing off by default (the variable table says it is on only for the default OpenAI settings). `SEMANTIC_SEARCH_ENABLED=false` also hides the hybrid and semantic search modes, which would otherwise need embeddings.
+`OPENAI_API_KEY` takes the plugboard key. `SEMANTIC_SEARCH_ENABLED=false` hides the semantic and hybrid search modes, which need embeddings.
 
-Karakeep's compose file has a `web` service. Add the host name for Linux in an override next to it:
+On Linux, add the host name to the `web` service in `docker-compose.override.yml`:
 
 ```yaml
-# docker-compose.override.yml
 services:
   web:
     extra_hosts:
@@ -56,22 +46,16 @@ services:
 
 A runnable copy is in [`examples/self-hosted/karakeep/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/karakeep/README.md).
 
-## What works and what does not
+## What works
 
-- **Tagging** (`INFERENCE_ENABLE_AUTO_TAGGING`, on by default): text through `INFERENCE_TEXT_MODEL`.
-- **Image tagging**: through `INFERENCE_IMAGE_MODEL`, which needs a vision model.
-- **Summaries** (`INFERENCE_ENABLE_AUTO_SUMMARIZATION`, off by default): text. Turn it on if you want it.
-- **Structured output**: `INFERENCE_OUTPUT_SCHEMA` defaults to `structured`, which sends `json_schema`. Plugboard answers that through a tool. Do not set `tools: false` for this app, because the policy would drop the schema (see [Per-app policy](../configuration.md#per-app-policy-apps)). If a model fails on structured output, set `INFERENCE_OUTPUT_SCHEMA=json`.
-- **Semantic and hybrid search, related bookmarks**: need embeddings. Plugboard serves none. Leave them off, or point `EMBEDDING_OPENAI_BASE_URL` at an embedding provider you run yourself.
-- **Audio**: not used.
+- Tagging, with `INFERENCE_TEXT_MODEL`. It is on by default.
+- Image tagging, with `INFERENCE_IMAGE_MODEL`.
+- Summaries, with `INFERENCE_ENABLE_AUTO_SUMMARIZATION=true`.
+- Structured output. `INFERENCE_OUTPUT_SCHEMA` defaults to `structured`, and plugboard answers it through a tool.
 
-## Gotchas
+## Limits
 
-- `INFERENCE_CONTEXT_LENGTH` defaults to 2048 tokens. Longer pages are truncated before tagging, so raise it if tags come from the first lines only.
-- A large backlog import sends many calls at once. Cap it with `limits.perApp.requestsPerMinute` on the `karakeep` app if the provider rate-limits.
-
-## Sources
-
-- [Environment variables, inference and embedding](https://github.com/karakeep-app/karakeep/blob/main/docs/docs/03-configuration/01-environment-variables.md)
-- [Different AI providers](https://github.com/karakeep-app/karakeep/blob/main/docs/docs/03-configuration/02-different-ai-providers.md)
-- [Docker install and compose file](https://github.com/karakeep-app/karakeep/blob/main/docker/docker-compose.yml)
+- Semantic search, hybrid search and related bookmarks need embeddings, which plugboard does not serve. Leave them off, or point `EMBEDDING_OPENAI_BASE_URL` at an embedding provider you run.
+- Keep `tools` on for this app. A `tools: false` policy drops the schema ([Per-app policy](../configuration.md#per-app-policy-apps)). If a model fails on structured output, set `INFERENCE_OUTPUT_SCHEMA=json`.
+- `INFERENCE_CONTEXT_LENGTH` defaults to 2048 tokens, so long pages are cut before tagging. Raise it.
+- A large import sends many calls at once. Set `limits.perApp.requestsPerMinute` on the `karakeep` app if your provider rate-limits.

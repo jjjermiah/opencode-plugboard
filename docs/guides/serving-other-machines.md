@@ -82,8 +82,8 @@ curl http://<host-address>:4010/v1/models -H "Authorization: Bearer $PLUGBOARD_K
 All in the [configuration reference](../configuration.md#serving-other-machines):
 
 - `listen.host`, `listen.port`, `requireKeys`
-- [Reverse proxies: `listen.trustProxy`](../configuration.md#reverse-proxies-since-0-26-0)
-- [Browser origins: `cors`](../configuration.md#browser-origins-since-0-26-0)
+- [Reverse proxies: `listen.trustProxy`](../configuration.md#reverse-proxies)
+- [Browser origins: `cors`](../configuration.md#browser-origins)
 - `keepAlive`
 - [Reloads and restarts](../configuration.md#reloads-and-restarts)
 - [Security notes](../security.md)

@@ -81,7 +81,7 @@ Set `"dropUnsupportedParams": false` to forward everything as sent.
 All in the [configuration reference](../configuration.md#tools-structured-output-and-images):
 
 - [`maxTools`](../configuration.md#options) and [the cost of the seed pool](../configuration.md#cost-of-the-seed-pool)
-- [`remoteImages` limits](../configuration.md#remote-image-limits-since-0-26-0)
+- [`remoteImages` limits](../configuration.md#remote-image-limits)
 - [Request fields and behaviours](../configuration.md#request-fields-and-behaviours)
 - `maxN`, `dropUnsupportedParams`
 - Per-endpoint detail: [Chat Completions](../chat-completions.md), [Responses](../responses.md), [Messages](../messages.md), [Gemini](../gemini.md), [Completions and `n`](../completions.md)

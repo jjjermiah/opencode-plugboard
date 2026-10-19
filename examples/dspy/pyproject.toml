@@ -4,4 +4,4 @@ version = "0.1.0"
 description = "DSPy (dspy.LM through LiteLLM, openai/ prefix) against plugboard: a Predict, a ChainOfThought and a typed output. Exact pins, locked in uv.lock."
 requires-python = ">=3.12"
 # Exact pins: the direct dependencies. uv.lock pins everything else. DSPy routes through litellm, so openai stays 2.x.
-dependencies = ["dspy==3.4.0", "litellm==1.105.1", "openai==2.54.0", "pydantic>=2.0"]
+dependencies = ["dspy==3.4.1", "litellm==1.105.1", "openai==2.54.0", "pydantic>=2.0"]

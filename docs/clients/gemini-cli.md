@@ -1,43 +1,36 @@
 # Gemini CLI
 
-<ExampleResult example="gemini-cli" />
+Google's terminal agent, on plugboard's [Gemini API](../gemini.md).
 
-Tested: `@google/gemini-cli` 0.64.0, live run [`2026-10-16-v0.41.0-29-g2d6aac1`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/gemini-cli/runs/live/2026-10-16-v0.41.0-29-g2d6aac1) at plugboard 0.41.0: pass. Headless only: no login, no browser. The code below is the example's snippets.
-
-## Setup
-
-The CLI reads its key and base URL from the environment. Its auth type comes from a settings file, which the example writes into a fresh home for each run, so your `~/.gemini` is not touched:
+## Connect
 
 ```sh
 export GEMINI_API_KEY="$PLUGBOARD_KEY"
 export GOOGLE_GEMINI_BASE_URL="http://127.0.0.1:4010"   # the origin, without /v1
 ```
 
+and in `~/.gemini/settings.json`:
+
 ```json
 { "security": { "auth": { "selectedType": "gemini-api-key" } } }
 ```
 
-Headless runs need `--skip-trust` (or `GEMINI_CLI_TRUST_WORKSPACE=true`), or the CLI exits with code 55 before it calls the API.
+Then `gemini -m fast`. For headless runs add `--skip-trust` (or set `GEMINI_CLI_TRUST_WORKSPACE=true`); otherwise the CLI exits with code 55 before calling the API.
 
-## Chat
+## Headless output
 
-The example runs `gemini -p "<prompt>" -m <model> --output-format json`:
+`gemini -p "<prompt>" -m <model> --output-format json`:
 
 <<< @/../examples/gemini-cli/chat.ts#snippet
 
-## Streaming
-
-`--output-format stream-json` prints one JSON event per line. Text arrives as assistant deltas, and the `result` event carries the stats:
+`--output-format stream-json` prints one event per line; text arrives as assistant deltas and the `result` event has the stats:
 
 <<< @/../examples/gemini-cli/stream.ts#snippet
 
-## What is not run through the CLI
+## What works
 
-- The CLI runs its own built-in tools. A custom `get_weather` tool cannot be added to a headless run, so the tool scenarios are not applicable.
-- The CLI has no JSON-schema output option, no image data-URL input (it takes a file reference), and no model list.
-- The CLI's `countTokens` calls did not occur in a headless one-shot run, so this example does not exercise them. The route is served; see [Gemini API](../gemini.md).
+Chat, streaming and the CLI's own tools, which it runs itself.
 
-## Gotchas
+## Limits
 
-- The stream-json events carry no finish reason, so the example's `finish_reason` checks are not applied to the CLI.
-- A `#variant` model id goes as `%23`, which the example does for `-m`.
+- A `#` in a model name must be sent as `%23` (`-m openai/gpt-5.6-luna%23low`). Aliases avoid it.

@@ -39,7 +39,7 @@ import { join } from "node:path"
 import semver from "semver"
 import { changelogBlock, collectCommits } from "./commit-detail.ts"
 import { approvalState, mergeRules, type GhReview } from "./merge-gate.ts"
-import { replaceSinceNext } from "./since-next.ts"
+import { bumpInstallPins, replaceSinceNext } from "./since-next.ts"
 
 const PLACEHOLDER = "Nothing yet."
 
@@ -508,12 +508,12 @@ const rawBody = lines
   .trim()
 if (!rawBody || rawBody === PLACEHOLDER) fail("[Unreleased] in CHANGELOG.md is empty, nothing to release")
 // Lanes write `(since next)` because they cannot know the version (docs/releasing.md): it becomes this version here, in the
-// release commit, in the notes and in docs/**/*.md.
+// release commit, in the notes and in docs/**/*.md. The install pins in README.md and the docs (`"opencode-plugboard@X.Y.Z"`)
+// move to this version too, so the copy-paste config always names the latest release.
 const body = replaceSinceNext(rawBody, version)
-const docRewrites = [...new Bun.Glob("docs/**/*.md").scanSync(".")]
-  .sort()
+const docRewrites = ["README.md", ...[...new Bun.Glob("docs/**/*.md").scanSync(".")].sort()]
   .map((file) => ({ file, before: readFileSync(file, "utf8") }))
-  .map(({ file, before }) => ({ file, before, after: replaceSinceNext(before, version) }))
+  .map(({ file, before }) => ({ file, before, after: bumpInstallPins(replaceSinceNext(before, version), version) }))
   .filter(({ before, after }) => before !== after)
 
 const linkAt = lines.findIndex((l) => l.startsWith("[Unreleased]: "))

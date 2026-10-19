@@ -69,7 +69,7 @@ All in the [configuration reference](../configuration.md#apps-and-keys):
 
 - [`keys`, `adminKey`, `requireKeys`](../configuration.md#options)
 - [Per-app policy: `models`, `model`, `system`, `tools`, `maxTools`, `maxN`, `maxOutputTokens`, `sampling`, `requestTimeoutMs`, `settleMs`](../configuration.md#per-app-policy-apps)
-- [Endpoint names](../configuration.md#endpoint-names-since-0-26-0)
+- [Endpoint names](../configuration.md#endpoint-names)
 - [Server tools](../configuration.md#per-app-policy-apps) (`serverTools`): let an app's key run OpenCode tools. Read the security warning first.
 - [Admin keys](../configuration.md#admin-keys) and [which key opens which route](../configuration.md#which-key-opens-which-route)
 - [End users](../configuration.md#end-users)

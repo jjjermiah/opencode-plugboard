@@ -1,12 +1,8 @@
 # Gemini API
 
-`POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent` (with `?alt=sse`, or without it for Google's JSON array) are served next to Chat Completions, with the same keys, model ids, aliases and limits. Use them when a client only speaks Google's Gemini API: the Google GenAI SDKs (`@google/genai`, `google-genai`), tools built on them, or plain REST calls.
+`POST /v1beta/models/{model}:generateContent` and `:streamGenerateContent` (with `?alt=sse`, or without it for a JSON array) are served next to Chat Completions, with the same keys, model ids, aliases and limits. Use them when a client only speaks Google's Gemini API: the Google GenAI SDKs (`@google/genai`, `google-genai`), tools built on them, or plain REST calls. Setup guides are under [clients](clients/google-genai-js.md).
 
-Plugboard is stateless, as on the other endpoints: every request carries the whole conversation in `contents`. Nothing is stored.
-
-Tested, 2026-10-11, `@google/genai` 2.28.0 (JS SDK): against a fake model caller (plain, streamed and function-calling chat, JSON output, image input, `models.list` and `models.get`, errors, `apiVersion: "v1"`), and live on OpenCode 2.0.26 with `opencode-go/glm-5.3-flash` (alias `fast`), `anthropic/claude-haiku-5-5` and `openai/gpt-5.6-luna%23low`: text, stream, a function-calling round trip, JSON schema, parallel calls in a stream and in `ai.chats`, and an array schema. Run through the example clients on 2026-10-16 (live, plugboard 0.41.0): the Google GenAI JS and Python SDKs, LangChain's `ChatGoogleGenerativeAI`, the Vercel AI SDK's Google provider and the headless Gemini CLI, all passing. Each has a page under [clients](clients/google-genai-js.md). The Python SDK and LangChain image requests needed [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401), fixed in 0.41.0.
-
-The tested paragraph above covers the JS SDK only. The Python SDK was not run against the tests above, and its inline image requests failed until [#401](https://github.com/jjjermiah/opencode-plugboard/issues/401) and [#409](https://github.com/jjjermiah/opencode-plugboard/issues/409), both fixed in 0.41.0. Its runs are in the [Google GenAI Python](clients/google-genai-python.md) example.
+Plugboard is stateless here: every request carries the whole conversation in `contents`. Nothing is stored.
 
 ```ts
 import { GoogleGenAI } from "@google/genai"
@@ -42,34 +38,43 @@ Use aliases. A `#variant` cannot be sent through an SDK (the URL it builds treat
 
 ## Authentication
 
-With `keys` configured, the key is read from the first of: the `Authorization: Bearer` header, the `x-goog-api-key` header, the `key` query parameter. The Gemini SDKs send `x-goog-api-key`. Prefer a header: query strings end up in proxy and access logs. Plugboard never logs the URL (only a route label), but anything in front of it might. These key sources apply to Gemini routes only; `/v1/...` still takes the `Authorization` header alone.
+With `keys` configured, the key is read from the first of: the `Authorization: Bearer` header, the `x-goog-api-key` header, the `key` query parameter. The Gemini SDKs send `x-goog-api-key`. Prefer a header: query strings end up in proxy and access logs. Plugboard never logs the URL (only a route label), but anything in front of it might. These key sources apply to Gemini routes only; `/v1/...` takes the `Authorization` header alone.
 
 ## What is supported
 
 | Request field | How it is handled |
 | --- | --- |
-| `contents` | `role` `user` and `model` (`function` is read as `user`). Parts: `text`, `inlineData` (images and files, base64), `fileData` with an `http(s)` `fileUri` or, since next, a stored file (`files/<id>`, or the `uri` an upload returned: see [Files API](files.md)), `functionCall` (model turn), `functionResponse` (user turn). Every field is read in camelCase and in snake_case (`inline_data`, `mime_type`, `file_uri`, `function_call`, `function_response`), the way the Python SDK sends them. `inlineData.data` may be standard or URL-safe base64 (`-` and `_`, which the Python SDK sends for bytes); it is normalised to standard base64 before the image check. Thought parts and signature-only parts are dropped. Consecutive model turns are joined (an SDK chat replays a stream as one turn per chunk). |
+| `contents` | `role` `user` and `model` (`function` is read as `user`). Parts: `text`, `inlineData` (images and files, base64), `fileData` with an `http(s)` `fileUri` or a stored file (`files/<id>`, or the `uri` an upload returned: see [Files API](files.md)), `functionCall` (model turn), `functionResponse` (user turn). Every field is read in camelCase and in snake_case (`inline_data`, `mime_type`, `file_uri`, `function_call`, `function_response`), the way the Python SDK sends them. `inlineData.data` may be standard or URL-safe base64 (`-` and `_`, which the Python SDK sends for bytes); it is normalised to standard base64 before the image check. Thought parts and signature-only parts are dropped. Consecutive model turns are joined (an SDK chat replays a stream as one turn per chunk). |
 | `systemInstruction` | The system prompt. A string or a content with text parts. |
 | `tools` | `functionDeclarations`. `parameters` is converted from Gemini's schema to JSON Schema: `OBJECT` becomes `object`, `nullable` becomes a `null` type, `"minItems": "1"` becomes a number, and Gemini-only keys (`example`, `propertyOrdering`, formats such as `int32`) are dropped. `parametersJsonSchema` is used as is. A declaration with no parameters takes no arguments. |
 | `toolConfig.functionCallingConfig` | `mode` `AUTO` is `auto`, `NONE` is `none`, `ANY` is `required`. `allowedFunctionNames` narrows the tools offered; `ANY` with one name forces that tool. `VALIDATED` is read as `AUTO`. |
-| `generationConfig` | `temperature`, `topP`, `maxOutputTokens`, `presencePenalty`, `frequencyPenalty` are passed to the model. `stopSequences` (up to 5) are matched by plugboard on the answer text and not sent to the model (#390). `topK`, `seed`, `safetySettings`, `mediaResolution` and similar are accepted and ignored. Sampling parameters a model is known to reject are dropped, as on Chat Completions, and listed in `x-plugboard-dropped-params`. |
-| `generationConfig.candidateCount` | 1 to `maxN` candidates (since 0.50.0). Each candidate is one model call, as `n` is on Chat Completions: see [Several candidates](#several-candidates). |
+| `generationConfig` | `temperature`, `topP`, `maxOutputTokens`, `presencePenalty`, `frequencyPenalty` are passed to the model. `stopSequences` (up to 5) are matched by plugboard on the answer text and not sent to the model. `topK`, `seed`, `safetySettings`, `mediaResolution` and similar are accepted and ignored. Sampling parameters a model is known to reject are dropped, as on Chat Completions, and listed in `x-plugboard-dropped-params`. |
+| `generationConfig.candidateCount` | 1 to `maxN` candidates. Each candidate is one model call, as `n` is on Chat Completions: see [Several candidates](#several-candidates). |
 | `generationConfig.responseMimeType` | `application/json` without a schema asks for a JSON object (a markdown fence around it is stripped). `text/plain` is the default. |
-| `generationConfig.responseSchema`, `responseJsonSchema` | Structured output, by the same mechanism as Chat Completions (a forced `respond` tool unwrapped into the text, see [architecture](architecture.md)). A schema that is not an object (an array, a string enum) is carried in one property and unwrapped, so the text is the JSON of the array. Without a respond call the text is taken when it is the JSON the schema asks for (#173, the same small check as Chat Completions), flagged with `x-plugboard-structured-fallback: text` on generateContent; otherwise a 502 in Google's shape, for every finish reason. A stream holds the text back until the turn ends, so a missing answer after streamed text is an error chunk. |
-| `generationConfig.thinkingConfig` | `thinkingLevel` (`LOW`, `HIGH`, ...) picks the model variant of that name when the model has one and the id carries none; a model without that variant gets the nearest one above it, or its highest one (since 0.46.0, #410). `thinkingBudget` is mapped to a name: `0` to `none`, up to 1024 to `low`, up to 8192 to `medium`, more to `high` (`-1`, dynamic, picks nothing). Otherwise ignored. `includeThoughts` is ignored and no thought parts are returned. |
-| `stream` | The method decides: `streamGenerateContent`. `?alt=sse` streams SSE; without `alt` (or with `alt=json`) the stream is a JSON array (since 0.50.0). Another `alt` is a 400. |
+| `generationConfig.responseSchema`, `responseJsonSchema` | Structured output, by the same mechanism as Chat Completions (a forced `respond` tool unwrapped into the text, see [architecture](https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/architecture.md)). A schema that is not an object (an array, a string enum) is carried in one property and unwrapped, so the text is the JSON of the array. Without a respond call the text is taken when it is the JSON the schema asks for (the same small check as Chat Completions), flagged with `x-plugboard-structured-fallback: text` on generateContent; otherwise a 502 in Google's shape, for every finish reason. A stream holds the text back until the turn ends, so a missing answer after streamed text is an error chunk. |
+| `generationConfig.thinkingConfig` | `thinkingLevel` (`LOW`, `HIGH`, ...) picks the model variant of that name when the model has one and the id carries none; a model without that variant gets the nearest one above it, or its highest one. `thinkingBudget` is mapped to a name: `0` to `none`, up to 1024 to `low`, up to 8192 to `medium`, more to `high` (`-1`, dynamic, picks nothing). Otherwise ignored. `includeThoughts` is ignored and no thought parts are returned. |
+| `stream` | The method decides: `streamGenerateContent`. `?alt=sse` streams SSE; without `alt` (or with `alt=json`) the stream is a JSON array. Another `alt` is a 400. |
 
-## What is rejected
+## What is refused
 
 A 400 `INVALID_ARGUMENT` whose message and `details.fieldViolations` name the field:
 
-- `tools` other than `functionDeclarations`: `googleSearch`, `googleSearchRetrieval`, `codeExecution`, `urlContext`, `retrieval`, `fileSearch`, `googleMaps`, `computerUse`. They run on Google's servers; plugboard only hands function calls back to you.
-- `candidateCount` above the `maxN` cap (see [Several candidates](#several-candidates)), `cachedContent` (needs server-side state), `responseLogprobs`, `responseModalities` other than `TEXT`, `responseMimeType` other than `application/json` and `text/plain`.
-- `streamGenerateContent` with an `alt` other than `sse` or `json`.
-- A `functionResponse` that answers no earlier `functionCall`, and a `functionCall` that has no `functionResponse` anywhere in `contents`.
-- Parts plugboard cannot use: `fileData` with a `gs://` URI or a Gemini file id plugboard does not hold (a `files/<id>` for a file the app has not uploaded is a 404 `NOT_FOUND`, since next), `executableCode`, `codeExecutionResult`, `videoMetadata`, `inlineData` in a model turn.
+| Request | Why |
+| --- | --- |
+| `tools` other than `functionDeclarations`: `googleSearch`, `googleSearchRetrieval`, `codeExecution`, `urlContext`, `retrieval`, `fileSearch`, `googleMaps`, `computerUse` | They run on Google's servers. Plugboard only hands function calls back to you. |
+| `candidateCount` above the `maxN` cap | See [Several candidates](#several-candidates). |
+| `cachedContent` | Needs server-side state. |
+| `responseLogprobs`, `responseModalities` other than `TEXT`, `responseMimeType` other than `application/json` and `text/plain` | Not available. |
+| `streamGenerateContent` with an `alt` other than `sse` or `json` | Not available. |
+| A `functionResponse` that answers no earlier `functionCall`, and a `functionCall` that has no `functionResponse` anywhere in `contents` | The conversation does not add up. |
+| Parts plugboard cannot use: `fileData` with a `gs://` URI, `executableCode`, `codeExecutionResult`, `videoMetadata`, `inlineData` in a model turn | Not available. |
+| A mode `ANY` tool choice with one allowed function, together with `responseSchema` | Both force the answer's shape. |
 
-`countTokens` answers `{ "totalTokens": N }` with an estimate, built the same way as Anthropic `count_tokens`. Since 0.46.0 (#412) a Gemini model id gets its own calibration against `promptTokenCount`: about five characters per token, two thirds of a token per CJK character, and a flat 1090 tokens per image whatever its size (measured on Gemini 3.x; the tokens are the model's, not a per-tile count). The request, its system policy and tools are counted as follows: the app's `system` policy and the tool-choice steering, the agent prompt or skill content of the model, and the schemas of `serverTools` (see [Messages](messages.md) for the details, the refusals and the side effects of a count). Other methods on a model (`embedContent`, `batchEmbedContents`, ...) get a 404 `NOT_FOUND`. A mode `ANY` tool choice with one allowed function cannot be combined with `responseSchema`.
+A `fileData` that names a `files/<id>` the app has not uploaded is a 404 `NOT_FOUND`. Other methods on a model (`embedContent`, `batchEmbedContents`, ...) get a 404 `NOT_FOUND` too.
+
+## Counting tokens
+
+`:countTokens` answers `{ "totalTokens": N }` with an estimate, built the same way as Anthropic `count_tokens`: see [Messages](messages.md#counting-tokens) for what it counts, the refusals and the side effects. A Gemini model id has its own calibration against `promptTokenCount`: about five characters per token, two thirds of a token per CJK character, and a flat 1090 tokens per image whatever its size. The tokens are the model's own, not a per-tile count.
 
 ## Function calls
 
@@ -81,7 +86,9 @@ A `functionResponse.response` is passed to the model as its JSON text. `{"error"
 
 A `GenerateContentResponse` with one candidate: `content.role` `model`, and `parts` in order, text merged into one part and one `functionCall` part (`name`, `args`) per tool call. `finishReason` is `STOP` (also when the model ends on a function call), `MAX_TOKENS` or `SAFETY` (content filter). `usageMetadata` has `promptTokenCount` (including cache reads), `candidatesTokenCount` (without reasoning), `thoughtsTokenCount`, `cachedContentTokenCount` and `totalTokenCount`. `modelVersion` echoes the `{model}` segment. The `x-plugboard-session` header works as on Chat Completions. Reasoning text is not returned.
 
-Errors use Google's body, `{"error": {"code": 400, "message": "...", "status": "INVALID_ARGUMENT"}}`, with `code` the HTTP status and `status` one of `INVALID_ARGUMENT`, `UNAUTHENTICATED`, `PERMISSION_DENIED`, `NOT_FOUND`, `RESOURCE_EXHAUSTED`, `INTERNAL`, `UNAVAILABLE`, `DEADLINE_EXCEEDED`. This applies to every response on a Gemini path, including authentication and body errors. Any `/v1beta` path is Google's API: an authenticated request to a `/v1beta` path that matches no route (for example a model id with a slash and no `models/` prefix, as the AI SDK and LangChain send it) gets a 404 `NOT_FOUND` that names the expected `/v1beta/models/{model}:generateContent` shape. An unauthenticated request gets the 401 first, so the route table stays hidden.
+Errors use Google's body, `{"error": {"code": 400, "message": "...", "status": "INVALID_ARGUMENT"}}`, with `code` the HTTP status and `status` one of `INVALID_ARGUMENT`, `UNAUTHENTICATED`, `PERMISSION_DENIED`, `NOT_FOUND`, `RESOURCE_EXHAUSTED`, `INTERNAL`, `UNAVAILABLE`, `DEADLINE_EXCEEDED`. This applies to every response on a Gemini path, including authentication and body errors.
+
+Any `/v1beta` path is Google's API. An authenticated request to a `/v1beta` path that matches no route gets a 404 `NOT_FOUND` that names the expected `/v1beta/models/{model}:generateContent` shape. A model id with a slash and no `models/` prefix, as the AI SDK and LangChain send it, is one such request. An unauthenticated request gets the 401 first, so the route table stays hidden.
 
 ## Streaming
 
@@ -89,17 +96,15 @@ Errors use Google's body, `{"error": {"code": 400, "message": "...", "status": "
 
 Tool calls arrive whole from the model, so each is a single chunk holding the full `args`.
 
-### Without `alt=sse`: a JSON array (since 0.50.0)
+### Without `alt=sse`: a JSON array
 
-Without `alt=sse` (or with `alt=json`) the response is `application/json` and the body is one JSON array of the same chunks, written as the model answers: `[`, the first chunk, then `,` and each next chunk, then `]`. The events and the chunks are those of the SSE stream; only the framing differs. A failure before the first chunk is the same real HTTP error. A failure after it ends the array validly: the error object is the last element, then `]`. Reasoning keeps the connection alive with newlines, which JSON allows between values. The SDKs always send `alt=sse`; this form is for plain REST clients that read the array.
-
-This follows what Google's server is reported to do: without `alt=sse` it streams a JSON array, and an error is an element of that array (a Google AI developer forum report shows a 400 from this endpoint as `[{"error": {...}}]`). It was not checked against Google's live server, and neither the REST reference nor the `@google/genai` and `google-genai` SDKs (which always add `alt=sse`) define the array framing. The whitespace here is plugboard's own and valid JSON, not Google's byte layout. Unlike Google's, a failure before any output is the plain error object with its HTTP status, not an array holding it.
+Without `alt=sse` (or with `alt=json`) the response is `application/json` and the body is one JSON array of the same chunks, written as the model answers: `[`, the first chunk, then `,` and each next chunk, then `]`. The events and the chunks are those of the SSE stream; only the framing differs. A failure before the first chunk is a real HTTP error: the plain error object with its HTTP status, not an array holding it. A failure after it ends the array validly: the error object is the last element, then `]`. Reasoning keeps the connection alive with newlines, which JSON allows between values. The SDKs always send `alt=sse`; this form is for plain REST clients that read the array.
 
 ## Several candidates
 
-`generationConfig.candidateCount` above 1 (since 0.50.0) runs plugboard's fan-out, the same as `n` on Chat Completions: one independent model call per candidate, each in its own session, run together. The candidates share no history. The caps are the same: the global `maxN` and `apps.<name>.maxN` (default 1). A request above the cap is a 400 `INVALID_ARGUMENT` on `generationConfig.candidateCount`, naming the option, before any model call. The fan-out never reads or fills the [response cache](guides/limits-budgets-and-caching.md).
+`generationConfig.candidateCount` above 1 runs plugboard's fan-out, the same as `n` on Chat Completions: one independent model call per candidate, each in its own session, run together. The candidates share no history. The caps are the same: the global `maxN` and `apps.<name>.maxN` (default 1). A request above the cap is a 400 `INVALID_ARGUMENT` on `generationConfig.candidateCount`, naming the option, before any model call. The fan-out never reads or fills the [response cache](guides/limits-budgets-and-caching.md).
 
 - **JSON:** one `candidates` array in candidate order, each with its `index` (0 to n-1), and `usageMetadata` summed over the calls, so `promptTokenCount` counts the prompt once per candidate. `x-plugboard-session` lists every session id, comma separated.
 - **Stream:** the chunks of the candidates interleave as they arrive, each carrying its `index` and one shared `responseId`; each candidate ends with its own chunk holding `finishReason`. After the last candidate a final chunk with only `usageMetadata` (and `modelVersion`, `responseId`) carries the summed usage. SSE and the JSON array both work.
 - **Failure:** if any candidate fails the request fails and the others are cancelled: the HTTP error before output, the error object (the last array element, or one SSE frame) after it. A partial set would look like a complete one.
-- `modelVersion` echoes the requested model: with several candidates an alias with fallbacks does not report the target that answered.
+- **Model version:** `modelVersion` echoes the requested model. With several candidates, an alias with fallbacks does not report the target that answered.
