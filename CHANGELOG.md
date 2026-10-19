@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.58.0] - 2026-10-19: Overloaded, Not Stuck
+
+**Full diff:** [v0.57.0...v0.58.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.57.0...v0.58.0)
+
 ### Fixed
 
 - A fallback chain now moves on from a target that answers "overloaded" ([#503](https://github.com/jjjermiah/opencode-plugboard/issues/503)). Anthropic's 529 (`provider_overloaded`) was returned to the client as the final error even when the next target was healthy. It now falls back like a rate limit or an outage, and three in a row open the target's circuit breaker. As before, an overload after output has started is never retried.
@@ -26,6 +32,96 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - The LangChain4j example now builds against Jackson 2.22.3 instead of 2.22.1, which fixes the seven advisories that OpenSSF Scorecard reported in its `pom.xml` ([#523](https://github.com/jjjermiah/opencode-plugboard/issues/523)). The shipped package was never affected.
 - Re-checked the 31 open Dependabot alerts in the example lockfiles ([#526](https://github.com/jjjermiah/opencode-plugboard/issues/526)). No lockfile can move: Aider 0.86.2 is the newest Aider and refuses to start with any litellm after 1.81.10, and every fixed litellm is 1.82.0 or later. The other alerts (diskcache, nltk, two on aider-chat) have no fixed release. All 31 are in example projects that ship in no package, and each is listed in the example's `osv-scanner.toml` with a reason.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (7 commits)</summary>
+
+#### Fixes
+
+**fix(examples): lift langchain4j example to jackson 2.22.3** ([`d9f9dff`](https://github.com/jjjermiah/opencode-plugboard/commit/d9f9dffb73e9fd7036f6dd19c5bb3658eadb7391))
+
+OpenSSF Scorecard's Vulnerabilities check scored 3/10 for seven advisories (GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89, GHSA-cxp5-3px4-pw24, GHSA-gx83-3vf8-gh7j, GHSA-q4xh-88c3-wmh7, GHSA-wjgm-6hv5-3cvf, GHSA-wv8q-qhhj-9h54). All seven are in one place: examples/langchain4j/pom.xml, where LangChain4j 1.22.0 resolves jackson-core and jackson-databind 2.22.1 transitively. Every one is fixed in 2.22.3.
+
+The example now imports jackson-bom 2.22.3 in dependencyManagement, so every Jackson module moves together and LangChain4j itself stays at 1.22.0. The other example lockfiles already carry per-directory osv-scanner.toml ignores that Scorecard honours: with those in place the scan before this change had exactly these seven findings, and none in the root package.
+
+Rejected: upgrading LangChain4j (a Jackson BOM import is smaller and does not change the client the example tests), and excluding the pom from scanning (a real fix exists).
+
+Validation: osv-scanner scan source -r --no-ignore . went from 7 to 0 findings; resolved jackson-core and jackson-databind are 2.22.3. bun run validate passes lint, typecheck, test, manifest, pack and docs. The examples step could not run the Java examples locally (no JDK), so the langchain4j scripted run is left to CI.
+
+Closes #523
+
+**fix(examples): record why no Dependabot alert in the example lockfiles can be fixed** ([`c1b8542`](https://github.com/jjjermiah/opencode-plugboard/commit/c1b8542530b6e04345783463d0e463116ef44f40))
+
+Dependabot lists 31 open alerts, all in example lockfiles. Every alert that has a fixed release is a litellm advisory in examples/aider, and none of those fixes can be taken:
+
+- aider-chat 0.86.2 is the newest Aider release on PyPI (0.9.0 is older).
+- Aider's LiteLLMExceptions._load raises ValueError when litellm exports an exception class Aider does not list. I installed 1.81.11, 1.81.12, 1.81.13, 1.81.14, 1.81.15, 1.82.0, 1.83.14, 1.88.6+ and 1.106.0 into the locked venv: every one fails with "PermissionDeniedError is in litellm but not in aider's exceptions list". Only 1.81.10 starts, and every fixed litellm is 1.82.0 or later.
+- A uv override therefore cannot help, and patching or shimming Aider to skip its own check would change what the example proves.
+
+The rest have no fixed release (diskcache 5.6.3, nltk 3.10.3, aider-chat 0.86.2, litellm <= 1.82.5 lows); they stay listed in each example's osv-scanner.toml.
+
+What changed: correct the comments that said 1.81.16 was the first litellm to break Aider (it is 1.81.11), and add the CHANGELOG Security bullet. No lockfile or transcript changes.
+
+How it was checked: osv-scanner scan source -r --no-ignore: 57 advisories before and after, 0 unignored after. bun run validate --skip mutations: all steps pass except langchain4j (no local Java); aider scripted passes with no change under examples/aider/runs.
+
+Closes #526
+
+**fix(fallback): move a chain on from provider_overloaded and count it** ([`5cf7b4a`](https://github.com/jjjermiah/opencode-plugboard/commit/5cf7b4a1f390bd3b8245b75a4d14dbff4472e0e4))
+
+A fallback chain moved on from a rate limit, a quota error, an outage, a timeout and a lost sign-in, but not from a target the host reported as overloaded. Anthropic's overloaded_error (its 529) is mapped by toPlugError in src/session/events.ts to 503 provider_overloaded, and that code was in neither RETRYABLE nor COUNTED in src/fallback.ts. The client got the overload as the final error although the next target was healthy, and a provider that kept answering 529 never opened its circuit breaker.
+
+What changed:
+
+- provider_overloaded is in RETRYABLE and in COUNTED (src/fallback.ts). src/breaker.ts needs no change: it is generic and takes whatever COUNTED lets through.
+- docs/configuration.md (retry rule and "What counts"), the models and aliases guide and docs/architecture.md list the code.
+- Tests: unit chain test (overload before output falls back, after output never does), the counted-failures table of the cooldown test, and a fault injection test over the fake host (host answers a 529; first target overloaded, second answers; three in a row open the breaker, then the target is skipped). Two mutation entries guard the two sets. Test-count floors regenerated.
+
+Safety of the retry: a chain looks only at the first event of an attempt, so an overload that arrives after any text, reasoning or tool call is never retried. The overload code is only produced from a failed host step.
+
+Validation: bun run validate --mutations --skip examples passes all 7 steps (lint, typecheck, test, manifest, pack, docs, mutations). The examples step fails locally only because Java is missing (langchain4j), as expected.
+
+Closes #503
+
+#### Docs
+
+**docs(site): say what each added member of a full config is for** ([`b756568`](https://github.com/jjjermiah/opencode-plugboard/commit/b7565680d49d2d4f0a719856fc8c2b4b0adaf2af))
+
+The Full config tab adds `keys` and `"models": "connected"` when a snippet lacks them, marked `// added so the file works`. Readers could not tell what the lines were for. Each added member now says it: `keys` is one key per app that callers send as their API key, and `models` is which models apps may use (every model you are logged in to). Plugboard refuses to serve without either, which is why they are added.
+
+Validation: bun test test/unit/docs-full-config.test.ts (24 pass); bun run docs:build completes.
+
+**docs(examples): use every example in the docs and check that it stays used** ([`74bcfa5`](https://github.com/jjjermiah/opencode-plugboard/commit/74bcfa5338c7d9f578c2271a5bda7ed628c34897))
+
+The client pages carried hand-written code that could drift from the example CI runs. 21 pages linked their example without importing it, and curl, n8n and tool-bot were in no page at all.
+
+What changed:
+- SDK and framework pages (autogen, crewai, go-openai, langchain4j, langfuse, openai-dotnet, smolagents, spring-ai) import their snippets with <<< from the example. Regions went into the files CI runs: the runner for Go, .NET, langfuse and smolagents, the script itself for autogen and crewai, and the Java regions that already existed.
+- Config-only pages (aider, anythingllm, claude-code, codex-cli, continue, jan, kilo-code, librechat, lobechat, promptfoo, sillytavern, zed and the six self-hosted apps with files) import the example's config. JSON has no comment syntax, so kilo.json, settings.json, zed's settings.json and the n8n workflow are imported whole.
+- curl: the API pages (chat completions, responses, messages, gemini, completions, apis) and the tools guide import the curl example. n8n imports its compose file and one workflow. tool-bot goes into the tools guide as "A tool-calling bot".
+- The Go and .NET runners moved the observed-field assignments after the tool round trip, so the imported region holds only the round trip. The scripted runs are byte-identical.
+- examples-index.ts --check now fails when an example directory is named by no page of the site. Maintainer pages (the new docs/.vitepress/maintainer-pages.ts, shared with srcExclude) do not count, because the generated examples page lists everything. It also resolves whole-file <<< imports and region names followed by a language option ({ini}), which the old pattern read as part of the region name. The docs step of validate runs it.
+
+Rejected alternatives: importing main.go and Program.cs for Go and .NET. CI never runs them, so the page would show code nothing checks. Importing the pom.xml dependency block, because the lockfile lane owns dependency pins, so the pages now name the artifact and link the pom.
+
+No config-only example stays a bare link. PR-Agent's .secrets.toml and configuration.toml snippets stay inline because no example file holds them.
+
+Validation was bun run validate --skip mutations: lint, typecheck, test, manifest, pack and docs pass. The examples step stops at langchain4j because Java is not installed locally. Scripted runs of every other example leave runs/ unchanged.
+
+**docs(changelog): keep a blank line before the Security heading** ([`75ffcbe`](https://github.com/jjjermiah/opencode-plugboard/commit/75ffcbeb36a2befee244375ddccc80479b9fa7bc))
+
+The merge with main joined my bullet to the next heading. This puts the blank line back.
+
+#### CI and tooling
+
+**ci(flake-hunt): count skipped tests as results** ([`3b293d1`](https://github.com/jjjermiah/opencode-plugboard/commit/3b293d1c2128e14b42448c56e4a36eba993f94c7))
+
+The nightly workflow has failed every night since 2026-10-17. Its flake hunt runs each test file alone and throws when a run prints no pass or fail lines. test/live/live.test.ts skips every test without PLUGBOARD_LIVE, so its run printed only (skip) lines and the hunt reported "no test results in the output". Skipped and todo lines now count as results; only pass and fail feed the flake comparison.
+
+Validation: bun .github/scripts/flake-hunt.ts --file test/live/live.test.ts --runs 1 finishes with "No test depends on order, on other files, or fails every run."
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.57.0] - 2026-10-19: No More Silent Hangs
 
@@ -9438,7 +9534,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.57.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.58.0...HEAD
+[0.58.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.54.0...v0.55.0
