@@ -14,7 +14,9 @@ export type FenceMode = "options" | "entry"
 /** The fence words that turn a block into a tab group, and what the block holds. */
 export const FENCE_MODES: Record<string, FenceMode> = { plugboard: "options", "plugboard-options": "entry" }
 
-const ADDED = "// added so the file works"
+// Why each member the fragment lacked is in the full file: plugboard refuses to serve without them.
+const added = (member: string) =>
+  member.trimStart().startsWith('"models"') ? "// which models apps may use: every model you are logged in to" : "// one key per app; callers send it as their API key"
 const SCHEMA = "https://opencode.ai/config.json"
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
@@ -134,7 +136,7 @@ export function fullConfig(fragment: string, mode: FenceMode, version: string, w
     members.map((member, i) => {
       const lines = member.split("\n")
       const comma = i < members.length - 1 || more ? "," : ""
-      return lines.length === 1 ? `${member}${comma} ${ADDED}` : [`${lines[0]} ${ADDED}`, ...lines.slice(1, -1), `${lines.at(-1)}${comma}`].join("\n")
+      return lines.length === 1 ? `${member}${comma} ${added(member)}` : [`${lines[0]} ${added(member)}`, ...lines.slice(1, -1), `${lines.at(-1)}${comma}`].join("\n")
     })
 
   let entry: string
