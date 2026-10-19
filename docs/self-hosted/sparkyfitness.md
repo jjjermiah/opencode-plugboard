@@ -2,6 +2,8 @@
 
 SparkyFitness is a self-hosted nutrition, fitness and health tracker. Its AI assistant uses a global OpenAI-compatible service that an admin sets up once.
 
+Upstream: [source](https://github.com/CodeWithCJ/SparkyFitness).
+
 ## Plugboard options
 
 Give SparkyFitness its own key. Plugboard must bind an address the SparkyFitness server reaches ([Serving other machines](../guides/serving-other-machines.md)).

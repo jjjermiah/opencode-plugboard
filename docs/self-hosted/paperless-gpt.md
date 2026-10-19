@@ -2,6 +2,8 @@
 
 paperless-gpt is a companion to paperless-ngx. An LLM suggests titles, tags, correspondents and document types, and a vision model can run OCR.
 
+Upstream: [source](https://github.com/icereed/paperless-gpt).
+
 ## Plugboard options
 
 Give paperless-gpt its own key. `vision` handles OCR and must accept images. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

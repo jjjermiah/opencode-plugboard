@@ -2,6 +2,8 @@
 
 RAGFlow is a RAG engine. It parses and chunks your documents, stores vectors per chunk, and answers questions with chat over the retrieved chunks. You set models in the web UI.
 
+Upstream: [source](https://github.com/infiniflow/ragflow), [docs](https://ragflow.io/docs/).
+
 ## Plugboard options
 
 Plugboard serves the LLM role. Every dataset needs an embedding model, and plugboard serves none, so RAGFlow needs a second provider for that.

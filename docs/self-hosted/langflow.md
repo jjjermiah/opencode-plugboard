@@ -2,6 +2,8 @@
 
 Langflow is a visual builder for agents and flows. Its language model components use providers you set in the UI or with env vars.
 
+Upstream: [source](https://github.com/langflow-ai/langflow), [docs](https://docs.langflow.org/).
+
 ## Plugboard options
 
 Give Langflow its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

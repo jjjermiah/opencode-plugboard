@@ -2,6 +2,8 @@
 
 Open Notebook is a self-hosted research notebook: sources, notes, transformations and chat over your material. Its AI runs on providers you set in the UI.
 
+Upstream: [source](https://github.com/lfnovo/open-notebook).
+
 ## Plugboard options
 
 Give Open Notebook its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

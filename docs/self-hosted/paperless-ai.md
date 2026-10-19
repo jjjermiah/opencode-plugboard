@@ -2,6 +2,8 @@
 
 paperless-ai runs beside paperless-ngx. An LLM suggests titles, tags, correspondents and document dates, and there is a chat over your documents. It reads and writes paperless-ngx through its API.
 
+Upstream: [source](https://github.com/clusterzx/paperless-ai).
+
 ## Plugboard options
 
 Give paperless-ai its own key and a text alias. It sends no images, so you need no vision alias. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

@@ -2,6 +2,8 @@
 
 The Mattermost AI plugin adds AI assistants (agents) to Mattermost. Each agent uses a service, and the **OpenAI Compatible** service takes any endpoint that speaks the OpenAI API.
 
+Upstream: [source](https://github.com/mattermost/mattermost-plugin-agents).
+
 ## Plugboard options
 
 Give Mattermost its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

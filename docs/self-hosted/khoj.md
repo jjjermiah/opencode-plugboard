@@ -2,6 +2,8 @@
 
 Khoj is a personal AI that chats over your notes, documents and the web. One chat model writes the answers and handles intent detection and web search.
 
+Upstream: [source](https://github.com/khoj-ai/khoj), [docs](https://docs.khoj.dev/).
+
 ## Plugboard options
 
 Give Khoj its own key. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).

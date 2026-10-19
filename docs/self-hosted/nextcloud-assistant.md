@@ -2,6 +2,8 @@
 
 Nextcloud's AI features run through the `integration_openai` app. It connects any number of OpenAI-compatible services, and an admin picks the models each service exposes for each task.
 
+Upstream: [source](https://github.com/nextcloud/integration_openai), [docs](https://docs.nextcloud.com/server/latest/admin_manual/ai/).
+
 ## Plugboard options
 
 Give Nextcloud its own key. `vision` handles image analysis and OCR, so it must accept images. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
