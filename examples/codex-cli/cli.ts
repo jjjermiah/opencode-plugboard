@@ -41,7 +41,10 @@ function config(baseUrl: string, withTool: boolean): string {
     "[features]",
     "goals = false",
     "view_image = false",
-    ...(withTool ? ["[mcp_servers.weather]", `command = "${process.execPath}"`, `args = ["${join(EXAMPLE, "weather-mcp.ts")}"]`] : []),
+    // A headless run cannot answer an approval prompt, and with no approval the MCP call comes back as an error.
+    ...(withTool
+      ? ["[mcp_servers.weather]", `command = "${process.execPath}"`, `args = ["${join(EXAMPLE, "weather-mcp.ts")}"]`, 'default_tools_approval_mode = "approve"']
+      : []),
     "[model_providers.plugboard]",
     'name = "Plugboard"',
     `base_url = "${baseUrl}"`,

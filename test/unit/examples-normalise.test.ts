@@ -183,6 +183,12 @@ describe("Gemini CLI session context", () => {
     expect(normaliseSessionContext(metadata(1, "landlock"))).toBe(normaliseSessionContext(metadata(2, "seatbelt")))
   })
 
+  test("fixes the wall time Codex CLI prints in a tool result (the run's own timing), and nothing else in it", () => {
+    expect(normaliseSessionContext("Wall time: 0.0003 seconds\nOutput:")).toBe("Wall time: <seconds> seconds\nOutput:")
+    expect(normaliseSessionContext("Script completed\nWall time 0.0 seconds\nOutput:\n")).toBe("Script completed\nWall time <seconds> seconds\nOutput:\n")
+    expect(normaliseSessionContext("It took 3 seconds")).toBe("It took 3 seconds")
+  })
+
   test("applies to every string of a parsed body and keeps its structure", () => {
     const body = { contents: [{ parts: [{ text: block }, { text: "Reply with exactly: pong" }] }], n: 3 }
     const out = normaliseSessionContextValue(body) as typeof body

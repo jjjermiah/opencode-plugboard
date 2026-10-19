@@ -106,10 +106,13 @@ const CLI_INSTALL = /(?:\/[^\s"'`<>]*)?\/examples\/gemini-cli\//g
 
 /**
  * Codex CLI's `x-codex-turn-metadata` header value (repeated in `client_metadata`) is a JSON string with the turn's start time
- * in Unix milliseconds and the sandbox the OS gave it (`seatbelt` on macOS, another on Linux). Both differ by run and machine.
+ * in Unix milliseconds and the sandbox the OS gave it (`seatbelt` on macOS, another on Linux). Both differ by run and machine. A tool
+ * result starts with the wall time of the call, which differs by run too.
  */
 const CODEX_TURN_START = /("turn_started_at_unix_ms":)\d+/g
 const CODEX_SANDBOX = /("sandbox":)"[a-z0-9_-]+"/g
+/** The run's own timing, which Codex CLI puts at the head of a tool result (`Wall time: 0.0003 seconds`, `Wall time 0.0 seconds`). */
+const CODEX_WALL_TIME = /(Wall time:? )[0-9.]+( seconds)/g
 
 /**
  * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, the Gemini CLI's
@@ -122,6 +125,7 @@ export function normaliseSessionContext(text: string): string {
     .replace(CLI_INSTALL, "<checkout>/examples/gemini-cli/")
     .replace(CODEX_TURN_START, "$1<unix-ms>")
     .replace(CODEX_SANDBOX, '$1"<sandbox>"')
+    .replace(CODEX_WALL_TIME, "$1<seconds>$2")
 }
 
 /** The same, applied to every string in a parsed JSON value. */

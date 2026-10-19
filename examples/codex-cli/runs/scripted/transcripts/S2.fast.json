@@ -2091,11 +2091,11 @@
               "id": "<id-10>",
               "output": [
                 {
-                  "text": "Wall time: 0.0004 seconds\nOutput:",
+                  "text": "Wall time: <seconds> seconds\nOutput:",
                   "type": "input_text"
                 },
                 {
-                  "text": "MCP tool call requires approval, but approval policy is never",
+                  "text": "{\"temp_c\":18,\"sky\":\"cloudy\",\"city\":\"Paris\"}",
                   "type": "input_text"
                 }
               ],
