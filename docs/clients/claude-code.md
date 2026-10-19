@@ -28,15 +28,23 @@ Then run `claude`.
 - The base URL has no `/v1`; Claude Code adds `/v1/messages`.
 - Set all three `ANTHROPIC_DEFAULT_*_MODEL` variables. The haiku tier also runs background calls (titles, summaries), and a name plugboard doesn't serve fails them with 404.
 
-To keep the settings, put the same variables under `env` in `~/.claude/settings.json` and `chmod 600` the file, since it then holds the key:
+To keep the settings, put the same variables under `env` in `~/.claude/settings.json` and `chmod 600` the file, since it then holds the key :
 
 <<< @/../examples/claude-code/settings.json
 
-Both files are in [examples/claude-code/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/claude-code).
+For a script or CI, run Claude Code headless with `claude -p`. This is the call the example's runner makes:
+
+<<< @/../examples/claude-code/cli.ts#snippet
+
+- `--allowedTools` approves the tools a headless run cannot ask about. Add the ones your prompt needs.
+- `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DISABLE_ERROR_REPORTING` and `DISABLE_AUTOUPDATER` turn off the calls that are not model calls: telemetry, error reports and update checks.
+- Give the script its own `HOME` and `CLAUDE_CONFIG_DIR`, so it reads no `~/.claude` settings and writes no session there.
+
+All three files are in [examples/claude-code/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/claude-code).
 
 ## What works
 
-Streaming, Claude Code's tools (returned to it as `tool_use` blocks), extended thinking on models with a matching variant, structured outputs and token counting.
+Streaming, Claude Code's tools (returned to it as `tool_use` blocks, several in a row), sub-agents (each sub-agent makes its own `/v1/messages` call), compaction (`/compact` and auto-compaction ask the model for a summary and continue from it), extended thinking on models with a matching variant, structured outputs and token counting.
 
 ## Limits
 

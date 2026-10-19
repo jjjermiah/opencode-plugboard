@@ -114,6 +114,22 @@ const CODEX_SANDBOX = /("sandbox":)"[a-z0-9_-]+"/g
 /** The run's own timing, which Codex CLI puts at the head of a tool result (`Wall time: 0.0003 seconds`, `Wall time 0.0 seconds`). */
 const CODEX_WALL_TIME = /(Wall time:? )[0-9.]+( seconds)/g
 
+/**
+ * Claude Code (examples/claude-code/cli.ts). Its run home and workspace are named like the Gemini CLI's, with the pid, and its system
+ * prompt and its compaction summary repeat them: the workspace as the working directory, and the home as the transcript path, where
+ * the project directory name is the workspace path with every `/` and `.` turned into `-`. The same prompt names the machine: the
+ * platform, the shell and the OS version. A sub-agent's hand-back to the model carries the agent's random id and how long it ran.
+ */
+const CLAUDE_PROJECT = /(\/\.claude\/projects\/)-[^\s/]*plugboard-claude-code-workspace(?:-\d+)?/g
+const CLAUDE_PATHS = /(?:\/[^\s"'`]*)?\/plugboard-claude-code-(home|workspace)(?:-\d+)?/g
+const CLAUDE_MACHINE: ReadonlyArray<readonly [RegExp, string]> = [
+  [/(\n - Platform: )[^\n]*/g, "$1<platform>"],
+  [/(\n - Shell: )[^\n]*/g, "$1<shell>"],
+  [/(\n - OS Version: )[^\n]*/g, "$1<os-version>"],
+]
+const CLAUDE_AGENT_ID = /(agentId: |to: ')[0-9a-f]{12,}/g
+const CLAUDE_AGENT_TIME = /(duration_ms: )\d+/g
+
 /** PR-Agent puts the day it runs in the review prompt (`Today's Date: 2026-10-19`), right after its `--PR Info--` header. */
 const PR_AGENT_DATE = /(--PR Info--\n\nToday's Date: )\d{4}-\d{2}-\d{2}/g
 
@@ -135,18 +151,23 @@ function sortAvailableSkills(text: string): string {
 
 /**
  * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, the Gemini CLI's
- * fixed home and workspace paths and Codex CLI's turn start time and sandbox, and PR-Agent's date, anywhere in it,
- * and puts the Gemini CLI's skill list in name order. Nothing else changes.
+ * fixed home and workspace paths, Claude Code's paths, machine description and sub-agent id and timing, Codex CLI's turn start
+ * time and sandbox, and PR-Agent's date, anywhere in it, and puts the Gemini CLI's skill list in name order. Nothing else changes.
  */
 export function normaliseSessionContext(text: string): string {
   const inBlocks = sortAvailableSkills(text.replace(SESSION_CONTEXT, (block) => SESSION_FIELDS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), block)))
-  return inBlocks
+  const rest = inBlocks
     .replace(CLI_PATHS, (_match, name: string) => `<gemini-cli-${name}>`)
     .replace(CLI_INSTALL, "<checkout>/examples/gemini-cli/")
+    .replace(CLAUDE_PROJECT, "$1<claude-code-project>")
+    .replace(CLAUDE_PATHS, (_match, name: string) => `<claude-code-${name}>`)
+    .replace(CLAUDE_AGENT_ID, "$1<agent-id>")
+    .replace(CLAUDE_AGENT_TIME, "$1<ms>")
     .replace(CODEX_TURN_START, "$1<unix-ms>")
     .replace(CODEX_SANDBOX, '$1"<sandbox>"')
     .replace(CODEX_WALL_TIME, "$1<seconds>$2")
     .replace(PR_AGENT_DATE, "$1<date>")
+  return CLAUDE_MACHINE.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), rest)
 }
 
 /** The same, applied to every string in a parsed JSON value. */
@@ -215,7 +236,8 @@ export function normaliseTranscript(exchanges: ReadonlyArray<Exchange>): Transcr
         response: {
           status: exchange.status,
           headers: normaliseValue(resHeaders, ids, false) as Record<string, string>,
-          body: normaliseValue(normaliseResponseBody(exchange.resBody, contentType), ids, idKeys),
+          // The response too: a scripted tool call names a path inside the CLI's workspace (Claude Code's Write).
+          body: normaliseValue(normaliseSessionContextValue(normaliseResponseBody(exchange.resBody, contentType)), ids, idKeys),
         },
       }
     }),

@@ -25,6 +25,44 @@ const userText = (request: PlugRequest): string =>
 const hasPngPart = (request: PlugRequest): boolean =>
   request.messages.some((message) => message.content.some((part) => part.type === "media" && part.url.startsWith("data:image/png")))
 const answered = (request: PlugRequest): boolean => request.messages.some((message) => message.role === "tool")
+const toolResults = (request: PlugRequest): string[] =>
+  request.messages.flatMap((message) => message.content).flatMap((part) => (part.type === "tool-result" ? [part.result] : []))
+
+/** The prompt Claude Code's `Agent` call hands the sub-agent. Only the sub-agent's own request carries it as a user message. */
+const SUBAGENT_PROMPT = "What is the secret word? Reply with the word only."
+/** The summary the model returns to Claude Code's compaction request, and the marker the next turn looks for. */
+const COMPACT_SUMMARY = "scripted summary: the user asked to remember 42."
+
+/**
+ * The runs of examples/claude-code. Each rule keys on its scenario's prompt, or on a text only that request holds (the sub-agent's
+ * prompt, the compaction request), so no other client reaches them. A step is chosen by the tool results the request already holds.
+ */
+function claudeCode(request: PlugRequest, text: string): PlugEvent[] | undefined {
+  const results = toolResults(request)
+  const workspace = /Primary working directory: (\S+)/.exec(request.system.join("\n"))?.[1]
+  if (text.includes(SUBAGENT_PROMPT) && !text.includes(prompt("S12"))) return say("The secret word is marmot.")
+  if (text.includes(prompt("S11")) && workspace) {
+    const file = `${workspace}/notes.txt`
+    if (results.length === 0) return [ev.call("toolu_scripted_write", "Write", { file_path: file, content: "plugboard\n" }), ev.finish("tool-calls", USAGE)]
+    if (results.length === 1) return [ev.call("toolu_scripted_read", "Read", { file_path: file }), ev.finish("tool-calls", USAGE)]
+    return say("done")
+  }
+  // The compaction request is the whole session plus Claude Code's instruction to summarise it, so it is matched before the prompt it quotes.
+  if (text.includes(prompt("S13"))) {
+    if (text.includes("detailed summary of the conversation")) return say(`<summary>${COMPACT_SUMMARY}</summary>`)
+    // After /compact the history is the summary plus the new prompt: no assistant turn is left to quote.
+    if (text.includes(COMPACT_SUMMARY)) return say(request.messages.some((message) => message.role === "assistant") ? "summary and old turns" : "summary only")
+    return say("noted")
+  }
+  if (text.includes(prompt("S12"))) {
+    if (results.length === 0) {
+      const input = { description: "Ask for the secret word", prompt: SUBAGENT_PROMPT, subagent_type: "general-purpose", run_in_background: false }
+      return [ev.call("toolu_scripted_agent", "Agent", input), ev.finish("tool-calls", USAGE)]
+    }
+    return say(`The sub-agent said: ${/secret word is (\w+)/.exec(results.at(-1) ?? "")?.[1] ?? "nothing"}`)
+  }
+  return undefined
+}
 /**
  * The review PR-Agent's `/review` gets (examples/pr-agent). Its user prompt holds a `--PR Info--` header and a `The PR code diff:` block, which no
  * other client sends. The finding below is what the example's runner looks for in the `review.md` the local git provider writes.
@@ -79,6 +117,8 @@ export function answer(request: PlugRequest): PlugEvent[] {
     return [ev.call(CALL_ID, forced, input), ev.finish("tool-calls", USAGE)]
   }
   const text = userText(request)
+  const coding = claudeCode(request, text)
+  if (coding) return coding
   if (isPrAgentReview(text)) return say(PR_REVIEW_YAML)
   // DSPy's chat adapter wraps the question and wants the answer in a `[[ ## answer ## ]]` field, after `reasoning` when the
   // signature asks for it. Other clients never send these markers, so their answers are unchanged.

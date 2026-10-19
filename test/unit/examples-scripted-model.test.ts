@@ -80,6 +80,52 @@ describe("scripted model PR-Agent review (examples/pr-agent)", () => {
   })
 })
 
+describe("scripted model Claude Code runs (examples/claude-code)", () => {
+  const ENV = "# Environment\n - Primary working directory: /w/ws\n - Platform: linux"
+  const claude = (messages: PlugRequest["messages"], system: string[] = [ENV]): PlugRequest => plugRequest({ system, messages })
+  const result = (name: string, text: string): PlugRequest["messages"][number] => ({ role: "tool", content: [{ type: "tool-result", id: `toolu_${name}`, name, result: text }] })
+  const assistant: PlugRequest["messages"][number] = { role: "assistant", content: [{ type: "text", text: "noted" }] }
+  const callOf = (events: PlugEvent[]) => calls(events)[0] as { name: string; input: unknown } | undefined
+
+  test("S11 writes notes.txt in the working directory the system prompt names, reads it back, then answers", () => {
+    const first = answer(claude([user(prompt("S11"))]))
+    expect(callOf(first)).toMatchObject({ name: "Write", input: { file_path: "/w/ws/notes.txt", content: "plugboard\n" } })
+    const second = answer(claude([user(prompt("S11")), result("Write", "ok")]))
+    expect(callOf(second)).toMatchObject({ name: "Read", input: { file_path: "/w/ws/notes.txt" } })
+    const third = answer(claude([user(prompt("S11")), result("Write", "ok"), result("Read", "plugboard")]))
+    expect(calls(third)).toEqual([])
+    expect(textOf(third)).toBe("done")
+  })
+
+  test("S11 without a working directory in the system prompt gets the scripted error, not a guessed path", () => {
+    expect(answer(claude([user(prompt("S11"))], [])).some((event) => event.type === "error")).toBe(true)
+  })
+
+  test("S12 calls the Agent tool once, answers the sub-agent's own request, and passes its reply on", () => {
+    const main = answer(claude([user(prompt("S12"))]))
+    expect(callOf(main)).toMatchObject({ name: "Agent", input: { prompt: "What is the secret word? Reply with the word only.", run_in_background: false } })
+    // The sub-agent's request holds only its own prompt, so it is not asked to call the Agent tool again.
+    const nested = answer(claude([user("What is the secret word? Reply with the word only.")]))
+    expect(calls(nested)).toEqual([])
+    expect(textOf(nested)).toBe("The secret word is marmot.")
+    const done = answer(claude([user(prompt("S12")), result("Agent", "[hand-back]\n  The secret word is marmot.\nagentId: abc")]))
+    expect(textOf(done)).toBe("The sub-agent said: marmot")
+  })
+
+  test("S13 answers the first turn, the compaction request with a summary, and a compacted history with what it saw", () => {
+    expect(textOf(answer(claude([user(prompt("S13"))])))).toBe("noted")
+    const compaction = user(`Your task is to create a detailed summary of the conversation so far, for the prompt: ${prompt("S13")}`)
+    expect(textOf(answer(claude([user(prompt("S13")), assistant, compaction])))).toContain("scripted summary")
+    const summary = user("Summary:\nscripted summary: the user asked to remember 42.")
+    expect(textOf(answer(claude([summary, user(prompt("S13"))])))).toBe("summary only")
+    expect(textOf(answer(claude([summary, assistant, user(prompt("S13"))])))).toBe("summary and old turns")
+  })
+
+  test("a plain S1 prompt from Claude Code keeps its pong", () => {
+    expect(textOf(answer(claude([user(prompt("S1"))])))).toBe("pong")
+  })
+})
+
 describe("scripted model tool choices", () => {
   test("required with one fillable tool forces it with the meal", () => {
     const events = answer(plugRequest({ messages: [user(prompt("S6"))], tools: [MEAL_TOOL], toolChoice: "required" }))
