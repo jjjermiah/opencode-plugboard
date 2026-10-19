@@ -48,12 +48,17 @@ async function run(label: string, extra: readonly string[], files: readonly stri
   const output = `${stdout}\n${stderr}`
   const passed = new Set<string>()
   const failed = new Set<string>()
+  // Skipped and todo tests are results too: a file whose tests are all skipped (the live suite without PLUGBOARD_LIVE) ran fine.
+  let results = 0
   for (const line of output.split("\n")) {
-    const match = /^\((pass|fail)\) (.+?)(?: \[[\d.]+m?s\])?$/.exec(line.trim())
-    if (match) (match[1] === "pass" ? passed : failed).add(match[2]!)
+    const match = /^\((pass|fail|skip|todo)\) (.+?)(?: \[[\d.]+m?s\])?$/.exec(line.trim())
+    if (!match) continue
+    results++
+    if (match[1] === "pass") passed.add(match[2]!)
+    else if (match[1] === "fail") failed.add(match[2]!)
   }
   const ranLine = /Ran (\d+) tests? across/.exec(output)
-  if (!ranLine || passed.size + failed.size === 0) throw new Error(`${label}: no test results in the output\n${output.slice(-2000)}`)
+  if (!ranLine || results === 0) throw new Error(`${label}: no test results in the output\n${output.slice(-2000)}`)
   return { label, passed, failed, ran: Number(ranLine[1]) }
 }
 
