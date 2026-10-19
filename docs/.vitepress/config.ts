@@ -63,7 +63,7 @@ export default defineConfig({
           { text: "Contributing", link: `${repo}/blob/main/CONTRIBUTING.md` },
         ],
       },
-      { text: "Changelog", link: `${repo}/blob/main/CHANGELOG.md` },
+      { text: `v${latest}`, link: `${repo}/blob/main/CHANGELOG.md` },
     ],
     sidebar: [
       {

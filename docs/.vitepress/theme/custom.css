@@ -37,12 +37,3 @@
   max-width: 100%;
   height: auto;
 }
-
-/* The version banner above every page (theme/index.ts). */
-.version-banner {
-  padding: 8px 16px;
-  font-size: 14px;
-  text-align: center;
-  background: var(--vp-c-brand-soft);
-  color: var(--vp-c-text-1);
-}
