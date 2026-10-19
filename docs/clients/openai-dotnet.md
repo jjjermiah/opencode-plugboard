@@ -1,10 +1,8 @@
 # .NET (openai-dotnet)
 
-Verified: run, 2026-10-13. `examples/openai-dotnet` (the `OpenAI` NuGet package 2.14.0, .NET SDK 8.0.423) ran twice against plugboard with model `fast`: a text call, a stream and one tool round trip all passed. The client construction was checked against the official README, "Using a custom base URL and API key" (<https://github.com/openai/openai-dotnet>). The scripted run is in CI (`examples` job, committed under `runs/scripted/`), see [compatibility.md](../compatibility.md#client-examples-in-ci).
+The official OpenAI .NET library, NuGet package `OpenAI`.
 
-openai-dotnet is the official OpenAI .NET library, generated from the OpenAI OpenAPI spec. It covers Chat Completions, the Responses API, streaming and tool calls.
-
-## Plugboard config
+## Connect
 
 ```csharp
 var options = new OpenAIClientOptions { Endpoint = new Uri("http://127.0.0.1:4010/v1") };
@@ -14,35 +12,19 @@ ChatClient client = new(
     options: options);
 ```
 
-- `Endpoint` replaces the base URL whole, so include `/v1`.
-- The key is a plugboard app key, not an OpenAI key. The library reads `OPENAI_API_KEY` only if you pass nothing, so pass the credential explicitly.
-- `fast` is an alias from the plugboard `aliases` option. It is the `model` string.
+`Endpoint` replaces the base URL whole, so include `/v1`. Pass the credential explicitly; otherwise the library reads `OPENAI_API_KEY`. `model` is an alias such as `"fast"` or any allowed `provider/model[#variant]`.
 
-A copyable console app is in [examples/openai-dotnet/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-dotnet).
-
-## What the example does
-
-`Program.cs` makes three calls against `POST /v1/chat/completions`:
-
-1. A text reply with `CompleteChat`.
-2. A streamed reply with `CompleteChatStreaming`, enumerated as it arrives.
-3. One tool round trip: `ChatTool.CreateFunctionTool` describes `get_weather`, the program returns a `ToolChatMessage` with the result, and the model answers.
-
-Run it:
+A complete console app with a text reply, a stream and a tool round trip is in [examples/openai-dotnet/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/openai-dotnet):
 
 ```sh
 cd examples/openai-dotnet
 PLUGBOARD_KEY=<app key> dotnet run
 ```
 
-## Features exercised
+## What works
 
-- Chat Completions (`ChatClient`) with `MaxOutputTokenCount`, tools and streaming.
+Chat Completions (`ChatClient`) with streaming, tools and `ChatResponseFormat.CreateJsonSchemaFormat`; the Responses API (`ResponsesClient`). One `OpenAIClientOptions` can be shared across clients.
 
-Not exercised: the Responses API (`ResponsesClient`) and structured output (`ChatResponseFormat.CreateJsonSchemaFormat`). The library also covers both, and plugboard serves `/v1/responses` ([Responses API](../responses.md)).
+## Limits
 
-## Quirks
-
-- The reasoning-model output cap is `MaxOutputTokenCount` in this library version. The example sets 1024.
-- The library is organized by namespace (`OpenAI.Chat`, `OpenAI.Responses`, and so on). `OpenAIClientOptions` is one object that can be reused across clients.
-- The NuGet package is `OpenAI`, not `openai-dotnet`.
+- Set `MaxOutputTokenCount` high enough (the example uses 1024) when the model reasons, so it has room to answer.

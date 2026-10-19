@@ -4,8 +4,7 @@ Plugboard adds a `/plugboard` page to OpenCode's terminal UI. It shows the per-a
 
 ## Opening it
 
-- Type `/plugboard` in the prompt, or pick **Plugboard usage** from the command palette.
-- It needs nothing extra. OpenCode loads the TUI entry (`opencode-plugboard/tui`) for every server that runs plugboard, because the package exports it beside the server entry.
+Type `/plugboard` in the prompt, or pick **Plugboard usage** from the command palette. It needs no setup: OpenCode loads the TUI entry (`opencode-plugboard/tui`) for every server that runs plugboard, because the package exports it beside the server entry.
 
 ## What it shows
 
@@ -33,10 +32,8 @@ If the server has no plugboard, or plugboard runs with `usage` disabled, the pag
 
 ## How it reads the data
 
-The page calls the `opencode-plugboard.usage` RPC (`src/rpc.ts`) through OpenCode's client, so it talks to the server over OpenCode's own authenticated API. It does not call `GET /plugboard/usage` and does not need the admin key. The RPC returns every app, which is what the page needs.
-
-The page code is `src/tui.tsx` (Solid and OpenTUI, not in the server entry). Its pure helpers (ranges, rows, formats) are in `src/tui-format.ts` and are unit tested.
+The page calls the `opencode-plugboard.usage` RPC through OpenCode's client, so it talks to the server over OpenCode's own authenticated API. It does not call `GET /plugboard/usage` and does not need the admin key. The RPC returns every app, which is what the page needs.
 
 ## Install
 
-Nothing extra. An npm install loads `dist/tui.js`, the compiled page (`./tui` export). OpenCode installs the package without its optional OpenTUI and Solid peers, and the compiled file uses the host's copies. A local checkout needs `bun run build:tui` once first. Why it is compiled: [packaging.md](packaging.md).
+An npm install loads `dist/tui.js`, the compiled page (`./tui` export). OpenCode installs the package without its optional OpenTUI and Solid peers, and the compiled file uses the host's copies. A local checkout needs `bun run build:tui` once first.

@@ -1,15 +1,10 @@
 # Nextcloud Assistant (integration_openai)
 
-Nextcloud's Artificial Intelligence features run through the `integration_openai` app. The app connects any number of OpenAI-compatible services, and an admin picks which models each service exposes for each task.
-
-| | |
-| --- | --- |
-| Upstream | [nextcloud/integration_openai](https://github.com/nextcloud/integration_openai) (the app repo, 76 stars; Nextcloud itself is much larger) |
-| Config source | the app's README, "Admin settings" and "Personal settings" sections |
-| Plugboard API | `/v1/chat/completions`, with tools and images |
-| Status | Chat, tools and text tasks are listed as features. Image generation, speech-to-text and text-to-speech are not possible. docs-verified, not run (checked 2026-10-11) |
+Nextcloud's AI features run through the `integration_openai` app. It connects any number of OpenAI-compatible services, and an admin picks the models each service exposes for each task.
 
 ## Plugboard options
+
+Give Nextcloud its own key. `vision` handles image analysis and OCR, so it must accept images. Docker needs a reachable address ([Serving other machines](../guides/serving-other-machines.md)).
 
 ```jsonc
 {
@@ -26,34 +21,26 @@ Nextcloud's Artificial Intelligence features run through the `integration_openai
 }
 ```
 
-Nextcloud asks for a model name per modality. Pick `text` for text tasks and `vision` for image analysis or OCR.
+## Connect
 
-## Nextcloud config
+In the admin settings, open **Artificial intelligence** and add a service:
 
-In the admin settings, open the **Artificial intelligence** section (the README's wording). Add a service and set:
+| Field | Value |
+| --- | --- |
+| Base URL | `http://host.docker.internal:4010/v1` (the address your Nextcloud server reaches) |
+| API key | the `nextcloud` key |
+| Models | `text` and `vision` for the text modality. Leave the image, transcription and speech modalities off |
 
-- **Base URL**: `http://host.docker.internal:4010/v1`. Use the address the Nextcloud server reaches. The README says to use "the OpenAI-compatible endpoint" of each service.
-- **API key**: the plugboard app key.
-- **Models**: for each modality, choose the models to expose. Choose `text` and `vision` for the text modality. Leave the image, transcription and speech modalities off.
+Skip personal keys unless you want per-user quotas.
 
-The README says any number of services can be connected, and each user may set a personal key for a service. Users with a personal key are not limited by that service's admin quota. Skip personal keys unless you want per-user quotas.
+## What works
 
-## What works and what does not
+- Text tasks: free prompt, chat, summarize, headline, topics, reformulate, change tone, proofread, translate and the rest of the text task list.
+- Chat with tools. Plugboard returns the tool calls and Nextcloud runs them ([Tool calls](../clients/any-app.md#tool-calls)).
+- Image analysis and OCR, through the `vision` alias.
 
-- **Text tasks**: free prompt, chat, summarize, headline, topics, context write, reformulate, improve, emoji, change tone, proofread, reformat paragraphs and translate. The README says context write, summarize, headline and reformulate were mainly tested with OpenAI.
-- **Chat with tools**: listed as a feature. Plugboard returns the tool calls and Nextcloud runs them (see [Tool calls](../clients/any-app.md#tool-calls)). Not run here.
-- **Image analysis and OCR**: listed under text models, "when the service accepts the matching attachments". Needs a vision model, so the `vision` alias. Not run here.
-- **Image generation**: not possible. Plugboard serves no image generation.
-- **Transcription and subtitles**: not possible. Plugboard serves no audio.
-- **Text to speech**: not possible.
+## Limits
 
-## Gotchas
-
-- The README says to run 4 background job workers in the main server, so AI tasks do not wait on each other.
-- The README says the app is "mainly tested with OpenAI" and that other services "might work". Test each task you use against plugboard before you rely on it.
-- Quotas are per service and can be set in the admin section. Plugboard's own `limits` and `budgets` apply separately.
-
-## Sources
-
-- [integration_openai README](https://github.com/nextcloud/integration_openai/blob/main/README.md)
-- [Nextcloud AI overview (admin manual)](https://docs.nextcloud.com/server/latest/admin_manual/ai/overview.html)
+- Image generation, transcription and text to speech are not served. Use another service in the same app for them.
+- Run 4 background job workers on the Nextcloud server so AI tasks do not wait on each other.
+- Nextcloud's quotas are per service. Plugboard's `limits` and `budgets` apply separately.

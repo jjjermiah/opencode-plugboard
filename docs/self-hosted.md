@@ -1,44 +1,34 @@
 # Self-hosted apps
 
-Self-hosted apps with an AI feature usually take a base URL, an API key and a model id. This page lists the ones checked against their current docs or source, and what plugboard can do for each.
+Self-hosted apps with an AI feature usually take a base URL, an API key and a model id. This page lists the apps with a setup guide and what plugboard does for each.
 
-Plugboard serves chat (Chat Completions, Responses, Anthropic Messages and Gemini), tools and images. It does not serve embeddings, audio (speech-to-text and text-to-speech) or image generation. Where an app needs those, plugboard can often serve its chat and another provider can serve the rest.
+Plugboard serves chat (Chat Completions, Responses, Anthropic Messages and Gemini), tools and images. It does not serve embeddings, speech or image generation. Where an app needs those, plugboard serves its chat and another provider serves the rest.
 
-Status terms:
+| App | What AI does | Plugboard API | What works |
+| --- | --- | --- | --- |
+| [Karakeep](self-hosted/karakeep.md) | Tags, summaries, image tagging | Chat, vision | All of it. Semantic search needs embeddings elsewhere |
+| [Frigate](self-hosted/frigate.md) | Object descriptions, chat | Chat, vision | Descriptions and chat. Semantic search stays on its local model |
+| [paperless-gpt](self-hosted/paperless-gpt.md) | Titles, tags, correspondents, LLM OCR | Chat, vision | All of it |
+| [Mealie](self-hosted/mealie.md) | Recipe import from text, URLs and photos, ingredient parser | Chat, vision | All except video transcription |
+| [Khoj](self-hosted/khoj.md) | Chat over your notes and the web | Chat | Chat. Embeddings, if its search needs them, come from elsewhere |
+| [Nextcloud Assistant](self-hosted/nextcloud-assistant.md) | Text tasks, summaries, translation, image analysis | Chat, tools, vision | Text, tools and vision. Image generation and speech come from elsewhere |
+| [Mattermost AI plugin](self-hosted/mattermost.md) | Chat assistants and agents | Responses or Chat Completions | Chat and agents |
+| [Open Notebook](self-hosted/open-notebook.md) | Notebook chat and transformations | Chat | Chat. Embeddings for sources come from elsewhere |
+| [Langflow](self-hosted/langflow.md) | Language model components in flows | Chat | Language model components. Embedding components need another provider |
+| [SparkyFitness](self-hosted/sparkyfitness.md) | AI assistant with tools | Chat, tools | All of it |
+| [paperless-ai](self-hosted/paperless-ai.md) | Titles, tags, correspondents, RAG chat | Chat | Suggestions and chat. The RAG index is local |
+| [Vane](self-hosted/vane.md) | Answering engine | Chat | Answers. It also needs an embedding provider |
+| [Onyx](self-hosted/onyx.md) | RAG search and chat | Chat | Chat. Indexing needs an embedding model elsewhere |
+| [Tandoor Recipes](self-hosted/tandoor.md) | Recipe import, step sorting, nutrition | Chat, vision | Text and photo import. PDF import fails |
+| [LLM Vision for Home Assistant](self-hosted/llm-vision.md) | Image and video analysis | Chat, vision | Vision through the Custom OpenAI provider |
+| [SiYuan](self-hosted/siyuan.md) | AI writing and Q/A | Chat | Writing, chat and the agent. Semantic search needs embeddings elsewhere |
+| [PR-Agent](self-hosted/pr-agent.md) | Pull request review, describe, improve | Chat | All of it |
+| [RAGFlow](self-hosted/ragflow.md) | Document RAG | Chat | Chat. Dataset embeddings and reranking come from elsewhere |
+| Home Assistant OpenAI Conversation (core) | Voice and conversation agent | None | The core integration only accepts the official OpenAI endpoint. Use [Extended OpenAI Conversation](clients/home-assistant-extended-openai.md) |
+| Immich | No LLM feature. Smart search and face recognition use local models | None | Not applicable |
 
-- **Works**: the app's AI features run through plugboard.
-- **Chat only**: the chat features run through plugboard. Embeddings, speech or images need another provider.
-- **Not possible**: the app's AI features cannot use plugboard.
-
-Checked 2026-10-11. Statuses come from each app's docs or source, not from a live run, unless a page says it was run. Each page has its own sources and date. Stars are from the GitHub API on that day.
-
-| App | What AI does there | Plugboard API | Status | Page or issue |
-| --- | --- | --- | --- | --- |
-| Karakeep (about 29.6k stars) | Tags, summaries, image tagging | Chat, vision | Works, no embeddings | [page](self-hosted/karakeep.md) |
-| Frigate (about 36.5k) | Object descriptions, chat | Chat, vision | Chat only: semantic search uses a local Jina model | [page](self-hosted/frigate.md) |
-| paperless-gpt (about 2.8k) | Titles, tags, correspondents, LLM OCR | Chat, vision | Works, no embeddings | [page](self-hosted/paperless-gpt.md) |
-| Mealie (about 13.5k) | Recipe import from text, URLs and photos, AI parser | Chat, vision | Works, except video audio transcription | [page](self-hosted/mealie.md) |
-| Khoj (about 37.6k) | Chat over your notes and the web | Chat | Chat only, search model not checked | [page](self-hosted/khoj.md) |
-| Nextcloud Assistant (integration_openai) | Text, summaries, translation, image analysis | Chat, tools, vision | Chat only: no image generation or speech | [page](self-hosted/nextcloud-assistant.md) |
-| Mattermost AI plugin (plugin repo, about 250 stars) | Chat assistants and agents | Responses or Chat Completions | Works | [page](self-hosted/mattermost.md) |
-| Open Notebook (about 40.1k) | Notebook chat and transformations | Chat | Chat only: embeddings need another provider | [page](self-hosted/open-notebook.md) |
-| Langflow (about 155.5k) | Language model components in flows | Chat | Chat only: the SSRF allowlist must include the host | [page](self-hosted/langflow.md) |
-| SparkyFitness (owner's deployment) | AI assistant, with tools | Chat, tools | Works | [page](self-hosted/sparkyfitness.md) |
-| paperless-ai (about 6.0k) | Titles, tags, correspondents, RAG chat | Chat | Chat only: text, no vision, no embeddings (RAG index is local) | [page](self-hosted/paperless-ai.md) |
-| Vane, formerly Perplexica (about 37.3k) | Answering engine | Chat | Not chat only: chat and search need an embedding provider beside plugboard | [page](self-hosted/vane.md) |
-| Onyx (about 32.4k) | RAG search and chat | Chat | Chat only: indexing and search need an embedding model (default is Onyx's local model) | [page](self-hosted/onyx.md) |
-| Tandoor Recipes (about 8.7k) | Recipe import, step sorting, nutrition | Chat, vision | Works for text import. Photo import needs a vision alias. JSON mode not checked | [page](self-hosted/tandoor.md) |
-| LLM Vision for Home Assistant (about 1.5k) | Image and video analysis | Chat, vision | Vision works through the Custom OpenAI provider, per source, not run. Do not use LocalAI (no key sent) | [page](self-hosted/llm-vision.md) |
-| SiYuan (about 46.7k) | AI writing and Q/A | Chat | Works for writing and chat. Embeddings need another provider | [page](self-hosted/siyuan.md) |
-| PR-Agent code review (about 13.4k) | Pull request review, describe, improve | Chat | Works through chat. Gitea and Forgejo not checked | [page](self-hosted/pr-agent.md) |
-| RAGFlow (about 92k) | Document RAG | Chat | Chat only: dataset embeddings need another provider, and so does reranking if you set one | [page](self-hosted/ragflow.md) |
-| Home Assistant OpenAI Conversation (core) | Voice and conversation agent | None | Not possible: the core integration supports only the official OpenAI endpoint | Use [#237](https://github.com/jjjermiah/opencode-plugboard/issues/237) (Extended OpenAI Conversation) |
-| Immich | No LLM feature: smart search and face recognition use local models | None | Not applicable | none |
-
-Client apps such as [Dify #238](https://github.com/jjjermiah/opencode-plugboard/issues/238), [LibreChat #207](https://github.com/jjjermiah/opencode-plugboard/issues/207) and [AnythingLLM #211](https://github.com/jjjermiah/opencode-plugboard/issues/211) are tracked under the client epic [#206](https://github.com/jjjermiah/opencode-plugboard/issues/206). This page's tracking epic is [#251](https://github.com/jjjermiah/opencode-plugboard/issues/251).
+Chat clients such as [Dify](clients/dify.md) and [LibreChat](clients/librechat.md) have their own pages. For any other OpenAI-compatible app, see [Any OpenAI-compatible app](clients/any-app.md).
 
 ## Networking from containers
 
-Most of these apps run in Docker. Plugboard binds `127.0.0.1` by default, and a container cannot reach that address on the host. Set `listen.host` to a non-loopback address, set `keys`, and point the app at `http://host.docker.internal:4010/v1` (or the host's LAN address). On Linux, add `--add-host host.docker.internal:host-gateway`.
-
-The full steps, the `Host` header check and the reverse-proxy and SSH-tunnel alternatives are in [Remote access](remote-access.md). For the setting pattern that every OpenAI-compatible app shares, see [Any OpenAI-compatible app](clients/any-app.md).
+Plugboard binds `127.0.0.1` by default, and a container cannot reach that address on the host. Set `listen.host` to a reachable address, set `keys`, and point the app at `http://host.docker.internal:4010/v1`. On Linux, add `--add-host host.docker.internal:host-gateway`. The steps, reverse proxies and tunnels are in [Serving other machines](guides/serving-other-machines.md).

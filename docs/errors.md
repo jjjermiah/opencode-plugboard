@@ -53,7 +53,7 @@ The key is missing or does not match any configured or runtime key. Send `Author
 
 ### not_found {#not-found}
 
-No plugboard route at this path, or the option that serves it is off (for example `/plugboard/usage` with `usage: { enabled: false }`). The discovery page at `/` lists the routes that are served. Old paths such as `/v1/usage`, `/v1/status` and `/metrics` are not served any more: see the breaking change in the changelog.
+No plugboard route at this path, or the option that serves it is off (for example `/plugboard/usage` with `usage: { enabled: false }`). The discovery page at `/` lists the routes that are served. Plugboard's own routes all live under `/plugboard/`; `/v1/usage`, `/v1/status` and `/metrics` are not served.
 
 ### method_not_allowed {#method-not-allowed}
 
@@ -109,7 +109,7 @@ The request body stopped arriving for `limits.bodyReadTimeoutMs`, or was not com
 
 ### request_body_too_large {#request-body-too-large}
 
-The request body is over the body cap: `limits.maxBodyBytes` (32 MiB by default), or the app's `limits.apps.<name>.maxBodyBytes`. Send a smaller body, or ask the operator to raise the cap. Before 0.32.0 this 413 had no code.
+The request body is over the body cap: `limits.maxBodyBytes` (32 MiB by default), or the app's `limits.apps.<name>.maxBodyBytes`. Send a smaller body, or ask the operator to raise the cap.
 
 ### server_busy {#server-busy}
 

@@ -1,6 +1,6 @@
 # Legacy completions and `n`
 
-Two additions to the OpenAI endpoints, both opt-in by what the client sends: `POST /v1/completions` for older scripts, and `n` above 1 on Chat Completions and `/v1/completions`. Keys, model ids, aliases and limits are the same as everywhere else; see [configuration](configuration.md).
+`POST /v1/completions` serves older scripts, and `n` above 1 works on Chat Completions and `/v1/completions`. Keys, model ids, aliases and limits are the same as everywhere else; see [configuration](configuration.md).
 
 ## `POST /v1/completions`
 
@@ -22,17 +22,23 @@ The response is the legacy `text_completion` object: `choices[].text`, `index`, 
 | `prompt` | A string, or an array of strings. Each string is its own prompt (see below). An array of token ids or of token arrays is a 400. |
 | `suffix` | Sent as an instruction in a system prompt: reply with the text that belongs between the prompt and the suffix. A chat model has no insert mode, so this is best effort and varies by model. It is the only case where plugboard adds a system prompt. |
 | `max_tokens`, `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` | Passed to the model. Sampling parameters the model is known to reject are dropped and listed in `x-plugboard-dropped-params`, as in Chat Completions (`dropUnsupportedParams`). Without `max_tokens` the model's own default applies, not the legacy default of 16. |
-| `stop` | Matched by plugboard on the answer text, and not sent to the model (#390). The answer ends at the first sequence, which is removed. Reasoning is never matched. |
+| `stop` | Matched by plugboard on the answer text, and not sent to the model. The answer ends at the first sequence, which is removed. Reasoning is never matched. |
 | `echo` | `true` writes the prompt ahead of the completion text in each choice (in a stream, as the first chunk). |
 | `n` | Independent completions per prompt, see below. |
 | `stream`, `stream_options` | As above. |
 | `reasoning_effort` | Picks the model variant, as in Chat Completions. |
-| `response_format` | Same as Chat Completions (#169). `json_schema` forces the `respond` tool and the answer is its arguments as the text; `json_object` asks for a JSON object in a system instruction, and one code fence around it is stripped. With `stream: true`, `json_schema` and `json_object` are both written as one chunk when the model finishes, because the schema check and the fence strip need the whole answer. They do not stream token by token as Chat Completions does (#106). `text` changes nothing. A structured answer with no respond call is taken from the final text when it is the JSON the schema asks for (#170, the same small check as chat), and is a 502 `structured_output_missing` otherwise. |
+| `response_format` | Same as Chat Completions. `json_schema` forces the `respond` tool and the answer is its arguments as the text; `json_object` asks for a JSON object in a system instruction, and one code fence around it is stripped. `text` changes nothing. See [structured output](#structured-output). |
 | `user`, `seed`, `logit_bias` | Accepted and ignored. |
 
-Rejected with a 400 `unsupported_parameter` naming the field: `logprobs` (the host exposes none, a `null` is fine), `best_of` above 1, and token-array prompts.
+Refused with a 400 `unsupported_parameter` naming the field: `logprobs` (the host exposes none, a `null` is fine), `best_of` above 1, and token-array prompts.
 
 An array of prompts makes one model call per prompt, and `n` multiplies that. Choice `i` answers prompt `floor(i / n)`, which is the legacy numbering. The total number of calls must not exceed `maxN`.
+
+### Structured output
+
+With `stream: true`, `json_schema` and `json_object` are both written as one chunk when the model finishes, because the schema check and the fence strip need the whole answer. They do not stream token by token as Chat Completions does.
+
+A structured answer with no respond call is taken from the final text when it is the JSON the schema asks for (the same small check as chat). Otherwise it is a 502 `structured_output_missing`.
 
 ## `n` above 1
 
@@ -47,5 +53,3 @@ An array of prompts makes one model call per prompt, and `n` multiplies that. Ch
 **Failure.** If any choice fails, the whole request fails and the other choices are cancelled (their sessions are interrupted). A partial set of answers looks like a complete one, and callers that sample `n` times to compare or average would be misled. The first failure decides the error. In a non-stream request and in a stream that has not sent anything yet, that is an ordinary HTTP error. In a stream that has already started, it is an `error` frame followed by `[DONE]`, as for a single stream. A client that disconnects or a request that times out cancels every choice.
 
 **History.** Each choice leaves its own session. The `x-plugboard-session` header lists the record ids, comma separated in choice order. In a stream it lists the ones reported before the first chunk went out.
-
-Tested with the `openai` JS SDK 7.32 against a fake model backend: `completions.create` (plain, streamed, array prompt with `n`), `chat.completions.create({ n: 3 })` plain and streamed, and the SDK's `chat.completions.stream` helper. Not run against a live OpenCode server or a real provider.

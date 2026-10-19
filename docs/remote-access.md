@@ -79,7 +79,7 @@ http:
           - url: "http://127.0.0.1:4010"
 ```
 
-Neither example has been run against plugboard. Check both with a streamed request (`stream: true`) and the `/v1/models` call below before you rely on them.
+Check your proxy with a streamed request (`stream: true`) and the `/v1/models` call in the [checklist](#checklist) before you rely on it.
 
 ### SSH tunnel
 
@@ -91,9 +91,9 @@ ssh -N -L 4010:127.0.0.1:4010 <server>
 
 The client then uses `http://127.0.0.1:4010/v1` with a key. Keep the local port equal to `listen.port`, because the `Host` check compares the port. Set `keys` on the server anyway: a keyless loopback bind trusts every local user on that server, and the tunnel's traffic arrives from that loopback.
 
-## Browser apps behind a reverse proxy (since 0.26.0)
+## Browser apps behind a reverse proxy
 
-A browser UI on another origin calls plugboard only when that origin is named in `cors.origins` (see [configuration](configuration#browser-origins-since-0-26-0)). Behind a TLS proxy, list the public origin the browser sees, such as `https://chat.example.net`, and trust the proxy's address with `listen.trustProxy` so the Host check and the logs see the real client.
+A browser UI on another origin calls plugboard only when that origin is named in `cors.origins` (see [configuration](configuration.md#browser-origins)). Behind a TLS proxy, list the public origin the browser sees, such as `https://chat.example.net`, and trust the proxy's address with `listen.trustProxy` so the Host check and the logs see the real client.
 
 ```jsonc
 "keys": { "chat-ui": "{env:PLUGBOARD_KEY_CHAT}" },
@@ -101,11 +101,11 @@ A browser UI on another origin calls plugboard only when that origin is named in
 "cors": { "origins": ["https://chat.example.net"] }
 ```
 
-The proxy must send `X-Forwarded-Host` and `X-Forwarded-Proto`. Keep `keys` set: a keyless endpoint never takes the forwarded host (see [reverse proxies](configuration#reverse-proxies-since-0-26-0)).
+The proxy must send `X-Forwarded-Host` and `X-Forwarded-Proto`. Keep `keys` set: a keyless endpoint never takes the forwarded host (see [reverse proxies](configuration.md#reverse-proxies)).
 
-## Remote image URLs (since 0.26.0)
+## Remote image URLs
 
-A request may name an `http(s)` image URL, and the server fetches it when `remoteImages` is on. From a remote deployment, prefer the stricter choice: `"remoteImages": { "schemes": ["https"], "maxBytes": 5242880, "maxRedirects": 0 }`, plus `allow` for each internal image host. Every field is listed in [configuration](configuration#remote-image-limits-since-0-26-0).
+A request may name an `http(s)` image URL, and the server fetches it when `remoteImages` is on. From a remote deployment, prefer the stricter choice: `"remoteImages": { "schemes": ["https"], "maxBytes": 5242880, "maxRedirects": 0 }`, plus `allow` for each internal image host. Every field is listed in [configuration](configuration.md#remote-image-limits).
 
 ## Firewall
 
