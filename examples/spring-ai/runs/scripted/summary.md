@@ -16,13 +16,13 @@ Verdict: **pass** · spring-ai 2.0.1 on java 21 · models: fast, anthropic/claud
 
 ### S2 on fast: pass
 
-not checked, call id present: the tool is run inside Spring AI, so the call id is not returned; not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned
+not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned; not checked, call id present: the tool is run inside Spring AI, so the call id is not returned
 
 ### S2 on anthropic/claude-haiku-4-5: pass
 
-not checked, call id present: the tool is run inside Spring AI, so the call id is not returned; not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned
+not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned; not checked, call id present: the tool is run inside Spring AI, so the call id is not returned
 
 ### S2 on openai/gpt-5.6-luna#low: pass
 
-not checked, call id present: the tool is run inside Spring AI, so the call id is not returned; not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned
+not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned; not checked, call id present: the tool is run inside Spring AI, so the call id is not returned
 

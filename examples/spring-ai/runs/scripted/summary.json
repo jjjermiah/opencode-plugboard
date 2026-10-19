@@ -105,7 +105,7 @@
       "error": null,
       "id": "S2",
       "model": "fast",
-      "note": "not checked, call id present: the tool is run inside Spring AI, so the call id is not returned; not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned",
+      "note": "not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned; not checked, call id present: the tool is run inside Spring AI, so the call id is not returned",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S2.fast.json"
@@ -132,7 +132,7 @@
       "error": null,
       "id": "S2",
       "model": "anthropic/claude-haiku-4-5",
-      "note": "not checked, call id present: the tool is run inside Spring AI, so the call id is not returned; not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned",
+      "note": "not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned; not checked, call id present: the tool is run inside Spring AI, so the call id is not returned",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S2.anthropic-claude-haiku-4-5.json"
@@ -159,7 +159,7 @@
       "error": null,
       "id": "S2",
       "model": "openai/gpt-5.6-luna#low",
-      "note": "not checked, call id present: the tool is run inside Spring AI, so the call id is not returned; not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned",
+      "note": "not checked, turn 1 finish_reason is tool_calls: the tool is run inside Spring AI, so the first turn's finish reason is not returned; not checked, call id present: the tool is run inside Spring AI, so the call id is not returned",
       "required": true,
       "status": "pass",
       "transcript": "transcripts/S2.openai-gpt-5.6-luna-low.json"

@@ -164,8 +164,11 @@ public class Runner implements CommandLineRunner, ExitCodeGenerator {
     var plan = new LinkedHashMap<String, Object>();
     plan.put("kind", "plan");
     plan.put("scenarios", run.keySet());
-    plan.put("unobserved", Map.of(
-        "S2", Map.of("turn 1 finish_reason is tool_calls", NO_FINISH, "call id present", NO_CALL_ID)));
+    // A LinkedHashMap, not Map.of: Map.of iterates in a different order on each JVM start, and the note lists the checks in this order.
+    var s2Unobserved = new LinkedHashMap<String, Object>();
+    s2Unobserved.put("turn 1 finish_reason is tool_calls", NO_FINISH);
+    s2Unobserved.put("call id present", NO_CALL_ID);
+    plan.put("unobserved", Map.of("S2", s2Unobserved));
     emit(plan);
 
     for (JsonNode scenario : scenarios) {
