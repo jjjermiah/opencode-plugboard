@@ -7,6 +7,7 @@ A streamed answer sends its headers with the first event, so headers that need t
 | Header | When | Value |
 | --- | --- | --- |
 | `x-plugboard-request-id` | Every response | 12 hex characters. The same id is on the request's log lines. |
+| `x-request-id` | The request sent one | The caller's own id, echoed. Plugboard keeps it when it is 1 to 128 characters of letters, digits and `_ . : / + = -`, and ignores any other value. The request's log line carries it as `clientRequestId`. It never replaces `x-plugboard-request-id`. |
 | `x-plugboard-model` | Every answer | The `provider/model#variant` that answered. With a fallback chain, the target that won. |
 | `x-plugboard-fallbacks` | A fallback chain moved past a failing target | How many targets failed before the one that answered. |
 | `x-plugboard-session` | Every answer | The OpenCode session id of the request. See [History](history.md). |
@@ -14,7 +15,7 @@ A streamed answer sends its headers with the first event, so headers that need t
 | `x-plugboard-usage` | Usage recording on, not streamed | `input=<n>; output=<n>; cache_read=<n>; cache_write=<n>; cost_usd=<x>`. The cost is left out for a model with no price. |
 | `x-plugboard-cache` | The app uses the response cache | `hit` or `miss`. |
 | `x-plugboard-affinity` | The app uses prompt-cache anchors | `anchor`, or `none` when the request got no anchor. |
-| `x-plugboard-dropped-params` | Sampling parameters were dropped | The dropped names, comma separated, such as `temperature,top_p`. See [`dropUnsupportedParams`](configuration.md#options). |
+| `x-plugboard-dropped-params` | Sampling parameters were dropped | The dropped names, comma separated, such as `temperature,top_p,top_k,seed`. See [`dropUnsupportedParams`](configuration.md#options). |
 | `x-plugboard-dropped-tools` | A Responses request declared hosted tools | The types left out, comma separated, such as `web_search`. See [Responses tools](responses.md#tools). Streamed answers carry it too. |
 | `x-plugboard-thinking` | Thinking or a reasoning effort was asked for, and the model has no variant for it | `unavailable`. The request ran without thinking. |
 | `x-plugboard-policy` | The app's policy changed the request | `tools-stripped`: the app has `tools: false` and the caller's tools were removed. |

@@ -22,6 +22,7 @@ Plugboard is stateless here: every request carries the whole conversation in `me
 | `response_format` | `json_schema` or `json_object`. See [structured output](#structured-output). |
 | `n` | Several answers, one full model call each, up to `maxN`. See [completions](completions.md#n-above-1). |
 | `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` | Passed to the model. Values a model is known to reject are dropped and listed in `x-plugboard-dropped-params`. |
+| `seed` | An integer, passed to the model. A model whose protocol sends no seed (Claude, GPT-5 and 6) drops it and lists `seed` in `x-plugboard-dropped-params`. There is no top-k field here. |
 | `max_completion_tokens`, `max_tokens` | The output cap. `max_completion_tokens` wins when both are sent. |
 | `stop` | Up to 4 sequences. The answer ends before the first match. |
 | `reasoning_effort` | Picks the model's variant of that name, else the nearest one above it, else its highest. A model with no variants answers without thinking and sets `x-plugboard-thinking: unavailable`. |

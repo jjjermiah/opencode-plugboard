@@ -347,11 +347,10 @@ describe("#4 parseMessagesRequest: tools, sampling and thinking", () => {
     expect(parse(body({ tools: [tool("a", { type: "custom", description: "A" })] })).request.tools).toEqual([{ name: "a", description: "A", parameters: { type: "object" } }])
   })
 
-  test("sampling and stop sequences map; top_k is accepted and reported as ignored", () => {
+  test("#511 sampling, top_k and stop sequences map to the neutral generation", () => {
     const parsed = parse(body({ temperature: 0.5, top_p: 0.9, top_k: 40, stop_sequences: ["END"] }))
-    expect(parsed.request.generation).toEqual({ maxTokens: 100, temperature: 0.5, topP: 0.9, stop: ["END"] })
-    expect(parsed.topKIgnored).toBe(true)
-    expect(parse(body()).topKIgnored).toBe(false)
+    expect(parsed.request.generation).toEqual({ maxTokens: 100, temperature: 0.5, topP: 0.9, topK: 40, stop: ["END"] })
+    expect(parse(body()).request.generation).toEqual({ maxTokens: 100 })
   })
 
   test.each([

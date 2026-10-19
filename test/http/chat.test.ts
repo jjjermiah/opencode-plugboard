@@ -119,6 +119,25 @@ describe("#30 dropped sampling parameters", () => {
     expect(requestLine().dropped).toBe("temperature,top_p")
   })
 
+  test("#512 seed reaches the model call; a model whose protocol sends none drops it and reports it", async () => {
+    const caller = new FakeModelCaller([ev.finish()])
+    server = await startRoute({ caller, catalog, options: { models: ["openai/*", "test/*"] } })
+    const kept = await server.send(chat({ seed: 7 }))
+    expect(kept.headers).not.toHaveProperty("x-plugboard-dropped-params")
+    expect(caller.calls[0]!.request.generation).toEqual({ seed: 7 })
+    const dropped = await server.send(gpt({ seed: 7, temperature: 0.2 }))
+    expect(dropped.headers["x-plugboard-dropped-params"]).toBe("temperature,seed")
+    expect(caller.calls[1]!.request.generation).toEqual({})
+  })
+
+  test("#512 a fractional seed is a 400 before any model call", async () => {
+    const caller = await route([ev.finish()])
+    const reply = await server!.send(chat({ seed: 1.5 }))
+    expect(reply.status).toBe(400)
+    expect(reply.json().error.param).toBe("seed")
+    expect(caller.calls).toEqual([])
+  })
+
   test("the header is also set on a stream", async () => {
     server = await startRoute({ caller: new FakeModelCaller([ev.text("x"), ev.finish()]), catalog, options: { models: ["openai/*"] } })
     const stream = await server.open(gpt({ stream: true, temperature: 1 }))

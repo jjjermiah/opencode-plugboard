@@ -48,6 +48,62 @@ describe("#76 x-plugboard-request-id", () => {
   })
 })
 
+describe("#514 a caller's x-request-id", () => {
+  const lineOf = () => [...logs.of("request"), ...logs.of("request.failed")][0]!
+
+  test.each([
+    ["a UUID", "3f2504e0-4f89-41d3-9a0c-0305e82c3301"],
+    ["a trace-style id", "gw:7/ab_c.d+e=f-1"],
+    ["the longest accepted id", "a".repeat(128)],
+  ])("%s is echoed, logged as clientRequestId, and leaves x-plugboard-request-id alone", async (_name, sent) => {
+    await route()
+    const reply = await server!.send({ ...chat, headers: { "x-request-id": sent } })
+    expect(reply.status).toBe(200)
+    expect(reply.headers["x-request-id"]).toBe(sent)
+    expect(reply.headers["x-plugboard-request-id"]).toMatch(/^[0-9a-f]{12}$/)
+    expect(lineOf().fields).toMatchObject({ clientRequestId: sent, id: reply.headers["x-plugboard-request-id"] })
+  })
+
+  test.each([
+    ["one character too long", "a".repeat(129)],
+    ["a space", "has space"],
+    ["a quote", 'say"hi'],
+    ["a semicolon", "a;b"],
+    ["a non-ASCII character", "caf\u00e9"],
+    ["an empty value", ""],
+  ])("%s is ignored: nothing echoed, nothing logged", async (_name, sent) => {
+    await route()
+    const reply = await server!.send({ ...chat, headers: { "x-request-id": sent } })
+    expect(reply.status).toBe(200)
+    expect(reply.headers).not.toHaveProperty("x-request-id")
+    expect(lineOf().fields.clientRequestId).toBeUndefined()
+  })
+
+  test("two x-request-id headers are ignored, not merged", async () => {
+    await route()
+    const reply = await server!.send({ ...chat, headers: { "x-request-id": ["one", "two"] as unknown as string } })
+    expect(reply.headers).not.toHaveProperty("x-request-id")
+    expect(lineOf().fields.clientRequestId).toBeUndefined()
+  })
+
+  test.each([
+    ["a refused request", { path: "/nope" }],
+    ["a Messages error", { method: "POST", path: "/v1/messages", body: {} }],
+    ["a health probe", { path: "/healthz" }],
+  ])("is echoed on %s too", async (_name, init) => {
+    await route()
+    const reply = await server!.send({ ...init, headers: { "x-request-id": "abc-123" } })
+    expect(reply.headers["x-request-id"]).toBe("abc-123")
+  })
+
+  test("a request without one carries no x-request-id", async () => {
+    await route()
+    const reply = await server!.send(chat)
+    expect(reply.headers).not.toHaveProperty("x-request-id")
+    expect(lineOf().fields).not.toHaveProperty("clientRequestId", expect.anything())
+  })
+})
+
 describe("#91 authentication comes before route lookup", () => {
   test.each([
     ["an unknown path", { path: "/v2/secret" }],

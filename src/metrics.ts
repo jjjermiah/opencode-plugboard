@@ -7,7 +7,7 @@
  *
  * Labels are bounded by construction and carry ids only: `app` is a configured key name (or
  * `_none` before authentication succeeded), `route` is one of the known routes or `unknown`,
- * `status` a response code, `outcome` one of a fixed set, `param` a sampling parameter name from
+ * `status` a response code, `outcome` one of a fixed set (requests and remote image fetches each have their own), `param` a sampling parameter name from
  * `src/openai/sampling.ts`. Never a model string, key, path or client-supplied text.
  */
 
@@ -47,6 +47,12 @@ export interface RuntimeSnapshot {
 /** Request duration buckets, seconds: model calls run from under a second to many minutes. */
 const BUCKETS = [0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600]
 
+/** Remote image fetch buckets, seconds: a fetch is bounded by `remoteImages.timeoutMs` (20 s by default). */
+const FETCH_BUCKETS = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30]
+
+/** How one remote image fetch ended, for the `outcome` label: `blocked` is a refused address or scheme, `error` any other failure. */
+export type ImageFetchOutcome = "ok" | "blocked" | "too_large" | "timeout" | "error"
+
 /** A counter that ignores zero, negative and non-finite amounts (@prometheus-io/client throws on the last two and would write a zero series for the first). */
 const count = <L extends string>(counter: Counter<L>, labels: Record<L, string>, amount = 1): void => {
   // `Record<L, string>` is what `LabelValues<L>` means for a non-empty label list; its conditional type cannot resolve for a generic `L`.
@@ -72,6 +78,8 @@ export interface Metrics {
    * sequence ended the answer, #390) or `disconnect` (the client left). Counted, not estimated.
    */
   usageMissing(app: string, reason: "stop" | "disconnect"): void
+  /** One remote image fetch ended: its outcome, the body bytes read (0 when none), and how long it took in milliseconds. Never the URL or host. */
+  imageFetch(input: { readonly outcome: ImageFetchOutcome; readonly bytes: number; readonly ms: number }): void
   /** A call was refused with 429 by a concurrency cap (`concurrency`), a requests-per-minute limit (`rate`) or a budget (`budget`). */
   limited(app: string, reason: "concurrency" | "rate" | "budget"): void
   /** A call the response cache applied to: a stored answer replayed (`hit`) or the model run (`miss`). */
@@ -143,6 +151,20 @@ export function createMetrics(): Metrics {
     labelNames: ["app", "result"],
     registers: [registry],
   })
+  const imageFetches = new Counter({
+    name: "plugboard_remote_image_fetches_total",
+    help: "Remote image fetches ended, by outcome: ok, blocked (address or scheme refused), too_large, timeout or error. Absent unless the `remoteImages` option is on.",
+    labelNames: ["outcome"],
+    registers: [registry],
+  })
+  const imageBytes = new Counter({ name: "plugboard_remote_image_bytes_total", help: "Bytes of remote image bodies read.", registers: [registry] })
+  const imageFetchDuration = new Histogram({
+    name: "plugboard_remote_image_fetch_duration_seconds",
+    help: "Time one remote image fetch took, by outcome.",
+    labelNames: ["outcome"],
+    buckets: FETCH_BUCKETS,
+    registers: [registry],
+  })
   const sweeps = new Counter({ name: "plugboard_history_sweeps_total", help: "History sweeps that ended, by result.", labelNames: ["result"], registers: [registry] })
   const removed = new Counter({ name: "plugboard_history_sessions_removed_total", help: "Request sessions removed by history sweeps.", registers: [registry] })
   const generations = new Gauge({ name: "plugboard_generations", help: "Accepted plugin generations (one per OpenCode Location) serving requests.", registers: [registry] })
@@ -185,6 +207,12 @@ export function createMetrics(): Metrics {
     usageMissing: (app, reason) => count(usageMissing, { app, reason }),
     limited: (app, reason) => count(limited, { app, reason }),
     cache: (app, result) => count(cache, { app, result }),
+    imageFetch({ outcome, bytes, ms }) {
+      count(imageFetches, { outcome })
+      if (bytes > 0 && Number.isFinite(bytes)) imageBytes.inc(bytes)
+      const seconds = ms / 1000
+      if (seconds >= 0 && Number.isFinite(seconds)) imageFetchDuration.observe({ outcome }, seconds)
+    },
     sweep(result, amount) {
       count(sweeps, { result })
       if (amount > 0 && Number.isFinite(amount)) removed.inc(amount)

@@ -26,7 +26,7 @@ import { RequestCollector } from "./events.js"
 import { requestSystem } from "./context.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, MissingParentError, type DirectToolSchema, type SessionPort } from "./host.js"
-import { ImageError, prepareImages, type RemoteImages } from "./media.js"
+import { ImageError, prepareImages, type ImageFetch, type RemoteImages } from "./media.js"
 import { requestPermissions, seedToolsFor, ungrantedServerTool, type OperatorRule } from "./seeds.js"
 import { maxAnchorsOf, PROMPT_CACHE_OFF, scopeKey, type Affinity } from "./affinity.js"
 import type { SessionStore } from "./state.js"
@@ -64,6 +64,8 @@ export interface SessionCallerDeps {
   readonly stopDrainMs?: number
   /** Called once for a run whose usage the host never reported (`reason` `disconnect`, see `settleMs`). Counted, never estimated. */
   readonly onUsageMissing?: (app: string) => void
+  /** Called once for each remote image fetch that ended (metrics): outcome, body bytes and duration, never the URL. */
+  readonly onImageFetch?: (fetched: ImageFetch) => void
 }
 
 /** How long the request guard may outlive the response while the host has not reported the end of the execution. */
@@ -398,7 +400,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
 
       try {
         // 1. Prompt files: images become data URLs (http(s) ones are fetched once).
-        const images = await prepareImages(request, context.signal, remoteImages)
+        const images = await prepareImages(request, context.signal, remoteImages, deps.onImageFetch)
         const invalid = checkPreparation(request, images.length, maxTools)
         if (invalid) return yield note({ type: "error", error: invalid })
 

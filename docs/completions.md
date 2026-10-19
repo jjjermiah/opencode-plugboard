@@ -21,14 +21,14 @@ The response is the legacy `text_completion` object: `choices[].text`, `index`, 
 | `model` | Same as Chat Completions: an alias or `provider/model[#variant]`. |
 | `prompt` | A string, or an array of strings. Each string is its own prompt (see below). An array of token ids or of token arrays is a 400. |
 | `suffix` | Sent as an instruction in a system prompt: reply with the text that belongs between the prompt and the suffix. A chat model has no insert mode, so this is best effort and varies by model. It is the only case where plugboard adds a system prompt. |
-| `max_tokens`, `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` | Passed to the model. Sampling parameters the model is known to reject are dropped and listed in `x-plugboard-dropped-params`, as in Chat Completions (`dropUnsupportedParams`). Without `max_tokens` the model's own default applies, not the legacy default of 16. |
+| `max_tokens`, `temperature`, `top_p`, `presence_penalty`, `frequency_penalty`, `seed` | Passed to the model. A model whose protocol sends no seed (Claude, GPT-5 and 6) drops `seed` and lists it in `x-plugboard-dropped-params`. Sampling parameters the model is known to reject are dropped and listed in `x-plugboard-dropped-params`, as in Chat Completions (`dropUnsupportedParams`). Without `max_tokens` the model's own default applies, not the legacy default of 16. |
 | `stop` | Matched by plugboard on the answer text, and not sent to the model. The answer ends at the first sequence, which is removed. Reasoning is never matched. |
 | `echo` | `true` writes the prompt ahead of the completion text in each choice (in a stream, as the first chunk). |
 | `n` | Independent completions per prompt, see below. |
 | `stream`, `stream_options` | As above. |
 | `reasoning_effort` | Picks the model variant, as in Chat Completions. |
 | `response_format` | Same as Chat Completions. `json_schema` forces the `respond` tool and the answer is its arguments as the text; `json_object` asks for a JSON object in a system instruction, and one code fence around it is stripped. `text` changes nothing. See [structured output](#structured-output). |
-| `user`, `seed`, `logit_bias` | Accepted and ignored. |
+| `user`, `logit_bias` | Accepted and ignored. |
 
 Refused with a 400 `unsupported_parameter` naming the field: `logprobs` (the host exposes none, a `null` is fine), `best_of` above 1, and token-array prompts.
 

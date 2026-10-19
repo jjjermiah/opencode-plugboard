@@ -9,7 +9,7 @@ import { lookup } from "node:dns/promises"
 import type { ServerResponse } from "node:http"
 import ipaddr from "ipaddr.js"
 import type { PlugRequest } from "../../src/contract.js"
-import { ImageError, isPublicAddress, parseAllowEntry, prepareImages, type RemoteImages } from "../../src/session/media.js"
+import { ImageError, isPublicAddress, parseAllowEntry, prepareImages, type ImageFetch, type RemoteImages } from "../../src/session/media.js"
 import { plugRequest, until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
 import { listen, type Loopback } from "../support/loopback.js"
@@ -267,6 +267,76 @@ describe("#259 remoteImages limits tighten the fetch", () => {
     expect(count()).toBe(before + 1)
     const files = await prepareImages(withImages("data:a", url("/max-items.png"), "data:b"), new AbortController().signal, { allow, maxItems: 1 })
     expect(files).toHaveLength(3)
+  })
+})
+
+describe("#513 remote image fetch outcomes reach onFetch", () => {
+  const allow = ["127.0.0.1"]
+  const url = (path: string) => `http://127.0.0.1:${server.port}${path}`
+  /** The fetches one `prepareImages` call reports; a refused image is caught, as the caller turns it into a 400. */
+  async function fetched(urls: string[], remoteImages: RemoteImages, signal = new AbortController().signal) {
+    const seen: ImageFetch[] = []
+    await prepareImages(withImages(...urls), signal, remoteImages, (one) => seen.push(one)).catch(() => undefined)
+    return seen
+  }
+
+  test("an image fetched is ok, with the body bytes and a duration", async () => {
+    const [one, ...rest] = await fetched([url("/ok.png")], { allow })
+    expect(rest).toEqual([])
+    expect(one).toMatchObject({ outcome: "ok", bytes: PNG.length })
+    expect(one!.ms).toBeGreaterThanOrEqual(0)
+  })
+
+  test.each([
+    ["an address that is not public", () => "http://10.0.0.1/a.png", true],
+    ["a scheme remoteImages.schemes does not list", () => url("/ok.png"), { allow, schemes: ["https"] }],
+    ["a redirect to an address that is not public", () => url("/to-private"), { allow, maxRedirects: 1 }],
+  ] as Array<[string, () => string, RemoteImages]>)("%s is blocked", async (_name, target, remoteImages) => {
+    expect(await fetched([target()], remoteImages)).toMatchObject([{ outcome: "blocked", bytes: 0 }])
+  })
+
+  test("a declared size over the cap is too_large with no bytes read; a streamed one reports the bytes it read", async () => {
+    expect(await fetched([url("/huge")], { allow })).toMatchObject([{ outcome: "too_large", bytes: 0 }])
+    const [streamed] = await fetched([url("/streamed-huge")], { allow, maxBytes: 1024 })
+    expect(streamed).toMatchObject({ outcome: "too_large" })
+    expect(streamed!.bytes).toBeGreaterThan(1024)
+  })
+
+  test("an answer that never comes is a timeout", async () => {
+    expect(await fetched([url("/hang")], { allow, timeoutMs: 1 })).toMatchObject([{ outcome: "timeout", bytes: 0 }])
+    for (const response of hung.splice(0)) response.destroy()
+  })
+
+  test.each([
+    ["a 404", "/missing"],
+    ["a refused redirect", "/redirect"],
+    ["a response that is not an image", "/text"],
+  ])("%s is an error", async (_name, path) => {
+    expect(await fetched([url(path)], { allow })).toMatchObject([{ outcome: "error" }])
+  })
+
+  test("each fetch of one request is reported once, in order", async () => {
+    const seen = await fetched([url("/ok.png"), url("/missing")], { allow })
+    expect(seen.map((one) => one.outcome)).toEqual(["ok", "error"])
+  })
+
+  test("no fetch, no report: data URLs, a disabled option and a client that left are not fetch outcomes", async () => {
+    expect(await fetched(["data:a"], false)).toEqual([])
+    expect(await fetched(["https://example.com/a.png"], false)).toEqual([])
+    expect(await fetched(["file:///etc/passwd"], true)).toEqual([])
+    const gone = new AbortController()
+    const pending = fetched([url("/hang")], { allow }, gone.signal)
+    await until(() => hung.length > 0, 1_000, "the /hang request")
+    gone.abort()
+    expect(await pending).toEqual([])
+    for (const response of hung.splice(0)) response.destroy()
+  })
+
+  test("a throwing report never fails the image", async () => {
+    const files = await prepareImages(withImages(url("/ok.png")), new AbortController().signal, { allow }, () => {
+      throw new Error("metrics down")
+    })
+    expect(files).toHaveLength(1)
   })
 })
 

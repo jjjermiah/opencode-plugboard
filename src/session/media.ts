@@ -23,6 +23,7 @@ import { isIP } from "node:net"
 import ipaddr from "ipaddr.js"
 import type { PlugRequest } from "../contract.js"
 import { log } from "../log.js"
+import type { ImageFetchOutcome } from "../metrics.js"
 
 const MAX_REMOTE_IMAGE_BYTES = 20 * 1024 * 1024
 /** Aggregate size of the prepared data URLs of one request. */
@@ -30,7 +31,14 @@ const MAX_TOTAL_IMAGE_BYTES = 50 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 20_000
 const TOO_MANY = () => new ImageError("images_too_large", "The request's images are larger than 50 MB in total")
 /** The one message for every failed fetch (blocked address, DNS, refused, timeout, bad status): no oracle for the server's network. */
-const FETCH_FAILED = () => new ImageError("image_fetch_failed", "Could not fetch image")
+const FETCH_FAILED = (outcome: ImageFetchOutcome = "error") => {
+  const failed = new ImageError("image_fetch_failed", "Could not fetch image")
+  // Kept beside the error, not on it: the caller-facing error stays the same object for every cause.
+  if (outcome !== "error") fetchOutcomes.set(failed, outcome)
+  return failed
+}
+/** What the fetch metrics count a refused fetch as, for the errors `FETCH_FAILED` made. */
+const fetchOutcomes = new WeakMap<ImageError, ImageFetchOutcome>()
 
 /** What one request's images may still use, in data URL characters (== bytes held). */
 interface Budget {
@@ -63,6 +71,13 @@ export class ImageError extends Error {
   ) {
     super(message)
   }
+}
+
+/** One ended remote image fetch, as `onImageFetch` receives it: the body bytes read and the milliseconds it took. Never the URL or host. */
+export interface ImageFetch {
+  readonly outcome: ImageFetchOutcome
+  readonly bytes: number
+  readonly ms: number
 }
 
 // ---- addresses
@@ -162,7 +177,7 @@ async function checkedAddresses(url: URL, allow: ReadonlyArray<AllowEntry>, sign
   if (addresses.length === 0 || !addresses.every(permitted)) {
     // The log says which kind of refusal, never the host or the URL.
     log("media.remote_refused", { reason: addresses.length === 0 ? "no_address" : "address_not_allowed" })
-    throw FETCH_FAILED()
+    throw FETCH_FAILED("blocked")
   }
   return addresses
 }
@@ -208,7 +223,9 @@ async function getFirst(url: URL, addresses: ReadonlyArray<string>, signal: Abor
 
 // ---- preparation
 
-async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteImages, budget: Budget): Promise<string> {
+const TOO_LARGE_CODES: ReadonlySet<string> = new Set(["image_too_large", "images_too_large"])
+
+async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteImages, budget: Budget, onFetch?: (fetched: ImageFetch) => void): Promise<string> {
   if (url.startsWith("data:")) {
     if (url.length > budget.remaining) throw TOO_MANY()
     return url
@@ -218,6 +235,31 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
 
   // The object form tightens the defaults (#259); `true` and the absent fields keep today's bounds.
   const options: RemoteImageOptions = typeof remoteImages === "object" ? remoteImages : {}
+
+  const bounded = AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs ?? FETCH_TIMEOUT_MS)])
+  const tally = { bytes: 0 }
+  const started = performance.now()
+  const report = (outcome: ImageFetchOutcome) => {
+    try {
+      onFetch?.({ outcome, bytes: tally.bytes, ms: performance.now() - started })
+    } catch {
+      // A broken metrics write never fails the image.
+    }
+  }
+  try {
+    const dataUrl = await fetchRemote(url, options, bounded, budget, tally)
+    report("ok")
+    return dataUrl
+  } catch (error) {
+    // A fetch abandoned because the client left or the request deadline passed is not a fetch outcome.
+    if (signal.aborted) throw error
+    report(bounded.aborted ? "timeout" : error instanceof ImageError ? (TOO_LARGE_CODES.has(error.code) ? "too_large" : (fetchOutcomes.get(error) ?? "error")) : "error")
+    throw error
+  }
+}
+
+/** Fetch one http(s) image into a data URL within the budget; `tally.bytes` follows the body bytes read. */
+async function fetchRemote(url: string, options: RemoteImageOptions, bounded: AbortSignal, budget: Budget, tally: { bytes: number }): Promise<string> {
   const schemes = options.schemes ?? ["http", "https"]
   const maxBytes = options.maxBytes ?? MAX_REMOTE_IMAGE_BYTES
   const maxRedirects = options.maxRedirects ?? 0
@@ -225,7 +267,6 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
 
   // Messages never carry the URL, the status, the content type or the fetch error text: they can hold
   // credentials in the query string or describe the server's network to the caller.
-  const bounded = AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs ?? FETCH_TIMEOUT_MS)])
   let target: URL
   try {
     target = new URL(url)
@@ -236,7 +277,7 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
   let response: IncomingMessage
   for (;;) {
     // The scheme is checked for the first URL and for every redirect target (#259).
-    if (!schemes.includes(target.protocol.slice(0, -1))) throw FETCH_FAILED()
+    if (!schemes.includes(target.protocol.slice(0, -1))) throw FETCH_FAILED("blocked")
     // Every hop is resolved and checked again (I17), so a redirect cannot reach an address the first URL could not.
     const addresses = await checkedAddresses(target, allow, bounded).catch((error: unknown) => {
       throw error instanceof ImageError ? error : FETCH_FAILED()
@@ -279,6 +320,7 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
   try {
     for await (const chunk of response as AsyncIterable<Buffer>) {
       size += chunk.byteLength
+      tally.bytes = size
       if (size > limit) throw tooLarge()
       chunks.push(chunk)
     }
@@ -292,7 +334,7 @@ async function toDataUrl(url: string, signal: AbortSignal, remoteImages: RemoteI
 }
 
 /** Prompt files for every image in the request, in message order, named `image-1`, `image-2`, ... Throws `ImageError`. */
-export async function prepareImages(request: PlugRequest, signal: AbortSignal, remoteImages: RemoteImages): Promise<Array<{ uri: string; name: string }>> {
+export async function prepareImages(request: PlugRequest, signal: AbortSignal, remoteImages: RemoteImages, onFetch?: (fetched: ImageFetch) => void): Promise<Array<{ uri: string; name: string }>> {
   const images: Array<{ uri: string; name: string }> = []
   const budget: Budget = { remaining: MAX_TOTAL_IMAGE_BYTES }
   // `remoteImages.maxItems` caps the http(s) URLs of one request (#259); data URLs are not counted.
@@ -304,7 +346,7 @@ export async function prepareImages(request: PlugRequest, signal: AbortSignal, r
         signal.throwIfAborted()
         if (maxItems !== undefined && !part.url.startsWith("data:") && ++remote > maxItems)
           throw new ImageError("too_many_remote_images", `The request has more remote image URLs than remoteImages.maxItems (${maxItems}) allows`)
-        const uri = await toDataUrl(part.url, signal, remoteImages, budget)
+        const uri = await toDataUrl(part.url, signal, remoteImages, budget, onFetch)
         budget.remaining -= uri.length
         images.push({ uri, name: `image-${images.length + 1}` })
       }

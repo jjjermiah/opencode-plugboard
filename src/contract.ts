@@ -122,6 +122,10 @@ export interface PlugGeneration {
   readonly maxTokens?: number
   readonly temperature?: number
   readonly topP?: number
+  /** Anthropic `top_k`, Gemini `topK`. Chat Completions and Responses have no such field. */
+  readonly topK?: number
+  /** Chat Completions and legacy completions `seed`, Gemini `seed`. */
+  readonly seed?: number
   readonly stop?: ReadonlyArray<string>
   readonly presencePenalty?: number
   readonly frequencyPenalty?: number

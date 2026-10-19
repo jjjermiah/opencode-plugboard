@@ -335,7 +335,7 @@
         },
         "headers": {
           "content-type": "text/event-stream; charset=utf-8",
-          "x-plugboard-dropped-params": "temperature,top_p"
+          "x-plugboard-dropped-params": "temperature,top_p,top_k"
         },
         "status": 200
       }

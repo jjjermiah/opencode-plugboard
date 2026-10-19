@@ -43,9 +43,15 @@ describe("#256 cors: a preflight from an allowed origin is answered before authe
     expect(reply.status).toBe(204)
     expect(reply.headers["access-control-allow-origin"]).toBe(APP)
     expect(reply.headers["access-control-allow-methods"]).toBe("GET, POST, DELETE, OPTIONS")
-    expect(reply.headers["access-control-allow-headers"]).toBe("authorization, content-type, x-api-key, x-goog-api-key")
+    expect(reply.headers["access-control-allow-headers"]).toBe("authorization, content-type, x-api-key, x-goog-api-key, x-request-id")
     expect(reply.headers.vary).toBe("Origin")
     expect(caller.calls).toEqual([])
+  })
+
+  test("#514 the preflight lets a browser send x-request-id", async () => {
+    await route({ cors })
+    const reply = await server!.send(preflight(APP, { "access-control-request-headers": "x-request-id" }))
+    expect(reply.headers["access-control-allow-headers"]!.split(", ")).toContain("x-request-id")
   })
 
   test("a DELETE preflight on a stored response from an allowed origin is allowed, and needs no key", async () => {

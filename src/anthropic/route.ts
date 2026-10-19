@@ -134,13 +134,11 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
       if (isPlugError(counted)) return fail(counted)
       return sendJson(response, 200, { input_tokens: estimateTokens(counted, ref.id) })
     }
-    // Sampling parameters the model is known to reject are dropped; `top_k` has no neutral
-    // equivalent and is always dropped. Both are reported before any response bytes.
+    // Sampling parameters the model is known to reject, or the host never sends, are dropped and reported before any response bytes.
     const generation = appGeneration(appPolicy(host.options, auth.app), parsed.request.generation)
     const sampled = host.options.dropUnsupportedParams ? dropRejected(ref, generation) : undefined
-    const dropped = [...(sampled?.dropped ?? []), ...(parsed.topKIgnored ? ["top_k"] : [])]
-    if (dropped.length > 0) {
-      info.dropped = dropped.join(",")
+    if (sampled && sampled.dropped.length > 0) {
+      info.dropped = sampled.dropped.join(",")
       response.setHeader(DROPPED_HEADER, info.dropped)
     }
     // A thinking request on a model with no thinking variant runs without thinking: say so (#410).

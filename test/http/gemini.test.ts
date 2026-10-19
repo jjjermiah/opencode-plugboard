@@ -148,6 +148,17 @@ describe("routes", () => {
     expect(reply.json().error).toMatchObject({ status: "INVALID_ARGUMENT", details: [{ fieldViolations: [{ field: "contents" }] }] })
   })
 
+  test("#511 #512 topK and seed reach the model call; a model whose protocol sends neither drops and reports them", async () => {
+    const caller = new FakeModelCaller([ev.finish()])
+    server = await startRoute({ caller, catalog: [...CATALOG, { providerID: "openai", id: "gpt-5.5", variants: [] }], options: { models: ["openai/*", "test/*"] } })
+    const kept = await server.send(generate("/v1beta/models/test%2Fecho:generateContent", { generationConfig: { topK: 40, seed: 7 } }))
+    expect(kept.headers).not.toHaveProperty("x-plugboard-dropped-params")
+    expect(caller.calls[0]!.request.generation).toEqual({ topK: 40, seed: 7 })
+    const dropped = await server.send(generate("/v1beta/models/openai%2Fgpt-5.5:generateContent", { generationConfig: { topK: 40, seed: 7 } }))
+    expect(dropped.headers["x-plugboard-dropped-params"]).toBe("top_k,seed")
+    expect(caller.calls[1]!.request.generation).toEqual({})
+  })
+
   test("sampling a model rejects is dropped and reported", async () => {
     const caller = new FakeModelCaller([ev.finish()])
     server = await startRoute({ caller, catalog: [...CATALOG, { providerID: "openai", id: "gpt-5.5", variants: [] }], options: { models: ["openai/*"] } })

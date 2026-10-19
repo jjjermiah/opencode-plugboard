@@ -19,7 +19,7 @@ afterEach(async () => {
 })
 
 const KEYS = { bot: "k-bot", plain: "k-plain" }
-const SAMPLING = { temperature: 0.2, topP: 0.9, maxTokens: 512, stop: ["END"], presencePenalty: 0.1, frequencyPenalty: 0.3 }
+const SAMPLING = { temperature: 0.2, topP: 0.9, topK: 40, maxTokens: 512, stop: ["END"], presencePenalty: 0.1, frequencyPenalty: 0.3 }
 const options = { keys: KEYS, apps: { bot: { sampling: SAMPLING } } }
 
 const chat = (key: string, body: Record<string, unknown> = {}): SendInit => ({
@@ -97,6 +97,27 @@ describe("#264 a default the model rejects, on the wire", () => {
   })
 })
 
+describe("#511 an app's topK default", () => {
+  test("Messages fills it when the caller sends no top_k, and the caller's top_k wins", async () => {
+    const caller = await route()
+    const messages = (extra: Record<string, unknown>): SendInit => ({
+      method: "POST",
+      path: "/v1/messages",
+      headers: { authorization: `Bearer ${KEYS.bot}` },
+      body: { model: "test/echo", max_tokens: 100, messages: [{ role: "user", content: "hi" }], ...extra },
+    })
+    await server!.send(messages({}))
+    expect(caller.calls[0]!.request.generation.topK).toBe(40)
+    await server!.send(messages({ top_k: 5 }))
+    expect(caller.calls[1]!.request.generation.topK).toBe(5)
+  })
+
+  test("a default goes through the same drop as a caller's value", () => {
+    expect(dropRejected({ providerID: "openai", id: "gpt-4o" }, { topK: 40 }).dropped).toEqual([])
+    expect(dropRejected({ providerID: "openai", id: "gpt-5.5" }, { topK: 40 }).dropped).toEqual(["top_k"])
+  })
+})
+
 describe("#264 appGeneration: the defaults and the output cap, in order", () => {
   const policy = (extra: Record<string, unknown>) => parseOptions({ keys: KEYS, apps: { bot: extra } }).apps.bot
 
@@ -133,7 +154,9 @@ describe("#264 apps.<name>.sampling at load", () => {
     ["a zero maxTokens", { maxTokens: 0 }, /sampling\.maxTokens` must be an integer between 1 and 2147483647/],
     ["an empty stop list", { stop: [] }, /sampling\.stop` must be an array of 1 to 4 strings/],
     ["five stop strings", { stop: ["a", "b", "c", "d", "e"] }, /sampling\.stop` must be an array of 1 to 4 strings/],
-    ["an unknown field", { topK: 40 }, /Unknown plugboard option `apps\.bot\.sampling\.topK`/],
+    ["a zero topK", { topK: 0 }, /sampling\.topK` must be an integer between 1 and/],
+    ["a fractional topK", { topK: 1.5 }, /sampling\.topK` must be an integer between 1 and/],
+    ["an unknown field", { nucleus: 40 }, /Unknown plugboard option `apps\.bot\.sampling\.nucleus`/],
   ])("%s is refused at load and names the option", (_name, sampling, message) => {
     expect(() => parseOptions({ keys: KEYS, apps: { bot: { sampling } } })).toThrow(message)
   })

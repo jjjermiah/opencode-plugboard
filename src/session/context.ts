@@ -93,6 +93,8 @@ function generationOptions(request: PlugRequest): Record<string, unknown> {
   if (generation.maxTokens !== undefined) options.maxTokens = generation.maxTokens
   if (generation.temperature !== undefined) options.temperature = generation.temperature
   if (generation.topP !== undefined) options.topP = generation.topP
+  if (generation.topK !== undefined) options.topK = generation.topK
+  if (generation.seed !== undefined) options.seed = generation.seed
   if (generation.presencePenalty !== undefined) options.presencePenalty = generation.presencePenalty
   if (generation.frequencyPenalty !== undefined) options.frequencyPenalty = generation.frequencyPenalty
   return options

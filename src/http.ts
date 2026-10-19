@@ -279,6 +279,17 @@ export function finishRequest(request: IncomingMessage, response: ServerResponse
 /** The request id header (`x-plugboard-request-id`), set on every response before anything else can fail. */
 export const REQUEST_ID_HEADER = "x-plugboard-request-id"
 
+/** The caller's own request id (a gateway's or a client's): logged as `clientRequestId` and echoed back, trusted for nothing else. */
+export const CLIENT_REQUEST_ID_HEADER = "x-request-id"
+
+const CLIENT_REQUEST_ID = /^[\w.:/+=-]{1,128}$/
+
+/** The `x-request-id` the caller sent, when it is one value of 1 to 128 safe characters (letters, digits and `_ . : / + = -`); anything else is ignored. */
+export function clientRequestId(request: IncomingMessage): string | undefined {
+  const value = request.headers[CLIENT_REQUEST_ID_HEADER]
+  return typeof value === "string" && CLIENT_REQUEST_ID.test(value) ? value : undefined
+}
+
 /**
  * `Access-Control-Expose-Headers` on an allowed CORS answer (#314): the plugboard response headers a browser script reads,
  * plus `retry-after`. Without it a browser hides every header but the CORS-safelisted ones.
