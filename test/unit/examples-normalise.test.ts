@@ -177,6 +177,12 @@ describe("Gemini CLI session context", () => {
     expect(normaliseSessionContext(ci)).toBe(normaliseSessionContext(local))
   })
 
+  test("fixes Codex CLI's turn start time and sandbox in its turn metadata string, and nothing else in it", () => {
+    const metadata = (start: number, sandbox: string) => `{"turn_id":"t","sandbox":"${sandbox}","sandbox_mode":"read-only","turn_started_at_unix_ms":${start},"model":"fast"}`
+    expect(normaliseSessionContext(metadata(1792371742059, "seatbelt"))).toBe('{"turn_id":"t","sandbox":"<sandbox>","sandbox_mode":"read-only","turn_started_at_unix_ms":<unix-ms>,"model":"fast"}')
+    expect(normaliseSessionContext(metadata(1, "landlock"))).toBe(normaliseSessionContext(metadata(2, "seatbelt")))
+  })
+
   test("applies to every string of a parsed body and keeps its structure", () => {
     const body = { contents: [{ parts: [{ text: block }, { text: "Reply with exactly: pong" }] }], n: 3 }
     const out = normaliseSessionContextValue(body) as typeof body

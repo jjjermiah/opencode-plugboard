@@ -105,12 +105,23 @@ const CLI_PATHS = /(?:\/[^\s"'`]*)?\/plugboard-gemini-cli-(home|workspace)(?:-\d
 const CLI_INSTALL = /(?:\/[^\s"'`<>]*)?\/examples\/gemini-cli\//g
 
 /**
- * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, and the Gemini CLI's
- * fixed home and workspace paths anywhere in it. Nothing else changes.
+ * Codex CLI's `x-codex-turn-metadata` header value (repeated in `client_metadata`) is a JSON string with the turn's start time
+ * in Unix milliseconds and the sandbox the OS gave it (`seatbelt` on macOS, another on Linux). Both differ by run and machine.
+ */
+const CODEX_TURN_START = /("turn_started_at_unix_ms":)\d+/g
+const CODEX_SANDBOX = /("sandbox":)"[a-z0-9_-]+"/g
+
+/**
+ * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, the Gemini CLI's
+ * fixed home and workspace paths and Codex CLI's turn start time and sandbox anywhere in it. Nothing else changes.
  */
 export function normaliseSessionContext(text: string): string {
   const inBlocks = text.replace(SESSION_CONTEXT, (block) => SESSION_FIELDS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), block))
-  return inBlocks.replace(CLI_PATHS, (_match, name: string) => `<gemini-cli-${name}>`).replace(CLI_INSTALL, "<checkout>/examples/gemini-cli/")
+  return inBlocks
+    .replace(CLI_PATHS, (_match, name: string) => `<gemini-cli-${name}>`)
+    .replace(CLI_INSTALL, "<checkout>/examples/gemini-cli/")
+    .replace(CODEX_TURN_START, "$1<unix-ms>")
+    .replace(CODEX_SANDBOX, '$1"<sandbox>"')
 }
 
 /** The same, applied to every string in a parsed JSON value. */
