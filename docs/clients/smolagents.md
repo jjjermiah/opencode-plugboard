@@ -8,18 +8,21 @@ Hugging Face's smolagents, through `OpenAIModel`.
 pip install 'smolagents[openai]'
 ```
 
-```python
-from smolagents import OpenAIModel
+`BASE` is `http://127.0.0.1:4010/v1` and `KEY` is your plugboard key.
 
-model = OpenAIModel(
-    model_id="fast",
-    api_base="http://127.0.0.1:4010/v1",
-    api_key=os.environ["PLUGBOARD_KEY"],
-    max_completion_tokens=1024,
-)
-```
+<<< @/../examples/smolagents/run.py#snippet
 
 Keep `/v1` in `api_base`. `smolagents` alone, without the `openai` extra, raises `ModuleNotFoundError` for `OpenAIModel`.
+
+To stream, iterate `model.generate_stream`:
+
+<<< @/../examples/smolagents/run.py#snippet-stream
+
+A tool is a `@tool` function with a docstring, run by a `ToolCallingAgent`:
+
+<<< @/../examples/smolagents/run.py#snippet-tool
+
+<<< @/../examples/smolagents/run.py#snippet-agent
 
 A script with a text reply, a stream and a tool-calling agent is in [examples/smolagents/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/smolagents):
 

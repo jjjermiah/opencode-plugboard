@@ -9,6 +9,12 @@ client = OpenAI(base_url="http://127.0.0.1:4010/v1", api_key=PLUGBOARD_KEY)
 reply = client.chat.completions.create(model="fast", messages=[{"role": "user", "content": "reply with exactly: pong"}])
 ```
 
+The same with curl and `jq`. `PLUGBOARD_BASE_URL` is `http://127.0.0.1:4010/v1` and `PLUGBOARD_KEY` is your key. `post` sends a JSON body:
+
+<<< @/../examples/curl/chat.sh#snippet
+
+<<< @/../examples/curl/chat.sh#snippet-s1
+
 Plugboard is stateless here: every request carries the whole conversation in `messages`.
 
 ## Request fields
@@ -41,22 +47,15 @@ Errors are 400s with the code below and `param` naming the field.
 
 ## Streaming
 
-```sh
-curl -N http://127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "fast", "stream": true, "stream_options": {"include_usage": true},
-       "messages": [{"role": "user", "content": "count to three"}]}'
-```
+<<< @/../examples/curl/chat.sh#snippet-s3
 
 The status and headers go out with the first model event. A slow model gets a keep-alive comment every 15 seconds. If the run fails after the stream has started, the client gets an `error` event and then `data: [DONE]`.
 
 ## Tools
 
-The model's tool calls come back with `finish_reason: "tool_calls"`. Run the tool yourself and send the result back:
+The model's tool calls come back with `finish_reason: "tool_calls"`. Run the tool yourself and send the result back as a `tool` message with the same call id. The whole round trip with curl:
 
-```json
-{"role": "tool", "tool_call_id": "call_1", "content": "{\"temp_c\": 18}"}
-```
+<<< @/../examples/curl/chat.sh#snippet-s2
 
 Tool call ids differ by model, so do not parse them. `maxTools` (default 64) caps the tools one request may carry. An app with `serverTools` can also let OpenCode run some of its own tools; see [Tools, structured output and images](guides/tools-output-and-images.md).
 

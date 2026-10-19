@@ -14,6 +14,12 @@ const r = await client.completions.create({ model: "fast", prompt: "Reply with e
 console.log(r.choices[0].text)
 ```
 
+The same with curl and `jq`. `PLUGBOARD_BASE_URL` is `http://127.0.0.1:4010/v1` and `PLUGBOARD_KEY` is your key:
+
+<<< @/../examples/curl/completions.sh#snippet
+
+<<< @/../examples/curl/completions.sh#snippet-s1
+
 The response is the legacy `text_completion` object: `choices[].text`, `index`, `finish_reason` (`stop`, `length`, `content_filter`), `logprobs: null`, and `usage`. With `stream: true` the chunks are `text_completion` objects with `choices[].text`, then a chunk with empty text and the `finish_reason`, then `data: [DONE]`. `stream_options.include_usage` adds the usual last chunk with `choices: []` and the usage.
 
 | Request field | How it is handled |

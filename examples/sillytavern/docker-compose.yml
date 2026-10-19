@@ -3,6 +3,7 @@
 #   API key:  a plugboard app key
 # Docs: https://github.com/jjjermiah/opencode-plugboard/blob/main/docs/clients/sillytavern.md
 # The image tag is not checked against the project's current release; pin one before relying on it.
+# region snippet
 services:
   sillytavern:
     image: ghcr.io/sillytavern/sillytavern:latest
@@ -13,3 +14,4 @@ services:
     volumes:
       - ./config:/home/node/app/config
       - ./data:/home/node/app/data
+# endregion snippet

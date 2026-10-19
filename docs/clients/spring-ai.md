@@ -4,22 +4,31 @@ Spring AI's OpenAI chat module.
 
 ## Connect
 
-`application.yml`:
+`application.properties`. `PLUGBOARD_BASE_URL` is `http://127.0.0.1:4010/v1` and `PLUGBOARD_KEY` is your plugboard key:
 
-```yaml
-spring:
-  ai:
-    openai:
-      base-url: http://127.0.0.1:4010/v1
-      api-key: ${PLUGBOARD_KEY}
-      chat:
-        options:
-          model: fast
-```
+<<< @/../examples/spring-ai/src/main/resources/application.properties#snippet{properties}
 
 `base-url` must end in `/v1` (Spring AI 2.x uses the official OpenAI Java SDK, which appends `/chat/completions`). Without `/v1` every call is a 404.
 
-Set the model per call with `.options(OpenAiChatOptions.builder().model("fast"))`. Model names with `/` or `#` need no escaping. A runnable app is in [examples/spring-ai/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/spring-ai).
+## Chat
+
+Set the model per call with `.options(OpenAiChatOptions.builder().model("fast"))`. Model names with `/` or `#` need no escaping.
+
+<<< @/../examples/spring-ai/src/main/java/example/plugboard/springai/Runner.java#snippet
+
+## Tool calls
+
+Spring AI runs the tool and sends the result back before it answers.
+
+<<< @/../examples/spring-ai/src/main/java/example/plugboard/springai/Runner.java#snippet-tool
+
+<<< @/../examples/spring-ai/src/main/java/example/plugboard/springai/Runner.java#snippet-tools
+
+## Streaming
+
+<<< @/../examples/spring-ai/src/main/java/example/plugboard/springai/Runner.java#snippet-stream
+
+The runnable app is in [examples/spring-ai/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/spring-ai).
 
 ## What works
 

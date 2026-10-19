@@ -18,26 +18,9 @@ Kilo fills the model list from `/v1/models`; add a model by hand if it doesn't.
 
 In `kilo.jsonc`:
 
-```json
-{
-  "provider": {
-    "plugboard": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Plugboard",
-      "options": {
-        "baseURL": "http://127.0.0.1:4010/v1",
-        "apiKey": "{env:PLUGBOARD_KEY}"
-      },
-      "models": {
-        "fast": { "name": "fast", "limit": { "context": 200000, "output": 16384 } }
-      }
-    }
-  },
-  "model": "plugboard/fast"
-}
-```
+<<< @/../examples/kilo-code/kilo.json
 
-A copy is in [examples/kilo-code/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/kilo-code).
+The file is in [examples/kilo-code/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/kilo-code).
 
 ## What works
 

@@ -1,7 +1,9 @@
 # Per-project provider for Jan Agent. Copy to the project's agent.toml under ~/.jan/projects/
 # (Jan keeps it outside the repository). Keep the key in the environment, not in this file.
+# region snippet
 [provider]
 name = "plugboard"
 base_url = "http://127.0.0.1:4010/v1"
 models = ["fast"]
+# endregion snippet
 # api_key comes from PLUGBOARD_API_KEY (Jan reads <PROVIDER>_API_KEY for provider "plugboard") or ~/.jan/config.toml

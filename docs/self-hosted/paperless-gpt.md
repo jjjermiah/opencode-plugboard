@@ -23,18 +23,11 @@ Give paperless-gpt its own key. `vision` handles OCR and must accept images. Doc
 
 ## Connect
 
-```sh
-LLM_PROVIDER=openai
-LLM_MODEL=text
-OPENAI_API_KEY=<the paperless-gpt key>
-OPENAI_BASE_URL=http://host.docker.internal:4010/v1
-VISION_LLM_PROVIDER=openai
-VISION_LLM_MODEL=vision
-```
+<<< @/../examples/self-hosted/paperless-gpt/.env.example#snippet{ini}
 
 `OPENAI_API_KEY` takes the plugboard key. `OPENAI_BASE_URL` ends in `/v1`.
 
-A runnable copy is in [`examples/self-hosted/paperless-gpt/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/paperless-gpt/README.md).
+The `.env` and a compose file are in [`examples/self-hosted/paperless-gpt/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/paperless-gpt/README.md).
 
 ## What works
 

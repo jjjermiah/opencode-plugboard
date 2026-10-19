@@ -37,6 +37,7 @@ def s1(client, model):
 
 
 def s2(client, model):
+    # region snippet-tools
     messages = [{"role": "user", "content": TOOL_PROMPT}]
     first = client.chat.completions.create(model=model, messages=messages, tools=[TOOL], max_completion_tokens=1024)
     call = first.choices[0].message.tool_calls[0]
@@ -44,6 +45,7 @@ def s2(client, model):
     messages.append(first.choices[0].message.model_dump(exclude_none=True))
     messages.append({"role": "tool", "tool_call_id": call.id, "content": TOOL_RESULT})
     second = client.chat.completions.create(model=model, messages=messages, tools=[TOOL], max_completion_tokens=1024)
+    # endregion snippet-tools
     return {
         "finish_reason": first.choices[0].finish_reason,
         "tool_name": call.function.name,
@@ -55,6 +57,7 @@ def s2(client, model):
 
 
 def s3(client, model):
+    # region snippet-stream
     stream = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": PROMPT}],
@@ -62,6 +65,7 @@ def s3(client, model):
         stream=True,
         stream_options={"include_usage": True},
     )
+    # endregion snippet-stream
     text, finish, usage = "", None, None
     for chunk in stream:
         if chunk.usage:
@@ -73,7 +77,9 @@ def s3(client, model):
 
 
 def main() -> None:
+    # region snippet
     client = OpenAI(base_url=os.environ["PLUGBOARD_BASE_URL"], api_key=os.environ["PLUGBOARD_KEY"], max_retries=0)
+    # endregion snippet
     harness.emit_client("langfuse")
     harness.run_all(
         {

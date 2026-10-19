@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { renderTable, snippetProblems } from "../../.github/scripts/examples-index.ts"
+import { renderTable, snippetProblems, unreferencedExamples } from "../../.github/scripts/examples-index.ts"
 import { readExamples, verdictCell, type ExampleEntry } from "../../docs/.vitepress/examples-model.ts"
 
 let root: string
@@ -83,6 +83,49 @@ describe("snippet imports", () => {
     const problems = snippetProblems(docs, examples).filter((problem) => problem.includes("missing.md"))
     expect(problems).toHaveLength(1)
     expect(problems[0]).toContain("the file does not exist")
+  })
+
+  test("a language option after the region is not part of the region name", () => {
+    write(join(docs, "lang.md"), "<<< @/../examples/x/chat.py#snippet{ini}\n<<< @/../examples/x/chat.py#snippet-tool{python}\n")
+    expect(snippetProblems(docs, examples).filter((problem) => problem.includes("lang.md"))).toEqual([])
+  })
+
+  test("a whole-file import needs only the file, and a missing one is reported", () => {
+    write(join(docs, "whole.md"), "<<< @/../examples/x/chat.py\n<<< @/../examples/x/gone.json\n")
+    const problems = snippetProblems(docs, examples).filter((problem) => problem.includes("whole.md"))
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toContain("<<< x/gone.json: the file does not exist")
+  })
+})
+
+describe("examples that no docs page uses", () => {
+  let docs = ""
+  let examples = ""
+  beforeAll(() => {
+    docs = join(root, "used-docs")
+    examples = join(root, "used-examples")
+    for (const name of ["imported", "linked", "prefix", "prefix-longer", "only-maintainer", "orphan"]) write(join(examples, name, "run.py"), "")
+    mkdirSync(join(examples, "_harness"), { recursive: true })
+    write(join(docs, "clients/a.md"), "<<< @/../examples/imported/run.py#snippet\n")
+    write(join(docs, "clients/b.md"), "[linked](https://example.test/tree/main/examples/linked)\n[prefix](examples/prefix-longer/)\n")
+    // The generated page lists every example and a maintainer page may name one; neither is a use.
+    write(join(docs, "examples.md"), "examples/imported/ examples/linked/ examples/orphan/ examples/only-maintainer/\n")
+    write(join(docs, "development.md"), "examples/only-maintainer/\n")
+  })
+
+  test("an example named by no page of the site is reported", () => {
+    expect(unreferencedExamples(docs, examples)).toEqual(["only-maintainer", "orphan", "prefix"])
+  })
+
+  test("an import and a link to the directory both count, and underscore directories are not examples", () => {
+    const unused = unreferencedExamples(docs, examples)
+    expect(unused).not.toContain("imported")
+    expect(unused).not.toContain("linked")
+    expect(unused).not.toContain("_harness")
+  })
+
+  test("a longer example name does not stand in for a shorter one", () => {
+    expect(unreferencedExamples(docs, examples)).toContain("prefix")
   })
 })
 

@@ -4,22 +4,19 @@ The classic `autogen` package (`ConversableAgent`, `LLMConfig`). The redesigned 
 
 ## Connect
 
-```python
-from autogen import ConversableAgent, LLMConfig
+`BASE` is `http://127.0.0.1:4010/v1` and `KEY` is your plugboard key.
 
-llm = LLMConfig({
-    "api_type": "openai",
-    "model": "fast",
-    "base_url": "http://127.0.0.1:4010/v1",
-    "api_key": os.environ["PLUGBOARD_KEY"],
-    "max_tokens": 1024,
-})
-bot = ConversableAgent("bot", llm_config=llm, human_input_mode="NEVER")
-```
+<<< @/../examples/autogen/chat.py#snippet
 
-Pass the endpoint in the entry dict; keyword arguments to `LLMConfig` don't set it. Add `"stream": True` to stream.
+<<< @/../examples/autogen/chat.py#snippet-chat
 
-A script with a text reply, a stream and a two-agent tool chat is in [examples/autogen/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/autogen):
+Pass the endpoint in the entry dict; keyword arguments to `LLMConfig` don't set it. `llm_config(stream=True)` streams.
+
+A tool round trip is two agents: the assistant registers the function for the model, the user agent executes it.
+
+<<< @/../examples/autogen/chat.py#snippet-tools
+
+The script with a text reply, a stream and this tool chat is in [examples/autogen/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/autogen):
 
 ```sh
 cd examples/autogen

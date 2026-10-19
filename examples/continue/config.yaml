@@ -1,5 +1,6 @@
 # Copy to Continue's config (config.yaml). Replace <your app key> with the plugboard app key
 # from the `keys` option. Keep this file out of version control.
+# region snippet
 name: Plugboard
 version: 1.0.0
 schema: v1
@@ -22,3 +23,4 @@ models:
     capabilities:
       - tool_use
       - image_input
+# endregion snippet

@@ -4,19 +4,23 @@ CrewAI's `LLM` class on its OpenAI path.
 
 ## Connect
 
-```python
-from crewai import LLM
+`MODEL` is `"openai/fast"`, `BASE` is `http://127.0.0.1:4010/v1` and `KEY` is your plugboard key.
 
-llm = LLM(
-    model="openai/fast",
-    base_url="http://127.0.0.1:4010/v1",
-    api_key=os.environ["PLUGBOARD_KEY"],
-)
-```
+<<< @/../examples/crewai/crew.py#snippet
 
 `openai/` picks CrewAI's OpenAI path; the rest (`fast`) is your plugboard alias or model. `base_url` replaces the default whole, so include `/v1`; it wins over `OPENAI_BASE_URL`.
 
-A script with a text reply, a stream and a crew task that calls a tool is in [examples/crewai/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/crewai):
+To stream, pass `stream=True` and listen for the chunks:
+
+<<< @/../examples/crewai/crew.py#snippet-stream
+
+A tool is a `@tool` function, used by an agent in a crew task:
+
+<<< @/../examples/crewai/crew.py#snippet-tool
+
+<<< @/../examples/crewai/crew.py#snippet-crew
+
+The script with a text reply, a stream and this crew task is in [examples/crewai/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/crewai):
 
 ```sh
 cd examples/crewai

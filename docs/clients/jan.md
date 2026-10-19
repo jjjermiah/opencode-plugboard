@@ -15,11 +15,15 @@ Turn on **Tools** and **Vision** per model if you need them; Jan doesn't detect 
 
 ## Connect (Jan Agent)
 
-```sh
-jan config set --provider plugboard --base-url http://127.0.0.1:4010/v1 --api-type openai --model fast --api-key "$PLUGBOARD_KEY"
-```
+`PLUGBOARD_URL` is `http://127.0.0.1:4010/v1` and `PLUGBOARD_KEY_JAN` is your plugboard key.
 
-For the Anthropic format use `--api-type anthropic` and the base URL without `/v1`. Per-project settings go in that project's `agent.toml`; an example is in [examples/jan/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/jan).
+<<< @/../examples/jan/setup.sh#snippet
+
+For the Anthropic format use `--api-type anthropic` and the base URL without `/v1`. Per-project settings go in that project's `agent.toml`:
+
+<<< @/../examples/jan/agent.toml.example#snippet{toml}
+
+Both files are in [examples/jan/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/jan).
 
 ## What works
 

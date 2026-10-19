@@ -23,21 +23,27 @@ weather_calls: list[str] = []
 stream_chunks: list[str] = []
 
 
+# region snippet-tool
 @tool("get_weather")
 def get_weather(city: str) -> str:
     """Get the current weather for a city."""
     weather_calls.append(city)
     return '{"city": "%s", "forecast": "sunny", "celsius": 24}' % city
+# endregion snippet-tool
 
 
+# region snippet-stream
 @crewai_event_bus.on(LLMStreamChunkEvent)
 def on_chunk(source, event):
     if event.chunk:
         stream_chunks.append(event.chunk)
+# endregion snippet-stream
 
 
 def main() -> None:
+    # region snippet
     llm = LLM(model=MODEL, base_url=BASE, api_key=KEY, max_completion_tokens=1024)
+    # endregion snippet
 
     # 1. Text.
     print("text:", llm.call("Reply with the single word: pong").strip())
@@ -48,6 +54,7 @@ def main() -> None:
     print("stream:", full.strip(), f"(chunks: {len(stream_chunks)})")
 
     # 3. One tool call, through a crew task.
+    # region snippet-crew
     agent = Agent(
         role="Weather reporter",
         goal="Report the weather for the requested city using the tool",
@@ -62,6 +69,7 @@ def main() -> None:
         agent=agent,
     )
     result = Crew(agents=[agent], tasks=[task], verbose=False).kickoff()
+    # endregion snippet-crew
     print("tool calls:", weather_calls)
     print("crew answer:", str(result).strip())
     if not weather_calls:

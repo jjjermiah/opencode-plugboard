@@ -22,15 +22,11 @@ Give SiYuan its own key. Docker needs a reachable address ([Serving other machin
 
 SiYuan reads one OpenAI provider from the environment at start-up:
 
-| Variable | Value |
-| --- | --- |
-| `SIYUAN_OPENAI_API_BASE_URL` | `http://host.docker.internal:4010/v1` (with `/v1`) |
-| `SIYUAN_OPENAI_API_KEY` | the `siyuan` key |
-| `SIYUAN_OPENAI_API_MODEL` | `writing` |
+<<< @/../examples/self-hosted/siyuan/.env.example#snippet{ini}
 
-The provider turns on when the base URL and model are both set. Optional: `SIYUAN_OPENAI_API_TIMEOUT`, `SIYUAN_OPENAI_API_MAX_TOKENS` and `SIYUAN_OPENAI_API_TEMPERATURE`.
+The base URL ends in `/v1`. The provider turns on when the base URL and model are both set. Optional: `SIYUAN_OPENAI_API_TIMEOUT`, `SIYUAN_OPENAI_API_MAX_TOKENS` and `SIYUAN_OPENAI_API_TEMPERATURE`.
 
-A runnable compose file and env file are in [`examples/self-hosted/siyuan/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/siyuan/README.md).
+A compose file and the env file are in [`examples/self-hosted/siyuan/`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/self-hosted/siyuan/README.md).
 
 ## What works
 
