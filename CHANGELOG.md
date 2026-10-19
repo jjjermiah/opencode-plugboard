@@ -14,9 +14,42 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.57.0] - 2026-10-19: No More Silent Hangs
+
+**Full diff:** [v0.56.0...v0.57.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.56.0...v0.57.0)
+
 ### Fixed
 
 - A request no longer waits out `requestTimeoutMs` when OpenCode's event stream stays connected but never delivers the end of the answer ([#515](https://github.com/jjjermiah/opencode-plugboard/issues/515)). Both terminal events could go missing, and then a request hung for the full 10 minutes and ended as a 504, while a streaming client saw a healthy open connection. A request that hears no event for `silenceMs` (new global option, default 30000) now reads the messages OpenCode stored for its session. A finished answer settles the request with its text, tool calls, finish reason and usage; a stream that already sent text gets only the rest, with no repeat. An unfinished answer means the model is still working, so the request keeps waiting and checks again. A request that keeps receiving events is never read. Each settled request is logged as `session.settled_from_transcript` and counted in `plugboard_settled_from_transcript_total{app}`. Also, text that a second model step writes after server tools is no longer cut by the length of the first step's text when its deltas are lost.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (1 commit)</summary>
+
+#### Fixes
+
+**fix(session): settle a silent event stream from the stored transcript** ([`ce0ffe6`](https://github.com/jjjermiah/opencode-plugboard/commit/ce0ffe65eb5a44972f2e469663b410ef55f17e53))
+
+A request hung until requestTimeoutMs (10 minutes) when OpenCode's event stream stayed connected but delivered neither terminal event of a session (session.step.ended and the execution event). The route then answered 504 and a streaming client saw a healthy open connection the whole time. The collector settles only on those events, and the pump fails requests only when its fiber ends, so a quiet stream was never noticed.
+
+What changed:
+
+- The session caller watches for silence. When no event for the session has arrived for silenceMs (new global option, default 30000), it reads the session's stored messages through a new SessionPort.lastAnswer, backed by ctx.session.context. Any event, including ones the collector ignores, puts the watch off, and a read that overlapped an event is dropped, so a stale snapshot never overtakes the live path.
+- A finished stored message (time.completed plus finish, or an error) is replayed into the collector as the events the host would have sent: session.text.ended per text part, session.tool.called per call, then session.step.ended or session.step.failed with finish and tokens. The collector's own rules produce the result, so text, tool calls, finish reason and usage match the event path. text.ended carries only the text the deltas did not, so a stream that already sent parts gets the rest and no repeat.
+- An unfinished message re-arms the timer. A step that ran only server tools is not final either: the host starts another step, and nothing from it is replayed twice.
+- Logged as session.settled_from_transcript (warn) and counted in plugboard_settled_from_transcript_total{app}.
+- The collector clears its per-ordinal text counts at step.ended. Text ordinals restart in every assistant message, so after a server-tool step the next step's text.ended was cut by the length of the first step's text. The replay needed this to be right in multi-step runs.
+
+Decisions: a short silenceMs costs one more read, never a wrong answer, because an unfinished message keeps the request waiting. The host sends deltas for text, reasoning and tool input, so a writing model is never quiet 30 s. Rejected: racing ctx.session.wait (it only says the session is idle, so the transcript is still needed to build the answer), and failing an idle session with an incomplete message as event_stream_lost (a quiet provider before its first token looks the same).
+
+Validation: bun run validate passes lint, typecheck, test, manifest, pack and docs. The examples step fails only for langchain4j (no Java runtime on this machine). bun run validate --only mutations: 252 of 253 killed on the first run, the survivor (P515-silence-ignores-events) is killed after the slow-stream test was lengthened past the silence. The 15 new P515 entries are all killed.
+
+Closes #515
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.56.0] - 2026-10-19: Every Dial Reaches the Model
 
@@ -9394,7 +9427,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.56.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.57.0...HEAD
+[0.57.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.53.0...v0.54.0
