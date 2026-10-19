@@ -20,8 +20,6 @@ The SDK exports each generation as OTLP spans to `<LANGFUSE_BASE_URL>/api/public
 
 <<< @/../examples/langfuse/run.py#snippet-flush
 
-The scripted run points `LANGFUSE_BASE_URL` at [`fake_langfuse.py`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/langfuse/fake_langfuse.py), a small Langfuse ingestion endpoint on loopback, and checks that the generation arrived with the model name and the usage plugboard returned. It needs no Langfuse server and no Docker.
-
 A tool call. `TOOL` is a function schema and `TOOL_RESULT` the tool's output:
 
 <<< @/../examples/langfuse/run.py#snippet-tools

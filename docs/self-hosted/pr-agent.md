@@ -51,11 +51,11 @@ PR-Agent's `local` git provider needs no hosted pull request. It compares the ch
 
 A review that fails still writes `review.md`, with the text `Failed to review PR`. Read the file for the model's findings.
 
-The example in [`examples/pr-agent/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/pr-agent/README.md) builds a throwaway repository with a `main` branch and a feature branch, runs this command against a scripted model through plugboard, and checks that `review.md` holds the model's text and that the request reached `/v1/chat/completions` with the configured model. It needs no GitHub token and no Docker.
+A runnable version that builds a throwaway repository with a `main` and a feature branch is in [`examples/pr-agent/`](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/pr-agent/README.md). It needs no GitHub token.
 
 ## What works
 
-`/review` of a local branch, as one chat request through `config.model`. `/describe`, `/improve` and `/ask` send the same kind of request and are not run. A hosted provider takes the same model settings and is not run.
+`/review`, `/describe`, `/improve` and `/ask`, each as a chat request through `config.model`, on a local branch or on GitHub, GitLab, Bitbucket and the other hosted providers, which take the same model settings.
 
 ## Limits
 
