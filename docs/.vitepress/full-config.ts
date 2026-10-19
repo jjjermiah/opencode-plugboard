@@ -6,7 +6,7 @@
 //
 // The wrapping is textual: the fragment keeps its comments, layout and trailing commas. jsonc-parser only reads it, to find out
 // what it already sets, and to fail the docs build on a fragment that is not JSONC.
-import { createScanner, findNodeAtLocation, parse, parseTree, printParseErrorCode, SyntaxKind, type Node, type ParseError } from "jsonc-parser"
+import { findNodeAtLocation, parse, parseTree, printParseErrorCode, visit, type Node, type ParseError } from "jsonc-parser"
 import type { MarkdownOptions } from "vitepress"
 
 export type FenceMode = "options" | "entry"
@@ -21,19 +21,43 @@ const isObject = (value: unknown): value is Record<string, unknown> => typeof va
 
 /** The text inside one `{ }` that wraps the whole fragment, with comments outside the braces kept. Any other fragment is returned as it is. */
 function unwrapBraces(text: string): string {
-  const scanner = createScanner(text, true)
   let depth = 0
   let open = -1
   let close = -1
-  for (let kind = scanner.scan(); kind !== SyntaxKind.EOF; kind = scanner.scan()) {
-    if (close >= 0) return text // more content after the closing brace: not one wrapping object
-    if (open < 0 && kind !== SyntaxKind.OpenBraceToken) return text
-    if (open < 0) open = scanner.getTokenOffset()
-    if (kind === SyntaxKind.OpenBraceToken || kind === SyntaxKind.OpenBracketToken) depth++
-    if (kind === SyntaxKind.CloseBraceToken || kind === SyntaxKind.CloseBracketToken) depth--
-    if (depth === 0) close = scanner.getTokenOffset()
+  let wrapped = true
+  // Any event after the closing brace, or before an opening one, means the text is not one wrapping object.
+  const event = () => {
+    if (open < 0 || close >= 0) wrapped = false
   }
-  if (open < 0 || close < 0) return text
+  visit(
+    text,
+    {
+      onObjectBegin: (offset) => {
+        if (depth === 0 && open < 0) open = offset
+        else event()
+        depth++
+      },
+      onObjectEnd: (offset) => {
+        depth--
+        if (depth === 0 && close < 0) close = offset
+        else event()
+      },
+      onArrayBegin: () => {
+        event()
+        depth++
+      },
+      onArrayEnd: () => {
+        depth--
+        event()
+      },
+      onObjectProperty: event,
+      onLiteralValue: event,
+      onSeparator: event,
+      onError: event,
+    },
+    { allowTrailingComma: true },
+  )
+  if (!wrapped || open < 0 || close < 0) return text
   return [text.slice(0, open), text.slice(open + 1, close), text.slice(close + 1)]
     .map((part, i) => (i === 1 ? part.replace(/^[ \t]*\r?\n/, "").trimEnd() : part.trim()))
     .filter((part) => part.length > 0)
