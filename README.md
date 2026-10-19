@@ -23,7 +23,11 @@ Documentation: **https://jjjermiah.github.io/opencode-plugboard**
 
 ## Install
 
-Add the plugin to your global OpenCode config, `~/.config/opencode/opencode.jsonc`:
+```sh
+bunx opencode-plugboard init --fast anthropic/claude-haiku-4-5
+```
+
+This adds plugboard to your global OpenCode config (`~/.config/opencode/opencode.jsonc`), creates a key for one app, allows every model you are logged in to, and prints the key. Restart OpenCode. To write the entry by hand instead:
 
 ```jsonc
 {
@@ -32,7 +36,7 @@ Add the plugin to your global OpenCode config, `~/.config/opencode/opencode.json
       "package": "opencode-plugboard@0.52.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
-        "models": ["anthropic/*", "github-copilot/*"],
+        "models": "connected",
         "aliases": { "fast": "anthropic/claude-haiku-4-5" }
       }
     }
@@ -40,13 +44,12 @@ Add the plugin to your global OpenCode config, `~/.config/opencode/opencode.json
 }
 ```
 
-Set `PLUGBOARD_KEY_MY_APP` to a long random string in the environment OpenCode starts from, then restart OpenCode.
-
 ## First request
 
 ```sh
+export PLUGBOARD_KEY=<the key init printed>
 curl -s http://127.0.0.1:4010/v1/chat/completions \
-  -H "Authorization: Bearer $PLUGBOARD_KEY_MY_APP" \
+  -H "Authorization: Bearer $PLUGBOARD_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model": "fast", "messages": [{"role": "user", "content": "reply with exactly: pong"}]}' \
   | jq -r '.choices[0].message.content'
