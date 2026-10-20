@@ -64,6 +64,18 @@ function requestOrigin(hostHeader: string | undefined): string | undefined {
   return WILDCARD_HOSTS.has(host.replace(/:\d+$/, "")) ? undefined : `http://${host}`
 }
 
+/**
+ * The origin a client should call (#544). A trusted proxy's public origin wins. On a wildcard listen address (`0.0.0.0`, `::`), which
+ * no client can call, it is the request's own `Host` when that is a plain host, else `http://<this-host>:<port>` with `placeholder`
+ * set. On any other listen address it is that address.
+ */
+export function clientOrigin(listen: PlugboardOptions["listen"], publicOrigin: string | undefined, requestHost: string | undefined): { origin: string; placeholder: boolean } {
+  if (publicOrigin !== undefined) return { origin: publicOrigin, placeholder: false }
+  if (!WILDCARD_HOSTS.has(listen.host)) return { origin: origin(listen), placeholder: false }
+  const named = requestOrigin(requestHost)
+  return named === undefined ? { origin: `http://${HOST_PLACEHOLDER}:${listen.port}`, placeholder: true } : { origin: named, placeholder: false }
+}
+
 const shellQuote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`
 
 export interface Endpoint {
@@ -197,11 +209,8 @@ function summarize(catalog: ReadonlyArray<CatalogModel>): { providers: ProviderS
 
 export function buildDiscovery({ options, app, catalog, publicOrigin, requestHost }: DiscoveryInput): Discovery {
   const keyed = Object.keys(options.keys).length > 0
-  // A wildcard listen address is no address a client can call: the host the caller used stands in for it (#544), else a placeholder.
-  const wildcard = publicOrigin === undefined && WILDCARD_HOSTS.has(options.listen.host)
-  const named = wildcard ? requestOrigin(requestHost) : undefined
-  const placeholder = wildcard && named === undefined
-  const base = `${publicOrigin ?? named ?? (placeholder ? `http://${HOST_PLACEHOLDER}:${options.listen.port}` : origin(options.listen))}/v1`
+  const { origin: root, placeholder } = clientOrigin(options.listen, publicOrigin, requestHost)
+  const base = `${root}/v1`
   const detail = !keyed || app !== undefined
   const auth = keyed ? ({ required: true, scheme: "Bearer" } as const) : { required: false }
 

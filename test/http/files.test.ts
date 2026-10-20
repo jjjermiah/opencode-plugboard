@@ -438,6 +438,63 @@ describe("failures keep each API's error shape", () => {
   })
 })
 
+describe("#544 the Gemini upload URL and file uri name an address the caller can reach", () => {
+  const startUpload = (server: RouteServer, host: string, extra: Record<string, string> = {}) =>
+    server.send({
+      method: "POST",
+      path: "/upload/v1beta/files",
+      headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-protocol": "resumable", "x-goog-upload-command": "start", host, ...extra },
+      body: {},
+    })
+
+  async function wildcard(options: Record<string, unknown> = {}) {
+    const server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { keys: KEYS, ...options }, listenHost: "0.0.0.0" })
+    servers.push(server)
+    return server
+  }
+
+  test("on a wildcard bind the upload URL and the file uri use the Host the caller used, never 0.0.0.0", async () => {
+    const server = await wildcard()
+    const start = await startUpload(server, "192.0.2.10:4010")
+    expect(String(start.headers["x-goog-upload-url"])).toMatch(/^http:\/\/192\.0\.2\.10:4010\/upload\/v1beta\/files\?upload_id=[0-9a-f]{32}&upload_protocol=resumable$/)
+    const mine = (await upload(server, "alpha", { bytes: PNG, name: "p.png" })).json()
+    const meta = await server.send({ path: `/v1beta/files/${mine.id.slice(5)}`, headers: { "x-goog-api-key": KEYS.alpha, host: "opencode.example" } })
+    expect(meta.json().uri).toBe(`http://opencode.example/v1beta/files/${mine.id.slice(5)}`)
+  })
+
+  test("the chunk upload to that URL works and the finalizing answer carries the same address", async () => {
+    const server = await wildcard()
+    const start = await startUpload(server, "192.0.2.10:4010")
+    const url = new URL(String(start.headers["x-goog-upload-url"]))
+    const done = await server.send({
+      method: "POST",
+      path: url.pathname + url.search,
+      headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-command": "upload, finalize", "content-type": "application/octet-stream", host: "192.0.2.10:4010" },
+      body: PNG,
+    })
+    expect(done.status).toBe(200)
+    expect(done.json().file.uri).toMatch(/^http:\/\/192\.0\.2\.10:4010\/v1beta\/files\/[0-9a-f]{32}$/)
+  })
+
+  test("a trusted proxy's public origin wins over the Host header", async () => {
+    const server = await wildcard({ listen: { trustProxy: ["127.0.0.1"] } })
+    const start = await startUpload(server, "192.0.2.10:4010", { "x-forwarded-host": "files.example.net", "x-forwarded-proto": "https" })
+    expect(String(start.headers["x-goog-upload-url"])).toStartWith("https://files.example.net/upload/v1beta/files?")
+  })
+
+  test("a Host that is not a plain host falls back to the listen address", async () => {
+    const server = await wildcard()
+    const start = await startUpload(server, "0.0.0.0:4010")
+    expect(String(start.headers["x-goog-upload-url"])).toStartWith(`http://0.0.0.0:${server.port}/upload/v1beta/files?`)
+  })
+
+  test("a specific listen address ignores the Host header", async () => {
+    const server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { keys: KEYS }, listenHost: "192.0.2.10" })
+    servers.push(server)
+    const start = await startUpload(server, "other.example:4010")
+    expect(String(start.headers["x-goog-upload-url"])).toStartWith(`http://192.0.2.10:${server.port}/upload/v1beta/files?`)
+  })
+})
 describe("endpoints", () => {
   test("`files` is an endpoint of apps.<name>.endpoints: without it every Files route is a 403 endpoint_forbidden, and with it only those", async () => {
     const { server } = await route({ apps: { alpha: { endpoints: ["chat"] }, beta: { endpoints: ["files"] } } })

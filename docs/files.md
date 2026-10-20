@@ -99,6 +99,8 @@ client.beta.messages.create(
 
 A name is `files/` and the 32 hex characters of the file's id (`file-<hex>` on the other APIs). Errors use Google's body: a missing file is a 404 `NOT_FOUND` with the message `File <name> was not found`, on these routes and for a `fileUri` in a request. The key is read as on the other Gemini routes.
 
+The upload URL and the file `uri` name the address the caller reached: the public origin a trusted proxy names (`listen.trustProxy`), else the request's `Host` when the server listens on every address (`0.0.0.0`, `::`), else the listen address.
+
 The resumable upload is held in memory until its last chunk arrives: `start` answers an `X-Goog-Upload-URL`, the chunks go there with `X-Goog-Upload-Command: upload` (the last with `finalize`) and the right `X-Goog-Upload-Offset`, and the finalizing answer carries the file and `X-Goog-Upload-Status: final`. An app holds at most 4 unfinished uploads (a fifth start is a 429), each for 10 minutes. The upload id belongs to its app, and a restart drops unfinished uploads (the caller starts again). The upload URL is the credential of its chunks, as Google's is: `google-genai` (Python) sends the chunks with no key, so a chunk request with no key at all is accepted when it names a live upload id, and it runs as the app that started the upload. An unknown id is a 401, and a request with a key is checked as usual (another app's key gets a 404).
 
 Name a stored file in a request with `fileData`:
