@@ -150,7 +150,7 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
   const notFound = (name: string) => fail({ status: 404, kind: "not_found", message: `File ${name.slice(0, 80)} was not found` })
 
   const finish = async (upload: { bytes: Uint8Array; declaredType: string | undefined; filename: string }) => {
-    const stored = await scope.race(storeUpload(host, app, { ...upload, purpose: "user_data" }))
+    const stored = await scope.race(storeUpload(host, app, { ...upload, purpose: "user_data" }, scope.signal))
     return stored
   }
 

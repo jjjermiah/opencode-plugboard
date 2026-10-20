@@ -8,8 +8,8 @@
  *
  * Unfinished uploads are process-wide state, so every test here uses app names no other test starts an upload for.
  */
-import { afterEach, describe, expect, spyOn, test } from "bun:test"
-import { createFileState, createFileStore, type FileStore } from "../../src/files/state.js"
+import { afterEach, describe, expect, onTestFinished, spyOn, test } from "bun:test"
+import { MAX_SAVE_WAITERS, createFileState, createFileStore, type FileStore, type FileStoreLimits } from "../../src/files/state.js"
 import { createKeyState, createKeyStore } from "../../src/keys.js"
 import type { StoragePort } from "../../src/session/host.js"
 import { ev } from "../support/fixtures.js"
@@ -350,11 +350,14 @@ describe("security regression test: per-app caps stop growth", () => {
     expect(inline.status).toBe(413)
   })
 
-  test("a burst of uploads never leaves an app with more files than its count cap", async () => {
+  test("a burst of uploads never leaves an app with more files than its count cap, and what the queue cannot hold is refused at once", async () => {
     const files = createFileStore({ storage: new FakeStorage(), state: createFileState(), limits: { maxFiles: 3 } })
     const saved = await Promise.all(Array.from({ length: 12 }, (_, i) => files.save("burst", 30, { filename: `f${i}.txt`, mime: "text/plain", purpose: "user_data", bytes: Buffer.from(`file ${i}`) })))
     expect(saved.filter((result) => "id" in result)).toHaveLength(3)
-    expect(saved.filter((result) => "code" in result).every((result) => (result as { code: string }).code === "file_limit_exceeded")).toBe(true)
+    const codes = saved.filter((result) => "code" in result).map((result) => (result as { code: string }).code)
+    // One save runs and MAX_SAVE_WAITERS wait: the rest of the twelve are refused at once.
+    expect(codes.filter((code) => code === "file_saves_busy")).toHaveLength(12 - 1 - MAX_SAVE_WAITERS)
+    expect(codes.filter((code) => code === "file_limit_exceeded")).toHaveLength(1 + MAX_SAVE_WAITERS - 3)
     expect(await files.ids("burst", 30)).toHaveLength(3)
   })
 
@@ -430,6 +433,231 @@ describe("security regression test: per-app caps stop growth", () => {
     expect(responses.status).toBe(400)
     expect(responses.json().error.code).toBe("files_too_large")
     expect(reads).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------- the save queue is bounded and cancellable
+
+/**
+ * A store whose data writes for `app` wait until the test lets them go, as a stuck database would. `holds` has one entry per data write
+ * that was started, so `holds.length` is how many saves ever began writing; `open()` lets every held write (and every later one) through.
+ */
+function gated(limits: Partial<FileStoreLimits> = {}, app = "stuck") {
+  const inner = new FakeStorage()
+  const holds: Array<{ release(): void; fail(error: Error): void }> = []
+  let held = true
+  const storage: StoragePort = {
+    get: (key) => inner.get(key),
+    drop: (key) => inner.drop(key),
+    scan: (input) => inner.scan(input),
+    async put(key, value) {
+      if (held && key.startsWith(`files/${app}/data/`)) await new Promise<void>((resolve, reject) => holds.push({ release: resolve, fail: reject }))
+      return inner.put(key, value)
+    },
+  }
+  const open = () => {
+    held = false
+    for (const hold of holds) hold.release()
+  }
+  return { files: createFileStore({ storage, state: createFileState(), limits }), holds, inner, open }
+}
+const small = (i: number, size = 5) => ({ filename: `q${i}.txt`, mime: "text/plain", purpose: "user_data", bytes: Buffer.alloc(size, 0x61 + (i % 20)) })
+async function until(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 400 && !condition(); i++) await Bun.sleep(5)
+  expect(condition()).toBe(true)
+}
+
+/** What a promise settles to within a second, so an assertion about a call that should have rejected never waits on one that does not (bun spins on a pending `.rejects`). */
+async function outcome<T>(promise: Promise<T>): Promise<{ value: T } | { error: unknown } | "pending"> {
+  return Promise.race([
+    promise.then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    ),
+    Bun.sleep(1000).then(() => "pending" as const),
+  ])
+}
+
+describe("security regression test: the save queue is bounded and cancellable", () => {
+  test("a save that never settles holds its app's slot, and later saves are refused at the bound, not queued forever", async () => {
+    const { files, holds, open } = gated()
+    const stuck = files.save("stuck", 30, small(0))
+    await until(() => holds.length === 1)
+    const queue = (n: number) => {
+      const controllers = Array.from({ length: n }, () => new AbortController())
+      const calls = controllers.map((controller, i) => files.save("stuck", 30, small(i + 1), controller.signal))
+      return { controllers, calls }
+    }
+    const first = queue(MAX_SAVE_WAITERS)
+    const refused = await files.save("stuck", 30, small(99))
+    expect(refused).toMatchObject({ status: 429, kind: "rate_limit", code: "file_saves_busy", retryAfterSeconds: 5 })
+    // The refusal did not start a write, and a save of another app is not held up by this one.
+    expect(holds).toHaveLength(1)
+    expect(await files.save("free", 30, small(100))).toHaveProperty("id")
+    // The waiting saves leave when their requests do: each rejects with the reason and the room it held is free again.
+    const reason = new Error("client left")
+    const outcomes = first.calls.map((call) =>
+      call.then(
+        () => "saved",
+        (error) => error,
+      ),
+    )
+    for (const controller of first.controllers) controller.abort(reason)
+    expect(await Promise.all(outcomes)).toEqual(Array.from({ length: MAX_SAVE_WAITERS }, () => reason))
+    const second = queue(MAX_SAVE_WAITERS)
+    expect(await files.save("stuck", 30, small(98))).toMatchObject({ code: "file_saves_busy" })
+    expect(holds).toHaveLength(1)
+    open()
+    expect(await stuck).toHaveProperty("id")
+    expect((await Promise.all(second.calls)).every((result) => "id" in result)).toBe(true)
+    // Only the saves that were never aborted wrote anything.
+    expect(await files.ids("stuck", 30)).toHaveLength(1 + MAX_SAVE_WAITERS)
+  })
+
+  test("the bound counts bytes too: the running and waiting saves together stay under it, and an idle app always takes one", async () => {
+    const { files, holds, open } = gated({ maxSaveBytes: 100 })
+    const running = files.save("stuck", 30, small(0, 60))
+    await until(() => holds.length === 1)
+    const waiting = files.save("stuck", 30, small(1, 30))
+    expect(await files.save("stuck", 30, small(2, 20))).toMatchObject({ status: 429, code: "file_saves_busy" })
+    // 60 + 30 + 10 is exactly the bound.
+    const last = files.save("stuck", 30, small(3, 10))
+    expect(await files.save("stuck", 30, small(4, 1))).toMatchObject({ code: "file_saves_busy" })
+    open()
+    expect((await Promise.all([running, waiting, last])).every((result) => "id" in result)).toBe(true)
+
+    const tiny = gated({ maxSaveBytes: 10 })
+    const oversize = tiny.files.save("stuck", 30, small(0, 50))
+    await until(() => tiny.holds.length === 1)
+    tiny.open()
+    expect(await oversize).toHaveProperty("id")
+  })
+
+  test("a waiting save that leaves gives its bytes back: the room it held is taken by the next save", async () => {
+    const { files, holds, open } = gated({ maxSaveBytes: 100 })
+    const running = files.save("stuck", 30, small(0, 60))
+    await until(() => holds.length === 1)
+    const controller = new AbortController()
+    const gone = files.save("stuck", 30, small(1, 40), controller.signal)
+    // 60 + 40 is the whole bound: one byte more is refused.
+    expect(await files.save("stuck", 30, small(2, 1))).toMatchObject({ code: "file_saves_busy" })
+    controller.abort(new Error("client left"))
+    expect(await outcome(gone)).toHaveProperty("error")
+    const again = files.save("stuck", 30, small(3, 40))
+    open()
+    expect(await running).toHaveProperty("id")
+    expect(await again).toHaveProperty("id")
+  })
+
+  test("a save that is waiting leaves the queue when its request is gone, and never writes", async () => {
+    const { files, holds, inner, open } = gated()
+    const running = files.save("stuck", 30, small(0))
+    await until(() => holds.length === 1)
+    const controller = new AbortController()
+    const reason = new Error("client left")
+    const gone = files.save("stuck", 30, small(1), controller.signal)
+    const stays = files.save("stuck", 30, small(2))
+    controller.abort(reason)
+    expect(await outcome(gone)).toEqual({ error: reason })
+    // A request that is already gone is never queued at all.
+    expect(await outcome(files.save("stuck", 30, small(3), AbortSignal.abort(reason)))).toEqual({ error: reason })
+    open()
+    expect(await running).toHaveProperty("id")
+    expect(await stays).toHaveProperty("id")
+    expect(inner.puts.filter((key) => key.includes("/data/"))).toHaveLength(2)
+    expect(await files.ids("stuck", 30)).toHaveLength(2)
+  })
+
+  test("the running save keeps its slot when its request is gone: the next save does not start until the write ends", async () => {
+    const { files, holds, open } = gated()
+    const controller = new AbortController()
+    const running = files.save("stuck", 30, small(0), controller.signal)
+    await until(() => holds.length === 1)
+    const next = files.save("stuck", 30, small(1))
+    controller.abort(new Error("client left"))
+    await Bun.sleep(40)
+    // Its write can still complete, so nothing else writes for the app while it is pending.
+    expect(holds).toHaveLength(1)
+    open()
+    expect(await running).toHaveProperty("id")
+    expect(await next).toHaveProperty("id")
+  })
+
+  test("the slot is released when the running save is rejected, and the next one runs", async () => {
+    const { files, holds } = gated()
+    const failed = files.save("stuck", 30, small(0)).then(
+      () => undefined,
+      (error: Error) => error,
+    )
+    await until(() => holds.length === 1)
+    const next = files.save("stuck", 30, small(1))
+    const last = files.save("stuck", 30, small(2))
+    holds[0]!.fail(new Error("disk full"))
+    expect((await failed)?.message).toBe("file storage unavailable")
+    await until(() => holds.length === 2)
+    holds[1]!.release()
+    expect(await next).toHaveProperty("id")
+    await until(() => holds.length === 3)
+    holds[2]!.release()
+    expect(await last).toHaveProperty("id")
+    // The queue is empty again: the next save runs at once and is not refused.
+    const after = files.save("stuck", 30, small(3))
+    await until(() => holds.length === 4)
+    holds[3]!.release()
+    expect(await after).toHaveProperty("id")
+  })
+
+  test("over HTTP: a stuck save refuses the next uploads at the bound in each API's error shape, and a waiting upload whose request timed out leaves the queue", async () => {
+    const { files, holds, open } = gated({ maxSaveWaiters: 1 }, "r3q")
+    const { server } = await route({ r3q: "key-r3q" }, { requestTimeoutMs: 600 }, files)
+    // Whatever the assertions find, the held writes are let go at the end, so the server can close and a failing run ends.
+    onTestFinished(open)
+    const send = (name: string, headers: Record<string, string> = {}) => upload(server, "key-r3q", { bytes: Buffer.from(name), name, type: "text/plain" }, headers)
+    const first = send("first.txt")
+    await until(() => holds.length === 1)
+    const second = send("second.txt")
+    await Bun.sleep(100)
+    const openai = await send("third.txt")
+    expect(openai.status).toBe(429)
+    expect(openai.json().error).toMatchObject({ code: "file_saves_busy", type: "rate_limit_error" })
+    expect(openai.headers["retry-after"]).toBe("5")
+    const anthropic = await send("fourth.txt", ANTHROPIC)
+    expect(anthropic.status).toBe(429)
+    expect(anthropic.json()).toMatchObject({ type: "error", error: { type: "rate_limit_error" } })
+    const viaGemini = (name: string) =>
+      server.send({
+        method: "POST",
+        path: "/upload/v1beta/files?uploadType=multipart",
+        headers: { ...goog("key-r3q"), "content-type": "multipart/related; boundary=B" },
+        body: Buffer.from(`--B\r\nContent-Type: application/json\r\n\r\n{"file":{"displayName":"${name}"}}\r\n--B\r\nContent-Type: text/plain\r\n\r\nhello\r\n--B--\r\n`),
+      })
+    const gemini = await viaGemini("g.txt")
+    expect(gemini.status).toBe(429)
+    expect(gemini.json().error).toMatchObject({ code: 429, status: "RESOURCE_EXHAUSTED" })
+    // The first two requests ran out of time (a 504 each), and the second left the queue with its bytes: one more upload can wait again,
+    // and so can the one after it once that one has left too (each API's upload leaves with its request).
+    expect((await first).status).toBe(504)
+    expect((await second).status).toBe(504)
+    const fifth = viaGemini("fifth.txt")
+    await Bun.sleep(100)
+    expect(holds).toHaveLength(1)
+    expect((await send("refused.txt")).status).toBe(429)
+    expect((await fifth).status).toBe(504)
+    const sixth = send("sixth.txt")
+    await Bun.sleep(100)
+    expect((await viaGemini("refused-too.txt")).status).toBe(429)
+    expect((await sixth).status).toBe(504)
+    // Nothing but the first upload ever wrote, and it still finishes once its write does: it kept the slot all along.
+    open()
+    const listed = async () => (await server.send({ path: "/v1/files", headers: bearer("key-r3q") })).json().data.length as number
+    let count = 0
+    for (let i = 0; i < 100 && count < 1; i++) {
+      await Bun.sleep(10)
+      count = await listed()
+    }
+    expect(count).toBe(1)
+    await Bun.sleep(50)
+    expect(await listed()).toBe(1)
   })
 })
 

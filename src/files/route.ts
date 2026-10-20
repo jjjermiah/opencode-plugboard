@@ -60,12 +60,18 @@ const bad = (message: string, code: string, param?: string): PlugError => ({ sta
 export const fileCap = (host: RouteHost, app: string): number => Math.min(bodyLimits(host.options, app, host.keys?.appNames()).maxBodyBytes ?? BODY_LIMIT_DEFAULTS.maxBodyBytes, MAX_FILE_BYTES)
 
 /** Checks a file's size and bytes, then keeps it under the app. */
-export async function storeUpload(host: RouteHost, app: string, upload: { bytes: Uint8Array; declaredType: string | undefined; filename: string; purpose: string }): Promise<FileRecord | PlugError> {
+export async function storeUpload(
+  host: RouteHost,
+  app: string,
+  upload: { bytes: Uint8Array; declaredType: string | undefined; filename: string; purpose: string },
+  /** The request's signal: a save still waiting for its turn leaves the queue when it aborts (`FileStore.save`). */
+  signal?: AbortSignal,
+): Promise<FileRecord | PlugError> {
   const cap = fileCap(host, app)
   if (upload.bytes.length > cap) return { status: 413, kind: "invalid_request", code: "file_too_large", param: "file", message: `The file is larger than this app's limit of ${cap} bytes` }
   const detected = detectFile(upload.bytes, upload.declaredType, upload.filename)
   if ("problem" in detected) return bad(detected.problem, "invalid_file", "file")
-  return host.files.save(app, retentionDaysFor(host.options, app), { filename: upload.filename, mime: detected.mime, purpose: upload.purpose, bytes: upload.bytes })
+  return host.files.save(app, retentionDaysFor(host.options, app), { filename: upload.filename, mime: detected.mime, purpose: upload.purpose, bytes: upload.bytes }, signal)
 }
 
 const header = (request: IncomingMessage, name: string): string | undefined => {
@@ -138,7 +144,7 @@ export async function serveFiles(host: RouteHost, { app, match, request, url, re
         return fail(bad(`Invalid value: '${given.slice(0, 40)}'. Supported values are: ${PURPOSES.map((p) => `'${p}'`).join(", ")}.`, "invalid_value", "purpose"))
       purpose = given
     }
-    const stored = await scope.race(storeUpload(host, app, { bytes: form.bytes, declaredType: form.declaredType, filename: form.filename, purpose }))
+    const stored = await scope.race(storeUpload(host, app, { bytes: form.bytes, declaredType: form.declaredType, filename: form.filename, purpose }, scope.signal))
     if (isPlugError(stored)) return fail(stored)
     sendJson(response, 200, encode(stored))
   }
