@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.59.0] - 2026-10-20: Locked Down, Clearly Documented
+
+**Full diff:** [v0.58.0...v0.59.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.58.0...v0.59.0)
+
 ### Added
 
 - The Aider example now checks a file edit through plugboard ([#215](https://github.com/jjjermiah/opencode-plugboard/issues/215)). A new shared scenario, S11, asks Aider to change a file in a throwaway git repo. The scripted model answers in the edit format Aider picks for the model, whole file for `fast` and `openai/gpt-5.6-luna#low`, SEARCH/REPLACE blocks for `anthropic/claude-haiku-4-5`, and the runner checks that the file changed. The committed scripted run has the three transcripts, and the Aider page says which edit formats work.
@@ -43,6 +49,350 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - Dropped the lockfile of the Aider example ([#526](https://github.com/jjjermiah/opencode-plugboard/issues/526)). It pinned litellm 1.81.10, which carries about 25 advisories that cannot be fixed, because Aider refuses to start with any newer litellm. `examples/aider/pyproject.toml` still pins `aider-chat` exactly and caps litellm at 1.81.10, so a fresh resolve starts and the scripted run is unchanged. The runner calls `uv run --isolated`, which resolves in a temporary environment and writes no lockfile, and Dependabot no longer watches the example. The example ships in no package.
 - Hardened the Files API ([#548](https://github.com/jjjermiah/opencode-plugboard/pull/548)). The file count and byte checks and the write after them are one step per app, so uploads in flight together stay inside the limits. That queue is bounded and cancellable: at most 8 saves wait behind the running one and the running and waiting saves hold at most 64 MiB, and an upload past either bound is a 429 `file_saves_busy` with `Retry-After` at once; a waiting upload leaves the queue, and releases its bytes, when its request ends, and the running save keeps its turn until its write ends. A request that names files is checked against the 50 MB media limit on the file sizes before any file is read (a 400 `files_too_large`). A resumable upload skips a chunk with no bytes, ends with the key that started it, and expired uploads are dropped by a timer and by any request to the upload route. A text upload's declared `Content-Type` is read from the file part itself, so `text/plain` with a name like `notes.bin` is accepted as the docs say.
 - `init` writes a new config with mode 0600 and a directory it creates with mode 0700 ([#548](https://github.com/jjjermiah/opencode-plugboard/pull/548)). A config that already exists keeps its mode.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (30 commits)</summary>
+
+#### Features
+
+**feat(examples): run the Gemini CLI's countTokens call through plugboard** ([`555d6f8`](https://github.com/jjjermiah/opencode-plugboard/commit/555d6f87d527cc5090c1ecde6d1f5cfffac901cf))
+
+The Gemini CLI example covered a chat and a stream only, and the issue asked for a scenario where the CLI calls :countTokens.
+
+Checked the pinned CLI (0.64.0) in node_modules/@google/gemini-cli. Its pre-send context window check (calculateRequestTokenCount) calls the API only when the request holds inlineData or fileData, and estimates text locally. The same helper runs after chat compression, which needs a long history. The other callers are context-manager calibration, which needs an opt-in env var. A probe against the scripted server showed a text-only prompt sends one streamGenerateContent and nothing else, while "... @red32.png" sends POST /v1beta/models/fast:countTokens (200) and then the stream. So the CLI does call countTokens headless, and the @google/genai fallback in examples/gemini-js is not needed.
+
+Changes:
+- examples/_shared/scenarios.json: new scenario S10, token count before a request, one model (fast), two checks (the count is a number, it is above zero). Its prompt is the S1 prompt, so the scripted model answers it with no change.
+- examples/gemini-cli/count.ts: stages the shared 32px red PNG into the CLI's workspace, runs `gemini -p "... @red32.png"`, and reads the :countTokens exchange from the capture proxy (GET /__exchanges), since the CLI does not print the count.
+- examples/gemini-cli/cli.ts: stageFile() copies a file into the run's workspace.
+- examples/gemini-cli/run.ts: S10 added to the plan.
+- examples/gemini-cli/runs/scripted: regenerated; summary.json, summary.md and the new S10.fast.json transcript. Two runs give identical bytes.
+- docs/clients/gemini-cli.md: a Token counts section importing the snippet, and "token counts" under What works.
+- docs/clients/langchain-google-genai.md: the stream cancel limit of @langchain/google-genai as a current-state Limits bullet (its @google/generative-ai SDK reports an abort as an error; the upstream SDK limit stays recorded in docs/compatibility.md note 4).
+- examples/_harness/README.md, examples/_harness/index.json and examples/README.md (regen): S10 row and the gemini-cli description.
+
+Rejected: a countTokens scenario in examples/gemini-js. The CLI covers the case the issue names, and the SDK call is already in the compat matrix.
+
+Validation: bun run validate --skip mutations passes lint, typecheck, test, manifest, pack and docs. The examples step stops at langchain4j (no Java runtime on this machine). I ran the examples after it by hand: every scripted run is byte-identical to what is committed, except spring-ai, which also needs Java and did not run.
+
+Refs #103
+
+#### Fixes
+
+**fix(examples): sort the Gemini CLI skill list so scripted transcripts are stable** ([`cbe51b4`](https://github.com/jjjermiah/opencode-plugboard/commit/cbe51b4d29d34ea3bff2a733fff707ce8f6a4f8d))
+
+The Gemini CLI builds the "Available Agent Skills" block of its system prompt from a directory listing of its built-in skills, so the order of the <skill> entries (skill-creator, antigravity-support) differed from run to run. Lanes saw examples/gemini-cli fail `validate` twice and change S1 on anthropic once.
+
+normaliseSessionContext now sorts the <skill> entries inside each <available_skills> block by <name>, ties broken by the entry text. Text outside the entries and <skill> tags outside an <available_skills> block are left alone. The fix is in the normaliser, which every request body passes through, so the CLI itself and the runner are unchanged.
+
+Rejected: forcing the order in the runner. The listing belongs to the CLI's own filesystem walk, and the normaliser already owns this kind of machine-dependent noise.
+
+Validation: unit test for the sort. Five runs of `bun examples/_harness/run.ts gemini-cli --target scripted` give the same sha256 over examples/gemini-cli/runs. The four affected scripted transcripts are regenerated (only the skill order moved). typecheck, test, manifest, pack and docs pass in `bun run validate`; the examples step stops at langchain4j because this machine has no Java runtime. The test-count floor is ratcheted for the new test.
+
+**fix(examples): fix Aider's host platform, shell and date in the scripted transcripts** ([`9e78d85`](https://github.com/jjjermiah/opencode-plugboard/commit/9e78d853f9582c053c566ef92c0ecc2b307e9b7e))
+
+The Examples job failed on the S10 transcript for anthropic/claude-haiku-4-5. Aider's diff edit format puts the host's platform, its shell and the day into the system prompt ("- Platform: macOS-27.0-arm64-arm-64bit", "- Shell: SHELL=/opt/homebrew/bin/zsh", "- Current date: 2026-10-19"), so the transcript differed between my Mac and the Linux runner and would differ again the next day. The whole-file format does not carry these lines, which is why the S1 transcripts were stable.
+
+The transcript writer now replaces the three values with <platform>, <shell> and <date>, next to the existing rules for the Gemini CLI, Codex CLI and PR-Agent. The rule needs the three lines in a row, so a lone "Current date:" elsewhere is left alone. A unit test covers both hosts and a different day. The committed Aider run is regenerated.
+
+Rejected: --no-suggest-shell-commands. The platform block stays in the prompt with it. Also rejected: pinning --edit-format whole for the Claude model, which would drop the SEARCH/REPLACE path this scenario exists to show.
+
+Validation: examples-normalise unit tests pass, the Aider run was repeated and only the one transcript changed.
+
+**fix(discovery): close red-team round 3 findings (setup page, input_items, file 404s)** ([`75d5296`](https://github.com/jjjermiah/opencode-plugboard/commit/75d5296e60f7c14e40d69d4315151e7153827738))
+
+Five low-severity findings from the third red-team round, one change.
+
+#543: the endpoint list on GET / and GET /v1 called Responses "stateless" and had no stored-response or Files routes. It now lists GET and DELETE /v1/responses/{id}, input_items, the OpenAI and Anthropic /v1/files routes and the Gemini upload and /v1beta/files routes. test/http/discovery.test.ts probes each new route, so a route missing from the list fails the build.
+
+#544: on a wildcard listen address (0.0.0.0, ::) the base URL and the curl showed 0.0.0.0. buildDiscovery now takes the request's Host header when it is a plain host (name, IPv4 or bracketed IPv6, optional port) that is not itself a wildcard. The value lands in a copy-paste curl, so it must match the same shape the forwarded-host parser uses, and anything else gets the placeholder http://<this-host>:<port> plus a baseUrlHint on the page and in the JSON. A trusted proxy's public origin (listen.trustProxy) still wins, and the Host check that ran before the page is unchanged. A wildcard bind needs keys, so the keyless path is untouched.
+
+#545: the apps-and-keys guide pinned "model": "fast" without defining the alias. The snippet now carries the alias. A pin or an app models entry that names an undefined alias was already refused at config load (verified with a test), not a 404 on every call; the pin error now says the name is not an alias and to add it to aliases.
+
+#546: a message stored from shorthand input ({ role, content }) was listed without type. fullItem gives every message type "message" and turns string content into input_text or output_text parts, at store time and when listing, so records stored earlier are listed in full shape too. Chain replay accepts the normalised items.
+
+#547: a missing file is now the same 404 body on the Files routes and as a file_id in a request: OpenAI's No such File object on Chat and Responses, Anthropic's File not found on Messages, the Gemini files message on Gemini. The in-request error loses the file_not_found code and param. The Codex page says the missing model metadata warning appears for any model id Codex does not know.
+
+Rejected: showing the Host header unchecked (it reaches a curl line), and a wildcard test through a real wildcard socket (the loopback harness gets an optional listenHost so the options can name 0.0.0.0). Not done: the Gemini upload URL and file uri still use the listen address on a wildcard bind (src/files/gemini/route.ts); follow-up.
+
+Closes #543
+Closes #544
+Closes #545
+Closes #546
+Closes #547
+
+**fix(examples): normalise the date in Claude Code's scripted transcripts** ([`11f2631`](https://github.com/jjjermiah/opencode-plugboard/commit/11f26317e929492ccd0567c13c38fc788ddfe237))
+
+Claude Code names the day it runs ("Today's date is 2026-10-19.") in its system prompt and in a system reminder. The committed scripted transcripts held that day, so the Examples job failed for every run after UTC midnight.
+
+The normaliser now replaces the date in that sentence with <date>, as it already does for PR-Agent, Aider and the Gemini CLI. A unit test covers both places the sentence appears, two different days giving one text, and the sentence without a trailing period staying untouched.
+
+Regenerated examples/claude-code/runs/scripted. Two consecutive runs give an identical hash of the directory (1521b26f...), and no other scripted run holds a real date for the day it ran.
+
+Validation: bun test test/unit/examples-normalise.test.ts passes; lint, format and the examples typecheck are clean.
+
+**fix(files): harden Files caps, uploads and the fallback deadline** ([`aa5830f`](https://github.com/jjjermiah/opencode-plugboard/commit/aa5830f63b3b5ce43057d396ef6dd82586cc138c))
+
+Closes the places the review's tests had marked as open, and removes each test.failing marker with its fix.
+
+- Files: the count and byte checks and the write after them run as one step per app (a per-app save queue), so uploads in flight together stay inside the limits. A request that names files is checked against the 50 MB media limit on the file sizes (metadata only) before any file's bytes are read: a 400 files_too_large. A text upload's declared Content-Type is read from the file part's own headers, because the runtime's FormData derives a part's type from its file name; the bytes still decide everything else.
+- Resumable upload: a chunk with no bytes is not kept; an upload records the digest of the key that started it and ends when that key is revoked or rotated out (the keyless chunk path checks it too); expired uploads are dropped by one shared timer and by any request to the upload route.
+- init: a new config is written with mode 0600 and a directory it creates with 0700; an existing file keeps its mode.
+- Fallback: the first-event deadline starts when the session caller sends the prompt (new CallContext callbacks onPreparing and onPrompted), so image fetches and session set-up are not the model's silence. A caller that reports neither is timed from the start of the attempt, as before.
+- Error classes: the rate limit, quota, overload and sign-in wording only picks a class when the status is absent, 429 or a server status, so a provider 4xx is provider_rejected_request. The no-status case that motivated the wording rules keeps working.
+
+Docs: files.md, configuration.md, architecture.md, install.md. CHANGELOG bullets under Unreleased. Fifteen mutation entries (R3-*) cover the new guards.
+
+Validation: bun test (full) passes; lint, format and typecheck are clean.
+
+**fix(gemini): use the reachable address in the upload URL and file uri on a wildcard bind** ([`67e5c0d`](https://github.com/jjjermiah/opencode-plugboard/commit/67e5c0d21a4190d2603c4a8d84102d2688b8d3c4))
+
+On a 0.0.0.0 or :: bind the Gemini resumable upload answered an X-Goog-Upload-URL on 0.0.0.0, and the File object's uri did too, so a client on another machine could not send its chunks. Both now use the same rule as the setup page (#544): the public origin a trusted proxy names, else the request's Host when the server listens on every address and the Host is a plain host, else the listen address.
+
+The rule moves into clientOrigin in src/discovery.ts, which the setup page and the Gemini Files route share. On a wildcard bind with no usable Host the Gemini route falls back to the listen address, since a placeholder is no use in a header a client follows. A non-wildcard bind ignores the Host header, as before.
+
+Tests (test/http/files.test.ts): Host used for the upload URL and the uri, a chunk upload to that URL, the proxy origin winning, the fallback for an unusable Host, and a specific listen address ignoring Host.
+
+Refs #544
+
+**fix(docs): stop the page jumping when a config tab is clicked** ([`2fb4eb2`](https://github.com/jjjermiah/opencode-plugboard/commit/2fb4eb2009ceac32717d54b2569b92407944cf78))
+
+The Snippet / Full config tabs were VitePress code groups synced by a hand-written script that clicked every group on the page. A Full config block is taller than its snippet, so switching the groups above the clicked one pushed the page down under the reader's cursor.
+
+The tabs now use vitepress-plugin-tabs 0.9.1 (sapphi-red, a VitePress maintainer), which already does what the script did: one shared key syncs every group, the choice is kept in localStorage across pages, and it stabilises the scroll position of the clicked group. The markdown plugin emits that package's tab tokens instead of code-group tokens, and config-tabs.ts is deleted. The package is a dev dependency for the docs build only; nothing ships in the npm package.
+
+Rejected: keeping the script with a scroll-anchor fix. It worked (0px movement), but a maintained plugin replaces about 70 lines of our own code.
+
+Validation: test/unit/docs-full-config.test.ts passes (23 tests); bun run docs:build completes. In headless Chrome on guides/apps-and-keys, clicking Full config, Snippet, Full config moved the clicked group 0px each time; all 4 groups on the page switched, and configuration.html opened on Full config.
+
+**fix(files): bound and cancel the per-app save queue** ([`f47e971`](https://github.com/jjjermiah/opencode-plugboard/commit/f47e9711fb906d2ef176e1f8fce9c6c55ada2b24))
+
+The per-app save queue added in this branch had no admission bound and no cancellation. A write that never settled blocked every later save of the app, and each queued save kept its upload bytes after its request had timed out, because the body budget is released before the save and the route only raced the save without cancelling it.
+
+The queue is now explicit. At most one save runs per app; at most 8 wait, and the running and waiting saves together hold at most 64 MiB. A save past either bound is refused at once with a 429 file_saves_busy and a Retry-After in the calling API's own error shape (an app with no save running takes any upload). The routes pass the request's signal: a waiting save leaves the queue when its request ends and gives its bytes back. The running save is never released early, because its write can still complete; the slot is released when that write settles, whether it resolved or was rejected.
+
+Tests drive a store whose writes wait on a gate: a never-settling save, the count and byte bounds, an aborted and an already-aborted waiter, the running save keeping its slot after its request is gone, a rejected save releasing the slot, and over HTTP the refusal in each API's shape and a timed-out upload leaving the queue. Twelve mutation entries cover the guards.
+
+#### Tests
+
+**test(examples): regenerate the scripted run for the dependency bump** ([`6d39273`](https://github.com/jjjermiah/opencode-plugboard/commit/6d39273342516e0adececbaafebb95906ae474c1))
+
+The committed transcript records the client package version, so the Dependabot bump made the "scripted runs are current" check fail. Only the recorded version string changes; requests, captures and verdicts are the same.
+
+Validation: bun examples/_harness/run.ts <example> --target scripted passes and changes only summary.json and summary.md.
+
+**test(examples): regenerate the scripted run for the dependency bump** ([`184736f`](https://github.com/jjjermiah/opencode-plugboard/commit/184736f3d6489ba01e401b2c2910de7a0cf8e469))
+
+The committed transcript records the client package version, so the Dependabot bump made the "scripted runs are current" check fail. Only the recorded version string changes; requests, captures and verdicts are the same.
+
+Validation: bun examples/_harness/run.ts <example> --target scripted passes and changes only summary.json and summary.md.
+
+**test(examples): trace Langfuse to a local stand-in and run PR-Agent /review in the scripted harness** ([`9e0c42b`](https://github.com/jjjermiah/opencode-plugboard/commit/9e0c42bf0e77f6a88a44b7dcd93dd397f8c6a2ba))
+
+Langfuse (#240): the example ran with tracing off, so a traced call reaching a Langfuse instance was never checked. The runner now starts examples/langfuse/fake_langfuse.py, a loopback endpoint for the SDK's OTLP export (POST /api/public/otel/v1/traces, protobuf, Basic auth with the public and secret key), and sets LANGFUSE_BASE_URL and the keys to it. New scenario S8 makes one call on `fast`, flushes the SDK, and checks that a generation of that call arrived with the model name, the answer and the usage plugboard returned. Nothing it records carries ids or timestamps, so the run is byte-identical. No Langfuse server, no Docker.
+
+PR-Agent (#249): the example was a README only. It moves from examples/self-hosted/pr-agent to examples/pr-agent so the harness can run it (`all` and exampleDir look at top-level directories), and gets a runner. The runner builds a throwaway git repo (main plus a feature branch) and runs the pinned pr-agent 0.48.0 CLI with CONFIG__GIT_PROVIDER=local, which writes review.md. New scenario S9 checks that review.md holds the scripted model's text, and, from the capture proxy, that the request reached /v1/chat/completions with the configured model. A failed review also writes review.md ("Failed to review PR", exit 0), so the text check is what proves the round trip.
+
+Shared harness edits, additive:
+- scenarios.json: S8 and S9 (only a runner that supplies them plans them).
+- scripted-model.ts: answers PR-Agent's review prompt (`--PR Info--` and `The PR code diff:` together) with a fixed YAML review; other prompts still get the scripted error.
+- normalise.ts: fixes the date PR-Agent puts in that prompt.
+
+Decisions: uv.lock is committed for pr-agent (98 packages, litellm 1.105.0, osv-scanner reports no issues), so the runner is the usual `uv run --frozen run.py`. Without custom_model_max_tokens PR-Agent stops before sending a request; the docs page now says so.
+
+Docs: docs/clients/langfuse.md and docs/self-hosted/pr-agent.md import their snippets from the runners and describe the working setup; compatibility.md, self-hosted.md and examples/README.md follow.
+
+Validation: bun run validate --skip mutations passes lint, typecheck, test, manifest, pack and docs. The examples step stops at langchain4j (no Java locally), so langfuse and pr-agent were run by name, twice each, with identical output.
+
+Closes #240
+Closes #249
+
+**test(examples): check an Aider file edit and AutoGen on the Anthropic route** ([`a783c68`](https://github.com/jjjermiah/opencode-plugboard/commit/a783c68c0be4b772f4f6bdcb0dc5ef92c0eda712))
+
+Both client issues were left open for one gap each. This turns both gaps into scripted runs that CI compares.
+
+Aider (#215): the scripted model only answered in plain text, so an edit through plugboard was never shown. A new shared scenario, S8, asks Aider to change hello.py in a throwaway git repo. Aider is started without --edit-format, so it picks the format for the model id: whole file for fast and openai/gpt-5.6-luna#low, SEARCH/REPLACE for anthropic/claude-haiku-4-5 (checked with the startup banner of Aider 0.86.2). The scripted model reads the format from Aider's system prompt and answers in it. The runner reads the file back and checks that the new line is there and the old one is gone. S8 is not required, because only a coding client edits files.
+
+AutoGen (#230): the example was a PEP 723 script with no runner. It is now a uv project (exact pin autogen[openai,anthropic]==0.14.1, uv.lock) with a harness runner. S1 and S2 run on the Chat Completions route (api_type openai) and on the Messages route (api_type anthropic) as two variants. S3 runs on Chat Completions only, because the Anthropic client of AutoGen does not stream. That client hands base_url to the Anthropic SDK, which adds /v1/messages itself, so base_url is the plugboard address without /v1 (read from autogen/oai/anthropic.py). AutoGen returns the reply text, not the finish reason or a streamed usage, so those checks are listed as unobserved. The runner moves AutoGen's stdout chat to stderr so the JSON lines stay clean.
+
+Decisions: S8 is a new shared scenario, not a bash-only check, so the scripted model, the checks and the transcripts follow the same path as every other scenario. Rejected: pinning --edit-format whole for S8 (it would show only one format) and a per-model scenario for the diff format (the model id already selects it).
+
+Validation: bun run validate --skip mutations passes typecheck, lint, tests (3683), manifest, pack and docs. The examples step stops at langchain4j (no Java here). Every other example with a runner was run too, except the Java ones and the other lane's: no diff outside aider and autogen. Both new runs were repeated and are byte-identical.
+
+Closes #215
+Closes #230
+
+**test(examples): run Claude Code headless with tools, a sub-agent and /compact** ([`1138e92`](https://github.com/jjjermiah/opencode-plugboard/commit/1138e927c29131db55448ff718d005e160b908a7))
+
+The Claude Code page covered one tool turn from a manual probe. #102 asked for a recorded run of multi-step tool use, a sub-agent and compaction, and examples/claude-code held only config.
+
+The example now has a runner like codex-cli. It starts the pinned @anthropic-ai/claude-code 2.1.303 with `claude -p`, a fresh HOME and CLAUDE_CONFIG_DIR, an empty workspace and the key from the environment. The telemetry, error report, update and nonessential-traffic variables are set; a proxy that records connections saw none with them, and saw api.anthropic.com without them.
+
+Scenarios, all through /v1/messages with the scripted model:
+- S11: Write, Read, then the answer. The run checks that notes.txt exists.
+- S12: the Agent tool. Claude Code sends the sub-agent's own request (18 tools) and the reply comes back as a tool result.
+- S13: `/compact` needs a session, so the run makes one, compacts it with --resume, then sends a turn. The model reports it saw only the summary.
+- S1 and S3 on three models, since Claude Code streams every call.
+
+The scripted rules key on each scenario's prompt, the sub-agent's prompt or the compaction instruction, so no other client reaches them. The writer now normalises Claude Code's platform, shell, OS version, paths and sub-agent id, and response bodies too (a scripted Write names a workspace path). Three runs give the same sha256 over the run directory.
+
+Decisions: sub-agent evidence comes from the CLI's own tool_use_result, not the nested stream events, which stream-json does not emit. Headless auto-compaction was not tried; /compact on a resumed session is the same code path for the request. maxTools needs no change: 20 tools, default 64.
+
+Validation: bun test for the normaliser and scripted-model tests, the scripted run three times, tsc in the example, biome.
+
+Refs #102
+
+**test(http): add security regression tests for the surfaces added since 0.37.0** ([`0a459ed`](https://github.com/jjjermiah/opencode-plugboard/commit/0a459ed3d2c7188271511c895298ba8c952a03e6))
+
+Adds tests for the Files APIs, stored Responses, Codex tool mapping, the new response headers, error text, the silent-stream settle, the fallback breaker and the init CLI.
+
+Tests that prove a guarantee are normal tests. A few are marked test.failing and are named "security regression test". Each flips to a failure when the code is fixed, and the marker is removed with that fix.
+
+Validation: bun run validate --skip examples passes (lint, typecheck, test, manifest, pack, docs). No source changes.
+
+**test(tests): ratchet test-count floors for the red-team round 3 tests** ([`fdba01c`](https://github.com/jjjermiah/opencode-plugboard/commit/fdba01c7034bfea4c13bf5c1c3e3deb62f03782d))
+
+The http floor goes from 895 to 917 and the unit floor from 1847 to 1862, from the ratchet that bun run validate runs.
+
+Refs #543
+Refs #544
+Refs #545
+Refs #546
+Refs #547
+
+**test(mutations): re-anchor three entries and add the review's guards** ([`b464655`](https://github.com/jjjermiah/opencode-plugboard/commit/b4646554ab2d91d0ac3027f9c9b2c8120ae26e49))
+
+Three older entries (the fallback timer clear, the Gemini routes' app, the upload session's app) named source lines the previous commit rewrote, so bun run mutations reported them as anchors that no longer match. They now name the new lines and each is killed again.
+
+The fifteen R3-* entries from the previous commit are all killed: bun run mutations reports 268 of 268 after this change. The test-count floor is raised to match the new tests.
+
+**test(docs): type the tabs plugin for the test renderer** ([`1939536`](https://github.com/jjjermiah/opencode-plugboard/commit/1939536ffb7a9a8d194c63e946c872f7c7a8931d))
+
+vitepress-plugin-tabs is typed against its own markdown-it types, which TypeScript does not match with the instance VitePress's createMarkdownRenderer passes to the test. The plugin works at runtime (the docs build and the 23 tests pass), so the test casts it.
+
+Validation: bun run typecheck passes; test/unit/docs-full-config.test.ts passes.
+
+**test(tests): cancel the Gemini uploads the wildcard tests start** ([`27ef147`](https://github.com/jjjermiah/opencode-plugboard/commit/27ef1471b8039d15bf9c431c9ceaf5c7f33d5de9))
+
+Unfinished resumable uploads are process-wide and capped at 4 per app, so the new wildcard tests left uploads behind and the later Gemini upload tests got a 429. Each test now cancels the upload it starts, or finalizes it. The http floor goes up with the five new tests.
+
+Refs #544
+
+**test(tests): lower the unit floor by the one test main removed** ([`2030e93`](https://github.com/jjjermiah/opencode-plugboard/commit/2030e933e0592a9a884bb98f0170938dab051b0e))
+
+Merging main brought PR #551, which dropped the unit test "the first tab is the one that is shown" from test/unit/docs-full-config.test.ts. The unit count on the merged tree is 1862, so the floor of 1863 that the earlier ratchet wrote here failed the gate. The floor goes back to 1862, the current count. No test of this branch was removed.
+
+Refs #544
+
+#### Docs
+
+**docs(clients): keep the Langfuse and PR-Agent pages about setup** ([`6e9df64`](https://github.com/jjjermiah/opencode-plugboard/commit/6e9df64da68382f937f8c355d4ef8b94e87f3fad))
+
+The two pages described how the scripted CI run works (a loopback stand-in, a scripted model, what the run checks) and listed PR-Agent commands as "not run". User pages describe how to set the client up and what works, not how the project tests it; that detail stays in the example READMEs.
+
+Validation: bun run docs:build completes.
+
+**docs(self-hosted): link each page's upstream project** ([`a215971`](https://github.com/jjjermiah/opencode-plugboard/commit/a215971c2869b44d0fcaf64e031657c13b7aa91e))
+
+The epic's acceptance line asked for each self-hosted page to link the upstream docs or source it was checked against. No page did. The verified-date half of that line is dropped by decision: the user-docs rule is current state only, with no dates.
+
+Each of the 18 pages under docs/self-hosted/ now has one line after its introduction, "Upstream: [source](...), [docs](...)". The docs link is there only where the project has a docs site. Every URL was fetched (redirects followed): all answer 200. Three upstreams moved, so the pages use the final address: the Mattermost AI plugin repo is now mattermost-plugin-agents, PR-Agent is under The-PR-Agent/pr-agent with its docs on docs.qodo.ai, and the Onyx docs open at /welcome. Mealie's docs host redirects to its home page, so Mealie links the repo only.
+
+CHANGELOG gets a bullet for this and one for the Gemini CLI count scenario of the previous commit.
+
+Validation: bun run docs:build passes; bun run validate --skip mutations passes lint, typecheck, test, manifest, pack and docs.
+
+Closes #251
+
+**docs(clients): drop two measured-wrong Claude Code limits** ([`7401d9a`](https://github.com/jjjermiah/opencode-plugboard/commit/7401d9a1fe454b1afa29bb21156e9829a48f11a2))
+
+The page said Claude Code sends "about 36 tools"; the scripted run measured 20 in headless mode (18 for a sub-agent), and the count varies with mode and MCP servers, so the page now names what drives it. It also said the fast-mode check still reaches api.anthropic.com; with CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC set, a recording proxy saw no outbound connection. The WebFetch domain check stays.
+
+Validation: bun run docs:build completes.
+
+**docs(docs): list the redteam app's real models, guard Gemini stream chunking** ([`06766f6`](https://github.com/jjjermiah/opencode-plugboard/commit/06766f6b1a24c4126b74b484f3af4e8b24644cd9))
+
+The red-team page said the hub's `redteam` app is scoped to `fast` and Haiku 4.5. `GET /v1/models` with that key lists four models, each with its `#` variants: fast, opencode-go/glm-5.3-flash, anthropic/claude-haiku-4-5 and github-copilot/gpt-5.5. The page now names the four, says to read the list at the start of a round, and keeps the instruction to prefer the cheap ones. Narrowing the hub's config is a deployment change and is not part of this commit.
+
+The round-1 report also noted that streamed Gemini text from `fast` arrived as one chunk plus an empty final chunk. The encoder (`runGenerate` in src/gemini/response.ts) emits one chunk per model text delta as it arrives and a last chunk with an empty text part, the finish reason and usageMetadata. It does not buffer. Live on the hub with Haiku 4.5, a 40-line count streamed as three text chunks (host deltas) plus the final chunk; a one-word answer was one text chunk plus the final chunk, so the single chunk in the report was the model's one delta. The new test pins this: two deltas reach the client before a third delta is released, and only the last chunk carries finishReason and usage.
+
+Validation: bun run validate --skip examples (6 steps passed). The examples step needs a Java runtime for the langchain4j runner, which this machine lacks; it failed there before and after, unrelated to this change.
+
+Refs #408
+
+**docs(docs): the redteam app has cheap models only** ([`46ee83a`](https://github.com/jjjermiah/opencode-plugboard/commit/46ee83a59cc767d9123592a467a2f1caac0f03ae))
+
+The aihub redteam app no longer allows github-copilot/gpt-5.5; red-team.md lists the three remaining models.
+
+Validation: GET /v1/models with the redteam key lists only fast, GLM 5.3 Flash and Haiku 4.5, with their variants.
+
+#### CI and tooling
+
+**chore(examples): drop the Aider example lockfile** ([`ec99f46`](https://github.com/jjjermiah/opencode-plugboard/commit/ec99f46156dcd4f8c3a939426416614b18ec103f))
+
+examples/aider/uv.lock pinned aider-chat 0.86.2 with litellm 1.81.10, which carries about 25 Dependabot advisories that cannot be fixed. Aider's LiteLLMExceptions check raises when litellm exports an exception class Aider does not list, so every litellm after 1.81.10 fails to start, and every fixed litellm is 1.82.0 or later. The alerts are dismissed; the lockfile kept generating new ones.
+
+What changed:
+
+- Deleted examples/aider/uv.lock.
+- pyproject.toml: aider-chat stays an exact pin (==0.86.2). litellm is capped with constraint-dependencies ("litellm<=1.81.10") so a fresh resolve cannot pick a litellm Aider rejects. The existing override floors stay. Comments no longer mention the lockfile.
+- run.sh: uv run --isolated, without --frozen. uv run on a project writes a uv.lock, which would reappear in the tree on every run; --isolated resolves into a temporary environment and writes nothing.
+- .github/dependabot.yml: removed the examples/aider uv entry.
+- osv-scanner.toml: header says there is no lockfile, so the entries only apply to a scan that is given a resolved set. The ignores are kept.
+- docs/compatibility.md: the sentence about uv.lock names Aider as the exception.
+- CHANGELOG: Security bullet under Unreleased.
+
+Rejected: --no-sync/--locked (they need a lockfile), and a .gitignore entry for uv.lock (it hides a regenerated file instead of not writing it).
+
+Validation: with a fresh UV_CACHE_DIR (the shared uv cache is locked by long-running uvx MCP servers, so uv cache clean could not run), bun examples/_harness/run.ts aider --target scripted passes and git diff examples/aider/runs is empty. Resolved litellm is 1.81.10. bun run validate --skip mutations,pack: lint, typecheck, test, manifest and docs pass; examples fails only at langchain4j (no local Java), after the aider run passed. The pack step fails on npm ETARGET for @aws-sdk/credential-provider-http@^3.972.77, which the registry does not list yet; unrelated to this change.
+
+Refs #526
+
+**ci(examples): cache Maven dependencies for the Java examples** ([`a680f1d`](https://github.com/jjjermiah/opencode-plugboard/commit/a680f1d06c326f0b5bd829fe3ecae0c160540785))
+
+The Examples job failed on a docs-only PR because Maven Central did not serve maven-shared-utils 3.1.0's descriptor while the langchain4j runner resolved maven-dependency-plugin. A rerun passed. setup-java's Maven cache, keyed on the examples' pom.xml files, keeps the plugins and dependencies between runs, so a download hiccup no longer fails the job once the cache is warm.
+
+Validation: the Examples job passes on this PR and saves the cache.
+
+#### Dependencies
+
+**chore(deps): bump pydantic-ai-slim[openai] in /examples/pydantic-ai** ([`c773558`](https://github.com/jjjermiah/opencode-plugboard/commit/c773558a43b2d389e34b23967456f84d066bbd8b))
+
+Bumps [pydantic-ai-slim[openai]](https://github.com/pydantic/pydantic-ai) from 2.56.0 to 2.57.0.
+- [Release notes](https://github.com/pydantic/pydantic-ai/releases)
+- [Changelog](https://github.com/pydantic/pydantic-ai/blob/main/docs/changelog.md)
+- [Commits](https://github.com/pydantic/pydantic-ai/compare/v2.56.0...v2.57.0)
+
+--- updated-dependencies:
+- dependency-name: pydantic-ai-slim[openai] dependency-version: 2.57.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-openai in /examples/langchain-python** ([`f762b63`](https://github.com/jjjermiah/opencode-plugboard/commit/f762b630feaeab1f283e9cb04880636efc8e84ef))
+
+Bumps [langchain-openai](https://github.com/langchain-ai/langchain) from 1.7.0 to 1.7.2.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-openai==1.7.0...langchain-openai==1.7.2)
+
+--- updated-dependencies:
+- dependency-name: langchain-openai dependency-version: 1.7.2 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-core in /examples/langchain-python** ([`9889b3e`](https://github.com/jjjermiah/opencode-plugboard/commit/9889b3e30bdbb2f48d2a511cee00e17277fa94e0))
+
+Bumps [langchain-core](https://github.com/langchain-ai/langchain) from 1.6.10 to 1.6.11.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-core==1.6.10...langchain-core==1.6.11)
+
+--- updated-dependencies:
+- dependency-name: langchain-core dependency-version: 1.6.11 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.58.0] - 2026-10-19: Overloaded, Not Stuck
 
@@ -9562,7 +9912,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.58.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.59.0...HEAD
+[0.59.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.55.0...v0.56.0
