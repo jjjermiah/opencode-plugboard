@@ -170,7 +170,12 @@ export function fullConfig(fragment: string, mode: FenceMode, version: string, w
 
 type Md = Parameters<NonNullable<MarkdownOptions["config"]>>[0]
 
-/** The markdown-it plugin: each tagged fence becomes a code group of the snippet and its full config. `version` is the latest release. */
+/**
+ * The markdown-it plugin: each tagged fence becomes a tab group (vitepress-plugin-tabs) of the snippet and its full config, all
+ * sharing one key so a reader's choice applies to every group and is kept across pages. `version` is the latest release.
+ * Register it after `tabsMarkdownPlugin`, which renders the `container_tabs` and `tab` tokens made here.
+ */
+export const TABS_KEY = "plugboard-config"
 export function fullConfigPlugin(version: string) {
   return (md: Md) => {
     md.core.ruler.push("plugboard-full-config", (state) => {
@@ -185,17 +190,23 @@ export function fullConfigPlugin(version: string) {
         const where = `${state.env?.relativePath ?? state.env?.path ?? "page"}:${(token.map?.[0] ?? 0) + 1}`
         if (extra.length > 0) throw new Error(`${where}: a \`${word}\` fence takes no other attributes (got ${extra.join(" ")})`)
         const full = fullConfig(token.content, mode, version, where)
-        const fence = (info: string, content: string) => {
-          const tab = new state.Token("fence", "code", 0)
-          Object.assign(tab, { info, content, markup: "```", block: true, level: token.level, map: token.map })
-          return tab
+        const make = (type: string, tag: string, nesting: 1 | 0 | -1, fields: Record<string, unknown>) => {
+          const t = new state.Token(type, tag, nesting)
+          Object.assign(t, { block: true, level: token.level, map: token.map, ...fields })
+          return t
         }
-        const group = (nesting: 1 | -1) => {
-          const edge = new state.Token(`container_code-group_${nesting === 1 ? "open" : "close"}`, "div", nesting)
-          Object.assign(edge, { info: nesting === 1 ? "code-group" : "", markup: ":::", block: true, level: token.level })
-          return edge
-        }
-        out.push(group(1), fence(`${lang} [Snippet]`, token.content), fence("jsonc [Full config]", full), group(-1))
+        const fence = (info: string, content: string) => make("fence", "code", 0, { info, content, markup: "```" })
+        const tab = (label: string, content: string, info: string) => [
+          make("tab_open", "div", 1, { info: label, markup: "==" }),
+          fence(info, content),
+          make("tab_close", "div", -1, { info: label, markup: "==" }),
+        ]
+        out.push(
+          make("container_tabs_open", "div", 1, { info: `tabs key:${TABS_KEY}`, markup: ":::" }),
+          ...tab("Snippet", token.content, lang),
+          ...tab("Full config", full, "jsonc"),
+          make("container_tabs_close", "div", -1, { info: "", markup: ":::" }),
+        )
       }
       state.tokens = out
     })
