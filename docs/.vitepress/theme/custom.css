@@ -1,6 +1,6 @@
 /*
  * A quiet, neutral look: Inter on white (or near black), one indigo accent, hairline rules,
- * pill buttons and a framed diagram on a dotted field.
+ * a serif italic headline (self-hosted), a framed terminal on a dotted field.
  * The theme's own rules are scoped (`[data-v-...]`), so several overrides need `!important`.
  */
 
@@ -39,6 +39,7 @@
 
   --plug-dot: rgb(91 95 230 / 0.22);
   --plug-radius: 10px;
+  --plug-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
 }
 
 .dark {
@@ -102,9 +103,13 @@
 }
 
 /* ---- Top bar ---------------------------------------------------------------------------- */
+/* The wordmark is the site name in the headline font. */
 .VPNavBar .title {
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-family: var(--plug-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 24px;
+  letter-spacing: 0;
 }
 
 .VPNavBar:not(.home.top) .divider-line,
@@ -262,132 +267,52 @@
 }
 
 /* ---- Home ------------------------------------------------------------------------------- */
-/* A dotted field behind the hero that fades out toward the content. */
-.VPHome {
-  position: relative;
-  overflow-x: clip;
+/*
+ * The home page is a normal docs page (sidebar, content) with the hero above it (HomeHero.vue, in the layout-top slot).
+ * On a phone the hero must come after the top bar, so the layout's children are ordered; on a desktop the bar is fixed.
+ */
+.plug-home .plug-hero {
+  order: 1;
 }
 
-.VPHome::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 760px;
-  background-image: radial-gradient(circle, var(--plug-dot) 1.2px, transparent 1.6px);
-  background-size: 16px 16px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 75% at 50% 18%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(ellipse 70% 75% at 50% 18%, #000 20%, transparent 75%);
-  pointer-events: none;
+.plug-home .VPContent {
+  order: 2;
 }
 
-.VPHome > * {
-  position: relative;
+.plug-home .VPFooter {
+  order: 3;
 }
 
-/* The hero text is centred; the diagram sits under it. */
-.VPHero .container {
-  justify-content: center;
+.plug-home .VPContent.has-sidebar {
+  padding-top: 0;
 }
 
-.VPHero .main {
+/* No hairlines under the top bar while the hero is behind it (HomeHero.vue toggles the class). */
+.plug-hero-visible .VPNavBar .divider-line {
+  background-color: transparent !important;
+}
+
+.plug-hero-visible .VPNavBarTitle .title {
+  border-bottom-color: transparent !important;
+}
+
+/* The page text stays a readable column. */
+.plug-home .VPDoc .content-container,
+.plug-home .VPDoc.has-sidebar .content-container {
   max-width: 760px !important;
-  margin: 0 auto;
-  text-align: center;
 }
 
-.VPHero .name,
-.VPHero .text {
-  font-size: clamp(32px, 5.4vw, 52px) !important;
-  line-height: 1.12 !important;
-  letter-spacing: -0.03em;
-  font-weight: 650 !important;
-  max-width: none !important;
-}
+@media (min-width: 960px) {
+  /* The sidebar starts under the hero, follows it up while you scroll, then sticks under the top bar. */
+  .plug-home .VPSidebar {
+    bottom: auto !important;
+    height: 100vh;
+    padding-top: calc(var(--vp-nav-height) + 24px) !important;
+    transform: translateY(max(0px, calc(var(--plug-hero-bottom, 100vh) - var(--vp-nav-height)))) !important;
+    will-change: transform;
+  }
 
-.VPHero .name {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: clamp(15px, 2.2vw, 18px) !important;
-  letter-spacing: 0;
-  font-weight: 500 !important;
-  margin-bottom: 14px;
-}
-
-.VPHero .name .clip {
-  background: none !important;
-  -webkit-text-fill-color: currentColor !important;
-  color: var(--vp-c-brand-1) !important;
-}
-
-.VPHero .tagline {
-  max-width: 620px !important;
-  margin: 16px auto 0;
-  font-size: 18px !important;
-  line-height: 1.55 !important;
-  color: var(--vp-c-text-2) !important;
-}
-
-.VPHero .actions {
-  justify-content: center;
-}
-
-.VPButton {
-  border-radius: 999px !important;
-  font-weight: 560 !important;
-}
-
-.hero-figure {
-  margin: -24px auto 0;
-  padding: 0 24px;
-  max-width: 1080px;
-}
-
-.hero-figure img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.hero-figure picture {
-  display: block;
-}
-
-.only-dark {
-  display: none !important;
-}
-
-.dark .only-light {
-  display: none !important;
-}
-
-.dark .only-dark {
-  display: block !important;
-}
-
-.VPFeatures .item .VPLink,
-.VPFeatures .VPFeature {
-  border-radius: 14px !important;
-}
-
-.VPFeature {
-  border: 1px solid var(--vp-c-divider) !important;
-  background: transparent !important;
-  transition: border-color 0.2s, background-color 0.2s;
-}
-
-.VPFeature:hover {
-  border-color: var(--vp-c-brand-2) !important;
-  background: var(--vp-c-bg-soft) !important;
-}
-
-.VPFeature .title {
-  font-weight: 600 !important;
-}
-
-/* On a phone the figure is the narrow drawing, stacked top to bottom. */
-@media (max-width: 640px) {
-  .hero-figure {
-    max-width: 400px;
-    margin-top: 20px;
-    padding: 0 24px;
+  .plug-home .VPSidebar .curtain {
+    display: none;
   }
 }
