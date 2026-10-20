@@ -127,6 +127,8 @@ const CLAUDE_MACHINE: ReadonlyArray<readonly [RegExp, string]> = [
   [/(\n - Shell: )[^\n]*/g, "$1<shell>"],
   [/(\n - OS Version: )[^\n]*/g, "$1<os-version>"],
 ]
+/** Claude Code names the day it runs, at the end of its system prompt and in a `<system-reminder>` of the first user turn (`Today's date is 2026-10-19.`). */
+const CLAUDE_DATE = /(Today's date is )\d{4}-\d{2}-\d{2}(?=\.)/g
 const CLAUDE_AGENT_ID = /(agentId: |to: ')[0-9a-f]{12,}/g
 const CLAUDE_AGENT_TIME = /(duration_ms: )\d+/g
 
@@ -154,7 +156,7 @@ function sortAvailableSkills(text: string): string {
 
 /**
  * Replaces the machine- and day-specific values inside each `<session_context>` block of a string, the Gemini CLI's
- * fixed home and workspace paths, Claude Code's paths, machine description and sub-agent id and timing, Codex CLI's turn start
+ * fixed home and workspace paths, Claude Code's paths, date, machine description and sub-agent id and timing, Codex CLI's turn start
  * time and sandbox, PR-Agent's date and Aider's platform, shell and date, anywhere in it, and puts the Gemini CLI's skill list in name
  * order. Nothing else changes.
  */
@@ -165,6 +167,7 @@ export function normaliseSessionContext(text: string): string {
     .replace(CLI_INSTALL, "<checkout>/examples/gemini-cli/")
     .replace(CLAUDE_PROJECT, "$1<claude-code-project>")
     .replace(CLAUDE_PATHS, (_match, name: string) => `<claude-code-${name}>`)
+    .replace(CLAUDE_DATE, "$1<date>")
     .replace(CLAUDE_AGENT_ID, "$1<agent-id>")
     .replace(CLAUDE_AGENT_TIME, "$1<ms>")
     .replace(CODEX_TURN_START, "$1<unix-ms>")

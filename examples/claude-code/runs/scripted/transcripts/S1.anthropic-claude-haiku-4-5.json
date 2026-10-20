@@ -36,7 +36,7 @@
                   "type": "text"
                 },
                 {
-                  "text": "<system-reminder>\nToday's date is 2026-10-19.\n</system-reminder>\n",
+                  "text": "<system-reminder>\nToday's date is <date>.\n</system-reminder>\n",
                   "type": "text"
                 },
                 {
