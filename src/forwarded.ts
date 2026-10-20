@@ -12,7 +12,7 @@ import ipaddr from "ipaddr.js"
 /** `listen.trustProxy: true`: the loopback addresses only. */
 const LOOPBACK_PROXIES: ReadonlyArray<string> = ["127.0.0.0/8", "::1/128"]
 /** A forwarded host: a DNS name or an IPv6 literal, with an optional port. */
-const HOST_SHAPE = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d{1,5})?$/i
+export const HOST_SHAPE = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(:\d{1,5})?$/i
 
 type Ip = ipaddr.IPv4 | ipaddr.IPv6
 

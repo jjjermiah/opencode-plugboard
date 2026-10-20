@@ -53,6 +53,54 @@ describe("#266 a trusted proxy on a keyed endpoint", () => {
   })
 })
 
+describe("#544 the setup page on a wildcard listen address", () => {
+  const wildcard = async (options: Record<string, unknown> = {}) => {
+    server = await startRoute({ caller: new FakeModelCaller(() => [ev.finish()]), options: { keys: { app: "secret" }, ...options }, listenHost: "0.0.0.0" })
+    return server
+  }
+
+  test("GET /v1 and GET / show the Host the caller used, never 0.0.0.0", async () => {
+    await wildcard()
+    const doc = (await server!.send({ path: "/v1", headers: { ...KEY, host: "192.0.2.10:4010" } })).json()
+    expect(doc.baseUrl).toBe("http://192.0.2.10:4010/v1")
+    expect(doc.example.curl).toContain("curl -s http://192.0.2.10:4010/v1/chat/completions")
+    const page = await server!.send({ path: "/", headers: { ...KEY, host: "192.0.2.10:4010" } })
+    expect(page.text).toContain("<code>http://192.0.2.10:4010/v1</code>")
+    expect(page.text).not.toContain("0.0.0.0")
+  })
+
+  test("a caller without a key sees the same address", async () => {
+    await wildcard()
+    expect((await server!.send({ path: "/v1", headers: { host: "192.0.2.10:4010" } })).json().baseUrl).toBe("http://192.0.2.10:4010/v1")
+  })
+
+  test("a Host that is itself 0.0.0.0, or not a plain host, gets the placeholder and a hint", async () => {
+    await wildcard()
+    for (const host of ["0.0.0.0:4010", "evil.example/x'y"]) {
+      const reply = await server!.send({ path: "/v1", headers: { ...KEY, host } })
+      expect(reply.status).toBe(200)
+      const doc = reply.json()
+      expect(doc.baseUrl).toBe(`http://<this-host>:${server!.port}/v1`)
+      expect(doc.baseUrlHint).toContain("<this-host>")
+    }
+    const page = await server!.send({ path: "/", headers: { ...KEY, host: "0.0.0.0:4010" } })
+    expect(page.text).toContain('<p class="hint">The server listens on every address')
+  })
+
+  test("behind a trusted proxy the public origin wins over the Host header", async () => {
+    await wildcard({ listen: { trustProxy: ["127.0.0.1"] } })
+    const doc = (await server!.send({ path: "/v1", headers: { ...KEY, ...PUBLIC, host: "192.0.2.10:4010" } })).json()
+    expect(doc.baseUrl).toBe("https://chat.example.net/v1")
+    expect(doc).not.toHaveProperty("baseUrlHint")
+  })
+
+  test("an untrusted peer's forwarded headers are ignored: the Host header is used", async () => {
+    await wildcard({ listen: { trustProxy: ["10.0.0.0/8"] } })
+    const doc = (await server!.send({ path: "/v1", headers: { ...KEY, ...PUBLIC, host: "192.0.2.10:4010" } })).json()
+    expect(doc.baseUrl).toBe("http://192.0.2.10:4010/v1")
+  })
+})
+
 describe("#266 forwarded headers from an untrusted peer, or with the option off", () => {
   test("an untrusted peer's forwarded host is ignored: the Host check still refuses it", async () => {
     await route({ keys: { app: "secret" }, listen: { trustProxy: ["10.0.0.0/8"] } })

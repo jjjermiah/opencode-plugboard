@@ -27,6 +27,6 @@ codex exec "reply with exactly: pong"
 ## Gotchas
 
 - Codex sends its `web_search` tool by default. Plugboard leaves it out and says so in the `x-plugboard-dropped-tools` response header; the model has no web search.
-- `Model metadata for 'fast' not found` is a warning from Codex for any alias it does not know. It does not stop the run.
+- `Model metadata for 'fast' not found` is a warning from Codex for any model id it does not know, an alias or a canonical id. It does not stop the run.
 - The request carries Codex's 17 KB of built-in instructions, the working directory, the date and the skill list. The runner replaces the instructions (`model_instructions_file`) and switches the other parts off so the committed run is the same on every machine. A real run sends all of it.
 - Use `--ephemeral` for a throwaway run, so no session is written to `CODEX_HOME`.

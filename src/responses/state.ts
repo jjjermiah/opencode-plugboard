@@ -84,11 +84,22 @@ const idKey = (app: string, id: string) => `responses/${app}/id/${id}`
 const atKey = (app: string, at: number, bytes: number, id: string) => `responses/${app}/at/${String(at).padStart(15, "0")}-${bytes}-${id}`
 const atPrefix = (app: string) => `responses/${app}/at/`
 
+/**
+ * An input item in OpenAI's full shape (#546): a message has `type: "message"` and a list of content parts. A caller may leave the type
+ * out (`{ role, content }`) or send a string as content; every other item is returned as it is.
+ */
+export function fullItem(item: Item): Item {
+  if (typeof item.role !== "string" || (item.type !== undefined && item.type !== "message")) return item
+  const part = item.role === "assistant" ? "output_text" : "input_text"
+  return { type: "message", ...item, ...(typeof item.content === "string" ? { content: [{ type: part, text: item.content }] } : {}) }
+}
+
 /** An item with an `id`: the caller's when it sent one not seen yet, else a new one named for its type. */
 function withIds(items: ReadonlyArray<Item>): Item[] {
   const seen = new Set<string>()
   const prefixes: Record<string, string> = { message: "msg", function_call: "fc", function_call_output: "fco", reasoning: "rs" }
-  return items.map((item) => {
+  return items.map((given) => {
+    const item = fullItem(given)
     const type = typeof item.type === "string" ? item.type : item.role !== undefined ? "message" : "item"
     let id = typeof item.id === "string" && item.id.length > 0 && !seen.has(item.id) ? item.id : undefined
     id ??= `${prefixes[type] ?? "item"}_${crypto.randomUUID().replaceAll("-", "")}`

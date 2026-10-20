@@ -21,7 +21,7 @@ In `~/.codex/config.toml`:
 
 <<< @/../examples/codex-cli/config.toml#snippet
 
-Then export the key and run `codex` or `codex exec "..."`. `base_url` ends in `/v1`; `env_key` names the variable Codex reads the key from. For an alias such as `fast`, Codex warns that it has no model metadata; the warning is harmless. The file is in [examples/codex-cli/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/codex-cli).
+Then export the key and run `codex` or `codex exec "..."`. `base_url` ends in `/v1`; `env_key` names the variable Codex reads the key from. For any model id Codex does not know, an alias such as `fast` or a canonical id such as `anthropic/claude-haiku-4-5`, Codex warns that it has no model metadata; the warning is harmless. The file is in [examples/codex-cli/](https://github.com/jjjermiah/opencode-plugboard/tree/main/examples/codex-cli).
 
 For MCP servers in headless `codex exec`, set `default_tools_approval_mode = "approve"` on the server, or each tool call comes back as an approval error.
 

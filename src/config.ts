@@ -668,8 +668,11 @@ function parseUserHeader(raw: unknown, at: string): string {
  * A canonical id must pass the global `models` and, when the app has `models`, the app's own list (an alias must be listed there by name).
  */
 function parsePinnedModel(raw: unknown, at: string, appModels: ReadonlyArray<string> | undefined, context: { aliases: Readonly<Record<string, string>>; models: ReadonlyArray<string> }): string {
-  if (typeof raw !== "string" || raw.includes("*") || !(MODEL_PATTERN.test(raw) || Object.hasOwn(context.aliases, raw)))
-    throw new Error(`plugboard option \`${at}.model\` must be \`provider/model\`, \`provider/model#variant\` or an alias name (a \`provider/*\` pattern cannot pin one model)`)
+  if (typeof raw !== "string" || raw.includes("*") || !(MODEL_PATTERN.test(raw) || Object.hasOwn(context.aliases, raw))) {
+    // A plain name is most likely an alias that was never defined (#545): say so.
+    const undefinedAlias = typeof raw === "string" && /^[a-z0-9][a-z0-9._-]*$/i.test(raw) ? `; \`${raw}\` is not an alias, add it to \`aliases\`` : ""
+    throw new Error(`plugboard option \`${at}.model\` must be \`provider/model\`, \`provider/model#variant\` or an alias name (a \`provider/*\` pattern cannot pin one model)${undefinedAlias}`)
+  }
   if (Object.hasOwn(context.aliases, raw)) {
     // Runtime (`inAppScope`, src/models.ts) admits an alias that the app lists by name, or whose target an app `models` pattern matches.
     const target = parseModelRef(context.aliases[raw]!)

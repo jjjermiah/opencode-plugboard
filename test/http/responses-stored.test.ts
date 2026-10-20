@@ -326,6 +326,48 @@ describe("GET /v1/responses/{id}/input_items", () => {
     const page = (await server.send(read(`/v1/responses/${second.id}/input_items?order=asc`))).json()
     expect(page.data[0]).toMatchObject({ id: first.output[0].id, type: "message", role: "assistant" })
   })
+
+  test("#546 shorthand messages are listed in OpenAI's full shape: type message, role, and content as parts", async () => {
+    const { server } = await route()
+    const answer = (
+      await server.send(
+        post({
+          input: [
+            { role: "system", content: "be brief" },
+            { role: "user", content: [{ type: "input_text", text: "parts" }] },
+            { role: "assistant", content: "earlier answer" },
+            { type: "message", role: "user", content: "typed string" },
+          ],
+        }),
+      )
+    ).json()
+    const page = (await server.send(read(`/v1/responses/${answer.id}/input_items?order=asc`))).json()
+    expect(page.data).toEqual([
+      { type: "message", role: "system", content: [{ type: "input_text", text: "be brief" }], id: expect.stringMatching(/^msg_/) },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "parts" }], id: expect.stringMatching(/^msg_/) },
+      { type: "message", role: "assistant", content: [{ type: "output_text", text: "earlier answer" }], id: expect.stringMatching(/^msg_/) },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "typed string" }], id: expect.stringMatching(/^msg_/) },
+    ])
+  })
+
+  test("#546 a shorthand turn chains: the next turn replays it and lists it with its type", async () => {
+    const { caller, server } = await route()
+    const first = (await server.send(post({ input: [{ role: "user", content: [{ type: "input_text", text: "Say ok" }] }] }))).json()
+    const second = (await server.send(post({ input: "again", previous_response_id: first.id }))).json()
+    expect(textsOf(caller, 1)).toEqual(["user:Say ok", "assistant:answer 1", "user:again"])
+    const page = (await server.send(read(`/v1/responses/${second.id}/input_items?order=asc`))).json()
+    expect(page.data.map((item: { type: string }) => item.type)).toEqual(["message", "message", "message"])
+  })
+
+  test("#546 a response stored before items were normalised is listed with a type too", async () => {
+    const storage = new FakeStorage()
+    const id = `resp_${"2".repeat(32)}`
+    const legacy = { v: 1, createdAt: Date.now(), bytes: 0, input: [{ role: "user", content: [{ type: "input_text", text: "old" }], id: "msg_old" }], response: { id } }
+    await storage.put(`responses/default/id/${id}`, JSON.stringify(legacy))
+    const { server } = await route({}, undefined, createResponseStore({ storage, state: createResponseState() }))
+    const page = (await server.send(read(`/v1/responses/${id}/input_items`))).json()
+    expect(page.data).toEqual([{ type: "message", role: "user", content: [{ type: "input_text", text: "old" }], id: "msg_old" }])
+  })
 })
 
 describe("retention and size", () => {

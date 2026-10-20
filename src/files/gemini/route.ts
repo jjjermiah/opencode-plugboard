@@ -11,7 +11,7 @@
  * `uploadType=media` is a 400.
  */
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { origin } from "../../discovery.js"
+import { clientOrigin, origin } from "../../discovery.js"
 import { isPlugError, type PlugError } from "../../contract.js"
 import { bodyLimits } from "../../config.js"
 import { forwardedOrigin } from "../../forwarded.js"
@@ -145,7 +145,9 @@ export interface GeminiFilesCall {
 export async function serveGeminiFiles(host: RouteHost, { app, match, request, url, response, scope, credential }: GeminiFilesCall): Promise<void> {
   const fail = (error: PlugError, close = false) => sendError(response, error, encodeGeminiError(error), { close })
   const days = retentionDaysFor(host.options, app)
-  const base = forwardedOrigin(request, host.options.listen.trustProxy) ?? origin(host.options.listen)
+  // The address the caller reached: a trusted proxy's public origin, else the request's Host on a wildcard bind (a client cannot call `0.0.0.0`), else the listen address.
+  const client = clientOrigin(host.options.listen, forwardedOrigin(request, host.options.listen.trustProxy), request.headers.host)
+  const base = client.placeholder ? origin(host.options.listen) : client.origin
   const encode = (record: FileRecord): object => encodeGeminiFile(record, days, base)
   const notFound = (name: string) => fail({ status: 404, kind: "not_found", message: `File ${name.slice(0, 80)} was not found` })
 

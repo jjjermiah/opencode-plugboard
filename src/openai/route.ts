@@ -344,7 +344,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       info.app = app
       // Behind a trusted proxy on a keyed endpoint, the base URL is the public origin the proxy names (#266).
       const publicOrigin = keyed ? forwardedOrigin(request, host.options.listen.trustProxy) : undefined
-      const doc = buildDiscovery({ options: host.options, app, catalog: app === undefined ? undefined : await optionalCatalog(scope), publicOrigin })
+      const doc = buildDiscovery({ options: host.options, app, catalog: app === undefined ? undefined : await optionalCatalog(scope), publicOrigin, requestHost: request.headers.host })
       if (route === "GET /v1") return sendJson(response, 200, doc)
       return sendText(response, 200, "text/html; charset=utf-8", renderDiscoveryHtml(doc), PAGE_HEADERS)
     }
