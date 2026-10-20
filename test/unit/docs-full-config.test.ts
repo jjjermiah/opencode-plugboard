@@ -153,7 +153,7 @@ describe("an entry fragment", () => {
 
 describe("the markdown plugin", () => {
   const render = async (markdown: string) => {
-    const md = await createMarkdownRenderer(process.cwd(), { config: (instance) => instance.use(tabsMarkdownPlugin).use(fullConfigPlugin(VERSION)) }, "/")
+    const md = await createMarkdownRenderer(process.cwd(), { config: (instance) => instance.use(tabsMarkdownPlugin as never).use(fullConfigPlugin(VERSION)) }, "/")
     return md.render(markdown, { path: "docs/page.md", relativePath: "page.md" })
   }
 
