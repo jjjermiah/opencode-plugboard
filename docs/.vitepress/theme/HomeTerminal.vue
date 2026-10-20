@@ -17,8 +17,8 @@ const version = __PLUGBOARD_LATEST__
 <span class="out">App key for `my-app` (shown once):</span> <span class="key">pb_u3oW-g8E3gZ-aA3mduNUm</span><span class="dim">…</span>
 <span class="prompt">$</span> <span class="cmd">curl -s 127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" --json '{"model": "fast", "messages": [{"role": "user", "content": "say pong"}]}'</span>
 <span class="brace">{</span> <span class="jk">"model"</span>: <span class="js">"anthropic/claude-haiku-4-5"</span>,
-  <span class="jk">"choices"</span>: [{ <span class="jk">"message"</span>: { <span class="jk">"role"</span>: <span class="js">"assistant"</span>, <span class="jk">"content"</span>: <span class="js">"pong"</span> } }],
-  <span class="jk">"usage"</span>: { <span class="jk">"prompt_tokens"</span>: <span class="jn">12</span>, <span class="jk">"completion_tokens"</span>: <span class="jn">5</span> } <span class="brace">}</span></code></pre>
+  <span class="jk">"choices"</span>: [{ <span class="jk">"message"</span>: { <span class="jk">"role"</span>: <span class="js">"assistant"</span>, <span class="jk">"content"</span>: <span class="js">"Pong!"</span> } }],
+  <span class="jk">"usage"</span>: { <span class="jk">"prompt_tokens"</span>: <span class="jn">26</span>, <span class="jk">"completion_tokens"</span>: <span class="jn">7</span> } <span class="brace">}</span></code></pre>
     </div>
   </figure>
 </template>
