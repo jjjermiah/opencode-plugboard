@@ -439,13 +439,21 @@ describe("failures keep each API's error shape", () => {
 })
 
 describe("#544 the Gemini upload URL and file uri name an address the caller can reach", () => {
-  const startUpload = (server: RouteServer, host: string, extra: Record<string, string> = {}) =>
-    server.send({
+  /** Starts a resumable upload and, unless `keep`, cancels it: unfinished uploads are process-wide and capped per app, so a test must not leave one behind. */
+  const startUpload = async (server: RouteServer, host: string, extra: Record<string, string> = {}, keep = false) => {
+    const start = await server.send({
       method: "POST",
       path: "/upload/v1beta/files",
       headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-protocol": "resumable", "x-goog-upload-command": "start", host, ...extra },
       body: {},
     })
+    if (!keep) {
+      const url = new URL(String(start.headers["x-goog-upload-url"]))
+      const cancelled = await server.send({ method: "POST", path: url.pathname + url.search, headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-command": "cancel", host }, body: {} })
+      expect(cancelled.status).toBe(200)
+    }
+    return start
+  }
 
   async function wildcard(options: Record<string, unknown> = {}) {
     const server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { keys: KEYS, ...options }, listenHost: "0.0.0.0" })
@@ -464,7 +472,7 @@ describe("#544 the Gemini upload URL and file uri name an address the caller can
 
   test("the chunk upload to that URL works and the finalizing answer carries the same address", async () => {
     const server = await wildcard()
-    const start = await startUpload(server, "192.0.2.10:4010")
+    const start = await startUpload(server, "192.0.2.10:4010", {}, true)
     const url = new URL(String(start.headers["x-goog-upload-url"]))
     const done = await server.send({
       method: "POST",
@@ -495,6 +503,7 @@ describe("#544 the Gemini upload URL and file uri name an address the caller can
     expect(String(start.headers["x-goog-upload-url"])).toStartWith(`http://192.0.2.10:${server.port}/upload/v1beta/files?`)
   })
 })
+
 describe("endpoints", () => {
   test("`files` is an endpoint of apps.<name>.endpoints: without it every Files route is a 403 endpoint_forbidden, and with it only those", async () => {
     const { server } = await route({ apps: { alpha: { endpoints: ["chat"] }, beta: { endpoints: ["files"] } } })
