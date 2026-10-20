@@ -19,6 +19,7 @@ import type { ServerResponse } from "node:http"
 import escapeText from "escape-html"
 import { CONNECTED, type PlugboardOptions } from "./config.js"
 import type { CatalogModel } from "./contract.js"
+import { HOST_SHAPE } from "./forwarded.js"
 import { listAvailableModels } from "./models.js"
 import type { RuntimeSnapshot } from "./metrics.js"
 
@@ -49,6 +50,20 @@ export function origin(listen: PlugboardOptions["listen"]): string {
   return `http://${host}:${listen.port}`
 }
 
+/** Listen addresses that mean every interface: a client cannot call them. */
+const WILDCARD_HOSTS: ReadonlySet<string> = new Set(["0.0.0.0", "::", "[::]"])
+const HOST_PLACEHOLDER = "<this-host>"
+
+/**
+ * `http://<Host header>` when the header is a plain host (a name, an IPv4 address or a bracketed IPv6 literal, with an optional port)
+ * that a client can call, else undefined. The value ends up in a copy-paste curl, so anything else is not shown.
+ */
+function requestOrigin(hostHeader: string | undefined): string | undefined {
+  const host = hostHeader?.trim()
+  if (host === undefined || !HOST_SHAPE.test(host)) return undefined
+  return WILDCARD_HOSTS.has(host.replace(/:\d+$/, "")) ? undefined : `http://${host}`
+}
+
 const shellQuote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`
 
 export interface Endpoint {
@@ -72,7 +87,15 @@ export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "GET", path: "/v1/models/{id}", auth: true, description: "One model." },
   { method: "POST", path: "/v1/chat/completions", auth: true, description: "OpenAI Chat Completions." },
   { method: "POST", path: "/v1/completions", auth: true, description: "Legacy OpenAI completions." },
-  { method: "POST", path: "/v1/responses", auth: true, description: "OpenAI Responses (stateless)." },
+  { method: "POST", path: "/v1/responses", auth: true, description: "OpenAI Responses. The answer is kept for retrieval unless `store` is false." },
+  { method: "GET", path: "/v1/responses/{id}", auth: true, description: "A stored response." },
+  { method: "DELETE", path: "/v1/responses/{id}", auth: true, description: "Delete a stored response." },
+  { method: "GET", path: "/v1/responses/{id}/input_items", auth: true, description: "The input items of a stored response." },
+  { method: "POST", path: "/v1/files", auth: true, description: "Upload a file (OpenAI and Anthropic Files API)." },
+  { method: "GET", path: "/v1/files", auth: true, description: "List this app's files." },
+  { method: "GET", path: "/v1/files/{id}", auth: true, description: "One file's metadata." },
+  { method: "GET", path: "/v1/files/{id}/content", auth: true, description: "A file's bytes." },
+  { method: "DELETE", path: "/v1/files/{id}", auth: true, description: "Delete a file." },
   { method: "POST", path: "/v1/messages", auth: true, description: "Anthropic Messages (x-api-key or Bearer)." },
   { method: "POST", path: "/v1/messages/count_tokens", auth: true, description: "Anthropic token count (an estimate, not the provider's exact count)." },
   { method: "GET", path: "/v1beta/models", auth: true, description: "Gemini model list." },
@@ -80,6 +103,10 @@ export const ENDPOINTS: ReadonlyArray<Endpoint> = [
   { method: "POST", path: "/v1beta/models/{model}:generateContent", auth: true, description: "Gemini generateContent." },
   { method: "POST", path: "/v1beta/models/{model}:streamGenerateContent", auth: true, description: "Gemini streamGenerateContent, with ?alt=sse." },
   { method: "POST", path: "/v1beta/models/{model}:countTokens", auth: true, description: "Gemini token count (an estimate)." },
+  { method: "POST", path: "/upload/v1beta/files", auth: true, description: "Gemini file upload (resumable or multipart)." },
+  { method: "GET", path: "/v1beta/files", auth: true, description: "List this app's files (Gemini shape)." },
+  { method: "GET", path: "/v1beta/files/{name}", auth: true, description: "One file (Gemini shape)." },
+  { method: "DELETE", path: "/v1beta/files/{name}", auth: true, description: "Delete a file (Gemini shape)." },
   { method: "GET", path: "/plugboard/status", auth: true, description: "Runtime status: generations, address, model count, uptime." },
 ]
 
@@ -116,6 +143,8 @@ interface ProviderSummary {
 export interface Discovery {
   readonly name: string
   readonly baseUrl: string
+  /** Present when `baseUrl` holds a placeholder: the server listens on every address and the request named none a client can call. */
+  readonly baseUrlHint?: string
   readonly listen: { readonly host: string; readonly port: number }
   readonly authentication: { readonly required: boolean; readonly scheme?: "Bearer" }
   readonly hint?: string
@@ -143,6 +172,8 @@ export interface Discovery {
 export interface DiscoveryInput {
   /** The public origin a trusted proxy names (`src/forwarded.ts`, #266): the base URL uses it. Absent: the listen address. */
   readonly publicOrigin?: string
+  /** The request's `Host` header. On a wildcard listen address (`0.0.0.0`, `::`) the base URL uses it, as the address the caller reached. */
+  readonly requestHost?: string
   readonly options: PlugboardOptions
   /** The authenticated app; undefined when the caller sent no credentials (only possible when `keys` are set). */
   readonly app?: string
@@ -164,9 +195,13 @@ function summarize(catalog: ReadonlyArray<CatalogModel>): { providers: ProviderS
   }
 }
 
-export function buildDiscovery({ options, app, catalog, publicOrigin }: DiscoveryInput): Discovery {
+export function buildDiscovery({ options, app, catalog, publicOrigin, requestHost }: DiscoveryInput): Discovery {
   const keyed = Object.keys(options.keys).length > 0
-  const base = `${publicOrigin ?? origin(options.listen)}/v1`
+  // A wildcard listen address is no address a client can call: the host the caller used stands in for it (#544), else a placeholder.
+  const wildcard = publicOrigin === undefined && WILDCARD_HOSTS.has(options.listen.host)
+  const named = wildcard ? requestOrigin(requestHost) : undefined
+  const placeholder = wildcard && named === undefined
+  const base = `${publicOrigin ?? named ?? (placeholder ? `http://${HOST_PLACEHOLDER}:${options.listen.port}` : origin(options.listen))}/v1`
   const detail = !keyed || app !== undefined
   const auth = keyed ? ({ required: true, scheme: "Bearer" } as const) : { required: false }
 
@@ -199,6 +234,9 @@ export function buildDiscovery({ options, app, catalog, publicOrigin }: Discover
   return {
     name: NAME,
     baseUrl: base,
+    ...(placeholder
+      ? { baseUrlHint: `The server listens on every address, and this request did not name one. Replace \`${HOST_PLACEHOLDER}\` with an address of this machine that your client can reach.` }
+      : {}),
     listen: { host: options.listen.host, port: options.listen.port },
     authentication: auth,
     ...(detail ? {} : { hint: "Authentication is required. Send `Authorization: Bearer <key>` to see this app's configuration: the allowlist, aliases and a model suggestion." }),
@@ -229,6 +267,7 @@ const list = (items: ReadonlyArray<string>) => `<ul>${items.map((item) => `<li><
 export function renderDiscoveryHtml(doc: Discovery): string {
   const sections: string[] = []
   sections.push(`<p>Base URL: <code>${escapeHtml(doc.baseUrl)}</code></p>`)
+  if (doc.baseUrlHint) sections.push(`<p class="hint">${escapeHtml(doc.baseUrlHint)}</p>`)
   sections.push(`<p>Authentication: ${doc.authentication.required ? "required. Send <code>Authorization: Bearer &lt;key&gt;</code>." : "none (keyless, loopback only)."}</p>`)
   if (doc.hint) sections.push(`<p class="hint">${escapeHtml(doc.hint)}</p>`)
   if (doc.apps) sections.push(`<h2>App</h2>${list(doc.apps)}`)

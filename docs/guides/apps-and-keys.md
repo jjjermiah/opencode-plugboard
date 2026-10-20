@@ -48,13 +48,14 @@ The file is edited as JSONC, so comments, formatting and other settings stay. A 
 `apps` lets the server decide an app's behaviour, so you do not have to trust the app with it.
 
 ```jsonc plugboard
+"aliases": { "fast": "anthropic/claude-haiku-4-5" },
 "apps": {
   "discord-bot": { "models": ["fast"], "model": "fast", "system": "Answer in two sentences.", "tools": false, "maxOutputTokens": 400 },
   "coding": { "models": ["anthropic/*"], "maxTools": 16 }
 }
 ```
 
-The `discord-bot` app always runs on `fast`, whatever model the bot sends. It gets the system prompt added, has its tools removed, and its answers stop at 400 output tokens. The request still succeeds. The response says what changed:
+The `discord-bot` app always runs on the alias `fast`, whatever model the bot sends. A `model` that names an alias the config does not define stops the server at load, with an error that says so. It gets the system prompt added, has its tools removed, and its answers stop at 400 output tokens. The request still succeeds. The response says what changed:
 
 ```
 x-plugboard-policy: tools-stripped

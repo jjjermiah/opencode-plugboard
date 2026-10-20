@@ -265,10 +265,44 @@ describe("I33 app isolation", () => {
       server.send({ method: "POST", path: "/v1beta/models/test%2Fecho:generateContent", headers: as("beta"), body: { contents: [{ parts: [{ fileData: { fileUri: name } }] }] } }),
     ])
     expect(replies.map((reply) => reply.status)).toEqual([404, 404, 404, 404])
-    expect(replies[0]!.json().error).toMatchObject({ code: "file_not_found" })
+    expect(replies[0]!.json().error).toMatchObject({ type: "invalid_request_error" })
     expect(replies[2]!.json().error.type).toBe("not_found_error")
     expect(replies[3]!.json().error.status).toBe("NOT_FOUND")
     expect(caller.calls).toEqual([])
+  })
+
+  test("#547 a missing file is the same 404 body on the Files route and in a request, on the OpenAI and Anthropic routes", async () => {
+    const { server } = await route()
+    const id = `file-${"1".repeat(32)}`
+    const route404 = (await server.send(get(`/v1/files/${id}`, "alpha"))).json()
+    expect(route404).toEqual({ error: { message: `No such File object: ${id}`, type: "invalid_request_error", param: null, code: null } })
+    const chat = await server.send({
+      method: "POST",
+      path: "/v1/chat/completions",
+      headers: as("alpha"),
+      body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "file", file: { file_id: id } }] }] },
+    })
+    const responses = await server.send({
+      method: "POST",
+      path: "/v1/responses",
+      headers: as("alpha"),
+      body: { model: "test/echo", input: [{ role: "user", content: [{ type: "input_file", file_id: id }] }] },
+    })
+    expect(chat.status).toBe(404)
+    expect(chat.json()).toEqual(route404)
+    expect(responses.status).toBe(404)
+    expect(responses.json()).toEqual(route404)
+
+    const anthropicRoute = (await server.send(get(`/v1/files/${id}`, "alpha", ANTHROPIC))).json()
+    const messages = await server.send({
+      method: "POST",
+      path: "/v1/messages",
+      headers: as("alpha"),
+      body: { model: "test/echo", max_tokens: 10, messages: [{ role: "user", content: [{ type: "image", source: { type: "file", file_id: id } }] }] },
+    })
+    expect(messages.status).toBe(404)
+    expect(messages.json()).toEqual(anthropicRoute)
+    expect(anthropicRoute.error).toMatchObject({ type: "not_found_error", message: `File not found: ${id}` })
   })
 
   test("a malformed id is a miss too, and no key outside the app's prefix can be reached through it", async () => {
