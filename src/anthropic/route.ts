@@ -12,7 +12,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { appPolicy, authenticate, bodyLimits, endpointRefusal, historyTemplate, requestedModel } from "../config.js"
+import { appPolicy, authenticate, bodyLimits, endpointRefusal, sessionUrlTemplate, requestedModel } from "../config.js"
 import { liveOptions } from "../runtime.js"
 import { bodyUserId, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
@@ -20,7 +20,7 @@ import { BodyError, bodyPlugError, RequestAborted, boundEvents, checkJsonContent
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel, thinkingUnavailable } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
+import { reportParallelTools, reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { sessionRequest } from "../session/caller.js"
@@ -128,7 +128,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-    // The request as the session sends it: the app's policy, persona and server tools are counted too (#201).
+    // The request as the session sends it: the app's policy, persona and OpenCode tools are counted too (#201).
     if (path === COUNT_TOKENS) {
       const counted = await scope.race(sessionRequest(host.session, auth.app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, auth.app), scope.signal))
       if (isPlugError(counted)) return fail(counted)
@@ -158,13 +158,13 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
         onRecord: (recordID, directory) => {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
-          setSessionLink(response, info, historyTemplate(host.options, auth.app), recordID, directory)
+          setSessionLink(response, info, sessionUrlTemplate(host.options, auth.app), recordID, directory)
         },
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),
         onAffinity: reportAffinity(response),
         onUsage: reportUsage(response, exchange.stream),
-        onServerTools: reportServerTools(response, exchange.stream),
+        onOpencodeTools: reportOpencodeTools(response, exchange.stream),
         onCache: reportCache(response),
       }),
       scope,

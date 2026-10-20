@@ -67,7 +67,7 @@ onBeforeUnmount(() => {
 .plug-hero {
   position: relative;
   overflow-x: clip;
-  padding: 40px 24px 48px;
+  padding: 28px 24px 32px;
   text-align: center;
 }
 
@@ -89,7 +89,7 @@ onBeforeUnmount(() => {
 
 @media (min-width: 960px) {
   .plug-hero {
-    padding-top: calc(var(--vp-nav-height) + 36px);
+    padding-top: calc(var(--vp-nav-height) + 20px);
   }
 }
 
@@ -98,7 +98,7 @@ h1 {
   font-family: var(--plug-serif);
   font-style: italic;
   font-weight: 400;
-  font-size: clamp(42px, 9.5vw, 72px);
+  font-size: clamp(42px, 9.5vw, 64px);
   line-height: 1.04;
   letter-spacing: -0.012em;
   color: var(--vp-c-text-1);
@@ -111,10 +111,10 @@ h1 span {
 }
 
 .lede {
-  margin: 18px auto 0;
+  margin: 12px auto 0;
   max-width: 620px;
-  font-size: 17px;
-  line-height: 1.55;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--vp-c-text-2);
   text-wrap: balance;
 }
@@ -124,8 +124,8 @@ h1 span {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  margin-top: 24px;
-  padding: 11px 16px 11px 20px;
+  margin-top: 16px;
+  padding: 9px 16px 9px 20px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 0;
   background: var(--vp-c-bg-soft);
@@ -173,7 +173,7 @@ h1 span {
   display: flex;
   justify-content: center;
   gap: 20px;
-  margin: 14px 0 32px;
+  margin: 10px 0 22px;
   font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -206,7 +206,7 @@ h1 span {
 
 @media (max-width: 640px) {
   .plug-hero {
-    padding: 40px 16px 48px;
+    padding: 32px 16px 32px;
   }
 
   .lede {

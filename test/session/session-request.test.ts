@@ -50,16 +50,16 @@ describe("#201 the refusals the request makes, before any host read", () => {
     expect(refusal(result)).toMatchObject({ status: 400, code: "too_many_tools" })
   })
 
-  test("a caller tool named like a server tool is the 400 server_tool_collision the request gets", async () => {
+  test("a caller tool named like a server tool is the 400 opencode_tool_collision the request gets", async () => {
     const result = await sessionRequest(hosted(websearch()), "app", plugRequest({ tools: [tool("websearch")] }), policy({ opencodeTools: ["websearch"] }), signal)
-    expect(refusal(result)).toMatchObject({ status: 400, code: "server_tool_collision" })
+    expect(refusal(result)).toMatchObject({ status: 400, code: "opencode_tool_collision" })
   })
 
-  test("a server tool the operator's agent does not grant is the 400 server_tool_denied_by_operator the request gets", async () => {
+  test("a server tool the operator's agent does not grant is the 400 opencode_tool_denied_by_operator the request gets", async () => {
     const port = websearch()
     port.operatorRules = []
     const result = await sessionRequest(hosted(port), "app", plugRequest(), policy({ opencodeTools: ["websearch"] }), signal)
-    expect(refusal(result)).toMatchObject({ status: 400, code: "server_tool_denied_by_operator" })
+    expect(refusal(result)).toMatchObject({ status: 400, code: "opencode_tool_denied_by_operator" })
   })
 })
 

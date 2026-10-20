@@ -4,7 +4,7 @@ import type { ServerResponse } from "node:http"
 import type { PlugRequest, PolicyNote } from "./contract.js"
 
 export const POLICY_HEADER = "x-plugboard-policy"
-export const SERVER_TOOLS_HEADER = "x-plugboard-server-tools"
+export const OPENCODE_TOOLS_HEADER = "x-plugboard-opencode-tools"
 /** Set when the request asked for one tool call per answer and plugboard keeps only the first (#202). */
 export const PARALLEL_TOOLS_HEADER = "x-plugboard-parallel-tools"
 
@@ -36,16 +36,16 @@ export function reportPolicy(response: ServerResponse): (notes: ReadonlyArray<Po
 }
 
 /**
- * The `CallContext.onServerTools` of a route: `x-plugboard-server-tools` with the number of server tool calls
+ * The `CallContext.onOpencodeTools` of a route: `x-plugboard-opencode-tools` with the number of OpenCode tool calls
  * OpenCode ran for the answer, while the headers are open. Choices of `n` add up (each one reports once,
  * when it ends, and the body is not sent before all of them). A stream gets no callback: its headers go first.
  */
-export function reportServerTools(response: ServerResponse, stream: boolean): ((count: number) => void) | undefined {
+export function reportOpencodeTools(response: ServerResponse, stream: boolean): ((count: number) => void) | undefined {
   if (stream) return undefined
   let total = 0
   return (count) => {
     if (count <= 0 || response.headersSent || response.destroyed) return
     total += count
-    response.setHeader(SERVER_TOOLS_HEADER, String(total))
+    response.setHeader(OPENCODE_TOOLS_HEADER, String(total))
   }
 }

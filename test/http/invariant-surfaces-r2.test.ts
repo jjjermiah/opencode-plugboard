@@ -1,7 +1,7 @@
 /**
  * #408 red-team round 2 (role `surfaces`): HTTP-layer checks for the four configuration areas
  * where the behaviour depends on the HTTP route, request decoders, or response headers:
- *   1. `opencodeTools` on the wire: `x-plugboard-server-tools` counts from the real session caller,
+ *   1. `opencodeTools` on the wire: `x-plugboard-opencode-tools` counts from the real session caller,
  *      `app_dir_outside_root` when the app directory is a symlink outside the data root, and #421
  *      (`tool_choice: "none"` without caller `tools` dropped by the request decoders).
  *   2. `remoteImages` on the wire: octal/shorthand IPv4 refusals, redirect re-checks, wrong content
@@ -116,7 +116,7 @@ describe("#408 1. opencodeTools on the wire", () => {
     }
   })
 
-  test("x-plugboard-server-tools from the session caller: absent for an untrusted app or 0 calls, exact for 1 and 3 calls, and summed across n=2 choices", async () => {
+  test("x-plugboard-opencode-tools from the session caller: absent for an untrusted app or 0 calls, exact for 1 and 3 calls, and summed across n=2 choices", async () => {
     const port = new FakeSessionPort()
     port.toolIDs.push("read", "glob", "grep")
     port.operatorRules = OPERATOR_RULES
@@ -177,18 +177,18 @@ describe("#408 1. opencodeTools on the wire", () => {
       })
 
     mode = "zero"
-    expect((await ask(PLAIN)).headers["x-plugboard-server-tools"]).toBeUndefined()
-    expect((await ask(TRUSTED)).headers["x-plugboard-server-tools"]).toBeUndefined()
+    expect((await ask(PLAIN)).headers["x-plugboard-opencode-tools"]).toBeUndefined()
+    expect((await ask(TRUSTED)).headers["x-plugboard-opencode-tools"]).toBeUndefined()
 
     mode = "one"
-    expect((await ask(TRUSTED)).headers["x-plugboard-server-tools"]).toBe("1")
+    expect((await ask(TRUSTED)).headers["x-plugboard-opencode-tools"]).toBe("1")
 
     mode = "three"
-    expect((await ask(TRUSTED)).headers["x-plugboard-server-tools"]).toBe("3")
+    expect((await ask(TRUSTED)).headers["x-plugboard-opencode-tools"]).toBe("3")
 
     mode = "fanout"
     callIndex = 0
-    expect((await ask(TRUSTED, { n: 2 })).headers["x-plugboard-server-tools"]).toBe("3")
+    expect((await ask(TRUSTED, { n: 2 })).headers["x-plugboard-opencode-tools"]).toBe("3")
   })
 
   // #417 end to end: a fake host reloads the session each step (the stored prompt, then the calls and results so far). The
@@ -246,7 +246,7 @@ describe("#408 1. opencodeTools on the wire", () => {
       },
     })
     expect(reply.status).toBe(200)
-    expect(reply.headers["x-plugboard-server-tools"]).toBe("1")
+    expect(reply.headers["x-plugboard-opencode-tools"]).toBe("1")
     expect(reply.json().choices[0].message.content).toBe(MARKER)
     expect(asks).toBe(1)
   })

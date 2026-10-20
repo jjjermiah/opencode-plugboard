@@ -100,7 +100,7 @@ Without `alt=sse` (or with `alt=json`) the response is `application/json` and th
 
 ## Several candidates
 
-`generationConfig.candidateCount` above 1 runs plugboard's fan-out, the same as `n` on Chat Completions: one independent model call per candidate, each in its own session, run together. The candidates share no history. The caps are the same: the global `maxChoices` and `apps.<name>.maxN` (default 1). A request above the cap is a 400 `INVALID_ARGUMENT` on `generationConfig.candidateCount`, naming the option, before any model call. The fan-out never reads or fills the [response cache](guides/limits-budgets-and-caching.md).
+`generationConfig.candidateCount` above 1 runs plugboard's fan-out, the same as `n` on Chat Completions: one independent model call per candidate, each in its own session, run together. The candidates share no history. The caps are the same: the global `maxChoices` and `apps.<name>.maxChoices` (default 1). A request above the cap is a 400 `INVALID_ARGUMENT` on `generationConfig.candidateCount`, naming the option, before any model call. The fan-out never reads or fills the [response cache](guides/limits-budgets-and-caching.md).
 
 - **JSON:** one `candidates` array in candidate order, each with its `index` (0 to n-1), and `usageMetadata` summed over the calls, so `promptTokenCount` counts the prompt once per candidate. `x-plugboard-session` lists every session id, comma separated.
 - **Stream:** the chunks of the candidates interleave as they arrive, each carrying its `index` and one shared `responseId`; each candidate ends with its own chunk holding `finishReason`. After the last candidate a final chunk with only `usageMetadata` (and `modelVersion`, `responseId`) carries the summed usage. SSE and the JSON array both work.

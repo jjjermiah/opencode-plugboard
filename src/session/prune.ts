@@ -22,7 +22,7 @@ import type { HistoryPort } from "./host.js"
 import type { SessionStore } from "./state.js"
 
 /** Pruning limits. A field that is unset is not applied; with none set nothing is ever deleted. */
-export interface HistoryLimits {
+export interface SessionLimits {
   /** Keep at most this many sessions per app (the newest). */
   readonly maxSessions?: number
   /** Delete sessions older than this many days. */
@@ -38,7 +38,7 @@ export interface HistoryLimits {
  * The limits one app is pruned by (#265): its own field when set (`apps.<name>.sessions`), else the global one, field by field.
  * An app with no limit in either place gets `{}`, which keeps its sessions forever.
  */
-export function limitsFor(global: HistoryLimits, apps: Readonly<Record<string, HistoryLimits>> | undefined, app: string): HistoryLimits {
+export function limitsFor(global: SessionLimits, apps: Readonly<Record<string, SessionLimits>> | undefined, app: string): SessionLimits {
   const own = apps !== undefined && Object.hasOwn(apps, app) ? apps[app] : undefined
   const maxSessions = own?.maxSessions ?? global.maxSessions
   const maxAgeDays = own?.maxAgeDays ?? global.maxAgeDays
@@ -63,9 +63,9 @@ export interface SweepResult {
 export interface SweepInput {
   readonly port: HistoryPort
   /** The global limits; `apps` overrides them per app (see `limitsFor`). */
-  readonly limits: HistoryLimits
+  readonly limits: SessionLimits
   /** Each app's own limits (`apps.<name>.sessions`, #265), keyed by app name. */
-  readonly apps?: Readonly<Record<string, HistoryLimits>>
+  readonly apps?: Readonly<Record<string, SessionLimits>>
   readonly sessions: SessionStore
   readonly now: number
   /** Aborts the sweep between host calls. */
@@ -143,7 +143,7 @@ async function readApp(port: HistoryPort, app: string, maxScan: number, signal: 
  * no longer has are dropped. A scan that hit `maxScan` only undercounts the app, so it can only
  * delete fewer sessions than the limit asks for, never more.
  */
-export async function sweepHistory(input: SweepInput): Promise<SweepResult> {
+export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
   const { port, sessions, signal } = input
   const maxDeletes = input.maxDeletes ?? MAX_DELETES
   const maxScan = input.maxScan ?? MAX_SCAN

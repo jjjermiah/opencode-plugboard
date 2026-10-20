@@ -208,7 +208,7 @@ describe("security regression test: a caller's tool never names one of the app's
     const port = await sessionRoute()
     const reply = await server!.send({ ...responses(body), headers: KEY })
     expect(reply.status).toBe(400)
-    expect(reply.json().error).toMatchObject({ code: "server_tool_collision" })
+    expect(reply.json().error).toMatchObject({ code: "opencode_tool_collision" })
     expect(port.created).toEqual([])
   })
 

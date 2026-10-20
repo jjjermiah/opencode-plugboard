@@ -41,7 +41,7 @@ export interface RuntimeSnapshot {
   /** Runtime start, epoch ms. */
   readonly startedAt: number
   /** Targets of fallback chains whose breaker is open or half open (`src/breaker.ts`); absent counts as none. The gauge counts the open ones. */
-  readonly cooldowns?: ReadonlyArray<CoolingTarget>
+  readonly breakers?: ReadonlyArray<CoolingTarget>
 }
 
 /** Request duration buckets, seconds: model calls run from under a second to many minutes. */
@@ -72,7 +72,7 @@ export interface Metrics {
   /** A model call failed before any output and was retried on the next target of its alias. */
   fallback(app: string): void
   /** A target's breaker opened or closed, or a call skipped a target that is cooling down (`src/breaker.ts`). */
-  cooldown(app: string, event: "open" | "close" | "skip"): void
+  breaker(app: string, event: "open" | "close" | "skip"): void
   /**
    * A run closed without the host's usage: its step did not finish in the settle window (`settleMs`). `reason` is `stop` (a stop
    * sequence ended the answer, #390) or `disconnect` (the client left). Counted, not estimated.
@@ -86,7 +86,7 @@ export interface Metrics {
   limited(app: string, reason: "concurrency" | "rate" | "budget"): void
   /** A call the response cache applied to: a stored answer replayed (`hit`) or the model run (`miss`). */
   cache(app: string, result: "hit" | "miss"): void
-  /** One history sweep ended. */
+  /** One session retention sweep ended. */
   sweep(result: "ok" | "failed" | "timeout", removed: number): void
   /** The exposition text. Called from a request that is itself in flight, which is not counted. */
   render(snapshot: RuntimeSnapshot): Promise<string>
@@ -140,13 +140,13 @@ export function createMetrics(): Metrics {
     labelNames: ["app"],
     registers: [registry],
   })
-  const cooldowns = new Counter({
-    name: "plugboard_fallback_cooldown_events_total",
+  const breakerEvents = new Counter({
+    name: "plugboard_circuit_breaker_events_total",
     help: "Circuit breaker events of fallback chains, by app and event: open (a target is skipped for its cooldown), close (a probe answered) and skip (a call went past a cooling target).",
     labelNames: ["app", "event"],
     registers: [registry],
   })
-  const cooling = new Gauge({ name: "plugboard_fallback_cooldown_targets", help: "Fallback chain targets being skipped right now (breaker open, cooldown not over).", registers: [registry] })
+  const cooling = new Gauge({ name: "plugboard_circuit_breaker_targets", help: "Fallback chain targets being skipped right now (breaker open, cooldown not over).", registers: [registry] })
   const limited = new Counter({
     name: "plugboard_limited_total",
     help: "Model calls refused with 429 by a concurrency cap, a requests-per-minute limit or a budget, by app and reason.",
@@ -173,8 +173,8 @@ export function createMetrics(): Metrics {
     buckets: FETCH_BUCKETS,
     registers: [registry],
   })
-  const sweeps = new Counter({ name: "plugboard_history_sweeps_total", help: "History sweeps that ended, by result.", labelNames: ["result"], registers: [registry] })
-  const removed = new Counter({ name: "plugboard_history_sessions_removed_total", help: "Request sessions removed by history sweeps.", registers: [registry] })
+  const sweeps = new Counter({ name: "plugboard_sessions_sweeps_total", help: "Session retention sweeps that ended, by result.", labelNames: ["result"], registers: [registry] })
+  const removed = new Counter({ name: "plugboard_sessions_removed_total", help: "Request sessions removed by retention sweeps.", registers: [registry] })
   const generations = new Gauge({ name: "plugboard_generations", help: "Accepted plugin generations (one per OpenCode Location) serving requests.", registers: [registry] })
   const pumpUp = new Gauge({
     name: "plugboard_event_pump_up",
@@ -211,7 +211,7 @@ export function createMetrics(): Metrics {
       for (const param of params) count(dropped, { param })
     },
     fallback: (app) => count(fallbacks, { app }),
-    cooldown: (app, event) => count(cooldowns, { app, event }),
+    breaker: (app, event) => count(breakerEvents, { app, event }),
     usageMissing: (app, reason) => count(usageMissing, { app, reason }),
     settledFromTranscript: (app) => count(settledFromTranscript, { app }),
     limited: (app, reason) => count(limited, { app, reason }),
@@ -232,7 +232,7 @@ export function createMetrics(): Metrics {
       generations.set(snapshot.generations)
       pumpUp.set(snapshot.pumpRunning ? 1 : 0)
       guards.set(snapshot.guards)
-      cooling.set(snapshot.cooldowns?.filter((target) => target.state === "open").length ?? 0)
+      cooling.set(snapshot.breakers?.filter((target) => target.state === "open").length ?? 0)
       startTime.set(Math.floor(snapshot.startedAt / 1000))
       return registry.metrics()
     },

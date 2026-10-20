@@ -6,7 +6,7 @@ import { isPlugError, type PlugError, type PlugGeneration } from "./contract.js"
 import { parseTrustProxy } from "./forwarded.js"
 import { allowedBy, parseAliasTarget, parseModelRef, SKILL_PREFIX } from "./models.js"
 import { parseAllowEntry, type RemoteImages } from "./session/media.js"
-import type { HistoryLimits } from "./session/prune.js"
+import type { SessionLimits } from "./session/prune.js"
 import { SEED_PREFIX } from "./session/seeds.js"
 
 /** How `/v1/models` spells a model id: the canonical `provider/model#variant`, a UI-safe slug, or both. Resolution accepts either. */
@@ -76,7 +76,7 @@ export interface PlugboardOptions {
    * Prune old request sessions (see `src/session/prune.ts`). `maxAgeDays` defaults to 30 (#158); `maxAgeDays: 0`
    * turns the age limit off. `maxSessions` is unset (no count limit) by default. Applies per app. Parsed `{}` means keep forever.
    */
-  readonly sessions: HistoryLimits
+  readonly sessions: SessionLimits
   /** Drop sampling parameters the target model is known to reject (reported in `x-plugboard-dropped-params`). On by default; off forwards them as sent. */
   readonly dropUnsupportedParams: boolean
   /** Log line format: `text` (`key=value`, the default) or `json` (one object per line). Process-wide: the live generation's value applies. */
@@ -123,7 +123,7 @@ export interface PlugboardOptions {
  * The session link template that applies to `app` (#280): its own `apps.<name>.sessionUrl` when set, `undefined`
  * when that is `false`, else the global `sessionUrl`. Routes call this with the authenticated app.
  */
-export function historyTemplate(options: Pick<PlugboardOptions, "apps" | "sessionUrl">, app: string): string | undefined {
+export function sessionUrlTemplate(options: Pick<PlugboardOptions, "apps" | "sessionUrl">, app: string): string | undefined {
   const own = appPolicy(options, app)?.sessionUrl
   if (own === false) return undefined
   return own ?? options.sessionUrl
@@ -191,7 +191,7 @@ export interface AppPolicy {
    * This app's session limits (option `apps.<name>.sessions`, #265): a field replaces the global one for this app,
    * an unset field falls back to it. Look the effective limits up with `limitsFor` (src/session/prune.ts).
    */
-  readonly sessions?: HistoryLimits
+  readonly sessions?: SessionLimits
   /** Lowers the global `maxChoices` for this app (option `apps.<name>.maxChoices`, #270). Look the effective cap up with `maxChoicesFor`. */
   readonly maxChoices?: number
   /**
@@ -205,7 +205,7 @@ export interface AppPolicy {
   readonly maxToolCalls?: number
   /**
    * This app's session link template (option `apps.<name>.sessionUrl`), or `false` for none. Absent: the global
-   * `sessionUrl`. Look the effective template up with `historyTemplate`.
+   * `sessionUrl`. Look the effective template up with `sessionUrlTemplate`.
    */
   readonly sessionUrl?: string | false
   /** This app's prompt-cache affinity (option `apps.<name>.promptCache`). Absent: the global `promptCache`. */
@@ -234,9 +234,9 @@ export interface AppPolicy {
   readonly reasoningOutput?: boolean
   /**
    * Option `apps.<name>.onHostedTools`: what the Responses route does with a hosted tool (`web_search`, `file_search`, ...) next to the caller's
-   * function tools. `drop` (the default) leaves it out and names it in `x-plugboard-dropped-tools`; `refuse` answers 400. Read it with `hostedToolsFor`.
+   * function tools. `drop` (the default) leaves it out and names it in `x-plugboard-dropped-tools`; `refuse` answers 400. Read it with `onHostedToolsFor`.
    */
-  readonly onHostedTools?: HostedTools
+  readonly onHostedTools?: OnHostedTools
   /**
    * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.32.0, #264): a field fills the request only where the caller
    * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
@@ -353,9 +353,9 @@ export const DEFAULT_APP = "default"
  */
 export const ALL_MODELS = "all"
 /** Model steps that may run OpenCode tools per request when `maxToolSteps` is not set. */
-export const DEFAULT_SERVER_TOOL_STEPS = 8
+export const DEFAULT_OPENCODE_TOOL_STEPS = 8
 /** OpenCode tool calls per request when `maxToolCalls` is not set (across all steps). */
-export const DEFAULT_SERVER_TOOL_CALLS = 16
+export const DEFAULT_OPENCODE_TOOL_CALLS = 16
 /** The listener port when `listen.port` is not set. */
 export const DEFAULT_PORT = 4010
 const DEFAULTS = {
@@ -569,10 +569,10 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
   return [...merged]
 }
 
-export type HostedTools = "drop" | "refuse"
+export type OnHostedTools = "drop" | "refuse"
 
 /** What `app` does with hosted tools on the Responses route: `drop` unless the app sets `onHostedTools` (#498). */
-export function hostedToolsFor(options: Pick<PlugboardOptions, "apps">, app: string): HostedTools {
+export function onHostedToolsFor(options: Pick<PlugboardOptions, "apps">, app: string): OnHostedTools {
   return appPolicy(options, app)?.onHostedTools ?? "drop"
 }
 
@@ -605,7 +605,7 @@ const APP_KNOWN = new Set([
  * Option `apps.<name>.sessions` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hideFromList` (#337).
  * Unset fields fall back to the global `sessions`.
  */
-function parseAppSessions(raw: unknown, at: string): HistoryLimits {
+function parseAppSessions(raw: unknown, at: string): SessionLimits {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.sessions\` must be an object: { maxSessions, maxAgeDays, hideFromList }`)
   for (const key of Object.keys(raw))
     if (key !== "maxSessions" && key !== "maxAgeDays" && key !== "hideFromList") throw new Error(`Unknown plugboard option \`${at}.sessions.${key}\` (known: maxSessions, maxAgeDays, hideFromList)`)
@@ -627,19 +627,19 @@ function parseEndpoints(raw: unknown, at: string): Endpoint[] {
     if (typeof entry !== "string" || !(ENDPOINTS as readonly string[]).includes(entry)) throw new Error(`${at}.endpoints entry \`${String(entry)}\` must be one of: ${ENDPOINTS.join(", ")}`)
   return raw as Endpoint[]
 }
-const SERVER_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
-const MAX_SERVER_TOOLS = 32
-const MAX_SERVER_TOOL_STEPS = 100
-const MAX_SERVER_TOOL_CALLS = 1000
+const OPENCODE_TOOL_PATTERN = /^[A-Za-z0-9_.:-]+$/
+const MAX_OPENCODE_TOOLS = 32
+const MAX_OPENCODE_TOOL_STEPS = 100
+const MAX_OPENCODE_TOOL_CALLS = 1000
 /** Tools that start a child session. The child runs with its own agent's rules, not the request session's deny-all (#195). */
 const SESSION_SPAWNING_TOOLS: ReadonlySet<string> = new Set(["subagent", "task"])
 
 /** `apps.<name>.opencodeTools`: exact OpenCode tool ids. No wildcards, no duplicates, and not the seeds or CodeMode's `execute`. */
-function parseServerTools(value: unknown, at: string): string[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SERVER_TOOLS) throw new Error(`${at}.opencodeTools must be an array of 1 to ${MAX_SERVER_TOOLS} OpenCode tool ids`)
+function parseOpencodeTools(value: unknown, at: string): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_OPENCODE_TOOLS) throw new Error(`${at}.opencodeTools must be an array of 1 to ${MAX_OPENCODE_TOOLS} OpenCode tool ids`)
   const tools: string[] = []
   for (const tool of value) {
-    if (typeof tool !== "string" || !SERVER_TOOL_PATTERN.test(tool))
+    if (typeof tool !== "string" || !OPENCODE_TOOL_PATTERN.test(tool))
       throw new Error(`${at}.opencodeTools entry \`${String(tool)}\` must be an exact OpenCode tool id (letters, digits, \`_\`, \`.\`, \`:\`, \`-\`; no wildcards)`)
     if (tool === "execute") throw new Error(`${at}.opencodeTools cannot name \`execute\`: it is OpenCode's CodeMode tool and would run every tool it wraps`)
     if (SESSION_SPAWNING_TOOLS.has(tool)) throw new Error(`${at}.opencodeTools cannot name \`${tool}\`: it starts a child session with its own agent rules, outside this app's deny-all`)
@@ -754,11 +754,11 @@ function parseApps(
     // Only lowers the global `maxChoices` (#270), like `maxTools`: a higher value would be a second, unchecked global.
     const maxChoices = value.maxChoices === undefined ? undefined : positiveInt(value.maxChoices, `apps.${app}.maxChoices`, 0, context.maxChoices)
     if (value.opencodeTools !== undefined && app === DEFAULT_APP) throw new Error(`${at}.opencodeTools needs a key: the keyless app cannot run OpenCode tools; name the app and give it a key`)
-    const opencodeTools = value.opencodeTools === undefined ? undefined : parseServerTools(value.opencodeTools, at)
+    const opencodeTools = value.opencodeTools === undefined ? undefined : parseOpencodeTools(value.opencodeTools, at)
     if (value.maxToolSteps !== undefined && opencodeTools === undefined) throw new Error(`${at}.maxToolSteps needs \`opencodeTools\``)
-    const maxToolSteps = value.maxToolSteps === undefined ? undefined : positiveInt(value.maxToolSteps, `apps.${app}.maxToolSteps`, DEFAULT_SERVER_TOOL_STEPS, MAX_SERVER_TOOL_STEPS)
+    const maxToolSteps = value.maxToolSteps === undefined ? undefined : positiveInt(value.maxToolSteps, `apps.${app}.maxToolSteps`, DEFAULT_OPENCODE_TOOL_STEPS, MAX_OPENCODE_TOOL_STEPS)
     if (value.maxToolCalls !== undefined && opencodeTools === undefined) throw new Error(`${at}.maxToolCalls needs \`opencodeTools\``)
-    const maxToolCalls = value.maxToolCalls === undefined ? undefined : positiveInt(value.maxToolCalls, `apps.${app}.maxToolCalls`, DEFAULT_SERVER_TOOL_CALLS, MAX_SERVER_TOOL_CALLS)
+    const maxToolCalls = value.maxToolCalls === undefined ? undefined : positiveInt(value.maxToolCalls, `apps.${app}.maxToolCalls`, DEFAULT_OPENCODE_TOOL_CALLS, MAX_OPENCODE_TOOL_CALLS)
 
     // `false` turns the link off for this app; a string is its own template (validated like the global one).
     const sessionUrl = value.sessionUrl === false ? false : parseSessionUrl(value.sessionUrl, `plugboard option \`apps.${app}.sessionUrl\``)
@@ -776,7 +776,7 @@ function parseApps(
     const reasoningOutput = value.reasoningOutput as boolean | undefined
     if (value.onHostedTools !== undefined && value.onHostedTools !== "drop" && value.onHostedTools !== "refuse")
       throw new Error(`plugboard option \`apps.${app}.onHostedTools\` must be \`drop\` or \`refuse\``)
-    const onHostedTools = value.onHostedTools as HostedTools | undefined
+    const onHostedTools = value.onHostedTools as OnHostedTools | undefined
     const policy: AppPolicy = {
       ...(appModels === undefined ? {} : { allowedModels: appModels as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
@@ -970,7 +970,7 @@ export function maxChoicesOption(options: Pick<PlugboardOptions, "apps">, app: s
 }
 
 /** Each app's own session limits (`apps.<name>.sessions`, #265), keyed by app name. Apps without the option are absent. */
-export function appHistoryLimits(options: Pick<PlugboardOptions, "apps">): Record<string, HistoryLimits> {
+export function appSessionLimits(options: Pick<PlugboardOptions, "apps">): Record<string, SessionLimits> {
   return Object.fromEntries(Object.entries(options.apps).flatMap(([app, policy]) => (policy.sessions === undefined ? [] : [[app, policy.sessions] as const])))
 }
 

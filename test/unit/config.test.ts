@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import {
-  appHistoryLimits,
+  appSessionLimits,
   appPolicy,
   authenticate,
   authenticateUsage,
   bodyLimits,
   ALL_MODELS,
-  hostedToolsFor,
+  onHostedToolsFor,
   isLoopbackHost,
   maxChoicesFor,
   parseOptions,
@@ -616,11 +616,11 @@ describe("#265 apps.<name>.sessions", () => {
   test("parses its own fields and exposes the per-app map", () => {
     const options = parseOptions({ keys: { bot: "k1", coding: "k2" }, apps: { bot: { sessions: { maxSessions: 20 } }, coding: { sessions: { maxSessions: 5000, maxAgeDays: 180 } } } })
     expect(options.apps.bot).toMatchObject({ sessions: { maxSessions: 20 } })
-    expect(appHistoryLimits(options)).toEqual({ bot: { maxSessions: 20 }, coding: { maxSessions: 5000, maxAgeDays: 180 } })
+    expect(appSessionLimits(options)).toEqual({ bot: { maxSessions: 20 }, coding: { maxSessions: 5000, maxAgeDays: 180 } })
   })
 
   test("an app without the option is absent from the per-app map", () => {
-    expect(appHistoryLimits(parseOptions({ keys: { bot: "k1" } }))).toEqual({})
+    expect(appSessionLimits(parseOptions({ keys: { bot: "k1" } }))).toEqual({})
   })
 
   test("rejects a zero, an out-of-range value, and an unknown field, each naming the app", () => {
@@ -670,9 +670,9 @@ describe("reasoningOutput (since 0.36.0)", () => {
   test("per app: apps.<name>.onHostedTools is drop or refuse, drop when unset, and alone it makes a policy", () => {
     const options = parseOptions({ keys: { a: "k1", b: "k2", c: "k3" }, apps: { a: { onHostedTools: "refuse" }, b: { onHostedTools: "drop" } } })
     expect(appPolicy(options, "a")).toMatchObject({ onHostedTools: "refuse" })
-    expect(hostedToolsFor(options, "a")).toBe("refuse")
-    expect(hostedToolsFor(options, "b")).toBe("drop")
-    expect(hostedToolsFor(options, "c")).toBe("drop")
+    expect(onHostedToolsFor(options, "a")).toBe("refuse")
+    expect(onHostedToolsFor(options, "b")).toBe("drop")
+    expect(onHostedToolsFor(options, "c")).toBe("drop")
     expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { onHostedTools: "keep" } } })).toThrow("plugboard option `apps.a.onHostedTools` must be `drop` or `refuse`")
     expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { onHostedTools: true } } })).toThrow("`apps.a.onHostedTools`")
   })

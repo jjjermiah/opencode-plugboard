@@ -20,7 +20,7 @@
 
 import { Plugin } from "@opencode/plugin/effect"
 import { Effect } from "effect"
-import { appHistoryLimits, parseOptions } from "./src/config.js"
+import { appSessionLimits, parseOptions } from "./src/config.js"
 import { personaOf } from "./src/models.js"
 import { errorMessage, logError } from "./src/log.js"
 import { withFallbacks } from "./src/fallback.js"
@@ -92,7 +92,7 @@ export default Plugin.define({
         remoteImages: options.remoteImages,
         promptCache: options.promptCache,
         affinity: createAffinity({ storage: createStoragePort(ctx) }),
-        historyHidden: options.sessions.hideFromList,
+        hideFromList: options.sessions.hideFromList,
         requestTimeoutMs: options.requestTimeoutMs,
         ...(options.silenceMs === undefined ? {} : { silenceMs: options.silenceMs }),
         ...(options.metrics ? { metrics: processMetrics } : {}),
@@ -144,7 +144,7 @@ export default Plugin.define({
                       usage?.fallback(app)
                     },
                     onCooldown: (event, app) => {
-                      if (options.metrics) processMetrics().cooldown(app, event)
+                      if (options.metrics) processMetrics().breaker(app, event)
                     },
                   },
                 ),
@@ -190,7 +190,7 @@ export default Plugin.define({
         // Rebuild the transforms below once a request has confirmed this Location as an app directory.
         refresh: () => Effect.runPromise(Effect.all([ctx.agent.reload(), ctx.tool.reload()], { discard: true })),
         // Host handles for indexing and pruning request sessions; only called from request handling.
-        history: { port: createHistoryPort(ctx), limits: options.sessions, apps: appHistoryLimits(options) },
+        history: { port: createHistoryPort(ctx), limits: options.sessions, apps: appSessionLimits(options) },
         handler: (request, response) => {
           startPump()
           handle(request, response).catch((error) => {

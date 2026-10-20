@@ -91,7 +91,7 @@ No runtime key has that id. List the keys at `GET /plugboard/admin/keys` to find
 
 The key is in the plugboard config (`keys`), so the admin routes cannot revoke it. Remove it there and reload OpenCode.
 
-### app_has_server_tools {#app-has-server-tools}
+### app_has_opencode_tools {#app-has-opencode-tools}
 
 The app runs OpenCode tools (`apps.<name>.opencodeTools`), and a runtime key would give the same power. Set its key in the plugboard config instead.
 

@@ -26,9 +26,9 @@ import type { ServerResponse } from "node:http"
 import type { PlugError, PlugEvent, PlugRequest, PlugUsage } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy, reportServerTools } from "../policy.js"
+import { reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
-import { historyTemplate } from "../config.js"
+import { sessionUrlTemplate } from "../config.js"
 import { SESSION_URL_HEADER, sessionUrl } from "../session/link.js"
 import { RequestAborted, boundEvents, sendError, sendJson, sseWriter, type RequestScope, type StreamWire } from "../http.js"
 import {
@@ -199,8 +199,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
   const policy = reportPolicy(response)
   // One header for all choices: each answered call adds its tokens and cost (`x-plugboard-usage`, #52).
   const usageHeader = reportUsage(response, codec.stream)
-  // One header for all choices too: the server tool calls of every choice add up (`x-plugboard-server-tools`).
-  const serverToolsHeader = reportServerTools(response, codec.stream)
+  // One header for all choices too: the OpenCode tool calls of every choice add up (`x-plugboard-opencode-tools`).
+  const opencodeToolsHeader = reportOpencodeTools(response, codec.stream)
   // Each choice is a fresh sample: the response cache never serves or stores fan-out calls.
   const cache = reportCache(response)
   const open = (index: number) =>
@@ -212,7 +212,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           records[index] = recordID
           response.setHeader(SESSION_HEADER, records.filter((id) => id !== undefined).join(","))
-          const template = historyTemplate(host.options, app)
+          const template = sessionUrlTemplate(host.options, app)
           if (template !== undefined) {
             links[index] = sessionUrl(template, recordID, directory)
             info.sessionUrl = links.filter((link) => link !== undefined).join(",")
@@ -222,7 +222,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
         onServed: served,
         onPolicy: policy,
         onUsage: usageHeader,
-        onServerTools: serverToolsHeader,
+        onOpencodeTools: opencodeToolsHeader,
         onCache: cache,
         noCache: calls.length > 1,
       }),

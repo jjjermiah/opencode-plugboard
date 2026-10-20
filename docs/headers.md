@@ -2,7 +2,7 @@
 
 Plugboard adds `x-plugboard-*` headers to model answers. They tell you what happened to a request without reading logs. A browser page can read them when its origin is in [`cors.origins`](configuration.md#browser-origins).
 
-A streamed answer sends its headers with the first event, so headers that need the finished answer (`x-plugboard-usage`, `x-plugboard-server-tools`) are only on non-streamed answers.
+A streamed answer sends its headers with the first event, so headers that need the finished answer (`x-plugboard-usage`, `x-plugboard-opencode-tools`) are only on non-streamed answers.
 
 | Header | When | Value |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ A streamed answer sends its headers with the first event, so headers that need t
 | `x-plugboard-thinking` | Thinking or a reasoning effort was asked for, and the model has no variant for it | `unavailable`. The request ran without thinking. |
 | `x-plugboard-policy` | The app's policy changed the request | `tools-stripped`: the app has `tools: false` and the caller's tools were removed. |
 | `x-plugboard-parallel-tools` | `parallel_tool_calls: false` | `limited`: only the first tool call of the answer was kept. |
-| `x-plugboard-server-tools` | The app runs server tools, not streamed | The number of server tool calls OpenCode ran. |
+| `x-plugboard-opencode-tools` | The app runs OpenCode tools, not streamed | The number of OpenCode tool calls that ran. |
 | `x-plugboard-structured-fallback` | Structured output came from plain text | `text`: the model answered in text that matched the schema instead of calling `respond`. |
 | `x-plugboard-user-dropped` | The end user name was not usable | `1`: the `user` value was not kept for usage. |
 

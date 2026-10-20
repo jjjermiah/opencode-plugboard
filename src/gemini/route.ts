@@ -19,11 +19,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { appPolicy, bodyLimits, historyTemplate, maxChoicesFor, maxChoicesOption, requestedModel } from "../config.js"
+import { appPolicy, bodyLimits, sessionUrlTemplate, maxChoicesFor, maxChoicesOption, requestedModel } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { effortUnavailable, listAvailableModels, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportPolicy, reportServerTools } from "../policy.js"
+import { reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { sessionRequest } from "../session/caller.js"
@@ -134,7 +134,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     const ref = resolveModel(host.options, requested.model, catalog, requested.effort)
     if (isPlugError(ref)) return fail(ref)
     info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
-    // An estimate, not the provider's count (see src/anthropic/tokens.ts). The request as the session sends it: the app's policy, persona and server tools count too (#201).
+    // An estimate, not the provider's count (see src/anthropic/tokens.ts). The request as the session sends it: the app's policy, persona and OpenCode tools count too (#201).
     const counted = await scope.race(sessionRequest(host.session, app, { ...parsed.request, model: requested.model, ref }, appPolicy(host.options, app), scope.signal))
     if (isPlugError(counted)) return fail(counted)
     return sendJson(response, 200, { totalTokens: estimateTokens(counted, ref.id) })
@@ -193,13 +193,13 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
       onRecord: (recordID, directory) => {
         if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
         response.setHeader(SESSION_HEADER, recordID)
-        setSessionLink(response, info, historyTemplate(host.options, app), recordID, directory)
+        setSessionLink(response, info, sessionUrlTemplate(host.options, app), recordID, directory)
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
       onAffinity: reportAffinity(response),
       onUsage: reportUsage(response, match.stream),
-      onServerTools: reportServerTools(response, match.stream),
+      onOpencodeTools: reportOpencodeTools(response, match.stream),
       onCache: reportCache(response),
     }),
     scope,

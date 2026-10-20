@@ -22,7 +22,7 @@
  * past its age is a miss on read, and a sweep (from request handling, never setup, I3) deletes expired and
  * surplus records, oldest first.
  */
-import { appHistoryLimits, type PlugboardOptions } from "../config.js"
+import { appSessionLimits, type PlugboardOptions } from "../config.js"
 import { errorMessage, logError, logWarn, log, outsideRequest } from "../log.js"
 import { limitsFor } from "../session/prune.js"
 import type { StoragePort } from "../session/host.js"
@@ -75,7 +75,7 @@ const AT_PATTERN = /^(\d{15})-(\d+)-(resp_[0-9a-f]{32})$/
 
 /** Days the app's stored responses are kept: its effective `sessions.maxAgeDays`, else 30 (`0` and unset both mean 30). */
 export function retentionDaysFor(options: Pick<PlugboardOptions, "apps" | "sessions">, app: string): number {
-  const days = limitsFor(options.sessions, appHistoryLimits(options), app).maxAgeDays
+  const days = limitsFor(options.sessions, appSessionLimits(options), app).maxAgeDays
   return days === undefined || days <= 0 ? DEFAULT_RETENTION_DAYS : days
 }
 

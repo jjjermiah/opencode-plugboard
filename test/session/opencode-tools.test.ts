@@ -4,7 +4,7 @@
  * the request-time checks (a listed tool the location does not offer, a caller tool named like a server
  * tool), the context hook (the host's own descriptors are kept and dropped for `tool_choice` none), the
  * collector's step classification (server-only steps continue, mixed steps return to the caller), the
- * step cap, and the `server_tool.call` log lines, which never carry arguments.
+ * step cap, and the `opencode_tool.call` log lines, which never carry arguments.
  */
 import { describe, expect, test } from "bun:test"
 import { Effect, Schema } from "effect"
@@ -15,9 +15,9 @@ import { createSessionCaller, type SessionCallerDeps } from "../../src/session/c
 import { installSessionHooks } from "../../src/session/context.js"
 import { createSessionPort, type ContextHookEvent, type HostToolDescriptor } from "../../src/session/host.js"
 import { RequestCollector } from "../../src/session/events.js"
-import { reportServerTools } from "../../src/policy.js"
+import { reportOpencodeTools } from "../../src/policy.js"
 import type { ServerResponse } from "node:http"
-import { REQUEST_PERMISSIONS, requestPermissions, ungrantedServerTool, wildcardMatch, type OperatorRule } from "../../src/session/seeds.js"
+import { REQUEST_PERMISSIONS, requestPermissions, ungrantedOpencodeTool, wildcardMatch, type OperatorRule } from "../../src/session/seeds.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { collect, plugRequest } from "../support/fixtures.js"
 import { spyContext } from "../support/plugin-context.js"
@@ -112,11 +112,11 @@ describe("session permissions", () => {
   })
 
   test("#194 a listed tool is ungranted unless some operator rule for it is an allow", () => {
-    expect(ungrantedServerTool(["websearch"], [])).toBe("websearch")
-    expect(ungrantedServerTool(["websearch"], [{ action: "websearch", resource: "*", effect: "deny" }])).toBe("websearch")
-    expect(ungrantedServerTool(["websearch"], [{ action: "websearch", resource: "*", effect: "ask" }])).toBe("websearch")
-    expect(ungrantedServerTool(["websearch", "read"], [{ action: "read", resource: "*", effect: "allow" }])).toBe("websearch")
-    expect(ungrantedServerTool(["read"], [{ action: "*", resource: "*", effect: "allow" }])).toBeUndefined()
+    expect(ungrantedOpencodeTool(["websearch"], [])).toBe("websearch")
+    expect(ungrantedOpencodeTool(["websearch"], [{ action: "websearch", resource: "*", effect: "deny" }])).toBe("websearch")
+    expect(ungrantedOpencodeTool(["websearch"], [{ action: "websearch", resource: "*", effect: "ask" }])).toBe("websearch")
+    expect(ungrantedOpencodeTool(["websearch", "read"], [{ action: "read", resource: "*", effect: "allow" }])).toBe("websearch")
+    expect(ungrantedOpencodeTool(["read"], [{ action: "*", resource: "*", effect: "allow" }])).toBeUndefined()
   })
 
   test("#194 the host's wildcard: `*` any run, `?` one character, and `git *` also matches `git`", () => {
@@ -167,12 +167,12 @@ describe("request-time checks (#82)", () => {
     expect(run.port.created[0]?.permissions).toEqual(UNTRUSTED)
   })
 
-  test("#194 a listed tool that the operator's agent does not allow is a 400 server_tool_denied_by_operator, and nothing is created", async () => {
+  test("#194 a listed tool that the operator's agent does not allow is a 400 opencode_tool_denied_by_operator, and nothing is created", async () => {
     const run = setup({ opencodeTools: ["websearch"] })
     run.port.toolIDs.push("websearch")
     run.port.operatorRules = [{ action: "read", resource: "*", effect: "allow" }]
     const events = await drain(run.caller.stream(plugRequest(), run.context))
-    expect(events).toEqual([{ type: "error", error: expect.objectContaining({ status: 400, kind: "invalid_request", code: "server_tool_denied_by_operator" }) }])
+    expect(events).toEqual([{ type: "error", error: expect.objectContaining({ status: 400, kind: "invalid_request", code: "opencode_tool_denied_by_operator" }) }])
     expect(run.port.created).toEqual([])
   })
 
@@ -191,7 +191,7 @@ describe("request-time checks (#82)", () => {
     expect(permissions.findIndex((rule) => rule.resource === "private/*")).toBeGreaterThan(permissions.findIndex((rule) => rule.action === "websearch" && rule.effect === "allow"))
   })
 
-  test("a listed tool the location does not offer is a 400 server_tool_unavailable, before any session exists", async () => {
+  test("a listed tool the location does not offer is a 400 opencode_tool_unavailable, before any session exists", async () => {
     const run = setup({ opencodeTools: ["websearch", "missing_tool"] })
     run.port.toolIDs.push("websearch")
     const events = await drain(run.caller.stream(plugRequest(), run.context))
@@ -201,7 +201,7 @@ describe("request-time checks (#82)", () => {
         error: {
           status: 400,
           kind: "invalid_request",
-          code: "server_tool_unavailable",
+          code: "opencode_tool_unavailable",
           message:
             "OpenCode tool(s) not available in this location: missing_tool (option `apps.<name>.opencodeTools`). CodeMode tools, including MCP tools by default, cannot be listed; set codemode: false on the tool",
         },
@@ -210,11 +210,11 @@ describe("request-time checks (#82)", () => {
     expect(run.port.created).toEqual([])
   })
 
-  test("a caller tool named like a server tool is a 400 server_tool_collision, before any session exists", async () => {
+  test("a caller tool named like an OpenCode tool is a 400 opencode_tool_collision, before any session exists", async () => {
     const run = setup({ opencodeTools: ["websearch"] })
     run.port.toolIDs.push("websearch")
     const events = await drain(run.caller.stream(plugRequest({ tools: [tool("websearch")] }), run.context))
-    expect(events).toEqual([{ type: "error", error: expect.objectContaining({ status: 400, code: "server_tool_collision" }) }])
+    expect(events).toEqual([{ type: "error", error: expect.objectContaining({ status: 400, code: "opencode_tool_collision" }) }])
     expect(run.port.created).toEqual([])
   })
 })
@@ -234,7 +234,7 @@ function hook(request: PlugRequest, opencodeTools: ReadonlyArray<string>) {
 
 const seeds = (): Record<string, HostToolDescriptor> => Object.fromEntries(Array.from({ length: 4 }, (_, index) => [`plugboard_seed_${index}`, { description: "placeholder", input: {} }]))
 
-describe("the context hook keeps the server tools (#82)", () => {
+describe("the context hook keeps the OpenCode tools (#82)", () => {
   test("the host's own descriptor for a listed tool is kept by identity, next to the re-keyed seeds", () => {
     const search: HostToolDescriptor = { description: "Search the web", input: { type: "object" } }
     const run = hook(plugRequest({ tools: [tool("lookup")] }), ["websearch"])
@@ -292,9 +292,9 @@ describe("the context hook keeps the server tools (#82)", () => {
     expect(event.tools?.task).toBeUndefined()
   })
 
-  // #417: `applyContext` keeps what the host appended after the caller transcript (the server tool call and
+  // #417: `applyContext` keeps what the host appended after the caller transcript (the OpenCode tool call and
   // result of step 1), so step 2 can answer from the result.
-  test("#417 opencodeTools: applyContext preserves step 1's server tool call and result on step 2", () => {
+  test("#417 opencodeTools: applyContext preserves step 1's OpenCode tool call and result on step 2", () => {
     const run = hook(plugRequest({ messages: [{ role: "user", content: [{ type: "text", text: "Read inside.txt once." }] }] }), ["read", "glob", "grep"])
     const step1: ContextHookEvent = {
       sessionID: "ses_1",
@@ -437,19 +437,19 @@ describe("step classification (#82)", () => {
     ])
   })
 
-  test("the step cap fails the request with server_tool_steps_exceeded and stops the turn", async () => {
+  test("the step cap fails the request with opencode_tool_steps_exceeded and stops the turn", async () => {
     const run = collectorRun(2)
     for (const id of ["s1", "s2", "s3"]) run.send(run.host.toolCalled(id, "websearch", {}), run.host.toolSucceeded(id), run.host.stepEnded("tool-calls"))
     expect(await run.drain()).toEqual([
       {
         type: "error",
-        error: { status: 502, kind: "server", code: "server_tool_steps_exceeded", message: "The model used more OpenCode tool steps than this app allows" },
+        error: { status: 502, kind: "server", code: "opencode_tool_steps_exceeded", message: "The model used more OpenCode tool steps than this app allows" },
       },
     ])
     expect(run.stops()).toBe(1)
   })
 
-  test("#198 the call cap counts calls across steps: the call past it fails 502 server_tool_calls_exceeded and stops the turn", async () => {
+  test("#198 the call cap counts calls across steps: the call past it fails 502 opencode_tool_calls_exceeded and stops the turn", async () => {
     const run = collectorRun(8, 3)
     run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
     run.send(run.host.toolCalled("s3", "websearch", {}), run.host.stepEnded("tool-calls"))
@@ -457,7 +457,7 @@ describe("step classification (#82)", () => {
     expect(await run.drain()).toEqual([
       {
         type: "error",
-        error: { status: 502, kind: "server", code: "server_tool_calls_exceeded", message: "The model used more OpenCode tool calls than this app allows" },
+        error: { status: 502, kind: "server", code: "opencode_tool_calls_exceeded", message: "The model used more OpenCode tool calls than this app allows" },
       },
     ])
     expect(run.stops()).toBe(1)
@@ -494,7 +494,7 @@ describe("step classification (#82)", () => {
   })
 })
 
-describe("x-plugboard-server-tools (#82)", () => {
+describe("x-plugboard-opencode-tools (#82)", () => {
   /** A stand-in response: only the header writes and the two flags the reporter reads. */
   function fakeResponse(headersSent = false) {
     const headers = new Map<string, string>()
@@ -514,35 +514,35 @@ describe("x-plugboard-server-tools (#82)", () => {
       bus(id).stepEnded("stop"),
       bus(id).executionSucceeded(),
     ])
-    await drain(run.caller.stream(plugRequest(), { ...run.context, onServerTools: (count) => void reported.push(count) }))
+    await drain(run.caller.stream(plugRequest(), { ...run.context, onOpencodeTools: (count) => void reported.push(count) }))
     expect(reported).toEqual([1])
   })
 
   test("a non-streaming answer gets the summed count while its headers are open, and nothing else", () => {
     const { response, headers } = fakeResponse()
-    const report = reportServerTools(response, false)!
+    const report = reportOpencodeTools(response, false)!
     report(2)
     report(1)
     report(0)
-    expect(headers.get("x-plugboard-server-tools")).toBe("3")
+    expect(headers.get("x-plugboard-opencode-tools")).toBe("3")
   })
 
   test("a stream gets no callback, and sent headers are never changed", () => {
-    expect(reportServerTools(fakeResponse().response, true)).toBeUndefined()
+    expect(reportOpencodeTools(fakeResponse().response, true)).toBeUndefined()
     const late = fakeResponse(true)
-    reportServerTools(late.response, false)!(4)
+    reportOpencodeTools(late.response, false)!(4)
     expect(late.headers.size).toBe(0)
   })
 })
 
 describe("server calls after the request ended (#196)", () => {
-  test("a server call after the client left is logged as server_tool.after_request, and its step stops the turn", async () => {
+  test("an OpenCode call after the client left is logged as opencode_tool.after_request, and its step stops the turn", async () => {
     const run = collectorRun()
     run.collector.cancel()
     run.send(run.host.toolCalled("s1", "websearch", { query: "secret query" }), run.host.stepEnded("tool-calls"))
     // The call stops the run at once (a client that left gets no tool run); the late step stops it again (#196).
     expect(run.stops()).toBe(2)
-    const lines = logs.of("server_tool.after_request")
+    const lines = logs.of("opencode_tool.after_request")
     expect(lines).toHaveLength(1)
     expect(lines[0]!.fields).toMatchObject({ requestID: "req_1", app: "app", tool: "websearch", lateCalls: "1" })
     expect(lines[0]!.raw).not.toContain("secret query")
@@ -555,7 +555,7 @@ describe("server calls after the request ended (#196)", () => {
     run.send(run.host.toolCalled("s2", "websearch", {}), run.host.stepEnded("tool-calls"))
     // One stop for the first call (at once), then one per late step that ran a call (#196).
     expect(run.stops()).toBe(3)
-    expect(logs.of("server_tool.after_request")).toHaveLength(2)
+    expect(logs.of("opencode_tool.after_request")).toHaveLength(2)
   })
 
   test("a caller call after the request ended stops the run at once: no tool runs for a client that left, and it is not logged as a server call", async () => {
@@ -563,10 +563,10 @@ describe("server calls after the request ended (#196)", () => {
     run.collector.cancel()
     run.send(run.host.toolCalled("c1", "lookup", {}), run.host.stepEnded("tool-calls"))
     expect(run.stops()).toBe(1)
-    expect(logs.of("server_tool.after_request")).toHaveLength(0)
+    expect(logs.of("opencode_tool.after_request")).toHaveLength(0)
   })
 
-  test("the answer returned and the host still runs a server tool: the session is interrupted again (fake session)", async () => {
+  test("the answer returned and the host still runs an OpenCode tool: the session is interrupted again (fake session)", async () => {
     const run = setup({ opencodeTools: ["websearch"] })
     run.port.toolIDs.push("websearch")
     run.answer((id) => [bus(id).textDelta("Hi"), bus(id).stepEnded("stop")])
@@ -575,17 +575,17 @@ describe("server calls after the request ended (#196)", () => {
     run.sessions.dispatch(bus("ses_1").toolCalled("late1", "websearch", {}))
     run.sessions.dispatch(bus("ses_1").stepEnded("tool-calls"))
     expect(run.port.interrupted).toEqual(["ses_1"])
-    expect(logs.of("server_tool.after_request")[0]!.fields).toMatchObject({ tool: "websearch", lateCalls: "1" })
+    expect(logs.of("opencode_tool.after_request")[0]!.fields).toMatchObject({ tool: "websearch", lateCalls: "1" })
   })
 })
 
-describe("server_tool.call log lines (#82)", () => {
+describe("opencode_tool.call log lines (#82)", () => {
   test("one line per server call with the tool, outcome and duration, and no arguments", async () => {
     const run = collectorRun()
     run.send(run.host.toolCalled("s1", "websearch", { query: "secret query" }), run.host.toolSucceeded("s1"), run.host.stepEnded("tool-calls"))
     run.send(run.host.textDelta("ok"), run.host.stepEnded("stop"), run.host.executionSucceeded())
     await run.drain()
-    const lines = logs.of("server_tool.call")
+    const lines = logs.of("opencode_tool.call")
     expect(lines).toHaveLength(1)
     expect(lines[0]!.fields).toMatchObject({ requestID: "req_1", app: "app", tool: "websearch", ok: "true" })
     expect(lines[0]!.raw).not.toContain("secret query")
@@ -596,7 +596,7 @@ describe("server_tool.call log lines (#82)", () => {
     run.send(run.host.toolCalled("s1", "websearch", {}), run.host.toolFailed("s1"), run.host.stepEnded("tool-calls"))
     run.send(run.host.textDelta("ok"), run.host.stepEnded("stop"), run.host.executionSucceeded())
     await run.drain()
-    expect(logs.of("server_tool.call")[0]!.fields).toMatchObject({ tool: "websearch", ok: "false" })
+    expect(logs.of("opencode_tool.call")[0]!.fields).toMatchObject({ tool: "websearch", ok: "false" })
   })
 })
 

@@ -175,11 +175,11 @@ describe("the real session caller behind the route", () => {
   })
 })
 
-describe("x-plugboard-server-tools on the wire (#82)", () => {
+describe("x-plugboard-opencode-tools on the wire (#82)", () => {
   /** A caller whose every call ran two server tools, as a trusted app's session reports them. */
   const ranTwo: ModelCaller = {
     async *stream(_request, context) {
-      context.onServerTools?.(2)
+      context.onOpencodeTools?.(2)
       yield { type: "text-delta", text: "ok" }
       yield { type: "finish", reason: "stop" }
     },
@@ -190,18 +190,18 @@ describe("x-plugboard-server-tools on the wire (#82)", () => {
     server = await startRoute({ caller: ranTwo, options: OPTIONS })
     const reply = await server.send(chat())
     expect(reply.status).toBe(200)
-    expect(reply.headers["x-plugboard-server-tools"]).toBe("2")
+    expect(reply.headers["x-plugboard-opencode-tools"]).toBe("2")
   })
 
   test("the choices of n add their counts", async () => {
     server = await startRoute({ caller: ranTwo, options: OPTIONS })
-    expect((await server.send(chat({ n: 2 }))).headers["x-plugboard-server-tools"]).toBe("4")
+    expect((await server.send(chat({ n: 2 }))).headers["x-plugboard-opencode-tools"]).toBe("4")
   })
 
   test("a stream gets no header", async () => {
     server = await startRoute({ caller: ranTwo, options: OPTIONS })
     const open = await server.open(chat({ stream: true }))
-    expect(open.headers["x-plugboard-server-tools"]).toBeUndefined()
+    expect(open.headers["x-plugboard-opencode-tools"]).toBeUndefined()
     expect(sseData(await open.ended).length).toBeGreaterThan(0)
   })
 })

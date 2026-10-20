@@ -168,7 +168,7 @@ describe("#55 admin routes: create, list, revoke", () => {
     expect(taken.json().code).toBe("app_has_config_key")
   })
 
-  test("#197 POST refuses an app with opencodeTools: 409 app_has_server_tools, and mints no key", async () => {
+  test("#197 POST refuses an app with opencodeTools: 409 app_has_opencode_tools, and mints no key", async () => {
     // The config already refuses a opencodeTools app without a key (parseApps), so the app here has a config key;
     // the route's own check must still refuse before it reaches the config-key rule (app_has_config_key).
     const keys = createKeyStore({ state: createKeyState(), storage: new FakeStorage() })
@@ -179,7 +179,7 @@ describe("#55 admin routes: create, list, revoke", () => {
     })
     const reply = await server.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer(ADMIN), body: { app: "bot" } })
     expect(reply.status).toBe(409)
-    expect(reply.json().code).toBe("app_has_server_tools")
+    expect(reply.json().code).toBe("app_has_opencode_tools")
     expect((await server.send({ path: "/plugboard/admin/keys", headers: bearer(ADMIN) })).json().keys.every((key: { source: string }) => key.source === "config")).toBe(true)
   })
 

@@ -36,7 +36,7 @@ export interface CompletionsCall {
 export async function serveCompletions(host: RouteHost, { app, body, response, scope, info }: CompletionsCall): Promise<void> {
   const fail = (error: PlugError) => sendError(response, error, encodeError(error))
 
-  // The app's own `maxChoices` (#270) is the cap for this request; the decoder checks against `options.maxN`.
+  // The app's own `maxChoices` (#270) is the cap for this request; the decoder checks against `options.maxChoices`.
   const parsed = parseCompletionsRequest(body, { ...host.options, maxChoices: maxChoicesFor(host.options, app) }, maxChoicesOption(host.options, app))
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())

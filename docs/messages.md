@@ -71,7 +71,7 @@ A caller's `cache_control` breakpoint on a `text`, `image`, `document` or `tool_
 
 **OpenCode's own breakpoints.** On the Anthropic Messages route, and on the OpenRouter and Vercel gateway routes for `anthropic/` models, OpenCode adds its breakpoints when the caller has not used the four slots: the last tool, the first and last system part, and the last text part of the last message (the conversation tail). All are 5-minute. A part that already has a breakpoint is skipped. Plugboard sends no cache policy, so this placement always runs. Other routes and models differ: Qwen gets system and tail breakpoints only, and some get none. The rest of this section describes the Claude placement.
 
-**TTL `1h`.** A caller block with `ttl: "1h"` gets the 1-hour TTL only when the request has no tools. That means no caller `tools` and no server tools reach the model, or `tool_choice` is `none`. Then plugboard:
+**TTL `1h`.** A caller block with `ttl: "1h"` gets the 1-hour TTL only when the request has no tools. That means no caller `tools` and no OpenCode tools reach the model, or `tool_choice` is `none`. Then plugboard:
 
 - gives 1h to every breakpoint before the last 1h block, including a caller's 5-minute block there (the raise adds no cost, see Pricing);
 - gives 1h to the first and last system part and to the tail part, where OpenCode would otherwise put a 5-minute breakpoint before the 1h block, as far as the four slots allow;
@@ -109,7 +109,7 @@ The count includes:
 - **System:** the app's `system` policy, the tool-choice steering, a skill's content for a skill alias, or an agent's prompt for `agent/<name>` (which replaces the caller's system prompt).
 - **Tools:** the caller's tools the session offers (none for `tool_choice: none`, only the named one for a named choice, none with `tools: false`), and the app's `opencodeTools` schemas (none with `tool_choice: none`). With `output_config.format`, the schema is counted as the tool the model is given for it.
 
-A refused request gets its refusal, not a size: a model outside the app's `allowedModels`, too many tools for `maxTools`, a server-tool name clash, a server tool the location does not offer or the operator's agent does not grant, and an unknown skill or agent.
+A refused request gets its refusal, not a size: a model outside the app's `allowedModels`, too many tools for `maxTools`, an OpenCode tool name clash, an OpenCode tool the location does not offer or the operator's agent does not grant, and an unknown skill or agent.
 
 A count for an app with a persona or `opencodeTools` has side effects, as the request has: the app directory is created, the Location may boot, and a backend that is not ready answers 503. Each such count also reads the app's tool and agent lists from OpenCode. Image downloads are not run, and the server-tool schemas are converted without OpenCode's draft-07 normalisation, so they can differ a little.
 

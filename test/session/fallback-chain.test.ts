@@ -78,7 +78,7 @@ async function start(faults: Record<string, Fault>) {
   port.script.interrupt = async (sessionID) => void send([bus(sessionID).executionInterrupted()])
   const options = parseOptions(RAW)
   const caller = withFallbacks(createSessionCaller({ port, sessions, maxTools: 2 }), { options, loadCatalog: async () => CATALOG, breaker })
-  server = await startRoute({ caller, options: RAW, catalog: CATALOG, status: () => ({ ...TEST_STATUS, cooldowns: breaker.cooling() }) })
+  server = await startRoute({ caller, options: RAW, catalog: CATALOG, status: () => ({ ...TEST_STATUS, breakers: breaker.cooling() }) })
   const srv = server
   return {
     port,
@@ -98,7 +98,7 @@ async function start(faults: Record<string, Fault>) {
   }
 }
 
-const cooldownEvents = () => logs.lines.filter((line) => line.event.startsWith("fallback.cooldown.")).map((line) => line.event.slice("fallback.cooldown.".length))
+const cooldownEvents = () => logs.lines.filter((line) => line.event.startsWith("circuit_breaker.")).map((line) => line.event.slice("circuit_breaker.".length))
 
 describe("a first target that fails before any output: the next target answers", () => {
   test.each([
@@ -225,7 +225,7 @@ describe("the circuit breaker over several requests", () => {
     expect(probe.ran).toEqual(["a/x", "b/y"])
     expect(probe.reply.headers["x-plugboard-model"]).toBe("b/y#low")
     expect(cooldownEvents()).toEqual(["open", "open"])
-    expect(logs.of("fallback.cooldown.open")[1]!.fields.reopened).toBe("true")
+    expect(logs.of("circuit_breaker.open")[1]!.fields.reopened).toBe("true")
     expect((await run.ask()).ran).toEqual(["b/y"])
   })
 
@@ -238,7 +238,7 @@ describe("the circuit breaker over several requests", () => {
     const failed = await run.ask()
     expect(failed.ran).toEqual(["a/x"])
     expect(failed.reply.status).toBe(429)
-    expect(logs.of("fallback.cooldown.all_open")).toHaveLength(1)
+    expect(logs.of("circuit_breaker.all_open")).toHaveLength(1)
 
     run.faults["a/x"] = "ok"
     const recovered = await run.ask()
