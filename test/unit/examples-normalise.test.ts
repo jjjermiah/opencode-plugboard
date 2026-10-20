@@ -213,6 +213,15 @@ describe("Gemini CLI session context", () => {
     expect(normaliseSessionContext("Platform: darwin")).toBe("Platform: darwin")
   })
 
+  test("fixes the date Claude Code puts in its system prompt and its system reminder, and no other date", () => {
+    const prompt = (date: string) => `You are powered by the model fast.\n\nToday's date is ${date}.\n<system-reminder>\nToday's date is ${date}.\n</system-reminder>\nReleased 2026-01-02.`
+    expect(normaliseSessionContext(prompt("2026-10-19"))).toBe(
+      "You are powered by the model fast.\n\nToday's date is <date>.\n<system-reminder>\nToday's date is <date>.\n</system-reminder>\nReleased 2026-01-02.",
+    )
+    expect(normaliseSessionContext(prompt("2026-10-19"))).toBe(normaliseSessionContext(prompt("2027-01-01")))
+    expect(normaliseSessionContext("Today's date is 2026-10-19 and more")).toBe("Today's date is 2026-10-19 and more")
+  })
+
   test("fixes the sub-agent id and run time Claude Code puts in an Agent tool result, and nothing else in it", () => {
     const result = (id: string, ms: number) =>
       `The report.\nagentId: ${id} (use SendMessage with to: '${id}', summary: 'x' to continue this agent)\n<usage>subagent_tokens: 18\ntool_uses: 0\nduration_ms: ${ms}</usage>`
