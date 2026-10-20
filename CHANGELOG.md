@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.60.0] - 2026-10-20: Names That Make Sense
+
+**Full diff:** [v0.59.0...v0.60.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.59.0...v0.60.0)
+
 ### Changed
 
 - **Breaking: renamed options.** Seventeen option names were confusing, so they now say what they do. There are no aliases: an old name is refused at load as an unknown option, with the usual error that lists the known ones. Rename these in your config:
@@ -38,6 +44,27 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
   | `fallbackCooldown.windowMs` | `circuitBreaker.failureWindowMs` |
 
   `fallbackCooldown.cooldownMs` keeps its name inside `circuitBreaker`, and the global `models` list keeps its name. The `GET /plugboard/status` field `fallbackCooldown` is now `circuitBreaker`, and the warning log line `history.hidden_parent_unavailable` is now `sessions.hide_from_list_parent_unavailable`. `plugboard init` writes `"models": "all"`.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (1 commit)</summary>
+
+#### Other
+
+**refactor(config)!: rename the most confusing options** ([`a946eca`](https://github.com/jjjermiah/opencode-plugboard/commit/a946eca4d6c3593823d464a09e321627c9e27b4a))
+
+Seventeen option names said little about what they do (`history` is the pruning limits of request sessions, `serverTools` are tools OpenCode runs, `cache` is the response cache, `models: "connected"` allows every model). The owner picked new names and chose no aliases and no deprecation code, since nobody else uses the options yet. An old name now fails at load as an unknown option, with the existing error that lists the known ones.
+
+Renamed: `models: "connected"` -> `"all"` (global and `apps.<name>.allowedModels`), `apps.<name>.models` -> `allowedModels`, `apps.<name>.model` -> `pinnedModel`, `cache` -> `responseCache`, `serverTools` -> `opencodeTools`, `maxServerToolSteps` -> `maxToolSteps`, `maxServerToolCalls` -> `maxToolCalls`, `hostedTools` -> `onHostedTools`, `history` -> `sessions` (`hidden` -> `hideFromList`), `historyUrl` -> `sessionUrl`, `maxN` -> `maxChoices`, `fallbackAfterMs` -> `firstEventTimeoutMs`, `fallbackCooldown` -> `circuitBreaker` (`failureThreshold` -> `failures`, `windowMs` -> `failureWindowMs`). The global `models` list keeps its name.
+
+Internal identifiers follow (AppPolicy and PlugboardOptions fields, `maxChoicesFor`, `ALL_MODELS`, `CircuitBreaker`). The `GET /plugboard/status` field `fallbackCooldown` is now `circuitBreaker`, and the warn log line `history.hidden_parent_unavailable` is now `sessions.hide_from_list_parent_unavailable`. Left alone on purpose: the breaker log events `fallback.cooldown.*`, the `x-plugboard-*` headers, the error codes and the runtime `history` port, which are not options.
+
+Updated every usage: src, tests, the mutation catalogue anchors, the docs site, README, STRUCTURE, SECURITY and the docs full-config helper, which now adds `"models": "all"`. The CHANGELOG has a breaking "Renamed options" table under Unreleased.
+
+Validation: typecheck, lint, format, `bun test` and `bun run docs:build` pass; see the PR for the full validate run and the live check.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.59.0] - 2026-10-20: Locked Down, Clearly Documented
 
@@ -9935,7 +9962,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.59.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.60.0...HEAD
+[0.60.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.56.0...v0.57.0
