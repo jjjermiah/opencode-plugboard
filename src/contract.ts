@@ -227,6 +227,14 @@ export interface CallContext {
    * host's own retries run. Set by the chain only (#391).
    */
   readonly fallbackNext?: boolean
+  /**
+   * Called once, when the call starts work that is not the model's: preparing the prompt (fetching the request's remote images, making
+   * the session). The chain's first-event deadline (`fallbackAfterMs`) pauses until `onPrompted`, so a slow image host is not the model's
+   * silence. Set by the chain only; the session caller is the one that calls it.
+   */
+  readonly onPreparing?: () => void
+  /** Called once, right before the prompt is sent to the host: the model is working from here, and the chain's first-event deadline starts. Set by the chain only. */
+  readonly onPrompted?: () => void
   /** Called once, before the first event, with each change the app's policy made that the caller sent for. Front-ends report them in the `x-plugboard-policy` header. */
   readonly onPolicy?: (notes: ReadonlyArray<PolicyNote>) => void
   /** Called once, before the first event, when the response cache applies to the call: `hit` replays a stored answer (no session, no record), `miss` runs the model. Not called when the cache is off, skipped for the app, or `noCache` is set. */

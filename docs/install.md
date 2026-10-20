@@ -8,7 +8,7 @@ Three steps: add the plugin, restart OpenCode, call it. You need OpenCode V2 (2.
 bunx opencode-plugboard init
 ```
 
-This adds plugboard to your global config, `~/.config/opencode/opencode.jsonc`, pinned to the current release. It creates a key for one app (`my-app`; pick the name with `--app`), allows every model of every provider you are logged in to, and prints the key once with a ready curl.
+This adds plugboard to your global config, `~/.config/opencode/opencode.jsonc`, pinned to the current release. It creates a key for one app (`my-app`; pick the name with `--app`), allows every model of every provider you are logged in to, and prints the key once with a ready curl. A config file it creates is readable by you alone (mode 0600, and 0700 for a directory it makes), because the key is in it; a file that already exists keeps its mode.
 
 - `--fast <model>` adds a `fast` alias, for example `--fast anthropic/claude-haiku-4-5`.
 - `--dry-run` shows the change without writing it.

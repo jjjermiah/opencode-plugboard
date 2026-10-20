@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { ServerResponse } from "node:http"
 import { createBreaker } from "../../src/breaker.js"
+import type { CallContext } from "../../src/contract.js"
 import { parseOptions } from "../../src/config.js"
 import type { PlugEvent } from "../../src/contract.js"
 import { withFallbacks } from "../../src/fallback.js"
@@ -111,7 +112,7 @@ describe("security regression test: what moves the breaker every app shares", ()
     collect(caller.stream(plugRequest({ model: "chain", ref: resolveModel(options, "chain", CATALOG) as never, ...extra }), { app, signal: new AbortController().signal }))
 
   /** A host that answers `a/x` as `fault` says, and every other target with a plain answer. */
-  function host(fault: HostError | "ok", remoteImages?: Parameters<typeof createSessionCaller>[0]["remoteImages"]) {
+  function host(fault: HostError | "ok" | "hang", remoteImages?: Parameters<typeof createSessionCaller>[0]["remoteImages"]) {
     const breaker = createBreaker()
     const port = new FakeSessionPort()
     const sessions = createSessionStore()
@@ -119,8 +120,10 @@ describe("security regression test: what moves the breaker every app shares", ()
       const created = port.created.find((session) => session.id === input.sessionID)!
       const first = created.model.providerID === "a"
       const events = bus(input.sessionID)
+      if (first && fault === "hang") return
       queueMicrotask(() => {
-        const out = first && fault !== "ok" ? [events.stepFailed(fault), events.executionFailed(fault)] : [events.textDelta("hi"), events.stepEnded("stop"), events.executionSucceeded()]
+        const out =
+          first && fault !== "ok" && fault !== "hang" ? [events.stepFailed(fault), events.executionFailed(fault)] : [events.textDelta("hi"), events.stepEnded("stop"), events.executionSucceeded()]
         for (const event of out) sessions.dispatch(event)
       })
     }
@@ -156,14 +159,49 @@ describe("security regression test: what moves the breaker every app shares", ()
     }
   })
 
-  // Gap: a provider rejection (4xx) is classed by words in its text, and the text can echo what the caller wrote, so a caller who
-  // can make a provider's 400 mention a quota, a rate limit, an overload or a sign-in failure makes it a failure of the model.
-  test.failing("a 400 rejection whose text mentions a rate limit, a quota, an overload or a sign-in is still the caller's error, not the model's", async () => {
+  test("a 400 rejection whose text mentions a rate limit, a quota, an overload or a sign-in is still the caller's error, not the model's", async () => {
     for (const word of ["rate limit", "usage limit", "quota", "overloaded", "unauthorized"]) {
       const run = host({ type: "provider.invalid-request", status: 400, message: `invalid tool_use_id: ${word}`, response: { body: `{"error":"${word}"}` } })
       for (let i = 0; i < 4; i++) await ask(run.caller, "noisy")
       expect(run.breaker.cooling(), word).toEqual([])
     }
+  })
+
+  test("the deadline waits for the caller's prompt: a caller that reports its preparation is timed from `onPrompted`, one that reports nothing from the start", async () => {
+    const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+    const targets: string[] = []
+    const inner = {
+      stream(request: Parameters<typeof plugRequest>[0] & { ref: { providerID: string } }, context: CallContext): AsyncIterable<PlugEvent> {
+        const target = request.ref.providerID
+        targets.push(target)
+        return (async function* () {
+          if (target === "a") {
+            // Prepares for twice the deadline, then prompts and answers at once.
+            context.onPreparing?.()
+            await pause(DEADLINE * 2)
+            context.onPrompted?.()
+          } else if (target === "b") await pause(DEADLINE * 3) // Reports nothing, so it is timed from the start: it is cut off.
+          yield ev.text(`from ${target}`)
+          yield ev.finish()
+        })()
+      },
+    }
+    const breaker = createBreaker()
+    const caller = withFallbacks(inner as never, { options, loadCatalog: async () => CATALOG, breaker })
+    const prepared = await ask(caller, "alpha")
+    expect(textOf(prepared)).toBe("from a")
+    expect(targets).toEqual(["a"])
+    // The same chain with the first target skipped: `b` reports nothing and is cut off at the deadline, as before.
+    targets.length = 0
+    const slowAll = withFallbacks(
+      {
+        stream: (request: never, context: CallContext) => (context.signal ? inner.stream({ ...(request as object), ref: { providerID: "b" } } as never, context) : inner.stream(request, context)),
+      } as never,
+      { options, loadCatalog: async () => CATALOG, breaker: createBreaker() },
+    )
+    expect(textOf(await ask(slowAll, "alpha"))).toBe("from b")
+    expect(targets.length).toBeGreaterThan(1)
+    expect(breaker.cooling()).toEqual([])
   })
 
   test("a provider's own rate limit does open it, for every app: the documented behaviour", async () => {
@@ -190,25 +228,37 @@ describe("security regression test: what moves the breaker every app shares", ()
     })
     afterAll(() => slow.close())
 
-    // Gap: the first-event deadline starts before the request's remote images are fetched, so an image host that answers slowly
-    // spends the deadline of a model that was never called, and is counted as that model's silence.
-    test.failing("a slow remote image is not the model's silence: a target that was never prompted is not counted against", async () => {
+    const withImage = (url: string) => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: [
+            { type: "text" as const, text: "look" },
+            { type: "media" as const, url },
+          ],
+        },
+      ],
+    })
+    const providers = (run: ReturnType<typeof host>) => run.port.prompted.map((prompt) => run.port.created.find((session) => session.id === prompt.sessionID)!.model.providerID)
+
+    test("a slow remote image is not the model's silence: the deadline runs from the prompt, and a target that was never prompted is not counted against", async () => {
       const run = host("ok", { allow: ["127.0.0.1"], timeoutMs: 5_000 })
-      const withImage = {
-        messages: [
-          {
-            role: "user" as const,
-            content: [
-              { type: "text" as const, text: "look" },
-              { type: "media" as const, url: `http://127.0.0.1:${slow.port}/slow.png` },
-            ],
-          },
-        ],
-      }
-      for (let i = 0; i < 2; i++) await ask(run.caller, "slowpoke", withImage)
-      // The deadline fired on the first two targets while the image was still coming; neither was ever prompted.
-      expect(run.port.prompted.every((prompt) => run.port.created.find((session) => session.id === prompt.sessionID)!.model.providerID === "c")).toBe(true)
+      for (let i = 0; i < 2; i++) expect(textOf(await ask(run.caller, "slowpoke", withImage(`http://127.0.0.1:${slow.port}/slow.png`)))).toBe("hi")
+      // The image took four times the deadline, and the first target still answered: it was prompted once per request, never skipped.
+      expect(providers(run)).toEqual(["a", "a"])
       expect(run.breaker.cooling()).toEqual([])
+    })
+
+    test("the deadline still runs from the prompt: a target that is prompted and stays silent falls back, however long the image took", async () => {
+      const run = host("hang", { allow: ["127.0.0.1"], timeoutMs: 5_000 })
+      const started = performance.now()
+      expect(textOf(await ask(run.caller, "slowpoke", withImage(`http://127.0.0.1:${slow.port}/slow.png`)))).toBe("hi")
+      expect(providers(run)).toEqual(["a", "b"])
+      expect(performance.now() - started).toBeGreaterThanOrEqual(600 + DEADLINE - 20)
+      // A silence after the prompt is the target's, and counts.
+      expect(run.breaker.cooling()).toEqual([])
+      await ask(run.caller, "other")
+      expect(run.breaker.cooling().map((entry) => entry.model)).toEqual(["a/x"])
     })
   })
 })

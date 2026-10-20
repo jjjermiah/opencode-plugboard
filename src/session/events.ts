@@ -250,12 +250,15 @@ function toPlugError(error: RawError | undefined, fallback: string): PlugError {
   }
   if (type.startsWith("provider.")) {
     const detail = `${error?.message ?? ""}\n${error?.response?.body ?? ""}`
-    if (USAGE_LIMIT.test(detail)) return { status: 429, kind: "rate_limit", code: "quota_exceeded", message: "The model provider's usage quota is exhausted" }
-    if (RATE_LIMIT.test(detail)) return { status: 429, kind: "rate_limit", code: "rate_limited", message: "The model provider is rate limiting requests; retry later" }
+    // The wording decides a class only where the status leaves it open: none, 429 (handled above) or a server status. A provider's 4xx is a
+    // refusal of this request, whatever its text says (the text can echo what the caller wrote), so it never reads as the provider's state.
+    const open = status === undefined || status >= 500
+    if (open && USAGE_LIMIT.test(detail)) return { status: 429, kind: "rate_limit", code: "quota_exceeded", message: "The model provider's usage quota is exhausted" }
+    if (open && RATE_LIMIT.test(detail)) return { status: 429, kind: "rate_limit", code: "rate_limited", message: "The model provider is rate limiting requests; retry later" }
     // Its own 529 or an overloaded_error. Sent as 503 here; the Messages route answers it as 529 (src/anthropic/response.ts).
-    if (status === 529 || OVERLOADED.test(detail)) return { status: 503, kind: "server", code: "provider_overloaded", message: "The model provider is overloaded; retry later" }
+    if (status === 529 || (open && OVERLOADED.test(detail))) return { status: 503, kind: "server", code: "provider_overloaded", message: "The model provider is overloaded; retry later" }
     if (MODEL_NOT_FOUND.test(detail)) return { status: 404, kind: "not_found", code: "model_not_found", param: "model", message: "The model provider does not know the requested model" }
-    if (AUTH_FAILURE.test(detail)) return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
+    if (open && AUTH_FAILURE.test(detail)) return { status: 502, kind: "server", code: "provider_auth_failed", message: AUTH_MESSAGE }
     if (SIGNATURE_REJECTED.test(detail) && (status === undefined || status === 400 || status === 422))
       return { status: status ?? 400, kind: "invalid_request", code: "provider_rejected_request", message: "The model provider rejected the signature of a replayed thinking block" }
     if (status === 404) return { status, kind: "not_found", code: "provider_rejected_request", message: "The model provider rejected the request" }

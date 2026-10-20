@@ -16,7 +16,8 @@ import { encodeError as encodeAnthropicError, messagesStatus } from "../anthropi
 import { encodeError as encodeOpenAiError } from "../openai/response.js"
 import type { RouteHost } from "../openai/route.js"
 import { retentionDaysFor } from "../responses/state.js"
-import { detectFile } from "./content.js"
+import { MAX_TOTAL_IMAGE_BYTES } from "../session/media.js"
+import { detectFile, kindOf } from "./content.js"
 import { parseFormUpload } from "./multipart.js"
 import { MAX_REFS, fileRefs, inlineFiles, type FileApi, type InlineFile } from "./refs.js"
 import { MAX_FILE_BYTES, type FileRecord } from "./state.js"
@@ -222,6 +223,9 @@ export async function serveFiles(host: RouteHost, { app, match, request, url, re
   }
 }
 
+/** What a file adds to the request once inlined: text as itself, an image or a PDF as its base64 data URL (the size the media limit counts). */
+const inlineSize = (record: FileRecord): number => (kindOf(record.mime) === "text" ? record.bytes : Math.ceil(record.bytes / 3) * 4)
+
 /**
  * The files a request names, read under the caller's own app and keyed by id. An id the app does not hold is simply absent
  * (the same for unknown, deleted, expired or another app's, I33); `inlineFiles` turns that into the 404. More than `MAX_REFS`
@@ -232,6 +236,11 @@ export async function loadFiles(host: RouteHost, app: string, ids: ReadonlyArray
   if (ids.length === 0) return files
   if (ids.length > MAX_REFS) return bad(`A request may name at most ${MAX_REFS} files; this one names ${ids.length}`, "too_many_files")
   const days = retentionDaysFor(host.options, app)
+  // The request's files together are held to the limit the media step puts on its images, and that is checked on their sizes (metadata
+  // only) before any file's bytes are read: a few bytes of request naming many large files never makes the server read them all.
+  let total = 0
+  for (const record of await scope.race(Promise.all(ids.map((id) => host.files.head(app, id, days))))) if (record !== undefined) total += inlineSize(record)
+  if (total > MAX_TOTAL_IMAGE_BYTES) return bad("The request's files are larger than 50 MB in total", "files_too_large")
   for (const stored of await scope.race(Promise.all(ids.map((id) => host.files.read(app, id, days)))))
     if (stored !== undefined) files.set(stored.record.id, { mime: stored.record.mime, base64: stored.base64 })
   return files

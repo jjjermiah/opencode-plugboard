@@ -1,7 +1,7 @@
 /**
  * Security review round 3 (since 0.37.0), the Files APIs and the Gemini resumable upload: what each guarantee is and a test that
- * would fail if it stopped holding. A test that passes is a guarantee that holds; a `test.failing` marks a real gap (it flips to a
- * failure when the gap is fixed, so the marker is removed with the fix).
+ * would fail if it stopped holding. The gaps the review found were first written as `test.failing`; each marker was removed with its
+ * fix, so every test here is a guarantee that holds.
  *
  * Guarantees: another app's file or upload is never reachable (I33); an upload id is a capability for one upload and nothing else;
  * the per-app caps stop growth; a download can never be rendered by a browser; an error never carries a host path or a key.
@@ -57,6 +57,7 @@ const piece = (path: string, command: string, offset: number, bytes: Buffer, hea
 
 interface Held {
   readonly app: string
+  readonly keyDigest?: Buffer
   readonly chunks: Buffer[]
   readonly received: number
 }
@@ -189,25 +190,114 @@ describe("security regression test: the keyless chunk path (an upload id stands 
     expect(held().has(uploadId(old))).toBe(false)
   })
 
-  // Gap: the id outlives the key. A key revoked through the admin API (or rotated out) stops working at once on every route, but a
-  // chunk for an upload that key started is accepted for up to 10 minutes and still makes the file under the revoked key's app.
-  test.failing("a revoked key ends its uploads: the id no longer finishes one", async () => {
+  test("a revoked key ends its uploads: the id no longer finishes one, and another key of the app does not either", async () => {
     const keys = createKeyStore({ state: createKeyState(), storage: new FakeStorage() })
     const { server } = await route({ r3admin: "key-r3admin" }, { adminKey: "admin-r3-secret" }, undefined, { keys })
-    const made = (await server.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer("admin-r3-secret"), body: { app: "r3runtime" } })).json()
-    const path = target(await server.send(begin(made.key)))
-    expect((await server.send({ method: "DELETE", path: `/plugboard/admin/keys/${made.id}`, headers: bearer("admin-r3-secret") })).status).toBe(200)
-    expect((await server.send({ path: "/v1beta/files", headers: goog(made.key) })).status).toBe(401)
+    const mint = async () => (await server.send({ method: "POST", path: "/plugboard/admin/keys", headers: bearer("admin-r3-secret"), body: { app: "r3runtime" } })).json()
+    const old = await mint()
+    const fresh = await mint()
+    const path = target(await server.send(begin(old.key)))
+    const second = target(await server.send(begin(fresh.key)))
+    expect(held().get(uploadId(path))?.app).toBe("r3runtime")
+    expect((await server.send({ method: "DELETE", path: `/plugboard/admin/keys/${old.id}`, headers: bearer("admin-r3-secret") })).status).toBe(200)
+    expect((await server.send({ path: "/v1beta/files", headers: goog(old.key) })).status).toBe(401)
     expect((await server.send(piece(path, "upload, finalize", 0, PNG))).status).toBe(401)
+    expect(held().has(uploadId(path))).toBe(false)
+    // The key that started the other upload is live, so that upload still finishes, with its key or without one.
+    expect((await server.send(piece(second, "upload, finalize", 0, PNG))).status).toBe(200)
+    // An upload of a key that is revoked is gone for the app's other keys too.
+    const dropped = target(await server.send(begin(fresh.key)))
+    await server.send({ method: "DELETE", path: `/plugboard/admin/keys/${fresh.id}`, headers: bearer("admin-r3-secret") })
+    const replacement = await mint()
+    expect((await server.send(piece(dropped, "upload, finalize", 0, PNG, goog(replacement.key)))).status).toBe(404)
+    expect(held().has(uploadId(dropped))).toBe(false)
   })
 
-  // Gap: an empty chunk is kept as an entry of the upload's chunk list, and the list is bounded only by the ten minutes the id lives.
-  test.failing("a chunk with no bytes adds nothing to what the upload holds", async () => {
+  test("a keyless server's uploads need no key to stay good, whatever token a start carried", async () => {
+    const { server } = await route({}, {})
+    const started = await server.send({
+      method: "POST",
+      path: "/upload/v1beta/files",
+      headers: { "x-goog-api-key": "any-token", "x-goog-upload-protocol": "resumable", "x-goog-upload-command": "start" },
+      body: {},
+    })
+    expect(started.status).toBe(200)
+    expect(held().get(uploadId(target(started)))?.keyDigest).toBeUndefined()
+    expect((await server.send(piece(target(started), "upload, finalize", 0, PNG))).status).toBe(200)
+  })
+
+  test("a chunk with no bytes adds nothing to what the upload holds, and the offset still moves by what was sent", async () => {
     const { server } = await route({ r3empty: "key-r3empty" })
     const path = target(await server.send(begin("key-r3empty")))
     for (let i = 0; i < 25; i++) expect((await server.send(piece(path, "upload", 0, Buffer.alloc(0), goog("key-r3empty")))).status).toBe(200)
-    expect(held().get(uploadId(path))?.chunks.length ?? 0).toBeLessThanOrEqual(1)
-    await server.send(piece(path, "cancel", 0, Buffer.alloc(0), goog("key-r3empty")))
+    expect(held().get(uploadId(path))?.chunks.length ?? 0).toBe(0)
+    expect((await server.send(piece(path, "upload", 0, PNG.subarray(0, 10), goog("key-r3empty")))).headers["x-goog-upload-size-received"]).toBe("10")
+    const done = await server.send(piece(path, "upload, finalize", 10, PNG.subarray(10), goog("key-r3empty")))
+    expect(done.status).toBe(200)
+    expect(done.json().file.sizeBytes).toBe(String(PNG.length))
+  })
+
+  test("one timer drops the uploads that have expired when nothing else touches them, and stops when none are held", async () => {
+    const slot = Symbol.for("opencode-plugboard.upload-sweep/1")
+    const holder = globalThis as unknown as Record<symbol, unknown>
+    if (holder[slot] !== undefined) clearInterval(holder[slot] as ReturnType<typeof setInterval>)
+    holder[slot] = undefined
+    held().clear()
+    const ticks: Array<() => void> = []
+    const intervals: unknown[] = []
+    const set = spyOn(globalThis, "setInterval").mockImplementation(((tick: () => void, ms: number) => {
+      // Only the sweep's own timer: nothing else here is a minute long.
+      if (ms === 60_000) {
+        ticks.push(tick)
+        intervals.push(ms)
+      }
+      return { unref() {} }
+    }) as never)
+    const clear = spyOn(globalThis, "clearInterval").mockImplementation((() => {}) as never)
+    const real = Date.now
+    try {
+      const { server } = await route({ r3timer: "key-r3timer" })
+      const first = target(await server.send(begin("key-r3timer")))
+      const second = target(await server.send(begin("key-r3timer")))
+      // One timer for both, a minute apart.
+      expect(ticks).toHaveLength(1)
+      expect(intervals).toEqual([60_000])
+      expect(held().has(uploadId(first)) && held().has(uploadId(second))).toBe(true)
+      ticks[0]!()
+      expect(held().size).toBe(2)
+      expect(clear).not.toHaveBeenCalled()
+      const clock = spyOn(Date, "now").mockImplementation(() => real() + 10 * 60 * 1000 + 1)
+      try {
+        ticks[0]!()
+      } finally {
+        clock.mockRestore()
+      }
+      expect(held().size).toBe(0)
+      expect(clear).toHaveBeenCalledTimes(1)
+      expect(holder[slot]).toBeUndefined()
+    } finally {
+      set.mockRestore()
+      clear.mockRestore()
+      holder[slot] = undefined
+    }
+  })
+
+  test("any request to the upload route drops the uploads that have expired, not only the start of a new one", async () => {
+    const { server } = await route({ r3sweep: "key-r3sweep", r3sweep2: "key-r3sweep2" })
+    const old = target(await server.send(begin("key-r3sweep")))
+    await server.send(piece(old, "upload", 0, Buffer.alloc(1000, 1), goog("key-r3sweep")))
+    const other = target(await server.send(begin("key-r3sweep2")))
+    expect(held().has(uploadId(old))).toBe(true)
+    const real = Date.now
+    const clock = spyOn(Date, "now").mockImplementation(() => real() + 10 * 60 * 1000 + 1)
+    try {
+      // A query on another app's upload, which is itself expired here: the sweep drops both.
+      await server.send(piece(other, "query", 0, Buffer.alloc(0), goog("key-r3sweep2")))
+    } finally {
+      clock.mockRestore()
+    }
+    expect(held().has(uploadId(old))).toBe(false)
+    expect(held().has(uploadId(other))).toBe(false)
   })
 })
 
@@ -260,20 +350,121 @@ describe("security regression test: per-app caps stop growth", () => {
     expect(inline.status).toBe(413)
   })
 
-  // Gap: the count and byte checks read the index and then write, with nothing between them, so uploads in flight together all pass a
-  // check that only one of them should. The overshoot is bounded by how many uploads are in flight, not by the cap.
-  test.failing("a burst of uploads never leaves an app with more files than its count cap", async () => {
+  test("a burst of uploads never leaves an app with more files than its count cap", async () => {
     const files = createFileStore({ storage: new FakeStorage(), state: createFileState(), limits: { maxFiles: 3 } })
     const saved = await Promise.all(Array.from({ length: 12 }, (_, i) => files.save("burst", 30, { filename: `f${i}.txt`, mime: "text/plain", purpose: "user_data", bytes: Buffer.from(`file ${i}`) })))
     expect(saved.filter((result) => "id" in result)).toHaveLength(3)
+    expect(saved.filter((result) => "code" in result).every((result) => (result as { code: string }).code === "file_limit_exceeded")).toBe(true)
     expect(await files.ids("burst", 30)).toHaveLength(3)
   })
 
-  test.failing("a burst of uploads never leaves an app past its byte cap", async () => {
+  test("a burst of uploads never leaves an app past its byte cap", async () => {
     const files = createFileStore({ storage: new FakeStorage(), state: createFileState(), limits: { maxAppBytes: 100 } })
     await Promise.all(Array.from({ length: 12 }, (_, i) => files.save("burst", 30, { filename: `f${i}.txt`, mime: "text/plain", purpose: "user_data", bytes: Buffer.alloc(40, 0x61) })))
     const sizes = await Promise.all((await files.ids("burst", 30)).map((id) => files.head("burst", id, 30)))
     expect(sizes.reduce((sum, record) => sum + (record?.bytes ?? 0), 0)).toBeLessThanOrEqual(100)
+    expect(sizes).toHaveLength(2)
+  })
+
+  test("a burst over HTTP is held to the cap too, and another app's burst does not wait for it", async () => {
+    const files = createFileStore({ storage: new FakeStorage(), state: createFileState(), limits: { maxFiles: 2 } })
+    const { server } = await route({ r3burst: "key-r3burst", r3burst2: "key-r3burst2" }, {}, files)
+    const send = (key: string, i: number) => upload(server, key, { bytes: Buffer.from(`file ${i}`), name: `f${i}.txt`, type: "text/plain" })
+    const replies = await Promise.all([...Array.from({ length: 8 }, (_, i) => send("key-r3burst", i)), send("key-r3burst2", 0)])
+    expect(replies.slice(0, 8).filter((reply) => reply.status === 200)).toHaveLength(2)
+    expect(replies[8]!.status).toBe(200)
+    expect((await server.send({ path: "/v1/files", headers: bearer("key-r3burst") })).json().data).toHaveLength(2)
+  })
+
+  test("a failed save does not hold up the app's next one", async () => {
+    const storage = new FakeStorage()
+    const files = createFileStore({ storage, state: createFileState() })
+    storage.failPuts = true
+    await expect(files.save("queue", 30, { filename: "a.txt", mime: "text/plain", purpose: "user_data", bytes: Buffer.from("a") })).rejects.toThrow()
+    storage.failPuts = false
+    expect(await files.save("queue", 30, { filename: "b.txt", mime: "text/plain", purpose: "user_data", bytes: Buffer.from("b") })).toHaveProperty("id")
+  })
+
+  test("the files a request names are checked by their sizes before any is read: too many large ones are a 400 and no file's bytes are read", async () => {
+    const real = createFileStore({ storage: new FakeStorage(), state: createFileState() })
+    let reads = 0
+    const MIB = 1024 * 1024
+    const claimed = new Map<string, number>()
+    // The store reports sizes as if each file were large; the point is that the sizes decide before `read` is called.
+    const files: FileStore = {
+      ...real,
+      head: async (app, id, days) => {
+        const record = await real.head(app, id, days)
+        return record === undefined ? undefined : { ...record, bytes: claimed.get(id) ?? record.bytes }
+      },
+      read: (app, id, days) => {
+        reads++
+        return real.read(app, id, days)
+      },
+    }
+    const { server, caller } = await route({ r3size: "key-r3size" }, {}, files)
+    const images = await Promise.all([1, 2, 3].map(() => upload(server, "key-r3size", { bytes: PNG, name: "p.png" })))
+    for (const reply of images) claimed.set(reply.json().id, 20 * MIB)
+    const chat = (ids: string[]) => ({
+      method: "POST",
+      path: "/v1/chat/completions",
+      headers: bearer("key-r3size"),
+      body: { model: "test/echo", messages: [{ role: "user", content: ids.map((id) => ({ type: "file", file: { file_id: id } })) }] },
+    })
+    // Two of them are 40 MiB of image (about 53 MiB as data URLs), three are more: over the media limit before any read.
+    const over = await server.send(chat(images.map((reply) => reply.json().id)))
+    expect(over.status).toBe(400)
+    expect(over.json().error).toMatchObject({ code: "files_too_large" })
+    expect(reads).toBe(0)
+    expect(caller.calls).toEqual([])
+    // One is within the limit and is read and used as before.
+    expect((await server.send(chat([images[0]!.json().id]))).status).toBe(200)
+    expect(reads).toBe(1)
+    // The same for Responses.
+    const responses = await server.send({
+      method: "POST",
+      path: "/v1/responses",
+      headers: bearer("key-r3size"),
+      body: { model: "test/echo", input: [{ role: "user", content: images.map((reply) => ({ type: "input_image", file_id: reply.json().id })) }] },
+    })
+    expect(responses.status).toBe(400)
+    expect(responses.json().error.code).toBe("files_too_large")
+    expect(reads).toBe(1)
+  })
+})
+
+describe("security regression test: the type a text upload declares", () => {
+  test("a text type declared in the part's own headers is the declared type, whatever the runtime's parser made of the file name", async () => {
+    const { server } = await route({ r3decl: "key-r3decl" })
+    const send = (name: string, type: string, bytes: Buffer) => upload(server, "key-r3decl", { bytes, name, type })
+    const notes = await send("notes.bin", "text/plain", Buffer.from("plain words"))
+    expect(notes.status, notes.text).toBe(200)
+    expect((await server.send({ path: `/v1/files/${notes.json().id}/content`, headers: bearer("key-r3decl") })).headers["content-type"]).toBe("text/plain; charset=utf-8")
+    const data = await send("data.dat", "application/json", Buffer.from('{"a":1}'))
+    expect(data.status, data.text).toBe(200)
+    // The bytes still decide: a declared text type never makes binary text, an image or a PDF anything but what it is.
+    expect((await send("binary.txt", "text/plain", Buffer.from([0xff, 0xfe, 0x00]))).status).toBe(400)
+    const png = await send("p.txt", "text/plain", PNG)
+    expect(png.status).toBe(200)
+    expect((await server.send({ path: `/v1/files/${png.json().id}/content`, headers: bearer("key-r3decl") })).headers["content-type"]).toBe("image/png")
+    // A declared image type for text is still refused, and so is a declared type that is no type.
+    expect((await send("t.txt", "image/png", Buffer.from("words"))).status).toBe(400)
+    expect((await send("t.bin", "nonsense", Buffer.from("words"))).status).toBe(400)
+  })
+
+  test("the first file part decides, and a field or a later part cannot change it", async () => {
+    const { server } = await route({ r3decl2: "key-r3decl2" })
+    const body = Buffer.from(
+      '--R3\r\nContent-Disposition: form-data; name="purpose"\r\nContent-Type: text/html\r\n\r\nuser_data\r\n' +
+        '--R3\r\nContent-Disposition: form-data; name="file"; filename="a.bin"\r\nContent-Type: text/plain\r\n\r\nfirst\r\n' +
+        '--R3\r\nContent-Disposition: form-data; name="file"; filename="b.bin"\r\nContent-Type: image/png\r\n\r\nsecond\r\n--R3--\r\n',
+    )
+    const made = await server.send({ method: "POST", path: "/v1/files", headers: { ...bearer("key-r3decl2"), "content-type": "multipart/form-data; boundary=R3" }, body })
+    expect(made.status, made.text).toBe(200)
+    expect(made.json().filename).toBe("a.bin")
+    const content = await server.send({ path: `/v1/files/${made.json().id}/content`, headers: bearer("key-r3decl2") })
+    expect(content.text).toBe("first")
+    expect(content.headers["content-type"]).toBe("text/plain; charset=utf-8")
   })
 })
 

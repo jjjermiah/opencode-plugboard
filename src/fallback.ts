@@ -196,20 +196,37 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
     const bounded = deadline > 0 && following
     const deadlineAbort = bounded ? new AbortController() : undefined
     let timedOut = false
-    const timer = deadlineAbort
-      ? setTimeout(() => {
-          timedOut = true
-          // Cancelled by plugboard, not by a client that left: the caller interrupts the attempt at once and gives it no settle window (#391).
-          deadlineAbort.abort(new RequestAborted("cancelled"))
-        }, deadline)
-      : undefined
+    // The deadline is the model's silence, so it runs from the prompt: a caller that reports its preparation (`onPreparing`, the session
+    // caller: remote images, the session) holds it until `onPrompted`. A caller that reports neither is timed from the start of the attempt.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const arm = () => {
+      clearTimeout(timer)
+      if (deadlineAbort === undefined) return
+      timer = setTimeout(() => {
+        timedOut = true
+        // Cancelled by plugboard, not by a client that left: the caller interrupts the attempt at once and gives it no settle window (#391).
+        deadlineAbort.abort(new RequestAborted("cancelled"))
+      }, deadline)
+    }
+    arm()
     const signal = deadlineAbort ? AbortSignal.any([context.signal, deadlineAbort.signal]) : context.signal
 
     let iterator: AsyncIterator<PlugEvent> | undefined
     let first: IteratorResult<PlugEvent> | undefined
     let thrown: { readonly error: unknown } | undefined
     try {
-      iterator = inner.stream(next, { ...context, signal, fallbackNext: following, onRecord: (id, directory) => void (recorded = { id, directory }) })[Symbol.asyncIterator]()
+      iterator = inner
+        .stream(next, {
+          ...context,
+          signal,
+          fallbackNext: following,
+          onRecord: (id, directory) => void (recorded = { id, directory }),
+          onPreparing: () => clearTimeout(timer),
+          onPrompted: () => {
+            if (!timedOut) arm()
+          },
+        })
+        [Symbol.asyncIterator]()
       first = await iterator.next()
     } catch (error) {
       thrown = { error }

@@ -444,6 +444,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       }
 
       try {
+        // The chain's first-event deadline waits for the prompt (`onPrompted`): what comes before it is not the model's silence.
+        context.onPreparing?.()
         // 1. Prompt files: images become data URLs (http(s) ones are fetched once).
         const images = await prepareImages(request, context.signal, remoteImages, deps.onImageFetch)
         const invalid = checkPreparation(request, images.length, maxTools)
@@ -589,6 +591,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (context.signal.aborted) return onAbort()
         const owned = collector
         promptStarted = true
+        context.onPrompted?.()
         void port.prompt({ sessionID, text: renderTranscript(request), files: images }).catch((error) => {
           logError("session.prompt_failed", { requestID, app, model: request.model, error: describeError(error) })
           if (owned.terminal) return

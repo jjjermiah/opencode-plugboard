@@ -2,7 +2,7 @@
  * Security review round 3 (since 0.37.0), `opencode-plugboard init`: the file it writes holds an app key, so it is a secret.
  *
  * Guarantees: the key is 256 random bits and is printed once; a refusal writes nothing and prints no key; no flag reaches the
- * config or the output as anything but the value it was checked to be. A `test.failing` marks a real gap.
+ * config or the output as anything but the value it was checked to be. The file's mode is the one the review found open, fixed with it.
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
@@ -30,7 +30,6 @@ function run(args: string[], extra: Partial<CliEnv> = {}) {
 }
 const mode = (path: string) => statSync(path).mode & 0o777
 const posix = process.platform === "win32" ? test.skip : test
-const posixFailing = process.platform === "win32" ? test.skip : test.failing
 
 /** Runs `body` under a usual umask, so a test does not depend on the machine's. */
 function withUmask<T>(mask: number, body: () => T): T {
@@ -43,12 +42,19 @@ function withUmask<T>(mask: number, body: () => T): T {
 }
 
 describe("security regression test: init and the secret it writes", () => {
-  // Gap: the file is written with the process's default mode, so under the usual umask 022 a new config (which holds the key in
-  // clear text) is readable by every local user. An existing file keeps its own mode, so only a new file is affected.
-  posixFailing("a new config that holds the key is readable by its owner alone", () => {
-    const path = join(tmp(), "nested", "opencode.jsonc")
+  posix("a new config that holds the key is readable by its owner alone, and so is a directory init made for it", () => {
+    const root = tmp()
+    const path = join(root, "nested", "deeper", "opencode.jsonc")
     withUmask(0o022, () => expect(run(["init", "--config", path]).code).toBe(0))
-    expect(mode(path) & 0o077).toBe(0)
+    expect(mode(path)).toBe(0o600)
+    expect(mode(join(root, "nested"))).toBe(0o700)
+    expect(mode(join(root, "nested", "deeper"))).toBe(0o700)
+    // A directory that was already there keeps its mode.
+    const existing = join(root, "existing")
+    mkdirSync(existing, { mode: 0o755 })
+    chmodSync(existing, 0o755)
+    withUmask(0o022, () => expect(run(["init", "--config", join(existing, "opencode.jsonc")]).code).toBe(0))
+    expect(mode(existing)).toBe(0o755)
   })
 
   posix("a config that already exists keeps its mode: a replacement never loosens it", () => {

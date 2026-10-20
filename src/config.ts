@@ -1342,6 +1342,19 @@ function digestsOf(keys: Readonly<Record<string, string>>): ReadonlyArray<readon
   return digests
 }
 
+/** The digest of the bearer credential in `authorization`, or undefined when there is none. Only the digest is ever kept. */
+export function credentialDigest(authorization: string | undefined): Buffer | undefined {
+  const token = /^Bearer\s+(\S+)\s*$/i.exec(authorization ?? "")?.[1]
+  return token === undefined ? undefined : sha256(token)
+}
+
+/** Whether a key with this digest is still a config key or a runtime key: false once it was revoked or rotated out. */
+export function keyIsLive(options: PlugboardOptions, digest: Buffer, runtime: ReadonlyArray<RuntimeDigest> = []): boolean {
+  let live = false
+  for (const [, expected] of [...digestsOf(options.keys), ...runtime]) if (timingSafeEqual(digest, expected)) live = true
+  return live
+}
+
 /** Who may read `GET /plugboard/usage`: the admin key (every app), or one app (`default` when keyless). */
 export type UsageScope = { readonly admin: true } | { readonly admin: false; readonly app: string }
 

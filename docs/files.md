@@ -14,7 +14,7 @@ Plugboard keeps only what it can send to a model exactly as it sends inline data
 | PDF | `application/pdf` | A PDF file part, as a `data:application/pdf` URL. |
 | Text | `text/*` or JSON, as UTF-8, up to 4 MiB | A text part with the file's content. |
 
-The type comes from the bytes. An image or a PDF is told by its first bytes, whatever name or `Content-Type` the upload carried: a PNG called `notes.txt` is stored as `image/png`. Text has no signature, so it is accepted only when the upload also declares a text type (`text/*`, `application/json`) or has a text extension (`.txt`, `.md`, `.csv`, `.json`, ...), and its bytes are valid UTF-8 with no NUL byte. JSON must parse. Anything else is a 400 at upload that names the accepted kinds, so a file never fails later in a request. An empty file is a 400.
+The type comes from the bytes. An image or a PDF is told by its first bytes, whatever name or `Content-Type` the upload carried: a PNG called `notes.txt` is stored as `image/png`. Text has no signature, so it is accepted only when the upload also declares a text type (`text/*`, `application/json`, read from the file part's own `Content-Type` header, whatever its file name) or has a text extension (`.txt`, `.md`, `.csv`, `.json`, ...), and its bytes are valid UTF-8 with no NUL byte. JSON must parse. Anything else is a 400 at upload that names the accepted kinds, so a file never fails later in a request. An empty file is a 400.
 
 ## Limits
 
@@ -24,9 +24,9 @@ The type comes from the bytes. An image or a PDF is told by its first bytes, wha
 | Files per app | 1000 |
 | Bytes per app | 1 GiB |
 | Kept for | The app's `history.maxAgeDays`, 30 days when unset or `0`. The same rule as [stored responses](responses.md#stored-responses). |
-| Files in one request | 32 |
+| Files in one request | 32, and 50 MB together (an image or a PDF counts as its base64 size, a text file as its bytes) |
 
-An upload past the file or byte limit is a 400 (`file_limit_exceeded`, `file_storage_full`). Plugboard never deletes a file to make room, because a caller may still be using it. An upload is read under the same body admission as any request body (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`), so a large upload cannot take more memory than the cap. The limits above are fixed. `apps.<name>.endpoints` can list `files` to allow or refuse every Files route (see [Endpoint names](configuration.md#endpoint-names)).
+An upload past the file or byte limit is a 400 (`file_limit_exceeded`, `file_storage_full`). Plugboard never deletes a file to make room, because a caller may still be using it. The count and byte checks and the write that follows are one step per app, so uploads in flight together never leave an app past either limit. The files a request names together are checked against the 50 MB on their sizes alone, before any file's bytes are read, and a request over it is a 400 `files_too_large`. An upload is read under the same body admission as any request body (`limits.maxBodyBytesInFlight`, `limits.bodyReadTimeoutMs`), so a large upload cannot take more memory than the cap. The limits above are fixed. `apps.<name>.endpoints` can list `files` to allow or refuse every Files route (see [Endpoint names](configuration.md#endpoint-names)).
 
 ## OpenAI
 
@@ -99,7 +99,7 @@ client.beta.messages.create(
 
 A name is `files/` and the 32 hex characters of the file's id (`file-<hex>` on the other APIs). Errors use Google's body. The key is read as on the other Gemini routes.
 
-The resumable upload is held in memory until its last chunk arrives: `start` answers an `X-Goog-Upload-URL`, the chunks go there with `X-Goog-Upload-Command: upload` (the last with `finalize`) and the right `X-Goog-Upload-Offset`, and the finalizing answer carries the file and `X-Goog-Upload-Status: final`. An app holds at most 4 unfinished uploads (a fifth start is a 429), each for 10 minutes. The upload id belongs to its app, and a restart drops unfinished uploads (the caller starts again). The upload URL is the credential of its chunks, as Google's is: `google-genai` (Python) sends the chunks with no key, so a chunk request with no key at all is accepted when it names a live upload id, and it runs as the app that started the upload. An unknown id is a 401, and a request with a key is checked as usual (another app's key gets a 404).
+The resumable upload is held in memory until its last chunk arrives: `start` answers an `X-Goog-Upload-URL`, the chunks go there with `X-Goog-Upload-Command: upload` (the last with `finalize`) and the right `X-Goog-Upload-Offset`, and the finalizing answer carries the file and `X-Goog-Upload-Status: final`. An app holds at most 4 unfinished uploads (a fifth start is a 429), each for 10 minutes. The upload id belongs to its app, and a restart drops unfinished uploads (the caller starts again). The upload URL is the credential of its chunks, as Google's is: `google-genai` (Python) sends the chunks with no key, so a chunk request with no key at all is accepted when it names a live upload id, and it runs as the app that started the upload. An unknown id is a 401, and a request with a key is checked as usual (another app's key gets a 404). An upload stays good only while the key that started it is live: once that key is revoked or rotated out, the upload is gone (a 404 with a key, a 401 without). A chunk with no bytes adds nothing, and expired uploads are dropped by a timer and by any request to the upload route, so their bytes are not held for the next upload to start.
 
 Name a stored file in a request with `fileData`:
 
