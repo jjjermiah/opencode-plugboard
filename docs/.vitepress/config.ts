@@ -19,6 +19,11 @@ export default defineConfig({
   base: "/opencode-plugboard/",
   cleanUrls: true,
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/opencode-plugboard/logo.svg" }]],
+  // Preload the headline font (the wordmark uses it on every page), so the text does not shift when it arrives.
+  transformHead: ({ assets }) => {
+    const font = assets.find((file) => /instrument-serif-latin-400-italic.*\.woff2$/.test(file))
+    return font ? [["link", { rel: "preload", href: font, as: "font", type: "font/woff2", crossorigin: "" }]] : []
+  },
   // A fence tagged `jsonc plugboard` or `jsonc plugboard-options` gets a Snippet tab and a Full config tab (full-config.ts).
   markdown: { theme: { light: "vitesse-light", dark: "vitesse-dark" }, config: (md) => md.use(tabsMarkdownPlugin).use(fullConfigPlugin(latest)) },
   lastUpdated: false,
@@ -36,30 +41,8 @@ export default defineConfig({
     ],
   },
   themeConfig: {
-    logo: "/logo.svg",
-    nav: [
-      { text: "Get started", link: "/install" },
-      { text: "Guides", link: "/guides/apps-and-keys" },
-      { text: "Clients", link: "/clients/" },
-      {
-        text: "Reference",
-        items: [
-          { text: "Configuration", link: "/configuration" },
-          { text: "APIs", link: "/apis" },
-          { text: "Response headers", link: "/headers" },
-          { text: "Errors", link: "/errors" },
-        ],
-      },
-      {
-        text: "Community",
-        items: [
-          { text: "Discussions", link: `${repo}/discussions` },
-          { text: "Issues", link: `${repo}/issues` },
-          { text: "Contributing", link: `${repo}/blob/main/CONTRIBUTING.md` },
-        ],
-      },
-      { text: `v${latest}`, link: `${repo}/blob/main/CHANGELOG.md` },
-    ],
+    // The top bar is a wordmark, search, the latest release, the theme switch and GitHub. Every page is in the sidebar.
+    nav: [{ text: `v${latest}`, link: `${repo}/blob/main/CHANGELOG.md` }],
     sidebar: [
       {
         text: "Get started",
@@ -218,6 +201,15 @@ export default defineConfig({
           { text: "Warm-up and keep-alive", link: "/warm-up" },
           { text: "TUI usage page", link: "/tui" },
           { text: "Security", link: "/security" },
+        ],
+      },
+      {
+        text: "Community",
+        items: [
+          { text: "Discussions", link: `${repo}/discussions` },
+          { text: "Issues", link: `${repo}/issues` },
+          { text: "Contributing", link: `${repo}/blob/main/CONTRIBUTING.md` },
+          { text: "Changelog", link: `${repo}/blob/main/CHANGELOG.md` },
         ],
       },
     ],

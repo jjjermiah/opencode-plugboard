@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Docs
+
+- **A plainer home page.** The docs home opens with a short serif headline, one copyable install command (`bunx opencode-plugboard init`) and a terminal window that shows the first run and a curl call, instead of buttons and feature cards. The sidebar and the text start right under it, and the top bar is just the name, search, the latest release, the theme switch and GitHub. The pages that used to be in the top bar (guides, clients, reference, community) are in the sidebar. The headline font is installed from npm, so the site makes no font request to a third party.
 
 ## [0.60.0] - 2026-10-20: Names That Make Sense
 
