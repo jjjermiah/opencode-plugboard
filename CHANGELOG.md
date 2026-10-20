@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.61.0] - 2026-10-20: Names All the Way
+
+**Full diff:** [v0.60.0...v0.61.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.60.0...v0.61.0)
+
 ### Changed
 
 - **Breaking: log events, metrics, a header and error codes follow the new option names.** The options were renamed in the last release, but the names you see at runtime still used the old words. They now match: the circuit breaker, OpenCode tools and sessions. There are no aliases, so update dashboards, alerts, log filters and error handling that use the old names:
@@ -34,6 +40,54 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Docs
 
 - **A plainer home page.** The docs home opens with a short serif headline, one copyable install command (`bunx opencode-plugboard init`) and a terminal window that shows the first run and a curl call, instead of buttons and feature cards. The terminal is short (one curl line and a three line answer), so the sidebar and the first heading are visible on the first screen at 1440 by 900. The top bar is just the name, search, the latest release, the theme switch and GitHub. The pages that used to be in the top bar (guides, clients, reference, community) are in the sidebar. The headline font is installed from npm, so the site makes no font request to a third party.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Refactors
+
+**refactor(config): rename runtime names to match the renamed options** ([`2ec89f7`](https://github.com/jjjermiah/opencode-plugboard/commit/2ec89f7acb13966ed82210169f59f8fc52d44dd6))
+
+The options were renamed in the last release (fallbackCooldown -> circuitBreaker, serverTools -> opencodeTools, history -> sessions), but the names an operator sees at runtime still used the old words. They now match. Breaking, accepted pre-1.0, no aliases.
+
+What:
+- Metrics: plugboard_fallback_cooldown_* -> plugboard_circuit_breaker_*; plugboard_history_sweeps_total / _sessions_removed_total -> plugboard_sessions_sweeps_total / plugboard_sessions_removed_total.
+- Log events: fallback.cooldown.* -> circuit_breaker.*; history.swept, .sweep_failed, .sweep_timeout, .index_failed, .index_skipped -> sessions.*; server_tool.call / .after_request -> opencode_tool.*.
+- Header x-plugboard-server-tools -> x-plugboard-opencode-tools, still in the CORS expose list.
+- Error codes server_tool_* -> opencode_tool_*, app_has_server_tools -> app_has_opencode_tools.
+- Internal names follow: sweepSessions, SessionLimits, appSessionLimits, sessionUrlTemplate, onHostedToolsFor, reportOpencodeTools, onOpencodeTools, ungrantedOpencodeTool, the events collector's opencodeCalls, the metrics sink's breaker(). Test files fallback-cooldown.test.ts and server-tools.test.ts are renamed, and the mutation catalogue anchors and ids with them.
+- Docs home: the hero terminal is shorter (no --fast, one curl line, a three line answer, tighter spacing) so the sidebar and the first heading show on the first screen at 1440x900 (hero 890 px -> 638 px).
+
+Decisions: the plugboard_history_* sweep metrics were renamed too, beyond the two named in the brief, because the option is now `sessions` and the sweep log events moved with it. Not renamed: the on-disk `history/` index key prefix (stored data), the runtime `history` port, and Anthropic's own server_tool_use wire field.
+
+Validation: bun run validate --mutations --skip examples (7 of 7 passed), bun run docs:build.
+
+#### Docs
+
+**docs: redesign the site home page as a plain doc page with a terminal hero** ([`45b7064`](https://github.com/jjjermiah/opencode-plugboard/commit/45b70640c8744093221221d4cd08d15b787df5e9))
+
+The home page looked like a generic startup hero: a mono eyebrow, a bold sans headline, three pill buttons, a boxed diagram and six feature cards, under a nav with five menus. It now follows the plain look of kimaki.dev.
+
+What changed
+- docs/index.md is a normal doc page (layout doc) with `homeHero: true`. A new HomeHero.vue is rendered in the layout-top slot, so it sits above the docs layout and the sidebar and the text start on the home page itself. No feature cards.
+- HomeHero.vue: a serif italic headline in two lines (Instrument Serif, installed from npm with @fontsource/instrument-serif and preloaded through transformHead, so no font CDN request), one sentence, one install command in a copyable box (useClipboard from @vueuse/core, the version VitePress already depends on), and small GitHub and npm links with inline simple-icons marks.
+- HomeTerminal.vue: the product picture is a framed terminal showing `bunx opencode-plugboard init` and a curl to /v1/chat/completions with its answer. The text is real output; the key is cut and the answer keeps four fields.
+- The sidebar starts under the hero and then sticks under the top bar. It is moved with a transform set on the sidebar element only, so scrolling causes no layout shift. The hero is ordered before the content so that on a phone it comes after the top bar.
+- The top bar is the wordmark (site name in the serif), search, the latest release, the theme switch and GitHub. Get started, Guides, Clients and Reference were already in the sidebar; Community (discussions, issues, contributing, changelog) is a new sidebar group.
+- A dot field behind the hero only, fading out toward the sides and the bottom.
+
+Rejected
+- VitePress layout home: it has no sidebar. Overriding VPContent padding on a home layout would fight the theme more than the layout-top slot does.
+- A real screenshot of the dashboard: heavy, goes stale, and does not show the first command a reader runs. HTML text also stays crisp in light and dark and on a phone.
+- The npm mark through the vpi-social-* classes: VitePress only emits CSS for icons that its own components render, so the npm class had no rule.
+
+Checks
+- bun run docs:build, bun run validate (lint, typecheck, test, manifest, pack, docs pass; the examples step needs a Java runtime for langchain4j, which this machine lacks).
+- Headless Chrome at 1440 and 390 px, light and dark; clipboard read back after a click; the network log shows only the local host; layout shift 0.0136 at load (the same value as on any other docs page, from the nav hydrating) and 0 while scrolling.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.60.0] - 2026-10-20: Names That Make Sense
 
@@ -9981,7 +10035,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.60.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.61.0...HEAD
+[0.61.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.57.0...v0.58.0
