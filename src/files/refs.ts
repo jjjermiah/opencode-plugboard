@@ -129,7 +129,13 @@ const ORIGINALS = new WeakMap<object, Json>()
 const dataUrl = (file: InlineFile) => `data:${file.mime};base64,${file.base64}`
 const textOf = (file: InlineFile) => Buffer.from(file.base64, "base64").toString("utf8")
 
-const notFound = (id: string, field: string): PlugError => ({ status: 404, kind: "not_found", code: "file_not_found", param: field, message: `File '${id.slice(0, 80)}' not found` })
+/** The 404 the Files routes answer for the same id, in the error shape of the API the request came in on (`serveFiles`, `serveGeminiFiles`) (#547). */
+function notFound(api: FileApi, id: string): PlugError {
+  const shown = id.slice(0, 80)
+  if (api === "messages") return { status: 404, kind: "not_found", message: `File not found: ${shown}` }
+  if (api === "gemini") return { status: 404, kind: "not_found", message: `File files/${shown.replace(/^file-/, "")} was not found` }
+  return { status: 404, kind: "invalid_request", message: `No such File object: ${shown}` }
+}
 
 function replacement(api: FileApi, part: Json, id: string, file: InlineFile, kind: FileKind): Json | PlugError {
   const wrong = (expected: string): PlugError => ({
@@ -166,7 +172,7 @@ function replacement(api: FileApi, part: Json, id: string, file: InlineFile, kin
 
 /**
  * The body with every file reference replaced by the inline form of the file it names. `files` holds each id the route could
- * load under the caller's app; an id missing there is a 404 `file_not_found` (the same for an unknown, deleted, expired or
+ * load under the caller's app; an id missing there is the 404 the Files routes answer (the same for an unknown, deleted, expired or
  * another app's file, I33). A body with no reference is returned as it came, with no copy.
  */
 export function inlineFiles(api: FileApi, body: unknown, files: ReadonlyMap<string, InlineFile>): unknown {
@@ -174,7 +180,7 @@ export function inlineFiles(api: FileApi, body: unknown, files: ReadonlyMap<stri
     const id = refOf(api, part)
     if (id === undefined) return undefined
     const file = files.get(id)
-    if (file === undefined) return notFound(id, api === "gemini" ? "fileData.fileUri" : api === "chat" ? "file.file_id" : api === "messages" ? "source.file_id" : "file_id")
+    if (file === undefined) return notFound(api, id)
     const out = replacement(api, part, id, file, kindOf(file.mime))
     if (!isPlugError(out)) ORIGINALS.set(out, part)
     return out

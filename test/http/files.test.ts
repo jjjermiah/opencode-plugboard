@@ -265,10 +265,44 @@ describe("I33 app isolation", () => {
       server.send({ method: "POST", path: "/v1beta/models/test%2Fecho:generateContent", headers: as("beta"), body: { contents: [{ parts: [{ fileData: { fileUri: name } }] }] } }),
     ])
     expect(replies.map((reply) => reply.status)).toEqual([404, 404, 404, 404])
-    expect(replies[0]!.json().error).toMatchObject({ code: "file_not_found" })
+    expect(replies[0]!.json().error).toMatchObject({ type: "invalid_request_error" })
     expect(replies[2]!.json().error.type).toBe("not_found_error")
     expect(replies[3]!.json().error.status).toBe("NOT_FOUND")
     expect(caller.calls).toEqual([])
+  })
+
+  test("#547 a missing file is the same 404 body on the Files route and in a request, on the OpenAI and Anthropic routes", async () => {
+    const { server } = await route()
+    const id = `file-${"1".repeat(32)}`
+    const route404 = (await server.send(get(`/v1/files/${id}`, "alpha"))).json()
+    expect(route404).toEqual({ error: { message: `No such File object: ${id}`, type: "invalid_request_error", param: null, code: null } })
+    const chat = await server.send({
+      method: "POST",
+      path: "/v1/chat/completions",
+      headers: as("alpha"),
+      body: { model: "test/echo", messages: [{ role: "user", content: [{ type: "file", file: { file_id: id } }] }] },
+    })
+    const responses = await server.send({
+      method: "POST",
+      path: "/v1/responses",
+      headers: as("alpha"),
+      body: { model: "test/echo", input: [{ role: "user", content: [{ type: "input_file", file_id: id }] }] },
+    })
+    expect(chat.status).toBe(404)
+    expect(chat.json()).toEqual(route404)
+    expect(responses.status).toBe(404)
+    expect(responses.json()).toEqual(route404)
+
+    const anthropicRoute = (await server.send(get(`/v1/files/${id}`, "alpha", ANTHROPIC))).json()
+    const messages = await server.send({
+      method: "POST",
+      path: "/v1/messages",
+      headers: as("alpha"),
+      body: { model: "test/echo", max_tokens: 10, messages: [{ role: "user", content: [{ type: "image", source: { type: "file", file_id: id } }] }] },
+    })
+    expect(messages.status).toBe(404)
+    expect(messages.json()).toEqual(anthropicRoute)
+    expect(anthropicRoute.error).toMatchObject({ type: "not_found_error", message: `File not found: ${id}` })
   })
 
   test("a malformed id is a miss too, and no key outside the app's prefix can be reached through it", async () => {
@@ -401,6 +435,72 @@ describe("failures keep each API's error shape", () => {
     const google = await server.send(get("/v1beta/files/" + "a".repeat(32), "alpha"))
     expect(google.status).toBe(504)
     expect(google.json().error.code).toBe(504)
+  })
+})
+
+describe("#544 the Gemini upload URL and file uri name an address the caller can reach", () => {
+  /** Starts a resumable upload and, unless `keep`, cancels it: unfinished uploads are process-wide and capped per app, so a test must not leave one behind. */
+  const startUpload = async (server: RouteServer, host: string, extra: Record<string, string> = {}, keep = false) => {
+    const start = await server.send({
+      method: "POST",
+      path: "/upload/v1beta/files",
+      headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-protocol": "resumable", "x-goog-upload-command": "start", host, ...extra },
+      body: {},
+    })
+    if (!keep) {
+      const url = new URL(String(start.headers["x-goog-upload-url"]))
+      const cancelled = await server.send({ method: "POST", path: url.pathname + url.search, headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-command": "cancel", host }, body: {} })
+      expect(cancelled.status).toBe(200)
+    }
+    return start
+  }
+
+  async function wildcard(options: Record<string, unknown> = {}) {
+    const server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { keys: KEYS, ...options }, listenHost: "0.0.0.0" })
+    servers.push(server)
+    return server
+  }
+
+  test("on a wildcard bind the upload URL and the file uri use the Host the caller used, never 0.0.0.0", async () => {
+    const server = await wildcard()
+    const start = await startUpload(server, "192.0.2.10:4010")
+    expect(String(start.headers["x-goog-upload-url"])).toMatch(/^http:\/\/192\.0\.2\.10:4010\/upload\/v1beta\/files\?upload_id=[0-9a-f]{32}&upload_protocol=resumable$/)
+    const mine = (await upload(server, "alpha", { bytes: PNG, name: "p.png" })).json()
+    const meta = await server.send({ path: `/v1beta/files/${mine.id.slice(5)}`, headers: { "x-goog-api-key": KEYS.alpha, host: "opencode.example" } })
+    expect(meta.json().uri).toBe(`http://opencode.example/v1beta/files/${mine.id.slice(5)}`)
+  })
+
+  test("the chunk upload to that URL works and the finalizing answer carries the same address", async () => {
+    const server = await wildcard()
+    const start = await startUpload(server, "192.0.2.10:4010", {}, true)
+    const url = new URL(String(start.headers["x-goog-upload-url"]))
+    const done = await server.send({
+      method: "POST",
+      path: url.pathname + url.search,
+      headers: { "x-goog-api-key": KEYS.alpha, "x-goog-upload-command": "upload, finalize", "content-type": "application/octet-stream", host: "192.0.2.10:4010" },
+      body: PNG,
+    })
+    expect(done.status).toBe(200)
+    expect(done.json().file.uri).toMatch(/^http:\/\/192\.0\.2\.10:4010\/v1beta\/files\/[0-9a-f]{32}$/)
+  })
+
+  test("a trusted proxy's public origin wins over the Host header", async () => {
+    const server = await wildcard({ listen: { trustProxy: ["127.0.0.1"] } })
+    const start = await startUpload(server, "192.0.2.10:4010", { "x-forwarded-host": "files.example.net", "x-forwarded-proto": "https" })
+    expect(String(start.headers["x-goog-upload-url"])).toStartWith("https://files.example.net/upload/v1beta/files?")
+  })
+
+  test("a Host that is not a plain host falls back to the listen address", async () => {
+    const server = await wildcard()
+    const start = await startUpload(server, "0.0.0.0:4010")
+    expect(String(start.headers["x-goog-upload-url"])).toStartWith(`http://0.0.0.0:${server.port}/upload/v1beta/files?`)
+  })
+
+  test("a specific listen address ignores the Host header", async () => {
+    const server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { keys: KEYS }, listenHost: "192.0.2.10" })
+    servers.push(server)
+    const start = await startUpload(server, "other.example:4010")
+    expect(String(start.headers["x-goog-upload-url"])).toStartWith(`http://192.0.2.10:${server.port}/upload/v1beta/files?`)
   })
 })
 

@@ -202,6 +202,8 @@ export interface RouteSetup {
   readonly responses?: ResponseStore
   /** The uploaded files store (src/files/state.ts). Defaults to one on a fresh `FakeStorage`; pass your own to share storage across servers (a restart). */
   readonly files?: FileStore
+  /** The listen address the options name (`0.0.0.0`, #544); the socket itself is always loopback. Default `127.0.0.1`. */
+  readonly listenHost?: string
 }
 
 /** The real OpenAI route behind a loopback listener, with a fake model caller and a fixed catalog. */
@@ -209,7 +211,7 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
   let handle: ((request: IncomingMessage, response: ServerResponse) => Promise<void>) | undefined
   const server = await listen((request, response) => void handle!(request, response))
   // Keeps the caller's other `listen` fields (`trustProxy`, #266); only the host and the port are the listener's.
-  const options = testOptions({ ...setup.options, listen: { ...(setup.options?.listen as object | undefined), host: "127.0.0.1", port: server.port } })
+  const options = testOptions({ ...setup.options, listen: { ...(setup.options?.listen as object | undefined), host: setup.listenHost ?? "127.0.0.1", port: server.port } })
   const catalog = setup.catalog ?? CATALOG
   const metrics = createMetrics()
   handle = createOpenAiRoute({

@@ -188,6 +188,15 @@ describe("#261 apps.<name>.model at load", () => {
     expect(() => parseApps({ widget: { model: "other/model", models: ["test/*"] } })).toThrow(/`apps\.widget\.model` `other\/model` must be listed in `apps\.widget\.models`/)
   })
 
+  test("#545 an app that pins or lists an alias nobody defined is refused at load, and the pin's message says to add the alias", () => {
+    // The guide's config before it defined `fast`: refused at load, not a 404 on every call.
+    expect(() => parseOptions({ keys: KEYS, models: ["test/*"], apps: { widget: { models: ["fast"], model: "fast" } } })).toThrow(/`apps\.widget`\.models entry `fast` must be/)
+    expect(() => parseOptions({ keys: KEYS, models: ["test/*"], apps: { widget: { model: "fast" } } })).toThrow(
+      /`apps\.widget\.model` must be `provider\/model`.*`fast` is not an alias, add it to `aliases`/,
+    )
+    expect(parseOptions({ keys: KEYS, models: ["test/*"], aliases: { fast: "test/echo" }, apps: { widget: { models: ["fast"], model: "fast" } } }).apps.widget).toMatchObject({ model: "fast" })
+  })
+
   test("a malformed id is refused", () => {
     expect(() => parseApps({ widget: { model: "no-slash" } })).toThrow(/`apps\.widget\.model` must be `provider\/model`/)
   })

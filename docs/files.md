@@ -40,7 +40,7 @@ An upload past the file or byte limit is a 400 (`file_limit_exceeded`, `file_sto
 | `GET /v1/files/{id}/content` | The bytes, with the stored type and `Content-Disposition: attachment`. |
 | `DELETE /v1/files/{id}` | `{id, object: "file", deleted: true}`. |
 
-An id is `file-` and 32 hex characters. An unknown, deleted, expired or other app's id is a 404 `invalid_request_error` with the message `No such File object: <id>`.
+An id is `file-` and 32 hex characters. An unknown, deleted, expired or other app's id is a 404 `invalid_request_error` with the message `No such File object: <id>`. A file named in a request (`file_id` on Chat Completions and Responses) that the app does not hold is the same 404 with the same body.
 
 Use a file in a request:
 
@@ -73,7 +73,7 @@ A request that sends `anthropic-version` or `anthropic-beta` (every Anthropic SD
 | `GET /v1/files/{id}`, `GET /v1/files/{id}/content` | Metadata, and the bytes as an attachment. |
 | `DELETE /v1/files/{id}` | `{id, type: "file_deleted"}`. |
 
-Errors use Anthropic's body: a missing file is a 404 `not_found_error`.
+Errors use Anthropic's body: a missing file is a 404 `not_found_error` with the message `File not found: <id>`, on these routes and for a `file_id` in a Messages request.
 
 ```py
 file = client.beta.files.upload(file=("report.pdf", open("report.pdf", "rb"), "application/pdf"))
@@ -97,7 +97,9 @@ client.beta.messages.create(
 | `GET /v1beta/files/{name}` | One File: `name`, `displayName`, `mimeType`, `sizeBytes`, `createTime`, `updateTime`, `expirationTime`, `uri`, `state: "ACTIVE"`, `source: "UPLOADED"`. |
 | `DELETE /v1beta/files/{name}` | `{}`. |
 
-A name is `files/` and the 32 hex characters of the file's id (`file-<hex>` on the other APIs). Errors use Google's body. The key is read as on the other Gemini routes.
+A name is `files/` and the 32 hex characters of the file's id (`file-<hex>` on the other APIs). Errors use Google's body: a missing file is a 404 `NOT_FOUND` with the message `File <name> was not found`, on these routes and for a `fileUri` in a request. The key is read as on the other Gemini routes.
+
+The upload URL and the file `uri` name the address the caller reached: the public origin a trusted proxy names (`listen.trustProxy`), else the request's `Host` when the server listens on every address (`0.0.0.0`, `::`), else the listen address.
 
 The resumable upload is held in memory until its last chunk arrives: `start` answers an `X-Goog-Upload-URL`, the chunks go there with `X-Goog-Upload-Command: upload` (the last with `finalize`) and the right `X-Goog-Upload-Offset`, and the finalizing answer carries the file and `X-Goog-Upload-Status: final`. An app holds at most 4 unfinished uploads (a fifth start is a 429), each for 10 minutes. The upload id belongs to its app, and a restart drops unfinished uploads (the caller starts again). The upload URL is the credential of its chunks, as Google's is: `google-genai` (Python) sends the chunks with no key, so a chunk request with no key at all is accepted when it names a live upload id, and it runs as the app that started the upload. An unknown id is a 401, and a request with a key is checked as usual (another app's key gets a 404).
 

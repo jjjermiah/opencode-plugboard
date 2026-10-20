@@ -26,7 +26,7 @@ import type { RouteHost } from "../openai/route.js"
 import { parseResponsesRequest } from "./request.js"
 import { runResponse, sseFrame } from "./response.js"
 import { findItem, forgetAnswer, rememberAnswer } from "./store.js"
-import { retentionDaysFor } from "./state.js"
+import { fullItem, retentionDaysFor } from "./state.js"
 import { loadFiles } from "../files/route.js"
 import { fileRefs, inlineFiles, restoreFileRefs } from "../files/refs.js"
 
@@ -232,7 +232,8 @@ export async function serveStoredResponse(host: RouteHost, { app, match, url, re
   if (isPlugError(limit)) return fail(limit)
   const order = url.searchParams.get("order") ?? "desc"
   if (order !== "asc" && order !== "desc") return fail(badQuery(`Invalid value: '${order.slice(0, 20)}'. Supported values are: 'asc' and 'desc'.`, "order", "invalid_value"))
-  const items = order === "asc" ? [...record.input] : [...record.input].reverse()
+  // A record kept before items were stored in full shape may still hold a message without `type` (#546).
+  const items = order === "asc" ? record.input.map(fullItem) : record.input.map(fullItem).reverse()
   const after = url.searchParams.get("after")
   const start = after === null ? 0 : items.findIndex((item) => item.id === after) + 1
   if (after !== null && start === 0) return fail(badQuery("Invalid 'after': no input item has this id.", "after", "invalid_cursor"))

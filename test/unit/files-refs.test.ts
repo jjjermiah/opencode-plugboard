@@ -120,18 +120,18 @@ describe("inlineFiles", () => {
     expect(inlineFiles("gemini", body, files(text))).toEqual({ contents: [{ role: "user", parts: [{ text: "plain words" }] }] })
   })
 
-  test("a file the caller does not hold is a 404 file_not_found naming the field, whichever API", () => {
+  test("#547 a file the caller does not hold is the 404 the Files routes answer, in the error kind of the API", () => {
     const cases = [
       inlineFiles("chat", { messages: [{ content: [{ type: "file", file: { file_id: ID } }] }] }, new Map()),
       inlineFiles("responses", { input: [{ content: [{ type: "input_file", file_id: ID }] }] }, new Map()),
       inlineFiles("messages", { messages: [{ content: [{ type: "image", source: { type: "file", file_id: ID } }] }] }, new Map()),
       inlineFiles("gemini", { contents: [{ parts: [{ fileData: { fileUri: `files/${HEX}` } }] }] }, new Map()),
     ]
-    expect(cases.map((error) => isPlugError(error) && [error.status, error.code, error.param])).toEqual([
-      [404, "file_not_found", "file.file_id"],
-      [404, "file_not_found", "file_id"],
-      [404, "file_not_found", "source.file_id"],
-      [404, "file_not_found", "fileData.fileUri"],
+    expect(cases).toEqual([
+      { status: 404, kind: "invalid_request", message: `No such File object: ${ID}` },
+      { status: 404, kind: "invalid_request", message: `No such File object: ${ID}` },
+      { status: 404, kind: "not_found", message: `File not found: ${ID}` },
+      { status: 404, kind: "not_found", message: `File files/${HEX} was not found` },
     ])
   })
 

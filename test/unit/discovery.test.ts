@@ -68,6 +68,75 @@ describe("#73 buildDiscovery: what each caller may see", () => {
   test("an IPv6 listen address is bracketed in the base URL", () => {
     expect(buildDiscovery({ options: testOptions({ listen: { host: "::1", port: 9 } }) }).baseUrl).toBe("http://[::1]:9/v1")
   })
+
+  test("#543 the endpoint list has the stored-response and Files routes, and Responses is not called stateless", () => {
+    const doc = buildDiscovery({ options: keyless })
+    const listed = doc.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`)
+    expect(listed).toEqual(
+      expect.arrayContaining([
+        "GET /v1/responses/{id}",
+        "DELETE /v1/responses/{id}",
+        "GET /v1/responses/{id}/input_items",
+        "POST /v1/files",
+        "GET /v1/files",
+        "GET /v1/files/{id}",
+        "GET /v1/files/{id}/content",
+        "DELETE /v1/files/{id}",
+        "POST /upload/v1beta/files",
+        "GET /v1beta/files",
+        "GET /v1beta/files/{name}",
+        "DELETE /v1beta/files/{name}",
+      ]),
+    )
+    expect(json(doc.endpoints)).not.toMatch(/stateless/i)
+    expect(renderDiscoveryHtml(doc)).not.toMatch(/stateless/i)
+  })
+})
+
+describe("#544 the base URL on a wildcard listen address", () => {
+  const wildcard = (host: string) => testOptions({ listen: { host, port: 4010 }, keys: { alpha: "key-alpha-secret" } })
+
+  test.each(["0.0.0.0", "::"])("%s: the Host the caller used is the base URL and the curl's address", (host) => {
+    const doc = buildDiscovery({ options: wildcard(host), requestHost: "192.0.2.10:4010" })
+    expect(doc.baseUrl).toBe("http://192.0.2.10:4010/v1")
+    expect(doc.example.curl).toContain("curl -s http://192.0.2.10:4010/v1/chat/completions")
+    expect(doc).not.toHaveProperty("baseUrlHint")
+    expect(doc.baseUrl + doc.example.curl).not.toContain("0.0.0.0")
+  })
+
+  test("a Host without a port, a name and a bracketed IPv6 literal are used as sent", () => {
+    expect(buildDiscovery({ options: wildcard("0.0.0.0"), requestHost: "opencode.example" }).baseUrl).toBe("http://opencode.example/v1")
+    expect(buildDiscovery({ options: wildcard("0.0.0.0"), requestHost: "[2001:db8::1]:4010" }).baseUrl).toBe("http://[2001:db8::1]:4010/v1")
+  })
+
+  test.each([undefined, "", "0.0.0.0:4010", "[::]:4010", "x y", "evil.example/'; rm -rf ~; '", "a<b>:4010", "$(id)"])(
+    "no usable Host (%p): a placeholder with the listen port, and a hint on the page and in the JSON",
+    (requestHost) => {
+      const doc = buildDiscovery({ options: wildcard("0.0.0.0"), requestHost })
+      expect(doc.baseUrl).toBe("http://<this-host>:4010/v1")
+      expect(doc.example.curl).toContain("http://<this-host>:4010/v1/chat/completions")
+      expect(doc.baseUrlHint).toContain("`<this-host>`")
+      const html = renderDiscoveryHtml(doc)
+      expect(html).toContain("&lt;this-host&gt;:4010/v1")
+      expect(html).toContain('<p class="hint">The server listens on every address')
+      expect(json(doc)).not.toContain("rm -rf")
+    },
+  )
+
+  test("the public origin a trusted proxy names wins over the Host header", () => {
+    const doc = buildDiscovery({ options: wildcard("0.0.0.0"), publicOrigin: "https://llm.example", requestHost: "192.0.2.10:4010" })
+    expect(doc.baseUrl).toBe("https://llm.example/v1")
+    expect(doc).not.toHaveProperty("baseUrlHint")
+  })
+
+  test("a specific listen address ignores the Host header", () => {
+    const doc = buildDiscovery({ options: testOptions({ listen: { host: "192.0.2.10", port: 4010 }, keys: { alpha: "key-alpha-secret" } }), requestHost: "other.example:4010" })
+    expect(doc.baseUrl).toBe("http://192.0.2.10:4010/v1")
+  })
+
+  test("a Host header on a loopback listener changes nothing", () => {
+    expect(buildDiscovery({ options: keyless, requestHost: "localhost:4111" }).baseUrl).toBe("http://127.0.0.1:4111/v1")
+  })
 })
 
 describe("#73 buildDiscovery: the models state explains a 403 before it happens", () => {
