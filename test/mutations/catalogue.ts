@@ -1032,8 +1032,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "fallback-first-event-deadline-never-cleared",
     invariant: "fallback",
     file: "src/fallback.ts",
-    find: "clearTimeout(timer)",
-    replace: "void timer",
+    find: "    } finally {\n      clearTimeout(timer)\n    }",
+    replace: "    } finally {\n      void timer\n    }",
     tests: ["test/unit/fallback.test.ts"],
   },
   {
@@ -1600,8 +1600,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I33-gemini-files-routes-read-default-app",
     invariant: "I33",
     file: "src/openai/route.ts",
-    find: "if (geminiFiles) return serveGeminiFiles(host, { app: auth.app,",
-    replace: "if (geminiFiles) return serveGeminiFiles(host, { app: DEFAULT_APP,",
+    find: "if (geminiFiles && credential) return serveGeminiFiles(host, { app: auth.app,",
+    replace: "if (geminiFiles && credential) return serveGeminiFiles(host, { app: DEFAULT_APP,",
     tests: ["test/http/files.test.ts", "test/http/files-gemini.test.ts"],
   },
   {
@@ -1616,8 +1616,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I33-upload-session-ignores-app",
     invariant: "I33",
     file: "src/files/gemini/route.ts",
-    find: "if (session === undefined || session.app !== app || session.startedAt",
-    replace: "if (session === undefined || session.startedAt",
+    find: "if (session === undefined || session.app !== app || !usable(session, credential.alive)) {",
+    replace: "if (session === undefined || !usable(session, credential.alive)) {",
     tests: ["test/http/files-gemini.test.ts"],
   },
   {
