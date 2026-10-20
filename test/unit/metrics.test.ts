@@ -66,14 +66,14 @@ describe("#56 createMetrics: Prometheus text", () => {
     metrics.sweep("failed", 0)
     const text = await metrics.render({ generations: 2, pumpRunning: true, guards: 5, startedAt: 1_700_000_000_500 })
     expect(samples(text, "plugboard_dropped_params_total")).toEqual(['plugboard_dropped_params_total{param="temperature"} 2', 'plugboard_dropped_params_total{param="top_p"} 1'])
-    expect(samples(text, "plugboard_history_sweeps_total")).toEqual(['plugboard_history_sweeps_total{result="ok"} 1', 'plugboard_history_sweeps_total{result="failed"} 1'])
-    expect(samples(text, "plugboard_history_sessions_removed_total")).toEqual(["plugboard_history_sessions_removed_total 4"])
+    expect(samples(text, "plugboard_sessions_sweeps_total")).toEqual(['plugboard_sessions_sweeps_total{result="ok"} 1', 'plugboard_sessions_sweeps_total{result="failed"} 1'])
+    expect(samples(text, "plugboard_sessions_removed_total")).toEqual(["plugboard_sessions_removed_total 4"])
     for (const line of ["plugboard_generations 2", "plugboard_event_pump_up 1", "plugboard_session_guards 5", "plugboard_start_time_seconds 1700000000"]) expect(text).toContain(`\n${line}\n`)
   })
 
   test("a counter without labels reads 0 before its first event; one with labels has no series yet", async () => {
     const text = await createMetrics().render(snapshot)
-    expect(samples(text, "plugboard_history_sessions_removed_total")).toEqual(["plugboard_history_sessions_removed_total 0"])
+    expect(samples(text, "plugboard_sessions_removed_total")).toEqual(["plugboard_sessions_removed_total 0"])
     expect(samples(text, "plugboard_requests_total")).toEqual([])
     expect(text).toContain("# TYPE plugboard_requests_total counter")
   })
@@ -92,7 +92,7 @@ describe("#56 createMetrics: Prometheus text", () => {
     const text = await metrics.render(snapshot)
     expect(samples(text, "plugboard_request_duration_seconds_count")).toEqual([])
     expect(samples(text, "plugboard_tokens_total")).toEqual([])
-    expect(samples(text, "plugboard_history_sessions_removed_total")).toEqual(["plugboard_history_sessions_removed_total 0"])
+    expect(samples(text, "plugboard_sessions_removed_total")).toEqual(["plugboard_sessions_removed_total 0"])
   })
 
   test("#54 refused calls are counted by app and reason, and nothing is written before one is refused", async () => {
@@ -109,23 +109,23 @@ describe("#56 createMetrics: Prometheus text", () => {
 
   test("the breaker's events are counted per app and event, and the gauge counts the targets being skipped, not those waiting for a probe", async () => {
     const metrics = createMetrics()
-    metrics.cooldown("alpha", "open")
-    metrics.cooldown("alpha", "skip")
-    metrics.cooldown("alpha", "skip")
-    metrics.cooldown("alpha", "close")
+    metrics.breaker("alpha", "open")
+    metrics.breaker("alpha", "skip")
+    metrics.breaker("alpha", "skip")
+    metrics.breaker("alpha", "close")
     const text = await metrics.render({
       ...snapshot,
-      cooldowns: [
+      breakers: [
         { model: "a/x", state: "open", failures: 3, until: 2 },
         { model: "b/y", state: "half-open", failures: 3, until: 1 },
       ],
     })
-    expect(samples(text, "plugboard_fallback_cooldown_events_total")).toEqual([
-      'plugboard_fallback_cooldown_events_total{app="alpha",event="open"} 1',
-      'plugboard_fallback_cooldown_events_total{app="alpha",event="skip"} 2',
-      'plugboard_fallback_cooldown_events_total{app="alpha",event="close"} 1',
+    expect(samples(text, "plugboard_circuit_breaker_events_total")).toEqual([
+      'plugboard_circuit_breaker_events_total{app="alpha",event="open"} 1',
+      'plugboard_circuit_breaker_events_total{app="alpha",event="skip"} 2',
+      'plugboard_circuit_breaker_events_total{app="alpha",event="close"} 1',
     ])
-    expect(text).toContain("\nplugboard_fallback_cooldown_targets 1\n")
+    expect(text).toContain("\nplugboard_circuit_breaker_targets 1\n")
   })
 
   test("each registry is its own: the default one is untouched and no process metrics are collected", async () => {

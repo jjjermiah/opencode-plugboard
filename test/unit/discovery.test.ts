@@ -224,8 +224,8 @@ describe("#56 buildStatus", () => {
 
   test("the targets cooling down, and whether the breaker is on", () => {
     const until = Date.UTC(2026, 9, 11, 0, 2)
-    const cooldowns = [{ model: "a/x", state: "open" as const, failures: 3, until }]
-    expect(buildStatus({ options: testOptions(), runtime: { ...runtime, cooldowns }, now: until - 1000 })).toMatchObject({
+    const breakers = [{ model: "a/x", state: "open" as const, failures: 3, until }]
+    expect(buildStatus({ options: testOptions(), runtime: { ...runtime, breakers }, now: until - 1000 })).toMatchObject({
       circuitBreaker: { enabled: true, cooling: [{ model: "a/x", state: "open", failures: 3, until: "2026-10-11T00:02:00.000Z" }] },
     })
     expect(buildStatus({ options: testOptions({ circuitBreaker: false }), runtime, now: until })).toMatchObject({ circuitBreaker: { enabled: false, cooling: [] } })

@@ -71,10 +71,10 @@ export function wildcardMatch(input: string, pattern: string): boolean {
 const rulesFor = (tool: string, rules: ReadonlyArray<OperatorRule>): ReadonlyArray<OperatorRule> => rules.filter((rule) => wildcardMatch(tool, rule.action))
 
 /**
- * The first listed server tool that the operator's rules do not allow, or undefined when each one has an allow rule.
+ * The first listed OpenCode tool that the operator's rules do not allow, or undefined when each one has an allow rule.
  * A tool with no matching rule is not allowed: the host would ask, and a request session cannot answer a prompt.
  */
-export function ungrantedServerTool(opencodeTools: ReadonlyArray<string>, rules: ReadonlyArray<OperatorRule>): string | undefined {
+export function ungrantedOpencodeTool(opencodeTools: ReadonlyArray<string>, rules: ReadonlyArray<OperatorRule>): string | undefined {
   return opencodeTools.find((tool) => !rulesFor(tool, rules).some((rule) => rule.effect === "allow"))
 }
 

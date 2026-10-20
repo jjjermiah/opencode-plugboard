@@ -118,7 +118,7 @@ export function withFallbacks(inner: ModelCaller, deps: FallbackDeps): ModelCall
 }
 
 /** The cooldown settings in force, or `false` when option `circuitBreaker` turns the breaker off. */
-export const cooldownOf = (options: PlugboardOptions): CircuitBreaker | false => options.circuitBreaker ?? DEFAULT_CIRCUIT_BREAKER
+export const circuitBreakerOf = (options: PlugboardOptions): CircuitBreaker | false => options.circuitBreaker ?? DEFAULT_CIRCUIT_BREAKER
 
 /**
  * A call that is not a list alias: no retry, but the answer still names its model (`x-plugboard-model`, #279).
@@ -136,7 +136,7 @@ async function* reportPlain(events: AsyncIterable<PlugEvent>, context: CallConte
 }
 
 async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, request: PlugRequest, context: CallContext): AsyncGenerator<PlugEvent> {
-  const cooldown = cooldownOf(deps.options)
+  const cooldown = circuitBreakerOf(deps.options)
   // The targets in order: the request's own, then the fallbacks that are allowed and enabled.
   const targets = [request.ref, ...(await resolveRest(deps, request, context.app))]
   const name = (index: number): string => refToString(targets[index]!)
@@ -148,7 +148,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
       const claim = breaker.claim(name(index), cooldown)
       if (claim.verdict !== "skip") return { index, token: claim.token }
       const until = breaker.until(name(index))
-      log("fallback.cooldown.skip", { app: context.app, target: name(index), ...(until === undefined ? {} : { until: new Date(until).toISOString() }) })
+      log("circuit_breaker.skip", { app: context.app, target: name(index), ...(until === undefined ? {} : { until: new Date(until).toISOString() }) })
       deps.onCooldown?.("skip", context.app)
     }
     return undefined
@@ -161,9 +161,9 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
   const note = (event: "opened" | "reopened" | "closed" | undefined, model: string): void => {
     if (event === undefined) return
     const until = breaker.until(model)
-    if (event === "closed") log("fallback.cooldown.close", { app: context.app, target: model })
+    if (event === "closed") log("circuit_breaker.close", { app: context.app, target: model })
     else
-      logWarn("fallback.cooldown.open", {
+      logWarn("circuit_breaker.open", {
         app: context.app,
         target: model,
         reopened: event === "reopened",
@@ -176,7 +176,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
   // Every target cooling down: the first one is tried anyway, so the request always gets an attempt. It holds no probe slot.
   let chosen = select(0)
   if (chosen === undefined) {
-    logWarn("fallback.cooldown.all_open", { app: context.app, targets: targets.length })
+    logWarn("circuit_breaker.all_open", { app: context.app, targets: targets.length })
     chosen = { index: 0 }
   }
   let { index, token } = chosen

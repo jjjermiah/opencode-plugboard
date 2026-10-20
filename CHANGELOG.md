@@ -14,9 +14,26 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: log events, metrics, a header and error codes follow the new option names.** The options were renamed in the last release, but the names you see at runtime still used the old words. They now match: the circuit breaker, OpenCode tools and sessions. There are no aliases, so update dashboards, alerts, log filters and error handling that use the old names:
+
+  | Old | New |
+  | --- | --- |
+  | `plugboard_fallback_cooldown_events_total`, `plugboard_fallback_cooldown_targets` | `plugboard_circuit_breaker_events_total`, `plugboard_circuit_breaker_targets` |
+  | `plugboard_history_sweeps_total`, `plugboard_history_sessions_removed_total` | `plugboard_sessions_sweeps_total`, `plugboard_sessions_removed_total` |
+  | log events `fallback.cooldown.open`, `.skip`, `.close`, `.all_open` | `circuit_breaker.open`, `.skip`, `.close`, `.all_open` |
+  | log events `history.swept`, `.sweep_failed`, `.sweep_timeout`, `.index_failed`, `.index_skipped` | `sessions.swept`, `.sweep_failed`, `.sweep_timeout`, `.index_failed`, `.index_skipped` |
+  | log events `server_tool.call`, `server_tool.after_request` | `opencode_tool.call`, `opencode_tool.after_request` |
+  | header `x-plugboard-server-tools` | `x-plugboard-opencode-tools` |
+  | error codes `server_tool_collision`, `server_tool_denied_by_operator`, `server_tool_unavailable`, `server_tool_steps_exceeded`, `server_tool_calls_exceeded` | `opencode_tool_collision`, `opencode_tool_denied_by_operator`, `opencode_tool_unavailable`, `opencode_tool_steps_exceeded`, `opencode_tool_calls_exceeded` |
+  | error code `app_has_server_tools` (admin keys) | `app_has_opencode_tools` |
+
+  The `x-plugboard-opencode-tools` header is still in the CORS expose list. Internal names changed to match (for example `sweepSessions`, `sessionUrlTemplate`, `reportOpencodeTools`).
+
 ### Docs
 
-- **A plainer home page.** The docs home opens with a short serif headline, one copyable install command (`bunx opencode-plugboard init`) and a terminal window that shows the first run and a curl call, instead of buttons and feature cards. The sidebar and the text start right under it, and the top bar is just the name, search, the latest release, the theme switch and GitHub. The pages that used to be in the top bar (guides, clients, reference, community) are in the sidebar. The headline font is installed from npm, so the site makes no font request to a third party.
+- **A plainer home page.** The docs home opens with a short serif headline, one copyable install command (`bunx opencode-plugboard init`) and a terminal window that shows the first run and a curl call, instead of buttons and feature cards. The terminal is short (one curl line and a three line answer), so the sidebar and the first heading are visible on the first screen at 1440 by 900. The top bar is just the name, search, the latest release, the theme switch and GitHub. The pages that used to be in the top bar (guides, clients, reference, community) are in the sidebar. The headline font is installed from npm, so the site makes no font request to a third party.
 
 ## [0.60.0] - 2026-10-20: Names That Make Sense
 

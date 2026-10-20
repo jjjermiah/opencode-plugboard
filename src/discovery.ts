@@ -399,7 +399,7 @@ export function buildStatus(input: {
     // The circuit breaker of list aliases (src/breaker.ts): the targets being skipped now, and until when.
     circuitBreaker: {
       enabled: options.circuitBreaker !== false,
-      cooling: (runtime.cooldowns ?? []).map((target) => ({ model: target.model, state: target.state, failures: target.failures, until: new Date(target.until).toISOString() })),
+      cooling: (runtime.breakers ?? []).map((target) => ({ model: target.model, state: target.state, failures: target.failures, until: new Date(target.until).toISOString() })),
     },
     // The plugin options error the last Location to load the plugin hit (#159); absent when options parse.
     ...(runtime.configError ? { configError: { message: runtime.configError.message, at: new Date(runtime.configError.at).toISOString() } } : {}),

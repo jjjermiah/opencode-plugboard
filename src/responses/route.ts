@@ -10,12 +10,12 @@
 
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
-import { appPolicy, historyTemplate, hostedToolsFor, reasoningOutputFor, requestedModel } from "../config.js"
+import { appPolicy, onHostedToolsFor, reasoningOutputFor, requestedModel, sessionUrlTemplate } from "../config.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { effortUnavailable, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportDroppedTools, reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
+import { reportDroppedTools, reportParallelTools, reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
@@ -78,7 +78,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
     host.options,
     (itemId) => findItem(app, itemId),
     (inlinedChain as { input: ReadonlyArray<Record<string, unknown>> } | undefined)?.input,
-    hostedToolsFor(host.options, app),
+    onHostedToolsFor(host.options, app),
   )
   if (isPlugError(parsed)) return fail(parsed)
   // `store: false` keeps nothing for retrieval, so its output items cannot be referenced later (#426).
@@ -117,13 +117,13 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
       onRecord: (recordID, directory) => {
         if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
         response.setHeader(SESSION_HEADER, recordID)
-        setSessionLink(response, info, historyTemplate(host.options, app), recordID, directory)
+        setSessionLink(response, info, sessionUrlTemplate(host.options, app), recordID, directory)
       },
       onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
       onPolicy: reportPolicy(response),
       onAffinity: reportAffinity(response),
       onUsage: reportUsage(response, exchange.stream),
-      onServerTools: reportServerTools(response, exchange.stream),
+      onOpencodeTools: reportOpencodeTools(response, exchange.stream),
       onCache: reportCache(response),
     }),
     scope,

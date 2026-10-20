@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// The home page's product picture: a terminal window with the first run. The text is real output of
-// `init --fast anthropic/claude-haiku-4-5` and of the curl it prints. The key is cut and the answer keeps only the fields that matter.
+// The home page's product picture: a terminal window with the first run, kept short so the sidebar and the first
+// heading show on the first screen. The init lines are cut from its output (the key is cut too); the answer keeps only the fields that matter.
 declare const __PLUGBOARD_LATEST__: string
 const version = __PLUGBOARD_LATEST__
 </script>
@@ -12,20 +12,13 @@ const version = __PLUGBOARD_LATEST__
       <span class="name">zsh</span>
     </div>
     <div class="scroll">
-      <pre><code><span class="prompt">$</span> <span class="cmd">bunx opencode-plugboard init --fast anthropic/claude-haiku-4-5</span>
+      <pre><code><span class="prompt">$</span> <span class="cmd">bunx opencode-plugboard init</span>
 <span class="out">Added opencode-plugboard@{{ version }} in ~/.config/opencode/opencode.jsonc.</span>
-<span class="out">App key for `my-app` (shown once; it is also in the file):</span>
-  <span class="key">pb_u3oW-g8E3gZ-aA3mduNUm</span><span class="dim">…</span>
-
-<span class="prompt">$</span> <span class="cmd">curl -s http://127.0.0.1:4010/v1/chat/completions \</span>
-<span class="cmd">    -H "Authorization: Bearer $PLUGBOARD_KEY" \</span>
-<span class="cmd">    -H "Content-Type: application/json" \</span>
-<span class="cmd">    -d '{"model": "fast", "messages": [{"role": "user", "content": "reply with exactly: pong"}]}'</span>
-<span class="brace">{</span>
-  <span class="jk">"model"</span>: <span class="js">"anthropic/claude-haiku-4-5"</span>,
+<span class="out">App key for `my-app` (shown once):</span> <span class="key">pb_u3oW-g8E3gZ-aA3mduNUm</span><span class="dim">…</span>
+<span class="prompt">$</span> <span class="cmd">curl -s 127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" --json '{"model": "fast", "messages": [{"role": "user", "content": "say pong"}]}'</span>
+<span class="brace">{</span> <span class="jk">"model"</span>: <span class="js">"anthropic/claude-haiku-4-5"</span>,
   <span class="jk">"choices"</span>: [{ <span class="jk">"message"</span>: { <span class="jk">"role"</span>: <span class="js">"assistant"</span>, <span class="jk">"content"</span>: <span class="js">"pong"</span> } }],
-  <span class="jk">"usage"</span>: { <span class="jk">"prompt_tokens"</span>: <span class="jn">13</span>, <span class="jk">"completion_tokens"</span>: <span class="jn">5</span> }
-<span class="brace">}</span></code></pre>
+  <span class="jk">"usage"</span>: { <span class="jk">"prompt_tokens"</span>: <span class="jn">12</span>, <span class="jk">"completion_tokens"</span>: <span class="jn">5</span> } <span class="brace">}</span></code></pre>
     </div>
   </figure>
 </template>
@@ -65,7 +58,7 @@ const version = __PLUGBOARD_LATEST__
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 38px;
+  height: 32px;
   padding: 0 14px;
   background: var(--t-bar);
 }
@@ -101,16 +94,17 @@ const version = __PLUGBOARD_LATEST__
 
 .scroll {
   overflow-x: auto;
-  padding: 18px 22px 22px;
+  padding: 12px 22px 16px;
 }
 
+/* The curl is one long line: it wraps at a space instead of scrolling, so the whole command shows. */
 pre {
   margin: 0;
-  width: max-content;
-  min-width: 100%;
   color: var(--t-text);
-  font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 code {
@@ -154,13 +148,9 @@ code {
     padding: 14px 16px 18px;
   }
 
-  /* On a phone long lines wrap instead of scrolling. */
   pre {
-    width: auto;
     font-size: 11px;
     line-height: 1.65;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
 }
 </style>

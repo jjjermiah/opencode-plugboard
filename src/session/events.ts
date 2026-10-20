@@ -12,10 +12,10 @@
  *
  * A call to one of the app's `opencodeTools` is not the caller's: OpenCode runs it, the runner starts
  * the next step with its result, and the collector neither emits it nor stops the turn. A step with
- * only server calls continues; a step that also holds a caller call is returned to the caller as usual.
- * Server steps are counted and capped (`maxToolSteps`), and so are the calls (`maxToolCalls`); each
- * server call is logged once. A server call that lands after the request ended is logged as
- * `server_tool.after_request` and its step stops the turn again (#196).
+ * only OpenCode calls continues; a step that also holds a caller call is returned to the caller as usual.
+ * OpenCode steps are counted and capped (`maxToolSteps`), and so are the calls (`maxToolCalls`); each
+ * OpenCode call is logged once. An OpenCode call that lands after the request ended is logged as
+ * `opencode_tool.after_request` and its step stops the turn again (#196).
  */
 
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
@@ -281,7 +281,7 @@ export interface CollectorHooks {
    * fails the call at once with `provider_retry`, so the chain moves on; otherwise the host's retries run (#391).
    */
   readonly failFastRetry?: boolean
-  /** The app, for the `server_tool.call` log lines. */
+  /** The app, for the `opencode_tool.call` log lines. */
   readonly app?: string
   /** The app's `opencodeTools` (option `apps`): OpenCode runs these calls, the caller never sees them. */
   readonly opencodeTools?: ReadonlySet<string>
@@ -296,16 +296,16 @@ export interface CollectorHooks {
   readonly stopSequences?: ReadonlyArray<string>
   /** Called once, when a stop sequence matches the text (`stopSequences`). The owner starts the settle window. */
   readonly onStopAnswer?: () => void
-  /** The request's tool names, caller and server tools: the ids the model may name them by are rewritten only for these (#411). */
+  /** The request's tool names, caller and OpenCode tools: the ids the model may name them by are rewritten only for these (#411). */
   readonly toolNames?: readonly string[]
   /**
    * The request's caller tools, as the request offers them after the app's tool policy. A tool call must name one of them (#463):
-   * any other name is dropped and logged. Server tools are not caller tools (`opencodeTools`), they keep their own handling.
+   * any other name is dropped and logged. OpenCode tools are not caller tools (`opencodeTools`), they keep their own handling.
    */
   readonly callerTools: readonly string[]
 }
 
-interface ServerCall {
+interface OpencodeCall {
   readonly name: string
   readonly startedAt: number
   done: boolean
@@ -329,13 +329,13 @@ export class RequestCollector {
   private undeclared = 0
   /** True once any text (not reasoning) was emitted: a run whose only calls were dropped, and that wrote no text, fails (#463). */
   private answered = false
-  private readonly serverCalls = new Map<string, ServerCall>()
-  private stepServerCalls = 0
-  /** Server calls that landed after the request ended (#196), by id, and their count; `lateStepCalls` is the current step's. */
+  private readonly opencodeCalls = new Map<string, OpencodeCall>()
+  private stepOpencodeCalls = 0
+  /** OpenCode calls that landed after the request ended (#196), by id, and their count; `lateStepCalls` is the current step's. */
   private readonly lateIDs = new Set<string>()
   private lateCalls = 0
   private lateStepCalls = 0
-  private serverSteps = 0
+  private opencodeSteps = 0
   private usage?: RawUsage
   /** True once any output event (not an error) was emitted: the answer is committed and no retry may restart it. */
   private anyEmitted = false
@@ -372,9 +372,9 @@ export class RequestCollector {
     return this.settled
   }
 
-  /** How many server tool calls OpenCode ran in this session (each counted when it started). */
-  get serverCallCount(): number {
-    return this.serverCalls.size
+  /** How many OpenCode tool calls ran in this session (each counted when it started). */
+  get opencodeCallCount(): number {
+    return this.opencodeCalls.size
   }
 
   /** True once the owner cancelled the request (client gone or timeout). */
@@ -418,7 +418,7 @@ export class RequestCollector {
     if (answer.error !== undefined) this.push({ type: "session.step.failed", error: answer.error, tokens: answer.tokens })
     else {
       // The host runs the next step by itself (the event path does not finish on this step end either).
-      if (this.calls.size === 0 && this.stepServerCalls > 0 && (toFinish(answer.finish) === "stop" || toFinish(answer.finish) === "tool-calls")) return false
+      if (this.calls.size === 0 && this.stepOpencodeCalls > 0 && (toFinish(answer.finish) === "stop" || toFinish(answer.finish) === "tool-calls")) return false
       this.push({ type: "session.step.ended", finish: answer.finish, tokens: answer.tokens })
     }
     return this.finished
@@ -504,7 +504,7 @@ export class RequestCollector {
         const name = String(item.name ?? this.toolNames.get(id) ?? "")
         this.endReasoningText()
         if (this.finished) {
-          if (this.hooks.opencodeTools?.has(name)) this.lateServerCall(id, name)
+          if (this.hooks.opencodeTools?.has(name)) this.lateOpencodeCall(id, name)
           // A client that left mid-run (the settle window): no tool runs for it, and the run is stopped at once (no further step).
           if (this.wasCancelled && !this.executionDone && !this.leftStopped) {
             this.leftStopped = true
@@ -514,16 +514,16 @@ export class RequestCollector {
         }
         // After a match no tool runs: the answer is complete, and the run ends at once (#390 review).
         if (this.stopped) return this.finishStopped(true)
-        if (this.calls.has(id) || this.serverCalls.has(id)) return
+        if (this.calls.has(id) || this.opencodeCalls.has(id)) return
         if (this.hooks.opencodeTools?.has(name)) {
-          this.serverCalls.set(id, { name, startedAt: Date.now(), done: false })
-          this.stepServerCalls++
+          this.opencodeCalls.set(id, { name, startedAt: Date.now(), done: false })
+          this.stepOpencodeCalls++
           // The cap counts calls across steps (#198). The call past it is not returned to the caller, and the turn stops.
-          if (this.serverCalls.size > (this.hooks.maxToolCalls ?? 0))
+          if (this.opencodeCalls.size > (this.hooks.maxToolCalls ?? 0))
             this.abort({
               status: 502,
               kind: "server",
-              code: "server_tool_calls_exceeded",
+              code: "opencode_tool_calls_exceeded",
               message: "The model used more OpenCode tool calls than this app allows",
             })
           return
@@ -537,10 +537,10 @@ export class RequestCollector {
       }
       case "session.tool.success":
       case "session.tool.failed": {
-        const call = this.serverCalls.get(String(item.id))
+        const call = this.opencodeCalls.get(String(item.id))
         if (!call || call.done) return
         call.done = true
-        log("server_tool.call", {
+        log("opencode_tool.call", {
           requestID: this.hooks.requestID,
           app: this.hooks.app,
           tool: call.name,
@@ -558,12 +558,12 @@ export class RequestCollector {
         // Text and reasoning ordinals count from 0 in each assistant message, so the next step starts its counts again.
         this.emittedText.clear()
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
-        // After a match the step is the last one: no server tools are run and no next step starts (#390 review).
+        // After a match the step is the last one: no OpenCode tools are run and no next step starts (#390 review).
         // A plain end leaves the host to finish the run itself; a pending client tool call needs the interrupt.
         if (this.stopped) return this.finishStopped(this.calls.size > 0)
-        const serverCalls = this.stepServerCalls
-        this.stepServerCalls = 0
-        // A late step that ran server calls: the host is still running the session, so the turn is stopped again (#196).
+        const opencodeCalls = this.stepOpencodeCalls
+        this.stepOpencodeCalls = 0
+        // A late step that ran OpenCode calls: the host is still running the session, so the turn is stopped again (#196).
         const late = this.lateStepCalls
         this.lateStepCalls = 0
         if (this.finished && late > 0 && !this.executionDone) this.hooks.stopTurn()
@@ -571,13 +571,13 @@ export class RequestCollector {
         // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
         if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
         const reason = toFinish(item.finish)
-        // A client that left mid-run: a step that asks for another (server tools, or a finish that is not a plain stop) is stopped at
+        // A client that left mid-run: a step that asks for another (OpenCode tools, or a finish that is not a plain stop) is stopped at
         // once, so no further step starts. A client tool call already stopped the run above (`calls` is non-empty then).
-        if (this.wasCancelled && !this.executionDone && !this.leftStopped && this.calls.size === 0 && (reason !== "stop" || serverCalls > 0)) {
+        if (this.wasCancelled && !this.executionDone && !this.leftStopped && this.calls.size === 0 && (reason !== "stop" || opencodeCalls > 0)) {
           this.leftStopped = true
           this.hooks.stopTurn()
         }
-        if (this.calls.size === 0 && serverCalls > 0) return this.serverStepEnded(reason)
+        if (this.calls.size === 0 && opencodeCalls > 0) return this.opencodeStepEnded(reason)
         // #463: every call the step made was undeclared and no text was written: nothing to return, so the request fails.
         if (this.calls.size === 0 && this.undeclared > 0 && !this.answered) return this.abort(NO_ANSWER)
         // A tool-calls finish needs a valid call (#463). Without one the step is a stop, and no further step runs.
@@ -625,7 +625,7 @@ export class RequestCollector {
       case "session.execution.failed":
         this.reported()
         this.executionDone = true
-        this.logUnfinishedServerCalls()
+        this.logUnfinishedOpencodeCalls()
         if (!this.finished) this.failFromHost(item.error as RawError | undefined, "Session execution failed")
         this.end()
         return
@@ -633,7 +633,7 @@ export class RequestCollector {
       case "session.execution.succeeded":
         this.reported()
         this.executionDone = true
-        this.logUnfinishedServerCalls()
+        this.logUnfinishedOpencodeCalls()
         if (!this.finished) {
           if (this.calls.size > 0) this.finishWith("tool-calls")
           else if (this.wasCancelled) this.end()
@@ -693,16 +693,16 @@ export class RequestCollector {
   }
 
   /**
-   * A step that ran only server tools: the runner starts the next step with their results. The cap is
+   * A step that ran only OpenCode tools: the runner starts the next step with their results. The cap is
    * checked on each such step; past it the request fails and the turn is stopped.
    */
-  private serverStepEnded(reason: PlugFinish): void {
-    this.serverSteps++
-    if (this.serverSteps > (this.hooks.maxToolSteps ?? 0)) {
+  private opencodeStepEnded(reason: PlugFinish): void {
+    this.opencodeSteps++
+    if (this.opencodeSteps > (this.hooks.maxToolSteps ?? 0)) {
       this.abort({
         status: 502,
         kind: "server",
-        code: "server_tool_steps_exceeded",
+        code: "opencode_tool_steps_exceeded",
         message: "The model used more OpenCode tool steps than this app allows",
       })
       return
@@ -712,22 +712,22 @@ export class RequestCollector {
   }
 
   /**
-   * A server call that lands after the request ended (the client left, the timeout ran or the answer returned)
+   * An OpenCode call that lands after the request ended (the client left, the timeout ran or the answer returned)
    * while the host still runs the session (#196). It is never returned to anyone: it is counted and logged once
    * under its own event name, and the step that ran it stops the turn (`session.step.ended`).
    */
-  private lateServerCall(id: string, name: string): void {
+  private lateOpencodeCall(id: string, name: string): void {
     if (this.lateIDs.has(id)) return
     this.lateIDs.add(id)
     this.lateCalls++
     this.lateStepCalls++
-    log("server_tool.after_request", {
+    log("opencode_tool.after_request", {
       requestID: this.hooks.requestID,
       app: this.hooks.app,
       tool: name,
       lateCalls: this.lateCalls,
-      serverCalls: this.serverCalls.size,
-      serverSteps: this.serverSteps,
+      opencodeCalls: this.opencodeCalls.size,
+      opencodeSteps: this.opencodeSteps,
     })
   }
 
@@ -742,12 +742,12 @@ export class RequestCollector {
     logWarn("tool_call.undeclared", { requestID: this.hooks.requestID, app: this.hooks.app, tool: name.slice(0, 64) })
   }
 
-  /** Server calls the execution ended before they reported back are logged as not ok, once each. */
-  private logUnfinishedServerCalls(): void {
-    for (const call of this.serverCalls.values()) {
+  /** OpenCode calls the execution ended before they reported back are logged as not ok, once each. */
+  private logUnfinishedOpencodeCalls(): void {
+    for (const call of this.opencodeCalls.values()) {
       if (call.done) continue
       call.done = true
-      log("server_tool.call", {
+      log("opencode_tool.call", {
         requestID: this.hooks.requestID,
         app: this.hooks.app,
         tool: call.name,

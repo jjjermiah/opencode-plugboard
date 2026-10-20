@@ -10,7 +10,7 @@ import type { CallContext, PlugEvent } from "../../src/contract.js"
 import { createAffinity } from "../../src/session/affinity.js"
 import { createSessionCaller } from "../../src/session/caller.js"
 import { MissingParentError } from "../../src/session/host.js"
-import { recordSession, sweepHistory } from "../../src/session/prune.js"
+import { recordSession, sweepSessions } from "../../src/session/prune.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { plugRequest } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
@@ -22,7 +22,7 @@ const PARENT = "plugboard: bot"
 const APP_RECORD = "affinity/bot/anchor/app/"
 
 interface Setup {
-  readonly historyHidden?: boolean
+  readonly hideFromList?: boolean
   readonly apps?: Record<string, AppPolicy>
   readonly promptCache?: PromptCache
   readonly storage?: FakeStorage
@@ -37,7 +37,7 @@ function setup(options: Setup = {}) {
     sessions,
     maxTools: 2,
     affinity: createAffinity({ storage }),
-    historyHidden: options.historyHidden,
+    hideFromList: options.hideFromList,
     apps: options.apps,
     promptCache: options.promptCache,
   })
@@ -68,7 +68,7 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
   })
 
   test("global on: every request is a child of one parent titled plugboard: <app>, made once", async () => {
-    const run = setup({ historyHidden: true })
+    const run = setup({ hideFromList: true })
     await drain(run.caller.stream(plugRequest(), context()))
     await drain(run.caller.stream(plugRequest(), context()))
     const [parent] = parents(run.port)
@@ -85,14 +85,14 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
   })
 
   test("an app's own sessions.hideFromList: false keeps that app top-level while the global option is on", async () => {
-    const run = setup({ historyHidden: true, apps: { bot: { systemMode: "prepend", tools: true, sessions: { hideFromList: false } } } })
+    const run = setup({ hideFromList: true, apps: { bot: { systemMode: "prepend", tools: true, sessions: { hideFromList: false } } } })
     await drain(run.caller.stream(plugRequest(), context()))
     expect(parents(run.port)).toHaveLength(0)
     expect(run.port.created[0]!.parentID).toBeUndefined()
   })
 
   test("the parent is recreated once if it was deleted in OpenCode, and the request is retried once", async () => {
-    const run = setup({ historyHidden: true })
+    const run = setup({ hideFromList: true })
     await drain(run.caller.stream(plugRequest(), context()))
     const stale = parents(run.port)[0]!.id
     run.port.script.create = async (input) => {
@@ -110,7 +110,7 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
   })
 
   test("concurrent requests after a parent delete share one replacement: no second parent is made", async () => {
-    const run = setup({ historyHidden: true })
+    const run = setup({ hideFromList: true })
     await drain(run.caller.stream(plugRequest(), context()))
     const stale = parents(run.port)[0]!.id
     // Both requests read the stale parent before either is refused (the first waits for the second). The second
@@ -140,7 +140,7 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
   })
 
   test("with a promptCache app-scope anchor too, one parent serves both", async () => {
-    const run = setup({ historyHidden: true, promptCache: { affinity: "anchor", scope: "app" } })
+    const run = setup({ hideFromList: true, promptCache: { affinity: "anchor", scope: "app" } })
     await drain(run.caller.stream(plugRequest(), context()))
     await drain(run.caller.stream(plugRequest(), context()))
     const [parent] = parents(run.port)
@@ -156,7 +156,7 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
     const anchor = before.port.created[0]!
     expect(anchor.title).toBe("plugboard anchor: bot")
 
-    const after = setup({ historyHidden: true, storage })
+    const after = setup({ hideFromList: true, storage })
     await drain(after.caller.stream(plugRequest(), context()))
     expect(after.port.created).toHaveLength(1)
     expect(after.port.created[0]!.parentID).toBe(anchor.id)
@@ -166,7 +166,7 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
     const storage = new FakeStorage()
     // A stored per-user record from an earlier `scope: user` config fills the cap of 1; it is never dropped.
     await storage.put("affinity/bot/anchor/user/alice", JSON.stringify({ sessionID: "ses_old" }))
-    const run = setup({ historyHidden: true, promptCache: { affinity: "off", scope: "app", maxAnchors: 1 }, storage })
+    const run = setup({ hideFromList: true, promptCache: { affinity: "off", scope: "app", maxAnchors: 1 }, storage })
     for (let turn = 0; turn < 3; turn++) {
       const events = await drain(run.caller.stream(plugRequest(), context()))
       expect(events.some((event) => event.type === "error")).toBe(false)
@@ -178,7 +178,7 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
   })
 
   test("the request still gets its history record and the child is what pruning indexes, never the parent", async () => {
-    const run = setup({ historyHidden: true })
+    const run = setup({ hideFromList: true })
     const recorded: string[] = []
     await drain(run.caller.stream(plugRequest(), context({ onRecord: (sessionID) => void recorded.push(sessionID) })))
     const parent = parents(run.port)[0]!
@@ -190,7 +190,7 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
     const port = new FakeHistoryPort()
     port.sessions.add(child.id)
     await recordSession(port, "bot", child.id, Date.now() - 10 * 86_400_000)
-    const swept = await sweepHistory({ port, limits: { maxAgeDays: 1 }, sessions: createSessionStore(), now: Date.now(), signal: new AbortController().signal })
+    const swept = await sweepSessions({ port, limits: { maxAgeDays: 1 }, sessions: createSessionStore(), now: Date.now(), signal: new AbortController().signal })
     expect(swept.removed).toBe(1)
     expect(port.removed).toEqual([child.id])
   })

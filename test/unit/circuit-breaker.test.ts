@@ -63,9 +63,9 @@ describe("a target that keeps failing is skipped", () => {
     const run = setup({ "a/x": [rateLimited], "b/y": answer(), "c/z": answer() })
     expect((await run.request()).targets).toEqual(["a/x", "b/y"])
     expect((await run.request()).targets).toEqual(["a/x", "b/y"])
-    expect(logs.of("fallback.cooldown.open")).toEqual([])
+    expect(logs.of("circuit_breaker.open")).toEqual([])
     expect((await run.request()).targets).toEqual(["a/x", "b/y"])
-    expect(logs.of("fallback.cooldown.open")).toHaveLength(1)
+    expect(logs.of("circuit_breaker.open")).toHaveLength(1)
     const fourth = await run.request()
     expect(fourth.targets).toEqual(["b/y"])
     // The answering target's position: the skipped first target counts as a fallback in the header.
@@ -76,12 +76,12 @@ describe("a target that keeps failing is skipped", () => {
   test("the open and skip log lines name the target and when its cooldown ends", async () => {
     const run = await openFirst()
     await run.request()
-    const open = logs.of("fallback.cooldown.open")
+    const open = logs.of("circuit_breaker.open")
     expect(open).toHaveLength(1)
     expect(open[0]!.fields).toMatchObject({ app: "app1", target: "a/x", reopened: "false", cooldownMs: String(COOLDOWN_MS) })
     expect(open[0]!.fields.until).toMatch(/^\d{4}-\d\d-\d\dT/)
-    expect(logs.of("fallback.cooldown.skip")).toHaveLength(1)
-    expect(logs.of("fallback.cooldown.skip")[0]!.fields).toMatchObject({ app: "app1", target: "a/x", until: open[0]!.fields.until })
+    expect(logs.of("circuit_breaker.skip")).toHaveLength(1)
+    expect(logs.of("circuit_breaker.skip")[0]!.fields).toMatchObject({ app: "app1", target: "a/x", until: open[0]!.fields.until })
     expect(run.events).toEqual(["open", "skip"])
   })
 
@@ -137,7 +137,7 @@ describe("a target that keeps failing is skipped", () => {
     const run = setup({ "a/x": [rateLimited], "b/y": answer(), "c/z": answer() }, parseOptions({ ...raw, circuitBreaker: false }))
     for (let i = 0; i < 6; i++) expect((await run.request()).targets).toEqual(["a/x", "b/y"])
     expect(run.breaker.cooling()).toEqual([])
-    expect(logs.of("fallback.cooldown.open")).toEqual([])
+    expect(logs.of("circuit_breaker.open")).toEqual([])
   })
 })
 
@@ -173,7 +173,7 @@ describe("what counts as a failure", () => {
     await ask()
     await ask()
     expect(targets).toEqual(["a/x", "b/y", "a/x", "b/y"])
-    expect(logs.of("fallback.cooldown.open")).toHaveLength(1)
+    expect(logs.of("circuit_breaker.open")).toHaveLength(1)
     await ask()
     expect(targets.slice(4)).toEqual(["b/y"])
   })
@@ -267,8 +267,8 @@ describe("the half-open probe", () => {
     const probe = await run.request()
     expect(probe.targets).toEqual(["a/x"])
     expect(probe.served).toEqual([{ model: "a/x", fallbacks: 0, chain: true }])
-    expect(logs.of("fallback.cooldown.close")).toHaveLength(1)
-    expect(logs.of("fallback.cooldown.close")[0]!.fields).toMatchObject({ app: "app1", target: "a/x" })
+    expect(logs.of("circuit_breaker.close")).toHaveLength(1)
+    expect(logs.of("circuit_breaker.close")[0]!.fields).toMatchObject({ app: "app1", target: "a/x" })
     expect(run.events).toEqual(["open", "skip", "close"])
     expect(run.breaker.cooling()).toEqual([])
     // Closed: the next request is an ordinary one.
@@ -281,8 +281,8 @@ describe("the half-open probe", () => {
     const mark = (label: string) =>
       void seen.push(
         `${label}:${logs.lines
-          .filter((line) => line.event.startsWith("fallback.cooldown."))
-          .map((line) => line.event.slice(18))
+          .filter((line) => line.event.startsWith("circuit_breaker."))
+          .map((line) => line.event.slice("circuit_breaker.".length))
           .join(",")}`,
       )
     for (let i = 0; i < 3; i++) await run.request()
@@ -304,9 +304,9 @@ describe("the half-open probe", () => {
     const probe = await run.request()
     expect(probe.targets).toEqual(["a/x", "b/y"])
     expect(probe.served).toEqual([{ model: "b/y#low", fallbacks: 1, chain: true }])
-    expect(logs.of("fallback.cooldown.open")).toHaveLength(2)
-    expect(logs.of("fallback.cooldown.open")[1]!.fields).toMatchObject({ reopened: "true" })
-    expect(logs.of("fallback.cooldown.close")).toEqual([])
+    expect(logs.of("circuit_breaker.open")).toHaveLength(2)
+    expect(logs.of("circuit_breaker.open")[1]!.fields).toMatchObject({ reopened: "true" })
+    expect(logs.of("circuit_breaker.close")).toEqual([])
     run.advance(COOLDOWN_MS - 1)
     expect((await run.request()).targets).toEqual(["b/y"])
     run.advance(1)
@@ -426,9 +426,9 @@ describe("every target cooling down: the first is tried anyway", () => {
     const r = await run.request()
     expect(r.targets).toEqual(["a/x"])
     expect(r.served).toEqual([{ model: "a/x", fallbacks: 0, chain: true }])
-    expect(logs.of("fallback.cooldown.all_open")).toHaveLength(1)
+    expect(logs.of("circuit_breaker.all_open")).toHaveLength(1)
     // It answered, so its breaker closes even though the cooldown had not ended.
-    expect(logs.of("fallback.cooldown.close")).toHaveLength(1)
+    expect(logs.of("circuit_breaker.close")).toHaveLength(1)
   })
 
   test("when that attempt fails too, its error is the response and the other cooling targets are not tried", async () => {

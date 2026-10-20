@@ -62,12 +62,12 @@ export async function serveAdmin(host: AdminHost, call: AdminCall): Promise<void
         param: "app",
         message: `\`app\` must be at most ${APP_NAME_MAX} characters, match the app name pattern, and not be \`${DEFAULT_APP}\``,
       })
-    // A runtime key would carry the app's server tools (#197): those apps get their key from the config only.
+    // A runtime key would carry the app's OpenCode tools (#197): those apps get their key from the config only.
     if (appPolicy(host.options, app)?.opencodeTools)
       return fail({
         status: 409,
         kind: "invalid_request",
-        code: "app_has_server_tools",
+        code: "app_has_opencode_tools",
         param: "app",
         message: `App ${app} runs OpenCode tools (option \`apps.${app}.opencodeTools\`); a runtime key would give the same power, so none is minted. Set the key in the plugboard config`,
       })

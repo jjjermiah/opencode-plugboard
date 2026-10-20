@@ -4,7 +4,7 @@
  * URL-encoded (src/session/link.ts).
  */
 import { describe, expect, test } from "bun:test"
-import { historyTemplate, parseOptions } from "../../src/config.js"
+import { sessionUrlTemplate, parseOptions } from "../../src/config.js"
 import { sessionUrl } from "../../src/session/link.js"
 
 describe("#77 option sessionUrl: validated at load", () => {
@@ -56,21 +56,21 @@ describe("#280 option apps.<name>.sessionUrl: a per-app template, or false for n
     expect(() => own(value)).toThrow(message)
   })
 
-  test("#280 historyTemplate: an app's own template, none for false, the global one when unset", () => {
+  test("#280 sessionUrlTemplate: an app's own template, none for false, the global one when unset", () => {
     const options = parseOptions({
       sessionUrl: GLOBAL,
       keys: { alpha: "ka", beta: "kb", gamma: "kc" },
       apps: { alpha: { sessionUrl: "http://alpha.lan/s/{id}" }, beta: { sessionUrl: false }, gamma: { tools: false } },
     })
-    expect(historyTemplate(options, "alpha")).toBe("http://alpha.lan/s/{id}")
-    expect(historyTemplate(options, "beta")).toBeUndefined()
-    expect(historyTemplate(options, "gamma")).toBe(GLOBAL)
-    expect(historyTemplate(options, "unknown")).toBe(GLOBAL)
+    expect(sessionUrlTemplate(options, "alpha")).toBe("http://alpha.lan/s/{id}")
+    expect(sessionUrlTemplate(options, "beta")).toBeUndefined()
+    expect(sessionUrlTemplate(options, "gamma")).toBe(GLOBAL)
+    expect(sessionUrlTemplate(options, "unknown")).toBe(GLOBAL)
   })
 
   test("#280 with no global sessionUrl, an app's own template still applies and others get none", () => {
     const options = parseOptions({ keys: { alpha: "ka", beta: "kb" }, apps: { alpha: { sessionUrl: "http://alpha.lan/s/{id}" } } })
-    expect(historyTemplate(options, "alpha")).toBe("http://alpha.lan/s/{id}")
-    expect(historyTemplate(options, "beta")).toBeUndefined()
+    expect(sessionUrlTemplate(options, "alpha")).toBe("http://alpha.lan/s/{id}")
+    expect(sessionUrlTemplate(options, "beta")).toBeUndefined()
   })
 })

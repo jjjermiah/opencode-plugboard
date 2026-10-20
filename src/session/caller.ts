@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto"
 import { raceAbort } from "../abort.js"
-import { DEFAULT_APP, DEFAULT_SERVER_TOOL_CALLS, DEFAULT_SERVER_TOOL_STEPS, appPolicy, isAppName, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
+import { DEFAULT_APP, DEFAULT_OPENCODE_TOOL_CALLS, DEFAULT_OPENCODE_TOOL_STEPS, appPolicy, isAppName, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { debugEnabled, log, logDebug, logError, logRequest, logWarn } from "../log.js"
 import type { Metrics } from "../metrics.js"
@@ -28,7 +28,7 @@ import { requestSystem } from "./context.js"
 import { ensureAppDir, makeTitle, renderTranscript } from "./history.js"
 import { describeError, MissingParentError, type DirectToolSchema, type SessionPort } from "./host.js"
 import { ImageError, prepareImages, type ImageFetch, type RemoteImages } from "./media.js"
-import { requestPermissions, seedToolsFor, ungrantedServerTool, type OperatorRule } from "./seeds.js"
+import { requestPermissions, seedToolsFor, ungrantedOpencodeTool, type OperatorRule } from "./seeds.js"
 import { maxAnchorsOf, PROMPT_CACHE_OFF, scopeKey, type Affinity } from "./affinity.js"
 import type { SessionStore } from "./state.js"
 
@@ -57,7 +57,7 @@ export interface SessionCallerDeps {
   /** The store of anchor sessions (src/session/affinity.ts). Absent: no affinity, whatever the policy says. */
   readonly affinity?: Affinity
   /** Global `sessions.hideFromList` (#337); an app's `apps.<name>.sessions.hideFromList` overrides it. Absent: off. */
-  readonly historyHidden?: boolean
+  readonly hideFromList?: boolean
   /** The global `requestTimeoutMs` (the route's deadline; an app's own value wins). Absent: no deadline to keep clear of (#390). */
   readonly requestTimeoutMs?: number
   /** Test seams for the settle timers (#390): defaults are `SETTLE_MS` and `STOP_DRAIN_MS`. */
@@ -146,7 +146,7 @@ function applyToolPolicy(request: PlugRequest, policy: AppPolicy | undefined): {
   const structured = request.structuredTool
   const kept = structured === undefined ? [] : request.tools.filter((tool) => tool.name === structured)
   if (structured === undefined || kept.length === 0) {
-    // `none` refers to no tool at all, so it stays (#421): the server tools stay out too.
+    // `none` refers to no tool at all, so it stays (#421): the OpenCode tools stay out too.
     const { toolChoice: dropped, ...rest } = request
     return { request: { ...rest, tools: [], ...(dropped === "none" ? { toolChoice: "none" as const } : {}) }, stripped: request.tools.length > 0 }
   }
@@ -165,32 +165,32 @@ function checkAppTools(request: PlugRequest, app: string, policy: AppPolicy | un
     message: `Request has ${request.tools.length} tools; app ${app} allows ${max} (option \`apps.${app}.maxTools\`)`,
   }
 }
-/** A caller tool may not share a name with one of the app's server tools: the model would see two tools under one name. */
-function checkServerToolNames(request: PlugRequest, policy: AppPolicy | undefined): PlugError | undefined {
+/** A caller tool may not share a name with one of the app's OpenCode tools: the model would see two tools under one name. */
+function checkOpencodeToolNames(request: PlugRequest, policy: AppPolicy | undefined): PlugError | undefined {
   const clash = request.tools.find((tool) => policy?.opencodeTools?.includes(tool.name))
   if (!clash) return undefined
   return {
     status: 400,
     kind: "invalid_request",
-    code: "server_tool_collision",
+    code: "opencode_tool_collision",
     param: "tools",
-    message: `Tool \`${clash.name}\` is one of this app's OpenCode server tools (option \`apps.<name>.opencodeTools\`); rename the caller's tool`,
+    message: `Tool \`${clash.name}\` is one of this app's OpenCode tools (option \`apps.<name>.opencodeTools\`); rename the caller's tool`,
   }
 }
 
-/** A listed server tool the operator's permissions for the agent do not allow (#194): nothing is created. */
+/** A listed OpenCode tool the operator's permissions for the agent do not allow (#194): nothing is created. */
 function deniedByOperator(tool: string): PlugError {
   return {
     status: 400,
     kind: "invalid_request",
-    code: "server_tool_denied_by_operator",
+    code: "opencode_tool_denied_by_operator",
     param: "tools",
     message: `The OpenCode permissions of this app's agent do not allow \`${tool}\` (option \`apps.<name>.opencodeTools\`). Add an allow rule for it to the agent, or remove it from opencodeTools`,
   }
 }
 
-/** Every server tool must be a direct tool of this location right now (fail closed; checked per request, never at setup). */
-async function checkServerToolsAvailable(port: SessionPort, policy: AppPolicy | undefined, signal: AbortSignal): Promise<PlugError | undefined> {
+/** Every OpenCode tool must be a direct tool of this location right now (fail closed; checked per request, never at setup). */
+async function checkOpencodeToolsAvailable(port: SessionPort, policy: AppPolicy | undefined, signal: AbortSignal): Promise<PlugError | undefined> {
   if (!policy?.opencodeTools) return undefined
   const offered = new Set(await raceAbort(port.directTools(), signal))
   const missing = policy.opencodeTools.filter((tool) => !offered.has(tool))
@@ -198,7 +198,7 @@ async function checkServerToolsAvailable(port: SessionPort, policy: AppPolicy | 
   return {
     status: 400,
     kind: "invalid_request",
-    code: "server_tool_unavailable",
+    code: "opencode_tool_unavailable",
     message: `OpenCode tool(s) not available in this location: ${missing.join(", ")} (option \`apps.<name>.opencodeTools\`). CodeMode tools, including MCP tools by default, cannot be listed; set codemode: false on the tool`,
   }
 }
@@ -229,10 +229,10 @@ export type SessionPromptDeps = Pick<SessionCallerDeps, "port" | "persona" | "en
 
 /**
  * The request as the session sends it, for `count_tokens` and `countTokens` (#201): the same refusals as `stream` (model scope,
- * tool count, server-tool name clash, the app's server tools' existence and operator grant), the app's tool policy, the persona's
+ * tool count, OpenCode tool name clash, the app's OpenCode tools' existence and operator grant), the app's tool policy, the persona's
  * prompt, the system prompt with the app's policy and steering, and the tools the session offers: the caller's tools that get a
- * seed (`seedToolsFor`) and the app's server-tool schemas, unless the tool choice is `none`. Returns the request with `system` and
- * `tools` as the model reads them, or the error the request would stop with. The persona and server tools are read from the
+ * seed (`seedToolsFor`) and the app's OpenCode tool schemas, unless the tool choice is `none`. Returns the request with `system` and
+ * `tools` as the model reads them, or the error the request would stop with. The persona and OpenCode tools are read from the
  * session only when there are some and `deps` is given. Side effects, as the request has them: the app directory is created and
  * the Location may boot (`ensureAppDir`, `ensureBackend`), and a backend that is not ready answers 503. Image preparation (remote
  * fetches) is not run. `app` is the authenticated app name, validated by config, so the caller's name check is not repeated.
@@ -244,7 +244,7 @@ export async function sessionRequest(deps: SessionPromptDeps | undefined, app: s
   let { request } = applyToolPolicy(called, policy)
   const tooMany = checkAppTools(request, app, policy)
   if (tooMany) return tooMany
-  const clash = checkServerToolNames(request, policy)
+  const clash = checkOpencodeToolNames(request, policy)
   if (clash) return clash
 
   const persona = deps?.persona?.(called.model)
@@ -256,7 +256,7 @@ export async function sessionRequest(deps: SessionPromptDeps | undefined, app: s
     if (isPlugError(directory)) return directory
     const unavailable = await deps.ensureBackend?.(app, signal)
     if (unavailable) return unavailable
-    const missing = await checkServerToolsAvailable(deps.port, policy, signal)
+    const missing = await checkOpencodeToolsAvailable(deps.port, policy, signal)
     if (missing) return missing
     const parts = await personaPrompt(deps.port, directory, persona)
     if (isPlugError(parts)) return parts
@@ -265,7 +265,7 @@ export async function sessionRequest(deps: SessionPromptDeps | undefined, app: s
     if (opencodeTools !== undefined) {
       // The operator's grant for the agent the session runs as (#194): an ungranted tool is refused before any session exists.
       const rules = (await raceAbort(deps.port.agentRules(directory, persona?.kind === "agent" ? persona.agent : undefined), signal)) ?? []
-      const ungranted = ungrantedServerTool(opencodeTools, rules)
+      const ungranted = ungrantedOpencodeTool(opencodeTools, rules)
       if (ungranted) return deniedByOperator(ungranted)
       // Offered only when the tool choice allows tools, as the context hook does (src/session/context.ts).
       if (request.toolChoice !== "none") {
@@ -320,7 +320,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
       let { request, stripped } = applyToolPolicy(called, policy)
       const tooMany = checkAppTools(request, app, policy)
       if (tooMany) return yield note({ type: "error", error: tooMany })
-      const clash = checkServerToolNames(request, policy)
+      const clash = checkOpencodeToolNames(request, policy)
       if (clash) return yield note({ type: "error", error: clash })
       if (stripped) {
         try {
@@ -461,8 +461,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         const unavailable = await ensureBackend?.(app, context.signal)
         if (unavailable) return yield note({ type: "error", error: unavailable })
         if (context.signal.aborted) return
-        const missingServerTools = await checkServerToolsAvailable(port, policy, context.signal)
-        if (missingServerTools) return yield note({ type: "error", error: missingServerTools })
+        const missingOpencodeTools = await checkOpencodeToolsAvailable(port, policy, context.signal)
+        if (missingOpencodeTools) return yield note({ type: "error", error: missingOpencodeTools })
         if (context.signal.aborted) return
 
         // 3b. A persona (see `Persona`). A skill's content leads the system prompt; an agent's prompt replaces the
@@ -474,11 +474,11 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (parts.system !== undefined) request = { ...request, system: [...parts.system] }
         if (context.signal.aborted) return
 
-        // 3c. An app with server tools runs them under the agent's own rules (#194): read them now, for the agent this session runs as.
+        // 3c. An app with OpenCode tools runs them under the agent's own rules (#194): read them now, for the agent this session runs as.
         let operatorRules: ReadonlyArray<OperatorRule> = []
         if (policy?.opencodeTools) {
           operatorRules = (await raceAbort(port.agentRules(directory, persona?.kind === "agent" ? persona.agent : undefined), context.signal)) ?? []
-          const ungranted = ungrantedServerTool(policy.opencodeTools, operatorRules)
+          const ungranted = ungrantedOpencodeTool(policy.opencodeTools, operatorRules)
           if (ungranted) return yield note({ type: "error", error: deniedByOperator(ungranted) })
         }
         if (context.signal.aborted) return
@@ -498,8 +498,8 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           ...(policy?.opencodeTools
             ? {
                 opencodeTools: new Set(policy.opencodeTools),
-                maxToolSteps: policy.maxToolSteps ?? DEFAULT_SERVER_TOOL_STEPS,
-                maxToolCalls: policy.maxToolCalls ?? DEFAULT_SERVER_TOOL_CALLS,
+                maxToolSteps: policy.maxToolSteps ?? DEFAULT_OPENCODE_TOOL_STEPS,
+                maxToolCalls: policy.maxToolCalls ?? DEFAULT_OPENCODE_TOOL_CALLS,
               }
             : {}),
         })
@@ -511,7 +511,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         // stays the anchor's id across requests (src/session/affinity.ts). `sessions.hideFromList` (#337) uses the same parent
         // machinery: the app-scope anchor, which an app's promptCache app-scope anchor shares.
         const cache = appPolicy({ apps }, app)?.promptCache ?? deps.promptCache ?? PROMPT_CACHE_OFF
-        const hidden = (appPolicy({ apps }, app)?.sessions?.hideFromList ?? deps.historyHidden) === true
+        const hidden = (appPolicy({ apps }, app)?.sessions?.hideFromList ?? deps.hideFromList) === true
         const anchored = cache.affinity === "anchor" || hidden
         const keyScope: AffinityScope = hidden ? "app" : cache.scope
         const scope = affinity && anchored ? (hidden ? "" : scopeKey(cache, called)) : undefined
@@ -646,12 +646,12 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           if (promptStarted) sessions.retire(sessionID, { timeoutMs: CLEANUP_TIMEOUT_MS, onTimeout: interrupt })
           else sessions.release(sessionID)
         }
-        const serverToolCalls = collector?.serverCallCount ?? 0
-        if (serverToolCalls > 0 && context.onServerTools) {
+        const opencodeToolCalls = collector?.opencodeCallCount ?? 0
+        if (opencodeToolCalls > 0 && context.onOpencodeTools) {
           try {
-            context.onServerTools(serverToolCalls)
+            context.onOpencodeTools(opencodeToolCalls)
           } catch (error) {
-            logError("request.on_server_tools_failed", { requestID, app, error: describeError(error) })
+            logError("request.on_opencode_tools_failed", { requestID, app, error: describeError(error) })
           }
         }
         // A turn that stopped with nothing in it is kept as a session for inspection: the session id finds it.

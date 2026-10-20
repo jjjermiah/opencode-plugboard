@@ -13,7 +13,7 @@
  * `ModelRef` afterwards, which is why the request omits `ref`.
  */
 import { createHash } from "node:crypto"
-import type { HostedTools, PlugboardOptions } from "../config.js"
+import type { OnHostedTools, PlugboardOptions } from "../config.js"
 import { show } from "../client-value.js"
 import { imageProblem, pdfProblem } from "../image.js"
 import { bodyUser, userField } from "../user.js"
@@ -328,7 +328,7 @@ const customTool = (name: string, entry: JsonObject): PlugTool => {
  * `maxTools` checks count what the model gets. A name declared again by a later `additional_tools` item replaces the earlier
  * declaration, because Codex sends the list again with each turn and a description may change between turns; any other repeat is a duplicate.
  */
-const parseTools = (sources: ReadonlyArray<ToolSource>, hosted: HostedTools): DeclaredTools | PlugError => {
+const parseTools = (sources: ReadonlyArray<ToolSource>, hosted: OnHostedTools): DeclaredTools | PlugError => {
   const tools: PlugTool[] = []
   const routes = new Map<string, ToolRoute>()
   const dropped: string[] = []
@@ -509,7 +509,7 @@ export function parseResponsesRequest(
   options: PlugboardOptions,
   resolve?: ItemResolver,
   history?: ReadonlyArray<JsonObject>,
-  hosted: HostedTools = "drop",
+  hosted: OnHostedTools = "drop",
 ): ParsedResponses | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")

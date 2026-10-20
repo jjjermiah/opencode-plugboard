@@ -63,7 +63,7 @@ import { createLimitState, type LimitState } from "./limits.js"
 import { createMetrics, type Metrics, type RuntimeSnapshot } from "./metrics.js"
 import { ensureAppDir } from "./session/history.js"
 import type { HistoryPort } from "./session/host.js"
-import { limitsFor, recordSession, sweepHistory, type HistoryLimits } from "./session/prune.js"
+import { limitsFor, recordSession, sweepSessions, type SessionLimits } from "./session/prune.js"
 import { createSessionStore, type SessionStore } from "./session/state.js"
 import { createBudgetState, type BudgetState } from "./budgets.js"
 import { createKeyState, type KeyState } from "./keys.js"
@@ -108,7 +108,7 @@ export interface GenerationInput {
   readonly refresh: () => Promise<void>
   /** The host storage and session deletion used to index and prune request sessions, with the configured limits (identical in every accepted generation). */
   /** `apps`: each app's own limits (`apps.<name>.sessions`, #265); an app without them uses `limits`. */
-  readonly history: { readonly port: HistoryPort; readonly limits: HistoryLimits; readonly apps?: Readonly<Record<string, HistoryLimits>> }
+  readonly history: { readonly port: HistoryPort; readonly limits: SessionLimits; readonly apps?: Readonly<Record<string, SessionLimits>> }
 }
 
 const GRACE_MS = 10_000
@@ -265,21 +265,21 @@ function runtime(): Runtime | undefined {
  */
 function trackSession(rt: Runtime, app: string, sessionID: string): void {
   const history = preferred(rt)?.history
-  if (!history) return logError("history.index_skipped", { app, sessionID, reason: "no live generation" })
+  if (!history) return logError("sessions.index_skipped", { app, sessionID, reason: "no live generation" })
   // No limits for this app, no index: an unbounded index would grow opencode.db by a row per request forever (#85, #265).
   const limits = limitsFor(history.limits, history.apps, app)
   if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) return
   // Not about the request that happened to create the session: its log lines carry no request id.
   void outsideRequest(() =>
     recordSession(history.port, app, sessionID, Date.now())
-      .catch((error) => logError("history.index_failed", { app, sessionID, error: errorMessage(error) }))
+      .catch((error) => logError("sessions.index_failed", { app, sessionID, error: errorMessage(error) }))
       .then(() => maybeSweep(rt, history)),
   )
 }
 
 /**
  * Run a history sweep when limits are set, none is running and the rate limit allows. Bounded:
- * see `sweepHistory`. A sweep that leaves work behind is followed up after `SWEEP_BACKLOG_MS`,
+ * see `sweepSessions`. A sweep that leaves work behind is followed up after `SWEEP_BACKLOG_MS`,
  * a complete one after `SWEEP_INTERVAL_MS`. Logs one line with counts only.
  */
 async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Promise<void> {
@@ -293,7 +293,7 @@ async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Pro
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const result = await Promise.race([
-      sweepHistory({ port, limits, apps, sessions: rt.sessions, now, signal: deadline }),
+      sweepSessions({ port, limits, apps, sessions: rt.sessions, now, signal: deadline }),
       new Promise<undefined>((resolve) => {
         timer = setTimeout(() => resolve(undefined), SWEEP_DEADLINE_MS + 5_000)
         timer.unref?.()
@@ -301,16 +301,16 @@ async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Pro
     ])
     if (!result) {
       rt.metrics.sweep("timeout", 0)
-      return logError("history.sweep_timeout", { limit: SWEEP_DEADLINE_MS })
+      return logError("sessions.sweep_timeout", { limit: SWEEP_DEADLINE_MS })
     }
     if (result.more) rt.sweep.nextAt = Date.now() + SWEEP_BACKLOG_MS
     rt.metrics.sweep("ok", result.removed)
     // A sweep that could not delete something signals a problem (warn); a clean one is routine (info).
     const swept = result.failed > 0 ? logWarn : log
-    swept("history.swept", { ...result, durationMs: Date.now() - now })
+    swept("sessions.swept", { ...result, durationMs: Date.now() - now })
   } catch (error) {
     rt.metrics.sweep("failed", 0)
-    logError("history.sweep_failed", { error: errorMessage(error) })
+    logError("sessions.sweep_failed", { error: errorMessage(error) })
   } finally {
     clearTimeout(timer)
     rt.sweep.running = false
@@ -376,12 +376,12 @@ export function withResponseCache(caller: ModelCaller, options: PlugboardOptions
     }
     const count = options.metrics ? (app: string, result: "hit" | "miss") => processMetrics().cache(app, result) : undefined
     // One bypass predicate: a persona model, or an app whose answers depend on live OpenCode tool output (#82).
-    const serverToolApps = new Set(
+    const opencodeToolApps = new Set(
       Object.entries(options.apps)
         .filter(([, policy]) => policy.opencodeTools !== undefined)
         .map(([app]) => app),
     )
-    return cachedCaller(caller, config, held.store, count, (model, app) => personaOf(options, model) !== undefined || serverToolApps.has(app))
+    return cachedCaller(caller, config, held.store, count, (model, app) => personaOf(options, model) !== undefined || opencodeToolApps.has(app))
   }
   return { stream: (request, context) => (wrapped ??= build()).stream(request, context) }
 }
@@ -414,7 +414,7 @@ export function processStatus(): RuntimeStatus {
     startedAt: rt.startedAt,
     servingConfirmed: rt.confirmed.size > 0,
     catalogLoaded: rt.catalogLoaded === true,
-    cooldowns: rt.breaker.cooling(),
+    breakers: rt.breaker.cooling(),
     ...(rt.listener ? { listener: { host: rt.listener.listen.host, port: rt.listener.listen.port, bound: rt.listener.bound } } : {}),
     ...(rt.configError ? { configError: rt.configError } : {}),
   }

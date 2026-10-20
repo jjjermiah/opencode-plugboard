@@ -3,7 +3,7 @@
  * storage. #85: nothing is indexed without limits (tested in test/runtime/generations.test.ts).
  */
 import { describe, expect, test } from "bun:test"
-import { indexKey, limitsFor, recordSession, sweepHistory, type SweepInput } from "../../src/session/prune.js"
+import { indexKey, limitsFor, recordSession, sweepSessions, type SweepInput } from "../../src/session/prune.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { plugRequest } from "../support/fixtures.js"
 import { FakeHistoryPort } from "../support/session.js"
@@ -23,7 +23,7 @@ async function history(apps: Record<string, number>) {
   return port
 }
 
-const sweep = (port: FakeHistoryPort, input: Partial<SweepInput> = {}) => sweepHistory({ port, limits: {}, sessions: createSessionStore(), now: NOW, signal: new AbortController().signal, ...input })
+const sweep = (port: FakeHistoryPort, input: Partial<SweepInput> = {}) => sweepSessions({ port, limits: {}, sessions: createSessionStore(), now: NOW, signal: new AbortController().signal, ...input })
 
 describe("the history index", () => {
   test("keys sort by app, then creation time, then session id", () => {
@@ -32,7 +32,7 @@ describe("the history index", () => {
   })
 })
 
-describe("sweepHistory", () => {
+describe("sweepSessions", () => {
   test("no limits: nothing is removed", async () => {
     const port = await history({ app: 3 })
     // An app with no limit is not read at all (#319): nothing scanned, so nothing left for a later sweep.

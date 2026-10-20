@@ -35,7 +35,7 @@ import {
   bodyLimits,
   credentialDigest,
   endpointRefusal,
-  historyTemplate,
+  sessionUrlTemplate,
   keyIsLive,
   maxChoicesFor,
   maxChoicesOption,
@@ -79,7 +79,7 @@ import { errorMessage, logError, logRequest, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { effortUnavailable, filterByCapability, listAvailableModels, parseCapability, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
-import { reportParallelTools, reportPolicy, reportServerTools } from "../policy.js"
+import { reportParallelTools, reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { authenticateRequest, isMessagesPath, serveMessages } from "../anthropic/route.js"
 import { encodeModel, encodeModelPage, modelPageQuery, pageModels } from "../anthropic/response.js"
@@ -522,13 +522,13 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         onRecord: (recordID, directory) => {
           if (response.headersSent || response.destroyed || !/^[\x21-\x7e]+$/.test(recordID)) return
           response.setHeader(SESSION_HEADER, recordID)
-          setSessionLink(response, info, historyTemplate(host.options, auth.app), recordID, directory)
+          setSessionLink(response, info, sessionUrlTemplate(host.options, auth.app), recordID, directory)
         },
         // An alias with fallbacks: report which target answered, and echo it as the response model.
         onServed: reportServed(response, info, (served) => void (exchange.model = served.model)),
         onPolicy: reportPolicy(response),
         onUsage: reportUsage(response, exchange.stream),
-        onServerTools: reportServerTools(response, exchange.stream),
+        onOpencodeTools: reportOpencodeTools(response, exchange.stream),
         onCache: reportCache(response),
         onAffinity: reportAffinity(response),
       }),
