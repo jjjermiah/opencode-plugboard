@@ -15,7 +15,7 @@ Give Khoj its own key. Docker needs a reachable address ([Serving other machines
     "keys": { "khoj": "{env:PLUGBOARD_KEY_KHOJ}" },
     "models": ["opencode-go/glm-5.3-flash"],
     "aliases": { "chat": "opencode-go/glm-5.3-flash" },
-    "apps": { "khoj": { "models": ["chat"] } }
+    "apps": { "khoj": { "allowedModels": ["chat"] } }
   }
 }
 ```

@@ -82,7 +82,7 @@ try {
 
   // The `init` command line ships in `bin/` and needs its own dependency (jsonc-parser) from the install.
   const initOut = run([join(project, "node_modules", ".bin", "opencode-plugboard"), "init", "--dry-run", "--config", join(work, "init-config.jsonc")], project)
-  if (!initOut.includes('"models": "connected"')) {
+  if (!initOut.includes('"models": "all"')) {
     console.error("smoke: `opencode-plugboard init --dry-run` from the installed package did not print the plugin entry")
     process.exit(1)
   }

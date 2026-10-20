@@ -23,7 +23,7 @@ Give RAGFlow its own key and a chat alias. Docker needs a reachable address ([Se
     "keys": { "ragflow": "{env:PLUGBOARD_KEY_RAGFLOW}" },
     "models": ["anthropic/claude-sonnet-4-6"],
     "aliases": { "chat": "anthropic/claude-sonnet-4-6" },
-    "apps": { "ragflow": { "models": ["chat"] } }
+    "apps": { "ragflow": { "allowedModels": ["chat"] } }
   }
 }
 ```

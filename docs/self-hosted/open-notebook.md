@@ -15,7 +15,7 @@ Give Open Notebook its own key. Docker needs a reachable address ([Serving other
     "keys": { "open-notebook": "{env:PLUGBOARD_KEY_OPEN_NOTEBOOK}" },
     "models": ["opencode-go/glm-5.3-flash"],
     "aliases": { "chat": "opencode-go/glm-5.3-flash" },
-    "apps": { "open-notebook": { "models": ["chat"] } }
+    "apps": { "open-notebook": { "allowedModels": ["chat"] } }
   }
 }
 ```

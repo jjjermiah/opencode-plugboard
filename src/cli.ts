@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from "jsonc-parser"
-import { CONNECTED, DEFAULT_PORT, isAppName } from "./config.js"
+import { ALL_MODELS, DEFAULT_PORT, isAppName } from "./config.js"
 import { parseModelRef } from "./models.js"
 
 const PACKAGE = "opencode-plugboard"
@@ -156,7 +156,7 @@ export function runInit(args: string[], cli: CliEnv): number {
     const key = flags.dryRun ? "<new key, shown when written>" : (cli.newKey ?? defaultKey)()
     const entry = {
       package: `${PACKAGE}@${cli.version}`,
-      options: { keys: { [flags.app]: key }, models: CONNECTED, ...(flags.fast === undefined ? {} : { aliases: { fast: flags.fast } }) },
+      options: { keys: { [flags.app]: key }, models: ALL_MODELS, ...(flags.fast === undefined ? {} : { aliases: { fast: flags.fast } }) },
     }
     const { text, replaced } = withEntry(before, entry, flags.force, path)
     if (flags.dryRun) {

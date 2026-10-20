@@ -48,10 +48,10 @@ describe("init: a new config", () => {
     const path = join(tmp(), "nested", "opencode.jsonc")
     const result = init(path)
     expect(result.code).toBe(0)
-    expect(entryOf(path)).toEqual([{ package: "opencode-plugboard@9.8.7", options: { keys: { "my-app": KEY }, models: "connected" } }])
+    expect(entryOf(path)).toEqual([{ package: "opencode-plugboard@9.8.7", options: { keys: { "my-app": KEY }, models: "all" } }])
     expect(read(path).endsWith("\n")).toBe(true)
     // The written options are what the plugin itself accepts.
-    expect(parseOptions(entryOf(path)[0]!.options)).toMatchObject({ keys: { "my-app": KEY }, models: ["connected"] })
+    expect(parseOptions(entryOf(path)[0]!.options)).toMatchObject({ keys: { "my-app": KEY }, models: ["all"] })
   })
 
   test("prints the key once with a ready curl; without --fast the chat call names no model it could not know", () => {
@@ -65,7 +65,7 @@ describe("init: a new config", () => {
   test("--app names the key and --fast adds the fast alias and a chat curl that uses it", () => {
     const path = join(tmp(), "c.jsonc")
     const { out } = init(path, "--app", "my-bot", "--fast", "anthropic/claude-haiku-4-5")
-    expect(entryOf(path)[0]!.options).toEqual({ keys: { "my-bot": KEY }, models: "connected", aliases: { fast: "anthropic/claude-haiku-4-5" } })
+    expect(entryOf(path)[0]!.options).toEqual({ keys: { "my-bot": KEY }, models: "all", aliases: { fast: "anthropic/claude-haiku-4-5" } })
     expect(out).toContain(`"model": "fast"`)
   })
 
@@ -129,7 +129,7 @@ describe("init: an existing config", () => {
     expect(result.code).toBe(0)
     expect(result.out).toMatch(/^Replaced /)
     expect(read(path)).toContain("// c")
-    expect(entryOf(path)).toEqual(["a@1" as never, { package: "opencode-plugboard@9.8.7", options: { keys: { "my-app": KEY }, models: "connected" } }, "z@2" as never])
+    expect(entryOf(path)).toEqual(["a@1" as never, { package: "opencode-plugboard@9.8.7", options: { keys: { "my-app": KEY }, models: "all" } }, "z@2" as never])
     expect(read(path)).not.toContain("old-key")
   })
 

@@ -142,7 +142,7 @@ export const ROWS: readonly Row[] = [
       n: at(
         HTTP + "gemini.test.ts",
         "one model call per candidate; candidates in order with their index, usageMetadata summed, every session id",
-        "above maxN is a 400 INVALID_ARGUMENT naming generationConfig.candidateCount and the option, before any model call",
+        "above maxChoices is a 400 INVALID_ARGUMENT naming generationConfig.candidateCount and the option, before any model call",
       ),
       errors: at(HTTP + "gemini.test.ts", "a model error keeps its status in Google's shape", "a missing key is a 401 in Google's error shape"),
     },

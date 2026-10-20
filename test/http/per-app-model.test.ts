@@ -1,6 +1,6 @@
 /**
- * #261 `apps.<name>.model`: an app's requests run on one pinned model, whatever model or reasoning effort the caller sends.
- * The pin is checked at load against `models` and the app's `models`; it never widens the allowlist. Real loopback HTTP.
+ * #261 `apps.<name>.pinnedModel`: an app's requests run on one pinned model, whatever model or reasoning effort the caller sends.
+ * The pin is checked at load against `models` and the app's `allowedModels`; it never widens the allowlist. Real loopback HTTP.
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { parseOptions } from "../../src/config.js"
@@ -20,7 +20,7 @@ const options = {
   keys: KEYS,
   models: ["test/*", "other/*", "opencode-go/*"],
   aliases: { fast: "opencode-go/glm-5.3-flash" },
-  apps: { widget: { model: "opencode-go/glm-5.3-flash" }, other: {} },
+  apps: { widget: { pinnedModel: "opencode-go/glm-5.3-flash" }, other: {} },
 }
 
 const bearer = (key: string) => ({ authorization: `Bearer ${key}` })
@@ -37,7 +37,7 @@ async function route(extra: Record<string, unknown> = {}) {
   return caller
 }
 
-describe("#261 apps.<name>.model on the wire", () => {
+describe("#261 apps.<name>.pinnedModel on the wire", () => {
   test("an app with a pin runs on it whatever model the caller names, and the answer names the pinned model", async () => {
     const caller = await route()
     const reply = await server!.send(chat(KEYS.widget, { model: "test/echo" }))
@@ -48,7 +48,7 @@ describe("#261 apps.<name>.model on the wire", () => {
   })
 
   test("a caller's reasoning_effort does not move a pinned model", async () => {
-    const caller = await route({ apps: { widget: { model: "test/echo#high" } } })
+    const caller = await route({ apps: { widget: { pinnedModel: "test/echo#high" } } })
     await server!.send(chat(KEYS.widget, { model: "test/echo", reasoning_effort: "low" }))
     expect(caller.call.request.ref).toMatchObject({ providerID: "test", id: "echo", variant: "high" })
   })
@@ -60,13 +60,13 @@ describe("#261 apps.<name>.model on the wire", () => {
   })
 
   test("a pinned alias runs on its target", async () => {
-    const caller = await route({ apps: { widget: { model: "fast" } } })
+    const caller = await route({ apps: { widget: { pinnedModel: "fast" } } })
     expect((await server!.send(chat(KEYS.widget, { model: "other/model" }))).status).toBe(200)
     expect(caller.call.request.ref).toMatchObject({ providerID: "opencode-go", id: "glm-5.3-flash" })
   })
 
   test("a pin the server does not have is the usual 404 model_not_found, not the caller's model", async () => {
-    const caller = await route({ models: ["test/*", "other/*", "opencode-go/*", "missing/*"], apps: { widget: { model: "missing/ghost" } } })
+    const caller = await route({ models: ["test/*", "other/*", "opencode-go/*", "missing/*"], apps: { widget: { pinnedModel: "missing/ghost" } } })
     const reply = await server!.send(chat(KEYS.widget, { model: "test/echo" }))
     expect(reply.status).toBe(404)
     expect(reply.json().error).toMatchObject({ code: "model_not_found", param: "model" })
@@ -147,7 +147,7 @@ describe("#261 the answer names the pinned model on every route", () => {
   })
 
   test("a pin the server does not enable: the 404 names the pinned model, not the caller's", async () => {
-    await serving({ models: ["test/*", "other/*", "opencode-go/*", "missing/*"], apps: { widget: { model: "missing/ghost" } } })
+    await serving({ models: ["test/*", "other/*", "opencode-go/*", "missing/*"], apps: { widget: { pinnedModel: "missing/ghost" } } })
     const reply = await server!.send(chat(KEYS.widget, { model: "test/echo" }))
     expect(reply.status).toBe(404)
     expect(reply.json().error.message).toBe("Model missing/ghost is not available")
@@ -157,47 +157,49 @@ describe("#261 the answer names the pinned model on every route", () => {
 /** The pin's load-time rules, checked without a server. */
 const parseApps = (apps: Record<string, unknown>) => parseOptions({ keys: KEYS, models: ["test/*", "other/*"], aliases: { fast: "test/echo" }, apps })
 
-describe("#261 apps.<name>.model at load", () => {
+describe("#261 apps.<name>.pinnedModel at load", () => {
   test("a canonical id that passes the global models is kept on the policy, variant included", () => {
-    expect(parseApps({ widget: { model: "test/echo#high" } }).apps.widget).toMatchObject({ model: "test/echo#high" })
+    expect(parseApps({ widget: { pinnedModel: "test/echo#high" } }).apps.widget).toMatchObject({ pinnedModel: "test/echo#high" })
   })
 
-  test("an alias whose target matches one of the app's models patterns is accepted, as the request check admits it", () => {
+  test("an alias whose target matches one of the app's allowedModels patterns is accepted, as the request check admits it", () => {
     // `fast` targets test/echo, which `test/*` admits; the app does not list `fast` by name.
-    expect(parseApps({ widget: { model: "fast", models: ["test/*"] } }).apps.widget).toMatchObject({ model: "fast" })
+    expect(parseApps({ widget: { pinnedModel: "fast", allowedModels: ["test/*"] } }).apps.widget).toMatchObject({ pinnedModel: "fast" })
   })
 
-  test("an alias the app lists by name is accepted, and an app without models is not restricted", () => {
-    expect(parseApps({ widget: { model: "fast", models: ["fast"] } }).apps.widget).toMatchObject({ model: "fast" })
-    expect(parseApps({ widget: { model: "other/model" } }).apps.widget).toMatchObject({ model: "other/model" })
+  test("an alias the app lists by name is accepted, and an app without allowedModels is not restricted", () => {
+    expect(parseApps({ widget: { pinnedModel: "fast", allowedModels: ["fast"] } }).apps.widget).toMatchObject({ pinnedModel: "fast" })
+    expect(parseApps({ widget: { pinnedModel: "other/model" } }).apps.widget).toMatchObject({ pinnedModel: "other/model" })
   })
 
   test("a provider pattern cannot pin one model", () => {
-    expect(() => parseApps({ widget: { model: "test/*" } })).toThrow(/a `provider\/\*` pattern cannot pin one model/)
+    expect(() => parseApps({ widget: { pinnedModel: "test/*" } })).toThrow(/a `provider\/\*` pattern cannot pin one model/)
   })
 
   test("a model outside the global models is refused, and the message names the option", () => {
-    expect(() => parseApps({ widget: { model: "opencode-go/glm-5.3-flash" } })).toThrow(/`apps\.widget\.model` `opencode-go\/glm-5\.3-flash` is not allowed by the `models` option/)
+    expect(() => parseApps({ widget: { pinnedModel: "opencode-go/glm-5.3-flash" } })).toThrow(/`apps\.widget\.pinnedModel` `opencode-go\/glm-5\.3-flash` is not allowed by the `models` option/)
   })
 
   test("an alias the app does not list is refused, and the message names the option", () => {
-    expect(() => parseApps({ widget: { model: "fast", models: ["other/*"] } })).toThrow(/`apps\.widget\.model` alias `fast` must be listed in `apps\.widget\.models`/)
+    expect(() => parseApps({ widget: { pinnedModel: "fast", allowedModels: ["other/*"] } })).toThrow(/`apps\.widget\.pinnedModel` alias `fast` must be listed in `apps\.widget\.allowedModels`/)
   })
 
-  test("a canonical id outside the app's own models is refused", () => {
-    expect(() => parseApps({ widget: { model: "other/model", models: ["test/*"] } })).toThrow(/`apps\.widget\.model` `other\/model` must be listed in `apps\.widget\.models`/)
+  test("a canonical id outside the app's own allowedModels is refused", () => {
+    expect(() => parseApps({ widget: { pinnedModel: "other/model", allowedModels: ["test/*"] } })).toThrow(/`apps\.widget\.pinnedModel` `other\/model` must be listed in `apps\.widget\.allowedModels`/)
   })
 
   test("#545 an app that pins or lists an alias nobody defined is refused at load, and the pin's message says to add the alias", () => {
     // The guide's config before it defined `fast`: refused at load, not a 404 on every call.
-    expect(() => parseOptions({ keys: KEYS, models: ["test/*"], apps: { widget: { models: ["fast"], model: "fast" } } })).toThrow(/`apps\.widget`\.models entry `fast` must be/)
-    expect(() => parseOptions({ keys: KEYS, models: ["test/*"], apps: { widget: { model: "fast" } } })).toThrow(
-      /`apps\.widget\.model` must be `provider\/model`.*`fast` is not an alias, add it to `aliases`/,
+    expect(() => parseOptions({ keys: KEYS, models: ["test/*"], apps: { widget: { allowedModels: ["fast"], pinnedModel: "fast" } } })).toThrow(/`apps\.widget`\.allowedModels entry `fast` must be/)
+    expect(() => parseOptions({ keys: KEYS, models: ["test/*"], apps: { widget: { pinnedModel: "fast" } } })).toThrow(
+      /`apps\.widget\.pinnedModel` must be `provider\/model`.*`fast` is not an alias, add it to `aliases`/,
     )
-    expect(parseOptions({ keys: KEYS, models: ["test/*"], aliases: { fast: "test/echo" }, apps: { widget: { models: ["fast"], model: "fast" } } }).apps.widget).toMatchObject({ model: "fast" })
+    expect(parseOptions({ keys: KEYS, models: ["test/*"], aliases: { fast: "test/echo" }, apps: { widget: { allowedModels: ["fast"], pinnedModel: "fast" } } }).apps.widget).toMatchObject({
+      pinnedModel: "fast",
+    })
   })
 
   test("a malformed id is refused", () => {
-    expect(() => parseApps({ widget: { model: "no-slash" } })).toThrow(/`apps\.widget\.model` must be `provider\/model`/)
+    expect(() => parseApps({ widget: { pinnedModel: "no-slash" } })).toThrow(/`apps\.widget\.pinnedModel` must be `provider\/model`/)
   })
 })

@@ -23,7 +23,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 |---|---|
 | `contract.ts` | The neutral vocabulary: `PlugRequest`, `PlugEvent`, `PlugError`, `CatalogModel` and the `ModelCaller` seam every front-end calls. |
 | `config.ts` | The options type, defaults, `parseOptions`, `authenticate`, `authenticateUsage` (the admin key) and the loopback host check. |
-| `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. The `models` value `connected` (`CONNECTED` in `config.ts`) allows every catalog model. |
+| `models.ts` | Allowlist and alias policy: `resolveModel`, `listAvailableModels`. The `models` value `all` (`ALL_MODELS` in `config.ts`) allows every catalog model. |
 | `cli.ts` | The `init` command: adds the plugin entry to an OpenCode config as JSONC (`jsonc-parser`), with a pinned version and a generated key. Not loaded by the plugin. |
 | `limits.ts` | Concurrency caps and requests per minute per app (option `limits`): a `ModelCaller` wrapper outside the fallbacks, with its queues on the runtime. |
 | `stop.ts` | Caller stop sequences on the answer text (#145, #149, #390). `withStopSequences` wraps the session caller in `index.ts`: it scans the streamed text, interrupts the host run on a match, and passes the finish on with its usage. Reasoning and tool calls are never matched. |
@@ -58,7 +58,7 @@ Each API front-end has the same three files: `request.ts` decodes the wire body 
 | `anthropic/` | `POST /v1/messages`. Takes the request over early: Anthropic error bodies and `x-api-key` auth. |
 | `gemini/` | `generateContent`, `streamGenerateContent` and the Gemini model list. The model is in the URL, errors use Google's body. |
 | `completions/` | Legacy `POST /v1/completions`. Always goes through the fan-out. |
-| `session/` | The OpenCode back end. `host.ts` adapts the Effect plugin API to a Promise port. `caller.ts` runs one model call as one kept session. `context.ts` holds the context hook, seed tools and agent deny. `events.ts` turns bus events into `PlugEvent`s and host errors into safe `PlugError`s. `state.ts` is the session store shared by generations. `history.ts` has the data root, app directory and transcript. `prune.ts` has the history index and sweep. `media.ts` prepares images, including the remote fetch filter. `seeds.ts` has the seed names and the request permissions. `link.ts` fills the session page link (`historyUrl`, #77). |
+| `session/` | The OpenCode back end. `host.ts` adapts the Effect plugin API to a Promise port. `caller.ts` runs one model call as one kept session. `context.ts` holds the context hook, seed tools and agent deny. `events.ts` turns bus events into `PlugEvent`s and host errors into safe `PlugError`s. `state.ts` is the session store shared by generations. `history.ts` has the data root, app directory and transcript. `prune.ts` has the history index and sweep. `media.ts` prepares images, including the remote fetch filter. `seeds.ts` has the seed names and the request permissions. `link.ts` fills the session page link (`sessionUrl`, #77). |
 
 ## Request flow
 

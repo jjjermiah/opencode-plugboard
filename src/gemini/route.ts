@@ -13,13 +13,13 @@
  * Same flow as the other front-ends: parse, resolve the model, call the ModelCaller, encode. Nothing
  * is committed until the encoder emits its first chunk, so a failure before any output is a real
  * HTTP error even for a stream. `candidateCount` above 1 is one model call per candidate through
- * the shared fan-out (`src/openai/fanout.ts`), capped by `maxN`.
+ * the shared fan-out (`src/openai/fanout.ts`), capped by `maxChoices`.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { appPolicy, bodyLimits, historyTemplate, maxNFor, maxNOption, requestedModel } from "../config.js"
+import { appPolicy, bodyLimits, historyTemplate, maxChoicesFor, maxChoicesOption, requestedModel } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { effortUnavailable, listAvailableModels, resolveModel, THINKING_HEADER } from "../models.js"
 import { reportCache } from "../cache.js"
@@ -127,7 +127,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     if (unsupported) return fail(unsupported)
     const counting = await inlineRequestFiles(host, app, "gemini", countBody(await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))), scope)
     if (isPlugError(counting)) return fail(counting)
-    const parsed = parseGeminiRequest(match.model, false, counting, { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))
+    const parsed = parseGeminiRequest(match.model, false, counting, { ...host.options, maxChoices: maxChoicesFor(host.options, app) }, maxChoicesOption(host.options, app))
     if (isPlugError(parsed)) return fail(parsed)
     const catalog = await scope.race(host.loadCatalog())
     const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)
@@ -160,8 +160,8 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const body = await inlineRequestFiles(host, app, "gemini", await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames())), scope)
   if (isPlugError(body)) return fail(body)
 
-  // The app's own `maxN` is the cap for this request; the decoder checks `candidateCount` against it.
-  const parsed = parseGeminiRequest(match.model, match.stream, body, { ...host.options, maxN: maxNFor(host.options, app) }, maxNOption(host.options, app))
+  // The app's own `maxChoices` is the cap for this request; the decoder checks `candidateCount` against it.
+  const parsed = parseGeminiRequest(match.model, match.stream, body, { ...host.options, maxChoices: maxChoicesFor(host.options, app) }, maxChoicesOption(host.options, app))
   if (isPlugError(parsed)) return fail(parsed)
   const catalog = await scope.race(host.loadCatalog())
   const requested = requestedModel(host.options, app, match.model, parsed.reasoningEffort)

@@ -3,7 +3,7 @@
 Every request is kept as an OpenCode session, so you can see what each app asked and what the model answered. Plugboard keeps the full caller transcript in each session (system prompt, messages, images as attachments, tool calls and results) plus the reply. A ten-turn chat is ten sessions, each complete.
 
 - **Title.** The first user message. When the caller sent an end user (`user`, or Anthropic's `metadata.user_id`), the title starts with it, as `[alice] ...`. See [End users](configuration.md#end-users).
-- **Session header.** Every chat response carries an `x-plugboard-session` header with the id of its session. With option `historyUrl` set, it also carries `x-plugboard-session-url`, a link to that session's page. See [Session links](configuration.md#session-links).
+- **Session header.** Every chat response carries an `x-plugboard-session` header with the id of its session. With option `sessionUrl` set, it also carries `x-plugboard-session-url`, a link to that session's page. See [Session links](configuration.md#session-links).
 
 ## Where it lives
 
@@ -21,13 +21,13 @@ History records every prompt and reply, so treat OpenCode's database as sensitiv
 
 In OpenCode the sessions appear as one group per app in the desktop and phone app home screen. In the TUI they are visible in the all-projects view (ctrl+a), not in a project's own list.
 
-With `history.hidden` they are children of one `plugboard: <app>` parent instead, and the lists show that parent rather than each request. See [Hidden app sessions](configuration.md#hidden-app-sessions). The sessions and their pruning are the same either way.
+With `sessions.hideFromList` they are children of one `plugboard: <app>` parent instead, and the lists show that parent rather than each request. See [Hidden app sessions](configuration.md#hidden-app-sessions). The sessions and their pruning are the same either way.
 
 ## Pruning
 
-Sessions older than 30 days are deleted by default (`history.maxAgeDays`). `maxAgeDays: 0` keeps them.
+Sessions older than 30 days are deleted by default (`sessions.maxAgeDays`). `maxAgeDays: 0` keeps them.
 
-Each app can set its own `history` (`apps.<name>.history`). A field replaces the global one for that app and an unset field falls back to it, so a bot can keep 20 sessions while a coding app keeps 5000. Two things to know:
+Each app can set its own `sessions` (`apps.<name>.sessions`). A field replaces the global one for that app and an unset field falls back to it, so a bot can keep 20 sessions while a coding app keeps 5000. Two things to know:
 
 - The global `maxAgeDays` defaults to 30, so an app that sets only `maxSessions` is still pruned after 30 days. Set its `maxAgeDays` to keep it longer.
 - An app cannot set `0` (keep forever). Use a large value such as `36500`.

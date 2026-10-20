@@ -24,8 +24,8 @@ const options = parseOptions({
   maxTools: 4,
   keys: { bot: "k1", ide: "k2", web: "k3" },
   apps: {
-    bot: { models: ["fast"], system: "Answer in two sentences.", tools: false },
-    ide: { models: ["test/echo"], maxTools: 2, system: "Repo notes.", systemMode: "append" },
+    bot: { allowedModels: ["fast"], system: "Answer in two sentences.", tools: false },
+    ide: { allowedModels: ["test/echo"], maxTools: 2, system: "Repo notes.", systemMode: "append" },
     web: { system: "Only JSON.", systemMode: "replace" },
   },
 })

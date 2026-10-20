@@ -41,7 +41,7 @@ describe("#201 the app's tool policy: tools: false", () => {
 
 describe("#201 the refusals the request makes, before any host read", () => {
   test("a model outside the app's models is the 404 model_not_found the request gets", async () => {
-    const result = await sessionRequest(undefined, "app", plugRequest(), policy({ models: ["other/model"] }), signal)
+    const result = await sessionRequest(undefined, "app", plugRequest(), policy({ allowedModels: ["other/model"] }), signal)
     expect(refusal(result)).toMatchObject({ status: 404, code: "model_not_found" })
   })
 
@@ -51,33 +51,33 @@ describe("#201 the refusals the request makes, before any host read", () => {
   })
 
   test("a caller tool named like a server tool is the 400 server_tool_collision the request gets", async () => {
-    const result = await sessionRequest(hosted(websearch()), "app", plugRequest({ tools: [tool("websearch")] }), policy({ serverTools: ["websearch"] }), signal)
+    const result = await sessionRequest(hosted(websearch()), "app", plugRequest({ tools: [tool("websearch")] }), policy({ opencodeTools: ["websearch"] }), signal)
     expect(refusal(result)).toMatchObject({ status: 400, code: "server_tool_collision" })
   })
 
   test("a server tool the operator's agent does not grant is the 400 server_tool_denied_by_operator the request gets", async () => {
     const port = websearch()
     port.operatorRules = []
-    const result = await sessionRequest(hosted(port), "app", plugRequest(), policy({ serverTools: ["websearch"] }), signal)
+    const result = await sessionRequest(hosted(port), "app", plugRequest(), policy({ opencodeTools: ["websearch"] }), signal)
     expect(refusal(result)).toMatchObject({ status: 400, code: "server_tool_denied_by_operator" })
   })
 })
 
 describe("#201 the tools the session offers", () => {
   test("a granted server tool is counted with its schema", async () => {
-    const counted = await sessionRequest(hosted(websearch()), "app", plugRequest(), policy({ serverTools: ["websearch"] }), signal)
+    const counted = await sessionRequest(hosted(websearch()), "app", plugRequest(), policy({ opencodeTools: ["websearch"] }), signal)
     expect(counted).toMatchObject({ tools: [{ name: "websearch", description: "Search the web", parameters: { type: "object" } }] })
   })
 
   test("tool_choice none offers no caller tool and no server tool", async () => {
     const request = plugRequest({ tools: [tool("a")], toolChoice: "none" })
-    const counted = await sessionRequest(hosted(websearch()), "app", request, policy({ serverTools: ["websearch"] }), signal)
+    const counted = await sessionRequest(hosted(websearch()), "app", request, policy({ opencodeTools: ["websearch"] }), signal)
     expect(counted).toMatchObject({ tools: [] })
   })
 
   test("tools: false keeps tool_choice none: no server tool is offered (#421, SHOULD 3)", async () => {
     const request = plugRequest({ tools: [tool("a")], toolChoice: "none" })
-    const counted = await sessionRequest(hosted(websearch()), "app", request, policy({ serverTools: ["websearch"], tools: false }), signal)
+    const counted = await sessionRequest(hosted(websearch()), "app", request, policy({ opencodeTools: ["websearch"], tools: false }), signal)
     expect(counted).toMatchObject({ tools: [] })
   })
 
@@ -89,7 +89,7 @@ describe("#201 the tools the session offers", () => {
 
   test("without a session the count covers the request and the policy alone: no server tools, no persona", async () => {
     const request = plugRequest({ system: ["Caller."], tools: [tool("a")] })
-    const counted = await sessionRequest(undefined, "app", request, policy({ serverTools: ["websearch"], system: "Policy.", systemMode: "prepend" }), signal)
+    const counted = await sessionRequest(undefined, "app", request, policy({ opencodeTools: ["websearch"], system: "Policy.", systemMode: "prepend" }), signal)
     expect(counted).toMatchObject({ system: ["Policy.", "Caller."], tools: [tool("a")] })
   })
 })

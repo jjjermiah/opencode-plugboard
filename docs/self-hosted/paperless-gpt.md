@@ -18,7 +18,7 @@ Give paperless-gpt its own key. `vision` handles OCR and must accept images. Doc
       "text": "opencode-go/glm-5.3-flash",
       "vision": "anthropic/claude-sonnet-4-6"
     },
-    "apps": { "paperless-gpt": { "models": ["text", "vision"] } }
+    "apps": { "paperless-gpt": { "allowedModels": ["text", "vision"] } }
   }
 }
 ```

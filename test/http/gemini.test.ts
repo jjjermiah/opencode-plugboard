@@ -364,7 +364,7 @@ describe("#201 countTokens counts the persona, skill and server tools the sessio
     port.toolIDs.push("websearch")
     const input = { type: "object", properties: { q: { type: "string" } } }
     port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
-    await countServerWith({ aliases: { fast: "test/echo" }, keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
+    await countServerWith({ aliases: { fast: "test/echo" }, keys: { app: "secret" }, apps: { app: { opencodeTools: ["websearch"] } } }, port)
     // 21 request + 4 message + 534 tool preamble + 40 per tool + (2 for "hi" + name + description + JSON schema characters) / 5
     const reply = await server!.send(count("fast", { "x-goog-api-key": "secret" }))
     expect(reply.json()).toEqual({ totalTokens: Math.ceil(21 + 4 + 534 + 40 + (2 + "websearch".length + 200 + JSON.stringify(input).length) / 5) })
@@ -444,7 +444,7 @@ describe("candidateCount above 1 (since 0.50.0), non-streaming", () => {
   /** A route that answers each call by its number, like the fan-out tests. */
   async function routeCalls(script: (request: unknown, call: number) => Script, options: Record<string, unknown> = {}) {
     const caller = new FakeModelCaller(script as never)
-    server = await startRoute({ caller, options: { aliases: { fast: "test/echo" }, maxN: 4, ...options } })
+    server = await startRoute({ caller, options: { aliases: { fast: "test/echo" }, maxChoices: 4, ...options } })
     return caller
   }
 
@@ -471,33 +471,33 @@ describe("candidateCount above 1 (since 0.50.0), non-streaming", () => {
     expect(reply.json().candidates).toHaveLength(1)
   })
 
-  test("above maxN is a 400 INVALID_ARGUMENT naming generationConfig.candidateCount and the option, before any model call", async () => {
-    const caller = await routeCalls(() => [ev.finish()], { maxN: 2 })
+  test("above maxChoices is a 400 INVALID_ARGUMENT naming generationConfig.candidateCount and the option, before any model call", async () => {
+    const caller = await routeCalls(() => [ev.finish()], { maxChoices: 2 })
     const reply = await server!.send(generate(undefined, { generationConfig: { candidateCount: 3 } }))
     expect(reply.status).toBe(400)
     expect(reply.json().error).toMatchObject({
       status: "INVALID_ARGUMENT",
-      message: expect.stringContaining("option `maxN`"),
+      message: expect.stringContaining("option `maxChoices`"),
       details: [{ fieldViolations: [{ field: "generationConfig.candidateCount" }] }],
     })
     expect(caller.calls).toEqual([])
   })
 
-  test("apps.<name>.maxN lowers the cap for that app and the message names it; the cap applies to streams too", async () => {
-    const caller = await routeCalls(() => [ev.finish()], { keys: { chat: "k" }, apps: { chat: { maxN: 1 } } })
+  test("apps.<name>.maxChoices lowers the cap for that app and the message names it; the cap applies to streams too", async () => {
+    const caller = await routeCalls(() => [ev.finish()], { keys: { chat: "k" }, apps: { chat: { maxChoices: 1 } } })
     for (const request of [
       generate(undefined, two, { "x-goog-api-key": "k" }),
       { ...stream("", { "x-goog-api-key": "k" }), body: { contents: [{ role: "user", parts: [{ text: "hi" }] }], ...two } },
     ]) {
       const reply = await server!.send(request)
       expect(reply.status).toBe(400)
-      expect(reply.json().error.message).toContain("`apps.chat.maxN`")
+      expect(reply.json().error.message).toContain("`apps.chat.maxChoices`")
     }
     expect(caller.calls).toEqual([])
   })
 
   test("one failing candidate fails the request with its status and cancels the others", async () => {
-    const caller = await routeCalls((_request, call) => (call === 1 ? [ev.error({ status: 429, kind: "rate_limit", message: "slow" })] : ["hang"]), { maxN: 3 })
+    const caller = await routeCalls((_request, call) => (call === 1 ? [ev.error({ status: 429, kind: "rate_limit", message: "slow" })] : ["hang"]), { maxChoices: 3 })
     const reply = await server!.send(generate(undefined, { generationConfig: { candidateCount: 3 } }))
     expect(reply.status).toBe(429)
     expect(reply.json()).toEqual({ error: { code: 429, message: "slow", status: "RESOURCE_EXHAUSTED" } })
@@ -523,7 +523,7 @@ describe("candidateCount above 1 (since 0.50.0), streaming", () => {
   const streamTwo = (query: string): SendInit => ({ ...stream(query), body: { contents: [{ role: "user", parts: [{ text: "hi" }] }], ...two } })
   async function routeCalls(script: (request: unknown, call: number) => Script, options: Record<string, unknown> = {}) {
     const caller = new FakeModelCaller(script as never)
-    server = await startRoute({ caller, options: { aliases: { fast: "test/echo" }, maxN: 4, ...options } })
+    server = await startRoute({ caller, options: { aliases: { fast: "test/echo" }, maxChoices: 4, ...options } })
     return caller
   }
   const textOf = (chunk: any) => chunk.candidates?.[0]?.content?.parts?.[0]?.text

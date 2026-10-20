@@ -15,7 +15,7 @@ Give Frigate its own key and a vision alias, because descriptions are image-base
     "keys": { "frigate": "{env:PLUGBOARD_KEY_FRIGATE}" },
     "models": ["anthropic/claude-sonnet-4-6"],
     "aliases": { "vision": "anthropic/claude-sonnet-4-6" },
-    "apps": { "frigate": { "models": ["vision"] } }
+    "apps": { "frigate": { "allowedModels": ["vision"] } }
   }
 }
 ```

@@ -344,14 +344,14 @@ describe("#515 SessionPort.lastAnswer reads the host's stored messages", () => {
 })
 
 describe("#515 RequestCollector.settleFromAnswer", () => {
-  function collector(options: { serverTools?: string[]; maxServerToolSteps?: number } = {}) {
+  function collector(options: { opencodeTools?: string[]; maxToolSteps?: number } = {}) {
     let stops = 0
     const run = new RequestCollector({
       stopTurn: () => void stops++,
       requestID: "req_1",
       callerTools: ["get_weather"],
-      toolNames: ["get_weather", ...(options.serverTools ?? [])],
-      ...(options.serverTools ? { serverTools: new Set(options.serverTools), maxServerToolSteps: options.maxServerToolSteps ?? 3, maxServerToolCalls: 10 } : {}),
+      toolNames: ["get_weather", ...(options.opencodeTools ?? [])],
+      ...(options.opencodeTools ? { opencodeTools: new Set(options.opencodeTools), maxToolSteps: options.maxToolSteps ?? 3, maxToolCalls: 10 } : {}),
     })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector: run })
@@ -381,7 +381,7 @@ describe("#515 RequestCollector.settleFromAnswer", () => {
 
   test("the text a second step wrote is not cut by the first step's length: ordinals start again in each assistant message", async () => {
     // The first step wrote a long text and ran a server tool. The second step's text arrives only as `text.ended` (its deltas were lost).
-    const { run, store } = collector({ serverTools: ["lookup"] })
+    const { run, store } = collector({ opencodeTools: ["lookup"] })
     store.dispatch(bus("ses_1").textDelta("A long first step of text."))
     store.dispatch(bus("ses_1").toolCalled("s1", "lookup", {}))
     store.dispatch(bus("ses_1").stepEnded("tool-calls"))
@@ -392,7 +392,7 @@ describe("#515 RequestCollector.settleFromAnswer", () => {
   })
 
   test("a step that ran only server tools is not final, however often it is asked: the host starts the next step and nothing is counted twice", () => {
-    const { run } = collector({ serverTools: ["lookup"], maxServerToolSteps: 1 })
+    const { run } = collector({ opencodeTools: ["lookup"], maxToolSteps: 1 })
     const answer = stored({ finish: "tool-calls", parts: [{ type: "tool", id: "s1", name: "lookup", input: {} }] })
     expect(run.settleFromAnswer(answer)).toBe(false)
     expect(run.settleFromAnswer(answer)).toBe(false)

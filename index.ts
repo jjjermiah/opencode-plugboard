@@ -92,7 +92,7 @@ export default Plugin.define({
         remoteImages: options.remoteImages,
         promptCache: options.promptCache,
         affinity: createAffinity({ storage: createStoragePort(ctx) }),
-        historyHidden: options.history.hidden,
+        historyHidden: options.sessions.hideFromList,
         requestTimeoutMs: options.requestTimeoutMs,
         ...(options.silenceMs === undefined ? {} : { silenceMs: options.silenceMs }),
         ...(options.metrics ? { metrics: processMetrics } : {}),
@@ -190,7 +190,7 @@ export default Plugin.define({
         // Rebuild the transforms below once a request has confirmed this Location as an app directory.
         refresh: () => Effect.runPromise(Effect.all([ctx.agent.reload(), ctx.tool.reload()], { discard: true })),
         // Host handles for indexing and pruning request sessions; only called from request handling.
-        history: { port: createHistoryPort(ctx), limits: options.history, apps: appHistoryLimits(options) },
+        history: { port: createHistoryPort(ctx), limits: options.sessions, apps: appHistoryLimits(options) },
         handler: (request, response) => {
           startPump()
           handle(request, response).catch((error) => {

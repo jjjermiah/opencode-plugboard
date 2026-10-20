@@ -83,14 +83,14 @@ const indentBy = (text: string, spaces: number) =>
 /** `"my-app"` becomes `{env:PLUGBOARD_KEY_MY_APP}`; the plain placeholder key has the bare `{env:PLUGBOARD_KEY}`. */
 const keyPlaceholder = (app: string) => (app === "my-app" ? "{env:PLUGBOARD_KEY}" : `{env:PLUGBOARD_KEY_${app.toUpperCase().replace(/[^A-Z0-9]/g, "_")}}`)
 
-/** App names the options mention without a key: `apps`, `limits.apps`, `budgets.apps` and `cache.apps`. */
+/** App names the options mention without a key: `apps`, `limits.apps`, `budgets.apps` and `responseCache.apps`. */
 function referencedApps(options: Record<string, unknown>): string[] {
   const names: string[] = []
   const section = (value: unknown) => isObject(value) && Object.keys(value).forEach((name) => names.push(name))
   section(options.apps)
   if (isObject(options.limits)) section(options.limits.apps)
   if (isObject(options.budgets)) section(options.budgets.apps)
-  if (isObject(options.cache) && Array.isArray(options.cache.apps)) options.cache.apps.forEach((name) => typeof name === "string" && names.push(name))
+  if (isObject(options.responseCache) && Array.isArray(options.responseCache.apps)) options.responseCache.apps.forEach((name) => typeof name === "string" && names.push(name))
   return [...new Set(names)].filter((name) => name !== "default")
 }
 
@@ -106,7 +106,7 @@ function missingMembers(options: Record<string, unknown>): string[] {
     if (entries.length === 1) lines.push(`"keys": { ${entries[0]} }`)
     else if (entries.length > 1) lines.push(`"keys": {\n${entries.map((entry) => `  ${entry}`).join(",\n")}\n}`)
   }
-  if (options.models === undefined) lines.push(`"models": "connected"`)
+  if (options.models === undefined) lines.push(`"models": "all"`)
   return lines
 }
 

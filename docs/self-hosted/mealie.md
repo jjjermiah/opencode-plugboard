@@ -18,7 +18,7 @@ Give Mealie its own key. `default` serves every AI feature. `image` is optional 
       "default": "opencode-go/glm-5.3-flash",
       "image": "anthropic/claude-sonnet-4-6"
     },
-    "apps": { "mealie": { "models": ["default", "image"] } }
+    "apps": { "mealie": { "allowedModels": ["default", "image"] } }
   }
 }
 ```

@@ -229,7 +229,7 @@ export interface CallContext {
   readonly fallbackNext?: boolean
   /**
    * Called once, when the call starts work that is not the model's: preparing the prompt (fetching the request's remote images, making
-   * the session). The chain's first-event deadline (`fallbackAfterMs`) pauses until `onPrompted`, so a slow image host is not the model's
+   * the session). The chain's first-event deadline (`firstEventTimeoutMs`) pauses until `onPrompted`, so a slow image host is not the model's
    * silence. Set by the chain only; the session caller is the one that calls it.
    */
   readonly onPreparing?: () => void
@@ -256,7 +256,7 @@ export interface CallContext {
    */
   readonly onRunUsage?: (usage: PlugUsage) => void
   /**
-   * Called once when the call ends, only if OpenCode ran server tools for it (option `apps.<name>.serverTools`),
+   * Called once when the call ends, only if OpenCode ran server tools for it (option `apps.<name>.opencodeTools`),
    * with how many. Front-ends set `x-plugboard-server-tools` from it while the headers are open, so a stream
    * (headers sent first) never gets it, and a choice of `n` adds to the count of the others.
    */

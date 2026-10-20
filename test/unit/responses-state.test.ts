@@ -238,11 +238,11 @@ describe("restart", () => {
 })
 
 describe("retentionDaysFor", () => {
-  test("is the app's history.maxAgeDays, else the global one, else 30; 0 is 30, never forever", () => {
-    const options = testOptions({ keys: { a: "ka", b: "kb", c: "kc" }, history: { maxAgeDays: 7 }, apps: { b: { history: { maxAgeDays: 90 } } } })
+  test("is the app's sessions.maxAgeDays, else the global one, else 30; 0 is 30, never forever", () => {
+    const options = testOptions({ keys: { a: "ka", b: "kb", c: "kc" }, sessions: { maxAgeDays: 7 }, apps: { b: { sessions: { maxAgeDays: 90 } } } })
     expect(retentionDaysFor(options, "a")).toBe(7)
     expect(retentionDaysFor(options, "b")).toBe(90)
     expect(retentionDaysFor(testOptions({ keys: { a: "ka" } }), "a")).toBe(30)
-    expect(retentionDaysFor(testOptions({ keys: { a: "ka" }, history: { maxAgeDays: 0 } }), "a")).toBe(30)
+    expect(retentionDaysFor(testOptions({ keys: { a: "ka" }, sessions: { maxAgeDays: 0 } }), "a")).toBe(30)
   })
 })

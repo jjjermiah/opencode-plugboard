@@ -19,7 +19,7 @@ export interface ParsedChat {
   readonly request: Omit<PlugRequest, "ref">
   /** Response presentation state for the encoders; never reaches the model call. */
   readonly exchange: OpenAiExchange
-  /** `n`: independent model calls whose answers become `choices` (1..`maxN`). The route fans out when it is above 1. */
+  /** `n`: independent model calls whose answers become `choices` (1..`maxChoices`). The route fans out when it is above 1. */
   readonly n: number
   readonly reasoningEffort?: string
 }
@@ -212,11 +212,11 @@ export const parseResponseFormat = (raw: unknown): { structured?: PlugTool; inst
   return bad(`Unsupported response_format type "${show(raw.type)}"`, "response_format.type")
 }
 
-/** `n` is how many completions to return. Each one is a full model call (see `src/openai/fanout.ts`), so it is capped by the `maxN` option. */
-export const parseChoiceCount = (body: JsonObject, options: PlugboardOptions, capOption = "maxN"): number | PlugError => {
+/** `n` is how many completions to return. Each one is a full model call (see `src/openai/fanout.ts`), so it is capped by the `maxChoices` option. */
+export const parseChoiceCount = (body: JsonObject, options: PlugboardOptions, capOption = "maxChoices"): number | PlugError => {
   if (body.n == null) return 1
   if (typeof body.n !== "number" || !Number.isInteger(body.n) || body.n < 1) return bad("n must be a positive integer", "n")
-  if (body.n > options.maxN) return bad(`n=${body.n} is above the limit of ${options.maxN} (option \`${capOption}\`; each choice is a full model call)`, "n", "too_many_choices")
+  if (body.n > options.maxChoices) return bad(`n=${body.n} is above the limit of ${options.maxChoices} (option \`${capOption}\`; each choice is a full model call)`, "n", "too_many_choices")
   return body.n
 }
 
@@ -255,7 +255,7 @@ export const parseGeneration = (body: JsonObject): PlugGeneration | PlugError =>
   return out
 }
 
-export function parseChatRequest(body: unknown, options: PlugboardOptions, capOption = "maxN"): ParsedChat | PlugError {
+export function parseChatRequest(body: unknown, options: PlugboardOptions, capOption = "maxChoices"): ParsedChat | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   if (typeof body.model !== "string" || body.model.length === 0) return bad("model is required", "model")
   if (!Array.isArray(body.messages) || body.messages.length === 0) return bad("messages must be a non-empty array", "messages")

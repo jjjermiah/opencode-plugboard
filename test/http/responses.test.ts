@@ -390,12 +390,12 @@ describe("#498 review: hosted tools, long names and stored chains", () => {
     expect(caller.calls).toEqual([])
   })
 
-  test('apps.<name>.hostedTools "refuse" refuses a hosted tool next to function tools; another app, and the default, drop it', async () => {
-    const caller = await route([ev.text("ok"), ev.finish()], { keys: { strict: "k-strict", lax: "k-lax" }, apps: { strict: { hostedTools: "refuse" }, lax: { hostedTools: "drop" } } })
+  test('apps.<name>.onHostedTools "refuse" refuses a hosted tool next to function tools; another app, and the default, drop it', async () => {
+    const caller = await route([ev.text("ok"), ev.finish()], { keys: { strict: "k-strict", lax: "k-lax" }, apps: { strict: { onHostedTools: "refuse" }, lax: { onHostedTools: "drop" } } })
     const send = (key: string) => server!.send({ ...responses({ tools: [fnTool("a"), { type: "web_search" }] }), headers: { authorization: `Bearer ${key}` } })
     const strict = await send("k-strict")
     expect(strict.status).toBe(400)
-    expect(strict.json().error).toMatchObject({ code: "unsupported_parameter", param: "tools[1].type", message: expect.stringContaining("hostedTools") })
+    expect(strict.json().error).toMatchObject({ code: "unsupported_parameter", param: "tools[1].type", message: expect.stringContaining("onHostedTools") })
     expect(caller.calls).toEqual([])
     const lax = await send("k-lax")
     expect(lax.status).toBe(200)

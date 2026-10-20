@@ -18,7 +18,7 @@ Give Karakeep its own key and two aliases. `vision` must accept images, because 
       "tag": "opencode-go/glm-5.3-flash",
       "vision": "anthropic/claude-sonnet-4-6"
     },
-    "apps": { "karakeep": { "models": ["tag", "vision"] } }
+    "apps": { "karakeep": { "allowedModels": ["tag", "vision"] } }
   }
 }
 ```

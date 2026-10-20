@@ -392,8 +392,8 @@ describe("retention and size", () => {
     expect([...storage.values.keys()].filter((key) => key.startsWith("responses/"))).toEqual([])
   })
 
-  test("history.maxAgeDays and the app's own history.maxAgeDays set the retention; 0 keeps the 30-day default", async () => {
-    const own = await fixture({ keys: KEYS, history: { maxAgeDays: 7 }, apps: { beta: { history: { maxAgeDays: 2 } } } })
+  test("sessions.maxAgeDays and the app's own sessions.maxAgeDays set the retention; 0 keeps the 30-day default", async () => {
+    const own = await fixture({ keys: KEYS, sessions: { maxAgeDays: 7 }, apps: { beta: { sessions: { maxAgeDays: 2 } } } })
     const a = (await own.server.send(post({}, "alpha"))).json()
     const b = (await own.server.send(post({}, "beta"))).json()
     own.time.at += 3 * DAY
@@ -402,7 +402,7 @@ describe("retention and size", () => {
     own.time.at += 5 * DAY
     expect((await own.server.send(read(`/v1/responses/${a.id}`, "alpha"))).status).toBe(404)
 
-    const forever = await fixture({ history: { maxAgeDays: 0 } })
+    const forever = await fixture({ sessions: { maxAgeDays: 0 } })
     const kept = (await forever.server.send(post())).json()
     forever.time.at += 29 * DAY
     expect((await forever.server.send(read(`/v1/responses/${kept.id}`))).status).toBe(200)

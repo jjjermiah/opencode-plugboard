@@ -7,12 +7,12 @@
  * target in a fresh call, so each attempt is its own session. Once any event has been handed on
  * nothing is retried: a partly streamed answer is never restarted. Attempts are capped at the chain
  * length, share the request's signal (so the deadline and a disconnect end the chain) and nothing is
- * buffered beyond that first event. With option `fallbackAfterMs` (#391), an attempt that has a target after it
+ * buffered beyond that first event. With option `firstEventTimeoutMs` (#391), an attempt that has a target after it
  * and produces no event in time is aborted (its session is interrupted and retired by the caller) and the next
  * target is tried; the last target is not bounded by it. An attempt with a target after it is also not made to wait
  * out a host retry: the host's `session.retry.scheduled` before any output fails it at once (`provider_retry`, #391).
  *
- * Each target also has a circuit breaker (option `fallbackCooldown`, `src/breaker.ts`): a target that failed `failureThreshold` times
+ * Each target also has a circuit breaker (option `circuitBreaker`, `src/breaker.ts`): a target that failed `failures` times
  * in a row is skipped for `cooldownMs`, so the chain goes straight to the next target. After the cooldown one request is let
  * through; its answer closes the breaker. When every target is cooling down the first one is tried anyway, so a request never fails
  * without an attempt. A target that is skipped counts in `x-plugboard-fallbacks` (the header is the answering target's position among
@@ -23,7 +23,7 @@
 
 import type { ServerResponse } from "node:http"
 import { createBreaker, type Breaker } from "./breaker.js"
-import { DEFAULT_FALLBACK_COOLDOWN, type FallbackCooldown, type PlugboardOptions } from "./config.js"
+import { DEFAULT_CIRCUIT_BREAKER, type CircuitBreaker, type PlugboardOptions } from "./config.js"
 import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest, ServedModel } from "./contract.js"
 import { RequestAborted } from "./http.js"
 import { debugEnabled, log, logDebug, logWarn } from "./log.js"
@@ -69,7 +69,7 @@ export const FALLBACKS_HEADER = "x-plugboard-fallbacks"
 export interface ServedInfo {
   served?: string
   fallbacks?: number
-  /** The session page link of the request (option `historyUrl`, src/session/link.ts), for the log line. */
+  /** The session page link of the request (option `sessionUrl`, src/session/link.ts), for the log line. */
   sessionUrl?: string
 }
 
@@ -96,7 +96,7 @@ export function reportServed(response: ServerResponse, info: ServedInfo, then?: 
 
 export const isRetryable = (error: PlugError): boolean => error.code !== undefined && RETRYABLE.has(error.code)
 
-/** The `reason` of a fallback whose target produced no model event within `fallbackAfterMs` (#391). */
+/** The `reason` of a fallback whose target produced no model event within `firstEventTimeoutMs` (#391). */
 export const FIRST_EVENT_DEADLINE = "first_event_deadline"
 
 /**
@@ -117,8 +117,8 @@ export function withFallbacks(inner: ModelCaller, deps: FallbackDeps): ModelCall
   }
 }
 
-/** The cooldown settings in force, or `false` when option `fallbackCooldown` turns the breaker off. */
-export const cooldownOf = (options: PlugboardOptions): FallbackCooldown | false => options.fallbackCooldown ?? DEFAULT_FALLBACK_COOLDOWN
+/** The cooldown settings in force, or `false` when option `circuitBreaker` turns the breaker off. */
+export const cooldownOf = (options: PlugboardOptions): CircuitBreaker | false => options.circuitBreaker ?? DEFAULT_CIRCUIT_BREAKER
 
 /**
  * A call that is not a list alias: no retry, but the answer still names its model (`x-plugboard-model`, #279).
@@ -192,7 +192,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
     // that is cooling down does not follow: the attempt is then the last one that would run.
     const ahead = lookAhead(index)
     const following = ahead !== undefined
-    const deadline = deps.options.fallbackAfterMs ?? 0
+    const deadline = deps.options.firstEventTimeoutMs ?? 0
     const bounded = deadline > 0 && following
     const deadlineAbort = bounded ? new AbortController() : undefined
     let timedOut = false

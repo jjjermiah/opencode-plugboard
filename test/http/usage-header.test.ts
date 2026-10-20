@@ -54,7 +54,7 @@ describe("#52 x-plugboard-usage", () => {
   })
 
   test("n > 1 sums the choices into one header", async () => {
-    await route(0.5, ANSWER, { maxN: 2 })
+    await route(0.5, ANSWER, { maxChoices: 2 })
     const reply = await server!.send(chat({ n: 2 }))
     expect(reply.json().choices).toHaveLength(2)
     expect(reply.headers["x-plugboard-usage"]).toBe("input=200; output=40; cache_read=80; cache_write=0; cost_usd=1.000000")

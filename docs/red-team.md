@@ -13,7 +13,7 @@ The hub runs real apps, so attacks there are limited by design. On the hub, the 
 
 ```jsonc
 "keys": { "redteam": "{env:PLUGBOARD_KEY_REDTEAM}" },
-"apps": { "redteam": { "models": ["fast", "opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"] } },
+"apps": { "redteam": { "allowedModels": ["fast", "opencode-go/glm-5.3-flash", "anthropic/claude-haiku-4-5"] } },
 "limits": { "apps": { "redteam": { "maxConcurrent": 2, "requestsPerMinute": 30 } } },
 "budgets": { "apps": { "redteam": { "requests": { "day": 600 }, "tokens": { "day": 3000000 } } } }
 ```
@@ -50,7 +50,7 @@ Each role gets the brief below, plus the target URLs and keys. Run all three in 
 Break the security model. Read `SECURITY.md` and the invariants in [architecture](architecture.md), then try to violate each one.
 
 - **Authentication:** key handling (timing, wrong header forms, a revoked or rotated key, admin key reach), app isolation (read another app's usage or sessions), the keyless loopback mode, Host and Origin checks, DNS rebinding, CORS from a browser page.
-- **Running things on the server:** tool execution (make OpenCode run a real tool for an app without `serverTools`), prompt injection that escapes the replaced system prompt, session and history leakage, path tricks in app names and `user` values.
+- **Running things on the server:** tool execution (make OpenCode run a real tool for an app without `opencodeTools`), prompt injection that escapes the replaced system prompt, session and history leakage, path tricks in app names and `user` values.
 - **Requests and resources:** SSRF through `remoteImages`, request smuggling, oversized or slow bodies, SSE backpressure, cache poisoning across apps, budget and limit bypass, log and header injection.
 - **Plugboard's own pages:** dashboard XSS, its CSP, and the admin routes.
 

@@ -1,6 +1,6 @@
 /**
- * #270 `apps.<name>.maxN`: a per-app cap on the choices (`n`) one request may ask for. It only lowers the global
- * `maxN`, and a request above it is the existing 400 `too_many_choices` before any model call. Real loopback HTTP.
+ * #270 `apps.<name>.maxChoices`: a per-app cap on the choices (`n`) one request may ask for. It only lowers the global
+ * `maxChoices`, and a request above it is the existing 400 `too_many_choices` before any model call. Real loopback HTTP.
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { ev } from "../support/fixtures.js"
@@ -14,7 +14,7 @@ afterEach(async () => {
 })
 
 const KEYS = { chat: "k-chat", batch: "k-batch" }
-const options = { keys: KEYS, maxN: 4, apps: { chat: { maxN: 1 } } }
+const options = { keys: KEYS, maxChoices: 4, apps: { chat: { maxChoices: 1 } } }
 
 const chat = (key: string, body: Record<string, unknown> = {}): SendInit => ({
   method: "POST",
@@ -36,13 +36,13 @@ async function route() {
   return caller
 }
 
-describe("#270 apps.<name>.maxN: a per-app cap on n", () => {
+describe("#270 apps.<name>.maxChoices: a per-app cap on n", () => {
   test("an app capped at 1 gets 400 on n: 2 before any model call, while another app with the global cap succeeds", async () => {
     const caller = await route()
     const refused = await server!.send(chat(KEYS.chat, { n: 2 }))
     expect(refused.status).toBe(400)
     expect(refused.json().error).toMatchObject({ code: "too_many_choices", param: "n" })
-    expect(refused.json().error.message).toContain("`apps.chat.maxN`")
+    expect(refused.json().error.message).toContain("`apps.chat.maxChoices`")
     expect(caller.calls).toEqual([])
 
     const allowed = await server!.send(chat(KEYS.batch, { n: 2 }))
@@ -50,11 +50,11 @@ describe("#270 apps.<name>.maxN: a per-app cap on n", () => {
     expect(allowed.json().choices).toHaveLength(2)
   })
 
-  test("review NIT 7: an app with no cap of its own gets the global option named, not apps.<name>.maxN", async () => {
+  test("review NIT 7: an app with no cap of its own gets the global option named, not apps.<name>.maxChoices", async () => {
     await route()
     const reply = await server!.send(chat(KEYS.batch, { n: 5 }))
     expect(reply.status).toBe(400)
-    expect(reply.json().error.message).toContain("option `maxN`")
+    expect(reply.json().error.message).toContain("option `maxChoices`")
     expect(reply.json().error.message).not.toContain("apps.")
   })
 
@@ -73,14 +73,14 @@ describe("#270 apps.<name>.maxN: a per-app cap on n", () => {
 
   test("review NIT 7: completions name the applied option the same way", async () => {
     await route()
-    expect((await server!.send(completions(KEYS.chat, { n: 2 }))).json().error.message).toContain("`apps.chat.maxN`")
+    expect((await server!.send(completions(KEYS.chat, { n: 2 }))).json().error.message).toContain("`apps.chat.maxChoices`")
     const global = await server!.send(completions(KEYS.batch, { n: 5 }))
-    expect(global.json().error.message).toContain("option `maxN`")
+    expect(global.json().error.message).toContain("option `maxChoices`")
     expect(global.json().error.message).not.toContain("apps.")
   })
 
-  test("without an app maxN, the global cap still applies unchanged", async () => {
-    server = await startRoute({ caller: new FakeModelCaller(() => [ev.text("a"), ev.finish()]), options: { keys: KEYS, maxN: 2 } })
+  test("without an app maxChoices, the global cap still applies unchanged", async () => {
+    server = await startRoute({ caller: new FakeModelCaller(() => [ev.text("a"), ev.finish()]), options: { keys: KEYS, maxChoices: 2 } })
     expect((await server.send(chat(KEYS.batch, { n: 3 }))).status).toBe(400)
     expect((await server.send(chat(KEYS.batch, { n: 2 }))).status).toBe(200)
   })

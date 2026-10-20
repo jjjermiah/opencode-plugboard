@@ -62,8 +62,8 @@ x-plugboard-fallbacks: 1
 ```
 
 - Every target must be allowed in `models`, or the plugin refuses to load.
-- A target that hangs without answering can be abandoned after a deadline: set `fallbackAfterMs`.
-- A target that fails three times in a row is skipped for a minute, so a dead provider stops costing every request a failed call. After that one request probes it again, and an answer brings it back. If every target is cooling down, the first is still tried. Tune it with `fallbackCooldown`, or set it to `false` to turn it off. `GET /plugboard/status` shows the targets being skipped.
+- A target that hangs without answering can be abandoned after a deadline: set `firstEventTimeoutMs`.
+- A target that fails three times in a row is skipped for a minute, so a dead provider stops costing every request a failed call. After that one request probes it again, and an answer brings it back. If every target is cooling down, the first is still tried. Tune it with `circuitBreaker`, or set it to `false` to turn it off. `GET /plugboard/status` shows the targets being skipped.
 
 ## Pin an app to one model
 
@@ -87,7 +87,7 @@ x-plugboard-fallbacks: 1
 All in the [configuration reference](../configuration.md#models):
 
 - [`models`](../configuration.md#models), [`modelIds`](../configuration.md#model-ids-in-uis)
-- [`aliases` and fallbacks](../configuration.md#aliases-and-fallbacks), `fallbackAfterMs`, `fallbackCooldown`
+- [`aliases` and fallbacks](../configuration.md#aliases-and-fallbacks), `firstEventTimeoutMs`, `circuitBreaker`
 - [`reasoningOutput`](../configuration.md#reasoning-output)
 - [Skills and agents](../configuration.md#skills-and-agents)
 - [`apps.<name>.models` and `apps.<name>.model`](../configuration.md#per-app-policy-apps)

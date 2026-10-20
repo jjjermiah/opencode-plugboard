@@ -31,8 +31,8 @@ const CATALOG = [model("a", "x"), model("b", "y", { variants: ["low"] }), model(
 const RAW = {
   models: ["a/*", "b/*", "c/*"],
   aliases: { chain: ["a/x", "b/y#low", "c/z"] },
-  fallbackAfterMs: DEADLINE,
-  fallbackCooldown: { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 600_000 },
+  firstEventTimeoutMs: DEADLINE,
+  circuitBreaker: { failures: 3, cooldownMs: COOLDOWN_MS, failureWindowMs: 600_000 },
 }
 const upstream520 = { type: "provider.internal", status: 520, message: "upstream 520" }
 /** Anthropic's overloaded_error: the provider's own 529 (#503). */
@@ -94,7 +94,7 @@ async function start(faults: Record<string, Fault>) {
       return { reply, ran: targets.slice(before), ms: performance.now() - started }
     },
     status: async () =>
-      (await srv.send({ method: "GET", path: "/plugboard/status" })).json().fallbackCooldown as { enabled: boolean; cooling: Array<{ model: string; state: string; failures: number; until: string }> },
+      (await srv.send({ method: "GET", path: "/plugboard/status" })).json().circuitBreaker as { enabled: boolean; cooling: Array<{ model: string; state: string; failures: number; until: string }> },
   }
 }
 
@@ -102,7 +102,7 @@ const cooldownEvents = () => logs.lines.filter((line) => line.event.startsWith("
 
 describe("a first target that fails before any output: the next target answers", () => {
   test.each([
-    ["hangs past fallbackAfterMs", "hang"],
+    ["hangs past firstEventTimeoutMs", "hang"],
     ["answers 429", "429"],
     ["fails upstream with 520", "520"],
     ["is overloaded (529, provider_overloaded)", "529"],

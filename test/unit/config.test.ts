@@ -1,5 +1,17 @@
 import { describe, expect, test } from "bun:test"
-import { appHistoryLimits, appPolicy, authenticate, authenticateUsage, bodyLimits, CONNECTED, hostedToolsFor, isLoopbackHost, maxNFor, parseOptions, reasoningOutputFor } from "../../src/config.js"
+import {
+  appHistoryLimits,
+  appPolicy,
+  authenticate,
+  authenticateUsage,
+  bodyLimits,
+  ALL_MODELS,
+  hostedToolsFor,
+  isLoopbackHost,
+  maxChoicesFor,
+  parseOptions,
+  reasoningOutputFor,
+} from "../../src/config.js"
 import { testOptions } from "../support/fixtures.js"
 
 describe("parseOptions: defaults", () => {
@@ -13,10 +25,10 @@ describe("parseOptions: defaults", () => {
       agents: {},
       fallbacks: {},
       maxTools: 64,
-      maxN: 1,
+      maxChoices: 1,
       requestTimeoutMs: 600_000,
       remoteImages: false,
-      history: { maxAgeDays: 30 },
+      sessions: { maxAgeDays: 30 },
       dropUnsupportedParams: true,
       logFormat: "text",
       logLevel: "info",
@@ -28,22 +40,22 @@ describe("parseOptions: defaults", () => {
     })
   })
 
-  test('models: "connected" parses to the one-entry list that allows every catalog model; unset stays empty', () => {
-    expect(parseOptions({ models: "connected" }).models).toEqual([CONNECTED])
+  test('models: "all" parses to the one-entry list that allows every catalog model; unset stays empty', () => {
+    expect(parseOptions({ models: "all" }).models).toEqual([ALL_MODELS])
     expect(parseOptions({}).models).toEqual([])
     expect(parseOptions({ models: null }).models).toEqual([])
   })
 
   test.each([
     ["another string", "anthropic/*", /must be an array of strings/],
-    ["`connected` inside a list", ["test/*", "connected"], /as the whole value/],
+    ["`all` inside a list", ["test/*", "all"], /as the whole value/],
     ["a number", 4, /must be an array of strings/],
   ])("models rejects %s", (_name, models, message) => {
     expect(() => parseOptions({ models })).toThrow(message)
   })
 
-  test('models: "connected" lets an alias target and an agent model through the load-time allowlist check', () => {
-    const options = parseOptions({ models: "connected", aliases: { fast: ["openai/gpt-mini", "anthropic/claude"] }, agents: [{ name: "reviewer", model: "openai/gpt-mini" }] })
+  test('models: "all" lets an alias target and an agent model through the load-time allowlist check', () => {
+    const options = parseOptions({ models: "all", aliases: { fast: ["openai/gpt-mini", "anthropic/claude"] }, agents: [{ name: "reviewer", model: "openai/gpt-mini" }] })
     expect(options.aliases).toEqual({ fast: "openai/gpt-mini" })
     expect(options.fallbacks).toEqual({ fast: ["anthropic/claude"] })
     expect(options.agents).toEqual({ reviewer: "openai/gpt-mini" })
@@ -62,7 +74,7 @@ describe("parseOptions: defaults", () => {
       maxTools: 1024,
       requestTimeoutMs: 2 ** 31 - 1,
       remoteImages: true,
-      history: { maxSessions: 5, maxAgeDays: 36_500 },
+      sessions: { maxSessions: 5, maxAgeDays: 36_500 },
       dropUnsupportedParams: false,
     })
     expect(options).toMatchObject({
@@ -70,7 +82,7 @@ describe("parseOptions: defaults", () => {
       keys: { "my-app": "secret" },
       maxTools: 1024,
       remoteImages: true,
-      history: { maxSessions: 5, maxAgeDays: 36_500 },
+      sessions: { maxSessions: 5, maxAgeDays: 36_500 },
       dropUnsupportedParams: false,
     })
   })
@@ -96,11 +108,11 @@ describe("parseOptions: defaults", () => {
     expect(bodyLimits(parseOptions(undefined))).toEqual({ maxBytesInFlight: 134_217_728, readTimeoutMs: 30_000, readCeilingMs: 300_000, maxBodyBytes: 33_554_432 })
   })
 
-  test("#158 history keeps 30 days by default; maxAgeDays 0 is the explicit opt-out to no age limit", () => {
-    expect(parseOptions({ history: { maxSessions: 3 } }).history).toEqual({ maxSessions: 3, maxAgeDays: 30 })
-    expect(parseOptions({}).history).toEqual({ maxAgeDays: 30 })
-    expect(parseOptions({ history: { maxAgeDays: 0 } }).history).toEqual({})
-    expect(parseOptions({ history: { maxAgeDays: 0, maxSessions: 3 } }).history).toEqual({ maxSessions: 3 })
+  test("#158 sessions keep 30 days by default; maxAgeDays 0 is the explicit opt-out to no age limit", () => {
+    expect(parseOptions({ sessions: { maxSessions: 3 } }).sessions).toEqual({ maxSessions: 3, maxAgeDays: 30 })
+    expect(parseOptions({}).sessions).toEqual({ maxAgeDays: 30 })
+    expect(parseOptions({ sessions: { maxAgeDays: 0 } }).sessions).toEqual({})
+    expect(parseOptions({ sessions: { maxAgeDays: 0, maxSessions: 3 } }).sessions).toEqual({ maxSessions: 3 })
   })
 })
 
@@ -134,16 +146,16 @@ describe("parseOptions: every rejection names the option", () => {
     ["a maxTools above 1024", { maxTools: 1025 }, /`maxTools`/],
     ["a requestTimeoutMs past the timer limit", { requestTimeoutMs: 2 ** 31 }, /`requestTimeoutMs`/],
     ["a string requestTimeoutMs", { requestTimeoutMs: "1000" }, /`requestTimeoutMs`/],
-    ["a fallbackAfterMs past the timer limit", { fallbackAfterMs: 2 ** 31 }, /`fallbackAfterMs`/],
-    ["a string fallbackAfterMs", { fallbackAfterMs: "500" }, /`fallbackAfterMs`/],
+    ["a firstEventTimeoutMs past the timer limit", { firstEventTimeoutMs: 2 ** 31 }, /`firstEventTimeoutMs`/],
+    ["a string firstEventTimeoutMs", { firstEventTimeoutMs: "500" }, /`firstEventTimeoutMs`/],
     ["a remoteImages that is not a boolean", { remoteImages: "yes" }, /`remoteImages` must be a boolean/],
     ["a dropUnsupportedParams that is not a boolean", { dropUnsupportedParams: 1 }, /`dropUnsupportedParams` must be a boolean/],
-    ["a history that is not an object", { history: 5 }, /`history` must be an object/],
-    ["an unknown history key", { history: { maxCount: 1 } }, /Unknown plugboard option `history.maxCount`/],
-    ["a history.maxSessions of 0", { history: { maxSessions: 0 } }, /`history.maxSessions`/],
+    ["a sessions option that is not an object", { sessions: 5 }, /`sessions` must be an object/],
+    ["an unknown sessions key", { sessions: { maxCount: 1 } }, /Unknown plugboard option `sessions.maxCount`/],
+    ["a sessions.maxSessions of 0", { sessions: { maxSessions: 0 } }, /`sessions.maxSessions`/],
     ["an unknown modelIds mode", { modelIds: "all" }, /`modelIds` must be `canonical`, `slugs` or `both`/],
     ["a modelIds that is not a string", { modelIds: ["slugs"] }, /`modelIds` must be/],
-    ["a history.maxAgeDays past 100 years", { history: { maxAgeDays: 36_501 } }, /`history.maxAgeDays` must be an integer between 0 and 36500/],
+    ["a sessions.maxAgeDays past 100 years", { sessions: { maxAgeDays: 36_501 } }, /`sessions.maxAgeDays` must be an integer between 0 and 36500/],
     ["a limits that is not an object", { limits: 5 }, /`limits` must be an object/],
     ["an unknown limits key", { limits: { rate: 1 } }, /Unknown plugboard option `limits.rate`/],
     ["a limits.maxConcurrent of 0", { limits: { maxConcurrent: 0 } }, /`limits.maxConcurrent` must be an integer between 1 and 1000000/],
@@ -510,7 +522,7 @@ describe("parseOptions: agents (#6)", () => {
   })
 })
 
-describe("#82 apps.<name>.serverTools and maxServerToolSteps", () => {
+describe("#82 apps.<name>.opencodeTools and maxToolSteps", () => {
   const bot = (policy: Record<string, unknown>) => parseOptions({ keys: { bot: "k" }, apps: { bot: policy } }).apps.bot
 
   test("absent by default: the policy carries no server tools", () => {
@@ -518,41 +530,41 @@ describe("#82 apps.<name>.serverTools and maxServerToolSteps", () => {
   })
 
   test("#198 keeps the call limit when set; the default (16) is applied when the request runs", () => {
-    expect(bot({ serverTools: ["websearch"], maxServerToolCalls: 5 })).toEqual({ systemMode: "prepend", tools: true, serverTools: ["websearch"], maxServerToolCalls: 5 })
+    expect(bot({ opencodeTools: ["websearch"], maxToolCalls: 5 })).toEqual({ systemMode: "prepend", tools: true, opencodeTools: ["websearch"], maxToolCalls: 5 })
   })
 
   test("accepts exact OpenCode tool ids and keeps the step limit when set", () => {
-    expect(bot({ serverTools: ["websearch", "mcp.lookup:v2", "my_tool-1"], maxServerToolSteps: 3 })).toEqual({
+    expect(bot({ opencodeTools: ["websearch", "mcp.lookup:v2", "my_tool-1"], maxToolSteps: 3 })).toEqual({
       systemMode: "prepend",
       tools: true,
-      serverTools: ["websearch", "mcp.lookup:v2", "my_tool-1"],
-      maxServerToolSteps: 3,
+      opencodeTools: ["websearch", "mcp.lookup:v2", "my_tool-1"],
+      maxToolSteps: 3,
     })
   })
 
   test.each([
-    ["an empty list", { serverTools: [] }, "serverTools must be an array of 1 to 32 OpenCode tool ids"],
-    ["a string instead of a list", { serverTools: "websearch" }, "serverTools must be an array of 1 to 32 OpenCode tool ids"],
-    ["more than 32 entries", { serverTools: Array.from({ length: 33 }, (_, i) => `tool${i}`) }, "must be an array of 1 to 32 OpenCode tool ids"],
-    ["a wildcard", { serverTools: ["web*"] }, "must be an exact OpenCode tool id"],
-    ["a space in the id", { serverTools: ["web search"] }, "must be an exact OpenCode tool id"],
-    ["an empty id", { serverTools: [""] }, "must be an exact OpenCode tool id"],
-    ["a duplicate id", { serverTools: ["websearch", "websearch"] }, "lists `websearch` twice"],
-    ["CodeMode's execute tool", { serverTools: ["execute"] }, "cannot name `execute`"],
-    ["a seed tool", { serverTools: ["plugboard_seed_0"] }, "plugboard's own seed tools are reserved"],
-    ["a call limit without server tools (#198)", { maxServerToolCalls: 3 }, "maxServerToolCalls needs `serverTools`"],
-    ["a call limit of zero (#198)", { serverTools: ["websearch"], maxServerToolCalls: 0 }, "`apps.bot.maxServerToolCalls` must be an integer between 1 and 1000"],
-    ["the subagent tool (#195)", { serverTools: ["subagent"] }, "cannot name `subagent`: it starts a child session"],
-    ["the task tool, subagent's old name (#195)", { serverTools: ["task"] }, "cannot name `task`: it starts a child session"],
-    ["a step limit without server tools", { maxServerToolSteps: 3 }, "maxServerToolSteps needs `serverTools`"],
-    ["a step limit of zero", { serverTools: ["websearch"], maxServerToolSteps: 0 }, "`apps.bot.maxServerToolSteps` must be an integer between 1 and 100"],
-    ["a step limit above 100", { serverTools: ["websearch"], maxServerToolSteps: 101 }, "`apps.bot.maxServerToolSteps` must be an integer between 1 and 100"],
+    ["an empty list", { opencodeTools: [] }, "opencodeTools must be an array of 1 to 32 OpenCode tool ids"],
+    ["a string instead of a list", { opencodeTools: "websearch" }, "opencodeTools must be an array of 1 to 32 OpenCode tool ids"],
+    ["more than 32 entries", { opencodeTools: Array.from({ length: 33 }, (_, i) => `tool${i}`) }, "must be an array of 1 to 32 OpenCode tool ids"],
+    ["a wildcard", { opencodeTools: ["web*"] }, "must be an exact OpenCode tool id"],
+    ["a space in the id", { opencodeTools: ["web search"] }, "must be an exact OpenCode tool id"],
+    ["an empty id", { opencodeTools: [""] }, "must be an exact OpenCode tool id"],
+    ["a duplicate id", { opencodeTools: ["websearch", "websearch"] }, "lists `websearch` twice"],
+    ["CodeMode's execute tool", { opencodeTools: ["execute"] }, "cannot name `execute`"],
+    ["a seed tool", { opencodeTools: ["plugboard_seed_0"] }, "plugboard's own seed tools are reserved"],
+    ["a call limit without server tools (#198)", { maxToolCalls: 3 }, "maxToolCalls needs `opencodeTools`"],
+    ["a call limit of zero (#198)", { opencodeTools: ["websearch"], maxToolCalls: 0 }, "`apps.bot.maxToolCalls` must be an integer between 1 and 1000"],
+    ["the subagent tool (#195)", { opencodeTools: ["subagent"] }, "cannot name `subagent`: it starts a child session"],
+    ["the task tool, subagent's old name (#195)", { opencodeTools: ["task"] }, "cannot name `task`: it starts a child session"],
+    ["a step limit without server tools", { maxToolSteps: 3 }, "maxToolSteps needs `opencodeTools`"],
+    ["a step limit of zero", { opencodeTools: ["websearch"], maxToolSteps: 0 }, "`apps.bot.maxToolSteps` must be an integer between 1 and 100"],
+    ["a step limit above 100", { opencodeTools: ["websearch"], maxToolSteps: 101 }, "`apps.bot.maxToolSteps` must be an integer between 1 and 100"],
   ])("rejects %s", (_name, policy, message) => {
     expect(() => bot(policy)).toThrow(message)
   })
 
   test("the keyless default app cannot run server tools", () => {
-    expect(() => parseOptions({ apps: { default: { serverTools: ["websearch"] } } })).toThrow("needs a key")
+    expect(() => parseOptions({ apps: { default: { opencodeTools: ["websearch"] } } })).toThrow("needs a key")
   })
 })
 
@@ -578,32 +590,32 @@ describe("#262 logLevel and logRequests", () => {
   })
 })
 
-describe("#270 apps.<name>.maxN", () => {
-  test("only lowers: a value above the global maxN is rejected at load and the message names the app option", () => {
-    expect(() => parseOptions({ keys: { chat: "k" }, maxN: 2, apps: { chat: { maxN: 3 } } })).toThrow("`apps.chat.maxN` must be an integer between 1 and 2")
+describe("#270 apps.<name>.maxChoices", () => {
+  test("only lowers: a value above the global maxChoices is rejected at load and the message names the app option", () => {
+    expect(() => parseOptions({ keys: { chat: "k" }, maxChoices: 2, apps: { chat: { maxChoices: 3 } } })).toThrow("`apps.chat.maxChoices` must be an integer between 1 and 2")
   })
 
-  test("an in-range value is kept, and an app with only a maxN has a policy", () => {
-    const options = parseOptions({ keys: { chat: "k" }, maxN: 4, apps: { chat: { maxN: 1 } } })
-    expect(options.apps.chat).toMatchObject({ maxN: 1 })
-    expect(maxNFor(options, "chat")).toBe(1)
+  test("an in-range value is kept, and an app with only a maxChoices has a policy", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxChoices: 4, apps: { chat: { maxChoices: 1 } } })
+    expect(options.apps.chat).toMatchObject({ maxChoices: 1 })
+    expect(maxChoicesFor(options, "chat")).toBe(1)
   })
 
   test("without it, the app's cap is the global one", () => {
-    const options = parseOptions({ keys: { chat: "k" }, maxN: 4 })
-    expect(maxNFor(options, "chat")).toBe(4)
+    const options = parseOptions({ keys: { chat: "k" }, maxChoices: 4 })
+    expect(maxChoicesFor(options, "chat")).toBe(4)
   })
 
   test("rejects a non-integer and zero", () => {
-    expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxN: 0 } } })).toThrow("`apps.chat.maxN`")
-    expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxN: 1.5 } } })).toThrow("`apps.chat.maxN`")
+    expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxChoices: 0 } } })).toThrow("`apps.chat.maxChoices`")
+    expect(() => parseOptions({ keys: { chat: "k" }, apps: { chat: { maxChoices: 1.5 } } })).toThrow("`apps.chat.maxChoices`")
   })
 })
 
-describe("#265 apps.<name>.history", () => {
+describe("#265 apps.<name>.sessions", () => {
   test("parses its own fields and exposes the per-app map", () => {
-    const options = parseOptions({ keys: { bot: "k1", coding: "k2" }, apps: { bot: { history: { maxSessions: 20 } }, coding: { history: { maxSessions: 5000, maxAgeDays: 180 } } } })
-    expect(options.apps.bot).toMatchObject({ history: { maxSessions: 20 } })
+    const options = parseOptions({ keys: { bot: "k1", coding: "k2" }, apps: { bot: { sessions: { maxSessions: 20 } }, coding: { sessions: { maxSessions: 5000, maxAgeDays: 180 } } } })
+    expect(options.apps.bot).toMatchObject({ sessions: { maxSessions: 20 } })
     expect(appHistoryLimits(options)).toEqual({ bot: { maxSessions: 20 }, coding: { maxSessions: 5000, maxAgeDays: 180 } })
   })
 
@@ -612,27 +624,27 @@ describe("#265 apps.<name>.history", () => {
   })
 
   test("rejects a zero, an out-of-range value, and an unknown field, each naming the app", () => {
-    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { maxSessions: 0 } } } })).toThrow("`apps.bot.history.maxSessions`")
-    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { maxAgeDays: 40_000 } } } })).toThrow("`apps.bot.history.maxAgeDays`")
-    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { history: { keep: 1 } } } })).toThrow("`apps.bot.history.keep`")
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { sessions: { maxSessions: 0 } } } })).toThrow("`apps.bot.sessions.maxSessions`")
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { sessions: { maxAgeDays: 40_000 } } } })).toThrow("`apps.bot.sessions.maxAgeDays`")
+    expect(() => parseOptions({ keys: { bot: "k" }, apps: { bot: { sessions: { keep: 1 } } } })).toThrow("`apps.bot.sessions.keep`")
   })
 })
 
-describe("#270 review NIT 8: maxN edge cases", () => {
-  test("an app maxN equal to the global one is accepted, and 4 passes while 5 would not", () => {
-    const options = parseOptions({ keys: { chat: "k" }, maxN: 4, apps: { chat: { maxN: 4 } } })
-    expect(maxNFor(options, "chat")).toBe(4)
+describe("#270 review NIT 8: maxChoices edge cases", () => {
+  test("an app maxChoices equal to the global one is accepted, and 4 passes while 5 would not", () => {
+    const options = parseOptions({ keys: { chat: "k" }, maxChoices: 4, apps: { chat: { maxChoices: 4 } } })
+    expect(maxChoicesFor(options, "chat")).toBe(4)
   })
 
-  test("apps.default.maxN caps the keyless app (no keys)", () => {
-    const options = parseOptions({ maxN: 3, apps: { default: { maxN: 2 } } })
-    expect(maxNFor(options, "default")).toBe(2)
+  test("apps.default.maxChoices caps the keyless app (no keys)", () => {
+    const options = parseOptions({ maxChoices: 3, apps: { default: { maxChoices: 2 } } })
+    expect(maxChoicesFor(options, "default")).toBe(2)
   })
 
   test("an unknown app, and an inherited name such as constructor, get the global cap", () => {
-    const options = parseOptions({ keys: { chat: "k" }, maxN: 3, apps: { chat: { maxN: 1 } } })
-    expect(maxNFor(options, "nobody")).toBe(3)
-    expect(maxNFor(options, "constructor")).toBe(3)
+    const options = parseOptions({ keys: { chat: "k" }, maxChoices: 3, apps: { chat: { maxChoices: 1 } } })
+    expect(maxChoicesFor(options, "nobody")).toBe(3)
+    expect(maxChoicesFor(options, "constructor")).toBe(3)
   })
 })
 
@@ -655,14 +667,14 @@ describe("reasoningOutput (since 0.36.0)", () => {
     expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { reasoningOutput: 1 } } })).toThrow("plugboard option `apps.a.reasoningOutput` must be a boolean")
   })
 
-  test("per app: apps.<name>.hostedTools is drop or refuse, drop when unset, and alone it makes a policy", () => {
-    const options = parseOptions({ keys: { a: "k1", b: "k2", c: "k3" }, apps: { a: { hostedTools: "refuse" }, b: { hostedTools: "drop" } } })
-    expect(appPolicy(options, "a")).toMatchObject({ hostedTools: "refuse" })
+  test("per app: apps.<name>.onHostedTools is drop or refuse, drop when unset, and alone it makes a policy", () => {
+    const options = parseOptions({ keys: { a: "k1", b: "k2", c: "k3" }, apps: { a: { onHostedTools: "refuse" }, b: { onHostedTools: "drop" } } })
+    expect(appPolicy(options, "a")).toMatchObject({ onHostedTools: "refuse" })
     expect(hostedToolsFor(options, "a")).toBe("refuse")
     expect(hostedToolsFor(options, "b")).toBe("drop")
     expect(hostedToolsFor(options, "c")).toBe("drop")
-    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { hostedTools: "keep" } } })).toThrow("plugboard option `apps.a.hostedTools` must be `drop` or `refuse`")
-    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { hostedTools: true } } })).toThrow("`apps.a.hostedTools`")
+    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { onHostedTools: "keep" } } })).toThrow("plugboard option `apps.a.onHostedTools` must be `drop` or `refuse`")
+    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { onHostedTools: true } } })).toThrow("`apps.a.onHostedTools`")
   })
 
   test("the effective value: the app's own value wins over the global one, both ways, and the global one applies when the app has none", () => {
@@ -679,23 +691,23 @@ describe("reasoningOutput (since 0.36.0)", () => {
   })
 })
 
-describe("#391 fallbackAfterMs", () => {
+describe("#391 firstEventTimeoutMs", () => {
   test("absent by default; set, it is the global first-event deadline", () => {
-    expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("fallbackAfterMs")
-    expect(() => parseOptions({ models: ["a/*"], fallbackAfterMs: 0 })).toThrow(/`fallbackAfterMs` must be an integer between 1/)
-    expect(parseOptions({ models: ["a/*"], fallbackAfterMs: 1500 }).fallbackAfterMs).toBe(1500)
+    expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("firstEventTimeoutMs")
+    expect(() => parseOptions({ models: ["a/*"], firstEventTimeoutMs: 0 })).toThrow(/`firstEventTimeoutMs` must be an integer between 1/)
+    expect(parseOptions({ models: ["a/*"], firstEventTimeoutMs: 1500 }).firstEventTimeoutMs).toBe(1500)
   })
 
   test("refused at load when it is not below requestTimeoutMs, which would never let it fire", () => {
-    expect(() => parseOptions({ models: ["a/*"], requestTimeoutMs: 5000, fallbackAfterMs: 5000 })).toThrow(/must be below `requestTimeoutMs` \(5000\)/)
-    expect(() => parseOptions({ models: ["a/*"], fallbackAfterMs: 600_000 })).toThrow(/must be below `requestTimeoutMs` \(600000\)/)
-    expect(parseOptions({ models: ["a/*"], requestTimeoutMs: 5000, fallbackAfterMs: 4999 }).fallbackAfterMs).toBe(4999)
+    expect(() => parseOptions({ models: ["a/*"], requestTimeoutMs: 5000, firstEventTimeoutMs: 5000 })).toThrow(/must be below `requestTimeoutMs` \(5000\)/)
+    expect(() => parseOptions({ models: ["a/*"], firstEventTimeoutMs: 600_000 })).toThrow(/must be below `requestTimeoutMs` \(600000\)/)
+    expect(parseOptions({ models: ["a/*"], requestTimeoutMs: 5000, firstEventTimeoutMs: 4999 }).firstEventTimeoutMs).toBe(4999)
   })
 
   test("refused at load when an app's own requestTimeoutMs is not above it; the global deadline is checked against the app's too", () => {
     const base = { models: ["a/*"], keys: { bot: "k-bot" } }
-    expect(() => parseOptions({ ...base, fallbackAfterMs: 1000, apps: { bot: { requestTimeoutMs: 1000 } } })).toThrow(/must be below `apps\.bot\.requestTimeoutMs` \(1000\)/)
-    expect(parseOptions({ ...base, fallbackAfterMs: 1000, apps: { bot: { requestTimeoutMs: 5000 } } }).fallbackAfterMs).toBe(1000)
+    expect(() => parseOptions({ ...base, firstEventTimeoutMs: 1000, apps: { bot: { requestTimeoutMs: 1000 } } })).toThrow(/must be below `apps\.bot\.requestTimeoutMs` \(1000\)/)
+    expect(parseOptions({ ...base, firstEventTimeoutMs: 1000, apps: { bot: { requestTimeoutMs: 5000 } } }).firstEventTimeoutMs).toBe(1000)
   })
 })
 
@@ -716,31 +728,31 @@ describe("#515 silenceMs", () => {
   })
 })
 
-describe("fallbackCooldown", () => {
+describe("circuitBreaker", () => {
   test("absent by default, which means 3 failures, a 60 s cooldown and a 60 s window", () => {
-    expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("fallbackCooldown")
+    expect(parseOptions({ models: ["a/*"] })).not.toHaveProperty("circuitBreaker")
   })
 
   test("an object sets the fields it names; the rest keep their defaults", () => {
-    expect(parseOptions({ models: ["a/*"], fallbackCooldown: {} }).fallbackCooldown).toEqual({ failureThreshold: 3, cooldownMs: 60_000, windowMs: 60_000 })
-    expect(parseOptions({ models: ["a/*"], fallbackCooldown: { failureThreshold: 5, cooldownMs: 30_000 } }).fallbackCooldown).toEqual({ failureThreshold: 5, cooldownMs: 30_000, windowMs: 60_000 })
-    expect(parseOptions({ models: ["a/*"], fallbackCooldown: { windowMs: 10_000 } }).fallbackCooldown).toMatchObject({ windowMs: 10_000 })
+    expect(parseOptions({ models: ["a/*"], circuitBreaker: {} }).circuitBreaker).toEqual({ failures: 3, cooldownMs: 60_000, failureWindowMs: 60_000 })
+    expect(parseOptions({ models: ["a/*"], circuitBreaker: { failures: 5, cooldownMs: 30_000 } }).circuitBreaker).toEqual({ failures: 5, cooldownMs: 30_000, failureWindowMs: 60_000 })
+    expect(parseOptions({ models: ["a/*"], circuitBreaker: { failureWindowMs: 10_000 } }).circuitBreaker).toMatchObject({ failureWindowMs: 10_000 })
   })
 
   test("false turns the breaker off", () => {
-    expect(parseOptions({ models: ["a/*"], fallbackCooldown: false }).fallbackCooldown).toBe(false)
+    expect(parseOptions({ models: ["a/*"], circuitBreaker: false }).circuitBreaker).toBe(false)
   })
 
   test.each([
-    ["true", true, /`fallbackCooldown` must be `false` or an object/],
-    ["a number", 3, /`fallbackCooldown` must be `false` or an object/],
-    ["an array", [], /`fallbackCooldown` must be `false` or an object/],
-    ["an unknown field", { cooldown: 1 }, /Unknown plugboard option `fallbackCooldown.cooldown`/],
-    ["a zero threshold", { failureThreshold: 0 }, /`fallbackCooldown.failureThreshold` must be an integer between 1/],
-    ["a fractional cooldown", { cooldownMs: 1.5 }, /`fallbackCooldown.cooldownMs`/],
-    ["a string window", { windowMs: "60" }, /`fallbackCooldown.windowMs`/],
-    ["a cooldown past the timer limit", { cooldownMs: 2 ** 31 }, /`fallbackCooldown.cooldownMs`/],
+    ["true", true, /`circuitBreaker` must be `false` or an object/],
+    ["a number", 3, /`circuitBreaker` must be `false` or an object/],
+    ["an array", [], /`circuitBreaker` must be `false` or an object/],
+    ["an unknown field", { cooldown: 1 }, /Unknown plugboard option `circuitBreaker.cooldown`/],
+    ["a zero threshold", { failures: 0 }, /`circuitBreaker.failures` must be an integer between 1/],
+    ["a fractional cooldown", { cooldownMs: 1.5 }, /`circuitBreaker.cooldownMs`/],
+    ["a string window", { failureWindowMs: "60" }, /`circuitBreaker.failureWindowMs`/],
+    ["a cooldown past the timer limit", { cooldownMs: 2 ** 31 }, /`circuitBreaker.cooldownMs`/],
   ])("%s is refused", (_name, value, message) => {
-    expect(() => parseOptions({ models: ["a/*"], fallbackCooldown: value })).toThrow(message)
+    expect(() => parseOptions({ models: ["a/*"], circuitBreaker: value })).toThrow(message)
   })
 })

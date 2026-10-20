@@ -25,7 +25,7 @@ export interface ParsedGemini {
   readonly request: Omit<PlugRequest, "ref">
   /** Response presentation state for the encoder; never reaches the model call. */
   readonly exchange: GeminiExchange
-  /** `generationConfig.candidateCount` (1..`maxN`): the route fans out into one model call per candidate when it is above 1. */
+  /** `generationConfig.candidateCount` (1..`maxChoices`): the route fans out into one model call per candidate when it is above 1. */
   readonly candidates: number
   /** From `generationConfig.thinkingConfig`: picks the model variant of that name, else the nearest one above it (`effortVariant`, #410). */
   readonly reasoningEffort?: string
@@ -391,18 +391,19 @@ const checkUnsupported = (body: JsonObject, config: JsonObject): PlugError | und
   if (Array.isArray(modalities) && modalities.some((m) => show(m).toUpperCase() !== "TEXT")) return unsupported("Only the TEXT response modality is supported", "generationConfig.responseModalities")
 }
 
-/** `candidateCount` is how many candidates to return. Each one is a full model call (see `src/openai/fanout.ts`), so it is capped by `maxN`, like `n`. */
+/** `candidateCount` is how many candidates to return. Each one is a full model call (see `src/openai/fanout.ts`), so it is capped by `maxChoices`, like `n`. */
 const parseCandidateCount = (config: JsonObject, options: PlugboardOptions, capOption: string): number | PlugError => {
   const count = field(config, "candidateCount")
   if (count == null) return 1
   const param = "generationConfig.candidateCount"
   if (typeof count !== "number" || !Number.isInteger(count) || count < 1) return bad("candidateCount must be a positive integer", param)
-  if (count > options.maxN) return bad(`candidateCount=${count} is above the limit of ${options.maxN} (option \`${capOption}\`; each candidate is a full model call)`, param, "too_many_choices")
+  if (count > options.maxChoices)
+    return bad(`candidateCount=${count} is above the limit of ${options.maxChoices} (option \`${capOption}\`; each candidate is a full model call)`, param, "too_many_choices")
   return count
 }
 
-/** `capOption` names the option that set `options.maxN` in the 400 message (`maxN`, or `apps.<name>.maxN`). */
-export function parseGeminiRequest(model: string, stream: boolean, body: unknown, options: PlugboardOptions, capOption = "maxN"): ParsedGemini | PlugError {
+/** `capOption` names the option that set `options.maxChoices` in the 400 message (`maxChoices`, or `apps.<name>.maxChoices`). */
+export function parseGeminiRequest(model: string, stream: boolean, body: unknown, options: PlugboardOptions, capOption = "maxChoices"): ParsedGemini | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   const configRaw = field(body, "generationConfig")
   if (configRaw != null && !isRecord(configRaw)) return bad("generationConfig must be an object", "generationConfig")

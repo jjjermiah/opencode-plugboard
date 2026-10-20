@@ -40,15 +40,15 @@ An app over a ceiling gets 429 `budget_exceeded` until the window resets. The se
 
 ## Cap the size of one request
 
-- `maxTools` (default 64) caps the tools one request may carry. `maxN` (default 1) caps how many answers one request may ask for with `n`, because each is a full model call.
+- `maxTools` (default 64) caps the tools one request may carry. `maxChoices` (default 1) caps how many answers one request may ask for with `n`, because each is a full model call.
 - `limits.maxBodyBytes` caps the size of one request body. The default, 32 MiB, is also the most it can be.
 
 ## Replay repeated answers
 
-Pollers and bots often send the same prompt again and again. With `cache`, an identical request from the same app gets the stored answer. No session is created and no provider call is made.
+Pollers and bots often send the same prompt again and again. With `responseCache`, an identical request from the same app gets the stored answer. No session is created and no provider call is made.
 
 ```jsonc plugboard
-"cache": { "ttlSeconds": 300, "apps": ["discord-bot"] }
+"responseCache": { "ttlSeconds": 300, "apps": ["discord-bot"] }
 ```
 
 Every answer says whether it came from the cache:

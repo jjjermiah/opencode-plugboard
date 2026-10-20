@@ -1,5 +1,5 @@
 /**
- * `"models": "connected"` over loopback HTTP with a fake catalog: every model the host catalog offers is allowed, resolved
+ * `"models": "all"` over loopback HTTP with a fake catalog: every model the host catalog offers is allowed, resolved
  * on each request (so a provider connected later appears without a restart), under keys and per-app narrowing.
  */
 import { afterEach, describe, expect, test } from "bun:test"
@@ -25,10 +25,10 @@ const chat = (modelName: string, headers: Record<string, string> = KEY) => ({
   body: { model: modelName, messages: [{ role: "user", content: "hi" }] },
 })
 
-describe("models: connected", () => {
+describe("models: all", () => {
   test("lists every catalog model and serves any of them, with aliases", async () => {
     const caller = new FakeModelCaller([ev.text("ok"), ev.finish()])
-    server = await startRoute({ caller, options: { models: "connected", keys: { main: "k-main" }, aliases: { fast: "other/model" } } })
+    server = await startRoute({ caller, options: { models: "all", keys: { main: "k-main" }, aliases: { fast: "other/model" } } })
     expect(ids(await server.send({ path: "/v1/models", headers: KEY }))).toEqual(expect.arrayContaining(["test/echo", "test/echo#low", "test/vision", "other/model", "fast"]))
     expect((await server.send(chat("other/model"))).status).toBe(200)
     expect((await server.send(chat("fast"))).status).toBe(200)
@@ -39,7 +39,7 @@ describe("models: connected", () => {
   })
 
   test("a model the catalog lacks is the usual 404, and an alias whose target is gone is not served", async () => {
-    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { models: "connected", keys: { main: "k-main" }, aliases: { gone: "ghost/model" } } })
+    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { models: "all", keys: { main: "k-main" }, aliases: { gone: "ghost/model" } } })
     expect((await server.send(chat("ghost/model"))).status).toBe(404)
     expect((await server.send(chat("gone"))).status).toBe(404)
     expect(ids(await server.send({ path: "/v1/models", headers: KEY }))).not.toContain("gone")
@@ -47,7 +47,7 @@ describe("models: connected", () => {
 
   test("the catalog is read on every request: a provider connected later is served without a reload", async () => {
     let catalog: ReadonlyArray<CatalogModel> = [model("test", "echo")]
-    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), catalog: async () => catalog, options: { models: "connected", keys: { main: "k-main" } } })
+    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), catalog: async () => catalog, options: { models: "all", keys: { main: "k-main" } } })
     expect((await server.send(chat("later/model"))).status).toBe(404)
     catalog = [model("test", "echo"), model("later", "model")]
     expect(ids(await server.send({ path: "/v1/models", headers: KEY }))).toContain("later/model")
@@ -55,7 +55,7 @@ describe("models: connected", () => {
   })
 
   test("keys are still required, and without models the answer is still 403", async () => {
-    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { models: "connected", keys: { main: "k-main" } } })
+    server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { models: "all", keys: { main: "k-main" } } })
     expect((await server.send(chat("test/echo", {}))).status).toBe(401)
     await server.close()
     server = await startRoute({ caller: new FakeModelCaller([ev.finish()]), options: { models: [], keys: { main: "k-main" } } })
@@ -64,10 +64,10 @@ describe("models: connected", () => {
     expect(reply.json().error.code).toBe("no_models_configured")
   })
 
-  test("an app's own models still narrow it; `connected` on an app is the global list", async () => {
+  test("an app's own allowedModels still narrow it; `all` on an app is the global list", async () => {
     server = await startRoute({
       caller: new FakeModelCaller([ev.finish()]),
-      options: { models: "connected", apps: { small: { key: "k-small", models: ["test/*"] }, wide: { key: "k-wide", models: "connected" } } },
+      options: { models: "all", apps: { small: { key: "k-small", allowedModels: ["test/*"] }, wide: { key: "k-wide", allowedModels: "all" } } },
     })
     const small = { authorization: "Bearer k-small" }
     const wide = { authorization: "Bearer k-wide" }
@@ -78,13 +78,13 @@ describe("models: connected", () => {
     expect(ids(await server.send({ path: "/v1/models", headers: wide }))).toContain("other/model")
   })
 
-  test("the setup page suggests `connected` when models is unset, and lists it once set", async () => {
+  test("the setup page suggests `all` when models is unset, and lists it once set", async () => {
     server = await startRoute({ caller: new FakeModelCaller([]), options: { models: [] } })
     const page = (await server.send({ path: "/" })).text
-    expect(page).toContain("&quot;models&quot;: &quot;connected&quot;")
-    expect((await server.send({ path: "/v1" })).json().models).toMatchObject({ state: "no_models_configured", hint: expect.stringContaining('{"models":"connected"}') })
+    expect(page).toContain("&quot;models&quot;: &quot;all&quot;")
+    expect((await server.send({ path: "/v1" })).json().models).toMatchObject({ state: "no_models_configured", hint: expect.stringContaining('{"models":"all"}') })
     await server.close()
-    server = await startRoute({ caller: new FakeModelCaller([]), catalog: CATALOG, options: { models: "connected" } })
-    expect((await server.send({ path: "/v1" })).json().models).toMatchObject({ state: "ready", allowlist: ["connected"], available: 5 })
+    server = await startRoute({ caller: new FakeModelCaller([]), catalog: CATALOG, options: { models: "all" } })
+    expect((await server.send({ path: "/v1" })).json().models).toMatchObject({ state: "ready", allowlist: ["all"], available: 5 })
   })
 })

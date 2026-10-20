@@ -14,7 +14,30 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Breaking: renamed options.** Seventeen option names were confusing, so they now say what they do. There are no aliases: an old name is refused at load as an unknown option, with the usual error that lists the known ones. Rename these in your config:
+
+  | Old | New |
+  | --- | --- |
+  | `models: "connected"` (global, and `apps.<name>.models: "connected"`) | `models: "all"` |
+  | `apps.<name>.models` | `apps.<name>.allowedModels` |
+  | `apps.<name>.model` | `apps.<name>.pinnedModel` |
+  | `cache` | `responseCache` |
+  | `apps.<name>.serverTools` | `apps.<name>.opencodeTools` |
+  | `apps.<name>.maxServerToolSteps` | `apps.<name>.maxToolSteps` |
+  | `apps.<name>.maxServerToolCalls` | `apps.<name>.maxToolCalls` |
+  | `apps.<name>.hostedTools` | `apps.<name>.onHostedTools` (values `drop` and `refuse`) |
+  | `history` (global and per app) | `sessions` |
+  | `history.hidden` | `sessions.hideFromList` |
+  | `historyUrl` (global and per app) | `sessionUrl` |
+  | `maxN` (global and per app) | `maxChoices` |
+  | `fallbackAfterMs` | `firstEventTimeoutMs` |
+  | `fallbackCooldown` | `circuitBreaker` |
+  | `fallbackCooldown.failureThreshold` | `circuitBreaker.failures` |
+  | `fallbackCooldown.windowMs` | `circuitBreaker.failureWindowMs` |
+
+  `fallbackCooldown.cooldownMs` keeps its name inside `circuitBreaker`, and the global `models` list keeps its name. The `GET /plugboard/status` field `fallbackCooldown` is now `circuitBreaker`, and the warning log line `history.hidden_parent_unavailable` is now `sessions.hide_from_list_parent_unavailable`. `plugboard init` writes `"models": "all"`.
 
 ## [0.59.0] - 2026-10-20: Locked Down, Clearly Documented
 

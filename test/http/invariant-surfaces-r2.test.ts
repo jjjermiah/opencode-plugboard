@@ -1,7 +1,7 @@
 /**
  * #408 red-team round 2 (role `surfaces`): HTTP-layer checks for the four configuration areas
  * where the behaviour depends on the HTTP route, request decoders, or response headers:
- *   1. `serverTools` on the wire: `x-plugboard-server-tools` counts from the real session caller,
+ *   1. `opencodeTools` on the wire: `x-plugboard-server-tools` counts from the real session caller,
  *      `app_dir_outside_root` when the app directory is a symlink outside the data root, and #421
  *      (`tool_choice: "none"` without caller `tools` dropped by the request decoders).
  *   2. `remoteImages` on the wire: octal/shorthand IPv4 refusals, redirect re-checks, wrong content
@@ -51,9 +51,9 @@ const hostTools = (): Record<string, HostToolDescriptor> => ({
   grep: { description: "Grep files", input: { type: "object" } },
 })
 
-// ---------------------------------------------------------------- 1. serverTools on the wire
+// ---------------------------------------------------------------- 1. opencodeTools on the wire
 
-describe("#408 1. serverTools on the wire", () => {
+describe("#408 1. opencodeTools on the wire", () => {
   const OPERATOR_RULES: OperatorRule[] = [
     { action: "*", resource: "*", effect: "deny" },
     { action: "read", resource: "*", effect: "allow" },
@@ -65,9 +65,9 @@ describe("#408 1. serverTools on the wire", () => {
     trusted: {
       systemMode: "prepend",
       tools: true,
-      serverTools: ["read", "glob", "grep"],
-      maxServerToolSteps: 2,
-      maxServerToolCalls: 3,
+      opencodeTools: ["read", "glob", "grep"],
+      maxToolSteps: 2,
+      maxToolCalls: 3,
     },
     plain: {
       systemMode: "prepend",
@@ -77,10 +77,10 @@ describe("#408 1. serverTools on the wire", () => {
 
   const OPTIONS = {
     models: ["test/*"],
-    maxN: 2,
+    maxChoices: 2,
     keys: { trusted: "k-trusted", plain: "k-plain" },
     apps: {
-      trusted: { serverTools: ["read", "glob", "grep"], maxServerToolSteps: 2, maxServerToolCalls: 3 },
+      trusted: { opencodeTools: ["read", "glob", "grep"], maxToolSteps: 2, maxToolCalls: 3 },
       plain: {},
     },
   }
@@ -252,7 +252,7 @@ describe("#408 1. serverTools on the wire", () => {
   })
 
   // #421: the request decoders keep `toolChoice: "none"` when the caller sends no `tools` array, so no server tool is offered.
-  test("#421 serverTools: tool_choice none without caller tools offers no serverTools on the route", async () => {
+  test("#421 opencodeTools: tool_choice none without caller tools offers no opencodeTools on the route", async () => {
     const port = new FakeSessionPort()
     port.toolIDs.push("read", "glob", "grep")
     port.operatorRules = OPERATOR_RULES
@@ -492,7 +492,7 @@ describe("#408 4. Response cache isolation and wire options", () => {
     const rawOptions = {
       models: ["test/*"],
       aliases: { fast: "test/echo" },
-      cache: { ttlSeconds: 300 },
+      responseCache: { ttlSeconds: 300 },
       keys: { plain: "k-plain", second: "k-second" },
       apps: {
         plain: { reasoningOutput: false },

@@ -15,7 +15,7 @@ Give Mattermost its own key. Docker needs a reachable address ([Serving other ma
     "keys": { "mattermost": "{env:PLUGBOARD_KEY_MATTERMOST}" },
     "models": ["opencode-go/glm-5.3-flash", "anthropic/claude-sonnet-4-6"],
     "aliases": { "chat": "anthropic/claude-sonnet-4-6" },
-    "apps": { "mattermost": { "models": ["chat"] } }
+    "apps": { "mattermost": { "allowedModels": ["chat"] } }
   }
 }
 ```

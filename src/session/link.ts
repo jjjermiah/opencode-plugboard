@@ -1,6 +1,6 @@
 /**
  * Links from a response to the OpenCode session page of its request (#77). The host exposes no UI URL
- * to a plugin, so option `historyUrl` is a template the operator fills in for how they reach OpenCode:
+ * to a plugin, so option `sessionUrl` is a template the operator fills in for how they reach OpenCode:
  * `{id}` is the session id, `{directory}` the app directory (URL-encoded). With the option set, a
  * response that carries `x-plugboard-session` also carries `x-plugboard-session-url` with the filled
  * link, and the request log line gains `session_url=`.

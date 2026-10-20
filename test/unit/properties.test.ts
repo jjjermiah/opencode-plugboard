@@ -14,7 +14,7 @@ import { parseChatRequest } from "../../src/openai/request.js"
 import { parseResponsesRequest } from "../../src/responses/request.js"
 import { testOptions } from "../support/fixtures.js"
 
-const options = testOptions({ maxTools: 8, maxN: 4 })
+const options = testOptions({ maxTools: 8, maxChoices: 4 })
 const RUNS = { numRuns: 200 }
 /** Decoders are cheap: more runs reach rarer branches (a null inside a content array, an empty name). */
 const DECODER_RUNS = { numRuns: 1000 }

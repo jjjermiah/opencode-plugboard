@@ -93,7 +93,7 @@ The key is in the plugboard config (`keys`), so the admin routes cannot revoke i
 
 ### app_has_server_tools {#app-has-server-tools}
 
-The app runs OpenCode tools (`apps.<name>.serverTools`), and a runtime key would give the same power. Set its key in the plugboard config instead.
+The app runs OpenCode tools (`apps.<name>.opencodeTools`), and a runtime key would give the same power. Set its key in the plugboard config instead.
 
 ### app_has_config_key {#app-has-config-key}
 

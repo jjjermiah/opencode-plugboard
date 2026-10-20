@@ -721,7 +721,7 @@ const genaiGemini: Client = {
     "model-id": async (target) => {
       expect((await genai(target).models.generateContent({ model: CATALOG_ID, contents: tag("model-id") })).text).toBe(TEXT)
     },
-    // candidateCount above 1 is one model call per candidate (src/gemini/route.ts, the shared fan-out), within maxN.
+    // candidateCount above 1 is one model call per candidate (src/gemini/route.ts, the shared fan-out), within maxChoices.
     n: async (target) => {
       const response = await genai(target).models.generateContent({ model: MODEL, contents: tag("n"), config: { candidateCount: 2 } })
       expect(response.candidates).toHaveLength(2)

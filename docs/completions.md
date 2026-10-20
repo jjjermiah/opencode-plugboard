@@ -38,7 +38,7 @@ The response is the legacy `text_completion` object: `choices[].text`, `index`, 
 
 Refused with a 400 `unsupported_parameter` naming the field: `logprobs` (the host exposes none, a `null` is fine), `best_of` above 1, and token-array prompts.
 
-An array of prompts makes one model call per prompt, and `n` multiplies that. Choice `i` answers prompt `floor(i / n)`, which is the legacy numbering. The total number of calls must not exceed `maxN`.
+An array of prompts makes one model call per prompt, and `n` multiplies that. Choice `i` answers prompt `floor(i / n)`, which is the legacy numbering. The total number of calls must not exceed `maxChoices`.
 
 ### Structured output
 
@@ -54,7 +54,7 @@ A structured answer with no respond call is taken from the final text when it is
 - Stream: every chunk carries the `index` of its choice and one choice only. Chunks of different choices interleave as they arrive. All chunks share one `id`. There is one `data: [DONE]` at the end. With `include_usage`, the last chunk before it carries the summed usage.
 - Tools, `tool_choice` and `response_format` work with `n`: each choice is independent, so each may call tools or answer in the structured format on its own.
 
-**Cost.** Each choice is a full model call and a kept history session. `n: 4` costs four calls in tokens, in provider rate limits and in history. That is why the `maxN` option caps it, and why the default is `1`: a request above the cap gets a 400 `too_many_choices` before any model call runs. Raise `maxN` when you trust your callers with the spend. Each choice also takes its own slot under [`limits`](configuration.md#concurrency-and-rate-limits): with `maxConcurrent: 2`, an `n: 4` request has its choices over the cap refused with 429, and the whole request fails as described under Failure.
+**Cost.** Each choice is a full model call and a kept history session. `n: 4` costs four calls in tokens, in provider rate limits and in history. That is why the `maxChoices` option caps it, and why the default is `1`: a request above the cap gets a 400 `too_many_choices` before any model call runs. Raise `maxChoices` when you trust your callers with the spend. Each choice also takes its own slot under [`limits`](configuration.md#concurrency-and-rate-limits): with `maxConcurrent: 2`, an `n: 4` request has its choices over the cap refused with 429, and the whole request fails as described under Failure.
 
 **Failure.** If any choice fails, the whole request fails and the other choices are cancelled (their sessions are interrupted). A partial set of answers looks like a complete one, and callers that sample `n` times to compare or average would be misled. The first failure decides the error. In a non-stream request and in a stream that has not sent anything yet, that is an ordinary HTTP error. In a stream that has already started, it is an `error` frame followed by `[DONE]`, as for a single stream. A client that disconnects or a request that times out cancels every choice.
 

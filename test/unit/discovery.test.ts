@@ -150,16 +150,16 @@ describe("#73 buildDiscovery: the models state explains a 403 before it happens"
     expect(doc.models?.hint).toMatch(hint)
   })
 
-  test("the empty-models hint and the page suggest `connected` first", () => {
+  test("the empty-models hint and the page suggest `all` first", () => {
     const doc = buildDiscovery({ options: testOptions({ models: [] }), app: "default", catalog: CATALOG })
-    expect(doc.models?.hint).toContain('{"models":"connected"}')
-    expect(renderDiscoveryHtml(doc)).toContain("&quot;models&quot;: &quot;connected&quot;")
-    expect(buildDiscovery({ options: testOptions({ models: [] }), app: "default" }).models?.hint).toContain('{"models":"connected"}')
+    expect(doc.models?.hint).toContain('{"models":"all"}')
+    expect(renderDiscoveryHtml(doc)).toContain("&quot;models&quot;: &quot;all&quot;")
+    expect(buildDiscovery({ options: testOptions({ models: [] }), app: "default" }).models?.hint).toContain('{"models":"all"}')
   })
 
-  test("connected with an empty catalog says no provider is connected, not that the allowlist mismatches", () => {
-    const doc = buildDiscovery({ options: testOptions({ models: "connected" }), app: "default", catalog: [] })
-    expect(doc.models).toMatchObject({ state: "none_available", allowlist: ["connected"], hint: expect.stringContaining("Connect a provider") })
+  test("all with an empty catalog says no provider is connected, not that the allowlist mismatches", () => {
+    const doc = buildDiscovery({ options: testOptions({ models: "all" }), app: "default", catalog: [] })
+    expect(doc.models).toMatchObject({ state: "none_available", allowlist: ["all"], hint: expect.stringContaining("Connect a provider") })
   })
 
   test("more than 50 providers are counted, not listed", () => {
@@ -218,7 +218,7 @@ describe("#56 buildStatus", () => {
       sessionGuards: 3,
       models: { catalog: 3, available: 4 },
       metrics: true,
-      fallbackCooldown: { enabled: true, cooling: [] },
+      circuitBreaker: { enabled: true, cooling: [] },
     })
   })
 
@@ -226,9 +226,9 @@ describe("#56 buildStatus", () => {
     const until = Date.UTC(2026, 9, 11, 0, 2)
     const cooldowns = [{ model: "a/x", state: "open" as const, failures: 3, until }]
     expect(buildStatus({ options: testOptions(), runtime: { ...runtime, cooldowns }, now: until - 1000 })).toMatchObject({
-      fallbackCooldown: { enabled: true, cooling: [{ model: "a/x", state: "open", failures: 3, until: "2026-10-11T00:02:00.000Z" }] },
+      circuitBreaker: { enabled: true, cooling: [{ model: "a/x", state: "open", failures: 3, until: "2026-10-11T00:02:00.000Z" }] },
     })
-    expect(buildStatus({ options: testOptions({ fallbackCooldown: false }), runtime, now: until })).toMatchObject({ fallbackCooldown: { enabled: false, cooling: [] } })
+    expect(buildStatus({ options: testOptions({ circuitBreaker: false }), runtime, now: until })).toMatchObject({ circuitBreaker: { enabled: false, cooling: [] } })
   })
 
   test("#347 the package version and the host OpenCode version come first, and an unknown OpenCode version is left out", () => {

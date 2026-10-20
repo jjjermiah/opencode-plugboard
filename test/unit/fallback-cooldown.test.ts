@@ -17,7 +17,7 @@ const logs = captureLogs()
 const CATALOG = [model("a", "x"), model("b", "y", { variants: ["low"] }), model("c", "z")]
 const COOLDOWN_MS = 1000
 const raw = { models: ["a/*", "b/*", "c/*"], aliases: { chain: ["a/x", "b/y#low", "c/z"], one: ["a/x"], plain: "a/x" } }
-const options = parseOptions({ ...raw, fallbackCooldown: { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 } })
+const options = parseOptions({ ...raw, circuitBreaker: { failures: 3, cooldownMs: COOLDOWN_MS, failureWindowMs: 10_000 } })
 const rateLimited = ev.error({ status: 429, kind: "rate_limit", code: "rate_limited" })
 const answer = (): PlugEvent[] => [ev.text("hi"), ev.finish()]
 
@@ -121,20 +121,20 @@ describe("a target that keeps failing is skipped", () => {
     expect((await other.request()).targets).toEqual(["a/x", "b/y"])
   })
 
-  test("the default is 3 failures: no fallbackCooldown option still opens a breaker", async () => {
+  test("the default is 3 failures: no circuitBreaker option still opens a breaker", async () => {
     const run = setup({ "a/x": [rateLimited], "b/y": answer(), "c/z": answer() }, parseOptions(raw))
     for (let i = 0; i < 3; i++) await run.request()
     expect((await run.request()).targets).toEqual(["b/y"])
   })
 
   test("the threshold is the option's", async () => {
-    const run = setup({ "a/x": [rateLimited], "b/y": answer(), "c/z": answer() }, parseOptions({ ...raw, fallbackCooldown: { failureThreshold: 1 } }))
+    const run = setup({ "a/x": [rateLimited], "b/y": answer(), "c/z": answer() }, parseOptions({ ...raw, circuitBreaker: { failures: 1 } }))
     expect((await run.request()).targets).toEqual(["a/x", "b/y"])
     expect((await run.request()).targets).toEqual(["b/y"])
   })
 
-  test("fallbackCooldown false never skips", async () => {
-    const run = setup({ "a/x": [rateLimited], "b/y": answer(), "c/z": answer() }, parseOptions({ ...raw, fallbackCooldown: false }))
+  test("circuitBreaker false never skips", async () => {
+    const run = setup({ "a/x": [rateLimited], "b/y": answer(), "c/z": answer() }, parseOptions({ ...raw, circuitBreaker: false }))
     for (let i = 0; i < 6; i++) expect((await run.request()).targets).toEqual(["a/x", "b/y"])
     expect(run.breaker.cooling()).toEqual([])
     expect(logs.of("fallback.cooldown.open")).toEqual([])
@@ -157,7 +157,7 @@ describe("what counts as a failure", () => {
   })
 
   test("a missed first-event deadline counts, as a provider's silence", async () => {
-    const timed = parseOptions({ ...raw, fallbackAfterMs: 40, fallbackCooldown: { failureThreshold: 2, cooldownMs: COOLDOWN_MS } })
+    const timed = parseOptions({ ...raw, firstEventTimeoutMs: 40, circuitBreaker: { failures: 2, cooldownMs: COOLDOWN_MS } })
     const targets: string[] = []
     const inner: ModelCaller = {
       stream(request, context) {
@@ -196,7 +196,7 @@ describe("what counts as a failure", () => {
   test("a synchronous throw of the model caller is a failure of the attempt: the next target answers, and a probe it held is given back", async () => {
     let at = 1_000_000
     const breaker = createBreaker(() => at)
-    const config = { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 }
+    const config = { failures: 3, cooldownMs: COOLDOWN_MS, failureWindowMs: 10_000 }
     for (let i = 0; i < 3; i++) breaker.failure("a/x", config)
     at += COOLDOWN_MS
     let first = true
@@ -330,7 +330,7 @@ describe("the half-open probe", () => {
     const start = (name: string) => collect(caller.stream(plugRequest({ model: name, ref: resolveModel(options, name, CATALOG) as never }), { app: "app1", signal: new AbortController().signal }))
     const probing = start("chain")
     await new Promise((resolve) => setImmediate(resolve))
-    expect(run.breaker.peek("a/x", { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 })).toBe(false)
+    expect(run.breaker.peek("a/x", { failures: 3, cooldownMs: COOLDOWN_MS, failureWindowMs: 10_000 })).toBe(false)
     const other = await start("chain")
     expect(other.map((e) => e.type)).toEqual(["text-delta", "finish"])
     release()
@@ -353,8 +353,8 @@ describe("the half-open probe", () => {
 describe("a look-ahead that took no probe slot", () => {
   /** b is half open with its probe free when R2 starts, so R2's attempt on a is told b follows (and is bounded by the deadline); R1 then takes b's probe. */
   test("another request takes the probe of the target an attempt was told follows: the attempt's failure still goes there, and is not left with an empty stream", async () => {
-    const timed = parseOptions({ ...raw, fallbackAfterMs: 40, fallbackCooldown: { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 } })
-    const config = { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 }
+    const timed = parseOptions({ ...raw, firstEventTimeoutMs: 40, circuitBreaker: { failures: 3, cooldownMs: COOLDOWN_MS, failureWindowMs: 10_000 } })
+    const config = { failures: 3, cooldownMs: COOLDOWN_MS, failureWindowMs: 10_000 }
     let at = 1_000_000
     const breaker = createBreaker(() => at)
     for (let i = 0; i < 3; i++) breaker.failure("b/y#low", config)
@@ -478,7 +478,7 @@ describe("aliases that are not lists never skip", () => {
 describe("the attempt is told whether a target follows", () => {
   test("when every later target is cooling down, the first attempt is the last that would run: nothing follows it", async () => {
     const run = setup({ "a/x": answer(), "b/y": answer(), "c/z": answer() })
-    for (const target of ["b/y#low", "c/z"]) for (let i = 0; i < 3; i++) run.breaker.failure(target, { failureThreshold: 3, cooldownMs: COOLDOWN_MS, windowMs: 10_000 })
+    for (const target of ["b/y#low", "c/z"]) for (let i = 0; i < 3; i++) run.breaker.failure(target, { failures: 3, cooldownMs: COOLDOWN_MS, failureWindowMs: 10_000 })
     expect((await run.request()).targets).toEqual(["a/x"])
     expect(run.calls.at(-1)).toEqual({ target: "a/x", fallbackNext: false })
   })

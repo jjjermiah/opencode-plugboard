@@ -13,7 +13,7 @@ Give Dify its own key. If Dify runs in Docker, plugboard must bind a reachable a
     "keys": { "dify": "{env:PLUGBOARD_KEY_DIFY}" },
     "models": ["anthropic/claude-sonnet-4-6"],
     "aliases": { "fast": "anthropic/claude-sonnet-4-6" },
-    "apps": { "dify": { "models": ["fast"] } }
+    "apps": { "dify": { "allowedModels": ["fast"] } }
   }
 }
 ```

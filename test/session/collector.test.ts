@@ -63,7 +63,7 @@ describe("#390 the window after a match (review #429): the answer is complete, s
 
   test("after a match, a server tool call runs no tool and starts no next step", async () => {
     let stops = 0
-    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", serverTools: new Set(["web"]), maxServerToolSteps: 3, maxServerToolCalls: 3, callerTools: [] })
+    const collector = new RequestCollector({ stopTurn: () => void stops++, requestID: "req_1", opencodeTools: new Set(["web"]), maxToolSteps: 3, maxToolCalls: 3, callerTools: [] })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })
     collector.markStopped()
@@ -310,9 +310,9 @@ describe("event mapping", () => {
       requestID: "req_1",
       toolNames: ["get_weather"],
       callerTools: ["get_weather"],
-      serverTools: new Set(["web"]),
-      maxServerToolSteps: 3,
-      maxServerToolCalls: 3,
+      opencodeTools: new Set(["web"]),
+      maxToolSteps: 3,
+      maxToolCalls: 3,
     })
     const store = createSessionStore()
     store.register({ sessionID: "ses_1", app: "app", requestID: "req_1", request: plugRequest(), collector })

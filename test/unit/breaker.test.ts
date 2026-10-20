@@ -4,9 +4,9 @@
  */
 import { describe, expect, test } from "bun:test"
 import { createBreaker } from "../../src/breaker.js"
-import { DEFAULT_FALLBACK_COOLDOWN, type FallbackCooldown } from "../../src/config.js"
+import { DEFAULT_CIRCUIT_BREAKER, type CircuitBreaker } from "../../src/config.js"
 
-const CONFIG: FallbackCooldown = { failureThreshold: 3, cooldownMs: 1000, windowMs: 5000 }
+const CONFIG: CircuitBreaker = { failures: 3, cooldownMs: 1000, failureWindowMs: 5000 }
 
 function setup() {
   let at = 10_000
@@ -19,7 +19,7 @@ function setup() {
 
 describe("the defaults", () => {
   test("three failures, a 60 s cooldown and a 60 s window", () => {
-    expect(DEFAULT_FALLBACK_COOLDOWN).toEqual({ failureThreshold: 3, cooldownMs: 60_000, windowMs: 60_000 })
+    expect(DEFAULT_CIRCUIT_BREAKER).toEqual({ failures: 3, cooldownMs: 60_000, failureWindowMs: 60_000 })
   })
 })
 
@@ -91,7 +91,7 @@ describe("the breaker of one target", () => {
 
   test("a threshold of 1 opens on the first failure", () => {
     const { breaker } = setup()
-    expect(breaker.failure("a/x", { ...CONFIG, failureThreshold: 1 })).toBe("opened")
+    expect(breaker.failure("a/x", { ...CONFIG, failures: 1 })).toBe("opened")
   })
 })
 

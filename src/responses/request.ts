@@ -285,7 +285,7 @@ const NAME_HASH_LENGTH = 8
 
 /**
  * Tool types that run on OpenAI's servers: nothing in plugboard can run them, and a client cannot know that, so next to function
- * tools they are left out and reported (`x-plugboard-dropped-tools`; app option `hostedTools`). Other types (`local_shell`,
+ * tools they are left out and reported (`x-plugboard-dropped-tools`; app option `onHostedTools`). Other types (`local_shell`,
  * `tool_search`, `computer_use_preview`, ...) need a client-side round trip plugboard has no shape for, and stay refused.
  */
 const HOSTED_TOOLS = new Set(["web_search", "web_search_preview", "web_search_preview_2025_03_11", "file_search", "code_interpreter", "image_generation", "mcp"])
@@ -392,7 +392,7 @@ const parseTools = (sources: ReadonlyArray<ToolSource>, hosted: HostedTools): De
           if (problem) return problem
         }
       } else if (typeof entry.type === "string" && HOSTED_TOOLS.has(entry.type)) {
-        if (hosted === "refuse") return unsupported(`Unsupported tool type "${entry.type}": hosted tools run on OpenAI's servers, and this app refuses them (option \`hostedTools\`)`, `${at}.type`)
+        if (hosted === "refuse") return unsupported(`Unsupported tool type "${entry.type}": hosted tools run on OpenAI's servers, and this app refuses them (option \`onHostedTools\`)`, `${at}.type`)
         firstHosted ??= { type: entry.type, at }
         if (!dropped.includes(entry.type)) dropped.push(entry.type)
       } else {
@@ -502,7 +502,7 @@ const checkUnsupported = (body: JsonObject): PlugError | undefined => {
 /**
  * `history` is the stored response `previous_response_id` named: its input and output items, ahead of the new `input`.
  * The route looks it up (src/responses/state.ts); this decoder only checks the field's type. `instructions` are never carried over.
- * `hosted` is the app's `hostedTools` option: what happens to a hosted tool next to function tools.
+ * `hosted` is the app's `onHostedTools` option: what happens to a hosted tool next to function tools.
  */
 export function parseResponsesRequest(
   body: unknown,

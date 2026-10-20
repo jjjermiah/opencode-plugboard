@@ -15,7 +15,7 @@ Give SiYuan its own key. Docker needs a reachable address ([Serving other machin
     "keys": { "siyuan": "{env:PLUGBOARD_KEY_SIYUAN}" },
     "models": ["opencode-go/glm-5.3-flash"],
     "aliases": { "writing": "opencode-go/glm-5.3-flash" },
-    "apps": { "siyuan": { "models": ["writing"] } }
+    "apps": { "siyuan": { "allowedModels": ["writing"] } }
   }
 }
 ```

@@ -104,8 +104,8 @@ describe("security regression test: what moves the breaker every app shares", ()
   const RAW = {
     models: ["a/*", "b/*", "c/*"],
     aliases: { chain: ["a/x", "b/y#low", "c/z"] },
-    fallbackAfterMs: DEADLINE,
-    fallbackCooldown: { failureThreshold: 2, cooldownMs: 60_000, windowMs: 600_000 },
+    firstEventTimeoutMs: DEADLINE,
+    circuitBreaker: { failures: 2, cooldownMs: 60_000, failureWindowMs: 600_000 },
   }
   const options = parseOptions(RAW)
   const ask = (caller: ReturnType<typeof withFallbacks>, app: string, extra: Parameters<typeof plugRequest>[0] = {}) =>

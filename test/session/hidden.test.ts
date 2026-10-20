@@ -1,5 +1,5 @@
 /**
- * `history.hidden` (since 0.30.0, #337): a request session is a child of one per-app parent titled `plugboard: <app>`, which
+ * `sessions.hideFromList` (#337): a request session is a child of one per-app parent titled `plugboard: <app>`, which
  * OpenCode's top-level lists do not show. The parent is the app-scope anchor (src/session/affinity.ts): made once, recreated
  * once if it was deleted, and shared with a promptCache app-scope anchor. Checked on the fake host's `parentID`; the live
  * session list is not checkable from here (see the PR).
@@ -57,7 +57,7 @@ const context = (extra: Partial<CallContext> = {}): CallContext => ({ app: "bot"
 const parents = (port: FakeSessionPort) => port.created.filter((created) => created.title === PARENT)
 const children = (port: FakeSessionPort) => port.created.filter((created) => created.title !== PARENT)
 
-describe("history.hidden: request sessions under the app's parent (#337)", () => {
+describe("sessions.hideFromList: request sessions under the app's parent (#337)", () => {
   test("hidden off still creates top-level sessions: no parent, no parentID", async () => {
     const run = setup()
     await drain(run.caller.stream(plugRequest(), context()))
@@ -77,15 +77,15 @@ describe("history.hidden: request sessions under the app's parent (#337)", () =>
     for (const child of children(run.port)) expect(child.parentID).toBe(parent!.id)
   })
 
-  test("an app's own history.hidden turns it on while the global option is off", async () => {
-    const run = setup({ apps: { bot: { systemMode: "prepend", tools: true, history: { hidden: true } } } })
+  test("an app's own sessions.hideFromList turns it on while the global option is off", async () => {
+    const run = setup({ apps: { bot: { systemMode: "prepend", tools: true, sessions: { hideFromList: true } } } })
     await drain(run.caller.stream(plugRequest(), context()))
     const [parent] = parents(run.port)
     expect(run.port.created.at(-1)!.parentID).toBe(parent!.id)
   })
 
-  test("an app's own history.hidden: false keeps that app top-level while the global option is on", async () => {
-    const run = setup({ historyHidden: true, apps: { bot: { systemMode: "prepend", tools: true, history: { hidden: false } } } })
+  test("an app's own sessions.hideFromList: false keeps that app top-level while the global option is on", async () => {
+    const run = setup({ historyHidden: true, apps: { bot: { systemMode: "prepend", tools: true, sessions: { hideFromList: false } } } })
     await drain(run.caller.stream(plugRequest(), context()))
     expect(parents(run.port)).toHaveLength(0)
     expect(run.port.created[0]!.parentID).toBeUndefined()
@@ -149,7 +149,7 @@ describe("history.hidden: request sessions under the app's parent (#337)", () =>
     for (const child of children(run.port)) expect(child.parentID).toBe(parent!.id)
   })
 
-  test("a parent made by promptCache keeps its title when history.hidden is turned on (documented exception)", async () => {
+  test("a parent made by promptCache keeps its title when sessions.hideFromList is turned on (documented exception)", async () => {
     const storage = new FakeStorage()
     const before = setup({ promptCache: { affinity: "anchor", scope: "app" }, storage })
     await drain(before.caller.stream(plugRequest(), context()))
@@ -174,7 +174,7 @@ describe("history.hidden: request sessions under the app's parent (#337)", () =>
     expect(parents(run.port)).toHaveLength(0)
     expect(run.port.created).toHaveLength(3)
     expect(run.port.created.every((created) => created.parentID === undefined)).toBe(true)
-    expect(logs.of("history.hidden_parent_unavailable")).toHaveLength(1)
+    expect(logs.of("sessions.hide_from_list_parent_unavailable")).toHaveLength(1)
   })
 
   test("the request still gets its history record and the child is what pruning indexes, never the parent", async () => {

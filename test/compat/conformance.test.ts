@@ -216,7 +216,10 @@ describe("#107 Gemini responses conform to the vendored discovery schemas", () =
 
   /** A route that allows several candidates; the one shared answer is scripted per call. */
   async function withCandidates<T>(run: (route: RouteServer) => Promise<T>): Promise<T> {
-    const route = await startRoute({ caller: new FakeModelCaller(() => [ev.text(TEXT), ev.finish("stop", USAGE)]), options: { keys: { conformance: KEY }, aliases: { fast: "test/echo" }, maxN: 3 } })
+    const route = await startRoute({
+      caller: new FakeModelCaller(() => [ev.text(TEXT), ev.finish("stop", USAGE)]),
+      options: { keys: { conformance: KEY }, aliases: { fast: "test/echo" }, maxChoices: 3 },
+    })
     try {
       return await run(route)
     } finally {

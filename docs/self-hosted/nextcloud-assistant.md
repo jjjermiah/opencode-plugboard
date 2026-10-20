@@ -18,7 +18,7 @@ Give Nextcloud its own key. `vision` handles image analysis and OCR, so it must 
       "text": "opencode-go/glm-5.3-flash",
       "vision": "anthropic/claude-sonnet-4-6"
     },
-    "apps": { "nextcloud": { "models": ["text", "vision"] } }
+    "apps": { "nextcloud": { "allowedModels": ["text", "vision"] } }
   }
 }
 ```
