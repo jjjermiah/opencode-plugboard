@@ -159,7 +159,7 @@ Write the version marker of a new option as the placeholder `(since next)`, and 
 
 ## Docs and unreleased options
 
-The docs site deploys from `main`, so it can describe options the latest release does not have. Its banner names the latest release (the version in `package.json`). Mark each option that is newer than that release in `docs/configuration.md`, on its option or field name: `` `historyUrl` (since next) ``. Write the placeholder `(since next)`, not a version number: the release script turns it into the version of the release the `[Unreleased]` section becomes. Commit the mark with the option. Options that predate the marks stay unmarked.
+The docs site deploys from `main`, so it can describe options the latest release does not have. Its banner names the latest release (the version in `package.json`). Mark each option that is newer than that release in `docs/configuration.md`, on its option or field name: `` `sessionUrl` (since next) ``. Write the placeholder `(since next)`, not a version number: the release script turns it into the version of the release the `[Unreleased]` section becomes. Commit the mark with the option. Options that predate the marks stay unmarked.
 
 ## Writing style
 

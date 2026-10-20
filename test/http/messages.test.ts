@@ -364,7 +364,7 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     port.toolIDs.push("websearch")
     const input = { type: "object", properties: { q: { type: "string" } } }
     port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
-    await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
+    await countServerWith({ keys: { app: "secret" }, apps: { app: { opencodeTools: ["websearch"] } } }, port)
     const headers = { "x-api-key": "secret" }
     // 21 request + 4 message + 534 tool preamble + 40 per tool + (2 for "hi" + name + description + JSON schema characters) / 5
     expect((await countOf("test/echo", {}, headers)).body).toEqual({ input_tokens: Math.ceil(21 + 4 + 534 + 40 + (2 + "websearch".length + 200 + JSON.stringify(input).length) / 5) })
@@ -378,7 +378,7 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
     port.toolIDs.push("websearch")
     const input = { type: "object", properties: { q: { type: "string" } } }
     port.toolSchemas.set("websearch", { description: "D".repeat(200), input })
-    await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, port)
+    await countServerWith({ keys: { app: "secret" }, apps: { app: { opencodeTools: ["websearch"] } } }, port)
     const lookup = { name: "lookup", description: "Looks up", input_schema: { type: "object" } }
     const fetch = { name: "fetch", description: "Fetches", input_schema: { type: "object" } }
     const steering = "You must respond by calling the `fetch` tool."
@@ -390,7 +390,7 @@ describe("#201 count_tokens counts the persona, skill and server tools the sessi
   })
 
   test("a server tool the location does not offer is the 400 the request would get", async () => {
-    await countServerWith({ keys: { app: "secret" }, apps: { app: { serverTools: ["websearch"] } } }, new FakeSessionPort())
+    await countServerWith({ keys: { app: "secret" }, apps: { app: { opencodeTools: ["websearch"] } } }, new FakeSessionPort())
     const reply = await countOf("test/echo", {}, { "x-api-key": "secret" })
     expect(reply.status).toBe(400)
     expect(reply.body).toMatchObject({ error: { message: expect.stringContaining("websearch") } })

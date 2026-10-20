@@ -25,7 +25,7 @@ const CONFIG: CacheConfig = { ttlSeconds: 60, maxEntries: 100, maxBytes: 10_000_
 async function cachedRoute(script: Script | ((call: number) => Script), options: Record<string, unknown> = {}, config: CacheConfig = CONFIG) {
   const fake = new FakeModelCaller(typeof script === "function" ? (_request, call) => script(call) : script)
   const caller = cachedCaller(fake, config, createCacheStore({ ttlMs: config.ttlSeconds * 1000, maxEntries: config.maxEntries, maxBytes: config.maxBytes }))
-  server = await startRoute({ caller, options: { maxN: 2, aliases: { fast: "test/echo" }, ...options } })
+  server = await startRoute({ caller, options: { maxChoices: 2, aliases: { fast: "test/echo" }, ...options } })
   return fake
 }
 

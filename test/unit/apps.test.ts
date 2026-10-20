@@ -28,17 +28,17 @@ describe("apps: parsing", () => {
   test("only apps that set a policy field get a policy, with defaults filled in", () => {
     const options = parseOptions({
       ...base,
-      apps: { bare: { key: "k1" }, full: { key: "k2", models: ["fast"], system: "S", systemMode: "append", tools: false, maxTools: 4 }, sys: { key: "k3", system: "S" } },
+      apps: { bare: { key: "k1" }, full: { key: "k2", allowedModels: ["fast"], system: "S", systemMode: "append", tools: false, maxTools: 4 }, sys: { key: "k3", system: "S" } },
     })
     expect(Object.keys(options.apps).sort()).toEqual(["full", "sys"])
-    expect(options.apps.full).toEqual({ models: ["fast"], system: "S", systemMode: "append", tools: false, maxTools: 4 })
+    expect(options.apps.full).toEqual({ allowedModels: ["fast"], system: "S", systemMode: "append", tools: false, maxTools: 4 })
     expect(options.apps.sys).toEqual({ system: "S", systemMode: "prepend", tools: true })
     expect(appPolicy(options, "bare")).toBeUndefined()
     expect(appPolicy(options, "constructor")).toBeUndefined()
   })
 
-  test('apps.<name>.models: "connected" is no narrowing: the app inherits the global list and gets no policy for it', () => {
-    const options = parseOptions({ ...base, apps: { open: { key: "k1", models: "connected" }, sys: { key: "k2", models: "connected", system: "S" } } })
+  test('apps.<name>.allowedModels: "all" is no narrowing: the app inherits the global list and gets no policy for it', () => {
+    const options = parseOptions({ ...base, apps: { open: { key: "k1", allowedModels: "all" }, sys: { key: "k2", allowedModels: "all", system: "S" } } })
     expect(options.apps.open).toBeUndefined()
     expect(options.apps.sys).toEqual({ system: "S", systemMode: "prepend", tools: true })
     expect(ids(options, "open")).toEqual(ids(options))
@@ -65,10 +65,10 @@ describe("apps: parsing", () => {
     ["a policy for a non-default app on a keyless setup", { apps: { b: { tools: false } } }, /`apps.b` has no key/],
     ["apps.default next to keys", { keys: { a: "k" }, apps: { default: { tools: false } } }, /cannot be used together with `keys`/],
     ["a key on apps.default", { apps: { default: { key: "k" } } }, /reserved/],
-    ["an app models string other than connected", { ...base, keys: { a: "k" }, apps: { a: { models: "a/*" } } }, /`apps.a`.models must be a non-empty array or `"connected"`/],
-    ["empty models", { ...base, keys: { a: "k" }, apps: { a: { models: [] } } }, /`apps.a`.models must be a non-empty array/],
-    ["a models entry that is neither a pattern nor an alias", { ...base, keys: { a: "k" }, apps: { a: { models: ["nope"] } } }, /models entry `nope`/],
-    ["a models entry with a wildcard id prefix", { ...base, keys: { a: "k" }, apps: { a: { models: ["a/x-*"] } } }, /models entry/],
+    ["an app allowedModels string other than all", { ...base, keys: { a: "k" }, apps: { a: { allowedModels: "a/*" } } }, /`apps.a`.allowedModels must be a non-empty array or `"all"`/],
+    ["empty allowedModels", { ...base, keys: { a: "k" }, apps: { a: { allowedModels: [] } } }, /`apps.a`.allowedModels must be a non-empty array/],
+    ["an allowedModels entry that is neither a pattern nor an alias", { ...base, keys: { a: "k" }, apps: { a: { allowedModels: ["nope"] } } }, /allowedModels entry `nope`/],
+    ["an allowedModels entry with a wildcard id prefix", { ...base, keys: { a: "k" }, apps: { a: { allowedModels: ["a/x-*"] } } }, /allowedModels entry/],
     ["an empty system", { keys: { a: "k" }, apps: { a: { system: "  " } } }, /system must be a non-empty string/],
     ["a bad systemMode", { keys: { a: "k" }, apps: { a: { system: "S", systemMode: "before" } } }, /systemMode must be `prepend`, `append` or `replace`/],
     ["a systemMode without system", { keys: { a: "k" }, apps: { a: { systemMode: "append" } } }, /systemMode needs `system`/],
@@ -85,10 +85,10 @@ describe("apps: model scope", () => {
   const options = parseOptions({
     ...base,
     keys: { bot: "k1", ide: "k2", web: "k3", wide: "k4" },
-    apps: { bot: { models: ["fast"] }, ide: { models: ["a/*"] }, wide: { models: ["a/*", "b/z", "c/*"] }, web: { tools: false } },
+    apps: { bot: { allowedModels: ["fast"] }, ide: { allowedModels: ["a/*"] }, wide: { allowedModels: ["a/*", "b/z", "c/*"] }, web: { tools: false } },
   })
 
-  test("without a policy or without models nothing is narrowed", () => {
+  test("without a policy or without allowedModels nothing is narrowed", () => {
     const all = ids(options)
     expect(ids(options, "web")).toEqual(all)
     expect(ids(options, "nobody")).toEqual(all)
@@ -105,7 +105,7 @@ describe("apps: model scope", () => {
 
   test("an app can only narrow: what the global list refuses stays refused", () => {
     expect(ids(options, "wide")).toEqual(ids(options))
-    expect(ids(testOptions({ models: ["a/x"], keys: { n: "k" }, apps: { n: { models: ["a/*", "b/z"] } } }), "n")).toEqual(["a/x"])
+    expect(ids(testOptions({ models: ["a/x"], keys: { n: "k" }, apps: { n: { allowedModels: ["a/*", "b/z"] } } }), "n")).toEqual(["a/x"])
   })
 
   test("checkAppModel: the same 404 as an unknown model, keyed on what the caller sent and the resolved ref", () => {
@@ -118,14 +118,14 @@ describe("apps: model scope", () => {
   })
 
   test("a variant pattern admits that variant only, and the aliases that point at it", () => {
-    const v = parseOptions({ ...base, keys: { v: "k" }, apps: { v: { models: ["b/z#high"] } } })
+    const v = parseOptions({ ...base, keys: { v: "k" }, apps: { v: { allowedModels: ["b/z#high"] } } })
     expect(ids(v, "v")).toEqual(["b/z#high", "smart"])
   })
 
   test("fallbacks: a target outside the app's patterns is skipped, an app scoped to the alias name keeps them all", () => {
     expect(fallbackRefs(options, "chain", CATALOG)).toEqual([{ providerID: "b", id: "z" }])
     expect(fallbackRefs(options, "chain", CATALOG, "ide")).toEqual([])
-    const named = parseOptions({ ...base, keys: { n: "k" }, apps: { n: { models: ["chain"] } } })
+    const named = parseOptions({ ...base, keys: { n: "k" }, apps: { n: { allowedModels: ["chain"] } } })
     expect(fallbackRefs(named, "chain", CATALOG, "n")).toEqual([{ providerID: "b", id: "z" }])
     expect(fallbackRefs(options, "chain", CATALOG, "wide")).toEqual([{ providerID: "b", id: "z" }])
   })

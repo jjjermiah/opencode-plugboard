@@ -17,7 +17,7 @@ Give LLM Vision its own key and a vision alias. Home Assistant reaches plugboard
     "keys": { "llm-vision": "{env:PLUGBOARD_KEY_LLM_VISION}" },
     "models": ["anthropic/claude-sonnet-4-6"],
     "aliases": { "vision": "anthropic/claude-sonnet-4-6" },
-    "apps": { "llm-vision": { "models": ["vision"] } }
+    "apps": { "llm-vision": { "allowedModels": ["vision"] } }
   }
 }
 ```

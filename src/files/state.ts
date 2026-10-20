@@ -13,7 +13,7 @@
  * another app's id is a miss, the same as an unknown, deleted or expired one (I33). Ids are `file-` plus 32 hex chars from
  * `crypto.randomUUID` (122 random bits). An id, a name or a body is never logged.
  *
- * Retention is the app's history retention (`history.maxAgeDays`, 30 days when unset or 0, `retentionDaysFor`). An app holds at
+ * Retention is the app's history retention (`sessions.maxAgeDays`, 30 days when unset or 0, `retentionDaysFor`). An app holds at
  * most `MAX_FILES` files and `MAX_APP_BYTES` bytes: an upload past either is refused (never silently evicting a file the caller
  * may still use). A file past its age is a miss on read, and a sweep (from request handling, never setup, I3) deletes expired files.
  */

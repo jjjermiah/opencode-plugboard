@@ -30,7 +30,7 @@ describe("parseChatRequest: every validation rule answers 400 with its param", (
     ["missing messages", { model: "m" }, { param: "messages" }],
     ["empty messages", body({ messages: [] }), { param: "messages" }],
     ["n = 0", body({ n: 0 }), { param: "n" }],
-    ["#58 n above maxN (default 1)", body({ n: 2 }), { param: "n", code: "too_many_choices" }],
+    ["#58 n above maxChoices (default 1)", body({ n: 2 }), { param: "n", code: "too_many_choices" }],
     ["a fractional n", body({ n: 1.5 }), { param: "n" }],
     ["#287 a string stream", body({ stream: "yes" }), { param: "stream" }],
     ["#287 a numeric stream", body({ stream: 1 }), { param: "stream" }],

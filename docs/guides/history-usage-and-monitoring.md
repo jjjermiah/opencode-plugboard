@@ -7,13 +7,13 @@
 Every request is kept as an OpenCode session in a directory for its app, so it never mixes with your projects. Chat responses carry the session id as `x-plugboard-session`.
 
 ```jsonc plugboard
-"history": { "maxSessions": 500, "maxAgeDays": 30 }   // the global limits; the stricter one wins within an app
+"sessions": { "maxSessions": 500, "maxAgeDays": 30 }   // the global limits; the stricter one wins within an app
 ```
 
 - Sessions older than 30 days are pruned by default. `"maxAgeDays": 0` keeps them forever.
-- One app can keep a different amount: `apps.<name>.history`. An unset field falls back to the global one.
-- Set `history.hidden: true` to keep request sessions out of OpenCode's session lists. They become children of one `plugboard: <app>` parent.
-- Set `historyUrl` to get a `x-plugboard-session-url` link in each response.
+- One app can keep a different amount: `apps.<name>.sessions`. An unset field falls back to the global one.
+- Set `sessions.hideFromList: true` to keep request sessions out of OpenCode's session lists. They become children of one `plugboard: <app>` parent.
+- Set `sessionUrl` to get a `x-plugboard-session-url` link in each response.
 
 History holds every prompt and reply, so treat OpenCode's database as sensitive. More: [Session history](../history.md).
 
@@ -71,7 +71,7 @@ curl -s http://127.0.0.1:4010/plugboard/metrics -H "Authorization: Bearer $PLUGB
 
 All in the [configuration reference](../configuration.md#history-usage-and-monitoring):
 
-- [`history`](../configuration.md#options), [hidden app sessions](../configuration.md#hidden-app-sessions), [session links](../configuration.md#session-links)
+- [`sessions`](../configuration.md#options), [hidden app sessions](../configuration.md#hidden-app-sessions), [session links](../configuration.md#session-links)
 - [Usage statistics](../configuration.md#usage-statistics) and [the dashboard](../configuration.md#dashboard)
 - `metrics`, `logFormat`, `logLevel`, `logRequests`, and [Operating](../configuration.md#operating)
 - The [response headers](../headers.md) and [error codes](../errors.md)

@@ -17,7 +17,7 @@
 
 import type { ServerResponse } from "node:http"
 import escapeText from "escape-html"
-import { CONNECTED, type PlugboardOptions } from "./config.js"
+import { ALL_MODELS, type PlugboardOptions } from "./config.js"
 import type { CatalogModel } from "./contract.js"
 import { HOST_SHAPE } from "./forwarded.js"
 import { listAvailableModels } from "./models.js"
@@ -220,10 +220,10 @@ export function buildDiscovery({ options, app, catalog, publicOrigin, requestHos
 
   let state: ModelsState = "ready"
   let modelsHint: string | undefined
-  const connected = options.models.includes(CONNECTED)
+  const connected = options.models.includes(ALL_MODELS)
   if (options.models.length === 0) {
     state = "no_models_configured"
-    modelsHint = `The \`models\` option is empty, so every model call fails with 403 no_models_configured. Add \`${JSON.stringify({ models: CONNECTED })}\` to the plugin options to allow every model of every connected provider${
+    modelsHint = `The \`models\` option is empty, so every model call fails with 403 no_models_configured. Add \`${JSON.stringify({ models: ALL_MODELS })}\` to the plugin options to allow every model of every connected provider${
       suggested && suggested.length > 0 ? `, or list providers: ${JSON.stringify({ models: suggested })}` : ""
     }`
   } else if (!catalog) {
@@ -232,7 +232,7 @@ export function buildDiscovery({ options, app, catalog, publicOrigin, requestHos
   } else if (listed.length === 0) {
     state = "none_available"
     modelsHint = connected
-      ? "`models` is `connected`, but the OpenCode server offers no enabled model. Connect a provider in OpenCode."
+      ? "`models` is `all`, but the OpenCode server offers no enabled model. Connect a provider in OpenCode."
       : "Nothing in the `models` allowlist matches a model the server offers. Check the provider and model ids against the catalog below."
   }
 
@@ -291,7 +291,7 @@ export function renderDiscoveryHtml(doc: Discovery): string {
   }
   if (doc.suggestedModels) {
     sections.push(
-      `<h2>Suggested <code>models</code> option</h2>${pre(`"models": "${CONNECTED}"`)}<p>Every model of every connected provider. Or only some providers:</p>${pre(`"models": ${JSON.stringify(doc.suggestedModels)}`)}`,
+      `<h2>Suggested <code>models</code> option</h2>${pre(`"models": "${ALL_MODELS}"`)}<p>Every model of every connected provider. Or only some providers:</p>${pre(`"models": ${JSON.stringify(doc.suggestedModels)}`)}`,
     )
   }
   if (doc.catalog) {
@@ -397,8 +397,8 @@ export function buildStatus(input: {
     models: catalog ? { catalog: catalog.length, available: listAvailableModels(options, catalog, app).length } : { error: "catalog_unavailable" },
     metrics: options.metrics,
     // The circuit breaker of list aliases (src/breaker.ts): the targets being skipped now, and until when.
-    fallbackCooldown: {
-      enabled: options.fallbackCooldown !== false,
+    circuitBreaker: {
+      enabled: options.circuitBreaker !== false,
       cooling: (runtime.cooldowns ?? []).map((target) => ({ model: target.model, state: target.state, failures: target.failures, until: new Date(target.until).toISOString() })),
     },
     // The plugin options error the last Location to load the plugin hit (#159); absent when options parse.

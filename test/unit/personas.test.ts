@@ -15,7 +15,7 @@ const options = parseOptions({
     { name: "review", model: "test/echo#high" },
     { name: "research", model: "test/missing" },
   ],
-  apps: { bot: { key: "k1", models: ["invoice-parser"] } },
+  apps: { bot: { key: "k1", allowedModels: ["invoice-parser"] } },
 })
 
 describe("#79 parseAliasTarget", () => {

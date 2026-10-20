@@ -100,7 +100,7 @@ describe("sweepHistory", () => {
   })
 })
 
-/** #265 `apps.<name>.history`: an app's own limits replace the global ones field by field; the other apps keep theirs. */
+/** #265 `apps.<name>.sessions`: an app's own limits replace the global ones field by field; the other apps keep theirs. */
 describe("#265 per-app history limits", () => {
   test("limitsFor: an own field replaces the global one, an unset field falls back, and no limit anywhere is {}", () => {
     const global = { maxSessions: 500, maxAgeDays: 30 }

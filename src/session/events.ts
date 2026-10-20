@@ -10,10 +10,10 @@
  * session before a second model step can start, and the request finishes as `tool-calls`.
  * The collector never calls the host itself; the owner passes `stopTurn`.
  *
- * A call to one of the app's `serverTools` is not the caller's: OpenCode runs it, the runner starts
+ * A call to one of the app's `opencodeTools` is not the caller's: OpenCode runs it, the runner starts
  * the next step with its result, and the collector neither emits it nor stops the turn. A step with
  * only server calls continues; a step that also holds a caller call is returned to the caller as usual.
- * Server steps are counted and capped (`maxServerToolSteps`), and so are the calls (`maxServerToolCalls`); each
+ * Server steps are counted and capped (`maxToolSteps`), and so are the calls (`maxToolCalls`); each
  * server call is logged once. A server call that lands after the request ended is logged as
  * `server_tool.after_request` and its step stops the turn again (#196).
  */
@@ -283,12 +283,12 @@ export interface CollectorHooks {
   readonly failFastRetry?: boolean
   /** The app, for the `server_tool.call` log lines. */
   readonly app?: string
-  /** The app's `serverTools` (option `apps`): OpenCode runs these calls, the caller never sees them. */
-  readonly serverTools?: ReadonlySet<string>
-  /** Model steps that may run server tools before the turn is stopped. The owner passes it with `serverTools`. */
-  readonly maxServerToolSteps?: number
-  /** Server tool calls allowed across all steps; the call past it fails the request. The owner passes it with `serverTools`. */
-  readonly maxServerToolCalls?: number
+  /** The app's `opencodeTools` (option `apps`): OpenCode runs these calls, the caller never sees them. */
+  readonly opencodeTools?: ReadonlySet<string>
+  /** Model steps that may run OpenCode tools before the turn is stopped. The owner passes it with `opencodeTools`. */
+  readonly maxToolSteps?: number
+  /** OpenCode tool calls allowed across all steps; the call past it fails the request. The owner passes it with `opencodeTools`. */
+  readonly maxToolCalls?: number
   /**
    * The request's stop sequences (not structured output). The collector scans the text it emits and marks the match itself, so
    * a tool call queued behind the matching text is already after the match (#390 review: the stop wrapper only sees text when it reads it).
@@ -300,7 +300,7 @@ export interface CollectorHooks {
   readonly toolNames?: readonly string[]
   /**
    * The request's caller tools, as the request offers them after the app's tool policy. A tool call must name one of them (#463):
-   * any other name is dropped and logged. Server tools are not caller tools (`serverTools`), they keep their own handling.
+   * any other name is dropped and logged. Server tools are not caller tools (`opencodeTools`), they keep their own handling.
    */
   readonly callerTools: readonly string[]
 }
@@ -504,7 +504,7 @@ export class RequestCollector {
         const name = String(item.name ?? this.toolNames.get(id) ?? "")
         this.endReasoningText()
         if (this.finished) {
-          if (this.hooks.serverTools?.has(name)) this.lateServerCall(id, name)
+          if (this.hooks.opencodeTools?.has(name)) this.lateServerCall(id, name)
           // A client that left mid-run (the settle window): no tool runs for it, and the run is stopped at once (no further step).
           if (this.wasCancelled && !this.executionDone && !this.leftStopped) {
             this.leftStopped = true
@@ -515,11 +515,11 @@ export class RequestCollector {
         // After a match no tool runs: the answer is complete, and the run ends at once (#390 review).
         if (this.stopped) return this.finishStopped(true)
         if (this.calls.has(id) || this.serverCalls.has(id)) return
-        if (this.hooks.serverTools?.has(name)) {
+        if (this.hooks.opencodeTools?.has(name)) {
           this.serverCalls.set(id, { name, startedAt: Date.now(), done: false })
           this.stepServerCalls++
           // The cap counts calls across steps (#198). The call past it is not returned to the caller, and the turn stops.
-          if (this.serverCalls.size > (this.hooks.maxServerToolCalls ?? 0))
+          if (this.serverCalls.size > (this.hooks.maxToolCalls ?? 0))
             this.abort({
               status: 502,
               kind: "server",
@@ -698,7 +698,7 @@ export class RequestCollector {
    */
   private serverStepEnded(reason: PlugFinish): void {
     this.serverSteps++
-    if (this.serverSteps > (this.hooks.maxServerToolSteps ?? 0)) {
+    if (this.serverSteps > (this.hooks.maxToolSteps ?? 0)) {
       this.abort({
         status: 502,
         kind: "server",

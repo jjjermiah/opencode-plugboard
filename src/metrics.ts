@@ -155,7 +155,7 @@ export function createMetrics(): Metrics {
   })
   const cache = new Counter({
     name: "plugboard_cache_requests_total",
-    help: "Model calls the response cache applied to, by app and result (hit or miss). Absent unless the `cache` option is set.",
+    help: "Model calls the response cache applied to, by app and result (hit or miss). Absent unless the `responseCache` option is set.",
     labelNames: ["app", "result"],
     registers: [registry],
   })

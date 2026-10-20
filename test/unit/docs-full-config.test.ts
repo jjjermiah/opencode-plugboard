@@ -34,30 +34,30 @@ describe("an options fragment", () => {
 
   test("a fragment with no keys and no models gets both, each marked", () => {
     const file = fullConfig(`"aliases": { "fast": "anthropic/claude-haiku-4-5" }`, "options", VERSION)
-    expect(options(file)).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "connected", aliases: { fast: "anthropic/claude-haiku-4-5" } })
+    expect(options(file)).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "all", aliases: { fast: "anthropic/claude-haiku-4-5" } })
     expect(file).toContain(`"keys": { "my-app": "{env:PLUGBOARD_KEY}" }, // one key per app; callers send it as their API key`)
-    expect(file).toContain(`"models": "connected", // which models apps may use: every model you are logged in to`)
+    expect(file).toContain(`"models": "all", // which models apps may use: every model you are logged in to`)
   })
 
   test("a fragment that has keys only gets models; one that has models only gets keys", () => {
     const keyed = options(fullConfig(`"keys": { "laptop": "{env:K}" }`, "options", VERSION))
-    expect(keyed).toEqual({ keys: { laptop: "{env:K}" }, models: "connected" })
+    expect(keyed).toEqual({ keys: { laptop: "{env:K}" }, models: "all" })
     const modelled = options(fullConfig(`"models": ["openai/gpt-5.6-luna#low"]`, "options", VERSION))
     expect(modelled).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: ["openai/gpt-5.6-luna#low"] })
   })
 
   test("comments, a trailing comma and blank lines stay, and the file still parses", () => {
-    const fragment = `// the limits\n"history": { "maxSessions": 500 },   // keep 500\n\n/* the key */\n"adminKey": "{env:ADMIN}",\n`
+    const fragment = `// the limits\n"sessions": { "maxSessions": 500 },   // keep 500\n\n/* the key */\n"adminKey": "{env:ADMIN}",\n`
     const file = fullConfig(fragment, "options", VERSION)
-    expect(options(file)).toMatchObject({ history: { maxSessions: 500 }, adminKey: "{env:ADMIN}" })
+    expect(options(file)).toMatchObject({ sessions: { maxSessions: 500 }, adminKey: "{env:ADMIN}" })
     expect(file).toContain("// the limits")
     expect(file).toContain("// keep 500")
     expect(file).toContain("/* the key */")
   })
 
   test("a fragment wrapped in braces is the options object itself", () => {
-    const file = fullConfig(`{\n  "historyUrl": "http://opencode.example:4096/session/{id}"\n}`, "options", VERSION)
-    expect(options(file).historyUrl).toBe("http://opencode.example:4096/session/{id}")
+    const file = fullConfig(`{\n  "sessionUrl": "http://opencode.example:4096/session/{id}"\n}`, "options", VERSION)
+    expect(options(file).sessionUrl).toBe("http://opencode.example:4096/session/{id}")
     expect(options(file).keys).toBeDefined()
   })
 
@@ -75,7 +75,7 @@ describe("an options fragment", () => {
   })
 
   test("apps without a key get a key each, named after the app", () => {
-    const file = fullConfig(`"apps": {\n  "discord-bot": { "models": ["fast"] },\n  "coding": { "models": ["anthropic/*"] }\n}`, "options", VERSION)
+    const file = fullConfig(`"apps": {\n  "discord-bot": { "allowedModels": ["fast"] },\n  "coding": { "allowedModels": ["anthropic/*"] }\n}`, "options", VERSION)
     expect(options(file).keys).toEqual({ "discord-bot": "{env:PLUGBOARD_KEY_DISCORD_BOT}", coding: "{env:PLUGBOARD_KEY_CODING}" })
     // Several keys are written one to a line, with the marker on the opening line.
     expect(file).toContain(`"keys": { // one key per app; callers send it as their API key\n          "discord-bot": "{env:PLUGBOARD_KEY_DISCORD_BOT}",\n`)
@@ -87,9 +87,9 @@ describe("an options fragment", () => {
     expect(file).toContain(`        "keys": { // one key per app; callers send it as their API key\n          "a": "{env:PLUGBOARD_KEY_A}",\n          "b": "{env:PLUGBOARD_KEY_B}"\n        },\n`)
   })
 
-  test("app names in limits, budgets and cache count too", () => {
+  test("app names in limits, budgets and responseCache count too", () => {
     const file = fullConfig(
-      `"limits": { "apps": { "coding": { "maxConcurrent": 4 } } },\n"budgets": { "apps": { "batch": {} } },\n"cache": { "ttlSeconds": 60, "apps": ["poller"] }`,
+      `"limits": { "apps": { "coding": { "maxConcurrent": 4 } } },\n"budgets": { "apps": { "batch": {} } },\n"responseCache": { "ttlSeconds": 60, "apps": ["poller"] }`,
       "options",
       VERSION,
     )
@@ -99,12 +99,12 @@ describe("an options fragment", () => {
   test("apps that carry their own key need no keys member", () => {
     const file = fullConfig(`"apps": { "bot": { "key": "{env:BOT_KEY}", "tools": false } }`, "options", VERSION)
     expect(options(file).keys).toBeUndefined()
-    expect(options(file).models).toBe("connected")
+    expect(options(file).models).toBe("all")
   })
 
   test("an invalid fragment fails with its location instead of producing a broken file", () => {
     expect(() => fullConfig(`"keys": { "a": }`, "options", VERSION, "docs/x.md:3")).toThrow(/docs\/x\.md:3: the fragment is not valid JSONC/)
-    expect(() => fullConfig(`"history": { "hidden": true }\n"apps": { "bot": {} }`, "options", VERSION)).toThrow(/not valid JSONC/)
+    expect(() => fullConfig(`"sessions": { "hideFromList": true }\n"apps": { "bot": {} }`, "options", VERSION)).toThrow(/not valid JSONC/)
   })
 
   test("a fragment with an options member belongs in a plugboard-options fence", () => {
@@ -123,26 +123,26 @@ describe("an entry fragment", () => {
 
   test("the missing members go at the top of options, marked, and the rest stays as written", () => {
     const file = fullConfig(`"options": {\n  // the proxy\n  "listen": { "host": "0.0.0.0", "port": 4010 },\n  "aliases": { "fast": "a/b" }\n}`, "entry", VERSION)
-    expect(options(file)).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "connected", listen: { host: "0.0.0.0", port: 4010 }, aliases: { fast: "a/b" } })
-    expect(file).toContain(`"models": "connected", // which models apps may use: every model you are logged in to\n        // the proxy\n        "listen"`)
+    expect(options(file)).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "all", listen: { host: "0.0.0.0", port: 4010 }, aliases: { fast: "a/b" } })
+    expect(file).toContain(`"models": "all", // which models apps may use: every model you are logged in to\n        // the proxy\n        "listen"`)
   })
 
   test("a wrapped fragment, as the self-hosted pages write it", () => {
-    const file = fullConfig(`{\n  "options": {\n    "keys": { "onyx": "{env:K}" },\n    "apps": { "onyx": { "models": ["text"] } }\n  }\n}`, "entry", VERSION)
-    expect(options(file)).toMatchObject({ keys: { onyx: "{env:K}" }, apps: { onyx: { models: ["text"] } }, models: "connected" })
+    const file = fullConfig(`{\n  "options": {\n    "keys": { "onyx": "{env:K}" },\n    "apps": { "onyx": { "allowedModels": ["text"] } }\n  }\n}`, "entry", VERSION)
+    expect(options(file)).toMatchObject({ keys: { onyx: "{env:K}" }, apps: { onyx: { allowedModels: ["text"] } }, models: "all" })
   })
 
   test("a single-line options member is split so the marker comments cannot swallow it", () => {
     const file = fullConfig(`"options": { "maxTools": 128 }`, "entry", VERSION)
-    expect(options(file)).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "connected", maxTools: 128 })
+    expect(options(file)).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "all", maxTools: 128 })
   })
 
   test("an empty options object still gives a working file", () => {
-    expect(options(fullConfig(`"options": {}`, "entry", VERSION))).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "connected" })
+    expect(options(fullConfig(`"options": {}`, "entry", VERSION))).toEqual({ keys: { "my-app": "{env:PLUGBOARD_KEY}" }, models: "all" })
   })
 
   test("a fragment with its own package keeps it", () => {
-    const config = load(fullConfig(`"package": "/path/to/plugboard",\n"options": { "keys": { "a": "k" }, "models": "connected" }`, "entry", VERSION))
+    const config = load(fullConfig(`"package": "/path/to/plugboard",\n"options": { "keys": { "a": "k" }, "models": "all" }`, "entry", VERSION))
     expect(config.plugins[0].package).toBe("/path/to/plugboard")
   })
 

@@ -35,7 +35,7 @@ Plugboard keys are its own, not provider keys or the OpenCode server password. K
 ```
 
 - `keys` names each app and gives it a key. `{env:VAR}` is read from the environment OpenCode starts from, so the key stays out of the file.
-- `models` is the allowlist. `"connected"` allows every model of every provider you are logged in to, including ones you connect later. A list (with `*` wildcards) allows only those. A model that is not allowed answers 404.
+- `models` is the allowlist. `"all"` allows every model of every provider you are logged in to, including ones you connect later. A list (with `*` wildcards) allows only those. A model that is not allowed answers 404.
 - `aliases` gives a short name to a model. Every alias target must be allowed by `models`.
 
 Keep the version pinned. A bare `"opencode-plugboard"` means `latest`, so a cache refresh can load code you have not read. Change the number on purpose, after reading the [changelog](https://github.com/jjjermiah/opencode-plugboard/blob/main/CHANGELOG.md). The snippet above always shows the latest release.
@@ -80,7 +80,7 @@ print(r.choices[0].message.content)
 | Connection refused | OpenCode has not loaded the plugin. Run step 2. After every restart, run it again. |
 | 401 `invalid_api_key` | The key is missing, wrong, or not in `keys`. |
 | 404 `model_not_found` | The model is not in `models`, or the server does not have it enabled. `GET /v1/models` lists what you may use. |
-| 403 `no_models_configured` | `models` is not set. Set `"models": "connected"` or list models. |
+| 403 `no_models_configured` | `models` is not set. Set `"models": "all"` or list models. |
 | 403 `invalid_host` | A loopback listener saw a `Host` header that is not `127.0.0.1`, `localhost` or `[::1]`. See [Serving other machines](guides/serving-other-machines.md). |
 
 Open `http://127.0.0.1:4010/` in a browser for a setup page: the listen address, a `models` suggestion built from what your server offers, and a curl example.

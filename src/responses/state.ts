@@ -16,7 +16,7 @@
  * `resp_` plus 32 hex chars from `crypto.randomUUID` (122 random bits, `newId` in src/responses/response.ts), so they cannot be guessed. An id or a body
  * is never logged.
  *
- * Retention is the app's history retention (`history.maxAgeDays`, per app or global, 30 days when unset or 0:
+ * Retention is the app's history retention (`sessions.maxAgeDays`, per app or global, 30 days when unset or 0:
  * stored responses hold whole conversations, so they are never kept forever). Size is bounded per app: at most
  * `MAX_RESPONSES` records and `MAX_APP_BYTES` bytes, and a record over `MAX_RECORD_BYTES` is not kept. A record
  * past its age is a miss on read, and a sweep (from request handling, never setup, I3) deletes expired and
@@ -73,9 +73,9 @@ const SWEEP_MAX_DELETIONS = 200
 const ID_PATTERN = /^resp_[0-9a-f]{32}$/
 const AT_PATTERN = /^(\d{15})-(\d+)-(resp_[0-9a-f]{32})$/
 
-/** Days the app's stored responses are kept: its effective `history.maxAgeDays`, else 30 (`0` and unset both mean 30). */
-export function retentionDaysFor(options: Pick<PlugboardOptions, "apps" | "history">, app: string): number {
-  const days = limitsFor(options.history, appHistoryLimits(options), app).maxAgeDays
+/** Days the app's stored responses are kept: its effective `sessions.maxAgeDays`, else 30 (`0` and unset both mean 30). */
+export function retentionDaysFor(options: Pick<PlugboardOptions, "apps" | "sessions">, app: string): number {
+  const days = limitsFor(options.sessions, appHistoryLimits(options), app).maxAgeDays
   return days === undefined || days <= 0 ? DEFAULT_RETENTION_DAYS : days
 }
 

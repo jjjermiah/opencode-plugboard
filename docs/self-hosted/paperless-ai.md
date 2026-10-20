@@ -15,7 +15,7 @@ Give paperless-ai its own key and a text alias. It sends no images, so you need 
     "keys": { "paperless-ai": "{env:PLUGBOARD_KEY_PAPERLESS_AI}" },
     "models": ["opencode-go/glm-5.3-flash"],
     "aliases": { "text": "opencode-go/glm-5.3-flash" },
-    "apps": { "paperless-ai": { "models": ["text"] } }
+    "apps": { "paperless-ai": { "allowedModels": ["text"] } }
   }
 }
 ```

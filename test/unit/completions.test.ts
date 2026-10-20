@@ -5,7 +5,7 @@ import { isPlugError, type PlugEvent } from "../../src/contract.js"
 import { ev, events, testOptions } from "../support/fixtures.js"
 import { sseData } from "../support/loopback.js"
 
-const options = testOptions({ maxN: 4 })
+const options = testOptions({ maxChoices: 4 })
 const body = (extra: Record<string, unknown> = {}) => ({ model: "test/echo", prompt: "Once upon", ...extra })
 
 function parse(raw: unknown): ParsedCompletions {
@@ -28,8 +28,8 @@ describe("#75 parseCompletionsRequest", () => {
     ["best_of 0", body({ best_of: 0 }), { param: "best_of" }],
     ["a non-boolean echo", body({ echo: "yes" }), { param: "echo" }],
     ["a non-string suffix", body({ suffix: 1 }), { param: "suffix" }],
-    ["#58 n above maxN", body({ n: 5 }), { param: "n", code: "too_many_choices" }],
-    ["#58 prompts times n above maxN", body({ prompt: ["a", "b", "c"], n: 2 }), { param: "prompt", code: "too_many_choices" }],
+    ["#58 n above maxChoices", body({ n: 5 }), { param: "n", code: "too_many_choices" }],
+    ["#58 prompts times n above maxChoices", body({ prompt: ["a", "b", "c"], n: 2 }), { param: "prompt", code: "too_many_choices" }],
     ["temperature above 2", body({ temperature: 3 }), { param: "temperature" }],
   ]
   test.each(rejections)("rejects %s", (_name, raw, expected) => {
@@ -44,7 +44,7 @@ describe("#75 parseCompletionsRequest", () => {
     })
   })
 
-  test("a prompt list is one call per prompt; n multiplies them within maxN", () => {
+  test("a prompt list is one call per prompt; n multiplies them within maxChoices", () => {
     const parsed = parse(body({ prompt: ["a", "b"], n: 2, best_of: 1 }))
     expect(parsed.requests.map((request) => (request.messages[0]!.content[0] as { text: string }).text)).toEqual(["a", "b"])
     expect(parsed.n).toBe(2)

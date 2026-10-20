@@ -28,14 +28,14 @@ export interface HistoryLimits {
   /** Delete sessions older than this many days. */
   readonly maxAgeDays?: number
   /**
-   * Option `history.hidden` (since 0.29.0, #337): request sessions are children of the app's parent session. Not a pruning
+   * Option `sessions.hideFromList` (#337): request sessions are children of the app's parent session. Not a pruning
    * limit: `limitsFor` does not copy it, and it does not start a sweep.
    */
-  readonly hidden?: boolean
+  readonly hideFromList?: boolean
 }
 
 /**
- * The limits one app is pruned by (#265): its own field when set (`apps.<name>.history`), else the global one, field by field.
+ * The limits one app is pruned by (#265): its own field when set (`apps.<name>.sessions`), else the global one, field by field.
  * An app with no limit in either place gets `{}`, which keeps its sessions forever.
  */
 export function limitsFor(global: HistoryLimits, apps: Readonly<Record<string, HistoryLimits>> | undefined, app: string): HistoryLimits {
@@ -64,7 +64,7 @@ export interface SweepInput {
   readonly port: HistoryPort
   /** The global limits; `apps` overrides them per app (see `limitsFor`). */
   readonly limits: HistoryLimits
-  /** Each app's own limits (`apps.<name>.history`, #265), keyed by app name. */
+  /** Each app's own limits (`apps.<name>.sessions`, #265), keyed by app name. */
   readonly apps?: Readonly<Record<string, HistoryLimits>>
   readonly sessions: SessionStore
   readonly now: number

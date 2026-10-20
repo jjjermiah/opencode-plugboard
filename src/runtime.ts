@@ -20,7 +20,7 @@
  *   - the session store (src/session/state.ts), which outlives the listener and owns the request
  *     guards, their cleanup timers included;
  *  - the history sweep state: every registered request session is indexed in the host's plugin
- *     storage and, at most every `SWEEP_INTERVAL_MS`, a sweep prunes old ones past the `history`
+ *     storage and, at most every `SWEEP_INTERVAL_MS`, a sweep prunes old ones past the `sessions`
  *     limits (src/session/prune.ts). Both start from request handling (the store's `register`);
  *  - the metrics registry (src/metrics.ts) and the runtime start time, so counters and uptime
  *     outlive any one generation. `processMetrics` / `processStatus` read them for `/metrics`,
@@ -107,7 +107,7 @@ export interface GenerationInput {
    */
   readonly refresh: () => Promise<void>
   /** The host storage and session deletion used to index and prune request sessions, with the configured limits (identical in every accepted generation). */
-  /** `apps`: each app's own limits (`apps.<name>.history`, #265); an app without them uses `limits`. */
+  /** `apps`: each app's own limits (`apps.<name>.sessions`, #265); an app without them uses `limits`. */
   readonly history: { readonly port: HistoryPort; readonly limits: HistoryLimits; readonly apps?: Readonly<Record<string, HistoryLimits>> }
 }
 
@@ -126,7 +126,7 @@ const BACKEND_POLL_MS = 25
 const BIND_RETRY_MS = 15_000
 const BIND_REMINDER_MS = 5 * 60_000
 
-/** 17: the fallback circuit breaker's state (`src/breaker.ts`, option `fallbackCooldown`) lives here too, so a cooling target is skipped by every generation. 16: the keep-alive owner (`keepAlive`, #310) lives here, so one loop runs per process across generations. 15: the last options error (`configError`, #159) and `catalogLoaded` for `/readyz` (#160). 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
+/** 17: the fallback circuit breaker's state (`src/breaker.ts`, option `circuitBreaker`) lives here too, so a cooling target is skipped by every generation. 16: the keep-alive owner (`keepAlive`, #310) lives here, so one loop runs per process across generations. 15: the last options error (`configError`, #159) and `catalogLoaded` for `/readyz` (#160). 14: the runtime app keys (src/keys.ts, #55) are cached here, so a key created or revoked through the admin routes holds across plugin generations. 13: the budget warning state (`src/budgets.ts`) lives here too. 12: the live key set (`keys`, `Runtime.keys`) that a stricter newer generation replaces at once (#90). 11: the usage store's live days (`src/usage.ts`) live here too. 10: the response cache store (`src/cache.ts`) lives here too. 9: the request limiter state (`src/limits.ts`) lives here, so the concurrency caps and rate windows survive a generation. 8: `Metrics.render` is async and the registry is @prometheus-io/client's. 7: the options fingerprint comes from safe-stable-stringify, so it must not be compared with an older one. 6: the listener retries a failed bind (new fields on `Listener`). 5: adds the metrics registry and the start time. 4: the history sweep state and the session store's register hook. 3: confirmed directories and rejected generations. */
 const VERSION = 17
 const KEY = Symbol.for("opencode-plugboard.runtime")
 
@@ -348,8 +348,8 @@ export function liveOptions(options: PlugboardOptions): PlugboardOptions {
 }
 
 /**
- * Wraps `caller` with the response cache when option `cache` is set (a no-op without it). The store
- * lives on the runtime, so it survives plugin generations. It is replaced when the cache option or
+ * Wraps `caller` with the response cache when option `responseCache` is set (a no-op without it). The store
+ * lives on the runtime, so it survives plugin generations. It is replaced when the `responseCache` option or
  * any policy input (`apps`, `models`, `aliases`, `fallbacks`) differs from the one it was built for:
  * the key does not cover policy, and a hit skips the session caller's scope checks. The store is
  * resolved on the first call, not when the wrapper is built: a rejected generation is built too but
@@ -357,7 +357,7 @@ export function liveOptions(options: PlugboardOptions): PlugboardOptions {
  * private to the wrapper.
  */
 export function withResponseCache(caller: ModelCaller, options: PlugboardOptions): ModelCaller {
-  const config = options.cache
+  const config = options.responseCache
   if (!config) return caller
   let wrapped: ModelCaller | undefined
   const build = (): ModelCaller => {
@@ -378,7 +378,7 @@ export function withResponseCache(caller: ModelCaller, options: PlugboardOptions
     // One bypass predicate: a persona model, or an app whose answers depend on live OpenCode tool output (#82).
     const serverToolApps = new Set(
       Object.entries(options.apps)
-        .filter(([, policy]) => policy.serverTools !== undefined)
+        .filter(([, policy]) => policy.opencodeTools !== undefined)
         .map(([app]) => app),
     )
     return cachedCaller(caller, config, held.store, count, (model, app) => personaOf(options, model) !== undefined || serverToolApps.has(app))

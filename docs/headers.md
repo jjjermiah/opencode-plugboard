@@ -11,7 +11,7 @@ A streamed answer sends its headers with the first event, so headers that need t
 | `x-plugboard-model` | Every answer | The `provider/model#variant` that answered. With a fallback chain, the target that won. |
 | `x-plugboard-fallbacks` | A fallback chain moved past a failing target | How many targets failed before the one that answered. |
 | `x-plugboard-session` | Every answer | The OpenCode session id of the request. See [History](history.md). |
-| `x-plugboard-session-url` | `historyUrl` is set | A link to that session's page. |
+| `x-plugboard-session-url` | `sessionUrl` is set | A link to that session's page. |
 | `x-plugboard-usage` | Usage recording on, not streamed | `input=<n>; output=<n>; cache_read=<n>; cache_write=<n>; cost_usd=<x>`. The cost is left out for a model with no price. |
 | `x-plugboard-cache` | The app uses the response cache | `hit` or `miss`. |
 | `x-plugboard-affinity` | The app uses prompt-cache anchors | `anchor`, or `none` when the request got no anchor. |

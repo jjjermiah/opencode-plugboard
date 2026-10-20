@@ -49,5 +49,5 @@ metric_list:
 ## Limits
 
 - **No loglikelihood tasks.** Multiple-choice tasks scored by log probability (default hellaswag, MMLU, ARC) request `logprobs`, which plugboard refuses with 400 `unsupported_parameter`.
-- **Batching.** A batch above 1 sends a prompt array, which counts against `maxN` (default 1). Keep `--batch_size 1` or raise `maxN`.
+- **Batching.** A batch above 1 sends a prompt array, which counts against `maxChoices` (default 1). Keep `--batch_size 1` or raise `maxChoices`.
 - **Reasoning models** can spend the whole token budget thinking and return no text, which scores as wrong. Raise `max_gen_toks` or use a non-reasoning model, and check `resps` in the samples file when a score looks low.

@@ -23,7 +23,7 @@ The script refuses when the working tree is dirty, the branch is not `main`, loc
 A change that adds an option or behavior says which release has it: `(since 0.50.0)`. Parallel lanes cannot know that version, and when every lane guessed the next minor, a release later someone rewrote the markers by hand. So a lane writes the placeholder `(since next)`, and `Since next` where a sentence starts, in `CHANGELOG.md` and in `docs/**/*.md`:
 
 ```md
-- `historyUrl` sets the link in the dashboard (since next).
+- `sessionUrl` sets the link in the dashboard (since next).
 Since next, the default is on.
 ```
 

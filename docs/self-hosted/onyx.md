@@ -23,12 +23,12 @@ Give Onyx its own key and a text alias. Docker needs a reachable address ([Servi
     "keys": { "onyx": "{env:PLUGBOARD_KEY_ONYX}" },
     "models": ["opencode-go/glm-5.3-flash"],
     "aliases": { "text": "opencode-go/glm-5.3-flash" },
-    "apps": { "onyx": { "models": ["text"] } }
+    "apps": { "onyx": { "allowedModels": ["text"] } }
   }
 }
 ```
 
-An app key's model list shows only that app's `models`, so `text` appears in Onyx's list.
+An app key's model list shows only that app's `allowedModels`, so `text` appears in Onyx's list.
 
 ## Connect
 
@@ -46,4 +46,4 @@ Chat and answers through the `text` alias.
 - Plugboard cannot be the embedding provider. Keep Onyx's default local model, add a cloud provider under **Index Settings** (`/admin/index-settings`), or point Onyx at a LiteLLM proxy or another gateway with `/v1/embeddings`.
 - Onyx runs two model servers, each with a Hugging Face cache. Plan disk and network for the first start.
 - Plugboard takes `data:` image URLs by default. It fetches `http(s)` image URLs only with `remoteImages` on.
-- If `text` is missing from the model list, check the app's `models` list.
+- If `text` is missing from the model list, check the app's `allowedModels` list.

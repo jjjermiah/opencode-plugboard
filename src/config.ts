@@ -26,7 +26,7 @@ export interface PlugboardOptions {
   readonly apps: Readonly<Record<string, AppPolicy>>
   /**
    * Allowlist: exact `provider/model`, `provider/model#variant`, or `provider/*` patterns. Empty = nothing allowed.
-   * Written as the string `"connected"`, it is `[CONNECTED]`: every model the host catalog offers (see `allowedBy`).
+   * Written as the string `"all"`, it is `[ALL_MODELS]`: every model the host catalog offers (see `allowedBy`).
    */
   readonly models: ReadonlyArray<string>
   /** Alias -> `provider/model[#variant]`. Targets must also pass the allowlist. */
@@ -43,21 +43,21 @@ export interface PlugboardOptions {
    */
   readonly fallbacks: Readonly<Record<string, ReadonlyArray<string>>>
   /**
-   * Option `fallbackAfterMs` (since 0.40.0, #391): when a target of a list alias has produced no model event within
+   * Option `firstEventTimeoutMs` (#391): when a target of a list alias has produced no model event within
    * this many ms, its attempt is aborted and the next target is tried. The last target is bounded only by the request
    * deadline. Absent (the default): no first-event deadline. Global only: a list entry is a plain string. Must be below
    * `requestTimeoutMs` and below each `apps.<name>.requestTimeoutMs` (refused at load otherwise).
    */
-  readonly fallbackAfterMs?: number
+  readonly firstEventTimeoutMs?: number
   /**
-   * Option `fallbackCooldown`: the circuit breaker of list aliases (`src/breaker.ts`). A target that failed `failureThreshold` times in a row
-   * within `windowMs` is skipped for `cooldownMs`, then one request is let through; its success closes the breaker. `false` turns it off.
-   * Absent (the default): `DEFAULT_FALLBACK_COOLDOWN`. Process-wide, per target model. Global only.
+   * Option `circuitBreaker`: the circuit breaker of list aliases (`src/breaker.ts`). A target that failed `failures` times in a row
+   * within `failureWindowMs` is skipped for `cooldownMs`, then one request is let through; its success closes the breaker. `false` turns it off.
+   * Absent (the default): `DEFAULT_CIRCUIT_BREAKER`. Process-wide, per target model. Global only.
    */
-  readonly fallbackCooldown?: FallbackCooldown | false
+  readonly circuitBreaker?: CircuitBreaker | false
   readonly maxTools: number
   /** Most model calls one request may fan out to: `n` for chat completions, prompts x `n` for legacy completions. Each is a full call and a kept session. */
-  readonly maxN: number
+  readonly maxChoices: number
   readonly requestTimeoutMs: number
   /**
    * Option `silenceMs` (#515): how long a request may hear no event from OpenCode before plugboard reads the session's stored messages. A
@@ -76,14 +76,14 @@ export interface PlugboardOptions {
    * Prune old request sessions (see `src/session/prune.ts`). `maxAgeDays` defaults to 30 (#158); `maxAgeDays: 0`
    * turns the age limit off. `maxSessions` is unset (no count limit) by default. Applies per app. Parsed `{}` means keep forever.
    */
-  readonly history: HistoryLimits
+  readonly sessions: HistoryLimits
   /** Drop sampling parameters the target model is known to reject (reported in `x-plugboard-dropped-params`). On by default; off forwards them as sent. */
   readonly dropUnsupportedParams: boolean
   /** Log line format: `text` (`key=value`, the default) or `json` (one object per line). Process-wide: the live generation's value applies. */
   readonly logFormat: "text" | "json"
-  /** Option `logLevel` (since 0.27.0, #262): the lowest level written. Process-wide, like `logFormat`. Default `info`. */
+  /** Option `logLevel` (#262): the lowest level written. Process-wide, like `logFormat`. Default `info`. */
   readonly logLevel: LogLevel
-  /** Option `logRequests` (since 0.27.0, #262): `false` drops the per-request access lines (`request`, `request.finished`); warnings and errors stay. */
+  /** Option `logRequests` (#262): `false` drops the per-request access lines (`request`, `request.finished`); warnings and errors stay. */
   readonly logRequests: boolean
   /** Serve `GET /plugboard/metrics` (Prometheus text). Off by default; same authentication as the model routes. */
   readonly metrics: boolean
@@ -96,7 +96,7 @@ export interface PlugboardOptions {
   /** Per-app budgets (see `src/budgets.ts`): ceilings on requests, tokens and cost per UTC day, week or month. Needs `usage`. Absent: no budgets. */
   readonly budgets?: Budgets
   /** Opt-in exact-match response cache (see `src/cache.ts`). Absent: off. */
-  readonly cache?: CacheConfig
+  readonly responseCache?: CacheConfig
   /** Provider prompt-cache affinity (see `src/session/affinity.ts`, #80, #81). Absent: off. Per app: `apps.<name>.promptCache`. */
   readonly promptCache?: PromptCache
   /** Per-app usage statistics (see `src/usage.ts`): recorded and served by `GET /plugboard/usage` and the RPC. */
@@ -116,17 +116,17 @@ export interface PlugboardOptions {
   /** Browser origins that may call plugboard (option `cors`, #256). Absent: no CORS headers and the keyless `Origin` refusal stays. */
   readonly cors?: CorsConfig
   /** A template for the OpenCode session page of each request: `{id}`, and optional `{directory}` (see src/session/link.ts, #77). */
-  readonly historyUrl?: string
+  readonly sessionUrl?: string
 }
 
 /**
- * The session link template that applies to `app` (#280): its own `apps.<name>.historyUrl` when set, `undefined`
- * when that is `false`, else the global `historyUrl`. Routes call this with the authenticated app.
+ * The session link template that applies to `app` (#280): its own `apps.<name>.sessionUrl` when set, `undefined`
+ * when that is `false`, else the global `sessionUrl`. Routes call this with the authenticated app.
  */
-export function historyTemplate(options: Pick<PlugboardOptions, "apps" | "historyUrl">, app: string): string | undefined {
-  const own = appPolicy(options, app)?.historyUrl
+export function historyTemplate(options: Pick<PlugboardOptions, "apps" | "sessionUrl">, app: string): string | undefined {
+  const own = appPolicy(options, app)?.sessionUrl
   if (own === false) return undefined
-  return own ?? options.historyUrl
+  return own ?? options.sessionUrl
 }
 
 /**
@@ -175,11 +175,11 @@ export const ENDPOINTS = ["chat", "completions", "responses", "messages", "gemin
 export type Endpoint = (typeof ENDPOINTS)[number]
 
 /**
- * What the operator fixes for one app, whatever the caller sends (option `apps`). `models` only narrows the
+ * What the operator fixes for one app, whatever the caller sends (option `apps`). `allowedModels` only narrows the
  * global allowlist: entries are `provider/model[#variant]`, `provider/*` or alias names.
  */
 export interface AppPolicy {
-  readonly models?: ReadonlyArray<string>
+  readonly allowedModels?: ReadonlyArray<string>
   /** Text added to the caller's system prompt, or replacing it (`systemMode`). */
   readonly system?: string
   readonly systemMode: SystemMode
@@ -188,26 +188,26 @@ export interface AppPolicy {
   /** Lowers the global `maxTools` for this app. */
   readonly maxTools?: number
   /**
-   * This app's history limits (option `apps.<name>.history`, since 0.27.0, #265): a field replaces the global one for this app,
+   * This app's session limits (option `apps.<name>.sessions`, #265): a field replaces the global one for this app,
    * an unset field falls back to it. Look the effective limits up with `limitsFor` (src/session/prune.ts).
    */
-  readonly history?: HistoryLimits
-  /** Lowers the global `maxN` for this app (option `apps.<name>.maxN`, since 0.27.0, #270). Look the effective cap up with `maxNFor`. */
-  readonly maxN?: number
+  readonly sessions?: HistoryLimits
+  /** Lowers the global `maxChoices` for this app (option `apps.<name>.maxChoices`, #270). Look the effective cap up with `maxChoicesFor`. */
+  readonly maxChoices?: number
   /**
-   * Exact OpenCode tool ids this app's sessions may run themselves (option `apps.<name>.serverTools`).
+   * Exact OpenCode tool ids this app's sessions may run themselves (option `apps.<name>.opencodeTools`).
    * Absent: none, the session denies every real tool. Trusted apps only, see docs/configuration.md.
    */
-  readonly serverTools?: ReadonlyArray<string>
-  /** Model steps that may run server tools in one request before the turn is stopped (option `maxServerToolSteps`). */
-  readonly maxServerToolSteps?: number
-  /** Server tool calls one request may run across all its steps (option `maxServerToolCalls`). */
-  readonly maxServerToolCalls?: number
+  readonly opencodeTools?: ReadonlyArray<string>
+  /** Model steps that may run OpenCode tools in one request before the turn is stopped (option `maxToolSteps`). */
+  readonly maxToolSteps?: number
+  /** OpenCode tool calls one request may run across all its steps (option `maxToolCalls`). */
+  readonly maxToolCalls?: number
   /**
-   * This app's session link template (option `apps.<name>.historyUrl`), or `false` for none. Absent: the global
-   * `historyUrl`. Look the effective template up with `historyTemplate`.
+   * This app's session link template (option `apps.<name>.sessionUrl`), or `false` for none. Absent: the global
+   * `sessionUrl`. Look the effective template up with `historyTemplate`.
    */
-  readonly historyUrl?: string | false
+  readonly sessionUrl?: string | false
   /** This app's prompt-cache affinity (option `apps.<name>.promptCache`). Absent: the global `promptCache`. */
   readonly promptCache?: PromptCache
   /** Endpoint families this app may call (option `apps.<name>.endpoints`, #268). Absent: every endpoint. Check with `endpointRefusal`. */
@@ -233,20 +233,20 @@ export interface AppPolicy {
    */
   readonly reasoningOutput?: boolean
   /**
-   * Option `apps.<name>.hostedTools`: what the Responses route does with a hosted tool (`web_search`, `file_search`, ...) next to the caller's
+   * Option `apps.<name>.onHostedTools`: what the Responses route does with a hosted tool (`web_search`, `file_search`, ...) next to the caller's
    * function tools. `drop` (the default) leaves it out and names it in `x-plugboard-dropped-tools`; `refuse` answers 400. Read it with `hostedToolsFor`.
    */
-  readonly hostedTools?: HostedTools
+  readonly onHostedTools?: HostedTools
   /**
    * Sampling defaults of this app (option `apps.<name>.sampling`, since 0.32.0, #264): a field fills the request only where the caller
    * sent none. Applied by `appGeneration` (src/openai/sampling.ts), before the model-specific drop.
    */
   readonly sampling?: PlugGeneration
   /**
-   * The one model every request of this app runs on (option `apps.<name>.model`, since 0.32.0, #261): a canonical id or an alias.
-   * The caller's `model` is ignored when it is set. Checked at load against the global `models` and the app's `models`.
+   * The one model every request of this app runs on (option `apps.<name>.pinnedModel`, #261): a canonical id or an alias.
+   * The caller's `model` is ignored when it is set. Checked at load against the global `models` and the app's `allowedModels`.
    */
-  readonly model?: string
+  readonly pinnedModel?: string
   /**
    * A request header that names the end user (option `apps.<name>.userHeader`, since 0.32.0, #272), read instead of the body's
    * `user` (or `metadata.user_id`) when the request sends it. Lower case. Looked up by `requestUser` (src/user.ts).
@@ -351,10 +351,10 @@ export const DEFAULT_APP = "default"
  * list, so the empty-list refusal and the JSON comparison across generations need no special case. It is never a
  * `provider/model` pattern, so a list entry spelled this way is refused.
  */
-export const CONNECTED = "connected"
-/** Model steps that may run server tools per request when `maxServerToolSteps` is not set. */
+export const ALL_MODELS = "all"
+/** Model steps that may run OpenCode tools per request when `maxToolSteps` is not set. */
 export const DEFAULT_SERVER_TOOL_STEPS = 8
-/** Server tool calls per request when `maxServerToolCalls` is not set (across all steps). */
+/** OpenCode tool calls per request when `maxToolCalls` is not set (across all steps). */
 export const DEFAULT_SERVER_TOOL_CALLS = 16
 /** The listener port when `listen.port` is not set. */
 export const DEFAULT_PORT = 4010
@@ -362,23 +362,23 @@ const DEFAULTS = {
   host: "127.0.0.1",
   port: DEFAULT_PORT,
   maxTools: 64,
-  maxN: 1,
+  maxChoices: 1,
   requestTimeoutMs: 600_000,
 } as const
 
-/** Option `fallbackCooldown`, resolved. */
-export interface FallbackCooldown {
+/** Option `circuitBreaker`, resolved. */
+export interface CircuitBreaker {
   /** Consecutive retryable failures of one target that open the breaker. */
-  readonly failureThreshold: number
+  readonly failures: number
   /** How long an open target is skipped, in ms. */
   readonly cooldownMs: number
   /** The failures must fall within this many ms of the first one; a slower streak starts over. */
-  readonly windowMs: number
+  readonly failureWindowMs: number
 }
 
-/** Used when option `fallbackCooldown` is not set. */
-export const DEFAULT_FALLBACK_COOLDOWN: FallbackCooldown = { failureThreshold: 3, cooldownMs: 60_000, windowMs: 60_000 }
-const FALLBACK_COOLDOWN_KNOWN = new Set(["failureThreshold", "cooldownMs", "windowMs"])
+/** Used when option `circuitBreaker` is not set. */
+export const DEFAULT_CIRCUIT_BREAKER: CircuitBreaker = { failures: 3, cooldownMs: 60_000, failureWindowMs: 60_000 }
+const CIRCUIT_BREAKER_KNOWN = new Set(["failures", "cooldownMs", "failureWindowMs"])
 
 const KNOWN = new Set([
   "listen",
@@ -389,22 +389,22 @@ const KNOWN = new Set([
   "aliases",
   "agents",
   "maxTools",
-  "maxN",
+  "maxChoices",
   "requestTimeoutMs",
   "silenceMs",
-  "fallbackAfterMs",
-  "fallbackCooldown",
+  "firstEventTimeoutMs",
+  "circuitBreaker",
   "remoteImages",
-  "history",
+  "sessions",
   "dropUnsupportedParams",
   "logFormat",
   "metrics",
   "modelIds",
   "limits",
   "budgets",
-  "cache",
+  "responseCache",
   "usage",
-  "historyUrl",
+  "sessionUrl",
   "promptCache",
   "requireKeys",
   "cors",
@@ -423,14 +423,14 @@ const BODY_HARD_CAP = 32 * 1024 * 1024
 const LIMIT_CAP_KNOWN = new Set(["maxConcurrent", "requestsPerMinute"])
 /** Largest cap accepted: far above any provider's limit, and keeps the error messages short. */
 const MAX_LIMIT = 1_000_000
-const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays", "hidden"])
+const HISTORY_KNOWN = new Set(["maxSessions", "maxAgeDays", "hideFromList"])
 const CACHE_KNOWN = new Set(["ttlSeconds", "maxEntries", "maxBytes", "apps"])
 const CACHE_DEFAULTS = { maxEntries: 1000, maxBytes: 64 * 1024 * 1024 } as const
 /** One year: a longer TTL is a typo, and keeps the millisecond conversion a safe integer. */
 const MAX_CACHE_TTL_SECONDS = 31_536_000
 /** About 100 years: keeps `maxAgeDays * 86_400_000` a safe integer. */
 const MAX_AGE_DAYS = 36_500
-/** Sessions older than this are pruned when `history.maxAgeDays` is not set (#158). */
+/** Sessions older than this are pruned when `sessions.maxAgeDays` is not set (#158). */
 const DEFAULT_HISTORY_DAYS = 30
 const MODEL_PATTERN = /^[^/#*\s]+\/(\*|[^#*\s]+(#[^#*\s]+)?)$/
 const ALIAS_TARGET = /^[^/#*\s]+\/[^#*\s]+(#[^#*\s]+)?$/
@@ -460,15 +460,15 @@ function positiveInt(value: unknown, name: string, fallback: number, max = Numbe
   return value
 }
 
-/** Option `fallbackCooldown`: `false`, or `{ failureThreshold, cooldownMs, windowMs }` with any of them left at its default. */
-function parseFallbackCooldown(raw: unknown): FallbackCooldown | false | undefined {
+/** Option `circuitBreaker`: `false`, or `{ failures, cooldownMs, failureWindowMs }` with any of them left at its default. */
+function parseCircuitBreaker(raw: unknown): CircuitBreaker | false | undefined {
   if (raw === undefined || raw === false) return raw
-  if (!isRecord(raw)) throw new Error("plugboard option `fallbackCooldown` must be `false` or an object with `failureThreshold`, `cooldownMs` and `windowMs`")
-  for (const key of Object.keys(raw)) if (!FALLBACK_COOLDOWN_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`fallbackCooldown.${key}\` (known: ${[...FALLBACK_COOLDOWN_KNOWN].join(", ")})`)
+  if (!isRecord(raw)) throw new Error("plugboard option `circuitBreaker` must be `false` or an object with `failures`, `cooldownMs` and `failureWindowMs`")
+  for (const key of Object.keys(raw)) if (!CIRCUIT_BREAKER_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`circuitBreaker.${key}\` (known: ${[...CIRCUIT_BREAKER_KNOWN].join(", ")})`)
   return {
-    failureThreshold: positiveInt(raw.failureThreshold, "fallbackCooldown.failureThreshold", DEFAULT_FALLBACK_COOLDOWN.failureThreshold, 1000),
-    cooldownMs: positiveInt(raw.cooldownMs, "fallbackCooldown.cooldownMs", DEFAULT_FALLBACK_COOLDOWN.cooldownMs, MAX_TIMER_MS),
-    windowMs: positiveInt(raw.windowMs, "fallbackCooldown.windowMs", DEFAULT_FALLBACK_COOLDOWN.windowMs, MAX_TIMER_MS),
+    failures: positiveInt(raw.failures, "circuitBreaker.failures", DEFAULT_CIRCUIT_BREAKER.failures, 1000),
+    cooldownMs: positiveInt(raw.cooldownMs, "circuitBreaker.cooldownMs", DEFAULT_CIRCUIT_BREAKER.cooldownMs, MAX_TIMER_MS),
+    failureWindowMs: positiveInt(raw.failureWindowMs, "circuitBreaker.failureWindowMs", DEFAULT_CIRCUIT_BREAKER.failureWindowMs, MAX_TIMER_MS),
   }
 }
 
@@ -571,52 +571,52 @@ function mergedKeys(keys: unknown, apps: unknown): Array<[string, unknown]> {
 
 export type HostedTools = "drop" | "refuse"
 
-/** What `app` does with hosted tools on the Responses route: `drop` unless the app sets `hostedTools` (#498). */
+/** What `app` does with hosted tools on the Responses route: `drop` unless the app sets `onHostedTools` (#498). */
 export function hostedToolsFor(options: Pick<PlugboardOptions, "apps">, app: string): HostedTools {
-  return appPolicy(options, app)?.hostedTools ?? "drop"
+  return appPolicy(options, app)?.onHostedTools ?? "drop"
 }
 
 const APP_KNOWN = new Set([
-  "hostedTools",
+  "onHostedTools",
   "key",
-  "models",
+  "allowedModels",
   "system",
   "systemMode",
   "tools",
   "maxTools",
-  "maxN",
-  "history",
-  "serverTools",
-  "maxServerToolSteps",
-  "maxServerToolCalls",
-  "historyUrl",
+  "maxChoices",
+  "sessions",
+  "opencodeTools",
+  "maxToolSteps",
+  "maxToolCalls",
+  "sessionUrl",
   "promptCache",
   "endpoints",
   "requestTimeoutMs",
   "maxOutputTokens",
   "sampling",
-  "model",
+  "pinnedModel",
   "userHeader",
   "reasoningOutput",
   "settleMs",
 ])
 
 /**
- * Option `apps.<name>.history` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hidden` (since 0.29.0, #337).
- * Unset fields fall back to the global `history`.
+ * Option `apps.<name>.sessions` (#265): `maxSessions` and `maxAgeDays`, each 1 or more when set, and `hideFromList` (#337).
+ * Unset fields fall back to the global `sessions`.
  */
-function parseAppHistory(raw: unknown, at: string): HistoryLimits {
-  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.history\` must be an object: { maxSessions, maxAgeDays, hidden }`)
+function parseAppSessions(raw: unknown, at: string): HistoryLimits {
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.sessions\` must be an object: { maxSessions, maxAgeDays, hideFromList }`)
   for (const key of Object.keys(raw))
-    if (key !== "maxSessions" && key !== "maxAgeDays" && key !== "hidden") throw new Error(`Unknown plugboard option \`${at}.history.${key}\` (known: maxSessions, maxAgeDays, hidden)`)
-  const maxSessions = raw.maxSessions === undefined ? undefined : positiveInt(raw.maxSessions, `${at}.history.maxSessions`, 0, 1_000_000)
-  const maxAgeDays = raw.maxAgeDays === undefined ? undefined : positiveInt(raw.maxAgeDays, `${at}.history.maxAgeDays`, 0, MAX_AGE_DAYS)
-  if (raw.hidden !== undefined && typeof raw.hidden !== "boolean") throw new Error(`plugboard option \`${at}.history.hidden\` must be a boolean`)
-  const hidden = raw.hidden as boolean | undefined
+    if (key !== "maxSessions" && key !== "maxAgeDays" && key !== "hideFromList") throw new Error(`Unknown plugboard option \`${at}.sessions.${key}\` (known: maxSessions, maxAgeDays, hideFromList)`)
+  const maxSessions = raw.maxSessions === undefined ? undefined : positiveInt(raw.maxSessions, `${at}.sessions.maxSessions`, 0, 1_000_000)
+  const maxAgeDays = raw.maxAgeDays === undefined ? undefined : positiveInt(raw.maxAgeDays, `${at}.sessions.maxAgeDays`, 0, MAX_AGE_DAYS)
+  if (raw.hideFromList !== undefined && typeof raw.hideFromList !== "boolean") throw new Error(`plugboard option \`${at}.sessions.hideFromList\` must be a boolean`)
+  const hideFromList = raw.hideFromList as boolean | undefined
   return {
     ...(maxSessions === undefined ? {} : { maxSessions }),
     ...(maxAgeDays === undefined ? {} : { maxAgeDays }),
-    ...(hidden === undefined ? {} : { hidden }),
+    ...(hideFromList === undefined ? {} : { hideFromList }),
   }
 }
 
@@ -634,17 +634,17 @@ const MAX_SERVER_TOOL_CALLS = 1000
 /** Tools that start a child session. The child runs with its own agent's rules, not the request session's deny-all (#195). */
 const SESSION_SPAWNING_TOOLS: ReadonlySet<string> = new Set(["subagent", "task"])
 
-/** `apps.<name>.serverTools`: exact OpenCode tool ids. No wildcards, no duplicates, and not the seeds or CodeMode's `execute`. */
+/** `apps.<name>.opencodeTools`: exact OpenCode tool ids. No wildcards, no duplicates, and not the seeds or CodeMode's `execute`. */
 function parseServerTools(value: unknown, at: string): string[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SERVER_TOOLS) throw new Error(`${at}.serverTools must be an array of 1 to ${MAX_SERVER_TOOLS} OpenCode tool ids`)
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SERVER_TOOLS) throw new Error(`${at}.opencodeTools must be an array of 1 to ${MAX_SERVER_TOOLS} OpenCode tool ids`)
   const tools: string[] = []
   for (const tool of value) {
     if (typeof tool !== "string" || !SERVER_TOOL_PATTERN.test(tool))
-      throw new Error(`${at}.serverTools entry \`${String(tool)}\` must be an exact OpenCode tool id (letters, digits, \`_\`, \`.\`, \`:\`, \`-\`; no wildcards)`)
-    if (tool === "execute") throw new Error(`${at}.serverTools cannot name \`execute\`: it is OpenCode's CodeMode tool and would run every tool it wraps`)
-    if (SESSION_SPAWNING_TOOLS.has(tool)) throw new Error(`${at}.serverTools cannot name \`${tool}\`: it starts a child session with its own agent rules, outside this app's deny-all`)
-    if (tool.startsWith(SEED_PREFIX)) throw new Error(`${at}.serverTools cannot name \`${tool}\`: plugboard's own seed tools are reserved`)
-    if (tools.includes(tool)) throw new Error(`${at}.serverTools lists \`${tool}\` twice`)
+      throw new Error(`${at}.opencodeTools entry \`${String(tool)}\` must be an exact OpenCode tool id (letters, digits, \`_\`, \`.\`, \`:\`, \`-\`; no wildcards)`)
+    if (tool === "execute") throw new Error(`${at}.opencodeTools cannot name \`execute\`: it is OpenCode's CodeMode tool and would run every tool it wraps`)
+    if (SESSION_SPAWNING_TOOLS.has(tool)) throw new Error(`${at}.opencodeTools cannot name \`${tool}\`: it starts a child session with its own agent rules, outside this app's deny-all`)
+    if (tool.startsWith(SEED_PREFIX)) throw new Error(`${at}.opencodeTools cannot name \`${tool}\`: plugboard's own seed tools are reserved`)
+    if (tools.includes(tool)) throw new Error(`${at}.opencodeTools lists \`${tool}\` twice`)
     tools.push(tool)
   }
   return tools
@@ -664,25 +664,25 @@ function parseUserHeader(raw: unknown, at: string): string {
 }
 
 /**
- * Option `apps.<name>.model` (#261): one canonical id (`provider/model[#variant]`) or an alias name, never a `provider/*` pattern.
- * A canonical id must pass the global `models` and, when the app has `models`, the app's own list (an alias must be listed there by name).
+ * Option `apps.<name>.pinnedModel` (#261): one canonical id (`provider/model[#variant]`) or an alias name, never a `provider/*` pattern.
+ * A canonical id must pass the global `models` and, when the app has `allowedModels`, the app's own list (an alias must be listed there by name).
  */
 function parsePinnedModel(raw: unknown, at: string, appModels: ReadonlyArray<string> | undefined, context: { aliases: Readonly<Record<string, string>>; models: ReadonlyArray<string> }): string {
   if (typeof raw !== "string" || raw.includes("*") || !(MODEL_PATTERN.test(raw) || Object.hasOwn(context.aliases, raw))) {
     // A plain name is most likely an alias that was never defined (#545): say so.
     const undefinedAlias = typeof raw === "string" && /^[a-z0-9][a-z0-9._-]*$/i.test(raw) ? `; \`${raw}\` is not an alias, add it to \`aliases\`` : ""
-    throw new Error(`plugboard option \`${at}.model\` must be \`provider/model\`, \`provider/model#variant\` or an alias name (a \`provider/*\` pattern cannot pin one model)${undefinedAlias}`)
+    throw new Error(`plugboard option \`${at}.pinnedModel\` must be \`provider/model\`, \`provider/model#variant\` or an alias name (a \`provider/*\` pattern cannot pin one model)${undefinedAlias}`)
   }
   if (Object.hasOwn(context.aliases, raw)) {
-    // Runtime (`inAppScope`, src/models.ts) admits an alias that the app lists by name, or whose target an app `models` pattern matches.
+    // Runtime (`inAppScope`, src/models.ts) admits an alias that the app lists by name, or whose target an app `allowedModels` pattern matches.
     const target = parseModelRef(context.aliases[raw]!)
     if (appModels !== undefined && !appModels.includes(raw) && !(target !== undefined && allowedBy(appModels, target)))
-      throw new Error(`plugboard option \`${at}.model\` alias \`${raw}\` must be listed in \`${at}.models\`, or its target must match one of them`)
+      throw new Error(`plugboard option \`${at}.pinnedModel\` alias \`${raw}\` must be listed in \`${at}.allowedModels\`, or its target must match one of them`)
     return raw
   }
   const ref = parseModelRef(raw)!
-  if (!allowedBy(context.models, ref)) throw new Error(`plugboard option \`${at}.model\` \`${raw}\` is not allowed by the \`models\` option`)
-  if (appModels !== undefined && !appModels.includes(raw) && !allowedBy(appModels, ref)) throw new Error(`plugboard option \`${at}.model\` \`${raw}\` must be listed in \`${at}.models\``)
+  if (!allowedBy(context.models, ref)) throw new Error(`plugboard option \`${at}.pinnedModel\` \`${raw}\` is not allowed by the \`models\` option`)
+  if (appModels !== undefined && !appModels.includes(raw) && !allowedBy(appModels, ref)) throw new Error(`plugboard option \`${at}.pinnedModel\` \`${raw}\` must be listed in \`${at}.allowedModels\``)
   return raw
 }
 
@@ -725,7 +725,7 @@ function parseSampling(raw: unknown, at: string): PlugGeneration {
 /** Validates `apps` (the `key` field was merged into `keys` already) into per-app policies. */
 function parseApps(
   raw: unknown,
-  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; models: ReadonlyArray<string>; maxTools: number; maxN: number },
+  context: { keys: Readonly<Record<string, string>>; aliases: Readonly<Record<string, string>>; models: ReadonlyArray<string>; maxTools: number; maxChoices: number },
 ): Record<string, AppPolicy> {
   const entries: Array<[string, AppPolicy]> = []
   for (const [app, value] of Object.entries(isRecord(raw) ? raw : {})) {
@@ -737,13 +737,13 @@ function parseApps(
     if (app === DEFAULT_APP && (keyed || value.key !== undefined)) throw new Error(`${at} configures the keyless app and cannot be used together with \`keys\`; name the app and give it a key instead`)
     if (app !== DEFAULT_APP && !Object.hasOwn(context.keys, app)) throw new Error(`${at} has no key: add \`key\` there or an entry in \`keys\``)
 
-    // `"connected"` names no narrowing: the app gets whatever the global `models` allows, the same as omitting it.
-    const appModels = value.models === CONNECTED ? undefined : value.models
+    // `"all"` names no narrowing: the app gets whatever the global `models` allows, the same as omitting it.
+    const appModels = value.allowedModels === ALL_MODELS ? undefined : value.allowedModels
     if (appModels !== undefined) {
-      if (!Array.isArray(appModels) || appModels.length === 0) throw new Error(`${at}.models must be a non-empty array or \`"connected"\` (omit it to inherit the global \`models\`)`)
+      if (!Array.isArray(appModels) || appModels.length === 0) throw new Error(`${at}.allowedModels must be a non-empty array or \`"all"\` (omit it to inherit the global \`models\`)`)
       for (const entry of appModels)
         if (typeof entry !== "string" || !(MODEL_PATTERN.test(entry) || Object.hasOwn(context.aliases, entry)))
-          throw new Error(`${at}.models entry \`${String(entry)}\` must be \`provider/model\`, \`provider/model#variant\`, \`provider/*\` or an alias name`)
+          throw new Error(`${at}.allowedModels entry \`${String(entry)}\` must be \`provider/model\`, \`provider/model#variant\`, \`provider/*\` or an alias name`)
     }
     if (value.system !== undefined && (typeof value.system !== "string" || value.system.trim().length === 0)) throw new Error(`${at}.system must be a non-empty string`)
     if (value.systemMode !== undefined && (typeof value.systemMode !== "string" || !SYSTEM_MODES.has(value.systemMode)))
@@ -751,56 +751,54 @@ function parseApps(
     if (value.systemMode !== undefined && value.system === undefined) throw new Error(`${at}.systemMode needs \`system\``)
     if (value.tools !== undefined && typeof value.tools !== "boolean") throw new Error(`${at}.tools must be a boolean`)
     const maxTools = value.maxTools === undefined ? undefined : positiveInt(value.maxTools, `apps.${app}.maxTools`, 0, context.maxTools)
-    // Only lowers the global `maxN` (#270), like `maxTools`: a higher value would be a second, unchecked global.
-    const maxN = value.maxN === undefined ? undefined : positiveInt(value.maxN, `apps.${app}.maxN`, 0, context.maxN)
-    if (value.serverTools !== undefined && app === DEFAULT_APP) throw new Error(`${at}.serverTools needs a key: the keyless app cannot run OpenCode tools; name the app and give it a key`)
-    const serverTools = value.serverTools === undefined ? undefined : parseServerTools(value.serverTools, at)
-    if (value.maxServerToolSteps !== undefined && serverTools === undefined) throw new Error(`${at}.maxServerToolSteps needs \`serverTools\``)
-    const maxServerToolSteps =
-      value.maxServerToolSteps === undefined ? undefined : positiveInt(value.maxServerToolSteps, `apps.${app}.maxServerToolSteps`, DEFAULT_SERVER_TOOL_STEPS, MAX_SERVER_TOOL_STEPS)
-    if (value.maxServerToolCalls !== undefined && serverTools === undefined) throw new Error(`${at}.maxServerToolCalls needs \`serverTools\``)
-    const maxServerToolCalls =
-      value.maxServerToolCalls === undefined ? undefined : positiveInt(value.maxServerToolCalls, `apps.${app}.maxServerToolCalls`, DEFAULT_SERVER_TOOL_CALLS, MAX_SERVER_TOOL_CALLS)
+    // Only lowers the global `maxChoices` (#270), like `maxTools`: a higher value would be a second, unchecked global.
+    const maxChoices = value.maxChoices === undefined ? undefined : positiveInt(value.maxChoices, `apps.${app}.maxChoices`, 0, context.maxChoices)
+    if (value.opencodeTools !== undefined && app === DEFAULT_APP) throw new Error(`${at}.opencodeTools needs a key: the keyless app cannot run OpenCode tools; name the app and give it a key`)
+    const opencodeTools = value.opencodeTools === undefined ? undefined : parseServerTools(value.opencodeTools, at)
+    if (value.maxToolSteps !== undefined && opencodeTools === undefined) throw new Error(`${at}.maxToolSteps needs \`opencodeTools\``)
+    const maxToolSteps = value.maxToolSteps === undefined ? undefined : positiveInt(value.maxToolSteps, `apps.${app}.maxToolSteps`, DEFAULT_SERVER_TOOL_STEPS, MAX_SERVER_TOOL_STEPS)
+    if (value.maxToolCalls !== undefined && opencodeTools === undefined) throw new Error(`${at}.maxToolCalls needs \`opencodeTools\``)
+    const maxToolCalls = value.maxToolCalls === undefined ? undefined : positiveInt(value.maxToolCalls, `apps.${app}.maxToolCalls`, DEFAULT_SERVER_TOOL_CALLS, MAX_SERVER_TOOL_CALLS)
 
     // `false` turns the link off for this app; a string is its own template (validated like the global one).
-    const historyUrl = value.historyUrl === false ? false : parseHistoryUrl(value.historyUrl, `plugboard option \`apps.${app}.historyUrl\``)
+    const sessionUrl = value.sessionUrl === false ? false : parseSessionUrl(value.sessionUrl, `plugboard option \`apps.${app}.sessionUrl\``)
     const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
     const endpoints = value.endpoints === undefined ? undefined : parseEndpoints(value.endpoints, at)
-    const history = value.history === undefined ? undefined : parseAppHistory(value.history, `apps.${app}`)
+    const sessions = value.sessions === undefined ? undefined : parseAppSessions(value.sessions, `apps.${app}`)
     // A deadline may be longer or shorter than the global one (#257); it is checked against the same ceiling as the global option.
     const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
     const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
     const settleMs = value.settleMs === undefined ? undefined : positiveInt(value.settleMs, `apps.${app}.settleMs`, 0, MAX_TIMER_MS)
     const sampling = value.sampling === undefined ? undefined : parseSampling(value.sampling, `apps.${app}`)
-    const model = value.model === undefined ? undefined : parsePinnedModel(value.model, `apps.${app}`, appModels as string[] | undefined, context)
+    const pinnedModel = value.pinnedModel === undefined ? undefined : parsePinnedModel(value.pinnedModel, `apps.${app}`, appModels as string[] | undefined, context)
     const userHeader = value.userHeader === undefined ? undefined : parseUserHeader(value.userHeader, `apps.${app}.userHeader`)
     if (value.reasoningOutput !== undefined && typeof value.reasoningOutput !== "boolean") throw new Error(`plugboard option \`apps.${app}.reasoningOutput\` must be a boolean`)
     const reasoningOutput = value.reasoningOutput as boolean | undefined
-    if (value.hostedTools !== undefined && value.hostedTools !== "drop" && value.hostedTools !== "refuse")
-      throw new Error(`plugboard option \`apps.${app}.hostedTools\` must be \`drop\` or \`refuse\``)
-    const hostedTools = value.hostedTools as HostedTools | undefined
+    if (value.onHostedTools !== undefined && value.onHostedTools !== "drop" && value.onHostedTools !== "refuse")
+      throw new Error(`plugboard option \`apps.${app}.onHostedTools\` must be \`drop\` or \`refuse\``)
+    const onHostedTools = value.onHostedTools as HostedTools | undefined
     const policy: AppPolicy = {
-      ...(appModels === undefined ? {} : { models: appModels as string[] }),
+      ...(appModels === undefined ? {} : { allowedModels: appModels as string[] }),
       ...(value.system === undefined ? {} : { system: value.system as string }),
       systemMode: (value.systemMode as SystemMode | undefined) ?? "prepend",
       tools: value.tools !== false,
       ...(maxTools === undefined ? {} : { maxTools }),
-      ...(maxN === undefined ? {} : { maxN }),
-      ...(history === undefined ? {} : { history }),
-      ...(serverTools === undefined ? {} : { serverTools }),
-      ...(maxServerToolSteps === undefined ? {} : { maxServerToolSteps }),
-      ...(maxServerToolCalls === undefined ? {} : { maxServerToolCalls }),
-      ...(historyUrl === undefined ? {} : { historyUrl }),
+      ...(maxChoices === undefined ? {} : { maxChoices }),
+      ...(sessions === undefined ? {} : { sessions }),
+      ...(opencodeTools === undefined ? {} : { opencodeTools }),
+      ...(maxToolSteps === undefined ? {} : { maxToolSteps }),
+      ...(maxToolCalls === undefined ? {} : { maxToolCalls }),
+      ...(sessionUrl === undefined ? {} : { sessionUrl }),
       ...(promptCache === undefined ? {} : { promptCache }),
       ...(endpoints === undefined ? {} : { endpoints }),
       ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
       ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
       ...(settleMs === undefined ? {} : { settleMs }),
       ...(sampling === undefined ? {} : { sampling }),
-      ...(model === undefined ? {} : { model }),
+      ...(pinnedModel === undefined ? {} : { pinnedModel }),
       ...(userHeader === undefined ? {} : { userHeader }),
       ...(reasoningOutput === undefined ? {} : { reasoningOutput }),
-      ...(hostedTools === undefined ? {} : { hostedTools }),
+      ...(onHostedTools === undefined ? {} : { onHostedTools }),
     }
     // An app that only carries a key has no policy to look up.
     if (
@@ -808,19 +806,19 @@ function parseApps(
       value.system !== undefined ||
       value.tools !== undefined ||
       maxTools !== undefined ||
-      maxN !== undefined ||
-      history !== undefined ||
-      serverTools !== undefined ||
-      historyUrl !== undefined ||
+      maxChoices !== undefined ||
+      sessions !== undefined ||
+      opencodeTools !== undefined ||
+      sessionUrl !== undefined ||
       promptCache !== undefined ||
       endpoints !== undefined ||
       requestTimeoutMs !== undefined ||
       maxOutputTokens !== undefined ||
       sampling !== undefined ||
-      model !== undefined ||
+      pinnedModel !== undefined ||
       userHeader !== undefined ||
       reasoningOutput !== undefined ||
-      hostedTools !== undefined ||
+      onHostedTools !== undefined ||
       settleMs !== undefined
     )
       entries.push([app, policy])
@@ -875,7 +873,7 @@ function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limi
     apps[app] = parseCaps(value, at, true)
   }
   const maxBodyBytes = raw.maxBodyBytes === undefined ? undefined : positiveInt(raw.maxBodyBytes, "limits.maxBodyBytes", 0, BODY_HARD_CAP)
-  // An app's body cap only lowers the global one (or the hard cap when there is none), like `maxTools` and `maxN` (#258).
+  // An app's body cap only lowers the global one (or the hard cap when there is none), like `maxTools` and `maxChoices` (#258).
   for (const [app, caps] of Object.entries(apps))
     if (caps.maxBodyBytes !== undefined && caps.maxBodyBytes > (maxBodyBytes ?? BODY_HARD_CAP))
       throw new Error(`plugboard option \`limits.apps.${app}.maxBodyBytes\` cannot be above \`limits.maxBodyBytes\` (or ${BODY_HARD_CAP} when that is unset)`)
@@ -959,21 +957,21 @@ export function endpointRefusal(options: Pick<PlugboardOptions, "apps">, app: st
 }
 
 /**
- * The most choices (`n`) one request of `app` may ask for (#270): its `apps.<name>.maxN` when set, else the global `maxN`. The app's
- * value only lowers the global one (checked at load), so this is never more than `options.maxN`.
+ * The most choices (`n`) one request of `app` may ask for (#270): its `apps.<name>.maxChoices` when set, else the global `maxChoices`. The app's
+ * value only lowers the global one (checked at load), so this is never more than `options.maxChoices`.
  */
-export function maxNFor(options: Pick<PlugboardOptions, "apps" | "maxN">, app: string): number {
-  return appPolicy(options, app)?.maxN ?? options.maxN
+export function maxChoicesFor(options: Pick<PlugboardOptions, "apps" | "maxChoices">, app: string): number {
+  return appPolicy(options, app)?.maxChoices ?? options.maxChoices
 }
 
-/** The option that set the cap of `app` (#319): `apps.<app>.maxN` when the app has its own, else `maxN`. Named in the 400 message. */
-export function maxNOption(options: Pick<PlugboardOptions, "apps">, app: string): string {
-  return appPolicy(options, app)?.maxN === undefined ? "maxN" : `apps.${app}.maxN`
+/** The option that set the cap of `app` (#319): `apps.<app>.maxChoices` when the app has its own, else `maxChoices`. Named in the 400 message. */
+export function maxChoicesOption(options: Pick<PlugboardOptions, "apps">, app: string): string {
+  return appPolicy(options, app)?.maxChoices === undefined ? "maxChoices" : `apps.${app}.maxChoices`
 }
 
-/** Each app's own history limits (`apps.<name>.history`, #265), keyed by app name. Apps without the option are absent. */
+/** Each app's own session limits (`apps.<name>.sessions`, #265), keyed by app name. Apps without the option are absent. */
 export function appHistoryLimits(options: Pick<PlugboardOptions, "apps">): Record<string, HistoryLimits> {
-  return Object.fromEntries(Object.entries(options.apps).flatMap(([app, policy]) => (policy.history === undefined ? [] : [[app, policy.history] as const])))
+  return Object.fromEntries(Object.entries(options.apps).flatMap(([app, policy]) => (policy.sessions === undefined ? [] : [[app, policy.sessions] as const])))
 }
 
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
@@ -995,11 +993,11 @@ export function requestTimeoutFor(options: Pick<PlugboardOptions, "apps" | "requ
 }
 
 /**
- * The model and effort a request of `app` resolves (#261): the app's pinned `model` with no caller effort (the pin names the variant),
+ * The model and effort a request of `app` resolves (#261): the app's `pinnedModel` with no caller effort (the pin names the variant),
  * else the caller's `model` and `reasoning_effort`.
  */
 export function requestedModel(options: Pick<PlugboardOptions, "apps">, app: string, model: string, effort: string | undefined): { model: string; effort: string | undefined } {
-  const pinned = appPolicy(options, app)?.model
+  const pinned = appPolicy(options, app)?.pinnedModel
   return pinned === undefined ? { model, effort } : { model: pinned, effort: undefined }
 }
 
@@ -1021,17 +1019,18 @@ function parseUsage(value: unknown): UsageConfig {
 
 function parseCache(value: unknown, keys: Readonly<Record<string, string>>): CacheConfig | undefined {
   if (value === undefined) return undefined
-  if (!isRecord(value)) throw new Error("plugboard option `cache` must be an object with `ttlSeconds`")
-  for (const key of Object.keys(value)) if (!CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`cache.${key}\` (known: ${[...CACHE_KNOWN].join(", ")})`)
-  if (value.ttlSeconds === undefined) throw new Error("plugboard option `cache.ttlSeconds` is required (how long an answer is served, in seconds)")
-  const ttlSeconds = positiveInt(value.ttlSeconds, "cache.ttlSeconds", 0, MAX_CACHE_TTL_SECONDS)
-  const maxEntries = positiveInt(value.maxEntries, "cache.maxEntries", CACHE_DEFAULTS.maxEntries)
-  const maxBytes = positiveInt(value.maxBytes, "cache.maxBytes", CACHE_DEFAULTS.maxBytes)
+  if (!isRecord(value)) throw new Error("plugboard option `responseCache` must be an object with `ttlSeconds`")
+  for (const key of Object.keys(value)) if (!CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`responseCache.${key}\` (known: ${[...CACHE_KNOWN].join(", ")})`)
+  if (value.ttlSeconds === undefined) throw new Error("plugboard option `responseCache.ttlSeconds` is required (how long an answer is served, in seconds)")
+  const ttlSeconds = positiveInt(value.ttlSeconds, "responseCache.ttlSeconds", 0, MAX_CACHE_TTL_SECONDS)
+  const maxEntries = positiveInt(value.maxEntries, "responseCache.maxEntries", CACHE_DEFAULTS.maxEntries)
+  const maxBytes = positiveInt(value.maxBytes, "responseCache.maxBytes", CACHE_DEFAULTS.maxBytes)
   if (value.apps === undefined) return { ttlSeconds, maxEntries, maxBytes }
-  if (!Array.isArray(value.apps) || value.apps.length === 0) throw new Error("plugboard option `cache.apps` must be a non-empty array of app names")
+  if (!Array.isArray(value.apps) || value.apps.length === 0) throw new Error("plugboard option `responseCache.apps` must be a non-empty array of app names")
   // A name that can never authenticate would silently leave the cache off for the app the user meant.
   const known = Object.keys(keys).length === 0 ? [DEFAULT_APP] : Object.keys(keys)
-  for (const app of value.apps) if (typeof app !== "string" || !known.includes(app)) throw new Error(`plugboard \`cache.apps\` entry \`${String(app)}\` is not an app (known: ${known.join(", ")})`)
+  for (const app of value.apps)
+    if (typeof app !== "string" || !known.includes(app)) throw new Error(`plugboard \`responseCache.apps\` entry \`${String(app)}\` is not an app (known: ${known.join(", ")})`)
   return { ttlSeconds, maxEntries, maxBytes, apps: [...new Set(value.apps as string[])] }
 }
 
@@ -1121,10 +1120,10 @@ function parseAgents(raw: unknown, models: ReadonlyArray<string>): Record<string
 }
 
 /**
- * Option `historyUrl` (#77): an http(s) URL template that must contain `{id}`. Its only other placeholder is
+ * Option `sessionUrl` (#77): an http(s) URL template that must contain `{id}`. Its only other placeholder is
  * `{directory}`, so a typo such as `{sesion}` fails at load instead of producing a link that is wrong.
  */
-function parseHistoryUrl(value: unknown, at = "plugboard option `historyUrl`"): string | undefined {
+function parseSessionUrl(value: unknown, at = "plugboard option `sessionUrl`"): string | undefined {
   if (value === undefined) return undefined
   if (typeof value !== "string" || !value.includes("{id}")) throw new Error(`${at} must be a URL template with {id} (for example http://host:4096/session/{id})`)
   const unknown = (value.match(/\{[^{}]*\}/g) ?? []).find((placeholder) => placeholder !== "{id}" && placeholder !== "{directory}")
@@ -1139,13 +1138,13 @@ function parseHistoryUrl(value: unknown, at = "plugboard option `historyUrl`"): 
   return value
 }
 
-/** Option `models`: an array of patterns, or the string `"connected"` (every model of every connected provider). Unset is the empty list. */
+/** Option `models`: an array of patterns, or the string `"all"` (every model of every connected provider). Unset is the empty list. */
 function parseModels(raw: unknown): string[] {
   if (raw === undefined || raw === null) return []
-  if (raw === CONNECTED) return [CONNECTED]
+  if (raw === ALL_MODELS) return [ALL_MODELS]
   if (!Array.isArray(raw)) throw new Error("plugboard option `models` must be an array of strings")
   for (const pattern of raw) {
-    if (pattern === CONNECTED) throw new Error(`plugboard option \`models\` takes \`"${CONNECTED}"\` as the whole value (\`"models": "${CONNECTED}"\`), not as a list entry`)
+    if (pattern === ALL_MODELS) throw new Error(`plugboard option \`models\` takes \`"${ALL_MODELS}"\` as the whole value (\`"models": "${ALL_MODELS}"\`), not as a list entry`)
     if (typeof pattern !== "string" || !MODEL_PATTERN.test(pattern)) throw new Error(`plugboard model \`${String(pattern)}\` must be \`provider/model\`, \`provider/model#variant\` or \`provider/*\``)
   }
   return raw as string[]
@@ -1222,15 +1221,15 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   }
   const aliases: Record<string, string> = Object.fromEntries(aliasEntries)
   const fallbacks: Record<string, string[]> = Object.fromEntries(fallbackEntries)
-  const fallbackAfterMs = input.fallbackAfterMs === undefined ? undefined : positiveInt(input.fallbackAfterMs, "fallbackAfterMs", 0, MAX_TIMER_MS)
-  const fallbackCooldown = parseFallbackCooldown(input.fallbackCooldown)
+  const firstEventTimeoutMs = input.firstEventTimeoutMs === undefined ? undefined : positiveInt(input.firstEventTimeoutMs, "firstEventTimeoutMs", 0, MAX_TIMER_MS)
+  const circuitBreaker = parseCircuitBreaker(input.circuitBreaker)
   const requestTimeoutMs = positiveInt(input.requestTimeoutMs, "requestTimeoutMs", DEFAULTS.requestTimeoutMs, MAX_TIMER_MS)
   const silenceMs = input.silenceMs === undefined ? undefined : positiveInt(input.silenceMs, "silenceMs", 0, MAX_TIMER_MS)
   const agents = parseAgents(input.agents, models as string[])
 
   const maxTools = positiveInt(input.maxTools, "maxTools", DEFAULTS.maxTools, 1024)
-  const maxN = positiveInt(input.maxN, "maxN", DEFAULTS.maxN, 64)
-  const apps = parseApps(input.apps, { keys, aliases, models: models as string[], maxTools, maxN })
+  const maxChoices = positiveInt(input.maxChoices, "maxChoices", DEFAULTS.maxChoices, 64)
+  const apps = parseApps(input.apps, { keys, aliases, models: models as string[], maxTools, maxChoices })
 
   const remoteImages = parseRemoteImages(input.remoteImages)
   if (input.dropUnsupportedParams !== undefined && typeof input.dropUnsupportedParams !== "boolean") throw new Error("plugboard option `dropUnsupportedParams` must be a boolean")
@@ -1242,21 +1241,21 @@ export function parseOptions(raw: unknown): PlugboardOptions {
   if (input.reasoningOutput !== undefined && typeof input.reasoningOutput !== "boolean") throw new Error("plugboard option `reasoningOutput` must be a boolean")
   if (input.modelIds !== undefined && (typeof input.modelIds !== "string" || !MODEL_IDS.has(input.modelIds))) throw new Error("plugboard option `modelIds` must be `canonical`, `slugs` or `both`")
 
-  const historyInput = input.history
-  if (historyInput !== undefined && !isRecord(historyInput)) throw new Error("plugboard option `history` must be an object")
-  for (const key of Object.keys(historyInput ?? {})) if (!HISTORY_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`history.${key}\` (known: ${[...HISTORY_KNOWN].join(", ")})`)
-  const maxSessions = historyInput?.maxSessions === undefined ? undefined : positiveInt(historyInput.maxSessions, "history.maxSessions", 0)
+  const historyInput = input.sessions
+  if (historyInput !== undefined && !isRecord(historyInput)) throw new Error("plugboard option `sessions` must be an object")
+  for (const key of Object.keys(historyInput ?? {})) if (!HISTORY_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`sessions.${key}\` (known: ${[...HISTORY_KNOWN].join(", ")})`)
+  const maxSessions = historyInput?.maxSessions === undefined ? undefined : positiveInt(historyInput.maxSessions, "sessions.maxSessions", 0)
   // Unset: 30 days (#158). `0` is the explicit opt-out: no age limit, so the parsed value is absent.
   const rawAge = historyInput?.maxAgeDays
   if (rawAge !== undefined && (typeof rawAge !== "number" || !Number.isInteger(rawAge) || rawAge < 0 || rawAge > MAX_AGE_DAYS))
-    throw new Error(`plugboard option \`history.maxAgeDays\` must be an integer between 0 and ${MAX_AGE_DAYS} (0 keeps sessions of any age)`)
+    throw new Error(`plugboard option \`sessions.maxAgeDays\` must be an integer between 0 and ${MAX_AGE_DAYS} (0 keeps sessions of any age)`)
   const ageDays = rawAge ?? DEFAULT_HISTORY_DAYS
   const maxAgeDays = ageDays === 0 ? undefined : ageDays
-  if (historyInput?.hidden !== undefined && typeof historyInput.hidden !== "boolean") throw new Error("plugboard option `history.hidden` must be a boolean")
-  const hidden = historyInput?.hidden as boolean | undefined
+  if (historyInput?.hideFromList !== undefined && typeof historyInput.hideFromList !== "boolean") throw new Error("plugboard option `sessions.hideFromList` must be a boolean")
+  const hideFromList = historyInput?.hideFromList as boolean | undefined
 
   const limits = parseLimits(input.limits, keys)
-  const cache = parseCache(input.cache, keys)
+  const responseCache = parseCache(input.responseCache, keys)
   const usage = parseUsage(input.usage)
   const budgets = parseBudgets(input.budgets, keys)
   if (budgets !== undefined && !usage.enabled) throw new Error("plugboard option `budgets` needs `usage` enabled: budgets are counted from the usage records")
@@ -1264,28 +1263,30 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     throw new Error(
       `plugboard option \`usage.retentionDays\` must be at least ${widestWindowDays(budgets)} for the budget windows in use (a month is 31 days, a week 7): older days are deleted and would stop counting`,
     )
-  const historyUrl = parseHistoryUrl(input.historyUrl)
+  const sessionUrl = parseSessionUrl(input.sessionUrl)
   const promptCache = parsePromptCache(input.promptCache, "promptCache")
-  // `history.hidden` parents an app's request sessions under one app-scope parent (#337). A per-user anchor cannot be that parent too.
+  // `sessions.hideFromList` parents an app's request sessions under one app-scope parent (#337). A per-user anchor cannot be that parent too.
   // With keys, `default` is not a usable app (line ~582): only the named apps are checked.
   const checkedApps = Object.keys(keys).length === 0 ? [DEFAULT_APP] : Object.keys(keys)
   for (const app of checkedApps) {
-    const hiddenHere = (apps[app]?.history?.hidden ?? hidden) === true
+    const hiddenHere = (apps[app]?.sessions?.hideFromList ?? hideFromList) === true
     const cacheHere = apps[app]?.promptCache ?? promptCache
     if (hiddenHere && cacheHere?.affinity === "anchor" && cacheHere.scope === "user")
       throw new Error(
-        `plugboard app \`${app}\` sets \`history.hidden\` with \`promptCache\` scope \`user\`: the hidden parent is one per app, so it cannot also be the per-user anchor. Use scope \`app\`, or turn one of them off`,
+        `plugboard app \`${app}\` sets \`sessions.hideFromList\` with \`promptCache\` scope \`user\`: the hidden parent is one per app, so it cannot also be the per-user anchor. Use scope \`app\`, or turn one of them off`,
       )
   }
   const cors = parseCors(input.cors, keyEntries.length > 0)
   // A first-event deadline at or past a request deadline never fires, so the chain would silently do nothing (#391).
-  if (fallbackAfterMs !== undefined && fallbackAfterMs >= requestTimeoutMs)
+  if (firstEventTimeoutMs !== undefined && firstEventTimeoutMs >= requestTimeoutMs)
     throw new Error(
-      `plugboard option \`fallbackAfterMs\` (${fallbackAfterMs}) must be below \`requestTimeoutMs\` (${requestTimeoutMs}): a first-event deadline at or past the request deadline never fires`,
+      `plugboard option \`firstEventTimeoutMs\` (${firstEventTimeoutMs}) must be below \`requestTimeoutMs\` (${requestTimeoutMs}): a first-event deadline at or past the request deadline never fires`,
     )
   for (const [app, policy] of Object.entries(apps))
-    if (fallbackAfterMs !== undefined && policy.requestTimeoutMs !== undefined && fallbackAfterMs >= policy.requestTimeoutMs)
-      throw new Error(`plugboard option \`fallbackAfterMs\` (${fallbackAfterMs}) must be below \`apps.${app}.requestTimeoutMs\` (${policy.requestTimeoutMs}): the app's requests have that deadline`)
+    if (firstEventTimeoutMs !== undefined && policy.requestTimeoutMs !== undefined && firstEventTimeoutMs >= policy.requestTimeoutMs)
+      throw new Error(
+        `plugboard option \`firstEventTimeoutMs\` (${firstEventTimeoutMs}) must be below \`apps.${app}.requestTimeoutMs\` (${policy.requestTimeoutMs}): the app's requests have that deadline`,
+      )
 
   return {
     ...(promptCache === undefined ? {} : { promptCache }),
@@ -1296,14 +1297,14 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     aliases,
     agents,
     fallbacks,
-    ...(fallbackAfterMs === undefined ? {} : { fallbackAfterMs }),
-    ...(fallbackCooldown === undefined ? {} : { fallbackCooldown }),
+    ...(firstEventTimeoutMs === undefined ? {} : { firstEventTimeoutMs }),
+    ...(circuitBreaker === undefined ? {} : { circuitBreaker }),
     maxTools,
-    maxN,
+    maxChoices,
     requestTimeoutMs,
     ...(silenceMs === undefined ? {} : { silenceMs }),
     remoteImages,
-    history: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }), ...(hidden === undefined ? {} : { hidden }) },
+    sessions: { ...(maxSessions === undefined ? {} : { maxSessions }), ...(maxAgeDays === undefined ? {} : { maxAgeDays }), ...(hideFromList === undefined ? {} : { hideFromList }) },
     dropUnsupportedParams: input.dropUnsupportedParams !== false,
     logFormat: input.logFormat === "json" ? "json" : "text",
     logLevel: (input.logLevel as LogLevel | undefined) ?? "info",
@@ -1312,14 +1313,14 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     reasoningOutput: input.reasoningOutput === true,
     modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
     ...(limits === undefined ? {} : { limits }),
-    ...(cache ? { cache } : {}),
+    ...(responseCache ? { responseCache } : {}),
     usage,
     ...(budgets === undefined ? {} : { budgets }),
     ...(typeof input.adminKey === "string" ? { adminKey: input.adminKey } : {}),
     ...(input.requireKeys === true ? { requireKeys: true } : {}),
     ...(input.keepAlive === false ? { keepAlive: false } : {}),
     ...(cors === undefined ? {} : { cors }),
-    ...(historyUrl === undefined ? {} : { historyUrl }),
+    ...(sessionUrl === undefined ? {} : { sessionUrl }),
   }
 }
 

@@ -31,8 +31,8 @@ const CASES: ReadonlyArray<readonly [string, SendInit]> = [
 
 describe("a refused call answers Retry-After before any output", () => {
   test.each(CASES)("%s sends Retry-After: 1 with its 429", async (_name, init) => {
-    // `maxN` lets the n=2 case through; the other cases send one call either way.
-    server = await startRoute({ caller: new FakeModelCaller([refused()]), options: { maxN: 2 } })
+    // `maxChoices` lets the n=2 case through; the other cases send one call either way.
+    server = await startRoute({ caller: new FakeModelCaller([refused()]), options: { maxChoices: 2 } })
     const reply = await server.send(init)
     expect(reply.status).toBe(429)
     expect(reply.headers["retry-after"]).toBe("1")

@@ -22,10 +22,10 @@ afterEach(async () => {
 
 const OPTIONS = {
   models: ["test/*", "other/*"],
-  maxN: 2,
+  maxChoices: 2,
   aliases: { fast: "test/echo#low" },
   keys: { open: "k-open" },
-  apps: { bot: { key: "k-bot", models: ["fast"], tools: false, system: "Be brief." } },
+  apps: { bot: { key: "k-bot", allowedModels: ["fast"], tools: false, system: "Be brief." } },
 }
 const BOT = { authorization: "Bearer k-bot" }
 const OPEN = { authorization: "Bearer k-open" }
@@ -119,7 +119,7 @@ describe("the real session caller behind the route", () => {
       seen.push({ tools: request.tools.length, system: request.system })
       queueMicrotask(() => [bus(input.sessionID).textDelta("ok"), bus(input.sessionID).stepEnded("stop"), bus(input.sessionID).executionSucceeded()].forEach((event) => sessions.dispatch(event)))
     }
-    const caller = createSessionCaller({ port, sessions, maxTools: 4, apps: { bot: { models: ["fast"], tools: false, systemMode: "prepend", system: "Be brief." } } })
+    const caller = createSessionCaller({ port, sessions, maxTools: 4, apps: { bot: { allowedModels: ["fast"], tools: false, systemMode: "prepend", system: "Be brief." } } })
     server = await startRoute({ caller, options: OPTIONS })
     return { port, seen }
   }

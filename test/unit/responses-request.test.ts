@@ -541,13 +541,13 @@ describe("#498 Codex tool shapes: namespace, custom, additional_tools and hosted
     expect(parseResponsesRequest(body({ tools: [{ type: "namespace", name: "n", tools: [] }, { type: "web_search" }] }), wide)).toMatchObject({ param: "tools[1].type" })
   })
 
-  test('hostedTools "refuse" refuses a hosted tool even next to function tools; "drop" is the default', () => {
+  test('onHostedTools "refuse" refuses a hosted tool even next to function tools; "drop" is the default', () => {
     const raw = body({ tools: [fn("a"), { type: "web_search" }] })
     expect(parseResponsesRequest(raw, wide, undefined, undefined, "refuse")).toMatchObject({
       status: 400,
       code: "unsupported_parameter",
       param: "tools[1].type",
-      message: expect.stringContaining("hostedTools"),
+      message: expect.stringContaining("onHostedTools"),
     })
     expect(isPlugError(parseResponsesRequest(raw, wide, undefined, undefined, "drop"))).toBe(false)
     expect(isPlugError(parseResponsesRequest(raw, wide))).toBe(false)

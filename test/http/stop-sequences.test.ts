@@ -21,7 +21,7 @@ afterEach(async () => {
 
 /** Reasoning quotes END, the answer ends at END, and the run is billed 10 in and 500 out up to its finish. */
 const script: Script = [ev.reasoning('quote: "Hello", then END'), ev.text("Hello END and more"), ev.finish("stop", { inputTokens: 10, outputTokens: 500 })]
-const OPTIONS = { maxN: 2, aliases: { fast: "test/echo" } }
+const OPTIONS = { maxChoices: 2, aliases: { fast: "test/echo" } }
 
 async function routeWith(caller: FakeModelCaller, options: Record<string, unknown> = {}) {
   server = await startRoute({ caller: withStopSequences(caller), options: { ...OPTIONS, ...options } })

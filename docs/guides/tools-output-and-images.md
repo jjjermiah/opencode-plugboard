@@ -27,7 +27,7 @@ The full bot is in [examples/tool-bot/](https://github.com/jjjermiah/opencode-pl
 
 - `maxTools` (default 64) caps the tools one request may carry. Claude Code sends 36.
 - `parallel_tool_calls: false` keeps the first call of an answer and drops the rest. The response says so with `x-plugboard-parallel-tools: limited`.
-- To let OpenCode run a tool on the server instead, an app can list it in `serverTools`. This gives that app's key real power on the server. Read the warning in the reference first.
+- To let OpenCode run a tool on the server instead, an app can list it in `opencodeTools`. This gives that app's key real power on the server. Read the warning in the reference first.
 
 ## Streaming
 
@@ -67,7 +67,7 @@ With `true` or an `allow` list, the server fetches only public addresses by defa
 
 ## Several answers with `n`
 
-`n` above 1 returns several answers from one request. Each choice is a full model call, so `n: 3` costs three times as much. `maxN` (default 1) is the cap. Above it the request gets a 400 `too_many_choices`. A single app can have a lower cap: `apps.<name>.maxN`.
+`n` above 1 returns several answers from one request. Each choice is a full model call, so `n: 3` costs three times as much. `maxChoices` (default 1) is the cap. Above it the request gets a 400 `too_many_choices`. A single app can have a lower cap: `apps.<name>.maxChoices`.
 
 ## Count tokens before you send
 
@@ -90,7 +90,7 @@ All in the [configuration reference](../configuration.md#tools-structured-output
 - [`maxTools`](../configuration.md#options) and [the cost of the seed pool](../configuration.md#cost-of-the-seed-pool)
 - [`remoteImages` limits](../configuration.md#remote-image-limits)
 - [Request fields and behaviours](../configuration.md#request-fields-and-behaviours)
-- `maxN`, `dropUnsupportedParams`
+- `maxChoices`, `dropUnsupportedParams`
 - Per-endpoint detail: [Chat Completions](../chat-completions.md), [Responses](../responses.md), [Messages](../messages.md), [Gemini](../gemini.md), [Completions and `n`](../completions.md)
 
 Next: [History, usage and monitoring](history-usage-and-monitoring.md).

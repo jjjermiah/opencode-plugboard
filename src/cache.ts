@@ -1,7 +1,7 @@
 /**
  * Opt-in exact-match response cache, as a `ModelCaller` wrapper.
  *
- * Pollers and bots repeat identical prompts and pay quota every time. With `cache` set, a
+ * Pollers and bots repeat identical prompts and pay quota every time. With `responseCache` set, a
  * completed answer is kept in memory, and the same request from the same app within the TTL is
  * answered from it without creating a session or touching the provider.
  *
@@ -17,7 +17,7 @@
  * messages, tools, tool choice and sampling parameters. The `model` string the caller sent (an
  * alias, say) is not part of it, so two names for one model share entries. Apps never share
  * entries. The store is process-wide (`src/runtime.ts`), so it survives plugin generations, is
- * reset when the cache option or the `apps` policy changes, and is lost on restart.
+ * reset when the `responseCache` option or the `apps` policy changes, and is lost on restart.
  *
  * Policy that the key does not see (a system prompt part, a tool strip, a model scope) is applied
  * after the key is built. That is safe because the store is reset whenever `apps` changes, so an
@@ -37,7 +37,7 @@ import { LRUCache } from "lru-cache"
 import stableStringify from "safe-stable-stringify"
 import type { CallContext, ModelCaller, PlugEvent, PlugFinish, PlugRequest, PolicyNote, ServedModel } from "./contract.js"
 
-/** The `cache` plugin option after defaults and validation (see `parseOptions` in `src/config.ts`). */
+/** The `responseCache` plugin option after defaults and validation (see `parseOptions` in `src/config.ts`). */
 export interface CacheConfig {
   /** How long an entry is served after it was stored. */
   readonly ttlSeconds: number
@@ -131,7 +131,7 @@ function append(events: PlugEvent[], event: { readonly type: "text-delta" | "rea
 /**
  * Wraps `inner`: hits are replayed, misses stream through and are stored when they qualify. `bypass(model, app)`
  * decides per call that the cache is not used: a persona model, or an app whose answers depend on live OpenCode
- * tool output (`serverTools`, #82). Both conditions live in the one predicate the runtime passes.
+ * tool output (`opencodeTools`, #82). Both conditions live in the one predicate the runtime passes.
  */
 export function cachedCaller(inner: ModelCaller, config: CacheConfig, store: CacheStore, count?: CacheCounter, bypass?: (model: string, app: string) => boolean): ModelCaller {
   const apps = config.apps ? new Set(config.apps) : undefined

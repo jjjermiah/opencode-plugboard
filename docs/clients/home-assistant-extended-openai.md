@@ -13,7 +13,7 @@ Home Assistant reaches plugboard over the LAN, so plugboard binds a reachable ad
     "keys": { "homeassistant": "{env:PLUGBOARD_KEY_HOMEASSISTANT}" },
     "models": ["anthropic/claude-sonnet-4-6"],
     "aliases": { "assist": "anthropic/claude-sonnet-4-6" },
-    "apps": { "homeassistant": { "models": ["assist"] } }
+    "apps": { "homeassistant": { "allowedModels": ["assist"] } }
   }
 }
 ```

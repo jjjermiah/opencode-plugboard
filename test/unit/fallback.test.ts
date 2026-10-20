@@ -234,7 +234,7 @@ describe("#391 a host retry before any output fails an attempt that has a target
   })
 })
 
-/** #391: `fallbackAfterMs`. A timed target yields each step's events after that step's wait (counted from the previous step), or never answers (`"hang"`). Like the session caller, it ends on its signal's abort. */
+/** #391: `firstEventTimeoutMs`. A timed target yields each step's events after that step's wait (counted from the previous step), or never answers (`"hang"`). Like the session caller, it ends on its signal's abort. */
 type Step = { readonly after: number; readonly events: PlugEvent[] }
 type Timed = "hang" | Step | { readonly steps: ReadonlyArray<Step> }
 
@@ -293,7 +293,7 @@ const EARLY = 50
 const timedOptions = parseOptions({
   models: ["a/*", "b/*", "c/*"],
   aliases: { chain: ["a/x", "b/y#low", "c/z"], pair: ["a/x", "c/z"] },
-  fallbackAfterMs: DEADLINE,
+  firstEventTimeoutMs: DEADLINE,
 })
 
 async function timedRun(plan: Timed[], name = "chain") {
@@ -306,7 +306,7 @@ async function timedRun(plan: Timed[], name = "chain") {
   return { ...fake, retried, served, events }
 }
 
-describe("#391 fallbackAfterMs: the first-event deadline", () => {
+describe("#391 firstEventTimeoutMs: the first-event deadline", () => {
   const answer = [ev.text("hi"), ev.finish()]
 
   test("a target that never emits is aborted at the deadline, and the next target answers", async () => {

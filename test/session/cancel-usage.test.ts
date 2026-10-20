@@ -156,7 +156,7 @@ describe("a client that left: no tool runs and no step starts, and internal canc
   })
 
   test("a server tool call in the window interrupts the host at once", async () => {
-    const run = harness(undefined, { settleMs: 10_000, apps: { app: { serverTools: ["lookup"] } } as never })
+    const run = harness(undefined, { settleMs: 10_000, apps: { app: { opencodeTools: ["lookup"] } } as never })
     run.port.toolIDs.push("lookup")
     answer(run, (id) => [bus(id).textDelta("hel")])
     const controller = new AbortController()

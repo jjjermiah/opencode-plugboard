@@ -17,7 +17,7 @@ Give Vane its own key and a chat alias. Docker needs a reachable address ([Servi
     "keys": { "vane": "{env:PLUGBOARD_KEY_VANE}" },
     "models": ["anthropic/claude-sonnet-4-6"],
     "aliases": { "answer": "anthropic/claude-sonnet-4-6" },
-    "apps": { "vane": { "models": ["answer"] } }
+    "apps": { "vane": { "allowedModels": ["answer"] } }
   }
 }
 ```

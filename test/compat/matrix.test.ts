@@ -31,10 +31,10 @@ let target: Target
 const results: MatrixResult[] = []
 
 beforeAll(async () => {
-  // maxN 4: the default of 1 refuses n > 1 (each choice is a model call); the matrix allows four so the n scenario
+  // maxChoices 4: the default of 1 refuses n > 1 (each choice is a model call); the matrix allows four so the n scenario
   // and the legacy prompt array times n (two prompts, n 2) run.
   const caller = new FakeModelCaller((request) => script(request))
-  server = await startRoute({ caller: withStopSequences(caller), options: { keys: { compat: KEY }, aliases: { fast: "test/echo" }, maxN: 4 } })
+  server = await startRoute({ caller: withStopSequences(caller), options: { keys: { compat: KEY }, aliases: { fast: "test/echo" }, maxChoices: 4 } })
   target = { origin: server.url, apiKey: KEY, caller }
 })
 

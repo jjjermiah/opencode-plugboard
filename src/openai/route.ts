@@ -37,8 +37,8 @@ import {
   endpointRefusal,
   historyTemplate,
   keyIsLive,
-  maxNFor,
-  maxNOption,
+  maxChoicesFor,
+  maxChoicesOption,
   reasoningOutputFor,
   requestTimeoutFor,
   requestTimeoutOption,
@@ -484,11 +484,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     noteEndUser(response, info, user)
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
-    // The app's own `maxN` (#270) is the cap for this request; the decoder checks against `options.maxN`.
+    // The app's own `maxChoices` (#270) is the cap for this request; the decoder checks against `options.maxChoices`.
     // A `file_id` part is replaced by the inline form of the stored file before the decoder runs (since next).
     const inlined = await inlineRequestFiles(host, auth.app, "chat", body, scope)
     if (isPlugError(inlined)) return fail(response, inlined)
-    const parsed = parseChatRequest(inlined, { ...host.options, maxN: maxNFor(host.options, auth.app) }, maxNOption(host.options, auth.app))
+    const parsed = parseChatRequest(inlined, { ...host.options, maxChoices: maxChoicesFor(host.options, auth.app) }, maxChoicesOption(host.options, auth.app))
     if (isPlugError(parsed)) return fail(response, parsed)
     const catalog = await scope.race(host.loadCatalog())
     const requested = requestedModel(host.options, auth.app, parsed.request.model, parsed.reasoningEffort)

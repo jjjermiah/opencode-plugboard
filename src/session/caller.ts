@@ -56,7 +56,7 @@ export interface SessionCallerDeps {
   readonly promptCache?: PromptCache
   /** The store of anchor sessions (src/session/affinity.ts). Absent: no affinity, whatever the policy says. */
   readonly affinity?: Affinity
-  /** Global `history.hidden` (since 0.29.0, #337); an app's `apps.<name>.history.hidden` overrides it. Absent: off. */
+  /** Global `sessions.hideFromList` (#337); an app's `apps.<name>.sessions.hideFromList` overrides it. Absent: off. */
   readonly historyHidden?: boolean
   /** The global `requestTimeoutMs` (the route's deadline; an app's own value wins). Absent: no deadline to keep clear of (#390). */
   readonly requestTimeoutMs?: number
@@ -107,7 +107,7 @@ const failure = (status: number, message: string, code: string): PlugEvent => ({
 
 /** The anchor session's title (`plugboard anchor: <app>[/<key>]`); it is never prompted. */
 const anchorTitle = (app: string, key: string): string => (key === "" ? `plugboard anchor: ${app}` : `plugboard anchor: ${app}/${key}`)
-/** The parent of an app with `history.hidden` (#337): one per app, titled `plugboard: <app>`. Never prompted, never indexed. */
+/** The parent of an app with `sessions.hideFromList` (#337): one per app, titled `plugboard: <app>`. Never prompted, never indexed. */
 const hiddenParentTitle = (app: string): string => `plugboard: ${app}`
 
 const notFound = (message: string): PlugError => ({ status: 404, kind: "not_found", message, code: "model_not_found", param: "model" })
@@ -167,14 +167,14 @@ function checkAppTools(request: PlugRequest, app: string, policy: AppPolicy | un
 }
 /** A caller tool may not share a name with one of the app's server tools: the model would see two tools under one name. */
 function checkServerToolNames(request: PlugRequest, policy: AppPolicy | undefined): PlugError | undefined {
-  const clash = request.tools.find((tool) => policy?.serverTools?.includes(tool.name))
+  const clash = request.tools.find((tool) => policy?.opencodeTools?.includes(tool.name))
   if (!clash) return undefined
   return {
     status: 400,
     kind: "invalid_request",
     code: "server_tool_collision",
     param: "tools",
-    message: `Tool \`${clash.name}\` is one of this app's OpenCode server tools (option \`apps.<name>.serverTools\`); rename the caller's tool`,
+    message: `Tool \`${clash.name}\` is one of this app's OpenCode server tools (option \`apps.<name>.opencodeTools\`); rename the caller's tool`,
   }
 }
 
@@ -185,21 +185,21 @@ function deniedByOperator(tool: string): PlugError {
     kind: "invalid_request",
     code: "server_tool_denied_by_operator",
     param: "tools",
-    message: `The OpenCode permissions of this app's agent do not allow \`${tool}\` (option \`apps.<name>.serverTools\`). Add an allow rule for it to the agent, or remove it from serverTools`,
+    message: `The OpenCode permissions of this app's agent do not allow \`${tool}\` (option \`apps.<name>.opencodeTools\`). Add an allow rule for it to the agent, or remove it from opencodeTools`,
   }
 }
 
 /** Every server tool must be a direct tool of this location right now (fail closed; checked per request, never at setup). */
 async function checkServerToolsAvailable(port: SessionPort, policy: AppPolicy | undefined, signal: AbortSignal): Promise<PlugError | undefined> {
-  if (!policy?.serverTools) return undefined
+  if (!policy?.opencodeTools) return undefined
   const offered = new Set(await raceAbort(port.directTools(), signal))
-  const missing = policy.serverTools.filter((tool) => !offered.has(tool))
+  const missing = policy.opencodeTools.filter((tool) => !offered.has(tool))
   if (missing.length === 0) return undefined
   return {
     status: 400,
     kind: "invalid_request",
     code: "server_tool_unavailable",
-    message: `OpenCode tool(s) not available in this location: ${missing.join(", ")} (option \`apps.<name>.serverTools\`). CodeMode tools, including MCP tools by default, cannot be listed; set codemode: false on the tool`,
+    message: `OpenCode tool(s) not available in this location: ${missing.join(", ")} (option \`apps.<name>.opencodeTools\`). CodeMode tools, including MCP tools by default, cannot be listed; set codemode: false on the tool`,
   }
 }
 
@@ -248,10 +248,10 @@ export async function sessionRequest(deps: SessionPromptDeps | undefined, app: s
   if (clash) return clash
 
   const persona = deps?.persona?.(called.model)
-  const serverTools = policy?.serverTools
+  const opencodeTools = policy?.opencodeTools
   let prelude: ReadonlyArray<string> = []
   let serverSchemas: ReadonlyArray<DirectToolSchema> = []
-  if (deps && (persona !== undefined || serverTools !== undefined)) {
+  if (deps && (persona !== undefined || opencodeTools !== undefined)) {
     const directory = await ensureAppDir(app)
     if (isPlugError(directory)) return directory
     const unavailable = await deps.ensureBackend?.(app, signal)
@@ -262,15 +262,15 @@ export async function sessionRequest(deps: SessionPromptDeps | undefined, app: s
     if (isPlugError(parts)) return parts
     prelude = parts.prelude
     if (parts.system !== undefined) request = { ...request, system: [...parts.system] }
-    if (serverTools !== undefined) {
+    if (opencodeTools !== undefined) {
       // The operator's grant for the agent the session runs as (#194): an ungranted tool is refused before any session exists.
       const rules = (await raceAbort(deps.port.agentRules(directory, persona?.kind === "agent" ? persona.agent : undefined), signal)) ?? []
-      const ungranted = ungrantedServerTool(serverTools, rules)
+      const ungranted = ungrantedServerTool(opencodeTools, rules)
       if (ungranted) return deniedByOperator(ungranted)
       // Offered only when the tool choice allows tools, as the context hook does (src/session/context.ts).
       if (request.toolChoice !== "none") {
         const offered = await raceAbort(deps.port.directToolSchemas(), signal)
-        serverSchemas = offered.filter((tool) => serverTools.includes(tool.id))
+        serverSchemas = offered.filter((tool) => opencodeTools.includes(tool.id))
       }
     }
   }
@@ -476,9 +476,9 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
 
         // 3c. An app with server tools runs them under the agent's own rules (#194): read them now, for the agent this session runs as.
         let operatorRules: ReadonlyArray<OperatorRule> = []
-        if (policy?.serverTools) {
+        if (policy?.opencodeTools) {
           operatorRules = (await raceAbort(port.agentRules(directory, persona?.kind === "agent" ? persona.agent : undefined), context.signal)) ?? []
-          const ungranted = ungrantedServerTool(policy.serverTools, operatorRules)
+          const ungranted = ungrantedServerTool(policy.opencodeTools, operatorRules)
           if (ungranted) return yield note({ type: "error", error: deniedByOperator(ungranted) })
         }
         if (context.signal.aborted) return
@@ -488,18 +488,18 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
           requestID,
           app,
           // The ids the model may name a tool by are rewritten only for this request's tools (#411).
-          toolNames: [...request.tools.map((tool) => tool.name), ...(policy?.serverTools ?? [])],
+          toolNames: [...request.tools.map((tool) => tool.name), ...(policy?.opencodeTools ?? [])],
           // The caller tools the session offers (after the tool policy): a tool call must name one of them (#463).
           callerTools: request.tools.map((tool) => tool.name),
           ...(context.fallbackNext ? { failFastRetry: true } : {}),
           // The collector sees the match in the text it emits, so calls queued behind it are already after it (#390 review).
           ...(request.structuredTool === undefined ? { stopSequences: request.generation.stop ?? [], onStopAnswer } : {}),
           ...(request.parallelToolCalls === false ? { singleToolCall: true } : {}),
-          ...(policy?.serverTools
+          ...(policy?.opencodeTools
             ? {
-                serverTools: new Set(policy.serverTools),
-                maxServerToolSteps: policy.maxServerToolSteps ?? DEFAULT_SERVER_TOOL_STEPS,
-                maxServerToolCalls: policy.maxServerToolCalls ?? DEFAULT_SERVER_TOOL_CALLS,
+                opencodeTools: new Set(policy.opencodeTools),
+                maxToolSteps: policy.maxToolSteps ?? DEFAULT_SERVER_TOOL_STEPS,
+                maxToolCalls: policy.maxToolCalls ?? DEFAULT_SERVER_TOOL_CALLS,
               }
             : {}),
         })
@@ -508,10 +508,10 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         if (context.stopAnswer?.aborted) onStopAnswer()
 
         // 3c. Prompt-cache affinity (#80): under an anchor the request session is its child, so the provider cache key
-        // stays the anchor's id across requests (src/session/affinity.ts). `history.hidden` (#337) uses the same parent
+        // stays the anchor's id across requests (src/session/affinity.ts). `sessions.hideFromList` (#337) uses the same parent
         // machinery: the app-scope anchor, which an app's promptCache app-scope anchor shares.
         const cache = appPolicy({ apps }, app)?.promptCache ?? deps.promptCache ?? PROMPT_CACHE_OFF
-        const hidden = (appPolicy({ apps }, app)?.history?.hidden ?? deps.historyHidden) === true
+        const hidden = (appPolicy({ apps }, app)?.sessions?.hideFromList ?? deps.historyHidden) === true
         const anchored = cache.affinity === "anchor" || hidden
         const keyScope: AffinityScope = hidden ? "app" : cache.scope
         const scope = affinity && anchored ? (hidden ? "" : scopeKey(cache, called)) : undefined
@@ -538,7 +538,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
             ...(persona?.kind === "agent" ? { agent: persona.agent } : {}),
             title: makeTitle(request),
             metadata: { plugboard: { app, model: request.model, requestID } },
-            permissions: requestPermissions(policy?.serverTools ?? [], operatorRules),
+            permissions: requestPermissions(policy?.opencodeTools ?? [], operatorRules),
             ...(parent === undefined ? {} : { parentID: parent }),
           })
           return raceAbort(creating, context.signal).catch((error) => {
@@ -564,7 +564,7 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         // A hidden app without its parent (at the cap) runs top-level, visible in the lists. Warned once per app, not per request.
         if (hidden && parentID === undefined && scope !== undefined && !unparentedWarned.has(app)) {
           unparentedWarned.add(app)
-          logWarn("history.hidden_parent_unavailable", { requestID, app })
+          logWarn("sessions.hide_from_list_parent_unavailable", { requestID, app })
         }
         sessionID = String(created.id)
         sessions.register({ sessionID, app, requestID, request, collector, prelude })

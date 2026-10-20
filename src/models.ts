@@ -1,6 +1,6 @@
 /** Model refs and the allowlist/alias policy over a neutral catalog. Protocol-neutral: front-ends format the results. */
 
-import { appPolicy, CONNECTED, type AppPolicy, type PlugboardOptions } from "./config.js"
+import { appPolicy, ALL_MODELS, type AppPolicy, type PlugboardOptions } from "./config.js"
 import type { CatalogModel, ModelRef, PlugError } from "./contract.js"
 
 /** Alias target prefix that binds a skill: `skill:<id>@provider/model[#variant]` (see `parseAliasTarget`). */
@@ -54,12 +54,12 @@ export function fromSlug(slug: string): string | undefined {
 }
 
 /**
- * `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly; `connected` any model.
- * `connected` never narrows the catalog: callers match refs against the host catalog (`find`), which holds the enabled models of connected providers.
+ * `provider/*` any model of the provider; `provider/model` any variant; `provider/model#variant` exactly; `all` any model.
+ * `all` never narrows the catalog: callers match refs against the host catalog (`find`), which holds the enabled models of connected providers.
  */
 export function allowedBy(models: ReadonlyArray<string>, ref: ModelRef): boolean {
   return models.some((pattern) => {
-    if (pattern === CONNECTED) return true
+    if (pattern === ALL_MODELS) return true
     if (pattern.endsWith("/*")) return pattern.slice(0, -2) === ref.providerID
     const p = parseModelRef(pattern)
     return p !== undefined && p.providerID === ref.providerID && p.id === ref.id && (p.variant === undefined || p.variant === ref.variant)
@@ -105,13 +105,13 @@ export function personaOf(options: Pick<PlugboardOptions, "aliases" | "agents">,
 }
 
 /**
- * Per-app narrowing (`apps.<name>.models`), applied on top of the global allowlist, never instead of it.
+ * Per-app narrowing (`apps.<name>.allowedModels`), applied on top of the global allowlist, never instead of it.
  * `name` is what the caller sent (an alias or a model id). An entry that is an alias name admits that
  * name; a pattern entry admits every resolved model it matches, whichever name reached it. No `models`
  * on the app means no narrowing. Alias names never match as patterns: they are not `provider/model` shaped.
  */
 function inAppScope(policy: AppPolicy | undefined, name: string, ref: ModelRef): boolean {
-  return policy?.models === undefined || policy.models.includes(name) || allowedBy(policy.models, ref)
+  return policy?.allowedModels === undefined || policy.allowedModels.includes(name) || allowedBy(policy.allowedModels, ref)
 }
 
 /** 404 `model_not_found` when `app` may not use the (already resolved) model; the same error as an unknown model. */
@@ -215,7 +215,7 @@ export interface ListedModel {
  * The allowlist intersected with the catalog, plus aliases whose target qualifies. Ids are unique except an alias may repeat one.
  * Each model is listed as its canonical id, its slug, or both, per `options.modelIds`; a model whose slug does not
  * round trip (see `fromSlug`) is left out in `slugs` mode. Aliases are listed as they are.
- * With `app`, the list is narrowed to that app's `models` (see `inAppScope`), judged on the canonical id.
+ * With `app`, the list is narrowed to that app's `allowedModels` (see `inAppScope`), judged on the canonical id.
  */
 export function listAvailableModels(options: PlugboardOptions, catalog: ReadonlyArray<CatalogModel>, app?: string): ListedModel[] {
   const policy = app === undefined ? undefined : appPolicy(options, app)
@@ -268,7 +268,7 @@ export function filterByCapability(models: ReadonlyArray<ListedModel>, capabilit
 /**
  * The targets an alias falls back to, in order: the fallbacks that are allowed and enabled on the server.
  * Empty for a plain model id or an alias without fallbacks. The primary target is `resolveModel`'s answer.
- * With `app`, a target outside that app's `models` is skipped (an app scoped to the alias name admits every target).
+ * With `app`, a target outside that app's `allowedModels` is skipped (an app scoped to the alias name admits every target).
  */
 export function fallbackRefs(options: PlugboardOptions, alias: string, catalog: ReadonlyArray<CatalogModel>, app?: string): ModelRef[] {
   const policy = app === undefined ? undefined : appPolicy(options, app)

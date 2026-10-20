@@ -15,12 +15,12 @@ Give Langflow its own key. Docker needs a reachable address ([Serving other mach
     "keys": { "langflow": "{env:PLUGBOARD_KEY_LANGFLOW}" },
     "models": ["opencode-go/glm-5.3-flash"],
     "aliases": { "chat": "opencode-go/glm-5.3-flash" },
-    "apps": { "langflow": { "models": ["chat"] } }
+    "apps": { "langflow": { "allowedModels": ["chat"] } }
   }
 }
 ```
 
-Keep the app's `models` list short. Langflow lists everything `/v1/models` returns for the key.
+Keep the app's `allowedModels` list short. Langflow lists everything `/v1/models` returns for the key.
 
 ## Connect
 

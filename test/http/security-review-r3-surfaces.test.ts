@@ -163,8 +163,8 @@ describe("security regression test: a flattened name is declared once", () => {
 // ---------------------------------------------------------------- a caller's tool and the app's server tools
 
 describe("security regression test: a caller's tool never names one of the app's server tools", () => {
-  const OPTIONS = { keys: { r3srv: "key-r3srv" }, apps: { r3srv: { serverTools: ["read"] } } }
-  const APPS: PlugboardOptions["apps"] = { r3srv: { systemMode: "prepend", tools: true, serverTools: ["read"], maxServerToolSteps: 2, maxServerToolCalls: 3 } }
+  const OPTIONS = { keys: { r3srv: "key-r3srv" }, apps: { r3srv: { opencodeTools: ["read"] } } }
+  const APPS: PlugboardOptions["apps"] = { r3srv: { systemMode: "prepend", tools: true, opencodeTools: ["read"], maxToolSteps: 2, maxToolCalls: 3 } }
   const KEY = { authorization: "Bearer key-r3srv" }
 
   async function sessionRoute() {
@@ -246,7 +246,7 @@ describe("security regression test: an app named like an Object property is an o
   test("`constructor` gets none of the endpoint list, body cap or retention another app is configured with, and nothing of the object it is looked up in", async () => {
     const caller = await route([ev.text("ok"), ev.finish()], {
       keys: { constructor: "k-ctor", other: "k-other" },
-      apps: { other: { endpoints: ["chat"], history: { maxAgeDays: 2 } } },
+      apps: { other: { endpoints: ["chat"], sessions: { maxAgeDays: 2 } } },
       limits: { apps: { other: { maxBodyBytes: 1024 } } },
     })
     const as = (key: string) => ({ authorization: `Bearer ${key}` })

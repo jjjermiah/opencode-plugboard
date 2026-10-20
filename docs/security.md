@@ -4,7 +4,7 @@ Plugboard runs inside your OpenCode server, next to your provider logins. These 
 
 ## What plugboard guarantees
 
-- **Callers never run OpenCode's tools.** A caller's tools come back to the caller. OpenCode's own tools run only for an app you list in `serverTools`, and only the tools you name.
+- **Callers never run OpenCode's tools.** A caller's tools come back to the caller. OpenCode's own tools run only for an app you list in `opencodeTools`, and only the tools you name.
 - **Apps are separate.** Each app has its own key, its own session directory, its own usage and its own cache entries. One app cannot read another's history.
 - **Loopback by default.** The listener binds `127.0.0.1`. A non-loopback `listen.host` refuses to start without `keys`. On a loopback bind, a `Host` header that is not `localhost`, `127.0.0.1` or `[::1]` gets a 403, which stops DNS rebinding.
 - **No browser access unless you allow it.** A page from an origin not in `cors.origins` gets no CORS header, and `"*"` needs keys.

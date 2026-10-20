@@ -3,7 +3,7 @@
  * completions): one independent `ModelCaller` call per choice, run concurrently, each in its own
  * session, merged into one response.
  *
- * Every choice is a full model call and a kept history session, which is why `maxN` caps them.
+ * Every choice is a full model call and a kept history session, which is why `maxChoices` caps them.
  * The choices share nothing: no history, no seed, no ordering.
  *
  * Failure policy: if any choice fails, the request fails and the other choices are cancelled
@@ -190,7 +190,7 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
   const gscope = groupScope(scope, AbortSignal.any([scope.signal, group.signal]))
   /** History record ids as the callers report them, in choice order, for the response header (comma separated). */
   const records: Array<string | undefined> = []
-  /** The session page links of the same records, in choice order (option `historyUrl`, src/session/link.ts). */
+  /** The session page links of the same records, in choice order (option `sessionUrl`, src/session/link.ts). */
   const links: Array<string | undefined> = []
   // Headers: the first choice to be served wins. Body model: only a single call echoes the served model.
   const served = reportServed(response, info, (s) => {

@@ -5,7 +5,7 @@
  * Pure function: no I/O. The OpenCode models are chat models, so a prompt becomes one user
  * message and there is no system prompt, except for `suffix` (see `SUFFIX_INSTRUCTION`). A string
  * prompt is one model call; a list of strings is one call per prompt, times `n` (capped by
- * `maxN`). The route resolves `model` to a `ModelRef` afterwards, which is why the requests omit
+ * `maxChoices`). The route resolves `model` to a `ModelRef` afterwards, which is why the requests omit
  * `ref`.
  */
 import { Schema, type SchemaIssue } from "effect"
@@ -90,7 +90,7 @@ const parsePrompts = (raw: unknown): string[] | PlugError => {
   return raw as string[]
 }
 
-export function parseCompletionsRequest(body: unknown, options: PlugboardOptions, capOption = "maxN"): ParsedCompletions | PlugError {
+export function parseCompletionsRequest(body: unknown, options: PlugboardOptions, capOption = "maxChoices"): ParsedCompletions | PlugError {
   if (!isRecord(body)) return bad("Request body must be a JSON object")
   const checked = Schema.decodeUnknownResult(LegacyBody)(body)
   if (checked._tag === "Failure") return failureOf(checked.failure.issue)
@@ -99,9 +99,9 @@ export function parseCompletionsRequest(body: unknown, options: PlugboardOptions
   if (isPlugError(prompts)) return prompts
   const n = parseChoiceCount(body, options, capOption)
   if (isPlugError(n)) return n
-  if (prompts.length * n > options.maxN)
+  if (prompts.length * n > options.maxChoices)
     return bad(
-      `${prompts.length} prompt${prompts.length === 1 ? "" : "s"} with n=${n} make ${prompts.length * n} model calls, above the limit of ${options.maxN} (option \`${capOption}\`)`,
+      `${prompts.length} prompt${prompts.length === 1 ? "" : "s"} with n=${n} make ${prompts.length * n} model calls, above the limit of ${options.maxChoices} (option \`${capOption}\`)`,
       prompts.length > 1 ? "prompt" : "n",
       "too_many_choices",
     )

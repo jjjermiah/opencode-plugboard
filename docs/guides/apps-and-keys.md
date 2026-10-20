@@ -27,10 +27,10 @@ What happens:
 bunx opencode-plugboard init
 ```
 
-It adds plugboard to `~/.config/opencode/opencode.jsonc`, pinned to the version that ran. The entry has one app key (generated, 32 random bytes) and `"models": "connected"`, which allows every enabled model of every connected provider. The key is printed once, with a curl that lists your models. Restart OpenCode and touch the server, as in [Install](../install.md).
+It adds plugboard to `~/.config/opencode/opencode.jsonc`, pinned to the version that ran. The entry has one app key (generated, 32 random bytes) and `"models": "all"`, which allows every enabled model of every connected provider. The key is printed once, with a curl that lists your models. Restart OpenCode and touch the server, as in [Install](../install.md).
 
 ```jsonc plugboard-options
-"options": { "keys": { "my-app": "pb_..." }, "models": "connected" }
+"options": { "keys": { "my-app": "pb_..." }, "models": "all" }
 ```
 
 Options:
@@ -50,12 +50,12 @@ The file is edited as JSONC, so comments, formatting and other settings stay. A 
 ```jsonc plugboard
 "aliases": { "fast": "anthropic/claude-haiku-4-5" },
 "apps": {
-  "discord-bot": { "models": ["fast"], "model": "fast", "system": "Answer in two sentences.", "tools": false, "maxOutputTokens": 400 },
-  "coding": { "models": ["anthropic/*"], "maxTools": 16 }
+  "discord-bot": { "allowedModels": ["fast"], "pinnedModel": "fast", "system": "Answer in two sentences.", "tools": false, "maxOutputTokens": 400 },
+  "coding": { "allowedModels": ["anthropic/*"], "maxTools": 16 }
 }
 ```
 
-The `discord-bot` app always runs on the alias `fast`, whatever model the bot sends. A `model` that names an alias the config does not define stops the server at load, with an error that says so. It gets the system prompt added, has its tools removed, and its answers stop at 400 output tokens. The request still succeeds. The response says what changed:
+The `discord-bot` app always runs on the alias `fast`, whatever model the bot sends. A `pinnedModel` that names an alias the config does not define stops the server at load, with an error that says so. It gets the system prompt added, has its tools removed, and its answers stop at 400 output tokens. The request still succeeds. The response says what changed:
 
 ```
 x-plugboard-policy: tools-stripped
@@ -91,9 +91,9 @@ A bot that serves many people is one app. Set `userHeader` on it and a proxy hea
 All in the [configuration reference](../configuration.md#apps-and-keys):
 
 - [`keys`, `adminKey`, `requireKeys`](../configuration.md#options)
-- [Per-app policy: `models`, `model`, `system`, `tools`, `maxTools`, `maxN`, `maxOutputTokens`, `sampling`, `requestTimeoutMs`, `settleMs`](../configuration.md#per-app-policy-apps)
+- [Per-app policy: `allowedModels`, `pinnedModel`, `system`, `tools`, `maxTools`, `maxChoices`, `maxOutputTokens`, `sampling`, `requestTimeoutMs`, `settleMs`](../configuration.md#per-app-policy-apps)
 - [Endpoint names](../configuration.md#endpoint-names)
-- [Server tools](../configuration.md#per-app-policy-apps) (`serverTools`): let an app's key run OpenCode tools. Read the security warning first.
+- [Server tools](../configuration.md#per-app-policy-apps) (`opencodeTools`): let an app's key run OpenCode tools. Read the security warning first.
 - [Admin keys](../configuration.md#admin-keys) and [which key opens which route](../configuration.md#which-key-opens-which-route)
 - [End users](../configuration.md#end-users)
 

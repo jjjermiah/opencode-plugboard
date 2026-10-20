@@ -16,7 +16,7 @@ PLUGBOARD_URL=http://127.0.0.1:4010/v1 PLUGBOARD_KEY=<your key> npx promptfoo@la
 
 ## What works
 
-Text and tool-call assertions, and several choices per prompt with `config.passthrough: { n: 3 }` when the server's `maxN` allows it.
+Text and tool-call assertions, and several choices per prompt with `config.passthrough: { n: 3 }` when the server's `maxChoices` allows it.
 
 ## Limits
 

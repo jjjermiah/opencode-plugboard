@@ -26,7 +26,7 @@ Plugboard is stateless here: every request carries the whole conversation in `me
 | `stream`, `stream_options.include_usage` | Server-sent events. With `include_usage`, the last chunk carries the usage. |
 | `tools`, `tool_choice`, `parallel_tool_calls` | Tool calls come back to you; plugboard never runs them. `parallel_tool_calls: false` keeps the first call and sets `x-plugboard-parallel-tools: limited`. |
 | `response_format` | `json_schema` or `json_object`. See [structured output](#structured-output). |
-| `n` | Several answers, one full model call each, up to `maxN`. See [completions](completions.md#n-above-1). |
+| `n` | Several answers, one full model call each, up to `maxChoices`. See [completions](completions.md#n-above-1). |
 | `temperature`, `top_p`, `presence_penalty`, `frequency_penalty` | Passed to the model. Values a model is known to reject are dropped and listed in `x-plugboard-dropped-params`. |
 | `seed` | An integer, passed to the model. A model whose protocol sends no seed (Claude, GPT-5 and 6) drops it and lists `seed` in `x-plugboard-dropped-params`. There is no top-k field here. |
 | `max_completion_tokens`, `max_tokens` | The output cap. `max_completion_tokens` wins when both are sent. |
@@ -41,7 +41,7 @@ Errors are 400s with the code below and `param` naming the field.
 | Request | Code |
 | --- | --- |
 | `logprobs: true`, or any `top_logprobs` | `unsupported_parameter` |
-| `n` above `maxN` | `too_many_choices` |
+| `n` above `maxChoices` | `too_many_choices` |
 | A `tool_choice` that names a tool, with `response_format` `json_schema` | `unsupported_parameter` |
 | A tool named `respond`, with `response_format` `json_schema` | `reserved_tool_name` |
 
@@ -57,7 +57,7 @@ The model's tool calls come back with `finish_reason: "tool_calls"`. Run the too
 
 <<< @/../examples/curl/chat.sh#snippet-s2
 
-Tool call ids differ by model, so do not parse them. `maxTools` (default 64) caps the tools one request may carry. An app with `serverTools` can also let OpenCode run some of its own tools; see [Tools, structured output and images](guides/tools-output-and-images.md).
+Tool call ids differ by model, so do not parse them. `maxTools` (default 64) caps the tools one request may carry. An app with `opencodeTools` can also let OpenCode run some of its own tools; see [Tools, structured output and images](guides/tools-output-and-images.md).
 
 ## Structured output
 

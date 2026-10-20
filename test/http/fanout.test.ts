@@ -19,7 +19,7 @@ afterEach(async () => {
 
 async function route(script: Script | ((request: unknown, call: number) => Script), options: Record<string, unknown> = {}) {
   const caller = new FakeModelCaller(script as never)
-  server = await startRoute({ caller, options: { maxN: 4, ...options } })
+  server = await startRoute({ caller, options: { maxChoices: 4, ...options } })
   return caller
 }
 
@@ -43,8 +43,8 @@ describe("#58 chat completions with n > 1, non-streaming", () => {
     expect(reply.headers["x-plugboard-session"]).toBe("ses_0,ses_1,ses_2")
   })
 
-  test("n above maxN is a 400 too_many_choices before any model call", async () => {
-    const caller = await route([ev.finish()], { maxN: 2 })
+  test("n above maxChoices is a 400 too_many_choices before any model call", async () => {
+    const caller = await route([ev.finish()], { maxChoices: 2 })
     const reply = await server!.send(chat({ n: 3 }))
     expect(reply.status).toBe(400)
     expect(reply.json().error).toMatchObject({ code: "too_many_choices", param: "n" })

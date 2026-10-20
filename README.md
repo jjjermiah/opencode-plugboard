@@ -36,7 +36,7 @@ This adds plugboard to your global OpenCode config (`~/.config/opencode/opencode
       "package": "opencode-plugboard@0.59.0",
       "options": {
         "keys": { "my-app": "{env:PLUGBOARD_KEY_MY_APP}" },
-        "models": "connected",
+        "models": "all",
         "aliases": { "fast": "anthropic/claude-haiku-4-5" }
       }
     }

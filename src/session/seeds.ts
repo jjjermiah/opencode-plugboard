@@ -74,22 +74,22 @@ const rulesFor = (tool: string, rules: ReadonlyArray<OperatorRule>): ReadonlyArr
  * The first listed server tool that the operator's rules do not allow, or undefined when each one has an allow rule.
  * A tool with no matching rule is not allowed: the host would ask, and a request session cannot answer a prompt.
  */
-export function ungrantedServerTool(serverTools: ReadonlyArray<string>, rules: ReadonlyArray<OperatorRule>): string | undefined {
-  return serverTools.find((tool) => !rulesFor(tool, rules).some((rule) => rule.effect === "allow"))
+export function ungrantedServerTool(opencodeTools: ReadonlyArray<string>, rules: ReadonlyArray<OperatorRule>): string | undefined {
+  return opencodeTools.find((tool) => !rulesFor(tool, rules).some((rule) => rule.effect === "allow"))
 }
 
 /**
- * Session permissions of a request session of an app with option `serverTools` (#194). The host takes the last
+ * Session permissions of a request session of an app with option `opencodeTools` (#194). The host takes the last
  * matching rule (`Permission.evaluate`, findLast) and the session rules come after the agent's, so for each listed
  * tool: a deny for every resource, then the operator's own rules for that tool, rewritten to the tool's id, in their
  * order. A resource the operator's rules name is decided by them (a deny stays a deny, an allow allows); any other
  * resource is denied. An `ask` is a deny: nobody answers a prompt from a request session. An app without
- * `serverTools` gets exactly `REQUEST_PERMISSIONS`.
+ * `opencodeTools` gets exactly `REQUEST_PERMISSIONS`.
  */
-export function requestPermissions(serverTools: ReadonlyArray<string>, operatorRules: ReadonlyArray<OperatorRule> = []): ReadonlyArray<PermissionRule> {
+export function requestPermissions(opencodeTools: ReadonlyArray<string>, operatorRules: ReadonlyArray<OperatorRule> = []): ReadonlyArray<PermissionRule> {
   return [
     ...REQUEST_PERMISSIONS,
-    ...serverTools.flatMap((tool) => [
+    ...opencodeTools.flatMap((tool) => [
       { action: tool, resource: "*", effect: "deny" as const },
       ...rulesFor(tool, operatorRules).map((rule) => ({ action: tool, resource: rule.resource, effect: rule.effect === "allow" ? ("allow" as const) : ("deny" as const) })),
     ]),

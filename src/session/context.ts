@@ -110,13 +110,13 @@ function generationOptions(request: PlugRequest): Record<string, unknown> {
  * Returns how many caller tools got no seed (zero unless the seed pool is smaller than the request
  * needs, or two caller tools share a name and would collapse into one key).
  *
- * The app's `serverTools` (option `apps`) are kept as the host offered them: their descriptors were
+ * The app's `opencodeTools` (option `apps`) are kept as the host offered them: their descriptors were
  * never rewritten, so the host runs the real tool. Not offered when the caller set `tool_choice` none.
  *
  * The map is built with `Object.fromEntries`: a tool named `__proto__` becomes an own key like any
  * other instead of assigning the prototype and vanishing.
  */
-function remapSeedTools(session: ContextHookEvent, request: PlugRequest, serverTools: ReadonlyArray<string>): number {
+function remapSeedTools(session: ContextHookEvent, request: PlugRequest, opencodeTools: ReadonlyArray<string>): number {
   const seeds = Object.entries(session.tools ?? {}).filter(([name]) => name.startsWith(SEED_PREFIX))
   const tools = seedToolsFor(request)
   const next = new Map<string, HostToolDescriptor>()
@@ -134,7 +134,7 @@ function remapSeedTools(session: ContextHookEvent, request: PlugRequest, serverT
   const missing = tools.length - next.size
   if (request.toolChoice !== "none") {
     const offered = session.tools ?? {}
-    for (const name of serverTools) {
+    for (const name of opencodeTools) {
       if (!Object.hasOwn(offered, name) || next.has(name)) continue
       next.set(name, offered[name] as HostToolDescriptor)
     }
@@ -275,17 +275,17 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   const caller = toHostMessages(request.messages, replayReasoning).map((message) => ({ ...message, content: message.content.map(swap) }))
   // A server-tool run (#417): the host reloads the session on every step, so its messages are the stored prompt, then the tool
   // calls and results of the steps before. The first call records how many the host had; a later call keeps the ones after
-  // that index and puts them after the caller transcript. Only apps with serverTools continue this way.
+  // that index and puts them after the caller transcript. Only apps with opencodeTools continue this way.
   const host = session.messages ?? []
   let appended: typeof host = []
-  if ((policy?.serverTools?.length ?? 0) > 0) {
+  if ((policy?.opencodeTools?.length ?? 0) > 0) {
     if (state.hostMessages === undefined) state.hostMessages = host.length
     else appended = host.slice(state.hostMessages)
   }
   session.messages = [...caller, ...appended]
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 
-  const missingTools = remapSeedTools(session, request, policy?.serverTools ?? [])
+  const missingTools = remapSeedTools(session, request, policy?.opencodeTools ?? [])
   orderOneHourHints(session)
 
   // The caller validates both before dispatch; this only fires if the host disagrees. The request is

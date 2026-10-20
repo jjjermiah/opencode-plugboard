@@ -15,7 +15,7 @@ Give SparkyFitness its own key. Plugboard must bind an address the SparkyFitness
     "keys": { "sparkyfitness": "{env:PLUGBOARD_KEY_SPARKYFITNESS}" },
     "models": ["anthropic/claude-sonnet-4-6"],
     "aliases": { "chat": "anthropic/claude-sonnet-4-6" },
-    "apps": { "sparkyfitness": { "models": ["chat"] } }
+    "apps": { "sparkyfitness": { "allowedModels": ["chat"] } }
   }
 }
 ```

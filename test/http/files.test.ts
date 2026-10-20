@@ -318,7 +318,7 @@ describe("retention, restart and logs", () => {
     const storage = new FakeStorage()
     const time = clock("2026-10-17T00:00:00Z")
     const files = createFileStore({ storage, state: createFileState(), now: () => time.at })
-    const { server } = await route({ history: { maxAgeDays: 0 }, apps: { beta: { history: { maxAgeDays: 2 } } } }, files)
+    const { server } = await route({ sessions: { maxAgeDays: 0 }, apps: { beta: { sessions: { maxAgeDays: 2 } } } }, files)
     const a = (await upload(server, "alpha", { bytes: PNG, name: "a.png" })).json()
     const b = (await upload(server, "beta", { bytes: PNG, name: "b.png" })).json()
     time.at += 3 * DAY

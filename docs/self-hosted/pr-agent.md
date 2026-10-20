@@ -15,7 +15,7 @@ Give PR-Agent its own key. The review sends the whole diff and asks for a YAML r
     "keys": { "pr-agent": "{env:PLUGBOARD_KEY_PR_AGENT}" },
     "models": ["anthropic/claude-sonnet-4-6"],
     "aliases": { "review": "anthropic/claude-sonnet-4-6" },
-    "apps": { "pr-agent": { "models": ["review"] } }
+    "apps": { "pr-agent": { "allowedModels": ["review"] } }
   }
 }
 ```

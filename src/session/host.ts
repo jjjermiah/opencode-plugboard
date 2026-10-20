@@ -68,7 +68,7 @@ export interface SessionPort {
   /**
    * The permission rules of the agent a request session runs as: `agent`, or the host's selected default when absent
    * (the first selectable agent of the list). Undefined when there is no such agent. Read per request for an app with
-   * `serverTools` (#194), never at setup.
+   * `opencodeTools` (#194), never at setup.
    */
   agentRules(directory: string, agent: string | undefined): Promise<ReadonlyArray<OperatorRule> | undefined>
   /**

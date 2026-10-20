@@ -44,7 +44,7 @@ const serve = async (setup: Parameters<typeof startRoute>[0]) => {
 const plain = await serve({ caller: answer })
 const streaming = await serve({ caller: slowStart })
 const long = await serve({ caller: longStream })
-const fanout = await serve({ caller: answer, options: { maxN: 3 } })
+const fanout = await serve({ caller: answer, options: { maxChoices: 3 } })
 const responses = await serve({ caller: answer })
 const messages = await serve({ caller: answer })
 const gemini = await serve({ caller: answer, options: { aliases: { fast: "test/echo" } } })

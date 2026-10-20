@@ -15,7 +15,7 @@ Give Tandoor its own key. `import` must accept images for photo import. Docker n
     "keys": { "tandoor": "{env:PLUGBOARD_KEY_TANDOOR}" },
     "models": ["opencode-go/glm-5.3-flash", "anthropic/claude-sonnet-4-6"],
     "aliases": { "import": "anthropic/claude-sonnet-4-6" },
-    "apps": { "tandoor": { "models": ["import"] } }
+    "apps": { "tandoor": { "allowedModels": ["import"] } }
   }
 }
 ```
