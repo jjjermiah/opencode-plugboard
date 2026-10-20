@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs"
 import { defineConfig } from "vitepress"
+import { tabsMarkdownPlugin } from "vitepress-plugin-tabs"
 import { fullConfigPlugin } from "./full-config.ts"
 import { MAINTAINER_PAGES } from "./maintainer-pages.ts"
 
@@ -19,7 +20,7 @@ export default defineConfig({
   cleanUrls: true,
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/opencode-plugboard/logo.svg" }]],
   // A fence tagged `jsonc plugboard` or `jsonc plugboard-options` gets a Snippet tab and a Full config tab (full-config.ts).
-  markdown: { theme: { light: "vitesse-light", dark: "vitesse-dark" }, config: (md) => md.use(fullConfigPlugin(latest)) },
+  markdown: { theme: { light: "vitesse-light", dark: "vitesse-dark" }, config: (md) => md.use(tabsMarkdownPlugin).use(fullConfigPlugin(latest)) },
   lastUpdated: false,
   // Maintainer and test pages live in docs/ next to the code they describe, but are not part of the user site.
   srcExclude: [...MAINTAINER_PAGES],
