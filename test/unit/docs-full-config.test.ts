@@ -6,7 +6,8 @@
 import { describe, expect, test } from "bun:test"
 import { parse, type ParseError } from "jsonc-parser"
 import { createMarkdownRenderer } from "vitepress"
-import { fullConfig, fullConfigPlugin } from "../../docs/.vitepress/full-config.ts"
+import { tabsMarkdownPlugin } from "vitepress-plugin-tabs"
+import { fullConfig, fullConfigPlugin, TABS_KEY } from "../../docs/.vitepress/full-config.ts"
 
 const VERSION = "9.8.7"
 
@@ -152,29 +153,23 @@ describe("an entry fragment", () => {
 
 describe("the markdown plugin", () => {
   const render = async (markdown: string) => {
-    const md = await createMarkdownRenderer(process.cwd(), { config: (instance) => instance.use(fullConfigPlugin(VERSION)) }, "/")
+    const md = await createMarkdownRenderer(process.cwd(), { config: (instance) => instance.use(tabsMarkdownPlugin as never).use(fullConfigPlugin(VERSION)) }, "/")
     return md.render(markdown, { path: "docs/page.md", relativePath: "page.md" })
   }
 
-  test("a tagged fence becomes a code group with a Snippet and a Full config tab", async () => {
+  test("a tagged fence becomes a shared tab group with a Snippet and a Full config tab", async () => {
     const html = await render('# T\n\n```jsonc plugboard\n"maxTools": 128\n```\n')
-    expect(html).toContain('<div class="vp-code-group')
-    expect(html).toContain('data-title="Snippet"')
-    expect(html).toContain('data-title="Full config"')
+    expect(html).toContain(`<PluginTabs sharedStateKey="${TABS_KEY}">`)
+    expect(html).toContain('<PluginTabsTab label="Snippet">')
+    expect(html).toContain('<PluginTabsTab label="Full config">')
     expect(html.indexOf("Snippet")).toBeLessThan(html.indexOf("Full config"))
     expect(html).toContain(`opencode-plugboard@${VERSION}`)
     expect(html).toContain("PLUGBOARD_KEY")
   })
 
-  test("the first tab is the one that is shown", async () => {
-    const html = await render('```jsonc plugboard\n"maxTools": 128\n```\n')
-    expect(html.match(/<div class="language-jsonc[^"]*active"/g)).toHaveLength(1)
-    expect(html.indexOf("active")).toBeLessThan(html.indexOf("opencode-plugboard@"))
-  })
-
   test("a plugboard-options fence works too, and other fences are left alone", async () => {
     const html = await render('```jsonc plugboard-options\n"options": { "maxTools": 128 }\n```\n\n```jsonc\n"x": 1\n```\n\n```sh\necho hi\n```\n')
-    expect(html.match(/vp-code-group/g)?.length).toBe(1)
+    expect(html.match(/<PluginTabs /g)?.length).toBe(1)
     expect(html).toContain("echo")
   })
 
