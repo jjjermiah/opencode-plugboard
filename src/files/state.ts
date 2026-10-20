@@ -45,8 +45,13 @@ export interface NewFile {
 }
 
 export interface FileStore {
-  /** Keeps a file under the app. A `PlugError` when the app's file count or bytes are used up; throws only when storage cannot be written. */
-  save(app: string, retentionDays: number, file: NewFile): Promise<FileRecord | PlugError>
+  /**
+   * Keeps a file under the app. A `PlugError` when the app's file count or bytes are used up, or (a 429) when too many saves of the app are
+   * already waiting; throws only when storage cannot be written. Saves of one app run one at a time. A save that is still waiting leaves the
+   * queue, and releases its bytes, when `signal` aborts (the call then rejects with the abort reason); one that has started always runs to
+   * its end, because its write can still complete.
+   */
+  save(app: string, retentionDays: number, file: NewFile, signal?: AbortSignal): Promise<FileRecord | PlugError>
   /** The app's file metadata, or undefined when unknown, deleted, expired, or another app's. Throws only when storage cannot be read. */
   head(app: string, id: string, retentionDays: number): Promise<FileRecord | undefined>
   /** The metadata and the bytes, or undefined as `head`. */
@@ -59,9 +64,24 @@ export interface FileStore {
   idle(): Promise<void>
 }
 
+/** A save that is waiting its turn: it starts when the save before it ends, or leaves with `signal` (see `FileStore.save`). */
+interface SaveWaiter {
+  start(): void
+}
+
+/** The saves of one app: at most one runs, the rest wait in order. `heldBytes` is the running save's bytes and the waiting ones'. */
+interface SaveQueue {
+  running: boolean
+  heldBytes: number
+  readonly waiting: SaveWaiter[]
+}
+
 export interface FileStoreState {
-  /** Per app: when the last sweep started (epoch ms), the writes since, and the creation time of the newest file (kept strictly increasing, so the index order is the upload order). */
-  readonly apps: Map<string, { lastSweep: number; writes: number; lastAt: number }>
+  /**
+   * Per app: when the last sweep started (epoch ms), the writes since, the creation time of the newest file (kept strictly increasing, so the
+   * index order is the upload order), and its save queue (`save` runs one at a time per app, so its checks are atomic).
+   */
+  readonly apps: Map<string, { lastSweep: number; writes: number; lastAt: number; queue: SaveQueue }>
 }
 
 export const createFileState = (): FileStoreState => ({ apps: new Map() })
@@ -75,6 +95,10 @@ export const MAX_FILES = 1000
 export const MAX_APP_BYTES = 1024 * 1024 * 1024
 /** The largest file, whatever the app's body cap: the body cap (32 MiB by default) decides below this. */
 export const MAX_FILE_BYTES = 32 * 1024 * 1024
+/** Saves of one app that may wait behind the running one; a save past it is refused at once (429). */
+export const MAX_SAVE_WAITERS = 8
+/** The bytes of one app's running and waiting saves together, while one runs (an idle app always takes a save). */
+export const MAX_SAVE_BYTES = 64 * 1024 * 1024
 const DAY_MS = 86_400_000
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000
 const SWEEP_WRITES = 20
@@ -95,6 +119,8 @@ const atPrefix = (app: string) => `files/${app}/at/`
 export interface FileStoreLimits {
   readonly maxFiles: number
   readonly maxAppBytes: number
+  readonly maxSaveWaiters: number
+  readonly maxSaveBytes: number
 }
 
 export interface FileStoreDeps {
@@ -116,7 +142,7 @@ export function createFileStore(deps: FileStoreDeps): FileStore {
   const { storage } = deps
   const state = deps.state ?? processFileState()
   const now = deps.now ?? Date.now
-  const { maxFiles, maxAppBytes } = { maxFiles: MAX_FILES, maxAppBytes: MAX_APP_BYTES, ...deps.limits }
+  const { maxFiles, maxAppBytes, maxSaveWaiters, maxSaveBytes } = { maxFiles: MAX_FILES, maxAppBytes: MAX_APP_BYTES, maxSaveWaiters: MAX_SAVE_WAITERS, maxSaveBytes: MAX_SAVE_BYTES, ...deps.limits }
   const pending = new Set<Promise<void>>()
 
   /** Every index entry of the app, oldest first. A capped scan undercounts, never overcounts. */
@@ -160,9 +186,50 @@ export function createFileStore(deps: FileStoreDeps): FileStore {
   }
 
   function appState(app: string) {
-    const entry = state.apps.get(app) ?? { lastSweep: 0, writes: 0, lastAt: 0 }
+    const entry = state.apps.get(app) ?? { lastSweep: 0, writes: 0, lastAt: 0, queue: { running: false, heldBytes: 0, waiting: [] } }
+    // An entry an older generation made (the state is shared across generations, I6) has no queue yet.
+    entry.queue ??= { running: false, heldBytes: 0, waiting: [] }
     state.apps.set(app, entry)
     return entry
+  }
+
+  /**
+   * Runs `run` when every earlier save of the app has ended: the count and byte checks and the writes after them are one step, so uploads in
+   * flight together cannot all pass a check only one of them should. The queue is bounded, so a storage call that never settles cannot make
+   * it grow: a save past `maxSaveWaiters` waiting, or past `maxSaveBytes` held, is refused at once. A waiting save leaves when `signal`
+   * aborts and its bytes go with it. The running save is never released early: it ends when its own write does, and until then it holds the slot.
+   */
+  function serialized(app: string, bytes: number, signal: AbortSignal | undefined, run: () => Promise<FileRecord | PlugError>): Promise<FileRecord | PlugError> {
+    const queue = appState(app).queue
+    if (signal?.aborted) return Promise.reject(signal.reason)
+    // Waiting saves exist only while one runs, so an idle app takes any save, even one over the byte bound.
+    if (queue.running && (queue.waiting.length >= maxSaveWaiters || queue.heldBytes + bytes > maxSaveBytes))
+      return Promise.resolve({ status: 429, kind: "rate_limit", code: "file_saves_busy", message: "This app has too many uploads waiting to be saved; try again shortly", retryAfterSeconds: 5 })
+    queue.heldBytes += bytes
+    return new Promise((resolve, reject) => {
+      const release = () => {
+        queue.heldBytes -= bytes
+        queue.running = false
+        queue.waiting.shift()?.start()
+      }
+      const onAbort = () => {
+        const at = queue.waiting.indexOf(waiter)
+        if (at < 0) return
+        queue.waiting.splice(at, 1)
+        queue.heldBytes -= bytes
+        reject(signal?.reason)
+      }
+      const waiter: SaveWaiter = {
+        start() {
+          signal?.removeEventListener("abort", onAbort)
+          queue.running = true
+          run().then(resolve, reject).then(release, release)
+        },
+      }
+      if (!queue.running) return waiter.start()
+      queue.waiting.push(waiter)
+      signal?.addEventListener("abort", onAbort, { once: true })
+    })
   }
 
   /** One sweep per app at a time, off the request (`outsideRequest`): the answer never waits for it. */
@@ -210,36 +277,38 @@ export function createFileStore(deps: FileStoreDeps): FileStore {
     return { id, filename: value.filename, mime: value.mime, bytes: value.bytes, createdAt: value.createdAt, purpose: value.purpose }
   }
 
+  async function saveOne(app: string, retentionDays: number, file: NewFile): Promise<FileRecord | PlugError> {
+    const cutoff = now() - retentionDays * DAY_MS
+    let live: IndexEntry[]
+    try {
+      live = (await entries(app)).filter((entry) => entry.at >= cutoff)
+    } catch {
+      logError("files.store_failed", { op: "save" })
+      throw new Error("file storage unavailable")
+    }
+    if (live.length >= maxFiles) return { status: 400, kind: "invalid_request", code: "file_limit_exceeded", message: `This app already holds ${maxFiles} files; delete some before uploading more` }
+    if (live.reduce((sum, entry) => sum + entry.bytes, 0) + file.bytes.length > maxAppBytes)
+      return { status: 400, kind: "invalid_request", code: "file_storage_full", message: "This app's file storage is full; delete some files before uploading more" }
+    const id = newFileId()
+    // Never the same millisecond as the app's previous upload: the index is ordered by it.
+    const createdAt = Math.max(now(), appState(app).lastAt + 1)
+    appState(app).lastAt = createdAt
+    const bytes = file.bytes.length
+    const meta = JSON.stringify({ v: 1, createdAt, bytes, filename: file.filename, mime: file.mime, purpose: file.purpose })
+    try {
+      await storage.put(dataKey(app, id), Buffer.from(file.bytes).toString("base64"))
+      await storage.put(idKey(app, id), meta)
+      await storage.put(atKey(app, createdAt, bytes, id), "")
+    } catch (error) {
+      logError("files.store_failed", { op: "save", error: errorMessage(error).replaceAll(id, "<id>") })
+      throw new Error("file storage unavailable")
+    }
+    maybeSweep(app, retentionDays)
+    return { id, filename: file.filename, mime: file.mime, bytes, createdAt, purpose: file.purpose }
+  }
+
   return {
-    async save(app, retentionDays, file) {
-      const cutoff = now() - retentionDays * DAY_MS
-      let live: IndexEntry[]
-      try {
-        live = (await entries(app)).filter((entry) => entry.at >= cutoff)
-      } catch {
-        logError("files.store_failed", { op: "save" })
-        throw new Error("file storage unavailable")
-      }
-      if (live.length >= maxFiles) return { status: 400, kind: "invalid_request", code: "file_limit_exceeded", message: `This app already holds ${maxFiles} files; delete some before uploading more` }
-      if (live.reduce((sum, entry) => sum + entry.bytes, 0) + file.bytes.length > maxAppBytes)
-        return { status: 400, kind: "invalid_request", code: "file_storage_full", message: "This app's file storage is full; delete some files before uploading more" }
-      const id = newFileId()
-      // Never the same millisecond as the app's previous upload: the index is ordered by it.
-      const createdAt = Math.max(now(), appState(app).lastAt + 1)
-      appState(app).lastAt = createdAt
-      const bytes = file.bytes.length
-      const meta = JSON.stringify({ v: 1, createdAt, bytes, filename: file.filename, mime: file.mime, purpose: file.purpose })
-      try {
-        await storage.put(dataKey(app, id), Buffer.from(file.bytes).toString("base64"))
-        await storage.put(idKey(app, id), meta)
-        await storage.put(atKey(app, createdAt, bytes, id), "")
-      } catch (error) {
-        logError("files.store_failed", { op: "save", error: errorMessage(error).replaceAll(id, "<id>") })
-        throw new Error("file storage unavailable")
-      }
-      maybeSweep(app, retentionDays)
-      return { id, filename: file.filename, mime: file.mime, bytes, createdAt, purpose: file.purpose }
-    },
+    save: (app, retentionDays, file, signal) => serialized(app, file.bytes.length, signal, () => saveOne(app, retentionDays, file)),
 
     head: readMeta,
 

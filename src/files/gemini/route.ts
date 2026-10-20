@@ -52,8 +52,20 @@ export function matchGeminiFilesRoute(method: string | undefined, path: string):
 
 // ---- resumable uploads, held in memory until finalized
 
+/**
+ * The key a request carries, for the uploads it starts and the chunks it sends. `digest` is the digest of the credential that came with the
+ * request when it is a key that is live now (undefined for a keyless server); `alive` says whether a digest is still a live key. An upload
+ * stays good only while the key that started it does: a key revoked or rotated out ends its uploads.
+ */
+export interface UploadCredential {
+  readonly digest: Buffer | undefined
+  alive(digest: Buffer): boolean
+}
+
 interface UploadSession {
   readonly app: string
+  /** The digest of the key that started the upload; absent on a keyless server. Never the key itself. */
+  readonly keyDigest?: Buffer
   readonly filename: string
   readonly declaredType: string | undefined
   readonly startedAt: number
@@ -69,21 +81,48 @@ const MAX_SESSIONS_PER_APP = 4
 const SESSION_TTL_MS = 10 * 60 * 1000
 const SESSION_ID = /^[0-9a-f]{32}$/
 const CHUNK_GRANULARITY = 8 * 1024 * 1024
+/** How often the unfinished uploads past their 10 minutes are dropped when nothing else touches them. */
+const SWEEP_EVERY_MS = 60 * 1000
+
+/** Whether an upload is still good: inside its 10 minutes, and its key (when it had one) is still live. */
+const usable = (session: UploadSession, alive: (digest: Buffer) => boolean): boolean =>
+  session.startedAt >= Date.now() - SESSION_TTL_MS && (session.keyDigest === undefined || alive(session.keyDigest))
 
 /**
- * The app that started the live resumable upload `id` names, or undefined for an unknown, malformed or expired id. The upload
- * url is a capability, as Google's is: google-genai (Python) sends its chunks without a key, so the unguessable id (122 random
- * bits, one app, 10 minutes) stands for the key of the request that started it. `src/openai/route.ts` uses this only for a
- * chunk request that carries no key at all.
+ * The app that started the live resumable upload `id` names, or undefined for an unknown, malformed, expired id or one whose key is gone.
+ * The upload url is a capability, as Google's is: google-genai (Python) sends its chunks without a key, so the unguessable id (122
+ * random bits, one app, 10 minutes, the key that started it still live) stands for the key of the request that started it.
+ * `src/openai/route.ts` uses this only for a chunk request that carries no key at all.
  */
-export function uploadSessionApp(id: string | null): string | undefined {
+export function uploadSessionApp(id: string | null, alive: (digest: Buffer) => boolean): string | undefined {
   const session = id !== null && SESSION_ID.test(id) ? sessions().get(id) : undefined
-  return session !== undefined && session.startedAt >= Date.now() - SESSION_TTL_MS ? session.app : undefined
+  if (session === undefined) return undefined
+  if (usable(session, alive)) return session.app
+  sessions().delete(id!)
+  return undefined
 }
 
+/** Drops every upload that has outlived its 10 minutes. */
 function sweepSessions(): void {
   const cutoff = Date.now() - SESSION_TTL_MS
   for (const [id, session] of sessions()) if (session.startedAt < cutoff) sessions().delete(id)
+}
+
+const SWEEP_SLOT = Symbol.for("opencode-plugboard.upload-sweep/1")
+
+/** One timer for the process (shared by every generation) drops expired uploads while any are held, and stops when there are none. */
+function armSweep(): void {
+  const slot = globalThis as unknown as Record<symbol, ReturnType<typeof setInterval> | undefined>
+  if (slot[SWEEP_SLOT] !== undefined) return
+  const timer = setInterval(() => {
+    sweepSessions()
+    if (sessions().size === 0) {
+      clearInterval(timer)
+      slot[SWEEP_SLOT] = undefined
+    }
+  }, SWEEP_EVERY_MS)
+  timer.unref?.()
+  slot[SWEEP_SLOT] = timer
 }
 
 const header = (request: IncomingMessage, name: string): string | undefined => {
@@ -100,9 +139,10 @@ export interface GeminiFilesCall {
   readonly url: URL
   readonly response: ServerResponse
   readonly scope: RequestScope
+  readonly credential: UploadCredential
 }
 
-export async function serveGeminiFiles(host: RouteHost, { app, match, request, url, response, scope }: GeminiFilesCall): Promise<void> {
+export async function serveGeminiFiles(host: RouteHost, { app, match, request, url, response, scope, credential }: GeminiFilesCall): Promise<void> {
   const fail = (error: PlugError, close = false) => sendError(response, error, encodeGeminiError(error), { close })
   const days = retentionDaysFor(host.options, app)
   // The address the caller reached: a trusted proxy's public origin, else the request's Host on a wildcard bind (a client cannot call `0.0.0.0`), else the listen address.
@@ -112,11 +152,13 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
   const notFound = (name: string) => fail({ status: 404, kind: "not_found", message: `File ${name.slice(0, 80)} was not found` })
 
   const finish = async (upload: { bytes: Uint8Array; declaredType: string | undefined; filename: string }) => {
-    const stored = await scope.race(storeUpload(host, app, { ...upload, purpose: "user_data" }))
+    const stored = await scope.race(storeUpload(host, app, { ...upload, purpose: "user_data" }, scope.signal))
     return stored
   }
 
   async function resumable(): Promise<void> {
+    // Any request to this route drops the uploads that have expired, so held bytes do not wait for the next upload to start.
+    sweepSessions()
     const command = (header(request, "x-goog-upload-command") ?? "").toLowerCase()
     const uploadId = url.searchParams.get("upload_id")
     if (uploadId === null) {
@@ -136,12 +178,14 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
       const displayName = typeof named === "string" ? named : (header(request, "x-goog-upload-file-name") ?? undefined)
       sessions().set(id, {
         app,
+        ...(credential.digest === undefined ? {} : { keyDigest: credential.digest }),
         filename: cleanFilename(displayName),
         declaredType: header(request, "x-goog-upload-header-content-type") ?? (typeof (file.mimeType ?? file.mime_type) === "string" ? ((file.mimeType ?? file.mime_type) as string) : undefined),
         startedAt: Date.now(),
         chunks: [],
         received: 0,
       })
+      armSweep()
       response.setHeader("x-goog-upload-status", "active")
       response.setHeader("x-goog-upload-url", `${base}/upload/v1beta/files?upload_id=${id}&upload_protocol=resumable`)
       response.setHeader("x-goog-upload-chunk-granularity", String(CHUNK_GRANULARITY))
@@ -150,7 +194,7 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
 
     // Another app's upload id is the same miss as an unknown or expired one (I33).
     const session = SESSION_ID.test(uploadId) ? sessions().get(uploadId) : undefined
-    if (session === undefined || session.app !== app || session.startedAt < Date.now() - SESSION_TTL_MS) {
+    if (session === undefined || session.app !== app || !usable(session, credential.alive)) {
       if (session !== undefined && session.app === app) sessions().delete(uploadId)
       return fail({ status: 404, kind: "not_found", message: "The upload was not found or has expired; start it again" })
     }
@@ -178,7 +222,8 @@ export async function serveGeminiFiles(host: RouteHost, { app, match, request, u
       sessions().delete(uploadId)
       return fail({ status: 413, kind: "invalid_request", code: "file_too_large", message: `The file is larger than this app's limit of ${cap} bytes` })
     }
-    session.chunks.push(chunk)
+    // A chunk with no bytes adds nothing: the list holds the bytes sent, never a count of requests.
+    if (chunk.length > 0) session.chunks.push(chunk)
     session.received += chunk.length
     if (!commands.includes("finalize")) {
       response.setHeader("x-goog-upload-status", "active")

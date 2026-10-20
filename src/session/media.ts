@@ -27,7 +27,7 @@ import type { ImageFetchOutcome } from "../metrics.js"
 
 const MAX_REMOTE_IMAGE_BYTES = 20 * 1024 * 1024
 /** Aggregate size of the prepared data URLs of one request. */
-const MAX_TOTAL_IMAGE_BYTES = 50 * 1024 * 1024
+export const MAX_TOTAL_IMAGE_BYTES = 50 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 20_000
 const TOO_MANY = () => new ImageError("images_too_large", "The request's images are larger than 50 MB in total")
 /** The one message for every failed fetch (blocked address, DNS, refused, timeout, bad status): no oracle for the server's network. */

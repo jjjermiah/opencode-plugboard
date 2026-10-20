@@ -4,6 +4,7 @@
  *
  * `init` edits the config as JSONC with `jsonc-parser`, so comments, formatting and every other key stay as they were.
  * It pins the running package version, generates one app key, and never replaces an existing plugboard entry without `--force`.
+ * A config it creates is mode 0600 (and a directory it creates 0700), because the file holds the key; an existing file keeps its mode.
  */
 
 import { randomBytes } from "node:crypto"
@@ -164,8 +165,9 @@ export function runInit(args: string[], cli: CliEnv): number {
       return 0
     }
     try {
-      mkdirSync(dirname(path), { recursive: true })
-      writeFileSync(path, text.endsWith("\n") ? text : `${text}\n`)
+      // The file holds the app key: a new file is the owner's alone, and so is a directory made for it. An existing file keeps its own mode.
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+      writeFileSync(path, text.endsWith("\n") ? text : `${text}\n`, existsSync(path) ? undefined : { mode: 0o600 })
     } catch (error) {
       throw new CliError(`cannot write ${path}: ${(error as Error).message}`)
     }

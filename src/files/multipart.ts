@@ -15,6 +15,9 @@ export interface FormUpload {
   readonly fields: ReadonlyMap<string, string>
 }
 
+const CRLF = Buffer.from("\r\n")
+const HEADER_END = Buffer.from("\r\n\r\n")
+
 const bad = (message: string, code = "invalid_file_upload"): PlugError => ({ status: 400, kind: "invalid_request", code, message })
 
 /** The final path component of a caller's file name, without control characters, at most 255 characters; `unnamed` when nothing is left. */
@@ -26,6 +29,33 @@ export function cleanFilename(raw: string | undefined): string {
     .trim()
     .slice(0, 255)
   return name.length > 0 ? name : "unnamed"
+}
+
+/**
+ * The `Content-Type` the first file part named `file` carries in its own headers, or undefined. The runtime's `FormData` parser (Bun) takes a
+ * file part's type from its file name and ignores this header, so a `text/plain` upload named `notes.bin` would read as binary: the declared
+ * type is read from the part itself. It only ever decides whether text is acceptable (`detectFile`); the bytes decide everything else.
+ */
+export function declaredPartType(contentType: string, body: Uint8Array): string | undefined {
+  const boundary = /boundary=(?:"([^"]+)"|([^;\s]+))/i
+    .exec(contentType)
+    ?.slice(1)
+    .find((value) => value !== undefined)
+  if (boundary === undefined) return undefined
+  const bytes = Buffer.from(body.buffer, body.byteOffset, body.byteLength)
+  const delimiter = Buffer.from(`--${boundary}`)
+  let at = bytes.indexOf(delimiter)
+  while (at >= 0) {
+    const start = at + delimiter.length
+    if (bytes.subarray(start, start + 2).toString("latin1") === "--") return undefined
+    const headersAt = bytes.subarray(start, start + 2).equals(CRLF) ? start + 2 : start
+    const end = bytes.indexOf(HEADER_END, headersAt)
+    if (end < 0) return undefined
+    const headers = bytes.subarray(headersAt, end).toString("latin1")
+    if (/\bname="file"/i.test(headers) && /\bfilename=/i.test(headers)) return /^content-type:[ \t]*([^\r\n]+)/im.exec(headers)?.[1]?.trim()
+    at = bytes.indexOf(delimiter, end + HEADER_END.length)
+  }
+  return undefined
 }
 
 /** The `file` part (and the text fields) of a `multipart/form-data` body. */
@@ -42,7 +72,7 @@ export async function parseFormUpload(contentType: string | undefined, body: Uin
     } else if (name === "file" && file === undefined) file = value
   }
   if (file === undefined) return bad("A file part named `file` is required")
-  return { filename: cleanFilename(file.name), declaredType: file.type || undefined, bytes: new Uint8Array(await file.arrayBuffer()), fields }
+  return { filename: cleanFilename(file.name), declaredType: declaredPartType(contentType, body) ?? (file.type || undefined), bytes: new Uint8Array(await file.arrayBuffer()), fields }
 }
 
 export interface RelatedUpload {
@@ -51,9 +81,6 @@ export interface RelatedUpload {
   readonly declaredType: string | undefined
   readonly bytes: Uint8Array
 }
-
-const CRLF = Buffer.from("\r\n")
-const HEADER_END = Buffer.from("\r\n\r\n")
 
 /** The two parts of a `multipart/related` body: JSON metadata, then the file bytes. */
 export function parseRelated(contentType: string | undefined, body: Buffer): RelatedUpload | PlugError {

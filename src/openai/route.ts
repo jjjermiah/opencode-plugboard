@@ -33,8 +33,10 @@ import {
   authenticate,
   authenticateUsage,
   bodyLimits,
+  credentialDigest,
   endpointRefusal,
   historyTemplate,
+  keyIsLive,
   maxNFor,
   maxNOption,
   reasoningOutputFor,
@@ -85,7 +87,7 @@ import { serveCompletions } from "../completions/route.js"
 import { matchStoredRoute, serveResponses, serveStoredResponse } from "../responses/route.js"
 import type { ResponseStore } from "../responses/state.js"
 import { inlineRequestFiles, isFilesPath, matchFilesRoute, serveFiles } from "../files/route.js"
-import { matchGeminiFilesRoute, serveGeminiFiles, uploadSessionApp } from "../files/gemini/route.js"
+import { matchGeminiFilesRoute, serveGeminiFiles, uploadSessionApp, type UploadCredential } from "../files/gemini/route.js"
 import type { FileStore } from "../files/state.js"
 import { liveOptions, processMetrics, processStatus, type RuntimeStatus } from "../runtime.js"
 import { budgetFor, budgetStatus } from "../budgets.js"
@@ -258,6 +260,15 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
   }
 
+  /** The key the request carries as an upload sees it: its digest when it is a live key, and the check for any digest (config keys as they are now, and runtime keys). */
+  async function uploadCredential(request: IncomingMessage, url: URL): Promise<UploadCredential> {
+    const runtime = await runtimeDigests()
+    const options = liveOptions(host.options)
+    const alive = (digest: Buffer) => keyIsLive(options, digest, runtime)
+    const presented = credentialDigest(geminiAuthorization(request, url))
+    return { digest: presented !== undefined && alive(presented) ? presented : undefined, alive }
+  }
+
   /** The route proper. Throws `BodyError`, `RequestAborted` or an unexpected error; `handle` maps them. */
   async function serve(request: IncomingMessage, response: ServerResponse, scope: RequestScope, info: RequestInfo): Promise<void> {
     let url: URL
@@ -373,7 +384,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // Gemini clients also send the key as `x-goog-api-key` or `?key=` (see `geminiAuthorization`).
     // A resumable Gemini upload chunk with no key at all is authorized by its upload id (a capability url, as Google's is: google-genai sends
     // no key on the chunks). An unknown id falls through to the usual check, which is a 401 (I15).
-    const uploadApp = geminiFiles?.op === "upload" && geminiAuthorization(request, url) === undefined ? uploadSessionApp(url.searchParams.get("upload_id")) : undefined
+    // An upload stays good only while the key that started it is live (a revoked or rotated-out key ends it): `credential` carries that check.
+    const credential: UploadCredential | undefined = geminiFiles ? await uploadCredential(request, url) : undefined
+    const uploadApp = credential && geminiFiles?.op === "upload" && geminiAuthorization(request, url) === undefined ? uploadSessionApp(url.searchParams.get("upload_id"), credential.alive) : undefined
     const auth =
       uploadApp !== undefined
         ? { app: uploadApp }
@@ -411,7 +424,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     // Files (since next): each lookup is under the caller's own app, never another's (I33).
     if (files) return serveFiles(host, { app: auth.app, match: files, request, url, response, scope })
-    if (geminiFiles) return serveGeminiFiles(host, { app: auth.app, match: geminiFiles, request, url, response, scope })
+    if (geminiFiles && credential) return serveGeminiFiles(host, { app: auth.app, match: geminiFiles, request, url, response, scope, credential })
 
     // Stored Responses: read or deleted under the caller's own app, never another's (I32).
     if (stored) return serveStoredResponse(host, { app: auth.app, match: stored, url, response, scope })
