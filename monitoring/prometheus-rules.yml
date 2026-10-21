@@ -1,0 +1,164 @@
+# Prometheus recording and alerting rules for plugboard.
+#
+# Needs plugboard's `metrics: true` option and a scrape job for GET /plugboard/metrics (see
+# docs/guides/history-usage-and-monitoring.md). The rules assume the scrape job is named `plugboard`;
+# if yours has another name, replace `job="plugboard"` in the PlugboardDown rules.
+#
+# Load it from prometheus.yml:
+#
+#   rule_files:
+#     - /etc/prometheus/plugboard-rules.yml
+#
+# Check it with: promtool check rules monitoring/prometheus-rules.yml
+#
+# Every threshold has a comment on how to tune it. Labels and series come from src/metrics.ts:
+# `app` is the configured key name, there is no model label, and `_none` is a request that was
+# refused before its key was known (a wrong or missing key).
+
+groups:
+  - name: plugboard.recording
+    interval: 1m
+    rules:
+      # Requests per second by app.
+      - record: plugboard:requests:rate5m
+        expr: sum by (app) (rate(plugboard_requests_total[5m]))
+
+      # Requests that finished in the last 5 minutes, by app. The alerts use it as a minimum-traffic guard.
+      - record: plugboard:requests:increase5m
+        expr: sum by (app) (increase(plugboard_requests_total[5m]))
+
+      # Share of requests that ended in a 5xx (0 to 1), by app. An app with no traffic has no sample.
+      - record: plugboard:requests_5xx:ratio_rate5m
+        expr: |
+          sum by (app) (rate(plugboard_requests_total{status=~"5.."}[5m]))
+          /
+          sum by (app) (rate(plugboard_requests_total[5m]))
+
+      # p95 of the time from request start to the end of the response, in seconds, by app. Only POST
+      # routes (chat, responses, messages, Gemini generate), so cheap GET calls do not pull it down.
+      # A streamed answer counts until its last byte.
+      - record: plugboard:request_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (app, le) (rate(plugboard_request_duration_seconds_bucket{route=~"POST .*"}[5m])))
+
+      # Cache hits as a share of cache lookups (0 to 1), by app. Only exists with the `responseCache` option.
+      - record: plugboard:cache_hit:ratio_rate15m
+        expr: |
+          sum by (app) (rate(plugboard_cache_requests_total{result="hit"}[15m]))
+          /
+          sum by (app) (rate(plugboard_cache_requests_total[15m]))
+
+  - name: plugboard.alerts
+    rules:
+      # The scrape target is gone or does not answer (also what a wrong admin key looks like: 401).
+      # Tune: `for` is how long a restart may take before you hear about it.
+      - alert: PlugboardDown
+        expr: up{job="plugboard"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "plugboard {{ $labels.instance }} is not answering scrapes"
+          description: "Prometheus cannot read /plugboard/metrics from {{ $labels.instance }}. The server is down, unreachable, or the admin key is wrong (check `curl -i` with the key)."
+
+      # No target at all: the job was removed from the scrape config, or service discovery lost it.
+      - alert: PlugboardTargetMissing
+        expr: absent(up{job="plugboard"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No plugboard scrape target"
+          description: "There is no `up{job=\"plugboard\"}` series. Check the scrape job name and the target."
+
+      # More than 5% of an app's requests ended in a 5xx for 5 minutes. A 5xx is a model failure, a timeout
+      # or a plugboard error; 4xx (bad request, 429) never count here.
+      # Tune: raise 0.05 for apps that call flaky models; raise the traffic guard (5 requests in 5 minutes)
+      # so one failed call of a quiet app does not page you.
+      - alert: PlugboardHighErrorRate
+        expr: |
+          plugboard:requests_5xx:ratio_rate5m > 0.05
+          and
+          plugboard:requests:increase5m >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.app }}: {{ $value | humanizePercentage }} of requests fail with 5xx"
+          description: "App {{ $labels.app }} has returned 5xx for more than 5% of its requests over 5 minutes. Look at its request log lines (outcome, status) and at plugboard_fallbacks_total."
+
+      # An app was refused with 429 by a concurrency cap or a requests-per-minute limit.
+      # Tune: raise `for` or the count when short bursts against the limit are normal; a limit doing its job
+      # is not an outage, so this is only `info`.
+      - alert: PlugboardRateLimited
+        expr: sum by (app, reason) (increase(plugboard_limited_total{reason=~"rate|concurrency"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.app }} is being limited ({{ $labels.reason }})"
+          description: "App {{ $labels.app }} got {{ $value | humanize }} 429 responses in 5 minutes from its {{ $labels.reason }} limit. Raise the limit in `limits`, or slow the caller."
+
+      # An app is refused because it used up a budget (requests, tokens or cost over a day, week or month).
+      # plugboard exposes no "budget used" gauge, only these refusals; the 80% warning is a `budget.warning`
+      # log line. Read the usage report (GET /plugboard/usage) to see how close an app is before it gets here.
+      # Tune: `for: 0m` pages at the first refusal; raise it if you would rather see a sustained block.
+      - alert: PlugboardBudgetExhausted
+        expr: sum by (app) (increase(plugboard_limited_total{reason="budget"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.app }} hit its budget"
+          description: "App {{ $labels.app }} was refused {{ $value | humanize }} times in 5 minutes because a budget is used up. Raise the ceiling in `budgets` or wait for its window to reset."
+
+      # A fallback chain target was skipped by an open breaker for most of the last 10 minutes. The gauge counts
+      # targets whose breaker is open (cooldown not over) and has no app label. A target that keeps failing is
+      # open, then gets one probe after its cooldown, then opens again, so the gauge is averaged over the window
+      # instead of required to be non-zero at every sample. With no traffic there is no probe: the breaker then
+      # stays half open, the gauge reads 0, and this alert stays quiet (nothing is failing).
+      # Tune: the window (10m) is "how long is too long"; 0.5 is the share of it a breaker must be open.
+      - alert: PlugboardCircuitBreakerOpen
+        expr: avg_over_time(plugboard_circuit_breaker_targets[10m]) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A fallback target has been skipped by an open breaker for most of 10 minutes"
+          description: "A model in a fallback chain keeps failing, so plugboard skips it. Watch plugboard_circuit_breaker_events_total by app, and look for `circuit_breaker.open` in the log to see which target."
+
+      # Many model calls had to move to the next target of their alias in 10 minutes.
+      # Tune: 10 is the count of fallbacks; lower it for a quiet homelab, raise it for busy apps.
+      - alert: PlugboardFallbacksSpiking
+        expr: sum by (app) (increase(plugboard_fallbacks_total[10m])) >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.app }}: {{ $value | humanize }} fallbacks in 10 minutes"
+          description: "The first target of app {{ $labels.app }}'s alias keeps failing before any output, so calls go to the next target. Check the provider behind the alias."
+
+      # p95 response time of an app above 2 minutes for 10 minutes.
+      # Tune: pick a value above what your slowest normal answer takes. Reasoning models and long outputs
+      # run for minutes; the histogram buckets end at 600 seconds, so 600 is the largest threshold that means anything.
+      - alert: PlugboardHighLatency
+        expr: plugboard:request_duration_seconds:p95_5m{app!="_none"} > 120
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.app }}: p95 latency {{ $value | humanizeDuration }}"
+          description: "The p95 request duration of app {{ $labels.app }} is above 2 minutes. A slow provider, a long output or a queue behind a concurrency cap."
+
+      # The event pump (how plugboard reads OpenCode's answers) is down while requests arrive. It starts
+      # with the first request, so an idle server alone does not trigger this.
+      - alert: PlugboardEventPumpDown
+        expr: |
+          plugboard_event_pump_up == 0
+          and on ()
+          sum(increase(plugboard_requests_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "plugboard's OpenCode event pump is down"
+          description: "Requests are arriving but plugboard is not subscribed to OpenCode's events, so answers cannot complete. Restart OpenCode."
