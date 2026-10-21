@@ -73,6 +73,23 @@ describe("#60 a chat call over its ceiling is 429 budget_exceeded with Retry-Aft
   })
 })
 
+describe("two windows on one metric are both enforced, and the 429 names the one that tripped", () => {
+  test.each([
+    ["day", { day: 1, month: 1000 }],
+    ["month", { day: 1000, month: 1 }],
+  ])("the %s ceiling refuses the second call", async (window, windows) => {
+    const { srv, recorder } = await start({ perApp: { requests: windows } })
+    expect((await srv.send(chat(KEYS.alpha))).status).toBe(200)
+    await counted(recorder, "alpha", 1)
+    const reply = await srv.send(chat(KEYS.alpha))
+    expect(reply.status).toBe(429)
+    expect(reply.json().error).toMatchObject({ code: "budget_exceeded", message: `Budget for alpha exceeded: requests ${window}` })
+    await counted(recorder, "alpha", 2)
+    const report = (await srv.send({ path: "/plugboard/usage", headers: bearer(KEYS.alpha) })).json()
+    expect(report.apps.alpha.budgets.map((row: { window: string }) => row.window)).toEqual(["day", "month"])
+  })
+})
+
 describe("#60 GET /plugboard/usage shows each app's budget state", () => {
   test("alpha's ceiling is used by its served call only: the refusal is counted as limited, not as used", async () => {
     const { srv, recorder } = await start({ perApp: { requests: { day: 1 } } })

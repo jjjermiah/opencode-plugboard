@@ -29,13 +29,18 @@
  * A persona (a skill alias or an `agent/<name>` id, `bypass`) is never cached: its answer depends on
  * the skill's content or the agent's prompt, which the key does not see, and a skill edit must not be
  * masked by an old entry.
+ *
+ * A caller steers the cache for one request with headers (`parseCacheDirective`): `x-plugboard-cache:
+ * bypass` neither reads nor stores, `refresh` skips the read and stores the new answer, and a namespace
+ * is folded into the key. They only act where the cache already applies, and the app stays the first
+ * part of the key, so a namespace never reaches another app's entries.
  */
 
 import { createHash } from "node:crypto"
-import type { ServerResponse } from "node:http"
+import type { IncomingHttpHeaders, ServerResponse } from "node:http"
 import { LRUCache } from "lru-cache"
 import stableStringify from "safe-stable-stringify"
-import type { CallContext, ModelCaller, PlugEvent, PlugFinish, PlugRequest, PolicyNote, ServedModel } from "./contract.js"
+import type { CallContext, ModelCaller, PlugError, PlugEvent, PlugFinish, PlugRequest, PolicyNote, ServedModel } from "./contract.js"
 
 /** The `responseCache` plugin option after defaults and validation (see `parseOptions` in `src/config.ts`). */
 export interface CacheConfig {
@@ -85,10 +90,21 @@ export function createCacheStore(limits: CacheLimits): CacheStore {
   }
 }
 
-/** The cache key of one call: the app and the resolved request, object keys sorted. */
-export function cacheKey(app: string, request: PlugRequest): string {
+/** The cache key of one call: the app, the caller's namespace and the resolved request, object keys sorted. */
+export function cacheKey(app: string, request: PlugRequest, namespace?: string): string {
   const { ref } = request
-  const canonical = stableStringify([app, ref.providerID, ref.id, ref.variant ?? null, request.system, request.messages, request.tools, request.toolChoice ?? null, request.generation])
+  const canonical = stableStringify([
+    app,
+    namespace ?? null,
+    ref.providerID,
+    ref.id,
+    ref.variant ?? null,
+    request.system,
+    request.messages,
+    request.tools,
+    request.toolChoice ?? null,
+    request.generation,
+  ])
   return createHash("sha256")
     .update(canonical ?? "")
     .digest("hex")
@@ -97,8 +113,57 @@ export function cacheKey(app: string, request: PlugRequest): string {
 /** Called once per call the cache applies to. */
 export type CacheCounter = (app: string, result: "hit" | "miss") => void
 
-/** The response header that says whether the answer came from the cache. */
+/** The header that says whether the answer came from the cache (response), and the one that steers the cache for one request (request). */
 export const CACHE_HEADER = "x-plugboard-cache"
+
+/** The request header that partitions the cache; the response never carries it. */
+export const CACHE_NAMESPACE_HEADER = `${CACHE_HEADER}-namespace`
+
+/** What a request's headers ask of the cache: `bypass` skips the lookup and the store, `refresh` skips the lookup and stores the new answer. */
+export type CacheMode = "bypass" | "refresh"
+
+export interface CacheDirective {
+  readonly mode?: CacheMode
+  /** Folded into the key, so callers can partition one app's entries. */
+  readonly namespace?: string
+}
+
+/** 1 to 64 letters, digits and `_ . : / + = @ -`. */
+const NAMESPACE = /^[\w.:/+=@-]{1,64}$/
+
+/** Header names that carry a namespace, first match wins: ours, then Portkey's and Helicone's names for the same thing. */
+const NAMESPACE_HEADERS = [CACHE_NAMESPACE_HEADER, "x-portkey-cache-namespace", "helicone-cache-seed"] as const
+
+const one = (value: string | ReadonlyArray<string> | undefined): string | undefined => (Array.isArray(value) ? value.join(", ") : (value as string | undefined))
+
+const invalidHeader = (param: string, message: string): PlugError => ({ status: 400, kind: "invalid_request", code: "invalid_cache_header", param, message })
+
+/**
+ * The cache directive of a request, or a 400 for a bad value (checked even when the app does not use the cache, so a typo never
+ * passes silently). `x-plugboard-cache` is `bypass` or `refresh`; without it, the standard `Cache-Control` says the same (`no-store`
+ * is `bypass`, `no-cache` is `refresh`, other directives are ignored), and so does Portkey's `x-portkey-cache-force-refresh: true`.
+ * The namespace is read from `x-plugboard-cache-namespace`, Portkey's `x-portkey-cache-namespace` or Helicone's `helicone-cache-seed`.
+ */
+export function parseCacheDirective(headers: IncomingHttpHeaders): CacheDirective | PlugError {
+  let mode: CacheMode | undefined
+  const sent = one(headers[CACHE_HEADER])
+  if (sent !== undefined) {
+    const value = sent.trim().toLowerCase()
+    if (value !== "bypass" && value !== "refresh") return invalidHeader(CACHE_HEADER, `${CACHE_HEADER} must be bypass or refresh`)
+    mode = value
+  } else {
+    const directives = (one(headers["cache-control"]) ?? "").split(",").map((part) => part.split("=", 1)[0]!.trim().toLowerCase())
+    if (directives.includes("no-store")) mode = "bypass"
+    else if (directives.includes("no-cache") || one(headers["x-portkey-cache-force-refresh"])?.trim().toLowerCase() === "true") mode = "refresh"
+  }
+  for (const name of NAMESPACE_HEADERS) {
+    const raw = one(headers[name])
+    if (raw === undefined) continue
+    if (!NAMESPACE.test(raw)) return invalidHeader(name, `${name} must be 1 to 64 letters, digits or _ . : / + = @ -`)
+    return { ...(mode ? { mode } : {}), namespace: raw }
+  }
+  return mode ? { mode } : {}
+}
 
 /**
  * The `CallContext.onCache` of a route: `x-plugboard-cache: hit|miss` while the headers are still
@@ -108,6 +173,17 @@ export function reportCache(response: ServerResponse): (result: "hit" | "miss") 
   return (result) => {
     if (response.headersSent || response.destroyed || response.hasHeader(CACHE_HEADER)) return
     response.setHeader(CACHE_HEADER, result)
+  }
+}
+
+/**
+ * The `CallContext.onCacheDirective` of a route: `x-plugboard-cache: bypass|refresh` when the caller's directive took effect.
+ * It is called before `onCache("miss")` for a refresh, so the first writer wins and the header says `refresh`.
+ */
+export function reportCacheDirective(response: ServerResponse): (mode: CacheMode) => void {
+  return (mode) => {
+    if (response.headersSent || response.destroyed || response.hasHeader(CACHE_HEADER)) return
+    response.setHeader(CACHE_HEADER, mode)
   }
 }
 
@@ -138,8 +214,13 @@ export function cachedCaller(inner: ModelCaller, config: CacheConfig, store: Cac
   return {
     async *stream(request: PlugRequest, context: CallContext): AsyncIterable<PlugEvent> {
       if (context.noCache || bypass?.(request.model, context.app) || (apps && !apps.has(context.app))) return yield* inner.stream(request, context)
-      const key = cacheKey(context.app, request)
-      const hit = store.get(key)
+      const { mode, namespace } = context.cache ?? {}
+      if (mode === "bypass") {
+        context.onCacheDirective?.("bypass")
+        return yield* inner.stream(request, context)
+      }
+      const key = cacheKey(context.app, request, namespace)
+      const hit = mode === "refresh" ? undefined : store.get(key)
       if (hit) {
         count?.(context.app, "hit")
         context.onCache?.("hit")
@@ -153,6 +234,8 @@ export function cachedCaller(inner: ModelCaller, config: CacheConfig, store: Cac
         }
         return
       }
+      // A refresh is a miss that the caller asked for: counted as one, reported as `refresh`.
+      if (mode === "refresh") context.onCacheDirective?.("refresh")
       count?.(context.app, "miss")
       context.onCache?.("miss")
       // What the route is told before the first event is kept for a later hit; the route still gets it.

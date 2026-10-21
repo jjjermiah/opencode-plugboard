@@ -14,7 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Control the response cache per request.** Send `x-plugboard-cache: bypass` to skip the cache for one call (no lookup, nothing stored), or `refresh` to skip the lookup and replace the stored answer. `x-plugboard-cache-namespace: <name>` keeps a caller's entries apart inside one app, and never reaches another app's entries. `Cache-Control: no-store` and `no-cache` mean `bypass` and `refresh`, and Portkey's namespace and force-refresh headers and Helicone's cache seed work too. The answer reports `bypass` or `refresh` in `x-plugboard-cache`. The headers only act for an app that uses `responseCache`; a bad value is a 400 `invalid_cache_header` in each API's own error shape. Browsers may send them: the CORS preflight now allows them.
+- **Budgets: two windows on one metric are tested and documented.** `"requests": { "day": 1000, "month": 20000 }` already enforced both, and the 429 names the window that tripped. The behaviour now has tests and a docs example.
 
 ## [0.61.0] - 2026-10-20: Names All the Way
 

@@ -31,12 +31,12 @@ A full concurrency cap answers `too_many_requests` with `retry-after: 1`. The `c
 
 ```jsonc plugboard
 "budgets": {
-  "perApp": { "requests": { "day": 1000 }, "tokens": { "month": 20000000 } },
+  "perApp": { "requests": { "day": 1000, "month": 20000 }, "tokens": { "month": 20000000 } },
   "apps": { "coding": { "costUsd": { "month": 50 } } }
 }
 ```
 
-An app over a ceiling gets 429 `budget_exceeded` until the window resets. The server logs `budget.warning` at 80%. The check runs before a call starts, so the call that crosses a ceiling is still served. Budgets guard against runaway use. They are not an exact meter. Cost is an estimate at list prices.
+A metric may have several windows, as `requests` does here. Each is enforced, and the one reached first refuses the call. The 429 names it, for example `Budget for coding exceeded: requests month`. An app over a ceiling gets 429 `budget_exceeded` until the window resets. The server logs `budget.warning` at 80%. The check runs before a call starts, so the call that crosses a ceiling is still served. Budgets guard against runaway use. They are not an exact meter. Cost is an estimate at list prices.
 
 ## Cap the size of one request
 
@@ -56,6 +56,19 @@ Every answer says whether it came from the cache:
 ```
 x-plugboard-cache: hit
 ```
+
+To control the cache for one request, send a header. No config edit is needed, and it only works for an app that uses the cache:
+
+```
+x-plugboard-cache: refresh
+```
+
+- `bypass` skips the lookup and the store, for a fresh answer that is not kept.
+- `refresh` skips the lookup and keeps the new answer, for replacing a stale one.
+- `x-plugboard-cache-namespace: user-42` keeps entries apart, so one caller's cached answers are not served to another. A namespace never reaches another app's entries.
+- `Cache-Control: no-store` and `no-cache` mean `bypass` and `refresh`.
+
+The answer says `bypass` or `refresh` in `x-plugboard-cache` when the header took effect. All of them are in [Response headers](../headers.md#request-headers).
 
 Only normal text answers are kept. Answers with tool calls, errors, structured output and `n` above 1 are not. With `temperature` above 0, a hit repeats the first answer, so limit the cache to apps that want that. The cache is in memory and a restart empties it. A hit takes no concurrency slot and spends no budget.
 

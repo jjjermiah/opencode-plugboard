@@ -241,6 +241,10 @@ export interface CallContext {
   readonly onCache?: (result: "hit" | "miss") => void
   /** Bypass the response cache for this call. Fan-out sets it: each choice of `n` above 1 repeats one request and must be a fresh sample. */
   readonly noCache?: boolean
+  /** The caller's per-request cache directive (`parseCacheDirective`, src/cache.ts): `bypass` or `refresh` the cache, and a namespace folded into the key. Acts only where the cache applies. */
+  readonly cache?: { readonly mode?: "bypass" | "refresh"; readonly namespace?: string }
+  /** Called once, before the first event, when the caller's directive took effect: `bypass` (no lookup, no store) or `refresh` (no lookup, the new answer is stored). Front-ends report it in `x-plugboard-cache`. */
+  readonly onCacheDirective?: (mode: "bypass" | "refresh") => void
   /** Called once, before the first event, under `promptCache` mode `anchor`: `anchor` when the call is under its key's anchor, `none` when it got no affinity. Front-ends report it in `x-plugboard-affinity`. */
   readonly onAffinity?: (mode: "anchor" | "none") => void
   /**

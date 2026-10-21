@@ -155,6 +155,38 @@ describe("#60 a refused call: 429 budget_exceeded with Retry-After until the win
   })
 })
 
+describe("several windows on one metric: each is enforced, and the refusal names the one that tripped", () => {
+  const budgets: Budgets = { perApp: { requests: { day: 2, month: 5 } } }
+
+  test("the day ceiling trips first while the month has room", async () => {
+    const h = harness(budgets)
+    await requested(h.usage, "alpha", 2)
+    expect(await start(h.caller, "alpha")).toEqual([refused("alpha", "requests day", 43_200)])
+    expect(h.fake.calls.length).toBe(0)
+  })
+
+  test("the month ceiling trips first when earlier days used it up, and the refusal waits for the month to reset", async () => {
+    const h = harness(budgets)
+    h.clock.at = Date.parse("2026-10-03T10:00:00Z")
+    await requested(h.usage, "alpha", 5)
+    h.clock.at = T0
+    // Nothing today, so the day ceiling is clear; the month is spent. Resets 2026-11-01T00:00Z: 20 days 12 hours after T0.
+    expect(await start(h.caller, "alpha")).toEqual([refused("alpha", "requests month", 20 * 86_400 + 43_200)])
+  })
+
+  test("a call under both ceilings is served, and both are named when both are over", async () => {
+    const h = harness(budgets)
+    h.clock.at = Date.parse("2026-10-03T10:00:00Z")
+    await requested(h.usage, "alpha", 3)
+    h.clock.at = T0
+    await requested(h.usage, "alpha", 1)
+    expect(await start(h.caller, "alpha")).toEqual([ev.text("hi"), ev.finish("stop")])
+    await requested(h.usage, "alpha", 1)
+    // Today holds 2 (day ceiling 2) and the month 5 (month ceiling 5).
+    expect(await start(h.caller, "alpha")).toEqual([refused("alpha", "requests day, requests month", 20 * 86_400 + 43_200)])
+  })
+})
+
 describe("#60 the 80% warning: once per app, budget and window", () => {
   test("crossing 80% logs budget.warning, once in a window and again in the next one", async () => {
     const h = harness({ perApp: { requests: { day: 10 } } })

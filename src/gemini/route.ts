@@ -22,7 +22,7 @@ import { reportServed, type ServedInfo } from "../fallback.js"
 import { appPolicy, bodyLimits, sessionUrlTemplate, maxChoicesFor, maxChoicesOption, requestedModel } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { effortUnavailable, listAvailableModels, resolveModel, THINKING_HEADER } from "../models.js"
-import { reportCache } from "../cache.js"
+import { parseCacheDirective, reportCache, reportCacheDirective } from "../cache.js"
 import { reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
@@ -156,6 +156,9 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const wire = alt === "sse" ? sseWire() : arrayWire()
   const unsupported = checkJsonContentType(request)
   if (unsupported) return fail(unsupported)
+  // The caller's cache headers: a bad value is a 400 before the body is read.
+  const cache = parseCacheDirective(request.headers)
+  if (isPlugError(cache)) return fail(cache)
   // A `fileData.fileUri` naming a stored file is replaced by the inline form of that file before the decoder runs (since next).
   const body = await inlineRequestFiles(host, app, "gemini", await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames())), scope)
   if (isPlugError(body)) return fail(body)
@@ -182,7 +185,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   exchange.model = requested.model
 
   // candidateCount > 1: one independent call per candidate, merged (src/openai/fanout.ts).
-  if (parsed.candidates > 1) return serveChoices(host, { app, calls: Array.from({ length: parsed.candidates }, () => call), response, scope, info, codec: geminiCodec(exchange, wire) })
+  if (parsed.candidates > 1) return serveChoices(host, { app, calls: Array.from({ length: parsed.candidates }, () => call), response, scope, info, codec: geminiCodec(exchange, wire), cache })
 
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
   if (scope.signal.aborted) throw scope.signal.reason
@@ -200,7 +203,9 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
       onAffinity: reportAffinity(response),
       onUsage: reportUsage(response, match.stream),
       onOpencodeTools: reportOpencodeTools(response, match.stream),
+      cache,
       onCache: reportCache(response),
+      onCacheDirective: reportCacheDirective(response),
     }),
     scope,
   )

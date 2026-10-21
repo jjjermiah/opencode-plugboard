@@ -25,7 +25,7 @@
 import type { ServerResponse } from "node:http"
 import type { PlugError, PlugEvent, PlugRequest, PlugUsage } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
-import { reportCache } from "../cache.js"
+import { reportCache, reportCacheDirective, type CacheDirective } from "../cache.js"
 import { reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { sessionUrlTemplate } from "../config.js"
@@ -92,6 +92,8 @@ export interface ChoicesCall {
   /** The route's log fields: the outcome of a stream that failed after it committed, and the first served model. */
   readonly info: ServedInfo & { failed?: string }
   readonly codec: ChoiceCodec
+  /** The caller's response-cache headers (`parseCacheDirective`); a call of one choice honours them, a fan-out never uses the cache. */
+  readonly cache?: CacheDirective
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
@@ -179,7 +181,7 @@ const addUsage = (a: PlugUsage, b: PlugUsage): PlugUsage => {
   return out
 }
 
-export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, { app, calls, response, scope, info, codec }: ChoicesCall): Promise<void> {
+export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, { app, calls, response, scope, info, codec, cache: directive }: ChoicesCall): Promise<void> {
   const errorBody = codec.encodeError ?? encodeError
   const fail = (error: PlugError) => sendError(response, error, errorBody(error))
   // Abandoned requests (client gone, deadline passed) must never reach the model caller.
@@ -224,6 +226,8 @@ export async function serveChoices(host: Pick<RouteHost, "caller" | "options">, 
         onUsage: usageHeader,
         onOpencodeTools: opencodeToolsHeader,
         onCache: cache,
+        onCacheDirective: reportCacheDirective(response),
+        ...(directive ? { cache: directive } : {}),
         noCache: calls.length > 1,
       }),
       gscope,
