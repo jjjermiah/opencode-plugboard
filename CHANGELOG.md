@@ -14,9 +14,40 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.62.1] - 2026-10-21: Clearer Waiting Messages
+
+**Full diff:** [v0.62.0...v0.62.1](https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.0...v0.62.1)
+
 ### Changed
 
 - **Two first-run messages say more.** `GET /readyz` and `GET /plugboard/ready` now explain the 503 you get after an OpenCode restart: "waiting for OpenCode to load plugboard", that the first model request to an app or a warm-up call makes it ready, and a link to the warm-up page. Readiness itself is unchanged: `/readyz` stays 503 until an app directory has served a request, because answering 200 earlier would send traffic to a server whose first request still has to boot the directory. An unknown model on a Gemini `generateContent`, `streamGenerateContent` or `countTokens` call now points at `GET /v1beta/models`, not `GET /v1/models`.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (1 commit)</summary>
+
+#### Fixes
+
+**fix(http): say why /readyz is 503 after a restart, and point Gemini at /v1beta/models** ([`0c21cdf`](https://github.com/jjjermiah/opencode-plugboard/commit/0c21cdf80d46eb3ed8f08ce88754f4bca5ebea1a))
+
+Two bits of first-run friction left over from the last walkthrough.
+
+/readyz: after an OpenCode restart it answered 503 "no app directory has been used since start; one model request to an app confirms it". The reason now starts with "waiting for OpenCode to load plugboard", says the first model request to an app or a warm-up call makes it ready, and links the warm-up page. The old phrase is still inside the text.
+
+Gemini: an unknown model on generateContent, streamGenerateContent and countTokens said "GET /v1/models lists the models you can call", a route a Gemini client does not use. encodeGeminiError now rewrites that hint to GET /v1beta/models for model_not_found, so every path that reaches a Gemini error body (route, session, fallback) gets it. The GET /v1beta/models/{model} route already did.
+
+Decision: readiness rule unchanged. servingConfirmed is the only signal that an app directory has booted in this process; answering 200 on listener-up alone would send load-balancer traffic to a server whose first request still boots the directory (a few seconds, and the pump and catalog load there too). Wording only.
+
+Rejected: threading a list-route parameter through resolveModel, checkAppModel and the session caller. The encoder is the one place every Gemini error passes through.
+
+Docs: errors.md (not_ready), configuration.md (errors table, /readyz line), warm-up.md. CHANGELOG [Unreleased] Changed. Scripted transcripts of the four Gemini examples regenerated; each diff is only the message line (and its fieldViolations copy). Tests: newcomer-errors (generate, stream and count on a Gemini route), readyz (exact reason).
+
+Validation: bun run validate --skip examples passes. The full examples step passed through every client up to langchain4j, which needs a Java runtime this machine lacks (unchanged OpenAI-shape transcripts).
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.62.0] - 2026-10-21: Friendlier First Steps
 
@@ -10182,7 +10213,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.1...HEAD
+[0.62.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.0...v0.62.1
 [0.62.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.59.0...v0.60.0
