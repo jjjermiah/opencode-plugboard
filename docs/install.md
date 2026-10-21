@@ -5,12 +5,14 @@ Three steps: add the plugin, restart OpenCode, call it. You need OpenCode V2 (2.
 ## 1. Add the plugin
 
 ```sh
-bunx opencode-plugboard init
+bunx opencode-plugboard@latest init --fast anthropic/claude-haiku-4-5
 ```
 
-This adds plugboard to your global config, `~/.config/opencode/opencode.jsonc`, pinned to the current release. It creates a key for one app (`my-app`; pick the name with `--app`), allows every model of every provider you are logged in to, and prints the key once with a ready curl. A config file it creates is readable by you alone (mode 0600, and 0700 for a directory it makes), because the key is in it; a file that already exists keeps its mode.
+Use a model you are logged in to. If you are not on Anthropic, leave `--fast` out and pick a model in step 3. `@latest` makes Bun fetch the current release: without it Bun can reuse an older copy, and `init` pins the version that ran.
 
-- `--fast <model>` adds a `fast` alias, for example `--fast anthropic/claude-haiku-4-5`.
+This adds plugboard to your global config, `~/.config/opencode/opencode.jsonc`, pinned to that release. It creates a key for one app (`my-app`; pick the name with `--app`), allows every model of every provider you are logged in to, and prints the key once with a ready curl. A config file it creates is readable by you alone (mode 0600, and 0700 for a directory it makes), because the key is in it; a file that already exists keeps its mode.
+
+- `--fast <model>` adds the alias `fast`, which the examples below call.
 - `--dry-run` shows the change without writing it.
 - An existing plugboard entry is kept unless you pass `--force`.
 - The key is stored in the file, so keep the file private.
@@ -52,7 +54,19 @@ For an always-on server, run that call from the service unit. See [Serving other
 
 ## 3. Call it
 
-The listener is on `127.0.0.1:4010`. This prints `pong`:
+The listener is on `127.0.0.1:4010`. Put the key `init` printed in your shell (if you wrote the entry yourself, it is the value of `PLUGBOARD_KEY_MY_APP`):
+
+```sh
+export PLUGBOARD_KEY_MY_APP=<the key init printed>
+```
+
+List the models the key may use. Any id works as `model`:
+
+```sh
+curl -s http://127.0.0.1:4010/v1/models -H "Authorization: Bearer $PLUGBOARD_KEY_MY_APP" | jq -r '.data[].id'
+```
+
+This prints `pong`. Without the `fast` alias, use a model id from that list:
 
 ```sh
 curl -s http://127.0.0.1:4010/v1/chat/completions \
@@ -78,12 +92,14 @@ print(r.choices[0].message.content)
 | You see | It means |
 | --- | --- |
 | Connection refused | OpenCode has not loaded the plugin. Run step 2. After every restart, run it again. |
-| 401 `invalid_api_key` | The key is missing, wrong, or not in `keys`. |
-| 404 `model_not_found` | The model is not in `models`, or the server does not have it enabled. `GET /v1/models` lists what you may use. |
+| 401 `invalid_api_key` | The key is missing, wrong, or not in `keys`. Use the key `init` printed, not a provider key. |
+| 404 `model_not_found` | The model is not in `models`, the server does not have it enabled, or its provider is not signed in on the OpenCode server. `GET /v1/models` lists what you may use. |
+| 401 `provider_auth_failed` | Your plugboard key is fine. The provider rejected the sign-in OpenCode holds for it: sign in again on the OpenCode server (`/connect`). |
 | 403 `no_models_configured` | `models` is not set. Set `"models": "all"` or list models. |
+| Connection refused after you edited the options | An option is wrong: the plugin failed to load. The OpenCode log has a `plugboard options are invalid:` line that names the option and, for an old name, the new one. |
 | 403 `invalid_host` | A loopback listener saw a `Host` header that is not `127.0.0.1`, `localhost` or `[::1]`. See [Serving other machines](guides/serving-other-machines.md). |
 
-Open `http://127.0.0.1:4010/` in a browser for a setup page: the listen address, a `models` suggestion built from what your server offers, and a curl example.
+Open `http://127.0.0.1:4010/` in a browser for a setup page: the listen address, the endpoints and a curl example. With `keys` set (as `init` does), a browser cannot send a key, so the page leaves out your models and aliases. `curl -s http://127.0.0.1:4010/v1 -H "Authorization: Bearer $PLUGBOARD_KEY_MY_APP"` returns them, with a `models` suggestion built from what your server offers.
 
 ## Next
 

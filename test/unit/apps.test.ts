@@ -111,7 +111,13 @@ describe("apps: model scope", () => {
   test("checkAppModel: the same 404 as an unknown model, keyed on what the caller sent and the resolved ref", () => {
     const policy = appPolicy(options, "bot")
     expect(checkAppModel(policy, "fast", { providerID: "a", id: "x" })).toBeUndefined()
-    expect(checkAppModel(policy, "a/x", { providerID: "a", id: "x" })).toEqual({ status: 404, kind: "not_found", code: "model_not_found", param: "model", message: "Model a/x is not available" })
+    expect(checkAppModel(policy, "a/x", { providerID: "a", id: "x" })).toEqual({
+      status: 404,
+      kind: "not_found",
+      code: "model_not_found",
+      param: "model",
+      message: "Model a/x is not available. GET /v1/models lists the models you can call.",
+    })
     expect(checkAppModel(undefined, "anything", { providerID: "z", id: "z" })).toBeUndefined()
     expect(checkAppModel(appPolicy(options, "ide"), "fast", { providerID: "a", id: "x" })).toBeUndefined()
     expect(checkAppModel(appPolicy(options, "ide"), "smart", { providerID: "b", id: "z", variant: "high" })).toMatchObject({ status: 404, code: "model_not_found" })

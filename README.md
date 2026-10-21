@@ -24,10 +24,10 @@ Documentation: **https://jjjermiah.github.io/opencode-plugboard**
 ## Install
 
 ```sh
-bunx opencode-plugboard init --fast anthropic/claude-haiku-4-5
+bunx opencode-plugboard@latest init --fast anthropic/claude-haiku-4-5
 ```
 
-This adds plugboard to your global OpenCode config (`~/.config/opencode/opencode.jsonc`), creates a key for one app, allows every model you are logged in to, and prints the key. Restart OpenCode. To write the entry by hand instead:
+This adds plugboard to your global OpenCode config (`~/.config/opencode/opencode.jsonc`), creates a key for one app, allows every model you are logged in to, and prints the key. Use a model you are logged in to; without `--fast`, call a model id from `GET /v1/models`. Restart OpenCode, then run `opencode api get /api/agent` once so it loads the plugin. To write the entry by hand instead:
 
 ```jsonc
 {

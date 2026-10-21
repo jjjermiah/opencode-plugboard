@@ -214,7 +214,7 @@ const OVERLOADED = /overloaded/i
  */
 const SIGNATURE_REJECTED = /signature[^\n]{0,60}(?:thinking|reasoning)|(?:thinking|reasoning)[^\n]{0,60}signature/i
 
-const AUTH_MESSAGE = "The model provider rejected its credentials; the plugboard host needs to sign in again"
+const AUTH_MESSAGE = "The model provider rejected the sign-in OpenCode holds for it. Sign in to that provider again on the OpenCode server (`/connect`); your plugboard key is fine."
 
 /**
  * Host `SessionError` (`{ type, message, status?, response? }`) to a `PlugError`. Provider and host

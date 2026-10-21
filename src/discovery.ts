@@ -248,7 +248,11 @@ export function buildDiscovery({ options, app, catalog, publicOrigin, requestHos
       : {}),
     listen: { host: options.listen.host, port: options.listen.port },
     authentication: auth,
-    ...(detail ? {} : { hint: "Authentication is required. Send `Authorization: Bearer <key>` to see this app's configuration: the allowlist, aliases and a model suggestion." }),
+    ...(detail
+      ? {}
+      : {
+          hint: `Authentication is required. A request that sends \`Authorization: Bearer <key>\` also gets this app's allowlist, aliases and model suggestion. A browser cannot send that header, so run \`curl -s ${base} -H "Authorization: Bearer $PLUGBOARD_KEY"\` for the JSON version.`,
+        }),
     ...(detail ? { apps: [app ?? "default"] } : {}),
     ...(detail
       ? {
@@ -269,6 +273,8 @@ export function buildDiscovery({ options, app, catalog, publicOrigin, requestHos
   }
 }
 
+/** Escaped text where `code` spans in backticks (the plain-text hints and descriptions use them) become `<code>`. */
+const prose = (text: string): string => escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>")
 const pre = (text: string) => `<pre>${escapeHtml(text)}</pre>`
 const list = (items: ReadonlyArray<string>) => `<ul>${items.map((item) => `<li><code>${escapeHtml(item)}</code></li>`).join("")}</ul>`
 
@@ -276,14 +282,14 @@ const list = (items: ReadonlyArray<string>) => `<ul>${items.map((item) => `<li><
 export function renderDiscoveryHtml(doc: Discovery): string {
   const sections: string[] = []
   sections.push(`<p>Base URL: <code>${escapeHtml(doc.baseUrl)}</code></p>`)
-  if (doc.baseUrlHint) sections.push(`<p class="hint">${escapeHtml(doc.baseUrlHint)}</p>`)
+  if (doc.baseUrlHint) sections.push(`<p class="hint">${prose(doc.baseUrlHint)}</p>`)
   sections.push(`<p>Authentication: ${doc.authentication.required ? "required. Send <code>Authorization: Bearer &lt;key&gt;</code>." : "none (keyless, loopback only)."}</p>`)
-  if (doc.hint) sections.push(`<p class="hint">${escapeHtml(doc.hint)}</p>`)
+  if (doc.hint) sections.push(`<p class="hint">${prose(doc.hint)}</p>`)
   if (doc.apps) sections.push(`<h2>App</h2>${list(doc.apps)}`)
   if (doc.models) {
     const models = doc.models
     sections.push(`<h2>Models</h2>`)
-    if (models.hint) sections.push(`<p class="hint">${escapeHtml(models.hint)}</p>`)
+    if (models.hint) sections.push(`<p class="hint">${prose(models.hint)}</p>`)
     if (models.available !== undefined) sections.push(`<p>${escapeHtml(models.available)} model ids available.</p>`)
     sections.push(`<h3>Allowlist</h3>${models.allowlist.length > 0 ? list(models.allowlist) : "<p>Empty.</p>"}`)
     const aliases = Object.entries(models.aliases)
@@ -310,7 +316,7 @@ export function renderDiscoveryHtml(doc: Discovery): string {
     `<h2>Endpoints</h2><table><tr><th>Method</th><th>Path</th><th>Key</th><th></th></tr>${doc.endpoints
       .map(
         (endpoint) =>
-          `<tr><td>${escapeHtml(endpoint.method)}</td><td><code>${escapeHtml(endpoint.path)}</code></td><td>${endpoint.auth ? "yes" : "no"}</td><td>${escapeHtml(endpoint.description)}</td></tr>`,
+          `<tr><td>${escapeHtml(endpoint.method)}</td><td><code>${escapeHtml(endpoint.path)}</code></td><td>${endpoint.auth ? "yes" : "no"}</td><td>${prose(endpoint.description)}</td></tr>`,
       )
       .join("")}</table>`,
   )

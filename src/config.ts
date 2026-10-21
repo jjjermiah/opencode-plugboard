@@ -413,6 +413,51 @@ const KNOWN = new Set([
   "logRequests",
   "reasoningOutput",
 ])
+/** Options that were renamed, by where they sat: `""` is the top level, `apps.*` an app, any other key is the dotted path of the parent. */
+const RENAMED: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "": { history: "sessions", historyUrl: "sessionUrl", maxN: "maxChoices", cache: "responseCache", fallbackAfterMs: "firstEventTimeoutMs", fallbackCooldown: "circuitBreaker" },
+  "apps.*": {
+    models: "allowedModels",
+    model: "pinnedModel",
+    serverTools: "opencodeTools",
+    maxServerToolSteps: "maxToolSteps",
+    maxServerToolCalls: "maxToolCalls",
+    hostedTools: "onHostedTools",
+    history: "sessions",
+    historyUrl: "sessionUrl",
+    maxN: "maxChoices",
+    stopSettleMs: "settleMs",
+  },
+  sessions: { hidden: "hideFromList" },
+  "apps.*.sessions": { hidden: "hideFromList" },
+  circuitBreaker: { failureThreshold: "failures", windowMs: "failureWindowMs" },
+}
+
+/** Edit distance of two short names, for the "did you mean" hint of an option typo. */
+function editDistance(left: string, right: string): number {
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= left.length; i++) {
+    const row = [i]
+    for (let j = 1; j <= right.length; j++) row[j] = Math.min(previous[j]! + 1, row[j - 1]! + 1, previous[j - 1]! + (left[i - 1] === right[j - 1] ? 0 : 1))
+    previous = row
+  }
+  return previous[right.length]!
+}
+
+/**
+ * The error for an option plugboard does not know. `parent` is the dotted path it sits under (empty at the top level). An old name says what it
+ * was renamed to, a near miss says what it may have meant, anything else lists the known names.
+ */
+function unknownOption(parent: string, key: string, known: Iterable<string>): Error {
+  const at = (name: string) => `\`${parent === "" ? name : `${parent}.${name}`}\``
+  const renamed = RENAMED[parent.replace(/^apps\.[^.]+/, "apps.*")]?.[key]
+  if (renamed !== undefined) return new Error(`Unknown plugboard option ${at(key)}: it is renamed to ${at(renamed)}`)
+  const names = [...known]
+  const near = names.map((name) => [name, editDistance(key.toLowerCase(), name.toLowerCase())] as const).sort((a, b) => a[1] - b[1])[0]
+  if (near !== undefined && near[1] <= 2 && near[1] < key.length) return new Error(`Unknown plugboard option ${at(key)} (did you mean ${at(near[0])}?)`)
+  return new Error(`Unknown plugboard option ${at(key)} (known: ${names.join(", ")})`)
+}
+
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
 const USAGE_DEFAULTS = { enabled: true, retentionDays: 90 } as const
 /** Ten years: keeps a day-keyed store bounded and a range query well inside its limits. */
@@ -464,7 +509,7 @@ function positiveInt(value: unknown, name: string, fallback: number, max = Numbe
 function parseCircuitBreaker(raw: unknown): CircuitBreaker | false | undefined {
   if (raw === undefined || raw === false) return raw
   if (!isRecord(raw)) throw new Error("plugboard option `circuitBreaker` must be `false` or an object with `failures`, `cooldownMs` and `failureWindowMs`")
-  for (const key of Object.keys(raw)) if (!CIRCUIT_BREAKER_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`circuitBreaker.${key}\` (known: ${[...CIRCUIT_BREAKER_KNOWN].join(", ")})`)
+  for (const key of Object.keys(raw)) if (!CIRCUIT_BREAKER_KNOWN.has(key)) throw unknownOption("circuitBreaker", key, CIRCUIT_BREAKER_KNOWN)
   return {
     failures: positiveInt(raw.failures, "circuitBreaker.failures", DEFAULT_CIRCUIT_BREAKER.failures, 1000),
     cooldownMs: positiveInt(raw.cooldownMs, "circuitBreaker.cooldownMs", DEFAULT_CIRCUIT_BREAKER.cooldownMs, MAX_TIMER_MS),
@@ -495,7 +540,7 @@ function parseOrigin(text: unknown): string | undefined {
 function parseCors(raw: unknown, keyed: boolean): CorsConfig | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error("plugboard option `cors` must be an object: { origins, allowPrivateNetwork }")
-  for (const key of Object.keys(raw)) if (!CORS_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`cors.${key}\` (known: ${CORS_KNOWN.join(", ")})`)
+  for (const key of Object.keys(raw)) if (!CORS_KNOWN.includes(key)) throw unknownOption("cors", key, CORS_KNOWN)
   const origins = raw.origins
   if (!Array.isArray(origins) || origins.length === 0) throw new Error('plugboard option `cors.origins` must be a non-empty array of origins such as `https://chat.example.net`, or ["*"]')
   const list: string[] = []
@@ -530,7 +575,7 @@ function parseRemoteImages(value: unknown): RemoteImages {
   if (value === undefined) return false
   if (typeof value === "boolean") return value
   if (!isRecord(value)) throw new Error(REMOTE_IMAGES_ERROR)
-  for (const key of Object.keys(value)) if (!REMOTE_IMAGES_KNOWN.includes(key)) throw new Error(`Unknown plugboard option \`remoteImages.${key}\` (known: ${REMOTE_IMAGES_KNOWN.join(", ")})`)
+  for (const key of Object.keys(value)) if (!REMOTE_IMAGES_KNOWN.includes(key)) throw unknownOption("remoteImages", key, REMOTE_IMAGES_KNOWN)
   const allow = value.allow ?? []
   if (!Array.isArray(allow)) throw new Error(REMOTE_IMAGES_ERROR)
   for (const entry of allow)
@@ -608,7 +653,7 @@ const APP_KNOWN = new Set([
 function parseAppSessions(raw: unknown, at: string): SessionLimits {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.sessions\` must be an object: { maxSessions, maxAgeDays, hideFromList }`)
   for (const key of Object.keys(raw))
-    if (key !== "maxSessions" && key !== "maxAgeDays" && key !== "hideFromList") throw new Error(`Unknown plugboard option \`${at}.sessions.${key}\` (known: maxSessions, maxAgeDays, hideFromList)`)
+    if (key !== "maxSessions" && key !== "maxAgeDays" && key !== "hideFromList") throw unknownOption(`${at}.sessions`, key, ["maxSessions", "maxAgeDays", "hideFromList"])
   const maxSessions = raw.maxSessions === undefined ? undefined : positiveInt(raw.maxSessions, `${at}.sessions.maxSessions`, 0, 1_000_000)
   const maxAgeDays = raw.maxAgeDays === undefined ? undefined : positiveInt(raw.maxAgeDays, `${at}.sessions.maxAgeDays`, 0, MAX_AGE_DAYS)
   if (raw.hideFromList !== undefined && typeof raw.hideFromList !== "boolean") throw new Error(`plugboard option \`${at}.sessions.hideFromList\` must be a boolean`)
@@ -694,8 +739,7 @@ const SAMPLING_KNOWN = ["temperature", "topP", "topK", "maxTokens", "stop", "pre
  */
 function parseSampling(raw: unknown, at: string): PlugGeneration {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}.sampling\` must be an object`)
-  for (const key of Object.keys(raw))
-    if (!(SAMPLING_KNOWN as readonly string[]).includes(key)) throw new Error(`Unknown plugboard option \`${at}.sampling.${key}\` (known: ${SAMPLING_KNOWN.join(", ")})`)
+  for (const key of Object.keys(raw)) if (!(SAMPLING_KNOWN as readonly string[]).includes(key)) throw unknownOption(`${at}.sampling`, key, SAMPLING_KNOWN)
   const number = (key: "temperature" | "topP" | "presencePenalty" | "frequencyPenalty", min: number, max: number): number | undefined => {
     const value = raw[key]
     if (value === undefined) return undefined
@@ -732,13 +776,14 @@ function parseApps(
     const at = `plugboard \`apps.${app}\``
     if (app !== DEFAULT_APP && !isAppName(app)) throw new Error(`plugboard app name \`${app}\` must match ${APP_NAME_PATTERN} and be at most ${APP_NAME_MAX} characters (or be \`${DEFAULT_APP}\`)`)
     if (!isRecord(value)) throw new Error(`${at} must be an object`)
-    for (const field of Object.keys(value)) if (!APP_KNOWN.has(field)) throw new Error(`Unknown plugboard option \`apps.${app}.${field}\` (known: ${[...APP_KNOWN].join(", ")})`)
+    for (const field of Object.keys(value)) if (!APP_KNOWN.has(field)) throw unknownOption(`apps.${app}`, field, APP_KNOWN)
     const keyed = Object.keys(context.keys).length > 0
     if (app === DEFAULT_APP && (keyed || value.key !== undefined)) throw new Error(`${at} configures the keyless app and cannot be used together with \`keys\`; name the app and give it a key instead`)
     if (app !== DEFAULT_APP && !Object.hasOwn(context.keys, app)) throw new Error(`${at} has no key: add \`key\` there or an entry in \`keys\``)
 
     // `"all"` names no narrowing: the app gets whatever the global `models` allows, the same as omitting it.
     const appModels = value.allowedModels === ALL_MODELS ? undefined : value.allowedModels
+    if (appModels === "connected") throw new Error(`${at}.allowedModels value \`"connected"\` is renamed to \`"${ALL_MODELS}"\``)
     if (appModels !== undefined) {
       if (!Array.isArray(appModels) || appModels.length === 0) throw new Error(`${at}.allowedModels must be a non-empty array or \`"all"\` (omit it to inherit the global \`models\`)`)
       for (const entry of appModels)
@@ -834,7 +879,7 @@ const PROMPT_CACHE_KNOWN = new Set(["affinity", "scope", "maxAnchors"])
 export function parsePromptCache(raw: unknown, at: string): PromptCache | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object: { affinity, scope }`)
-  for (const key of Object.keys(raw)) if (!PROMPT_CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: affinity, scope, maxAnchors)`)
+  for (const key of Object.keys(raw)) if (!PROMPT_CACHE_KNOWN.has(key)) throw unknownOption(at, key, PROMPT_CACHE_KNOWN)
   if (typeof raw.affinity !== "string" || !AFFINITY_MODES.has(raw.affinity)) throw new Error(`plugboard option \`${at}.affinity\` must be \`off\` or \`anchor\``)
   if (typeof raw.scope !== "string" || !AFFINITY_SCOPES.has(raw.scope)) throw new Error(`plugboard option \`${at}.scope\` must be \`app\` or \`user\``)
   const maxAnchors = raw.maxAnchors === undefined ? undefined : positiveInt(raw.maxAnchors, `${at}.maxAnchors`, DEFAULT_MAX_ANCHORS, 1_000_000)
@@ -850,7 +895,7 @@ function parseCaps(raw: unknown, at: string, allowBodyCap = false): LimitCaps {
   if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object`)
   // `maxBodyBytes` is a cap only for an app (`limits.apps`), never for `limits.perApp`, which would apply it to every app.
   const known = allowBodyCap ? [...LIMIT_CAP_KNOWN, "maxBodyBytes"] : [...LIMIT_CAP_KNOWN]
-  for (const key of Object.keys(raw)) if (!known.includes(key)) throw new Error(`Unknown plugboard option \`${at}.${key}\` (known: ${known.join(", ")})`)
+  for (const key of Object.keys(raw)) if (!known.includes(key)) throw unknownOption(at, key, known)
   return {
     ...(raw.maxConcurrent === undefined ? {} : { maxConcurrent: positiveInt(raw.maxConcurrent, `${at}.maxConcurrent`, 0, MAX_LIMIT) }),
     ...(raw.requestsPerMinute === undefined ? {} : { requestsPerMinute: positiveInt(raw.requestsPerMinute, `${at}.requestsPerMinute`, 0, MAX_LIMIT) }),
@@ -862,7 +907,7 @@ function parseCaps(raw: unknown, at: string, allowBodyCap = false): LimitCaps {
 function parseLimits(raw: unknown, keys: Readonly<Record<string, string>>): Limits | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error("plugboard option `limits` must be an object")
-  for (const key of Object.keys(raw)) if (!LIMITS_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`limits.${key}\` (known: ${[...LIMITS_KNOWN].join(", ")})`)
+  for (const key of Object.keys(raw)) if (!LIMITS_KNOWN.has(key)) throw unknownOption("limits", key, LIMITS_KNOWN)
   const appsRaw = raw.apps
   if (appsRaw !== undefined && !isRecord(appsRaw)) throw new Error("plugboard option `limits.apps` must be an object of app name -> caps")
   const apps: Record<string, LimitCaps> = {}
@@ -1009,7 +1054,7 @@ export function requestTimeoutOption(options: Pick<PlugboardOptions, "apps">, ap
 function parseUsage(value: unknown): UsageConfig {
   if (value === undefined) return { ...USAGE_DEFAULTS }
   if (!isRecord(value)) throw new Error("plugboard option `usage` must be an object")
-  for (const key of Object.keys(value)) if (!USAGE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`usage.${key}\` (known: ${[...USAGE_KNOWN].join(", ")})`)
+  for (const key of Object.keys(value)) if (!USAGE_KNOWN.has(key)) throw unknownOption("usage", key, USAGE_KNOWN)
   if (value.enabled !== undefined && typeof value.enabled !== "boolean") throw new Error("plugboard option `usage.enabled` must be a boolean")
   return {
     enabled: value.enabled !== false,
@@ -1020,7 +1065,7 @@ function parseUsage(value: unknown): UsageConfig {
 function parseCache(value: unknown, keys: Readonly<Record<string, string>>): CacheConfig | undefined {
   if (value === undefined) return undefined
   if (!isRecord(value)) throw new Error("plugboard option `responseCache` must be an object with `ttlSeconds`")
-  for (const key of Object.keys(value)) if (!CACHE_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`responseCache.${key}\` (known: ${[...CACHE_KNOWN].join(", ")})`)
+  for (const key of Object.keys(value)) if (!CACHE_KNOWN.has(key)) throw unknownOption("responseCache", key, CACHE_KNOWN)
   if (value.ttlSeconds === undefined) throw new Error("plugboard option `responseCache.ttlSeconds` is required (how long an answer is served, in seconds)")
   const ttlSeconds = positiveInt(value.ttlSeconds, "responseCache.ttlSeconds", 0, MAX_CACHE_TTL_SECONDS)
   const maxEntries = positiveInt(value.maxEntries, "responseCache.maxEntries", CACHE_DEFAULTS.maxEntries)
@@ -1055,7 +1100,7 @@ function widestWindowDays(budgets: Budgets | undefined): number {
 function parseBudgets(raw: unknown, keys: Readonly<Record<string, string>>): Budgets | undefined {
   if (raw === undefined) return undefined
   if (!isRecord(raw)) throw new Error("plugboard option `budgets` must be an object")
-  for (const key of Object.keys(raw)) if (key !== "perApp" && key !== "apps") throw new Error(`Unknown plugboard option \`budgets.${key}\` (known: perApp, apps)`)
+  for (const key of Object.keys(raw)) if (key !== "perApp" && key !== "apps") throw unknownOption("budgets", key, ["perApp", "apps"])
 
   const budget = (value: unknown, at: string): Budget => {
     if (!isRecord(value)) throw new Error(`plugboard option \`${at}\` must be an object`)
@@ -1108,7 +1153,7 @@ function parseAgents(raw: unknown, models: ReadonlyArray<string>): Record<string
   const entries: Array<[string, string]> = []
   for (const item of raw) {
     if (!isRecord(item)) throw new Error("plugboard option `agents` entries must be objects of the form { name, model }")
-    for (const key of Object.keys(item)) if (!AGENT_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`agents.${key}\` (known: ${[...AGENT_KNOWN].join(", ")})`)
+    for (const key of Object.keys(item)) if (!AGENT_KNOWN.has(key)) throw unknownOption("agents", key, AGENT_KNOWN)
     const { name, model } = item
     if (typeof name !== "string" || !AGENT_NAME.test(name)) throw new Error(`plugboard agent name \`${String(name)}\` must match ${AGENT_NAME} (an OpenCode agent name)`)
     if (entries.some(([known]) => known === name)) throw new Error(`plugboard agent \`${name}\` is listed more than once in \`agents\``)
@@ -1142,6 +1187,7 @@ function parseSessionUrl(value: unknown, at = "plugboard option `sessionUrl`"): 
 function parseModels(raw: unknown): string[] {
   if (raw === undefined || raw === null) return []
   if (raw === ALL_MODELS) return [ALL_MODELS]
+  if (raw === "connected") throw new Error(`plugboard option \`models\` value \`"connected"\` is renamed to \`"${ALL_MODELS}"\``)
   if (!Array.isArray(raw)) throw new Error("plugboard option `models` must be an array of strings")
   for (const pattern of raw) {
     if (pattern === ALL_MODELS) throw new Error(`plugboard option \`models\` takes \`"${ALL_MODELS}"\` as the whole value (\`"models": "${ALL_MODELS}"\`), not as a list entry`)
@@ -1154,7 +1200,7 @@ function parseModels(raw: unknown): string[] {
 export function parseOptions(raw: unknown): PlugboardOptions {
   if (raw !== undefined && raw !== null && !isRecord(raw)) throw new Error("plugboard options must be an object")
   const input: Record<string, unknown> = raw ?? {}
-  for (const key of Object.keys(input)) if (!KNOWN.has(key)) throw new Error(`Unknown plugboard option \`${key}\` (known: ${[...KNOWN].join(", ")})`)
+  for (const key of Object.keys(input)) if (!KNOWN.has(key)) throw unknownOption("", key, KNOWN)
 
   const listenInput = input.listen
   if (listenInput !== undefined && !isRecord(listenInput)) throw new Error("plugboard option `listen` must be an object")
@@ -1243,7 +1289,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
   const historyInput = input.sessions
   if (historyInput !== undefined && !isRecord(historyInput)) throw new Error("plugboard option `sessions` must be an object")
-  for (const key of Object.keys(historyInput ?? {})) if (!HISTORY_KNOWN.has(key)) throw new Error(`Unknown plugboard option \`sessions.${key}\` (known: ${[...HISTORY_KNOWN].join(", ")})`)
+  for (const key of Object.keys(historyInput ?? {})) if (!HISTORY_KNOWN.has(key)) throw unknownOption("sessions", key, HISTORY_KNOWN)
   const maxSessions = historyInput?.maxSessions === undefined ? undefined : positiveInt(historyInput.maxSessions, "sessions.maxSessions", 0)
   // Unset: 30 days (#158). `0` is the explicit opt-out: no age limit, so the parsed value is absent.
   const rawAge = historyInput?.maxAgeDays
@@ -1326,7 +1372,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
 
 const UNAUTHORIZED: PlugError = {
   status: 401,
-  message: "Missing or invalid API key",
+  message: "Missing or invalid API key. Use a key from the plugboard `keys` option, not a provider key.",
   kind: "authentication",
   code: "invalid_api_key",
 }

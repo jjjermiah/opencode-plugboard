@@ -77,7 +77,7 @@ import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, logError, logRequest, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
-import { effortUnavailable, filterByCapability, listAvailableModels, parseCapability, resolveModel, THINKING_HEADER } from "../models.js"
+import { effortUnavailable, filterByCapability, listAvailableModels, modelNotAvailable, parseCapability, resolveModel, THINKING_HEADER } from "../models.js"
 import { parseCacheDirective, reportCache, reportCacheDirective } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
@@ -137,6 +137,11 @@ const isModelsRead = (method: string | undefined, path: string) => method === "G
 /** The Files routes read credentials the same way: `x-api-key` works there too (the Anthropic SDKs send it). */
 const isKeyAnywhere = (method: string | undefined, path: string) => isModelsRead(method, path) || isFilesPath(path)
 const isGeminiPath = (path: string) => path === "/v1beta" || path.startsWith("/v1beta/") || path.startsWith("/upload/v1beta/")
+/** The 404 for a path no route has. A path that has a route for another method says which, so a bare `curl` (a GET) finds the missing `-d`. */
+function noRouteMessage(method: string | undefined, path: string): string {
+  const methods = KNOWN_ROUTES.filter((route) => route.endsWith(` ${path}`)).map((route) => route.split(" ")[0])
+  return `No route for ${method} ${path}${methods.length > 0 ? `. This path takes ${methods.join(" or ")}.` : ""}`
+}
 const KNOWN_ROUTES = ["GET /v1/models", "POST /v1/chat/completions", "POST /v1/completions", "POST /v1/responses", "GET /plugboard/status"]
 /** The endpoint family of each OpenAI route (`apps.<name>.endpoints`, #268). Gemini and `/v1/models/{id}` are classified where they are matched. */
 const ENDPOINT_BY_ROUTE: Readonly<Record<string, Endpoint>> = {
@@ -414,7 +419,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         status: 404,
         kind: "not_found",
         code: "not_found",
-        message: `No route for ${request.method} ${path}`,
+        message: noRouteMessage(request.method, path),
       })
     }
 
@@ -471,7 +476,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           kind: "not_found",
           code: "model_not_found",
           param: "model",
-          message: `Model ${modelId} is not available`,
+          message: modelNotAvailable(modelId),
         })
       }
       info.model = item.id

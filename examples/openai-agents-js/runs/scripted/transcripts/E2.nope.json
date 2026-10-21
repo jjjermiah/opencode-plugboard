@@ -25,7 +25,7 @@
         "body": {
           "error": {
             "code": "model_not_found",
-            "message": "Model nope is not available",
+            "message": "Model nope is not available. GET /v1/models lists the models you can call.",
             "param": "model",
             "type": "not_found_error"
           }

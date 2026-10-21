@@ -150,7 +150,7 @@ describe("#261 the answer names the pinned model on every route", () => {
     await serving({ models: ["test/*", "other/*", "opencode-go/*", "missing/*"], apps: { widget: { pinnedModel: "missing/ghost" } } })
     const reply = await server!.send(chat(KEYS.widget, { model: "test/echo" }))
     expect(reply.status).toBe(404)
-    expect(reply.json().error.message).toBe("Model missing/ghost is not available")
+    expect(reply.json().error.message).toBe("Model missing/ghost is not available. GET /v1/models lists the models you can call.")
   })
 })
 

@@ -114,10 +114,13 @@ function inAppScope(policy: AppPolicy | undefined, name: string, ref: ModelRef):
   return policy?.allowedModels === undefined || policy.allowedModels.includes(name) || allowedBy(policy.allowedModels, ref)
 }
 
+/** The `model_not_found` text: names the model, then where to look. `list` is the route that lists the models (Gemini has its own). */
+export const modelNotAvailable = (name: string, list = "GET /v1/models"): string => `Model ${name} is not available. ${list} lists the models you can call.`
+
 /** 404 `model_not_found` when `app` may not use the (already resolved) model; the same error as an unknown model. */
 export function checkAppModel(policy: AppPolicy | undefined, name: string, ref: ModelRef): PlugError | undefined {
   if (inAppScope(policy, name, ref)) return undefined
-  return { status: 404, message: `Model ${name} is not available`, kind: "not_found", code: "model_not_found", param: "model" }
+  return { status: 404, message: modelNotAvailable(name), kind: "not_found", code: "model_not_found", param: "model" }
 }
 
 function find(catalog: ReadonlyArray<CatalogModel>, ref: ModelRef): CatalogModel | undefined {
@@ -174,13 +177,13 @@ export function resolveModel(options: PlugboardOptions, model: string, catalog: 
   if (options.models.length === 0)
     return {
       status: 403,
-      message: "No models are allowed: set the plugboard `models` option",
+      message: 'No models are allowed: set the plugboard `models` option, for example `"models": "all"`',
       kind: "permission",
       code: "no_models_configured",
     }
   const notAvailable: PlugError = {
     status: 404,
-    message: `Model ${model} is not available`,
+    message: modelNotAvailable(model),
     kind: "not_found",
     code: "model_not_found",
     param: "model",

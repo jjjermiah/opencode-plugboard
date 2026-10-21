@@ -61,7 +61,12 @@ describe("model scope", () => {
   test("a model outside the app's scope is the 404 model_not_found of an unknown model, and nothing is created", async () => {
     const run = setup()
     const events = await run.call("bot", request("test/vision", { providerID: "test", id: "vision" }))
-    expect(events).toEqual([{ type: "error", error: { status: 404, kind: "not_found", code: "model_not_found", param: "model", message: "Model test/vision is not available" } }])
+    expect(events).toEqual([
+      {
+        type: "error",
+        error: { status: 404, kind: "not_found", code: "model_not_found", param: "model", message: "Model test/vision is not available. GET /v1/models lists the models you can call." },
+      },
+    ])
     expect(run.port.created).toEqual([])
   })
 

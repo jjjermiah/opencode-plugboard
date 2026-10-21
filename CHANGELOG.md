@@ -14,6 +14,13 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Changed
+
+- **First-run messages say what to do next.** A wrong or missing key says to use a key from `keys`, not a provider key. An unknown model says that `GET /v1/models` (Gemini: `GET /v1beta/models`) lists the models you can call, and the 403 for an empty `models` shows `"models": "all"`. A `GET` on a `POST` route says which method it takes. A provider that rejected its sign-in says to run `/connect` on the OpenCode server and that your plugboard key is fine. An option name from before the renames (`history`, `maxN`, `cache`, `apps.<name>.models` and the rest) now fails at load with `it is renamed to <new name>`, `models: "connected"` says it is renamed to `"all"`, and a typo says `did you mean <name>?` instead of listing every option. The status codes, error codes and each API's error shape are unchanged.
+- **`init` prints numbered next steps.** Restart OpenCode and touch the server (again after every restart), list the models, call one, and a link to the table of what to check when nothing answers. The key line no longer says "shown once" next to "it is also in the file".
+- **The setup page reads cleanly and tells a browser user what to do.** Backtick spans in its hints and endpoint list show as code instead of literal backticks. Without a key, the page says a browser cannot send one and gives the curl that shows your models.
+- **The install docs match what `init` does.** Every `init` command is `bunx opencode-plugboard@latest init`, so Bun cannot reuse an older copy and pin an old release. The first request lists the models first and sets `PLUGBOARD_KEY_MY_APP` from the printed key (the page called `fast`, which only exists with `--fast`). The "If it does not answer" table has the `provider_auth_failed` and invalid-options cases.
+
 ### Added
 
 - **Split one app's usage by a request tag.** Send `x-plugboard-tag: cron` on any model request (Chat Completions, completions, Responses, Messages or Gemini) and the usage report counts requests, errors, tokens and cost per tag, next to the per-user split. `GET /plugboard/usage` has a `tags` object per app and a `?tag=` filter, and the dashboard Usage tab shows a Tags table. A tag is 1 to 64 characters of `A-Z a-z 0-9 . _ : -`; a bad one is ignored with a debug log line, never an error. A day keeps 100 tags per app and the rest count under `_other`. Prometheus metrics get no tag label, because a free-form value has unbounded cardinality. The CORS preflight allows the new header.
