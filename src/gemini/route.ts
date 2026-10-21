@@ -21,7 +21,7 @@ import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { appPolicy, bodyLimits, sessionUrlTemplate, maxChoicesFor, maxChoicesOption, requestedModel } from "../config.js"
 import { boundEvents, checkJsonContentType, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
-import { effortUnavailable, listAvailableModels, resolveModel, THINKING_HEADER } from "../models.js"
+import { effortUnavailable, listAvailableModels, modelNotAvailable, resolveModel, THINKING_HEADER } from "../models.js"
 import { parseCacheDirective, reportCache, reportCacheDirective } from "../cache.js"
 import { reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
@@ -144,7 +144,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     const listed = listAvailableModels(host.options, await scope.race(host.loadCatalog()), app)
     if (match.op === "list") return sendJson(response, 200, encodeGeminiModelList(listed))
     const item = listed.find((m) => m.id === match.model)
-    if (!item) return fail({ status: 404, kind: "not_found", code: "model_not_found", param: "model", message: `Model ${match.model} is not available` })
+    if (!item) return fail({ status: 404, kind: "not_found", code: "model_not_found", param: "model", message: modelNotAvailable(match.model, "GET /v1beta/models") })
     info.model = item.id
     return sendJson(response, 200, encodeGeminiModel(item))
   }

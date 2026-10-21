@@ -67,7 +67,11 @@ describe("#79 resolveModel", () => {
   })
 
   test("an agent whose model is not in the catalog is a 404 model_not_found naming the agent", () => {
-    expect(resolveModel(options, "agent/research", CATALOG)).toMatchObject({ status: 404, code: "model_not_found", message: "Model agent/research is not available" })
+    expect(resolveModel(options, "agent/research", CATALOG)).toMatchObject({
+      status: 404,
+      code: "model_not_found",
+      message: "Model agent/research is not available. GET /v1/models lists the models you can call.",
+    })
   })
 
   test("an unknown agent is the same 404 as any unknown model", () => {

@@ -191,6 +191,19 @@ describe("#73 renderDiscoveryHtml", () => {
     expect(html).toContain("Authentication is required")
     expect(html).not.toMatch(/<h2>(App|Models|Catalog)<\/h2>/)
   })
+
+  test("the keyed page without credentials says a browser cannot send the key, and gives the curl that can", () => {
+    const doc = buildDiscovery({ options: keyed })
+    expect(doc.hint).toContain("A browser cannot send that header")
+    expect(doc.hint).toContain('curl -s http://127.0.0.1:4010/v1 -H "Authorization: Bearer $PLUGBOARD_KEY"')
+  })
+
+  test("a backtick span in a hint or an endpoint description is shown as code, not as backticks", () => {
+    const html = renderDiscoveryHtml(buildDiscovery({ options: keyed }))
+    expect(html).toContain("<code>Authorization: Bearer &lt;key&gt;</code> also gets")
+    expect(html).toContain("unless <code>store</code> is false")
+    expect(html).not.toContain("`")
+  })
 })
 
 describe("#56 buildStatus", () => {

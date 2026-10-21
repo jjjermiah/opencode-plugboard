@@ -54,6 +54,11 @@ describe("parseOptions: defaults", () => {
     expect(() => parseOptions({ models })).toThrow(message)
   })
 
+  test('models: "connected" says it is renamed to "all", globally and per app', () => {
+    expect(() => parseOptions({ models: "connected" })).toThrow('`models` value `"connected"` is renamed to `"all"`')
+    expect(() => parseOptions({ keys: { a: "k" }, apps: { a: { allowedModels: "connected" } } })).toThrow('apps.a`.allowedModels value `"connected"` is renamed to `"all"`')
+  })
+
   test('models: "all" lets an alias target and an agent model through the load-time allowlist check', () => {
     const options = parseOptions({ models: "all", aliases: { fast: ["openai/gpt-mini", "anthropic/claude"] }, agents: [{ name: "reviewer", model: "openai/gpt-mini" }] })
     expect(options.aliases).toEqual({ fast: "openai/gpt-mini" })
@@ -113,6 +118,34 @@ describe("parseOptions: defaults", () => {
     expect(parseOptions({}).sessions).toEqual({ maxAgeDays: 30 })
     expect(parseOptions({ sessions: { maxAgeDays: 0 } }).sessions).toEqual({})
     expect(parseOptions({ sessions: { maxAgeDays: 0, maxSessions: 3 } }).sessions).toEqual({ maxSessions: 3 })
+  })
+})
+
+describe("parseOptions: an unknown option says what to do", () => {
+  const keyed = { keys: { a: "k" } }
+  test.each<[string, Record<string, unknown>, string]>([
+    ["an old top-level name", { history: { maxSessions: 1 } }, "Unknown plugboard option `history`: it is renamed to `sessions`"],
+    ["another old top-level name", { maxN: 2 }, "Unknown plugboard option `maxN`: it is renamed to `maxChoices`"],
+    ["the old cache option", { cache: {} }, "Unknown plugboard option `cache`: it is renamed to `responseCache`"],
+    ["the old circuit breaker", { fallbackCooldown: {} }, "Unknown plugboard option `fallbackCooldown`: it is renamed to `circuitBreaker`"],
+    ["an old name inside circuitBreaker", { circuitBreaker: { failureThreshold: 2 } }, "Unknown plugboard option `circuitBreaker.failureThreshold`: it is renamed to `circuitBreaker.failures`"],
+    ["an old name inside sessions", { sessions: { hidden: true } }, "Unknown plugboard option `sessions.hidden`: it is renamed to `sessions.hideFromList`"],
+    ["an old app option", { ...keyed, apps: { a: { models: ["x/y"] } } }, "Unknown plugboard option `apps.a.models`: it is renamed to `apps.a.allowedModels`"],
+    ["another old app option", { ...keyed, apps: { a: { serverTools: ["x"] } } }, "Unknown plugboard option `apps.a.serverTools`: it is renamed to `apps.a.opencodeTools`"],
+    [
+      "an old name inside an app's sessions",
+      { ...keyed, apps: { a: { sessions: { hidden: true } } } },
+      "Unknown plugboard option `apps.a.sessions.hidden`: it is renamed to `apps.a.sessions.hideFromList`",
+    ],
+    ["a typo", { keyz: {} }, "Unknown plugboard option `keyz` (did you mean `keys`?)"],
+    ["a typo in another case", { Aliases: {} }, "Unknown plugboard option `Aliases` (did you mean `aliases`?)"],
+    ["a typo inside an app", { ...keyed, apps: { a: { maxToolz: 3 } } }, "Unknown plugboard option `apps.a.maxToolz` (did you mean `apps.a.maxTools`?)"],
+  ])("%s", (_name, options, message) => {
+    expect(() => parseOptions(options)).toThrow(message)
+  })
+
+  test("a name that is neither old nor close lists the known options", () => {
+    expect(() => parseOptions({ widget: 1 })).toThrow(/Unknown plugboard option `widget` \(known: listen, keys, adminKey/)
   })
 })
 
@@ -460,7 +493,12 @@ describe("authenticate", () => {
     ["a key with a suffix", "Bearer key-alphaa"],
     ["two tokens", "Bearer key-alpha extra"],
   ])("%s is a 401 invalid_api_key", (_name, header) => {
-    expect(authenticate(keyed, header)).toEqual({ status: 401, kind: "authentication", code: "invalid_api_key", message: "Missing or invalid API key" })
+    expect(authenticate(keyed, header)).toEqual({
+      status: 401,
+      kind: "authentication",
+      code: "invalid_api_key",
+      message: "Missing or invalid API key. Use a key from the plugboard `keys` option, not a provider key.",
+    })
   })
 })
 

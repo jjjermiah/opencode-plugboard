@@ -4,7 +4,13 @@ import type { PlugError } from "../../src/contract.js"
 import { effortVariant, filterByCapability, fromSlug, listAvailableModels, parseCapability, refToString, resolveModel, thinkingUnavailable, toSlug } from "../../src/models.js"
 import { CATALOG, model, testOptions } from "../support/fixtures.js"
 
-const notAvailable = (name: string): PlugError => ({ status: 404, kind: "not_found", code: "model_not_found", param: "model", message: `Model ${name} is not available` })
+const notAvailable = (name: string): PlugError => ({
+  status: 404,
+  kind: "not_found",
+  code: "model_not_found",
+  param: "model",
+  message: `Model ${name} is not available. GET /v1/models lists the models you can call.`,
+})
 
 describe("resolveModel: allowlist patterns", () => {
   const cases: Array<[string, string[], string, object]> = [

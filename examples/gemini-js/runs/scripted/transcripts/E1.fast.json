@@ -25,7 +25,7 @@
         "body": {
           "error": {
             "code": 401,
-            "message": "Missing or invalid API key",
+            "message": "Missing or invalid API key. Use a key from the plugboard `keys` option, not a provider key.",
             "status": "UNAUTHENTICATED"
           }
         },

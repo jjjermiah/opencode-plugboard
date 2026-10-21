@@ -59,7 +59,17 @@ describe("init: a new config", () => {
     expect(out.split(KEY).length - 1).toBe(3)
     expect(out).toContain(`curl -s http://127.0.0.1:4010/v1/models -H "Authorization: Bearer ${KEY}"`)
     expect(out).toContain("opencode api get /api/agent")
-    expect(out).toContain("<an id from the list above>")
+    expect(out).toContain("<model id from step 2>")
+  })
+
+  test("the output numbers the steps, says to touch the server after every restart, and links the troubleshooting table", () => {
+    const { out } = init(join(tmp(), "c.jsonc"))
+    expect(out).toContain("1. Restart OpenCode")
+    expect(out).toContain("run this again after every restart")
+    expect(out).toContain("2. List the models you can use:")
+    expect(out).toContain("3. Call one (replace <model id from step 2> with an id from that list):")
+    expect(out).toContain("No answer on 4010? See https://jjjermiah.github.io/opencode-plugboard/install#if-it-does-not-answer")
+    expect(out).toContain("it is also saved in that file")
   })
 
   test("--app names the key and --fast adds the fast alias and a chat curl that uses it", () => {
@@ -67,6 +77,7 @@ describe("init: a new config", () => {
     const { out } = init(path, "--app", "my-bot", "--fast", "anthropic/claude-haiku-4-5")
     expect(entryOf(path)[0]!.options).toEqual({ keys: { "my-bot": KEY }, models: "all", aliases: { fast: "anthropic/claude-haiku-4-5" } })
     expect(out).toContain(`"model": "fast"`)
+    expect(out).toContain("3. Call the alias `fast`:")
   })
 
   test("an empty file is treated as an empty object", () => {

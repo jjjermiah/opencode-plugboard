@@ -14,6 +14,13 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Changed
+
+- **First-run messages say what to do next.** A wrong or missing key says to use a key from `keys`, not a provider key. An unknown model says that `GET /v1/models` (Gemini: `GET /v1beta/models`) lists the models you can call, and the 403 for an empty `models` shows `"models": "all"`. A `GET` on a `POST` route says which method it takes. A provider that rejected its sign-in says to run `/connect` on the OpenCode server and that your plugboard key is fine. An option name from before the renames (`history`, `maxN`, `cache`, `apps.<name>.models` and the rest) now fails at load with `it is renamed to <new name>`, `models: "connected"` says it is renamed to `"all"`, and a typo says `did you mean <name>?` instead of listing every option. The status codes, error codes and each API's error shape are unchanged.
+- **`init` prints numbered next steps.** Restart OpenCode and touch the server (again after every restart), list the models, call one, and a link to the table of what to check when nothing answers. The key line no longer says "shown once" next to "it is also in the file".
+- **The setup page reads cleanly and tells a browser user what to do.** Backtick spans in its hints and endpoint list show as code instead of literal backticks. Without a key, the page says a browser cannot send one and gives the curl that shows your models.
+- **The install docs match what `init` does.** Every `init` command is `bunx opencode-plugboard@latest init`, so Bun cannot reuse an older copy and pin an old release. The first request lists the models first and sets `PLUGBOARD_KEY_MY_APP` from the printed key (the page called `fast`, which only exists with `--fast`). The "If it does not answer" table has the `provider_auth_failed` and invalid-options cases.
+
 ### Added
 
 - **Ready-made monitoring for the Prometheus metrics.** `monitoring/prometheus-rules.yml` has recording rules and alerts for a high 5xx share, 429 refusals from limits and budgets, an open circuit breaker, fallback spikes, high p95 latency, a dead event pump and a missing or down scrape target. `monitoring/grafana-dashboard.json` imports into Grafana 11 with a datasource and an app variable: requests, errors, latency, tokens, cache hit ratio, breaker state, fallbacks and refusals. CI checks the rules with a pinned promtool, and a test keeps every metric and label they use in step with the exposition. Setup is in the monitoring guide. Cost and per-model figures are not metrics, so they stay in the usage report.

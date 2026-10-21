@@ -23,7 +23,7 @@
         "body": {
           "error": {
             "code": "invalid_api_key",
-            "message": "Missing or invalid API key",
+            "message": "Missing or invalid API key. Use a key from the plugboard `keys` option, not a provider key.",
             "param": null,
             "type": "authentication_error"
           }

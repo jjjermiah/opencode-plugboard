@@ -7,7 +7,7 @@ import HomeTerminal from "./HomeTerminal.vue"
 
 const repo = "https://github.com/jjjermiah/opencode-plugboard"
 const npm = "https://www.npmjs.com/package/opencode-plugboard"
-const command = "bunx opencode-plugboard init"
+const command = "bunx opencode-plugboard@latest init"
 
 const { copy, copied } = useClipboard({ source: command, copiedDuring: 1600, legacy: true })
 
@@ -216,6 +216,12 @@ h1 span {
   .install {
     font-size: 13px;
     padding: 10px 12px 10px 14px;
+  }
+
+  /* A narrow phone wraps the command instead of clipping it. */
+  .install code {
+    overflow-wrap: anywhere;
+    text-align: left;
   }
 }
 </style>

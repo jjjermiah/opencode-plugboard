@@ -16,6 +16,7 @@ import { ALL_MODELS, DEFAULT_PORT, isAppName } from "./config.js"
 import { parseModelRef } from "./models.js"
 
 const PACKAGE = "opencode-plugboard"
+const TROUBLESHOOTING = "https://jjjermiah.github.io/opencode-plugboard/install#if-it-does-not-answer"
 const FORMAT = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
 
 /** What the CLI needs from the process, so tests can run it against temp dirs with fixed output and keys. */
@@ -116,7 +117,8 @@ function flagsOf(args: string[]): InitFlags | "help" {
   const fast = v.fast
   if (fast !== undefined) {
     const ref = parseModelRef(fast)
-    if (!ref || fast.includes("*") || /\s/.test(fast)) throw new CliError(`--fast \`${fast}\` must be one model, written provider/model or provider/model#variant`)
+    if (!ref || fast.includes("*") || /\s/.test(fast))
+      throw new CliError(`--fast \`${fast}\` must be one model, written provider/model or provider/model#variant (for example anthropic/claude-haiku-4-5)`)
   }
   return { app, ...(fast === undefined ? {} : { fast }), ...(v.config === undefined ? {} : { config: v.config }), dryRun: v["dry-run"] === true, force: v.force === true }
 }
@@ -172,22 +174,24 @@ export function runInit(args: string[], cli: CliEnv): number {
       throw new CliError(`cannot write ${path}: ${(error as Error).message}`)
     }
     const base = `http://127.0.0.1:${DEFAULT_PORT}/v1`
-    const chatModel = flags.fast === undefined ? "<an id from the list above>" : "fast"
+    const chatModel = flags.fast === undefined ? "<model id from step 2>" : "fast"
     cli.out(
       [
         `${replaced ? "Replaced" : "Added"} ${PACKAGE}@${cli.version} in ${path}.`,
         "",
-        `App key for \`${flags.app}\` (shown once; it is also in the file):`,
+        `App key for \`${flags.app}\` (it is also saved in that file; keep the file private):`,
         `  ${key}`,
         "",
-        "Restart OpenCode, then touch the server once so it loads the plugin:",
+        "1. Restart OpenCode, then touch the server once so it loads the plugin (run this again after every restart):",
         "  opencode api get /api/agent",
         "",
-        "List the models you can use:",
+        "2. List the models you can use:",
         `  curl -s ${base}/models -H "Authorization: Bearer ${key}"`,
         "",
-        "Call one:",
+        flags.fast === undefined ? "3. Call one (replace <model id from step 2> with an id from that list):" : "3. Call the alias `fast`:",
         `  curl -s ${base}/chat/completions -H "Authorization: Bearer ${key}" -H "Content-Type: application/json" -d '{"model": "${chatModel}", "messages": [{"role": "user", "content": "reply with exactly: pong"}]}'`,
+        "",
+        `No answer on ${DEFAULT_PORT}? See ${TROUBLESHOOTING}`,
         "",
       ].join("\n"),
     )

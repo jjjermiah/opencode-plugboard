@@ -28,7 +28,7 @@
       "response": {
         "body": {
           "error": {
-            "message": "Model nope is not available",
+            "message": "Model nope is not available. GET /v1/models lists the models you can call.",
             "type": "not_found_error"
           },
           "type": "error"
