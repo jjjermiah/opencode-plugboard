@@ -46,7 +46,7 @@ Cost is an estimate at list prices. Use it to compare apps, not as a bill. Each 
 ## Look at it
 
 - **Dashboard.** Open `http://127.0.0.1:4010/plugboard/dashboard` and enter a key. The Usage tab has cards for requests, tokens, cost, errors and cache hits (with the change against the previous period), daily charts, a sortable table of apps, a table of models and, once requests carry a tag, a table of tags. A range picker covers today, 7, 30 and 90 days. The Models tab lists what `/v1/models` returns for an app key, with capability badges, context length and price, a button that copies the model id, and a ready curl, Python or JavaScript snippet. The page follows light or dark mode and works on a phone. It holds no data and needs no key to load. The admin key reads usage but cannot list models: the Models tab asks for an app key.
-- **OpenCode TUI.** Type `/plugboard` in OpenCode's prompt for the same numbers in the terminal, with the top tags when any request carried one. See [the TUI page](../tui.md).
+- **OpenCode TUI.** Type `/plugboard` in OpenCode's prompt for the same numbers in the terminal. See [the TUI page](../tui.md).
 - **OpenCode clients** read the same report through the `opencode-plugboard/rpc` entry.
 
 ## Watch the server: metrics and logs

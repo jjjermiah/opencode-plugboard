@@ -99,7 +99,6 @@ export const DASHBOARD_PAGE = `<!doctype html>
 <div id="tags-section" hidden>
 <h2>Tags</h2>
 <div class="scroll card flush"><table id="tags"></table></div>
-<p id="tags-more" class="muted" hidden><button type="button" id="tags-toggle"></button></p>
 </div>
 </div>
 </div>

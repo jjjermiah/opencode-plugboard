@@ -12,8 +12,6 @@ import {
   formatPercent,
   modelRows,
   presetRange,
-  tagRows,
-  tagValues,
   totalItems,
   unavailableMessage,
   APP_COLUMNS,
@@ -174,22 +172,6 @@ describe("#142 TUI rows and totals", () => {
     expect(rows.map((row) => row.model)).toEqual(["anthropic/sonnet", "openai/gpt", "openai/text-embed"])
     expect(rows[0]).toEqual({ model: "anthropic/sonnet", requests: 5, tokens: 12_000, costUsd: 3 })
     expect(modelRows(report, 1)).toHaveLength(1)
-  })
-
-  test("tags are summed over the apps, most expensive first, capped, and absent when no request carried one", () => {
-    expect(tagRows(report, 10)).toEqual([])
-    const tagged: UsageReport = {
-      ...report,
-      apps: {
-        embed: { ...report.apps.embed!, tags: { cron: { requests: 4, tokens: 900, costUsd: 0, errors: 1 } } },
-        chat: { ...report.apps.chat!, tags: { cron: { requests: 2, tokens: 100, costUsd: 0.25, errors: 0 }, interactive: { requests: 6, tokens: 5_000, costUsd: 3, errors: 2 } } },
-      },
-    }
-    const rows = tagRows(tagged, 10)
-    expect(rows.map((row) => row.tag)).toEqual(["interactive", "cron"])
-    expect(rows[1]).toEqual({ tag: "cron", requests: 6, tokens: 1_000, costUsd: 0.25, errors: 1 })
-    expect(tagRows(tagged, 1)).toHaveLength(1)
-    expect(tagValues(rows[0]!)).toEqual(["interactive", "6", "5k", "$3.00", "2"])
   })
 
   test("the totals line carries cache hit %, 429s and p95 in the page's order", () => {

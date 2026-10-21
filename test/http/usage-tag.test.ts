@@ -1,6 +1,5 @@
 /**
- * The usage tag over loopback HTTP: `x-plugboard-tag` on every model route family (and `metadata.tag` on the OpenAI
- * shapes) reaches the per-tag usage counts and the request log line; a bad tag is ignored, never a 4xx;
+ * The usage tag over loopback HTTP: `x-plugboard-tag` on every model route family reaches the per-tag usage counts and the request log line; a bad tag is ignored, never a 4xx;
  * `GET /plugboard/usage` reports the tags, `?tag=` narrows them, and an app key sees only its own app's tags.
  */
 import { afterEach, describe, expect, test } from "bun:test"
@@ -87,22 +86,12 @@ describe("the usage tag reaches the counts on every model route", () => {
   })
 })
 
-describe("the usage tag from the body's metadata", () => {
-  test.each([
-    ["chat", { method: "POST", path: "/v1/chat/completions", body: { model: "test/echo", messages: [{ role: "user", content: "hi" }], metadata: { tag: "batch" } } }],
-    ["responses", { method: "POST", path: "/v1/responses", body: { model: "test/echo", input: "hi", metadata: { tag: "batch" } } }],
-    ["completions", { method: "POST", path: "/v1/completions", body: { model: "test/echo", prompt: "hi", metadata: { tag: "batch" } } }],
-  ] satisfies Array<[string, SendInit]>)("%s: metadata.tag is the tag when there is no header", async (_family, send) => {
+describe("only the header names a tag", () => {
+  test("a metadata.tag in the body is not read", async () => {
     const srv = await start()
-    expect((await srv.send(send)).status).toBe(200)
-    await until(async () => (await tagsOf()).batch?.tokens === 15, 1_000, "metadata tag counted")
-  })
-
-  test("the header wins over metadata.tag", async () => {
-    const srv = await start()
-    expect((await srv.send(chat({ [TAG]: "cron" }, { metadata: { tag: "batch" } }))).status).toBe(200)
-    await until(async () => (await tagsOf()).cron?.tokens === 15, 1_000, "header tag counted")
-    expect(Object.keys(await tagsOf())).toEqual(["cron"])
+    expect((await srv.send(chat({}, { metadata: { tag: "batch" } }))).status).toBe(200)
+    await until(async () => ((await recorder!.query({ app: "default" })) as UsageReport).apps.default?.totals.requests === 1, 1_000, "counted")
+    expect(await tagsOf()).toEqual({})
   })
 })
 
@@ -139,20 +128,6 @@ describe("a bad tag never breaks a call", () => {
     await until(async () => ((await recorder!.query({ app: "default" })) as UsageReport).apps.default?.totals.requests === 1, 1_000, "counted")
     expect(await tagsOf()).toEqual({})
     expect(logs.of("request.tag_ignored")).toEqual([])
-  })
-
-  test("a refused header does not fall back to metadata.tag", async () => {
-    const srv = await start()
-    expect((await srv.send(chat({ [TAG]: "bad tag" }, { metadata: { tag: "batch" } }))).status).toBe(200)
-    await until(async () => ((await recorder!.query({ app: "default" })) as UsageReport).apps.default?.totals.requests === 1, 1_000, "counted")
-    expect(await tagsOf()).toEqual({})
-  })
-
-  test("a non-string metadata.tag is ignored", async () => {
-    const srv = await start()
-    expect((await srv.send(chat({}, { metadata: { tag: { nested: true } } }))).status).toBe(200)
-    await until(async () => ((await recorder!.query({ app: "default" })) as UsageReport).apps.default?.totals.requests === 1, 1_000, "counted")
-    expect(await tagsOf()).toEqual({})
   })
 })
 

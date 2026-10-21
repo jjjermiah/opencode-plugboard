@@ -33,7 +33,6 @@ Plugboard is stateless here: every request carries the whole conversation in `me
 | `stop` | Up to 4 sequences. The answer ends before the first match. |
 | `reasoning_effort` | Picks the model's variant of that name, else the nearest one above it, else its highest. A model with no variants answers without thinking and sets `x-plugboard-thinking: unavailable`. |
 | `user` | The end user, for usage per user and the history title. |
-| `metadata.tag` | A [usage tag](configuration.md#usage-tags), when the request has no `x-plugboard-tag` header. |
 
 ## Refused
 

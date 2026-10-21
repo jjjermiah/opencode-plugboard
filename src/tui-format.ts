@@ -100,14 +100,6 @@ export const MODEL_COLUMNS: ReadonlyArray<Column> = [
   { title: "cost", width: 9, align: "right" },
 ]
 
-export const TAG_COLUMNS: ReadonlyArray<Column> = [
-  { title: "tag", width: 36, align: "left" },
-  { title: "requests", width: 9, align: "right" },
-  { title: "tokens", width: 8, align: "right" },
-  { title: "cost", width: 9, align: "right" },
-  { title: "errors", width: 7, align: "right" },
-]
-
 /** One line of a table: each value in its column, separated by one space. */
 export function formatLine(values: ReadonlyArray<string>, columns: ReadonlyArray<Column>): string {
   return columns.map((column, index) => cell(values[index] ?? "", column.width, column.align)).join(" ")
@@ -187,33 +179,6 @@ export function modelRows(report: UsageReport, limit: number): ModelRow[] {
 
 export function modelValues(row: ModelRow): string[] {
   return [row.model, formatCount(row.requests), formatCount(row.tokens), formatCost(row.costUsd)]
-}
-
-export interface TagRow {
-  readonly tag: string
-  readonly requests: number
-  readonly tokens: number
-  readonly costUsd: number
-  readonly errors: number
-}
-
-/** The usage tags of every app, summed over the range: most expensive first, at most `limit`. Empty when no request carried a tag. */
-export function tagRows(report: UsageReport, limit: number): TagRow[] {
-  const sums = new Map<string, { requests: number; tokens: number; costUsd: number; errors: number }>()
-  for (const app of Object.values(report.apps)) {
-    for (const [tag, usage] of Object.entries(app.tags ?? {})) {
-      const sum = sums.get(tag) ?? { requests: 0, tokens: 0, costUsd: 0, errors: 0 }
-      sums.set(tag, { requests: sum.requests + usage.requests, tokens: sum.tokens + usage.tokens, costUsd: sum.costUsd + usage.costUsd, errors: sum.errors + usage.errors })
-    }
-  }
-  return [...sums]
-    .map(([tag, sum]): TagRow => ({ tag, ...sum }))
-    .sort((a, b) => b.costUsd - a.costUsd || b.requests - a.requests || a.tag.localeCompare(b.tag))
-    .slice(0, limit)
-}
-
-export function tagValues(row: TagRow): string[] {
-  return [row.tag, formatCount(row.requests), formatCount(row.tokens), formatCost(row.costUsd), formatCount(row.errors)]
 }
 
 export interface TotalItem {

@@ -23,7 +23,7 @@ describe("the usage RPC contract", () => {
 
   test("the input is the optional query fields; the errors include invalid_query", () => {
     const { input, errors } = UsageRpc.methods.get
-    expect(Object.keys((input as { properties: Record<string, unknown> }).properties)).toEqual(["from", "to", "app", "user", "tag"])
+    expect(Object.keys((input as { properties: Record<string, unknown> }).properties)).toEqual(["from", "to", "app", "user"])
     expect(Object.keys(errors ?? {})).toEqual(["invalid_query"])
   })
 })
@@ -52,18 +52,6 @@ describe("the usage RPC handler", () => {
     }).get
     for (const user of ["_other", "prototype", "constructor", "__proto__"]) await Effect.runPromise(get({ user }, context as never))
     expect(seen.map((query) => query.user)).toEqual(["_other", "prototype", "constructor", "__proto__"])
-  })
-
-  test("the tag filter passes through unchanged, reserved and stored names included", async () => {
-    const seen: UsageQuery[] = []
-    const get = usageHandlers({
-      query: async (query) => {
-        seen.push(query)
-        return report(query)
-      },
-    }).get
-    for (const tag of ["cron", "_other", "__proto__"]) await Effect.runPromise(get({ tag }, context as never))
-    expect(seen.map((query) => query.tag)).toEqual(["cron", "_other", "__proto__"])
   })
 
   test("no input, or fields of the wrong type, read as no filter (every app, the default range)", async () => {

@@ -14,7 +14,7 @@
   var DAYS_STORAGE = "plugboard.dashboard.days";
   var RANGES = [1, 7, 30, 90];
   var MODEL_ROWS = 10;
-  var TAG_ROWS = 10;
+  var TAG_ROWS = 20;
   var CATALOG_ROWS = 100;
   var dark = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -28,8 +28,6 @@
     apps: { key: "costUsd", dir: -1 },
     models: { key: "costUsd", dir: -1 },
     showAllModels: false,
-    tags: { key: "costUsd", dir: -1 },
-    showAllTags: false,
     charts: [],
     catalog: { rows: null, sort: { key: "id", dir: 1 }, query: "", tools: false, vision: false, showAll: false, open: {}, loading: false },
   };
@@ -494,8 +492,8 @@
     $("models-toggle").textContent = state.showAllModels ? "Show the top " + MODEL_ROWS : "Show all " + rows.length + " models";
   }
 
-  /** Per usage tag, summed over the apps of the range (the tag names come from the callers' `x-plugboard-tag` headers). */
-  function tagRows() {
+  /** The tags table (the busiest TAG_ROWS, summed over the apps): shown only when some request in the range carried a tag. */
+  function renderTags() {
     var totals = Object.create(null);
     Object.keys(state.report.apps).forEach(function (name) {
       var tags = state.report.apps[name].tags || {};
@@ -504,59 +502,17 @@
         totals[tag] = { requests: sum.requests + tags[tag].requests, tokens: sum.tokens + tags[tag].tokens, costUsd: sum.costUsd + tags[tag].costUsd, errors: sum.errors + tags[tag].errors };
       });
     });
-    return Object.keys(totals).map(function (tag) {
-      return { name: tag, usage: totals[tag] };
+    var names = Object.keys(totals).sort(function (a, b) {
+      return totals[b].requests - totals[a].requests || a.localeCompare(b);
     });
-  }
-
-  var TAG_SORT = {
-    name: function (r) {
-      return r.name;
-    },
-    requests: function (r) {
-      return r.usage.requests;
-    },
-    tokens: function (r) {
-      return r.usage.tokens;
-    },
-    costUsd: function (r) {
-      return r.usage.costUsd;
-    },
-    errors: function (r) {
-      return r.usage.errors;
-    },
-  };
-
-  /** The tags table: shown only when some request in the range carried a tag. */
-  function renderTags() {
-    var rows = tagRows();
-    var section = $("tags-section");
-    section.hidden = rows.length === 0;
-    var table = $("tags");
-    table.replaceChildren();
-    var more = $("tags-more");
-    if (rows.length === 0) {
-      more.hidden = true;
-      return;
-    }
-    var sort = state.tags;
-    var totalCost = 0;
-    var totalRequests = 0;
-    rows.forEach(function (row) {
-      totalCost += row.usage.costUsd;
-      totalRequests += row.usage.requests;
-    });
-    sortRows(rows, sort, TAG_SORT);
-    var shown = state.showAllTags ? rows : rows.slice(0, TAG_ROWS);
-    table.append(h("thead", null, h("tr", null, sortHeader("Tag", "name", sort, true), sortHeader("Requests", "requests", sort, false), sortHeader("Tokens", "tokens", sort, false), sortHeader("Cost", "costUsd", sort, false), sortHeader("Errors", "errors", sort, false))));
+    $("tags-section").hidden = names.length === 0;
+    var head = h("tr", null, h("th", { scope: "col" }, "Tag"), h("th", { scope: "col", class: "num" }, "Requests"), h("th", { scope: "col", class: "num" }, "Tokens"), h("th", { scope: "col", class: "num" }, "Cost"), h("th", { scope: "col", class: "num" }, "Errors"));
     var body = h("tbody", null);
-    shown.forEach(function (row) {
-      var u = row.usage;
-      body.append(h("tr", null, h("th", { scope: "row", class: "name wrap" }, row.name), shareCell(integer.format(u.requests), u.requests, totalRequests), h("td", { class: "num" }, fmtCount(u.tokens)), shareCell(fmtCost(u.costUsd), u.costUsd, totalCost), h("td", { class: "num" + (u.errors > 0 ? " warn" : "") }, integer.format(u.errors))));
+    names.slice(0, TAG_ROWS).forEach(function (name) {
+      var u = totals[name];
+      body.append(h("tr", null, h("th", { scope: "row", class: "name wrap" }, name), h("td", { class: "num" }, integer.format(u.requests)), h("td", { class: "num" }, fmtCount(u.tokens)), h("td", { class: "num" }, fmtCost(u.costUsd)), h("td", { class: "num" + (u.errors > 0 ? " warn" : "") }, integer.format(u.errors))));
     });
-    table.append(body);
-    more.hidden = rows.length <= TAG_ROWS;
-    $("tags-toggle").textContent = state.showAllTags ? "Show the top " + TAG_ROWS : "Show all " + rows.length + " tags";
+    $("tags").replaceChildren(h("thead", null, head), body);
   }
 
   // ---------------------------------------------------------------- usage: charts
@@ -1020,25 +976,6 @@
   $("models-toggle").addEventListener("click", function () {
     state.showAllModels = !state.showAllModels;
     renderModels();
-  });
-
-  $("tags").addEventListener("click", function (event) {
-    if (state.report)
-      sortClick(
-        event,
-        function () {
-          return state.tags;
-        },
-        function (value) {
-          state.tags = value;
-        },
-        renderTags,
-      );
-  });
-
-  $("tags-toggle").addEventListener("click", function () {
-    state.showAllTags = !state.showAllTags;
-    renderTags();
   });
 
   $("catalog").addEventListener("click", function (event) {

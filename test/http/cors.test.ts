@@ -44,7 +44,7 @@ describe("#256 cors: a preflight from an allowed origin is answered before authe
     expect(reply.headers["access-control-allow-origin"]).toBe(APP)
     expect(reply.headers["access-control-allow-methods"]).toBe("GET, POST, DELETE, OPTIONS")
     expect(reply.headers["access-control-allow-headers"]).toBe(
-      "authorization, content-type, x-api-key, x-goog-api-key, x-request-id, x-plugboard-tag, cache-control, x-plugboard-cache, x-plugboard-cache-namespace, x-portkey-cache-namespace, x-portkey-cache-force-refresh, helicone-cache-seed",
+      "authorization, content-type, x-api-key, x-goog-api-key, x-request-id, cache-control, x-plugboard-cache, x-plugboard-cache-namespace, x-portkey-cache-namespace, x-portkey-cache-force-refresh, helicone-cache-seed, x-plugboard-tag",
     )
     expect(reply.headers.vary).toBe("Origin")
     expect(caller.calls).toEqual([])

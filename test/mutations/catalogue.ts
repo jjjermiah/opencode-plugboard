@@ -660,14 +660,6 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/unit/usage-tag.test.ts", "test/http/usage-tag.test.ts"],
   },
   {
-    id: "I26-tag-body-beats-header",
-    invariant: "I26",
-    file: "src/tag.ts",
-    find: "  const raw = fromHeader ? value : fromBody",
-    replace: "  const raw = fromBody ?? (fromHeader ? value : undefined)",
-    tests: ["test/unit/usage-tag.test.ts", "test/http/usage-tag.test.ts"],
-  },
-  {
     id: "I26-tag-lost-on-gemini",
     invariant: "I26",
     file: "src/gemini/route.ts",
@@ -2104,8 +2096,8 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I26-cors-preflight-omits-x-plugboard-tag",
     invariant: "I26",
     file: "src/openai/route.ts",
-    find: "x-request-id, x-plugboard-tag, ",
-    replace: "x-request-id, ",
+    find: "helicone-cache-seed, x-plugboard-tag",
+    replace: "helicone-cache-seed",
     tests: ["test/http/cors.test.ts", "test/http/usage-tag.test.ts"],
   },
   {

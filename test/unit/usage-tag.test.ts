@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test"
 import { setLogLevel } from "../../src/log.js"
-import { bodyTag, noteTag, requestTag, sanitizeTag, tagField, validTag } from "../../src/tag.js"
+import { noteTag, requestTag, sanitizeTag, tagField, validTag } from "../../src/tag.js"
 import { createUsageRecorder, createUsageState, TAGS_PER_DAY, type UsageRecorder, type UsageReport } from "../../src/usage.js"
 import { until } from "../support/fixtures.js"
 import { captureLogs } from "../support/logs.js"
@@ -55,34 +55,28 @@ describe("usage tag: what is kept", () => {
     expect(validTag("a b")).toBeUndefined()
   })
 
-  test("tagField spreads only a kept tag, and bodyTag reads metadata.tag", () => {
+  test("tagField spreads only a kept tag", () => {
     expect(tagField("cron")).toEqual({ tag: "cron" })
     expect(tagField(undefined)).toEqual({})
-    expect(bodyTag({ metadata: { tag: "cron" } })).toBe("cron")
-    expect(bodyTag({ metadata: "cron" })).toBeUndefined()
-    expect(bodyTag(null)).toBeUndefined()
   })
 })
 
 describe("usage tag: where it comes from", () => {
   afterEach(() => setLogLevel("info"))
 
-  test("the header wins over the body, and a blank header leaves the body's tag", () => {
-    expect(requestTag({ "x-plugboard-tag": "cron" }, "chat")).toBe("cron")
-    expect(requestTag({}, "chat")).toBe("chat")
-    expect(requestTag({ "x-plugboard-tag": "  " }, "chat")).toBe("chat")
+  test("only the x-plugboard-tag header names a tag", () => {
+    expect(requestTag({ "x-plugboard-tag": "cron" })).toBe("cron")
+    expect(requestTag({ "x-plugboard-tag": " cron " })).toBe("cron")
     expect(requestTag({})).toBeUndefined()
-    expect(requestTag({ "x-plugboard-tag": ["first", "second"] })).toBe("first")
+    expect(requestTag({ "x-plugboard-tag": "  " })).toBeUndefined()
   })
 
-  test("a refused header is ignored, not replaced by the body's tag, and the debug line never carries the value", () => {
+  test("a refused header is ignored with a debug line that never carries the value", () => {
     setLogLevel("debug")
-    expect(requestTag({ "x-plugboard-tag": "bad tag value" }, "chat")).toBeUndefined()
-    expect(requestTag({}, "bad/body")).toBeUndefined()
+    expect(requestTag({ "x-plugboard-tag": "bad tag value" })).toBeUndefined()
     expect(requestTag({ "x-plugboard-tag": "cron, chat" })).toBeUndefined()
-    const lines = logs.of("request.tag_ignored")
-    expect(lines.map((line) => line.fields.source)).toEqual(["header", "body", "header"])
-    expect(logs.lines.map((line) => line.raw).join("\n")).not.toMatch(/bad tag|bad\/body|cron, chat/)
+    expect(logs.of("request.tag_ignored")).toHaveLength(2)
+    expect(logs.lines.map((line) => line.raw).join("\n")).not.toMatch(/bad tag|cron, chat/)
   })
 
   test("an absent or blank tag logs nothing, and an invalid one logs nothing below debug", () => {
@@ -99,7 +93,7 @@ describe("usage tag: where it comes from", () => {
     const info: { tag?: string } = {}
     noteTag(info, { "x-plugboard-tag": "a b" })
     expect(info.tag).toBeUndefined()
-    noteTag(info, {}, " cron ")
+    noteTag(info, { "x-plugboard-tag": " cron " })
     expect(info.tag).toBe("cron")
   })
 })

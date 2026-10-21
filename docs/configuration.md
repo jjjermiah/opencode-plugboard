@@ -555,7 +555,7 @@ Who may read what:
 - **Keyless loopback** (no `keys`) is the app `default`.
 - A missing or wrong key is a 401. The admin key is not an app key, so it gets a 401 on `/v1/chat/completions` and the other model routes.
 
-OpenCode's own clients read the same report through the usage RPC, `opencode-plugboard.usage`, method `get`, with the same `from`, `to`, `app`, `user` and `tag` fields. It is reached through OpenCode's password-authenticated API, so it returns every app. The contract is in `src/rpc.ts`, and the package exposes it as `opencode-plugboard/rpc`.
+OpenCode's own clients read the same report through the usage RPC, `opencode-plugboard.usage`, method `get`, with the same `from`, `to`, `app` and `user` fields. It is reached through OpenCode's password-authenticated API, so it returns every app. The contract is in `src/rpc.ts`, and the package exposes it as `opencode-plugboard/rpc`.
 
 What a response holds (one app, trimmed):
 
@@ -608,7 +608,7 @@ Persistence: each day is written to OpenCode's plugin storage as its changes lan
 
 `GET /plugboard/dashboard` on plugboard's own port is a page for the same report, in two tabs. It works on a phone, and follows light or dark mode.
 
-- **Usage.** Cards for requests, tokens, estimated cost, errors and cache hits for today, 7, 30 or 90 days, each with its change against the previous period of the same length. Daily charts per app for requests, cost and tokens. A table of apps and a table of models, both sortable, with errors, p95 latency and the last request. When any request in the range carried a [usage tag](#usage-tags), a sortable table of tags (requests, tokens, cost, errors) follows. A range with no usage shows an empty state, and a failed load shows an error with a retry.
+- **Usage.** Cards for requests, tokens, estimated cost, errors and cache hits for today, 7, 30 or 90 days, each with its change against the previous period of the same length. Daily charts per app for requests, cost and tokens. A table of apps and a table of models, both sortable, with errors, p95 latency and the last request. When any request in the range carried a [usage tag](#usage-tags), a table of tags (requests, tokens, cost, errors) follows. A range with no usage shows an empty state, and a failed load shows an error with a retry.
 - **Models.** What `GET /v1/models` returns for the key: the id, badges for aliases, agents, tools, vision and other input types, the context length and the price per million tokens. Filter by id, tools or vision. Each row copies its id and shows a curl, Python or JavaScript snippet that reads the key from `PLUGBOARD_API_KEY`. `/v1/models` takes an app key, so with the admin key the tab asks for one.
 - The page itself needs no key, and it holds no usage. Enter a key on it; the page reads `/plugboard/usage` and `/v1/models` with that key and keeps the key in `sessionStorage`, so it lasts for the browser tab and is gone when the tab closes. Sign out clears it.
 - The charts use [uPlot](https://github.com/leeoniya/uPlot) (MIT), a pinned dependency that plugboard serves itself from `/plugboard/dashboard/uplot.js` and `/plugboard/dashboard/uplot.css`. Nothing loads from another origin, and the page sends no inline script or style. The policy is `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ...` (see `src/dashboard/page.ts`).
@@ -672,13 +672,13 @@ curl -s http://127.0.0.1:4010/v1/chat/completions \
   -d '{"model":"fast","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-- The `x-plugboard-tag` header works on every model route: Chat Completions, completions, Responses, Messages and Gemini. The OpenAI shapes (Chat Completions, completions and Responses) also read the `metadata` object's `tag` string. The header wins when both are sent.
+- The `x-plugboard-tag` header works on every model route: Chat Completions, completions, Responses, Messages and Gemini. Nothing in a body names a tag.
 - A request has one tag. The value is trimmed and kept when it is 1 to 64 characters of `A-Z a-z 0-9 . _ : -`. A repeated header reaches plugboard as one comma-joined value, which is not a tag.
-- A value that is not kept is ignored: the call runs, nothing is counted under a tag, and the debug line `request.tag_ignored` says whether the header or the body held it (never the value). The names `__proto__`, `prototype`, `constructor` and `_other` are ignored too (`_other` is the overflow slot below). A refused header does not fall back to the body's tag. There is no error and no response header for a bad tag.
+- A value that is not kept is ignored: the call runs, nothing is counted under a tag, and the debug line `request.tag_ignored` says so (never the value). The names `__proto__`, `prototype`, `constructor` and `_other` are ignored too (`_other` is the overflow slot below). There is no error and no response header for a bad tag.
 - A kept tag is logged as `tag=` on the request line. It is not sent to the model, it is not part of the [response cache](#response-cache) key, and it does not change the session title.
 - `GET /plugboard/usage` reports a `tags` object per app, with `requests`, `errors`, `tokens` and `costUsd` per tag, summed over the range. `errors` counts requests that ended in a 4xx, a 5xx, a timeout or a client that left. A day keeps at most 100 distinct tags per app; later ones count under `_other`. `GET /plugboard/usage?tag=cron` restricts `tags` to that tag. The app totals and models still cover every request, tagged or not. A tag filter that is not a tag is a 400 `invalid_tag`.
 - Who may read it is the same as for the rest of the report: an app key sees its own app's tags, the admin key every app's.
-- Prometheus metrics get no `tag` label: a free-form value would make the series count unbounded. Read tags from the usage report, the dashboard or the TUI.
+- Prometheus metrics get no `tag` label: a free-form value would make the series count unbounded. Read tags from the usage report or the dashboard.
 
 ## Session links
 

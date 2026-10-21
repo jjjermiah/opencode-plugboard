@@ -95,7 +95,7 @@ import type { KeyStore } from "../keys.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
-import { bodyTag, noteTag, tagField } from "../tag.js"
+import { noteTag, tagField } from "../tag.js"
 import { bodyUser, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
@@ -309,7 +309,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           response.writeHead(204, {
             "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
             "access-control-allow-headers":
-              "authorization, content-type, x-api-key, x-goog-api-key, x-request-id, x-plugboard-tag, cache-control, x-plugboard-cache, x-plugboard-cache-namespace, x-portkey-cache-namespace, x-portkey-cache-force-refresh, helicone-cache-seed",
+              "authorization, content-type, x-api-key, x-goog-api-key, x-request-id, cache-control, x-plugboard-cache, x-plugboard-cache-namespace, x-portkey-cache-namespace, x-portkey-cache-force-refresh, helicone-cache-seed, x-plugboard-tag",
             ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true" ? { "access-control-allow-private-network": "true" } : {}),
           })
           response.end()
@@ -489,7 +489,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUser(sent))
     const body = withEndUser(sent, user, "user")
     noteEndUser(response, info, user)
-    noteTag(info, request.headers, bodyTag(sent))
+    noteTag(info, request.headers)
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info, cache })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info, cache })
     // The app's own `maxChoices` (#270) is the cap for this request; the decoder checks against `options.maxChoices`.

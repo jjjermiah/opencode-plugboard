@@ -132,17 +132,14 @@ describe("#141 the dashboard's Usage and Models tabs", () => {
       expect(page).toContain(marker)
   })
 
-  test("the Usage tab has a Tags table, hidden until a tag shows up, sortable like the others, and written as text", async () => {
+  test("the Usage tab has a Tags table, hidden until a tag shows up, and written as text", async () => {
     const srv = await start()
     const page = (await srv.send({ path: "/plugboard/dashboard" })).text
-    for (const marker of ['id="tags-section"', 'id="tags"', 'id="tags-more"', 'id="tags-toggle"', "<h2>Tags</h2>"]) expect(page).toContain(marker)
+    for (const marker of ['id="tags-section"', 'id="tags"', "<h2>Tags</h2>"]) expect(page).toContain(marker)
     expect(page).toMatch(/<div id="tags-section" hidden>/)
     const js = (await srv.send({ path: "/plugboard/dashboard/app.js" })).text
     expect(js).toContain("function renderTags()")
     expect(js).toContain("renderTags();")
-    expect(js).toContain('$("tags").addEventListener("click"')
-    for (const column of ['sortHeader("Tag", "name"', 'sortHeader("Requests", "requests"', 'sortHeader("Tokens", "tokens"', 'sortHeader("Cost", "costUsd"', 'sortHeader("Errors", "errors"'])
-      expect(js).toContain(column)
     // A tag name is the caller's text: it reaches the page as text, and the sums live in a record with no prototype.
     expect(js).toContain("Object.create(null)")
     expect(js).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML/)
