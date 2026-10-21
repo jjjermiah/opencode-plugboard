@@ -151,6 +151,8 @@ export interface PlugRequest {
   readonly generation: PlugGeneration
   /** The end user the caller named, when kept (src/user.ts, #57). Labels the session title and the usage counts. */
   readonly user?: string
+  /** The usage tag the caller put on the request, when kept (src/tag.ts). Labels the per-tag usage counts; it never reaches the model or the response cache key. */
+  readonly tag?: string
 }
 
 // ---------------------------------------------------------------- events

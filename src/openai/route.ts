@@ -95,6 +95,7 @@ import type { KeyStore } from "../keys.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
+import { noteTag, tagField } from "../tag.js"
 import { bodyUser, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
 import { reportAffinity } from "../session/affinity.js"
@@ -207,6 +208,8 @@ interface RequestInfo extends ServedInfo {
   dropped?: string
   /** The end user the body named, when kept (src/user.ts). */
   user?: string
+  /** The usage tag the request named (header or `metadata.tag`), when kept (src/tag.ts). */
+  tag?: string
   /** The caller's `x-request-id`, when it sent a valid one (#514). */
   clientRequestId?: string
   /** The client address behind a trusted proxy (`listen.trustProxy`, #266); set only when that option is on. */
@@ -311,7 +314,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           response.writeHead(204, {
             "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
             "access-control-allow-headers":
-              "authorization, content-type, x-api-key, x-goog-api-key, x-request-id, cache-control, x-plugboard-cache, x-plugboard-cache-namespace, x-portkey-cache-namespace, x-portkey-cache-force-refresh, helicone-cache-seed",
+              "authorization, content-type, x-api-key, x-goog-api-key, x-request-id, cache-control, x-plugboard-cache, x-plugboard-cache-namespace, x-portkey-cache-namespace, x-portkey-cache-force-refresh, helicone-cache-seed, x-plugboard-tag",
             ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true" ? { "access-control-allow-private-network": "true" } : {}),
           })
           response.end()
@@ -491,6 +494,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUser(sent))
     const body = withEndUser(sent, user, "user")
     noteEndUser(response, info, user)
+    noteTag(info, request.headers)
     if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info, cache })
     if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info, cache })
     // The app's own `maxChoices` (#270) is the cap for this request; the decoder checks against `options.maxChoices`.
@@ -513,7 +517,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       response.setHeader(DROPPED_HEADER, info.dropped)
       recorded("dropped", () => metrics?.dropped(sampled.dropped))
     }
-    const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
+    const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref, ...tagField(info.tag) }
     reportParallelTools(response, call)
     // Per app, then global (`reasoningOutputFor`): the decoder does not know the app.
     const exchange: OpenAiExchange = { ...parsed.exchange, reasoningOutput: reasoningOutputFor(host.options, auth.app) }
@@ -570,7 +574,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     sendJson(response, result.status, result.body, { retryAfterSeconds: result.retryAfterSeconds })
   }
 
-  /** `GET /plugboard/usage?from=&to=&app=`. An app key may name only its own app (another one is a 403); the admin key may name any app or none. */
+  /** `GET /plugboard/usage?from=&to=&app=&user=&tag=`. An app key may name only its own app (another one is a 403); the admin key may name any app or none. */
   async function serveUsage(request: IncomingMessage, response: ServerResponse, url: URL, usage: UsageRecorder, info: RequestInfo): Promise<void> {
     const who = authenticateUsage(liveOptions(host.options), request.headers.authorization, await runtimeDigests())
     if (isPlugError(who)) return fail(response, who)
@@ -584,6 +588,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       to: url.searchParams.get("to") ?? undefined,
       app: who.admin ? app : who.app,
       user: url.searchParams.get("user") || undefined,
+      tag: url.searchParams.get("tag") || undefined,
     })
     if (isPlugError(report)) return fail(response, report)
     // Each app's budget state, read from its current window rather than from the report's range (src/budgets.ts).
@@ -667,6 +672,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
             outcome: outcomeLabel(outcome, response.statusCode),
             ms,
             ...(info.user === undefined ? {} : { user: info.user }),
+            ...tagField(info.tag),
           })
       })
       // Probes and scrapes that succeed are not worth a line each. A readiness probe is never logged: it repeats until the backend is ready.
@@ -678,6 +684,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           route: info.route,
           app: info.app,
           user: info.user,
+          tag: info.tag,
           client: info.client,
           session_url: info.sessionUrl,
           model: info.model,

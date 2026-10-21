@@ -36,6 +36,7 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `version.ts` | `PACKAGE_VERSION`, the package.json version, read once at load. |
 | `dashboard/` | The usage dashboard (`GET /plugboard/dashboard`, #141): `page.ts` is the static page, its CSP headers and route names; `assets.ts` serves the page and its files (`app.js`, `app.css`, uPlot from `node_modules`); `app.js` and `app.css` are the browser script and stylesheet, with no build step. |
 | `user.ts` | The end user of a request (#57): the sanitizer for `user` and `metadata.user_id`, the dropped header, pure (no node imports). |
+| `tag.ts` | The usage tag of a request: the sanitizer for the `x-plugboard-tag` header, which a route reads into `RequestInfo` and each call it builds. A refused value is ignored with a debug line. |
 | `keys.ts` | Runtime app keys (#55): the store on the host storage (SHA-256 digests under `keys/`), the cache on the runtime, create, list and revoke. |
 | `metrics.ts` | The @prometheus-io/client registry and text rendering. No I/O. |
 | `log.ts` | The pino logger (text or JSON lines), the ambient request id and redaction. Ids and outcomes only. |

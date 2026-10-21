@@ -14,6 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { appPolicy, authenticate, bodyLimits, endpointRefusal, sessionUrlTemplate, requestedModel } from "../config.js"
 import { liveOptions } from "../runtime.js"
+import { noteTag, tagField } from "../tag.js"
 import { bodyUserId, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { BodyError, bodyPlugError, RequestAborted, boundEvents, checkJsonContentType, checkOrigin, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
@@ -53,7 +54,7 @@ export interface MessagesCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the route name, the app, the resolved model, dropped parameters, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string; user?: string }
+  readonly info: ServedInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string; user?: string; tag?: string }
 }
 
 const header = (request: IncomingMessage, name: string): string | undefined => {
@@ -112,6 +113,8 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUserId(sent))
     const body = withEndUser(sent, user, "metadata")
     noteEndUser(response, info, user)
+    // Messages bodies have no field for it: only the `x-plugboard-tag` header names a usage tag here.
+    noteTag(info, request.headers)
     // count_tokens takes the message body without max_tokens; the parser needs one, so a placeholder stands in
     // (the count never uses it). A max_tokens the client did send is still validated.
     // The app's output cap (#263) lowers `max_tokens` before it is parsed, so the thinking-budget rule (budget < max_tokens) refuses a
@@ -146,7 +149,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     }
     // A thinking request on a model with no thinking variant runs without thinking: say so (#410).
     if (parsed.exchange.thinking && thinkingUnavailable(catalog, ref)) response.setHeader(THINKING_HEADER, "unavailable")
-    const model: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
+    const model: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref, ...tagField(info.tag) }
     reportParallelTools(response, model)
     const { exchange } = parsed
     // The answer names the model it runs on: the app's pin, else the caller's (#261).

@@ -14,6 +14,7 @@
   var DAYS_STORAGE = "plugboard.dashboard.days";
   var RANGES = [1, 7, 30, 90];
   var MODEL_ROWS = 10;
+  var TAG_ROWS = 20;
   var CATALOG_ROWS = 100;
   var dark = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -290,6 +291,7 @@
     renderCharts();
     renderApps();
     renderModels();
+    renderTags();
   }
 
   // ---------------------------------------------------------------- usage: cards
@@ -488,6 +490,29 @@
     table.append(body);
     more.hidden = rows.length <= MODEL_ROWS;
     $("models-toggle").textContent = state.showAllModels ? "Show the top " + MODEL_ROWS : "Show all " + rows.length + " models";
+  }
+
+  /** The tags table (the busiest TAG_ROWS, summed over the apps): shown only when some request in the range carried a tag. */
+  function renderTags() {
+    var totals = Object.create(null);
+    Object.keys(state.report.apps).forEach(function (name) {
+      var tags = state.report.apps[name].tags || {};
+      Object.keys(tags).forEach(function (tag) {
+        var sum = totals[tag] || { requests: 0, tokens: 0, costUsd: 0, errors: 0 };
+        totals[tag] = { requests: sum.requests + tags[tag].requests, tokens: sum.tokens + tags[tag].tokens, costUsd: sum.costUsd + tags[tag].costUsd, errors: sum.errors + tags[tag].errors };
+      });
+    });
+    var names = Object.keys(totals).sort(function (a, b) {
+      return totals[b].requests - totals[a].requests || a.localeCompare(b);
+    });
+    $("tags-section").hidden = names.length === 0;
+    var head = h("tr", null, h("th", { scope: "col" }, "Tag"), h("th", { scope: "col", class: "num" }, "Requests"), h("th", { scope: "col", class: "num" }, "Tokens"), h("th", { scope: "col", class: "num" }, "Cost"), h("th", { scope: "col", class: "num" }, "Errors"));
+    var body = h("tbody", null);
+    names.slice(0, TAG_ROWS).forEach(function (name) {
+      var u = totals[name];
+      body.append(h("tr", null, h("th", { scope: "row", class: "name wrap" }, name), h("td", { class: "num" }, integer.format(u.requests)), h("td", { class: "num" }, fmtCount(u.tokens)), h("td", { class: "num" }, fmtCost(u.costUsd)), h("td", { class: "num" + (u.errors > 0 ? " warn" : "") }, integer.format(u.errors))));
+    });
+    $("tags").replaceChildren(h("thead", null, head), body);
   }
 
   // ---------------------------------------------------------------- usage: charts

@@ -42,6 +42,7 @@ import { errorMessage, log, logError } from "./log.js"
 import type { Outcome } from "./metrics.js"
 import { parseModelRef } from "./models.js"
 import type { StoragePort } from "./session/host.js"
+import { validTag } from "./tag.js"
 import { validEndUser } from "./user.js"
 
 /** Upper bounds of the latency buckets in ms; one more bucket holds everything above the last. */
@@ -143,11 +144,19 @@ export interface UserUsage {
   costUsd: number
 }
 
+/** One usage tag's counts (src/tag.ts): HTTP requests on the model routes, how many of them failed, and tokens and cost of the answered calls. */
+export interface TagUsage extends UserUsage {
+  /** Requests that ended in an error (4xx, 5xx, timeout, or a client that left): the four classes of `UsageErrors` summed. */
+  errors: number
+}
+
 /** One stored day, at `usage/<app>/<date>`. */
 export interface DayRecord extends UsageCounts {
   perModel: Record<string, ModelUsage>
   /** Per end user (see `USERS_PER_DAY`). Older stored days have none. */
   users: Record<string, UserUsage>
+  /** Per usage tag (see `TAGS_PER_DAY`). Older stored days have none. */
+  tags: Record<string, TagUsage>
 }
 
 /** Counters with latency percentiles, as a report carries them. */
@@ -177,6 +186,8 @@ export interface UsageAppReport {
   models: Record<string, ModelUsage>
   /** Per end user, summed over the range (src/user.ts). Past `USERS_PER_DAY` a day's extra users are under `_other`. With `user`, only that user. */
   users?: Record<string, UserUsage>
+  /** Per usage tag, summed over the range (src/tag.ts). Past `TAGS_PER_DAY` a day's extra tags are under `_other`. With `tag`, only that tag. */
+  tags?: Record<string, TagUsage>
   /** Days with any record in the range, oldest first. */
   days: UsageDay[]
   /** The app's budget state, when option `budgets` sets one for it. Read from the current window, not from the range. */
@@ -205,6 +216,8 @@ export interface UsageQuery {
   readonly app?: string
   /** One end user (src/user.ts): `users` of each app then lists only that user. Absent: every user. */
   readonly user?: string
+  /** One usage tag (src/tag.ts): `tags` of each app then lists only that tag. Absent: every tag. */
+  readonly tag?: string
 }
 
 // ---------------------------------------------------------------- pure helpers
@@ -246,6 +259,7 @@ export function emptyDay(): DayRecord {
     unpricedRequests: 0,
     perModel: nullRecord<ModelUsage>(),
     users: nullRecord<UserUsage>(),
+    tags: nullRecord<TagUsage>(),
   }
 }
 
@@ -330,7 +344,20 @@ export function sumDays(parts: ReadonlyArray<DayRecord>): DayRecord {
     }
   }
   total.users = sumUsers(parts)
+  total.tags = sumTags(parts)
   return total
+}
+
+/** Per usage tag, summed over the day records (`only`: that tag alone). */
+function sumTags(parts: ReadonlyArray<DayRecord>, only?: string): Record<string, TagUsage> {
+  const out = nullRecord<TagUsage>()
+  for (const part of parts)
+    for (const [tag, usage] of Object.entries(part.tags ?? {})) {
+      if (only !== undefined && tag !== only) continue
+      const sum = out[tag] ?? { requests: 0, tokens: 0, costUsd: 0, errors: 0 }
+      out[tag] = { requests: sum.requests + usage.requests, tokens: sum.tokens + usage.tokens, costUsd: sum.costUsd + usage.costUsd, errors: sum.errors + usage.errors }
+    }
+  return out
 }
 
 /** Per end user, summed over the day records (`only`: that user alone). */
@@ -380,6 +407,11 @@ export function fromJson(value: unknown): DayRecord {
     const usage = object(item)
     users[user] = { requests: nonNegative(usage.requests), tokens: nonNegative(usage.tokens), costUsd: nonNegative(usage.costUsd) }
   }
+  const tags = nullRecord<TagUsage>()
+  for (const [tag, item] of Object.entries(object(raw.tags))) {
+    const usage = object(item)
+    tags[tag] = { requests: nonNegative(usage.requests), tokens: nonNegative(usage.tokens), costUsd: nonNegative(usage.costUsd), errors: nonNegative(usage.errors) }
+  }
   return {
     requests: nonNegative(raw.requests),
     errors: { client: nonNegative(errors.client), server: nonNegative(errors.server), timeout: nonNegative(errors.timeout), disconnected: nonNegative(errors.disconnected) },
@@ -400,6 +432,7 @@ export function fromJson(value: unknown): DayRecord {
     ...(typeof raw.lastRequestAt === "string" ? { lastRequestAt: raw.lastRequestAt } : {}),
     perModel,
     users,
+    tags,
   }
 }
 
@@ -448,6 +481,8 @@ export interface RequestUsage {
   readonly ms: number
   /** The end user of the request, when kept (src/user.ts). */
   readonly user?: string
+  /** The usage tag of the request, when kept (src/tag.ts). */
+  readonly tag?: string
 }
 
 /**
@@ -463,6 +498,8 @@ export interface CallUsage {
   readonly usage?: PlugUsage
   /** The end user of the call, when kept (src/user.ts). */
   readonly user?: string
+  /** The usage tag of the call, when kept (src/tag.ts). */
+  readonly tag?: string
 }
 
 export interface UsageRecorder {
@@ -504,15 +541,20 @@ async function readDay(storage: StoragePort, key: string): Promise<DayRecord | u
 
 /** Distinct end users a day keeps per app. Later users count under `_other`, which `sanitizeEndUser` never keeps as a user (src/user.ts). */
 export const USERS_PER_DAY = 200
-const OTHER_USER = "_other"
+/** Distinct usage tags a day keeps per app. Later tags count under `_other`, which `sanitizeTag` never keeps as a tag (src/tag.ts). */
+export const TAGS_PER_DAY = 100
+const OTHER_SLOT = "_other"
 
-/** The counts of one end user in a day, created on first use; past the cap the request counts under `_other`. */
-function userSlot(day: DayRecord, user: string): UserUsage {
-  if (Object.hasOwn(day.users, user)) return day.users[user]!
-  const distinct = Object.keys(day.users).length - (day.users[OTHER_USER] ? 1 : 0)
-  const key = distinct < USERS_PER_DAY ? user : OTHER_USER
-  return (day.users[key] ??= { requests: 0, tokens: 0, costUsd: 0 })
+/** The counts of one name (an end user or a tag) in a day's record, created on first use; past `cap` distinct names the request counts under `_other`. */
+function boundedSlot<T>(record: Record<string, T>, name: string, cap: number, make: () => T): T {
+  if (Object.hasOwn(record, name)) return record[name]!
+  const distinct = Object.keys(record).length - (Object.hasOwn(record, OTHER_SLOT) ? 1 : 0)
+  const key = distinct < cap ? name : OTHER_SLOT
+  return (record[key] ??= make())
 }
+
+const userSlot = (day: DayRecord, user: string): UserUsage => boundedSlot(day.users, user, USERS_PER_DAY, () => ({ requests: 0, tokens: 0, costUsd: 0 }))
+const tagSlot = (day: DayRecord, tag: string): TagUsage => boundedSlot(day.tags, tag, TAGS_PER_DAY, () => ({ requests: 0, tokens: 0, costUsd: 0, errors: 0 }))
 
 const addTokens = (into: UsageTokens, from: UsageTokens): UsageTokens => ({
   input: into.input + from.input,
@@ -632,6 +674,11 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
         day.latency.buckets[bucketIndex(ms)] = (day.latency.buckets[bucketIndex(ms)] ?? 0) + 1
         day.lastRequestAt = new Date(at).toISOString()
         if (input.user !== undefined) userSlot(day, input.user).requests++
+        if (input.tag !== undefined) {
+          const slot = tagSlot(day, input.tag)
+          slot.requests++
+          if (input.outcome === "rejected" || input.outcome === "failed" || input.outcome === "timeout" || input.outcome === "disconnected") slot.errors++
+        }
       })
     },
 
@@ -674,6 +721,11 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
             slot.tokens += totalTokens(tokens)
             slot.costUsd += price
           }
+          if (input.tag !== undefined) {
+            const slot = tagSlot(day, input.tag)
+            slot.tokens += totalTokens(tokens)
+            slot.costUsd += price
+          }
         })
       })().catch((error) => logError("usage.record_failed", { app: input.app, error: errorMessage(error) }))
     },
@@ -695,6 +747,8 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
         return { status: 400, kind: "invalid_request", code: "invalid_app", param: "app", message: "`app` must be an app name from the keys configuration" }
       if (input.user !== undefined && validEndUser(input.user) === undefined)
         return { status: 400, kind: "invalid_request", code: "invalid_user", param: "user", message: "`user` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `@`, `:` or `-`" }
+      if (input.tag !== undefined && validTag(input.tag) === undefined)
+        return { status: 400, kind: "invalid_request", code: "invalid_tag", param: "tag", message: "`tag` must be 1 to 64 characters of A-Z, a-z, 0-9, `.`, `_`, `:` or `-`" }
       const range = resolveRange(input, at)
       if (isPlugError(range)) return range
       const prefix = input.app === undefined ? KEY_PREFIX : keyOf(input.app, "")
@@ -734,6 +788,10 @@ export function createUsageRecorder(deps: UsageRecorderDeps): UsageRecorder {
             rows.map((row) => row.day),
             input.user,
           ),
+          tags: sumTags(
+            rows.map((row) => row.day),
+            input.tag,
+          ),
           days,
         }
       }
@@ -761,7 +819,14 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
       let ended = false
       const charge = (usage: PlugUsage | undefined) => {
         const ref = served ? parseModelRef(served.model) : request.ref
-        recorder.call({ app: context.app, ...(ref ? { ref } : {}), answered: false, ...(usage ? { usage } : {}), ...(request.user === undefined ? {} : { user: request.user }) })
+        recorder.call({
+          app: context.app,
+          ...(ref ? { ref } : {}),
+          answered: false,
+          ...(usage ? { usage } : {}),
+          ...(request.user === undefined ? {} : { user: request.user }),
+          ...(request.tag === undefined ? {} : { tag: request.tag }),
+        })
       }
       const forward: CallContext = {
         ...context,
@@ -816,6 +881,7 @@ export function withUsage(inner: ModelCaller, recorder: UsageRecorder | undefine
             ...(cache ? { cache } : {}),
             ...(spent ? { usage: spent } : {}),
             ...(request.user === undefined ? {} : { user: request.user }),
+            ...(request.tag === undefined ? {} : { tag: request.tag }),
           })
         }
       })()

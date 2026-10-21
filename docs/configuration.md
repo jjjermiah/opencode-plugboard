@@ -6,7 +6,7 @@ Every option, with its syntax, default and edge cases. This is the reference: to
 
 The sections below, grouped the way the guides are.
 
-**Apps and keys** ([guide](guides/apps-and-keys.md)): [Apps and keys](#apps-and-keys), [Per-app policy](#per-app-policy-apps), [Endpoint names](#endpoint-names), [Admin keys](#admin-keys), [Which key opens which route](#which-key-opens-which-route), [End users](#end-users).
+**Apps and keys** ([guide](guides/apps-and-keys.md)): [Apps and keys](#apps-and-keys), [Per-app policy](#per-app-policy-apps), [Endpoint names](#endpoint-names), [Admin keys](#admin-keys), [Which key opens which route](#which-key-opens-which-route), [End users](#end-users), [Usage tags](#usage-tags).
 
 **Models, aliases and fallbacks** ([guide](guides/models-and-aliases.md)): [Models](#models), [Reasoning output](#reasoning-output), [Model ids in UIs](#model-ids-in-uis), [Aliases and fallbacks](#aliases-and-fallbacks), [Skills and agents](#skills-and-agents), [Permission model](#permission-model).
 
@@ -542,7 +542,7 @@ Plugboard counts what each app does, per UTC day: model requests and their error
 
 With recording on, each non-streaming model answer also carries `x-plugboard-usage` for that one request: `input=<n>; output=<n>; cache_read=<n>; cache_write=<n>; cost_usd=<x.xxxxxx>`. `input` and `output` are the totals the response body reports (cache reads and writes are inside `input`, reasoning inside `output`); `cache_write` is the input the provider wrote to its cache (0 when none), and `cost_usd` is priced from the same tokens. A request that fans out with `n` sums its choices. The cost part is left out when the model has no price in the catalog. A streamed answer has no such header: its headers are sent before the usage is known.
 
-Read it with `GET /plugboard/usage`. `from` and `to` are UTC days (`YYYY-MM-DD`, both inclusive); the default is the 30 days ending today, and a range may span at most 366 days. `app` names one app.
+Read it with `GET /plugboard/usage`. `from` and `to` are UTC days (`YYYY-MM-DD`, both inclusive); the default is the 30 days ending today, and a range may span at most 366 days. `app` names one app. `user` and `tag` narrow the `users` and `tags` of each app (see [End users](#end-users) and [Usage tags](#usage-tags)).
 
 ```sh
 curl -s "http://127.0.0.1:4010/plugboard/usage?from=2026-10-01&to=2026-10-11" -H "Authorization: Bearer $PLUGBOARD_ADMIN_KEY"
@@ -555,7 +555,7 @@ Who may read what:
 - **Keyless loopback** (no `keys`) is the app `default`.
 - A missing or wrong key is a 401. The admin key is not an app key, so it gets a 401 on `/v1/chat/completions` and the other model routes.
 
-OpenCode's own clients read the same report through the usage RPC, `opencode-plugboard.usage`, method `get`, with the same `from`, `to` and `app` fields. It is reached through OpenCode's password-authenticated API, so it returns every app. The contract is in `src/rpc.ts`, and the package exposes it as `opencode-plugboard/rpc`.
+OpenCode's own clients read the same report through the usage RPC, `opencode-plugboard.usage`, method `get`, with the same `from`, `to`, `app` and `user` fields. It is reached through OpenCode's password-authenticated API, so it returns every app. The contract is in `src/rpc.ts`, and the package exposes it as `opencode-plugboard/rpc`.
 
 What a response holds (one app, trimmed):
 
@@ -598,6 +598,7 @@ The fields, in short:
 - `costUsd` is an estimate at list prices from the catalog (per million tokens, with OpenCode's context tiers). A subscription login does not bill per token, so read it as a comparison between apps, not as a bill. A model with no price adds its calls to `unpricedRequests` and costs 0.
 - `cacheHits` and `cacheMisses` count the calls the [response cache](#response-cache) applied to. `fallbacks` counts retries on the next target of an alias. `limited` counts 429 refusals from [limits](#concurrency-and-rate-limits) and [budgets](#budgets).
 - `models` and `perModel` are keyed by `provider/model`; the variant is not part of the key.
+- `users` and `tags` split an app by end user and by [usage tag](#usage-tags). They are not in the totals: a request with no user or no tag is in the totals and in neither.
 
 Retention: days older than `retentionDays` are deleted while requests are served, a page of keys at a time. An idle server keeps them until the next request.
 
@@ -607,7 +608,7 @@ Persistence: each day is written to OpenCode's plugin storage as its changes lan
 
 `GET /plugboard/dashboard` on plugboard's own port is a page for the same report, in two tabs. It works on a phone, and follows light or dark mode.
 
-- **Usage.** Cards for requests, tokens, estimated cost, errors and cache hits for today, 7, 30 or 90 days, each with its change against the previous period of the same length. Daily charts per app for requests, cost and tokens. A table of apps and a table of models, both sortable, with errors, p95 latency and the last request. A range with no usage shows an empty state, and a failed load shows an error with a retry.
+- **Usage.** Cards for requests, tokens, estimated cost, errors and cache hits for today, 7, 30 or 90 days, each with its change against the previous period of the same length. Daily charts per app for requests, cost and tokens. A table of apps and a table of models, both sortable, with errors, p95 latency and the last request. When any request in the range carried a [usage tag](#usage-tags), a table of tags (requests, tokens, cost, errors) follows. A range with no usage shows an empty state, and a failed load shows an error with a retry.
 - **Models.** What `GET /v1/models` returns for the key: the id, badges for aliases, agents, tools, vision and other input types, the context length and the price per million tokens. Filter by id, tools or vision. Each row copies its id and shows a curl, Python or JavaScript snippet that reads the key from `PLUGBOARD_API_KEY`. `/v1/models` takes an app key, so with the admin key the tab asks for one.
 - The page itself needs no key, and it holds no usage. Enter a key on it; the page reads `/plugboard/usage` and `/v1/models` with that key and keeps the key in `sessionStorage`, so it lasts for the browser tab and is gone when the tab closes. Sign out clears it.
 - The charts use [uPlot](https://github.com/leeoniya/uPlot) (MIT), a pinned dependency that plugboard serves itself from `/plugboard/dashboard/uplot.js` and `/plugboard/dashboard/uplot.css`. Nothing loads from another origin, and the page sends no inline script or style. The policy is `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; ...` (see `src/dashboard/page.ts`).
@@ -659,6 +660,25 @@ A bot that serves many people is one app, so its history and usage would be one 
 - The value is trimmed and kept when it is at most 64 characters of `A-Z a-z 0-9 . _ @ : -`. Anything else is dropped, and the response carries `x-plugboard-user-dropped: 1`. The names `__proto__`, `prototype`, `constructor` and `_other` are dropped too (`_other` is the overflow slot below). A kept value is only ever a label: it never names a directory or a file.
 - A kept user prefixes the session title, as `[alice] first words of the prompt`, and is logged as `user=` on the request line.
 - `GET /plugboard/usage` gains a `users` object per app, with `requests`, `tokens` and `costUsd` per user, summed over the range. A day keeps at most 200 distinct users per app; later ones count under `_other`. `GET /plugboard/usage?user=alice` restricts `users` to that user. The app totals and models still cover every user.
+
+## Usage tags
+
+One app often does different jobs: a bot's cron runs and its interactive chat, say. A usage tag is a free-form label on a request that splits that app's usage without a second key.
+
+```sh
+curl -s http://127.0.0.1:4010/v1/chat/completions \
+  -H "Authorization: Bearer $PLUGBOARD_API_KEY" -H "content-type: application/json" \
+  -H "x-plugboard-tag: cron" \
+  -d '{"model":"fast","messages":[{"role":"user","content":"hi"}]}'
+```
+
+- The `x-plugboard-tag` header works on every model route: Chat Completions, completions, Responses, Messages and Gemini. Nothing in a body names a tag.
+- A request has one tag. The value is trimmed and kept when it is 1 to 64 characters of `A-Z a-z 0-9 . _ : -`. A repeated header reaches plugboard as one comma-joined value, which is not a tag.
+- A value that is not kept is ignored: the call runs, nothing is counted under a tag, and the debug line `request.tag_ignored` says so (never the value). The names `__proto__`, `prototype`, `constructor` and `_other` are ignored too (`_other` is the overflow slot below). There is no error and no response header for a bad tag.
+- A kept tag is logged as `tag=` on the request line. It is not sent to the model, it is not part of the [response cache](#response-cache) key, and it does not change the session title.
+- `GET /plugboard/usage` reports a `tags` object per app, with `requests`, `errors`, `tokens` and `costUsd` per tag, summed over the range. `errors` counts requests that ended in a 4xx, a 5xx, a timeout or a client that left. A day keeps at most 100 distinct tags per app; later ones count under `_other`. `GET /plugboard/usage?tag=cron` restricts `tags` to that tag. The app totals and models still cover every request, tagged or not. A tag filter that is not a tag is a 400 `invalid_tag`.
+- Who may read it is the same as for the rest of the report: an app key sees its own app's tags, the admin key every app's.
+- Prometheus metrics get no `tag` label: a free-form value would make the series count unbounded. Read tags from the usage report or the dashboard.
 
 ## Session links
 

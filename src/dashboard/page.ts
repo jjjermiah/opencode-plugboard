@@ -96,6 +96,10 @@ export const DASHBOARD_PAGE = `<!doctype html>
 <h2>Models used</h2>
 <div class="scroll card flush"><table id="models"></table></div>
 <p id="models-more" class="muted" hidden><button type="button" id="models-toggle"></button></p>
+<div id="tags-section" hidden>
+<h2>Tags</h2>
+<div class="scroll card flush"><table id="tags"></table></div>
+</div>
 </div>
 </div>
 <div id="view-models" role="tabpanel" aria-labelledby="tab-models" hidden>
