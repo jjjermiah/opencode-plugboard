@@ -679,7 +679,7 @@ export const MUTATIONS: readonly Mutation[] = [
     id: "I26-tag-lost-on-openai",
     invariant: "I26",
     file: "src/openai/route.ts",
-    find: "    noteTag(info, request.headers, bodyTag(sent))\n",
+    find: "    noteTag(info, request.headers)\n",
     replace: "",
     tests: ["test/http/usage-tag.test.ts"],
   },
