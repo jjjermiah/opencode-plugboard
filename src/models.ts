@@ -114,8 +114,12 @@ function inAppScope(policy: AppPolicy | undefined, name: string, ref: ModelRef):
   return policy?.allowedModels === undefined || policy.allowedModels.includes(name) || allowedBy(policy.allowedModels, ref)
 }
 
+/** The route that lists the models, as the `model_not_found` text names it. Gemini routes name `GEMINI_MODELS_LIST` instead (`encodeGeminiError`). */
+export const MODELS_LIST = "GET /v1/models"
+export const GEMINI_MODELS_LIST = "GET /v1beta/models"
+
 /** The `model_not_found` text: names the model, then where to look. `list` is the route that lists the models (Gemini has its own). */
-export const modelNotAvailable = (name: string, list = "GET /v1/models"): string => `Model ${name} is not available. ${list} lists the models you can call.`
+export const modelNotAvailable = (name: string, list = MODELS_LIST): string => `Model ${name} is not available. ${list} lists the models you can call.`
 
 /** 404 `model_not_found` when `app` may not use the (already resolved) model; the same error as an unknown model. */
 export function checkAppModel(policy: AppPolicy | undefined, name: string, ref: ModelRef): PlugError | undefined {

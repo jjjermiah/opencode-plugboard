@@ -101,7 +101,7 @@ The app already has a key in the plugboard config. Edit `keys` to change it, or 
 
 ### not_ready {#not-ready}
 
-The backend cannot serve yet. The `detail` names the first missing piece: no generation, no app directory used since start, the event pump not running, or the model catalog not loaded. Send one model request to an app to confirm the directory; the other pieces follow on their own. The same reason is in the `/readyz` document.
+The backend cannot serve yet. The `detail` names the first missing piece: no generation, no app directory used since start, the event pump not running, or the model catalog not loaded. After a restart the usual one is "waiting for OpenCode to load plugboard": send one model request to an app, or run the [warm-up](warm-up.md#readiness-readyz) call, and the other pieces follow on their own. The same reason is in the `/readyz` document.
 
 ### body_read_timeout {#body-read-timeout}
 

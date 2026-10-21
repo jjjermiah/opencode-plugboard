@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Two first-run messages say more.** `GET /readyz` and `GET /plugboard/ready` now explain the 503 you get after an OpenCode restart: "waiting for OpenCode to load plugboard", that the first model request to an app or a warm-up call makes it ready, and a link to the warm-up page. Readiness itself is unchanged: `/readyz` stays 503 until an app directory has served a request, because answering 200 earlier would send traffic to a server whose first request still has to boot the directory. An unknown model on a Gemini `generateContent`, `streamGenerateContent` or `countTokens` call now points at `GET /v1beta/models`, not `GET /v1/models`.
 
 ## [0.62.0] - 2026-10-21: Friendlier First Steps
 

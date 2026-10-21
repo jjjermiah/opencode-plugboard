@@ -53,6 +53,15 @@ describe("#160 GET /readyz", () => {
     expect((await server!.send({ path: "/readyz" })).json()).toEqual({ ready: false, reason: message })
   })
 
+  test("an unconfirmed app directory says why and what to do, with the docs link", async () => {
+    await start({ ...READY, servingConfirmed: false })
+    const reply = await server!.send({ path: "/readyz" })
+    expect(reply.status).toBe(503)
+    expect(reply.json().reason).toBe(
+      "waiting for OpenCode to load plugboard: no app directory has been used since start. The first model request to an app, or a warm-up call, makes this ready. See https://jjjermiah.github.io/opencode-plugboard/warm-up#readiness-readyz",
+    )
+  })
+
   test("#160 /readyz never asks for a key, not even a wrong one, and never shows one", async () => {
     await start({ ...READY, catalogLoaded: false }, { keys: KEYS })
     for (const headers of [undefined, { authorization: "Bearer wrong-key" }]) {

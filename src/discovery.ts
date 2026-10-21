@@ -343,6 +343,9 @@ ${sections.join("\n")}
 `
 }
 
+/** The page that explains what makes `/readyz` ready after a restart. */
+const WARM_UP_DOCS = "https://jjjermiah.github.io/opencode-plugboard/warm-up#readiness-readyz"
+
 /** The facts `/readyz` and `/plugboard/ready` decide from (`RuntimeStatus` in src/runtime.ts). */
 export interface ReadinessFacts {
   readonly generations: number
@@ -360,7 +363,11 @@ export interface ReadinessFacts {
 export function readiness(facts: ReadinessFacts): { ready: true } | { ready: false; reason: string } {
   if (facts.configError) return { ready: false, reason: facts.configError.message }
   if (facts.generations === 0) return { ready: false, reason: "no plugboard generation is live; the server is reloading or the plugin is not loaded" }
-  if (!facts.servingConfirmed) return { ready: false, reason: "no app directory has been used since start; one model request to an app confirms it" }
+  if (!facts.servingConfirmed)
+    return {
+      ready: false,
+      reason: `waiting for OpenCode to load plugboard: no app directory has been used since start. The first model request to an app, or a warm-up call, makes this ready. See ${WARM_UP_DOCS}`,
+    }
   if (!facts.pumpRunning) return { ready: false, reason: "the event pump is not running; the next request to an app starts it" }
   if (!facts.catalogLoaded) return { ready: false, reason: "the model catalog has not loaded yet" }
   return { ready: true }
