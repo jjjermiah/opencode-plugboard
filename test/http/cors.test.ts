@@ -43,7 +43,7 @@ describe("#256 cors: a preflight from an allowed origin is answered before authe
     expect(reply.status).toBe(204)
     expect(reply.headers["access-control-allow-origin"]).toBe(APP)
     expect(reply.headers["access-control-allow-methods"]).toBe("GET, POST, DELETE, OPTIONS")
-    expect(reply.headers["access-control-allow-headers"]).toBe("authorization, content-type, x-api-key, x-goog-api-key, x-request-id")
+    expect(reply.headers["access-control-allow-headers"]).toBe("authorization, content-type, x-api-key, x-goog-api-key, x-request-id, x-plugboard-tag")
     expect(reply.headers.vary).toBe("Origin")
     expect(caller.calls).toEqual([])
   })
@@ -185,6 +185,8 @@ describe("#314 review: Access-Control-Expose-Headers on every allowed answer, th
       const text = await Bun.file(`${import.meta.dir}/../../${path}`).text()
       for (const match of text.matchAll(/"(x-plugboard-[a-z-]+)"/g)) names.add(match[1]!)
     }
+    // Request headers the caller sends: they are allowed on the preflight, not exposed on the answer.
+    names.delete("x-plugboard-tag")
     expect(exposed(reply.headers).sort()).toEqual([...names, "retry-after"].sort())
   })
 })

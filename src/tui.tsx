@@ -25,6 +25,9 @@ import {
   modelValues,
   presetRange,
   RANGE_PRESETS,
+  TAG_COLUMNS,
+  tagRows,
+  tagValues,
   totalItems,
   unavailableMessage,
   type RangePreset,
@@ -90,6 +93,7 @@ function UsagePage(props: { context: Plugin.Context; onClose: () => void }) {
 function UsageBody(props: { report: UsageReport; theme: Theme }) {
   const apps = () => appRows(props.report)
   const models = () => modelRows(props.report, 10)
+  const tags = () => tagRows(props.report, 10)
   return (
     <box flexDirection="column" gap={1}>
       <box flexDirection="row" flexWrap="wrap" gap={2}>
@@ -134,6 +138,18 @@ function UsageBody(props: { report: UsageReport; theme: Theme }) {
           )}
         </text>
         <For each={models()}>{(row) => <text fg={props.theme.text.base}>{formatLine(modelValues(row), MODEL_COLUMNS)}</text>}</For>
+      </Show>
+      <Show when={tags().length > 0}>
+        <text fg={props.theme.text.muted} attributes={TextAttributes.BOLD}>
+          Tags
+        </text>
+        <text fg={props.theme.text.muted}>
+          {formatLine(
+            TAG_COLUMNS.map((column) => column.title),
+            TAG_COLUMNS,
+          )}
+        </text>
+        <For each={tags()}>{(row) => <text fg={props.theme.text.base}>{formatLine(tagValues(row), TAG_COLUMNS)}</text>}</For>
       </Show>
     </box>
   )

@@ -24,4 +24,6 @@ A streamed answer sends its headers with the first event, so headers that need t
 | `x-plugboard-structured-fallback` | Structured output came from plain text | `text`: the model answered in text that matched the schema instead of calling `respond`. |
 | `x-plugboard-user-dropped` | The end user name was not usable | `1`: the `user` value was not kept for usage. |
 
+One request header is plugboard's own: `x-plugboard-tag: <tag>` labels a call for [usage tags](configuration.md#usage-tags). A bad value is ignored, never an error.
+
 Errors from plugboard-owned routes (`/plugboard/*`) use `application/problem+json`. Model routes answer errors in their own API's shape. See [Errors](errors.md).

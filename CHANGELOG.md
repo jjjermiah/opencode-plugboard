@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Split one app's usage by a request tag.** Send `x-plugboard-tag: cron` on any model request (Chat Completions, completions, Responses, Messages or Gemini) and the usage report counts requests, errors, tokens and cost per tag, next to the per-user split. The OpenAI shapes also read `metadata.tag`. `GET /plugboard/usage` has a `tags` object per app and a `?tag=` filter, the dashboard Usage tab gets a sortable Tags table, and the `/plugboard` TUI page lists the top tags. A tag is 1 to 64 characters of `A-Z a-z 0-9 . _ : -`; a bad one is ignored with a debug log line, never an error. A day keeps 100 tags per app and the rest count under `_other`. Prometheus metrics get no tag label, because a free-form value has unbounded cardinality. The CORS preflight allows the new header.
 
 ## [0.61.0] - 2026-10-20: Names All the Way
 

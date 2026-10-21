@@ -27,6 +27,7 @@ export const UsageRpc = Rpc.define({
           to: { type: "string", description: "Last UTC day, YYYY-MM-DD. Default: today." },
           app: { type: "string", description: "One app name. Default: every app." },
           user: { type: "string", description: "One end user id. Each app's `users` then lists only that user. Default: every user." },
+          tag: { type: "string", description: "One usage tag. Each app's `tags` then lists only that tag. Default: every tag." },
         },
         additionalProperties: false,
       },
@@ -38,7 +39,7 @@ export const UsageRpc = Rpc.define({
       errors: {
         invalid_query: {
           type: "object",
-          properties: { param: { type: "string", description: "The query parameter that is wrong: from, to, app or user." } },
+          properties: { param: { type: "string", description: "The query parameter that is wrong: from, to, app, user or tag." } },
           required: ["param"],
           additionalProperties: false,
         },
@@ -52,7 +53,7 @@ export const UsageRpc = Rpc.define({
 function queryOf(input: unknown): UsageQuery {
   const record: Record<string, unknown> = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {}
   const text = (value: unknown) => (typeof value === "string" ? value : undefined)
-  return { from: text(record.from), to: text(record.to), app: text(record.app), user: text(record.user) }
+  return { from: text(record.from), to: text(record.to), app: text(record.app), user: text(record.user), tag: text(record.tag) }
 }
 
 /** The handlers for `UsageRpc`, reading the given usage query (the generation's recorder). */

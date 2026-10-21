@@ -86,6 +86,19 @@ The new key is shown once. The server keeps only a digest.
 
 A bot that serves many people is one app. Set `userHeader` on it and a proxy header such as `x-user-id` splits history and usage per user. Without it, plugboard reads the request's `user` field.
 
+## Split one app by purpose
+
+A bot's cron jobs and its interactive chat can share one key. Have each caller send a tag header, and the usage report splits the app by tag, with no second key:
+
+```sh
+curl -s http://127.0.0.1:4010/v1/chat/completions \
+  -H "Authorization: Bearer $PLUGBOARD_API_KEY" -H "content-type: application/json" \
+  -H "x-plugboard-tag: cron" \
+  -d '{"model":"fast","messages":[{"role":"user","content":"hi"}]}'
+```
+
+The tag is 1 to 64 characters of letters, digits and `. _ : -`. A bad one is ignored, never an error. `GET /plugboard/usage?tag=cron` narrows each app's `tags`. See [Usage tags](../configuration.md#usage-tags).
+
 ## Related options
 
 All in the [configuration reference](../configuration.md#apps-and-keys):
@@ -95,6 +108,6 @@ All in the [configuration reference](../configuration.md#apps-and-keys):
 - [Endpoint names](../configuration.md#endpoint-names)
 - [Server tools](../configuration.md#per-app-policy-apps) (`opencodeTools`): let an app's key run OpenCode tools. Read the security warning first.
 - [Admin keys](../configuration.md#admin-keys) and [which key opens which route](../configuration.md#which-key-opens-which-route)
-- [End users](../configuration.md#end-users)
+- [End users](../configuration.md#end-users) and [Usage tags](../configuration.md#usage-tags)
 
 Next: [Models, aliases and fallbacks](models-and-aliases.md).

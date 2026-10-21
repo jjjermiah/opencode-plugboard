@@ -29,6 +29,7 @@ import { findItem, forgetAnswer, rememberAnswer } from "./store.js"
 import { fullItem, retentionDaysFor } from "./state.js"
 import { loadFiles } from "../files/route.js"
 import { fileRefs, inlineFiles, restoreFileRefs } from "../files/refs.js"
+import { tagField } from "../tag.js"
 
 const SESSION_HEADER = "x-plugboard-session"
 
@@ -38,7 +39,7 @@ export interface ResponsesCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { model?: string; failed?: string }
+  readonly info: ServedInfo & { model?: string; failed?: string; tag?: string }
 }
 
 /** The input and output items of the stored response `previous_response_id` names; the same 400 for an unknown, expired, deleted or another app's id (OpenAI answers 400 here; GET, DELETE and input_items answer 404). */
@@ -92,7 +93,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   info.model = `${ref.providerID}/${ref.id}${ref.variant ? `#${ref.variant}` : ""}`
   if (effortUnavailable(catalog, ref, requested.effort)) response.setHeader(THINKING_HEADER, "unavailable")
   const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
-  const call: PlugRequest = { ...parsed.request, model: requested.model, generation, ref }
+  const call: PlugRequest = { ...parsed.request, model: requested.model, generation, ref, ...tagField(info.tag) }
   reportParallelTools(response, call)
   reportDroppedTools(response, parsed.droppedTools)
   // The echoed object shows what the model gets: the app's cap and sampling defaults, not only the caller's values (#263, #264).

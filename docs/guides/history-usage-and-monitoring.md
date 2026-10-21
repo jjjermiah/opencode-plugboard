@@ -39,12 +39,14 @@ A trimmed response:
  "apps": {"discord-bot": {"totals": {"requests": 31}, "models": {"opencode-go/glm-5.3-flash": {"requests": 31}}}}}
 ```
 
+To split one app by purpose, a bot's cron jobs against its interactive chat, send `x-plugboard-tag: cron` on a request. The report then has a `tags` object per app with requests, errors, tokens and cost per tag, and `?tag=cron` narrows it. See [Usage tags](../configuration.md#usage-tags).
+
 Cost is an estimate at list prices. Use it to compare apps, not as a bill. Each change is written to storage as it lands, so a restart loses at most a write that was still in flight. One response also reports its own use in `x-plugboard-usage`.
 
 ## Look at it
 
-- **Dashboard.** Open `http://127.0.0.1:4010/plugboard/dashboard` and enter a key. The Usage tab has cards for requests, tokens, cost, errors and cache hits (with the change against the previous period), daily charts, a sortable table of apps and a table of models. A range picker covers today, 7, 30 and 90 days. The Models tab lists what `/v1/models` returns for an app key, with capability badges, context length and price, a button that copies the model id, and a ready curl, Python or JavaScript snippet. The page follows light or dark mode and works on a phone. It holds no data and needs no key to load. The admin key reads usage but cannot list models: the Models tab asks for an app key.
-- **OpenCode TUI.** Type `/plugboard` in OpenCode's prompt for the same numbers in the terminal. See [the TUI page](../tui.md).
+- **Dashboard.** Open `http://127.0.0.1:4010/plugboard/dashboard` and enter a key. The Usage tab has cards for requests, tokens, cost, errors and cache hits (with the change against the previous period), daily charts, a sortable table of apps, a table of models and, once requests carry a tag, a table of tags. A range picker covers today, 7, 30 and 90 days. The Models tab lists what `/v1/models` returns for an app key, with capability badges, context length and price, a button that copies the model id, and a ready curl, Python or JavaScript snippet. The page follows light or dark mode and works on a phone. It holds no data and needs no key to load. The admin key reads usage but cannot list models: the Models tab asks for an app key.
+- **OpenCode TUI.** Type `/plugboard` in OpenCode's prompt for the same numbers in the terminal, with the top tags when any request carried one. See [the TUI page](../tui.md).
 - **OpenCode clients** read the same report through the `opencode-plugboard/rpc` entry.
 
 ## Watch the server: metrics and logs
@@ -61,7 +63,7 @@ curl -s http://127.0.0.1:4010/plugboard/metrics -H "Authorization: Bearer $PLUGB
 ```
 
 - With `adminKey` set, only the admin key reads the metrics, because the series name every app.
-- The series: `plugboard_requests_total`, `plugboard_request_duration_seconds`, `plugboard_requests_in_flight`, `plugboard_tokens_total`, `plugboard_fallbacks_total`, `plugboard_circuit_breaker_events_total`, `plugboard_circuit_breaker_targets`, `plugboard_limited_total`, `plugboard_cache_requests_total`, `plugboard_dropped_params_total`, `plugboard_remote_image_fetches_total`, `plugboard_remote_image_bytes_total`, `plugboard_remote_image_fetch_duration_seconds`, `plugboard_usage_missing_total`, `plugboard_settled_from_transcript_total`, `plugboard_sessions_sweeps_total`, `plugboard_sessions_removed_total`, `plugboard_event_pump_up`, `plugboard_generations`, `plugboard_session_guards` and `plugboard_start_time_seconds`. There is no model label, so cardinality stays bounded.
+- The series: `plugboard_requests_total`, `plugboard_request_duration_seconds`, `plugboard_requests_in_flight`, `plugboard_tokens_total`, `plugboard_fallbacks_total`, `plugboard_circuit_breaker_events_total`, `plugboard_circuit_breaker_targets`, `plugboard_limited_total`, `plugboard_cache_requests_total`, `plugboard_dropped_params_total`, `plugboard_remote_image_fetches_total`, `plugboard_remote_image_bytes_total`, `plugboard_remote_image_fetch_duration_seconds`, `plugboard_usage_missing_total`, `plugboard_settled_from_transcript_total`, `plugboard_sessions_sweeps_total`, `plugboard_sessions_removed_total`, `plugboard_event_pump_up`, `plugboard_generations`, `plugboard_session_guards` and `plugboard_start_time_seconds`. There is no model label and no tag label, so cardinality stays bounded: a usage tag is free-form, so it lives in the usage report, not in the metrics.
 - Every response has an `x-plugboard-request-id`. The same id is on that request's log lines. A caller's `x-request-id` is echoed and logged as `clientRequestId` on the request line.
 - `logLevel` picks the lowest level written. `logRequests: false` drops the per-request access lines. Problems stay visible at `warn`.
 - Probes: `GET /healthz` is liveness. `GET /readyz` says whether the listener, the event pump and the model catalog are ready.

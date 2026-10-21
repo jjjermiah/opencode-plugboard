@@ -12,6 +12,7 @@ Type `/plugboard` in the prompt, or pick **Plugboard usage** from the command pa
 - A totals line: requests, tokens, estimated cost, errors, cache hit rate, fallbacks, 429 refusals and p95 latency.
 - One row per app, most expensive first, with a bar for its share of the cost (its share of the requests when nothing was priced).
 - The ten most expensive models, summed over the apps.
+- The ten most expensive [usage tags](configuration.md#usage-tags), summed over the apps, when any request in the range carried one.
 
 Latency percentiles are estimates: they are the upper bound of the histogram bucket that holds the percentile.
 

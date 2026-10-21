@@ -34,6 +34,7 @@ import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
 import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
 import { inlineRequestFiles } from "../files/route.js"
+import { noteTag, tagField } from "../tag.js"
 import { parseGeminiRequest } from "./request.js"
 import { arrayWire, encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, geminiCodec, noResponse, runGenerate, sseWire } from "./response.js"
 
@@ -108,11 +109,13 @@ export interface GeminiCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { model?: string; failed?: string; dropped?: string }
+  readonly info: ServedInfo & { model?: string; failed?: string; dropped?: string; tag?: string }
 }
 
 export async function serveGemini(host: RouteHost, { match, request, url, app, response, scope, info }: GeminiCall): Promise<void> {
   const fail = (error: PlugError) => sendError(response, error, encodeGeminiError(error))
+  // Gemini bodies have no field for it: only the `x-plugboard-tag` header names a usage tag here.
+  noteTag(info, request.headers)
 
   if (match.op === "unsupported")
     return fail({
@@ -176,7 +179,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     info.dropped = sampled.dropped.join(",")
     response.setHeader(DROPPED_HEADER, info.dropped)
   }
-  const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref }
+  const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref, ...tagField(info.tag) }
   const { exchange } = parsed
   // The answer names the model it runs on: the app's pin, else the caller's (#261).
   exchange.model = requested.model
