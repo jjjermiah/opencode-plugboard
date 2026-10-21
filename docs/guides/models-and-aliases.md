@@ -18,7 +18,7 @@ Nothing is exposed by accident. A model is callable only if `models` lists it, a
 A model outside the list answers 404:
 
 ```json
-{"error": {"message": "Model openai/gpt-5 is not available", "code": "model_not_found", "type": "not_found_error", "param": "model"}}
+{"error": {"message": "Model openai/gpt-5 is not available. GET /v1/models lists the models you can call.", "code": "model_not_found", "type": "not_found_error", "param": "model"}}
 ```
 
 `provider/model` allows any variant, `provider/model#variant` allows one, and `provider/*` allows a whole provider.

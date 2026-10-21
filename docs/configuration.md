@@ -680,9 +680,9 @@ Errors use the OpenAI error body shape with the matching HTTP status.
 
 | Status | `code` | When | Message |
 | --- | --- | --- | --- |
-| 401 | `invalid_api_key` | Missing or wrong key | Missing or invalid API key |
-| 404 | `model_not_found` | Unknown model, not on the allowlist, or outside the app's `apps.<name>.models` | Model &lt;m&gt; is not available |
-| 403 | `no_models_configured` | The `models` option is empty | No models are allowed: set the plugboard `models` option |
+| 401 | `invalid_api_key` | Missing or wrong key | Missing or invalid API key. Use a key from the plugboard `keys` option, not a provider key. |
+| 404 | `model_not_found` | Unknown model, not on the allowlist, outside the app's `apps.<name>.allowedModels`, or a provider the server is not signed in to | Model &lt;m&gt; is not available. GET /v1/models lists the models you can call. |
+| 403 | `no_models_configured` | The `models` option is empty | No models are allowed: set the plugboard `models` option, for example `"models": "all"` |
 | 400 | `too_many_tools` | More tools than `maxTools` | Request has &lt;n&gt; tools; plugboard allows &lt;max&gt; (option `maxTools`) |
 | 400 | `too_many_tools` | More tools than the app's `apps.<name>.maxTools` | Request has &lt;n&gt; tools; app &lt;app&gt; allows &lt;max&gt; (option `apps.<app>.maxTools`) |
 | 409 | `app_has_opencode_tools` | `POST /plugboard/admin/keys` for an app with `apps.<name>.opencodeTools` | App &lt;name&gt; runs OpenCode tools; a runtime key would give the same power, so none is minted. Set the key in the plugboard config |

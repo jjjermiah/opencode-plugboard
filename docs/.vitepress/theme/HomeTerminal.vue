@@ -12,9 +12,9 @@ const version = __PLUGBOARD_LATEST__
       <span class="name">zsh</span>
     </div>
     <div class="scroll">
-      <pre><code><span class="prompt">$</span> <span class="cmd">bunx opencode-plugboard init</span>
+      <pre><code><span class="prompt">$</span> <span class="cmd">bunx opencode-plugboard@latest init --fast anthropic/claude-haiku-4-5</span>
 <span class="out">Added opencode-plugboard@{{ version }} in ~/.config/opencode/opencode.jsonc.</span>
-<span class="out">App key for `my-app` (shown once):</span> <span class="key">pb_u3oW-g8E3gZ-aA3mduNUm</span><span class="dim">…</span>
+<span class="out">App key for `my-app` (it is also saved in that file; keep the file private):</span> <span class="key">pb_u3oW-g8E3gZ-aA3mduNUm</span><span class="dim">…</span>
 <span class="prompt">$</span> <span class="cmd">curl -s 127.0.0.1:4010/v1/chat/completions -H "Authorization: Bearer $KEY" --json '{"model": "fast", "messages": [{"role": "user", "content": "say pong"}]}'</span>
 <span class="brace">{</span> <span class="jk">"model"</span>: <span class="js">"anthropic/claude-haiku-4-5"</span>,
   <span class="jk">"choices"</span>: [{ <span class="jk">"message"</span>: { <span class="jk">"role"</span>: <span class="js">"assistant"</span>, <span class="jk">"content"</span>: <span class="js">"Pong!"</span> } }],

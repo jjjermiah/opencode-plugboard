@@ -24,7 +24,7 @@ What happens:
 ## Set up the first app in one command
 
 ```sh
-bunx opencode-plugboard init
+bunx opencode-plugboard@latest init
 ```
 
 It adds plugboard to `~/.config/opencode/opencode.jsonc`, pinned to the version that ran. The entry has one app key (generated, 32 random bytes) and `"models": "all"`, which allows every enabled model of every connected provider. The key is printed once, with a curl that lists your models. Restart OpenCode and touch the server, as in [Install](../install.md).

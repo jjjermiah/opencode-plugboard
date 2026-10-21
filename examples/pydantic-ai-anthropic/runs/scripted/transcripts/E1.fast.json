@@ -29,7 +29,7 @@
       "response": {
         "body": {
           "error": {
-            "message": "Missing or invalid API key",
+            "message": "Missing or invalid API key. Use a key from the plugboard `keys` option, not a provider key.",
             "type": "authentication_error"
           },
           "type": "error"

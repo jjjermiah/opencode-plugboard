@@ -30,13 +30,13 @@
                 "@type": "type.googleapis.com/google.rpc.BadRequest",
                 "fieldViolations": [
                   {
-                    "description": "Model nope is not available",
+                    "description": "Model nope is not available. GET /v1/models lists the models you can call.",
                     "field": "model"
                   }
                 ]
               }
             ],
-            "message": "Model nope is not available",
+            "message": "Model nope is not available. GET /v1/models lists the models you can call.",
             "status": "NOT_FOUND"
           }
         },
