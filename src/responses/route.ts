@@ -14,7 +14,7 @@ import { appPolicy, onHostedToolsFor, reasoningOutputFor, requestedModel, sessio
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { boundEvents, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { effortUnavailable, resolveModel, THINKING_HEADER } from "../models.js"
-import { reportCache } from "../cache.js"
+import { reportCache, reportCacheDirective, type CacheDirective } from "../cache.js"
 import { reportDroppedTools, reportParallelTools, reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
@@ -39,6 +39,8 @@ export interface ResponsesCall {
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, and the outcome of a stream that failed after it committed. */
   readonly info: ServedInfo & { model?: string; failed?: string }
+  /** The caller's response-cache headers (`parseCacheDirective`). */
+  readonly cache?: CacheDirective
 }
 
 /** The input and output items of the stored response `previous_response_id` names; the same 400 for an unknown, expired, deleted or another app's id (OpenAI answers 400 here; GET, DELETE and input_items answer 404). */
@@ -58,7 +60,7 @@ async function chainOf(host: RouteHost, app: string, body: unknown, days: number
   return [...previous.input, ...(Array.isArray(output) ? (output as Array<Record<string, unknown>>) : [])]
 }
 
-export async function serveResponses(host: RouteHost, { app, body, response, scope, info }: ResponsesCall): Promise<void> {
+export async function serveResponses(host: RouteHost, { app, body, response, scope, info, cache }: ResponsesCall): Promise<void> {
   const fail = (error: PlugError) => sendError(response, error, encodeError(error))
 
   // Retention is the app's history retention, for both the lookup and the new record.
@@ -125,6 +127,8 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
       onUsage: reportUsage(response, exchange.stream),
       onOpencodeTools: reportOpencodeTools(response, exchange.stream),
       onCache: reportCache(response),
+      onCacheDirective: reportCacheDirective(response),
+      ...(cache ? { cache } : {}),
     }),
     scope,
   )

@@ -78,7 +78,7 @@ import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/ro
 import { errorMessage, logError, logRequest, withRequestId } from "../log.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { effortUnavailable, filterByCapability, listAvailableModels, parseCapability, resolveModel, THINKING_HEADER } from "../models.js"
-import { reportCache } from "../cache.js"
+import { parseCacheDirective, reportCache, reportCacheDirective } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { authenticateRequest, isMessagesPath, serveMessages } from "../anthropic/route.js"
@@ -305,7 +305,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           if (hostError) return fail(response, hostError)
           response.writeHead(204, {
             "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
-            "access-control-allow-headers": "authorization, content-type, x-api-key, x-goog-api-key, x-request-id",
+            "access-control-allow-headers":
+              "authorization, content-type, x-api-key, x-goog-api-key, x-request-id, cache-control, x-plugboard-cache, x-plugboard-cache-namespace, x-portkey-cache-namespace, x-portkey-cache-force-refresh, helicone-cache-seed",
             ...(host.options.cors.allowPrivateNetwork && request.headers["access-control-request-private-network"] === "true" ? { "access-control-allow-private-network": "true" } : {}),
           })
           response.end()
@@ -476,14 +477,17 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(response, unsupported)
+    // The caller's cache headers: a bad value is a 400 before the body is read.
+    const cache = parseCacheDirective(request.headers)
+    if (isPlugError(cache)) return fail(response, cache)
 
     const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app, host.keys?.appNames()))
     // The end user: the app's `userHeader` when the request sends it (#272), else the body's `user`.
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUser(sent))
     const body = withEndUser(sent, user, "user")
     noteEndUser(response, info, user)
-    if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info })
-    if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info })
+    if (route === "POST /v1/responses") return serveResponses(host, { app: auth.app, body, response, scope, info, cache })
+    if (route === "POST /v1/completions") return serveCompletions(host, { app: auth.app, body, response, scope, info, cache })
     // The app's own `maxChoices` (#270) is the cap for this request; the decoder checks against `options.maxChoices`.
     // A `file_id` part is replaced by the inline form of the stored file before the decoder runs (since next).
     const inlined = await inlineRequestFiles(host, auth.app, "chat", body, scope)
@@ -511,7 +515,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // The answer names the model it runs on: the app's pin, else the caller's (#261).
     exchange.model = requested.model
     // n > 1: one independent call per choice, merged (src/openai/fanout.ts).
-    if (parsed.n > 1) return serveChoices(host, { app: auth.app, calls: Array.from({ length: parsed.n }, () => call), response, scope, info, codec: chatCodec(exchange) })
+    if (parsed.n > 1) return serveChoices(host, { app: auth.app, calls: Array.from({ length: parsed.n }, () => call), response, scope, info, codec: chatCodec(exchange), cache })
 
     // Abandoned requests (client gone, deadline passed) must never reach the model caller.
     if (scope.signal.aborted) throw scope.signal.reason
@@ -529,7 +533,9 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         onPolicy: reportPolicy(response),
         onUsage: reportUsage(response, exchange.stream),
         onOpencodeTools: reportOpencodeTools(response, exchange.stream),
+        cache,
         onCache: reportCache(response),
+        onCacheDirective: reportCacheDirective(response),
         onAffinity: reportAffinity(response),
       }),
       scope,

@@ -4,7 +4,7 @@
  * hit replays. The route side (headers, n > 1) is in test/http/cache.test.ts.
  */
 import { describe, expect, test } from "bun:test"
-import { cachedCaller, cacheKey, createCacheStore, type CacheConfig, type Entry } from "../../src/cache.js"
+import { cachedCaller, cacheKey, createCacheStore, parseCacheDirective, type CacheConfig, type Entry } from "../../src/cache.js"
 import type { CallContext, ModelCaller, PlugEvent, PlugRequest, PolicyNote, ServedModel } from "../../src/contract.js"
 import { createLimitState, withLimits } from "../../src/limits.js"
 import { collect, ev, gate, plugRequest, until } from "../support/fixtures.js"
@@ -427,5 +427,118 @@ describe("#154 a hit takes no concurrency slot and no rate window count", () => 
     for (let i = 0; i < 3; i++) expect((await collect(cached.stream(plugRequest(), context().ctx))).some((event) => event.type === "error")).toBe(false)
     expect(await collect(cached.stream(other, context().ctx))).toEqual([{ type: "error", error: expect.objectContaining({ status: 429, code: "rate_limit_exceeded" }) }])
     expect(fake.calls).toHaveLength(1) // the refused prompt never reached the model
+  })
+})
+
+describe("parseCacheDirective: the request headers that steer the cache", () => {
+  test("no cache header is an empty directive", () => {
+    expect(parseCacheDirective({})).toEqual({})
+    expect(parseCacheDirective({ "cache-control": "max-age=0, private" })).toEqual({})
+  })
+
+  test.each([
+    [{ "x-plugboard-cache": "bypass" }, { mode: "bypass" }],
+    [{ "x-plugboard-cache": " Refresh " }, { mode: "refresh" }],
+    [{ "cache-control": "no-store" }, { mode: "bypass" }],
+    [{ "cache-control": "max-age=0, No-Cache" }, { mode: "refresh" }],
+    [{ "cache-control": "no-cache, no-store" }, { mode: "bypass" }],
+    [{ "x-portkey-cache-force-refresh": "true" }, { mode: "refresh" }],
+    [{ "x-portkey-cache-force-refresh": "false" }, {}],
+    // x-plugboard-cache wins over the standard header.
+    [{ "x-plugboard-cache": "refresh", "cache-control": "no-store" }, { mode: "refresh" }],
+  ] as const)("%j is %j", (headers, expected) => {
+    expect(parseCacheDirective(headers)).toEqual(expected)
+  })
+
+  test("the namespace is read from our header, then Portkey's, then Helicone's", () => {
+    expect(parseCacheDirective({ "x-plugboard-cache-namespace": "team-a" })).toEqual({ namespace: "team-a" })
+    expect(parseCacheDirective({ "x-portkey-cache-namespace": "user:123" })).toEqual({ namespace: "user:123" })
+    expect(parseCacheDirective({ "helicone-cache-seed": "seed_1" })).toEqual({ namespace: "seed_1" })
+    expect(parseCacheDirective({ "x-plugboard-cache-namespace": "ours", "x-portkey-cache-namespace": "theirs" })).toEqual({ namespace: "ours" })
+    expect(parseCacheDirective({ "x-plugboard-cache": "bypass", "x-plugboard-cache-namespace": "n" })).toEqual({ mode: "bypass", namespace: "n" })
+  })
+
+  test.each([[""], ["maybe"], ["bypass, refresh"], ["hit"]])("x-plugboard-cache %j is a 400", (value) => {
+    expect(parseCacheDirective({ "x-plugboard-cache": value })).toMatchObject({ status: 400, kind: "invalid_request", code: "invalid_cache_header", param: "x-plugboard-cache" })
+  })
+
+  test.each([[""], ["a b"], ["x".repeat(65)], ["tëam"], ["a,b"]])("a namespace %j is a 400", (value) => {
+    expect(parseCacheDirective({ "x-plugboard-cache-namespace": value })).toMatchObject({ status: 400, code: "invalid_cache_header", param: "x-plugboard-cache-namespace" })
+  })
+
+  test("a namespace of 64 safe characters is accepted", () => {
+    const namespace = `${"a".repeat(60)}_.:/`
+    expect(parseCacheDirective({ "x-plugboard-cache-namespace": namespace })).toEqual({ namespace })
+  })
+})
+
+describe("the cache directive in the wrapper", () => {
+  const scripted = (): FakeModelCaller => new FakeModelCaller((_request, call) => [ev.text(`answer ${call}`), ev.finish("stop")])
+  const text = (events: PlugEvent[]) => events.map((event) => (event.type === "text-delta" ? event.text : "")).join("")
+
+  test("bypass neither reads nor stores, and reports bypass without a hit or a miss", async () => {
+    const fake = scripted()
+    const cached = cachedCaller(fake, CONFIG, store())
+    await collect(cached.stream(plugRequest(), context().ctx))
+    const bypassed: string[] = []
+    const { ctx, seen } = context("default", { cache: { mode: "bypass" }, onCacheDirective: (mode) => void bypassed.push(mode) })
+    expect(text(await collect(cached.stream(plugRequest(), ctx)))).toBe("answer 1")
+    expect(bypassed).toEqual(["bypass"])
+    expect(seen.cache).toEqual([])
+    // The stored answer is still the first one.
+    expect(text(await collect(cached.stream(plugRequest(), context().ctx)))).toBe("answer 0")
+    expect(fake.calls).toHaveLength(2)
+  })
+
+  test("bypass with nothing stored does not store", async () => {
+    const fake = scripted()
+    const cached = cachedCaller(fake, CONFIG, store())
+    await collect(cached.stream(plugRequest(), context("default", { cache: { mode: "bypass" } }).ctx))
+    const { ctx, seen } = context()
+    await collect(cached.stream(plugRequest(), ctx))
+    expect(seen.cache).toEqual(["miss"])
+    expect(fake.calls).toHaveLength(2)
+  })
+
+  test("refresh skips the lookup and stores the new answer: reported as refresh first, counted as a miss", async () => {
+    const fake = scripted()
+    const counted: string[] = []
+    const cached = cachedCaller(fake, CONFIG, store(), (_app, result) => void counted.push(result))
+    await collect(cached.stream(plugRequest(), context().ctx))
+    const order: string[] = []
+    const { ctx } = context("default", { cache: { mode: "refresh" }, onCacheDirective: (mode) => void order.push(mode), onCache: (result) => void order.push(result) })
+    expect(text(await collect(cached.stream(plugRequest(), ctx)))).toBe("answer 1")
+    expect(order).toEqual(["refresh", "miss"])
+    expect(counted).toEqual(["miss", "miss"])
+    const { ctx: after, seen } = context()
+    expect(text(await collect(cached.stream(plugRequest(), after)))).toBe("answer 1")
+    expect(seen.cache).toEqual(["hit"])
+  })
+
+  test("a namespace is part of the key, and the app stays first", async () => {
+    expect(cacheKey("a", plugRequest(), "ns")).not.toBe(cacheKey("a", plugRequest()))
+    expect(cacheKey("a", plugRequest(), "ns")).not.toBe(cacheKey("a", plugRequest(), "other"))
+    // An app named like a namespace of another app is still a different key.
+    expect(cacheKey("a", plugRequest(), "b")).not.toBe(cacheKey("b", plugRequest(), "a"))
+    expect(cacheKey("a", plugRequest(), "b")).not.toBe(cacheKey("b", plugRequest()))
+    const fake = scripted()
+    const cached = cachedCaller(fake, CONFIG, store())
+    await collect(cached.stream(plugRequest(), context("one", { cache: { namespace: "shared" } }).ctx))
+    const { ctx, seen } = context("two", { cache: { namespace: "shared" } })
+    await collect(cached.stream(plugRequest(), ctx))
+    expect(seen.cache).toEqual(["miss"])
+    expect(fake.calls).toHaveLength(2)
+  })
+
+  test("the directive does nothing where the cache does not apply: an app outside `apps`, a persona, noCache", async () => {
+    const fake = scripted()
+    const cached = cachedCaller(fake, { ...CONFIG, apps: ["cached"] }, store(), undefined, (model) => model === "agent/x")
+    const reported: string[] = []
+    const base = { cache: { mode: "bypass" as const }, onCacheDirective: (mode: string) => void reported.push(mode) }
+    await collect(cached.stream(plugRequest(), context("other", base).ctx))
+    await collect(cached.stream(plugRequest({ model: "agent/x" }), context("cached", base).ctx))
+    await collect(cached.stream(plugRequest(), context("cached", { ...base, noCache: true }).ctx))
+    expect(reported).toEqual([])
+    expect(fake.calls).toHaveLength(3)
   })
 })
