@@ -8,7 +8,7 @@
  */
 import type { PlugError, PlugErrorKind, PlugEvent, PlugFinish, PlugUsage } from "../contract.js"
 import type { StreamWire } from "../http.js"
-import type { ListedModel } from "../models.js"
+import { GEMINI_MODELS_LIST, MODELS_LIST, type ListedModel } from "../models.js"
 import type { ChoiceCodec } from "../openai/fanout.js"
 import { structuredMissing, textFallback, unfence, type CollectedChoice } from "../openai/response.js"
 import { WRAP_KEY } from "./request.js"
@@ -72,15 +72,18 @@ const STATUSES: Record<PlugErrorKind, string> = {
   timeout: "DEADLINE_EXCEEDED",
 }
 
-/** Google's `{error:{code,message,status,details?}}`; `code` is the HTTP status. */
-export const encodeGeminiError = (error: PlugError): object => ({
-  error: {
-    code: error.status,
-    message: error.message,
-    status: error.status === 503 ? "UNAVAILABLE" : STATUSES[error.kind],
-    ...(error.param ? { details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: error.param, description: error.message }] }] } : {}),
-  },
-})
+/** Google's `{error:{code,message,status,details?}}`; `code` is the HTTP status. An unknown model points at `GET /v1beta/models`, the list a Gemini client can call. */
+export const encodeGeminiError = (error: PlugError): object => {
+  const message = error.code === "model_not_found" ? error.message.replace(`${MODELS_LIST} lists`, `${GEMINI_MODELS_LIST} lists`) : error.message
+  return {
+    error: {
+      code: error.status,
+      message,
+      status: error.status === 503 ? "UNAVAILABLE" : STATUSES[error.kind],
+      ...(error.param ? { details: [{ "@type": "type.googleapis.com/google.rpc.BadRequest", fieldViolations: [{ field: error.param, description: message }] }] } : {}),
+    },
+  }
+}
 
 const encodeModel = ({ id, ref, model }: ListedModel): object => ({
   name: `models/${id}`,

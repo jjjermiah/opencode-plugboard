@@ -44,6 +44,20 @@ describe("a newcomer's first mistakes", () => {
     expect(listed.json().error.message).toBe("Model gpt-4 is not available. GET /v1/models lists the models you can call.")
   })
 
+  test("an unknown model on a Gemini generate route points at /v1beta/models, not /v1/models", async () => {
+    server = await startRoute({ caller: new FakeModelCaller([]), options: OPTIONS })
+    const headers = { "x-goog-api-key": "k-main" }
+    const expected = "Model gpt-4 is not available. GET /v1beta/models lists the models you can call."
+    const generate = await server.send({ method: "POST", path: "/v1beta/models/gpt-4:generateContent", headers, body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] } })
+    expect(generate.status).toBe(404)
+    expect(generate.json().error).toMatchObject({ code: 404, status: "NOT_FOUND", message: expected })
+    expect(generate.json().error.details[0].fieldViolations[0].description).toBe(expected)
+    const stream = await server.send({ method: "POST", path: "/v1beta/models/gpt-4:streamGenerateContent", headers, body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] } })
+    expect(stream.json().error.message).toBe(expected)
+    const count = await server.send({ method: "POST", path: "/v1beta/models/gpt-4:countTokens", headers, body: { contents: [{ role: "user", parts: [{ text: "hi" }] }] } })
+    expect(count.json().error.message).toBe(expected)
+  })
+
   test("no allowed models says what to write", async () => {
     server = await startRoute({ caller: new FakeModelCaller([]), options: { models: [], keys: { main: "k-main" } } })
     const reply = await server.send({ method: "POST", path: "/v1/chat/completions", headers: KEY, body: { model: "test/echo", messages: [{ role: "user", content: "hi" }] } })
