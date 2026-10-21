@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.62.0] - 2026-10-21: Friendlier First Steps
+
+**Full diff:** [v0.61.0...v0.62.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.61.0...v0.62.0)
+
 ### Changed
 
 - **First-run messages say what to do next.** A wrong or missing key says to use a key from `keys`, not a provider key. An unknown model says that `GET /v1/models` (Gemini: `GET /v1beta/models`) lists the models you can call, and the 403 for an empty `models` shows `"models": "all"`. A `GET` on a `POST` route says which method it takes. A provider that rejected its sign-in says to run `/connect` on the OpenCode server and that your plugboard key is fine. An option name from before the renames (`history`, `maxN`, `cache`, `apps.<name>.models` and the rest) now fails at load with `it is renamed to <new name>`, `models: "connected"` says it is renamed to `"all"`, and a typo says `did you mean <name>?` instead of listing every option. The status codes, error codes and each API's error shape are unchanged.
@@ -27,6 +33,133 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - **Ready-made monitoring for the Prometheus metrics.** `monitoring/prometheus-rules.yml` has recording rules and alerts for a high 5xx share, 429 refusals from limits and budgets, an open circuit breaker, fallback spikes, high p95 latency, a dead event pump and a missing or down scrape target. `monitoring/grafana-dashboard.json` imports into Grafana 11 with a datasource and an app variable: requests, errors, latency, tokens, cache hit ratio, breaker state, fallbacks and refusals. CI checks the rules with a pinned promtool, and a test keeps every metric and label they use in step with the exposition. Setup is in the monitoring guide. Cost and per-model figures are not metrics, so they stay in the usage report.
 - **Control the response cache per request.** Send `x-plugboard-cache: bypass` to skip the cache for one call (no lookup, nothing stored), or `refresh` to skip the lookup and replace the stored answer. `x-plugboard-cache-namespace: <name>` keeps a caller's entries apart inside one app, and never reaches another app's entries. `Cache-Control: no-store` and `no-cache` mean `bypass` and `refresh`, and Portkey's namespace and force-refresh headers and Helicone's cache seed work too. The answer reports `bypass` or `refresh` in `x-plugboard-cache`. The headers only act for an app that uses `responseCache`; a bad value is a 400 `invalid_cache_header` in each API's own error shape. Browsers may send them: the CORS preflight now allows them.
 - **Budgets: two windows on one metric are tested and documented.** `"requests": { "day": 1000, "month": 20000 }` already enforced both, and the 429 names the window that tripped. The behaviour now has tests and a docs example.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (7 commits)</summary>
+
+#### Features
+
+**feat(cache): per-request response-cache headers, and tests for multi-window budgets** ([`78d2db4`](https://github.com/jjjermiah/opencode-plugboard/commit/78d2db42540db5f344e2f15849165f2f507c7e73))
+
+Response cache: a caller now steers the cache for one request with headers, without a config edit.
+
+- x-plugboard-cache: bypass skips the lookup and the store; refresh skips the lookup and stores the new answer.
+- x-plugboard-cache-namespace (1 to 64 of letters, digits and _ . : / + = @ -) is folded into the cache key right after the app, so a namespace never reads another app's entries.
+- Cache-Control: no-store is bypass, no-cache is refresh, other directives are ignored; x-plugboard-cache wins when both are sent.
+- Conventions of other gateways, checked against their docs: Portkey's x-portkey-cache-namespace and x-portkey-cache-force-refresh: true, and Helicone's helicone-cache-seed (a namespace). Cheap to read, so a client written for them works unchanged.
+- The response header x-plugboard-cache reports bypass or refresh when the directive took effect, else hit or miss. A refresh counts as a miss in plugboard_cache_requests_total; a bypass is not counted.
+- The directive only acts where the cache already applies (app in responseCache.apps, not a persona, not n above 1).
+- A bad value (unknown x-plugboard-cache, empty or unsafe namespace) is a 400 invalid_cache_header in each API's own error shape, checked before the body is read and whether or not the app uses the cache. Rejected: ignoring bad values, because a typo like "bypas" would then silently serve cached answers.
+- CORS preflight allow-headers lists the new request headers.
+
+Wiring: CallContext gets cache (the directive) and onCacheDirective, beside onCache, so withUsage (src/usage.ts) keeps its hit or miss typing and is not touched. Chat, Responses, Completions, Messages and Gemini parse the headers and pass the directive; the fan-out passes it for a single choice.
+
+Budgets: two windows on one metric already worked (ceilingsOf enforces every window and the 429 names each exceeded one). Added unit and loopback tests and a docs example, no source change.
+
+Tests: unit tests for the parser and the wrapper, loopback tests for each mode on Chat, Responses, Messages and Gemini (plus streaming and completions), namespace isolation, cross-app isolation, apps outside the cache, bad values in each error shape, and the preflight. The CORS allow-headers assertion and its mutation anchor change with the new string, and the cacheKey mutation anchor follows biome's multi-line layout. 18 mutation entries added.
+
+Validation: lint, typecheck, test, manifest, pack and docs pass; the mutation run kills every entry (two anchors were re-run alone after a layout change).
+
+**feat(metrics): ship prometheus alert rules and a grafana dashboard** ([`5602805`](https://github.com/jjjermiah/opencode-plugboard/commit/56028054793e11a96b515c40fda86ade32caa742))
+
+Adds monitoring/prometheus-rules.yml (5 recording rules, 9 alerts) and monitoring/grafana-dashboard.json (Grafana 11, datasource and app variables, 16 panels), a Monitoring section in the history-usage-and-monitoring guide, a CI step, and a unit test.
+
+The alerts are PlugboardDown, PlugboardTargetMissing, PlugboardHighErrorRate (5xx share over 5m, with a minimum-traffic guard), PlugboardRateLimited (rate and concurrency 429s), PlugboardBudgetExhausted, PlugboardCircuitBreakerOpen, PlugboardFallbacksSpiking, PlugboardHighLatency (p95) and PlugboardEventPumpDown. Every threshold has a tuning comment.
+
+Decisions:
+- No budget-used gauge exists (only the budget.warning log line and the budget 429 counter), so the budget alert fires on refusals. Adding a metric was left out: it touches src/ and the usage store.
+- The breaker gauge counts only open targets and reads 0 in half-open, so a target that keeps failing flaps. The alert averages the gauge over 10m instead of requiring it non-zero at every sample.
+- No cost or model series exist (model names are caller text), so the dashboard shows tokens by app and kind and points to the usage report.
+
+Validation:
+- promtool 3.15.0 check rules: 14 rules found.
+- Ran a real Prometheus 3.15.0 against a target built on createMetrics(): all 14 rules healthy, the traffic-driven alerts fired, and all 18 dashboard queries returned series.
+- Scraped the isolated dev server with metrics on and checked the queried names and labels against the real exposition.
+- test/unit/monitoring.test.ts checks every metric and label the rules and dashboard use against the registry, and the dashboard shape.
+- bun run validate --skip examples: 6 steps passed.
+
+Not verified: Grafana import was not run (no Grafana available); the dev server had no provider credentials, so tokens, cache, fallback and breaker series came from the registry-backed target, not from model calls.
+
+**feat(http): split one app's usage by a request tag** ([`411da67`](https://github.com/jjjermiah/opencode-plugboard/commit/411da67c89bd4cb83bb293de16dc7cfbcecb91b6))
+
+One app often does different jobs: a bot's cron runs and its interactive chat. Usage split by app and by end user only, so telling those apart needed a second key. A request can now carry `x-plugboard-tag: <tag>` and the usage report counts requests, errors, tokens and cost per tag.
+
+What changed:
+- src/tag.ts reads the tag: the `x-plugboard-tag` header on every model route (Chat Completions, completions, Responses, Messages, Gemini), else `metadata.tag` on the OpenAI shapes. One tag per request, 1 to 64 characters of A-Z a-z 0-9 . _ : -, trimmed. The header wins; a refused header does not fall back to the body. A bad or reserved value (__proto__, prototype, constructor, _other) is ignored with the debug line request.tag_ignored, never a 4xx and never a response header. The value is not logged.
+- PlugRequest.tag carries it. Each route sets it on RequestInfo (also a `tag=` field on the request line) and spreads it into the calls it builds. It is not in the response cache key.
+- src/usage.ts keeps DayRecord.tags (requests, errors, tokens, costUsd) per app and day. The user split's slot code became one boundedSlot helper used by both: 200 users, 100 tags, overflow under `_other`, null prototype records, Object.hasOwn lookups (I26).
+- GET /plugboard/usage has a `tags` object per app and `?tag=`, which narrows `tags` only, like `?user=`. The filter checks charset and length, so a stored reserved name stays queryable; a bad one is a 400 invalid_tag. The usage RPC takes the same `tag` field. Scoping is unchanged: an app key reads its own app, the admin key every app.
+- The dashboard Usage tab shows a sortable Tags table once any request carries a tag. The /plugboard TUI page lists the top ten tags.
+- The CORS preflight allows x-plugboard-tag.
+
+Decisions:
+- No tag label on Prometheus metrics: a free-form value has unbounded cardinality. Documented in the monitoring guide.
+- One tag per request, not several: a repeated header arrives comma-joined and fails the charset rule, so it is ignored.
+- Errors per tag is one number (the four error classes summed), because the user split has no error count to mirror and the dashboard needs one.
+- Gemini and Messages bodies have no free field for it, so the header is their only source.
+
+Rejected: a per-tag latency histogram and cache counters (size of the day record for little use); a tag option on the app policy (the caller picks the tag per request, which is the point).
+
+Tests: store unit tests (cap, _other, unsafe names, stored days, filter), loopback tests on each API family, bad-tag cases, the /plugboard/usage filter and app/admin scoping, a dashboard markup test, TUI rows, the RPC input, the CORS preflight. 17 mutation entries. The CORS expose-list test now leaves out the request-only header, and one older mutation entry follows the changed allow-headers text.
+
+Validation: bun run validate --mutations --skip examples passes (lint, typecheck, test, manifest, pack, docs, mutations).
+
+#### Fixes
+
+**fix(http): first-run errors, init output and install docs say what to do next** ([`e2d6c5b`](https://github.com/jjjermiah/opencode-plugboard/commit/e2d6c5b10f20d7018bae370d0137985f1b3b006c))
+
+Walked the path a newcomer takes (docs, `init`, first requests, the setup page, startup errors) against the dev server and fixed the friction. No new feature or option.
+
+What changed
+- Errors keep their status, code and shape; only the text says what to do next. Wrong key: use a `keys` key, not a provider key. Unknown model: `GET /v1/models` (`/v1beta/models` for Gemini) lists the models. Empty `models`: shows `"models": "all"`. GET on a POST route: names the method. `provider_auth_failed`: sign in again with `/connect` on the OpenCode server, the plugboard key is fine.
+- Startup: an old option name fails with `it is renamed to <new>` from a small static map (top level, apps, sessions, circuitBreaker). `models: "connected"` says it is renamed to `"all"`. A near miss says `did you mean`. Anything else lists the known options as before. Rejected: keeping aliases for the old names.
+- `init`: numbered steps, "again after every restart", a link to the troubleshooting table. The contradictory "shown once ... also in the file" is gone. The `--fast` value is still never echoed (the R3 security test).
+- Setup page: backtick spans render as code. The keyless hint says a browser cannot send a key and gives the curl that can.
+- Docs: `bunx opencode-plugboard@latest init` everywhere. Install step 3 sets `PLUGBOARD_KEY_MY_APP` and lists models first (it called `fast`, which exists only with `--fast`). Two rows added to the troubleshooting table. The home hero wraps its command on a narrow phone.
+
+Validation
+- bun run validate --skip examples: all 6 steps passed. bun run validate --only mutations passed.
+- Scripted examples regenerated for the 18 examples whose E1/E2 transcripts carry the two changed messages (36 files, only the message line differs). Not regenerated: Docker examples (`all` skips them) and the two Java examples (no JRE here; neither records these messages).
+
+#### Refactors
+
+**refactor(http): cut usage tags to the header, the store and the usage report** ([`d68e99f`](https://github.com/jjjermiah/opencode-plugboard/commit/d68e99ff47936b112675d243d35ae18a984f48dd))
+
+The owner asked for the smallest useful version. This removes what the first cut added beyond that, so the branch ends with: one `x-plugboard-tag` header per request, a cap of 100 tags per app and day with overflow under `_other` (the same slot code as end users), the `tags` object and `?tag=` filter in GET /plugboard/usage, and a small Tags table on the dashboard.
+
+Removed:
+- the TUI tags section (tui-format rows, columns, tests, docs/tui.md);
+- `metadata.tag` parsing on the OpenAI shapes, and its docs row and tests;
+- the `tag` field of the usage RPC input (the TUI was its only reader);
+- sorting and the show-all toggle on the dashboard Tags table. It now lists the 20 busiest tags by requests, in about 20 lines of script.
+- the `source` field of the ignored-tag debug line, and the body fallback in `requestTag`, which now takes only the headers.
+- one mutation entry (body beats header), and the doc text about both.
+
+Kept as is: errors per tag, the log field, the CORS allow-list entry, no Prometheus label, and the user-split refactor into `boundedSlot`.
+
+Test-count floors for test/http and test/unit follow the smaller suite (1072 and 1938, both above what main requires).
+
+Validation: bun run typecheck, lint, and bun test (3010 pass) after the cut.
+
+#### Tests
+
+**test(tests): follow the simpler tag route call in the mutation catalogue** ([`3f2c73a`](https://github.com/jjjermiah/opencode-plugboard/commit/3f2c73acdfdaed46ac52a2e88a26bf5c86ee111f))
+
+The openai route now reads the tag from the headers only, so the mutation entry that removes the call anchors on the shorter text. The unit floor follows the ratchet after merging main.
+
+Validated with bun run validate --only mutations: all entries killed.
+
+#### Docs
+
+**docs(docs): show a measured answer in the home terminal** ([`0b12a99`](https://github.com/jjjermiah/opencode-plugboard/commit/0b12a997566d126a1cf99a3cfd7514f567969fe6))
+
+The shortened terminal showed prompt_tokens 12 and the answer pong, which were never measured. The same request (say pong on anthropic/claude-haiku-4-5) on the aihub plugboard answered Pong! with prompt_tokens 26 and completion_tokens 7. The terminal now shows that.
+
+Validation: bun run docs:build completes.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.61.0] - 2026-10-20: Names All the Way
 
@@ -10047,7 +10180,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.61.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.0...HEAD
+[0.62.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.58.0...v0.59.0
