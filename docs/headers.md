@@ -13,7 +13,7 @@ A streamed answer sends its headers with the first event, so headers that need t
 | `x-plugboard-session` | Every answer | The OpenCode session id of the request. See [History](history.md). |
 | `x-plugboard-session-url` | `sessionUrl` is set | A link to that session's page. |
 | `x-plugboard-usage` | Usage recording on, not streamed | `input=<n>; output=<n>; cache_read=<n>; cache_write=<n>; cost_usd=<x>`. The cost is left out for a model with no price. |
-| `x-plugboard-cache` | The app uses the response cache | `hit` or `miss`. |
+| `x-plugboard-cache` | The app uses the response cache | `hit` or `miss`. `bypass` or `refresh` when the request asked for it (see [Request headers](#request-headers)). |
 | `x-plugboard-affinity` | The app uses prompt-cache anchors | `anchor`, or `none` when the request got no anchor. |
 | `x-plugboard-dropped-params` | Sampling parameters were dropped | The dropped names, comma separated, such as `temperature,top_p,top_k,seed`. See [`dropUnsupportedParams`](configuration.md#options). |
 | `x-plugboard-dropped-tools` | A Responses request declared hosted tools | The types left out, comma separated, such as `web_search`. See [Responses tools](responses.md#tools). Streamed answers carry it too. |
@@ -27,3 +27,17 @@ A streamed answer sends its headers with the first event, so headers that need t
 One request header is plugboard's own: `x-plugboard-tag: <tag>` labels a call for [usage tags](configuration.md#usage-tags). A bad value is ignored, never an error.
 
 Errors from plugboard-owned routes (`/plugboard/*`) use `application/problem+json`. Model routes answer errors in their own API's shape. See [Errors](errors.md).
+
+## Request headers
+
+These request headers change how plugboard treats one call. All are optional.
+
+| Header | Value | Effect |
+| --- | --- | --- |
+| `x-plugboard-cache` | `bypass` or `refresh` | `bypass` skips the [response cache](configuration.md#response-cache) lookup and store. `refresh` skips the lookup and stores the new answer. |
+| `x-plugboard-cache-namespace` | 1 to 64 letters, digits and `_ . : / + = @ -` | Keeps this request's cache entries apart from other namespaces of the same app. |
+| `Cache-Control` | `no-store` or `no-cache` | Same as `bypass` and `refresh`, when `x-plugboard-cache` is not sent. |
+| `x-portkey-cache-namespace`, `helicone-cache-seed` | As the namespace | Read as the namespace when `x-plugboard-cache-namespace` is not sent. |
+| `x-portkey-cache-force-refresh` | `true` | Same as `refresh`. |
+
+The cache headers act only for an app that uses the response cache. A bad value in `x-plugboard-cache` or a namespace is a 400 `invalid_cache_header`. A browser page may send them when its origin is in [`cors.origins`](configuration.md#browser-origins).

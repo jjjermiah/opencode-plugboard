@@ -43,7 +43,9 @@ describe("#256 cors: a preflight from an allowed origin is answered before authe
     expect(reply.status).toBe(204)
     expect(reply.headers["access-control-allow-origin"]).toBe(APP)
     expect(reply.headers["access-control-allow-methods"]).toBe("GET, POST, DELETE, OPTIONS")
-    expect(reply.headers["access-control-allow-headers"]).toBe("authorization, content-type, x-api-key, x-goog-api-key, x-request-id, x-plugboard-tag")
+    expect(reply.headers["access-control-allow-headers"]).toBe(
+      "authorization, content-type, x-api-key, x-goog-api-key, x-request-id, x-plugboard-tag, cache-control, x-plugboard-cache, x-plugboard-cache-namespace, x-portkey-cache-namespace, x-portkey-cache-force-refresh, helicone-cache-seed",
+    )
     expect(reply.headers.vary).toBe("Origin")
     expect(caller.calls).toEqual([])
   })
@@ -52,6 +54,13 @@ describe("#256 cors: a preflight from an allowed origin is answered before authe
     await route({ cors })
     const reply = await server!.send(preflight(APP, { "access-control-request-headers": "x-request-id" }))
     expect(reply.headers["access-control-allow-headers"]!.split(", ")).toContain("x-request-id")
+  })
+
+  test("a browser may send the response-cache headers", async () => {
+    await route({ cors })
+    const reply = await server!.send(preflight(APP, { "access-control-request-headers": "x-plugboard-cache, x-plugboard-cache-namespace, cache-control" }))
+    const allowed = reply.headers["access-control-allow-headers"]!.split(", ")
+    for (const name of ["x-plugboard-cache", "x-plugboard-cache-namespace", "cache-control"]) expect(allowed).toContain(name)
   })
 
   test("a DELETE preflight on a stored response from an allowed origin is allowed, and needs no key", async () => {

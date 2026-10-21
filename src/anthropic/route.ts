@@ -20,7 +20,7 @@ import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import { BodyError, bodyPlugError, RequestAborted, boundEvents, checkJsonContentType, checkOrigin, readJsonBody, sendError, sendJson, sseWriter, type RequestScope } from "../http.js"
 import { reportServed, type ServedInfo } from "../fallback.js"
 import { resolveModel, thinkingUnavailable } from "../models.js"
-import { reportCache } from "../cache.js"
+import { parseCacheDirective, reportCache, reportCacheDirective } from "../cache.js"
 import { reportParallelTools, reportPolicy, reportOpencodeTools } from "../policy.js"
 import { reportUsage } from "../usage-header.js"
 import { setSessionLink } from "../session/link.js"
@@ -104,6 +104,9 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     if (refused) return fail(refused)
     const unsupported = checkJsonContentType(request)
     if (unsupported) return fail(unsupported)
+    // The caller's cache headers: a bad value is a 400 before the body is read.
+    const cache = parseCacheDirective(request.headers)
+    if (isPlugError(cache)) return fail(cache)
 
     const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app, host.keys?.appNames()))
     // The end user: the app's `userHeader` when the request sends it (#272), else the body's `metadata.user_id`.
@@ -168,7 +171,9 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
         onAffinity: reportAffinity(response),
         onUsage: reportUsage(response, exchange.stream),
         onOpencodeTools: reportOpencodeTools(response, exchange.stream),
+        cache,
         onCache: reportCache(response),
+        onCacheDirective: reportCacheDirective(response),
       }),
       scope,
     )

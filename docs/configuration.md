@@ -426,7 +426,7 @@ A body that breaks either limit gets 408 `body_read_timeout`, and its bytes are 
 }
 ```
 
-- A ceiling is a metric and a window. The metrics are `requests`, `tokens` and `costUsd`. The windows are `day` (a UTC calendar day), `week` (an ISO week, Monday to Sunday in UTC) and `month` (a calendar month in UTC). Counts are positive integers, and a cost is a positive number of USD. A metric or window that is not set has no ceiling.
+- A ceiling is a metric and a window. The metrics are `requests`, `tokens` and `costUsd`. The windows are `day` (a UTC calendar day), `week` (an ISO week, Monday to Sunday in UTC) and `month` (a calendar month in UTC). Counts are positive integers, and a cost is a positive number of USD. A metric or window that is not set has no ceiling. A metric may set several windows, such as `"requests": { "day": 1000, "month": 20000 }`: each is enforced on its own, and whichever is reached first refuses the call.
 - `requests` counts HTTP requests on the model routes, except the ones [limits](#concurrency-and-rate-limits) or a budget refused, and [response cache](#response-cache) hits. `tokens` counts the tokens of each model call the host ran, including a call cut short after the host reported its usage (a client that left, or a timeout). `costUsd` is an estimate at the catalog's list prices. A subscription login does not bill per token, so read it as a comparison between apps, not as a bill.
 - `perApp` applies to every app. `apps.<name>` replaces `perApp` metric by metric: in the example, `coding` has its own `costUsd` and keeps `perApp`'s requests and tokens. Each name must be a configured app, as in `limits`.
 - Once an app has used a ceiling in the current window, its next call gets 429 `budget_exceeded` before any session is created, so the provider never sees it. The message names each exceeded ceiling, for example `Budget for coding exceeded: cost (USD) month`. `Retry-After` is the seconds until the latest of those windows resets.
@@ -455,7 +455,21 @@ What counts as the same request: the app, the resolved model and variant, messag
 
 What is kept: answers that ended normally (`stop` or `length`) with text or reasoning. Answers with tool calls are never kept, and neither are errors, aborted requests and empty answers. Structured output (`response_format` `json_schema`) is answered through a tool call, so it is not kept either. Requests with `n` above 1 are never served from the cache or stored, because each choice must be a fresh sample.
 
-A hit replays the stored answer as JSON or as a stream (the text arrives in one chunk), with the same `x-plugboard-model` and `x-plugboard-policy` headers as the original, and reports zero token usage. A hit is answered before the [budgets](#budgets) and the [limits](#concurrency-and-rate-limits): it spends no budget, takes no concurrency slot and counts toward no requests-per-minute window. Every answer carries `x-plugboard-cache: hit` or `miss`. Sampling still matters: with `temperature` above 0, a hit repeats the first answer instead of drawing a new one, so use `apps` to limit the cache to callers that want that.
+A hit replays the stored answer as JSON or as a stream (the text arrives in one chunk), with the same `x-plugboard-model` and `x-plugboard-policy` headers as the original, and reports zero token usage. A hit is answered before the [budgets](#budgets) and the [limits](#concurrency-and-rate-limits): it spends no budget, takes no concurrency slot and counts toward no requests-per-minute window. Every answer carries `x-plugboard-cache: hit` or `miss` (or `bypass` or `refresh`, see below). Sampling still matters: with `temperature` above 0, a hit repeats the first answer instead of drawing a new one, so use `apps` to limit the cache to callers that want that.
+
+A caller controls the cache for one request with headers, so no config edit is needed. They apply only where the cache does: for an app with `responseCache` on, on a request that is cacheable.
+
+| Request header | Effect |
+| --- | --- |
+| `x-plugboard-cache: bypass` | Skip the lookup and the store. The answer is fresh and nothing is kept. |
+| `x-plugboard-cache: refresh` | Skip the lookup and store the new answer in place of the old one. |
+| `x-plugboard-cache-namespace: <name>` | Keep this request's entries apart from every other namespace of the same app. 1 to 64 letters, digits and `_ . : / + = @ -`. |
+
+- Without `x-plugboard-cache`, `Cache-Control: no-store` means `bypass` and `Cache-Control: no-cache` means `refresh`. Other `Cache-Control` directives are ignored. `x-plugboard-cache` wins when both are sent.
+- The namespace is also read from `x-portkey-cache-namespace` and `helicone-cache-seed`, and `x-portkey-cache-force-refresh: true` means `refresh`, so a client written for those gateways works unchanged. `x-plugboard-cache-namespace` wins when several are sent.
+- The answer reports what happened in `x-plugboard-cache`: `bypass` or `refresh` when the header took effect, else `hit` or `miss`. A `refresh` counts as a miss in `plugboard_cache_requests_total`, and a `bypass` is not counted.
+- A namespace is part of the key after the app, so it never reaches another app's entries. The app's `responseCache.apps` list and the ban on caching `n` above 1, personas and tool calls stay as they are.
+- A value plugboard does not recognise in `x-plugboard-cache` or a namespace that is empty, too long or has other characters is a 400 `invalid_cache_header` in the API's own error shape, whether or not the app uses the cache.
 
 The cache lives in memory. A server restart, or a change to `responseCache`, `apps`, `models` or `aliases`, empties it, so a hit can never serve a model the current policy no longer allows. With `metrics` on, `plugboard_cache_requests_total{app,result}` counts hits and misses.
 

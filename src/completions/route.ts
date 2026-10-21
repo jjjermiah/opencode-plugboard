@@ -12,6 +12,7 @@
 import type { ServerResponse } from "node:http"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
 import type { ServedInfo } from "../fallback.js"
+import type { CacheDirective } from "../cache.js"
 import { sendError, type RequestScope } from "../http.js"
 import { resolveModel } from "../models.js"
 import { serveChoices } from "../openai/fanout.js"
@@ -32,9 +33,11 @@ export interface CompletionsCall {
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, the sampling parameters dropped, and the outcome of a stream that failed after it committed. */
   readonly info: ServedInfo & { model?: string; failed?: string; dropped?: string; tag?: string }
+  /** The caller's response-cache headers (`parseCacheDirective`). */
+  readonly cache?: CacheDirective
 }
 
-export async function serveCompletions(host: RouteHost, { app, body, response, scope, info }: CompletionsCall): Promise<void> {
+export async function serveCompletions(host: RouteHost, { app, body, response, scope, info, cache }: CompletionsCall): Promise<void> {
   const fail = (error: PlugError) => sendError(response, error, encodeError(error))
 
   // The app's own `maxChoices` (#270) is the cap for this request; the decoder checks against `options.maxChoices`.
@@ -61,5 +64,5 @@ export async function serveCompletions(host: RouteHost, { app, body, response, s
   )
   // The answer names the model it runs on: the app's pin, else the caller's (#261).
   parsed.exchange.model = requested.model
-  return serveChoices(host, { app, calls, response, scope, info, codec: completionsCodec(parsed.exchange) })
+  return serveChoices(host, { app, calls, response, scope, info, codec: completionsCodec(parsed.exchange), cache })
 }
