@@ -14,7 +14,11 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A thinking block keeps its signature on OpenCode 2.1.** The host renamed the reasoning event's payload field from `state` to `native` (`packages/core/src/session/runner/publish-llm-event.ts` publishes `native`; `packages/schema/session-legacy.ts` renames it on the durable events). Plugboard read `state` only, so on 2.1 every thinking block reached the caller with `signature: ""` while the reasoning text still arrived, and a client that sent that block back got it refused. The reasoning end now reads either field.
+
+  Found by the check matrix on a hub running 2.1.4: `api: thinking/count_tokens` went from `thinking block signed` on 2.0.32 to `thinking block missing` on 2.1.4, reproducible on three runs.
 
 ## [0.63.0] - 2026-10-24: Runs on OpenCode 2.1
 
