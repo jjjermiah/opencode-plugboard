@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.63.0] - 2026-10-24: Runs on OpenCode 2.1
+
+**Full diff:** [v0.62.1...v0.63.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.1...v0.63.0)
+
 ### Changed
 
 - **OpenCode 2.1 is supported.** The `@opencode/plugin` peer range moves from `>=2.0.26 <2.1` to `>=2.0.26 <2.2`. Until now a 2.1.x server refused to load plugboard, which also kept an autoupdating server on 2.0.32: the host checks its peer range before it moves. Nothing in the plugin API moved. `dist/promise/index.d.ts`, `dist/effect/index.d.ts` and `dist/tui/index.d.ts` are byte-identical between `@opencode/plugin` 2.0.32 and 2.1.4, so `Plugin.define`, the plugin context and the TUI context are the same surface. 2.1 adds `ctx.session.list` and an optional `native` field on the prompt input, and neither is used here. The TUI half keeps its `@opentui` floor at 0.5.17: the host hands its own OpenTUI to a plugin at runtime, and 0.5.17 is what a 2.0.x host serves.
@@ -21,6 +27,45 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
   Checked live on an isolated OpenCode 2.1.4 server. The plugin reports `state: active` with the `server`, `tui` and `rpc` features, `/v1/models` lists 478 models, a chat request creates its session and reaches the provider (the isolated home has no valid sign-in, so the provider refused it, which is upstream of plugboard), and the `/plugboard` page renders its tables and answers `w` with the 7 day range.
 
 - **The devDependencies move to the new host**: `@opencode/plugin` 2.1.4 with `effect` 4.0.1. `npm-shrinkwrap.json` is regenerated as `check-pack` requires, which also takes `@opentelemetry/api` from 1.9.1 to 1.10.0, a transitive of `pino`. No direct runtime dependency changed.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (2 commits)</summary>
+
+#### Docs
+
+**docs: state the 2.1 support, the new pin and the peer range** ([`b1b599d`](https://github.com/jjjermiah/opencode-plugboard/commit/b1b599dc935404fd7250bdb26c2dc06dbfd859eb))
+
+The supported-version line, the dev pin and the peer range in docs/architecture.md, docs/development.md, docs/packaging.md and AGENTS.md named 2.0.26 to 2.0.32 and `>=2.0.26 <2.1`. They now name the range the code declares.
+
+architecture.md also said `ctx.session` has no `list`. That was true of 2.0.x and is not true of 2.1, so the sentence says which host gained it and why the index stays: the floor is still 2.0.26, and a host without `list` cannot answer the question the index answers.
+
+packaging.md's host check now names `@opencode/plugin` 2.1.4 and the modules read at that version (`dist/host.js`, `dist/source.bun.js`, `dist/source.node.js`, `dist/runtime*.js`), all byte-identical to 2.0.32, which is the evidence the peer claim rests on.
+
+Validation: `bun run docs:build`, `bun run lint` and `bun run format` pass.
+
+#### Dependencies
+
+**build(deps): support opencode 2.1.4** ([`e911ea0`](https://github.com/jjjermiah/opencode-plugboard/commit/e911ea085e7ac140e67cbd024851c94d76ac6765))
+
+OpenCode 2.1 shipped. Bumping the host pin moves the peer range's upper bound to `<2.2`, so an install on 2.1.x stops being refused, and the typecheck and the tests run against the new surface.
+
+What changed in the host's plugin API, read from the two published packages rather than the release notes (`npm pack @opencode/plugin@2.0.32` and `@2.1.4`, then a file-by-file diff of `dist/`):
+
+- The entry points are byte-identical: `dist/promise/index.d.ts`, `dist/effect/index.d.ts` and `dist/tui/index.d.ts` do not differ, so `Plugin.define`, the plugin context (`ctx.options`, `ctx.event`, `ctx.agent`, `ctx.tool`, `ctx.rpc`, `ctx.storage`, `ctx.location`, `ctx.app`), the TUI plugin context and every surface plugboard uses are unchanged.
+- `SessionDomain` gains `list` (`dist/promise/session.d.ts`), and the adapter serves `session.list`. Additive: nothing plugboard calls moved or disappeared.
+- The prompt input gains an optional `native` field, and `Permission.AssertInput.sessionID`'s brand loses a `descending` helper (internal to the host's ID factory). Neither is reachable from plugboard: it never sends `native`, and it passes a session ID it already holds.
+- `DeepMutable` moved from a local `promise/types.ts` to `effect`'s `Types.DeepMutable`. Same type, different home; no call site changes.
+- The published `peerDependencies` of `@opencode/plugin@2.1.4` raise `@opentui/core` and `@opentui/solid` to `>=0.6.8`. The TUI half of plugboard still declares and pins 0.5.17 on purpose: the host hands its own OpenTUI to a plugin at runtime (`build-tui.ts` keeps literal `@opentui/*` specifiers, the host rewrites them), `TextAttributes` is unchanged between 0.5.17 and 0.6.8, and 0.5.17 is the floor that keeps a 2.0.x host working. Typechecking against the floor is the stricter of the two.
+
+`effect` stays `4.0.1`; `@opencode/plugin@2.1.4` pins the same version.
+
+npm-shrinkwrap.json is regenerated with the recipe in `docs/packaging.md` because `check-pack.ts` compares its root peerDependencies with `package.json`. It had not been regenerated since 0.23.0, so the same run also takes `@opentelemetry/api` 1.9.1 -> 1.10.0 (a transitive of `pino`/`@prometheus-io/client`) and updates the two `version` fields. No direct runtime dependency changed.
+
+Validation: `bun run typecheck` (including `HostContextMatches` and the TUI tsconfig), `bun test` (3873 pass, 130 skip, 0 fail, 4003 tests), `bun run lint`, `bun run format`, `bun run build:tui`, `check-pack.ts`, `smoke-pack.ts` and `since-next.ts --check` all pass on the 2.1.4 pin. `host-versions.ts` now picks 2.0.26, 2.0.30 and 2.1.4 for the CI host matrix without an edit to the workflow.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.62.1] - 2026-10-21: Clearer Waiting Messages
 
@@ -10219,7 +10264,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.1...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.0...HEAD
+[0.63.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.1...v0.63.0
 [0.62.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.0...v0.62.1
 [0.62.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.60.0...v0.61.0
