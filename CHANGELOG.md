@@ -14,11 +14,43 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.63.1] - 2026-10-24: Signed Thinking Again
+
+**Full diff:** [v0.63.0...v0.63.1](https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.0...v0.63.1)
+
 ### Fixed
 
 - **A thinking block keeps its signature on OpenCode 2.1.** The host renamed the reasoning event's payload field from `state` to `native` (`packages/core/src/session/runner/publish-llm-event.ts` publishes `native`; `packages/schema/session-legacy.ts` renames it on the durable events). Plugboard read `state` only, so on 2.1 every thinking block reached the caller with `signature: ""` while the reasoning text still arrived, and a client that sent that block back got it refused. The reasoning end now reads either field.
 
   Found by the check matrix on a hub running 2.1.4: `api: thinking/count_tokens` went from `thinking block signed` on 2.0.32 to `thinking block missing` on 2.1.4, reproducible on three runs.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (1 commit)</summary>
+
+#### Fixes
+
+**fix(session): read the reasoning signature from native on OpenCode 2.1** ([`e723e8e`](https://github.com/jjjermiah/opencode-plugboard/commit/e723e8e53b9ada5a55b3f3615956b681fcce2978))
+
+OpenCode 2.1 renamed the reasoning event's payload field from `state` to `native`, so on 2.1.4 every thinking block reached the caller with an empty signature while its text still arrived.
+
+Host evidence, both at the tags in anomalyco/opencode:
+
+- `packages/core/src/session/runner/publish-llm-event.ts` publishes `native: native(event.providerMetadata)` on `session.reasoning.ended` (v2.1.4); v2.0.32 published the same value as `state`.
+- `packages/schema/session-legacy.ts` carries the rename for durable events (`"session.reasoning.ended": ["state", "native"]`), and `SessionMessage.Native` is documented there as provider-owned replay data keyed by the producing provider's metadata fields, so the value is the same shape `signatureOf` already reads.
+
+Found on the hub after the 2.1.4 upgrade: the check matrix row `api: thinking/count_tokens` reported `thinking block signed` on 2.0.32 and `thinking block missing` on 2.1.4, three runs in a row. The body of the /v1/messages answer carried the thinking text with `"signature": ""`, so the loss was in the plugin, not the provider.
+
+`signatureOf` handled both the unwrapped and the provider-wrapped form, but the caller only ever passed `item.state`. The reasoning end now passes `item.state ?? item.native`, which keeps 2.0.x working (no `native` there) and restores the signature on 2.1.
+
+Two tests in test/session/collector.test.ts cover the new field (a signature and a redacted block). Both fail with `state` only; with the fix the collector suite is 99 pass and the full suite 3875 pass, 130 skip, 0 fail. The test helper takes the field name as an argument so the old field stays a case of its own.
+
+A client that replays an unsigned thinking block is refused, so this would have broken every Anthropic thinking conversation at its second turn on 2.1.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.63.0] - 2026-10-24: Runs on OpenCode 2.1
 
@@ -10268,7 +10300,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.1...HEAD
+[0.63.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.0...v0.63.1
 [0.63.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.1...v0.63.0
 [0.62.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.0...v0.62.1
 [0.62.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.61.0...v0.62.0
