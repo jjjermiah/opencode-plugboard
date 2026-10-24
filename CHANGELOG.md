@@ -14,7 +14,13 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **OpenCode 2.1 is supported.** The `@opencode/plugin` peer range moves from `>=2.0.26 <2.1` to `>=2.0.26 <2.2`. Until now a 2.1.x server refused to load plugboard, which also kept an autoupdating server on 2.0.32: the host checks its peer range before it moves. Nothing in the plugin API moved. `dist/promise/index.d.ts`, `dist/effect/index.d.ts` and `dist/tui/index.d.ts` are byte-identical between `@opencode/plugin` 2.0.32 and 2.1.4, so `Plugin.define`, the plugin context and the TUI context are the same surface. 2.1 adds `ctx.session.list` and an optional `native` field on the prompt input, and neither is used here. The TUI half keeps its `@opentui` floor at 0.5.17: the host hands its own OpenTUI to a plugin at runtime, and 0.5.17 is what a 2.0.x host serves.
+
+  Checked live on an isolated OpenCode 2.1.4 server. The plugin reports `state: active` with the `server`, `tui` and `rpc` features, `/v1/models` lists 478 models, a chat request creates its session and reaches the provider (the isolated home has no valid sign-in, so the provider refused it, which is upstream of plugboard), and the `/plugboard` page renders its tables and answers `w` with the 7 day range.
+
+- **The devDependencies move to the new host**: `@opencode/plugin` 2.1.4 with `effect` 4.0.1. `npm-shrinkwrap.json` is regenerated as `check-pack` requires, which also takes `@opentelemetry/api` from 1.9.1 to 1.10.0, a transitive of `pino`. No direct runtime dependency changed.
 
 ## [0.62.1] - 2026-10-21: Clearer Waiting Messages
 

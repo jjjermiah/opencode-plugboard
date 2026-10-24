@@ -41,7 +41,7 @@ A plugin effect that blocked once froze every prompt in the project that loaded 
 - Semantic versioning; update `CHANGELOG.md` (keep `[Unreleased]` at the top, with context and reasoning, not a commit dump) with every user-visible change.
 - Parallel agent lanes use git worktrees under `.agents/worktrees/` (gitignored) with disjoint file sets; merge into `main`.
 - Prose (README, docs, issues, changelog): plain and short, no em or en dashes as punctuation. Nothing machine- or homelab-specific in the repo (no private IPs, `/Users/...` paths, keys).
-- Host versions: the peer range is `>=2.0.26 <2.1`; the dev pin is in `package.json`; CI tests three hosts picked by `.github/scripts/host-versions.ts`. Host source for reading: a shallow clone of anomalyco/opencode at the matching `v2.0.x` tag.
+- Host versions: the peer range is `>=2.0.26 <2.2`; the dev pin is in `package.json`; CI tests three hosts picked by `.github/scripts/host-versions.ts`. Host source for reading: a shallow clone of anomalyco/opencode at the matching `v2.x.y` tag.
 
 ## User docs (`README.md`, the site under `docs/`)
 

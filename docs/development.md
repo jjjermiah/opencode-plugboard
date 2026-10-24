@@ -37,7 +37,7 @@ After you push, `bun run pr-wait <number>` waits for every check the main branch
 
 The `/plugboard` TUI page loads from `dist/tui.js` when the package is installed from npm, and from `tui.ts` (which re-exports it) when it is configured by local path. Run `bun run build:tui` once after a change to `src/tui.tsx`, before you test the TUI page against a local checkout. `bun run typecheck` and `bun test` do not need the build. See [packaging.md](packaging.md) for why the file is compiled.
 
-The type check is also the host-compatibility gate: it fails when the `@opencode/plugin` types change shape. The devDependencies are pinned to a recent host (`@opencode/plugin` 2.0.32 with `effect` 4.0.1), and a weekly workflow opens a pull request for each new host release. The peer range `>=2.0.26 <2.1` allows 2.0.x patch releases. CI picks three hosts from the range with `.github/scripts/host-versions.ts` (the oldest, a middle one and the newest published) and runs the typecheck and tests against each; the other releases are not tested.
+The type check is also the host-compatibility gate: it fails when the `@opencode/plugin` types change shape. The devDependencies are pinned to a recent host (`@opencode/plugin` 2.1.4 with `effect` 4.0.1), and a weekly workflow opens a pull request for each new host release. The peer range `>=2.0.26 <2.2` allows 2.0.x and 2.1.x releases. CI picks three hosts from the range with `.github/scripts/host-versions.ts` (the oldest, a middle one and the newest published) and runs the typecheck and tests against each; the other releases are not tested.
 
 ## Isolated server
 

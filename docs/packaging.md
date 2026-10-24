@@ -1,6 +1,6 @@
 # Packaging
 
-What the npm tarball contains, and why it ships TypeScript source with no build step. Checked against OpenCode 2.0.26 and 2.0.27 (`~/.cache/opencode-explorer/opencode`). Re-check when the peer range moves.
+What the npm tarball contains, and why it ships TypeScript source with no build step. Checked against OpenCode 2.0.26 and 2.0.27, and against `@opencode/plugin` 2.1.4 (`dist/host.js`, `dist/source.bun.js`, `dist/source.node.js` and `dist/runtime*.js` are byte-identical to 2.0.32). Re-check when the peer range moves.
 
 ## Decision: ship the `.ts` source
 
@@ -47,7 +47,7 @@ CI therefore installs each host's own `effect` pin next to its `@opencode/plugin
 
 ## Engines
 
-`engines` declares only `bun`. npm enforces only the `node` key, so `engines.bun` is advisory. OpenCode is a peer (`@opencode/plugin` `>=2.0.26 <2.1`), and that range is the real compatibility contract, so it is not repeated under `engines`.
+`engines` declares only `bun`. npm enforces only the `node` key, so `engines.bun` is advisory. OpenCode is a peer (`@opencode/plugin` `>=2.0.26 <2.2`), and that range is the real compatibility contract, so it is not repeated under `engines`.
 
 ## Optional peers and install size (#190)
 
