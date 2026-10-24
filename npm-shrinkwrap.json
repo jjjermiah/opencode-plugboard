@@ -1,12 +1,12 @@
 {
   "name": "opencode-plugboard",
-  "version": "0.23.0",
+  "version": "0.62.1",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "opencode-plugboard",
-      "version": "0.23.0",
+      "version": "0.62.1",
       "dependencies": {
         "@prometheus-io/client": "0.16.1",
         "@types/escape-html": "1.0.4",
@@ -20,7 +20,7 @@
         "uplot": "1.6.32"
       },
       "peerDependencies": {
-        "@opencode/plugin": ">=2.0.26 <2.1",
+        "@opencode/plugin": ">=2.0.26 <2.2",
         "@opentui/core": ">=0.5.17",
         "@opentui/solid": ">=0.5.17",
         "effect": "4.0.0-rc.112 || 4.0.1",
@@ -45,9 +45,9 @@
       }
     },
     "node_modules/@opentelemetry/api": {
-      "version": "1.9.1",
-      "resolved": "https://registry.npmjs.org/@opentelemetry/api/-/api-1.9.1.tgz",
-      "integrity": "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==",
+      "version": "1.10.0",
+      "resolved": "https://registry.npmjs.org/@opentelemetry/api/-/api-1.10.0.tgz",
+      "integrity": "sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==",
       "license": "Apache-2.0",
       "engines": {
         "node": ">=8.0.0"
