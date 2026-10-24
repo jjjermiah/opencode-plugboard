@@ -1,0 +1,50 @@
+name: Dependabot auto-merge
+
+# Patch and minor Dependabot updates merge themselves once the ruleset's required checks pass; a major update stays
+# open for a person. The ruleset already holds the criteria (pull request required, merge commit only, CI passed, Lint
+# commit messages, Analyze), so there is no judgment left for anyone to supply, and the PRs otherwise sit green and
+# ignored.
+#
+# pull_request_target, not pull_request: workflows run by Dependabot's pull_request events get a read-only
+# GITHUB_TOKEN, and enabling auto-merge needs contents and pull-requests write. Nothing from the pull request is
+# checked out or executed here. The action and gh read the PR through the API, then ask GitHub to merge it under the
+# ruleset's own checks, so the write token never reaches pull request code.
+#
+# A merge performed with GITHUB_TOKEN does not start `on: push` workflows. Releases here are tag-triggered
+# (publish.yml), so nothing downstream of these merges is lost; the next real push runs CI as usual.
+on:
+  # zizmor: ignore[dangerous-triggers] -- nothing from the pull request is checked out or run; the action and gh only read it through the API
+  pull_request_target:
+    # synchronize covers Dependabot's rebase, which is how an already-open PR picks this up.
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    name: Auto-merge
+    # Anything else, a fork included, is not Dependabot and has no business here.
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'jjjermiah/opencode-plugboard'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Read the update type
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Enable auto-merge
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: |
+          echo "$UPDATE_TYPE, enabling auto-merge (merge commit, branch deleted on merge)"
+          gh pr merge --auto --merge --delete-branch "$PR_URL"
+
+      - name: Leave a major update for a person
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        run: echo "::notice title=Dependabot auto-merge::major update, left open for review"
