@@ -238,6 +238,23 @@ describe("event mapping", () => {
     ])
   })
 
+  test("OpenCode 2.1 publishes the reasoning state under `native`, and its signature is read too", async () => {
+    // `session.reasoning.ended` carries `native` from 2.1 on (`state` before it), so a host that sends only the new name
+    // must still reach the caller with its signature: an unsigned block is refused when a client replays it.
+    expect(await play(host.reasoningDelta("think"), host.reasoningEnded({ signature: "sig_abc" }, "native"), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "think" },
+      { type: "reasoning-delta", text: "", signature: "sig_abc" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
+  test("OpenCode 2.1 publishes a redacted block under `native` too", async () => {
+    expect(await play(host.reasoningEnded({ redactedData: "opaque_1" }, "native"), host.stepEnded("stop"))).toEqual([
+      { type: "reasoning-delta", text: "", redactedData: "opaque_1" },
+      expect.objectContaining({ type: "finish", reason: "stop" }),
+    ])
+  })
+
   test("#385 a redacted reasoning block's opaque payload is carried on an empty reasoning-delta at its end", async () => {
     // The host keeps the start state of a redacted block, which holds `redactedData` and no signature.
     expect(await play(host.reasoningEnded({ redactedData: "opaque_1" }), host.stepEnded("stop"))).toEqual([

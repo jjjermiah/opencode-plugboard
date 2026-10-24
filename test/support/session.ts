@@ -149,8 +149,8 @@ export function bus(sessionID: string) {
     textDelta: (delta: string, ordinal = 0) => envelope("session.text.delta", { delta, ordinal }),
     textEnded: (text: string, ordinal = 0) => envelope("session.text.ended", { text, ordinal }),
     reasoningDelta: (delta: string) => envelope("session.reasoning.delta", { delta }),
-    /** The end of a reasoning block; `state` is the provider state the host attaches, already unwrapped from its provider key (`{ signature }`). */
-    reasoningEnded: (state: Json = {}) => envelope("session.reasoning.ended", { text: "", ordinal: 0, state }),
+    /** The end of a reasoning block; `state` is the provider state the host attaches, already unwrapped from its provider key (`{ signature }`). OpenCode 2.1 publishes the same payload under `native`. */
+    reasoningEnded: (state: Json = {}, field: "state" | "native" = "state") => envelope("session.reasoning.ended", { text: "", ordinal: 0, [field]: state }),
     toolInputStarted: (id: string, name: string) => envelope("session.tool.input.started", { id, name }),
     toolCalled: (id: string, name: string, input: Json = {}) => envelope("session.tool.called", { id, name, input }),
     usage: (tokens: HostTokens) => envelope("session.usage.updated", { tokens }),

@@ -488,11 +488,14 @@ export class RequestCollector {
       case "session.reasoning.ended": {
         // The block's provider metadata carries the provider's signature (#146). It goes out as an empty-text reasoning-delta.
         if (this.finished) return
-        const signature = signatureOf(item.state)
+        // OpenCode 2.1 renamed this payload field from `state` to `native` (`packages/schema/session-legacy.ts` upgrades the
+        // durable events, `packages/core/src/session/runner/publish-llm-event.ts` publishes the new name). Read both.
+        const state = item.state ?? item.native
+        const signature = signatureOf(state)
         this.endReasoningText(signature)
         if (signature !== undefined) this.emit({ type: "reasoning-delta", text: "", signature })
         // A redacted block has no text and no signature, only its opaque payload (#385).
-        const redactedData = redactedDataOf(item.state)
+        const redactedData = redactedDataOf(state)
         if (redactedData !== undefined) this.emit({ type: "reasoning-delta", text: "", redactedData })
         return
       }
