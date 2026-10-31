@@ -51,7 +51,7 @@ The release script replaces both forms with the version being released. It does 
 4. When every check has passed, the script merges that exact commit (`--match-head-commit`) with a merge commit, and the branch is deleted.
 5. It waits for the `ci.yml` push run on the merge commit (up to 45 minutes). It tags the merge commit and pushes the tag only when that run concluded `success`. Tags are not part of a branch ruleset, so the tag push is not blocked by it. Check that on the first release.
 
-**Which checks gate.** Every check on the pull request gates, except `Request-path benchmarks (advisory)`. That includes CodeQL (`Analyze (javascript-typescript)`) and external checks such as CodeRabbit. A skipped check counts as not passed. A future path-filtered workflow that skips on some pull requests would therefore block releases. If a check must never block, add it to `ADVISORY_CHECKS` in `.github/scripts/release.ts` in a reviewed change.
+**Which checks gate.** Every check on the pull request gates, except the advisory ones: `Request-path benchmarks (advisory)` and `Auto-merge`. `Auto-merge` is the job of `dependabot-auto-merge.yml`, which is skipped on every pull request that is not Dependabot's, so a release pull request always shows it as skipped. The gate includes CodeQL (`Analyze (javascript-typescript)`) and external checks such as CodeRabbit. A skipped check that is not advisory counts as not passed. A future path-filtered workflow that skips on some pull requests would therefore block releases. If a check must never block, add it to `ADVISORY_CHECKS` in `.github/scripts/merge-gate.ts` in a reviewed change, with a line here.
 
 The required status checks are the names GitHub shows on a pull request:
 

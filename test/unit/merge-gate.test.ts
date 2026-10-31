@@ -3,11 +3,44 @@
  * approval count and up-to-date rule, and whether the reviews on the pull request head meet them.
  */
 import { describe, expect, test } from "bun:test"
-import { approvalState, mergeRules, type GhReview } from "../../.github/scripts/merge-gate.ts"
+import { ADVISORY_CHECKS, approvalState, judgeChecks, mergeRules, type CheckRow, type GhReview } from "../../.github/scripts/merge-gate.ts"
 
 const HEAD = "a".repeat(40)
 const OLD = "b".repeat(40)
 const review = (login: string, state: string, oid = HEAD): GhReview => ({ state, author: { login }, commit: { oid } })
+
+const row = (name: string, bucket: string): CheckRow => ({ name, bucket, link: `https://example.test/${encodeURIComponent(name)}` })
+
+describe("#591 the release gate's check judgement", () => {
+  test("a skipped check that is not advisory stops the release, like a failed or cancelled one", () => {
+    const verdict = judgeChecks([row("CI passed", "pass"), row("CodeQL", "skipping"), row("Host versions", "fail"), row("Examples", "cancel")])
+    expect(verdict.failing.map((check) => check.name)).toEqual(["CodeQL", "Host versions", "Examples"])
+  })
+
+  test("the skipped Dependabot Auto-merge job and the advisory benchmark are ignored, whatever their bucket", () => {
+    for (const bucket of ["skipping", "fail", "cancel", "pending"]) {
+      const verdict = judgeChecks([row("CI passed", "pass"), row("Auto-merge", bucket), row("Request-path benchmarks (advisory)", bucket)])
+      expect(verdict.failing).toEqual([])
+      expect(verdict.pending).toEqual([])
+      expect(verdict.gating.map((check) => check.name)).toEqual(["CI passed"])
+    }
+  })
+
+  test("a release pull request with only passing checks and the skipped Auto-merge job passes the gate", () => {
+    const verdict = judgeChecks([row("Analyze (javascript-typescript)", "pass"), row("CI passed", "pass"), row("Lint commit messages", "pass"), row("Auto-merge", "skipping")])
+    expect(verdict.failing).toEqual([])
+    expect(verdict.pending).toEqual([])
+  })
+
+  test("a pending check that is not advisory keeps the gate waiting", () => {
+    const verdict = judgeChecks([row("CI passed", "pending"), row("Auto-merge", "skipping")])
+    expect(verdict.pending.map((check) => check.name)).toEqual(["CI passed"])
+  })
+
+  test("the advisory set is exactly the benchmark and Auto-merge", () => {
+    expect([...ADVISORY_CHECKS].sort()).toEqual(["Auto-merge", "Request-path benchmarks (advisory)"])
+  })
+})
 
 describe("merge gate: the ruleset", () => {
   test("approvals, strict checks and the required contexts are read from the branch rules", () => {

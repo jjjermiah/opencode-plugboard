@@ -26,6 +26,33 @@ export const mergeRules = (rules: readonly Rule[]): MergeRules => ({
   checks: rules.flatMap((rule) => (rule.type === "required_status_checks" ? (rule.parameters?.required_status_checks ?? []).map((check) => check.context) : [])),
 })
 
+/**
+ * Checks the release gate does not wait for and never fails on, by the name `gh pr checks` shows. The benchmark is advisory (ci.yml).
+ * `Auto-merge` is the Dependabot job (dependabot-auto-merge.yml): it is skipped on every pull request that is not Dependabot's, and
+ * the gate counts a skipped check as not passed (#591).
+ */
+export const ADVISORY_CHECKS: ReadonlySet<string> = new Set(["Request-path benchmarks (advisory)", "Auto-merge"])
+
+/** A row of `gh pr checks --json name,bucket,link`. */
+export interface CheckRow {
+  readonly name: string
+  readonly bucket: string
+  readonly link: string
+}
+
+/**
+ * The checks the release gate judges: every check but the advisory ones, split into those that stop the release (failed, cancelled or
+ * skipped) and those still pending. A skipped check that is not advisory is a failure, because a job that did not run proved nothing.
+ */
+export function judgeChecks(checks: readonly CheckRow[]): { gating: readonly CheckRow[]; failing: readonly CheckRow[]; pending: readonly CheckRow[] } {
+  const gating = checks.filter((check) => !ADVISORY_CHECKS.has(check.name))
+  return {
+    gating,
+    failing: gating.filter((check) => check.bucket === "fail" || check.bucket === "cancel" || check.bucket === "skipping"),
+    pending: gating.filter((check) => check.bucket === "pending"),
+  }
+}
+
 export interface GhReview {
   readonly state: string
   readonly author: { readonly login: string } | null

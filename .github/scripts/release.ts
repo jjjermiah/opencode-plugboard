@@ -38,7 +38,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import semver from "semver"
 import { changelogBlock, collectCommits } from "./commit-detail.ts"
-import { approvalState, mergeRules, type GhReview } from "./merge-gate.ts"
+import { approvalState, judgeChecks, mergeRules, type CheckRow, type GhReview } from "./merge-gate.ts"
 import { bumpInstallPins, replaceSinceNext } from "./since-next.ts"
 
 const PLACEHOLDER = "Nothing yet."
@@ -108,8 +108,6 @@ const MAIN_CI_GH_FAILURES = 3
 // The checks that must have reported before the release can merge: the required checks of the main
 // ruleset (docs/releasing.md). A check that never appears is not a pass.
 const EXPECTED_CHECKS = ["CI passed", "Lint commit messages", "Analyze (javascript-typescript)"]
-// Not waited for and never blocking: the benchmark is advisory (ci.yml).
-const ADVISORY_CHECKS = new Set(["Request-path benchmarks (advisory)"])
 
 function gh(...ghArgs: string[]): { ok: boolean; out: string; err: string } {
   const run = Bun.spawnSync(["gh", ...ghArgs], { stderr: "pipe" })
@@ -152,7 +150,7 @@ function fetchOrFail(...fetchArgs: string[]): void {
 }
 
 type CiRun = { databaseId: number; status: string; conclusion: string; url: string }
-type Check = { name: string; bucket: string; link: string }
+type Check = CheckRow
 
 // The newest ci.yml push run on a commit of main, or the reason there is none (gh failed, or no run yet).
 // Highest databaseId: a re-run keeps its id, so this is always the latest attempt, not the first.
@@ -243,8 +241,8 @@ async function waitForChecks(branch: string, url: string): Promise<void> {
       await Bun.sleep(CHECKS_POLL_MS)
       continue
     }
-    const gating = checks.filter((c) => !ADVISORY_CHECKS.has(c.name))
-    const failing = gating.filter((c) => c.bucket === "fail" || c.bucket === "cancel" || c.bucket === "skipping")
+    // The advisory checks (merge-gate.ts) are ignored; a skipped check that is not advisory fails the release.
+    const { gating, failing, pending } = judgeChecks(checks)
     if (failing.length) {
       console.error(`release: ${failing.length} check(s) did not pass on ${url}. Nothing is merged or tagged; the pull request stays open.`)
       for (const c of failing) console.error(`  ${c.bucket}: ${c.name} ${c.link}`)
@@ -253,7 +251,6 @@ async function waitForChecks(branch: string, url: string): Promise<void> {
       )
       process.exit(1)
     }
-    const pending = gating.filter((c) => c.bucket === "pending")
     const unreported = EXPECTED_CHECKS.filter((name) => !gating.some((c) => c.name === name))
     if (unreported.length && Date.now() - start > CHECKS_GRACE_MS) {
       fail(`required check(s) never reported on ${url}: ${unreported.join(", ")}. Their names changed, or the workflow does not run on pull requests. Nothing is merged or tagged.`)
