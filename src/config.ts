@@ -77,6 +77,11 @@ export interface PlugboardOptions {
    * turns the age limit off. `maxSessions` is unset (no count limit) by default. Applies per app. Parsed `{}` means keep forever.
    */
   readonly sessions: SessionLimits
+  /**
+   * Option `history` (#586): `storeRequestBody` (default `true`) keeps one record per model request in plugboard's storage: the request and the
+   * response as they crossed the wire, the timing, the routing, the usage and the errors (`src/record.ts`). Per app: `apps.<name>.history`.
+   */
+  readonly history: HistoryOptions
   /** Drop sampling parameters the target model is known to reject (reported in `x-plugboard-dropped-params`). On by default; off forwards them as sent. */
   readonly dropUnsupportedParams: boolean
   /** Log line format: `text` (`key=value`, the default) or `json` (one object per line). Process-wide: the live generation's value applies. */
@@ -192,6 +197,8 @@ export interface AppPolicy {
    * an unset field falls back to it. Look the effective limits up with `limitsFor` (src/session/prune.ts).
    */
   readonly sessions?: SessionLimits
+  /** This app's `history` (option `apps.<name>.history`, #586): an unset field falls back to the global one. Look it up with `storesRecords`. */
+  readonly history?: Partial<HistoryOptions>
   /** Lowers the global `maxChoices` for this app (option `apps.<name>.maxChoices`, #270). Look the effective cap up with `maxChoicesFor`. */
   readonly maxChoices?: number
   /**
@@ -396,6 +403,7 @@ const KNOWN = new Set([
   "circuitBreaker",
   "remoteImages",
   "sessions",
+  "history",
   "dropUnsupportedParams",
   "logFormat",
   "metrics",
@@ -415,7 +423,7 @@ const KNOWN = new Set([
 ])
 /** Options that were renamed, by where they sat: `""` is the top level, `apps.*` an app, any other key is the dotted path of the parent. */
 const RENAMED: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  "": { history: "sessions", historyUrl: "sessionUrl", maxN: "maxChoices", cache: "responseCache", fallbackAfterMs: "firstEventTimeoutMs", fallbackCooldown: "circuitBreaker" },
+  "": { historyUrl: "sessionUrl", maxN: "maxChoices", cache: "responseCache", fallbackAfterMs: "firstEventTimeoutMs", fallbackCooldown: "circuitBreaker" },
   "apps.*": {
     models: "allowedModels",
     model: "pinnedModel",
@@ -423,12 +431,15 @@ const RENAMED: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     maxServerToolSteps: "maxToolSteps",
     maxServerToolCalls: "maxToolCalls",
     hostedTools: "onHostedTools",
-    history: "sessions",
     historyUrl: "sessionUrl",
     maxN: "maxChoices",
     stopSettleMs: "settleMs",
   },
   sessions: { hidden: "hideFromList" },
+  // `history` once held what `sessions` holds now (#586 reused the name): its old fields say where they went.
+  // A name starting with `../` is a sibling of the parent, not of the key.
+  history: { maxSessions: "../sessions.maxSessions", maxAgeDays: "../sessions.maxAgeDays", hideFromList: "../sessions.hideFromList", hidden: "../sessions.hideFromList" },
+  "apps.*.history": { maxSessions: "../sessions.maxSessions", maxAgeDays: "../sessions.maxAgeDays", hideFromList: "../sessions.hideFromList", hidden: "../sessions.hideFromList" },
   "apps.*.sessions": { hidden: "hideFromList" },
   circuitBreaker: { failureThreshold: "failures", windowMs: "failureWindowMs" },
 }
@@ -451,11 +462,29 @@ function editDistance(left: string, right: string): number {
 function unknownOption(parent: string, key: string, known: Iterable<string>): Error {
   const at = (name: string) => `\`${parent === "" ? name : `${parent}.${name}`}\``
   const renamed = RENAMED[parent.replace(/^apps\.[^.]+/, "apps.*")]?.[key]
-  if (renamed !== undefined) return new Error(`Unknown plugboard option ${at(key)}: it is renamed to ${at(renamed)}`)
+  if (renamed !== undefined) {
+    const target = renamed.startsWith("../") ? [...parent.split(".").slice(0, -1), renamed.slice(3)].join(".") : at(renamed).replaceAll("`", "")
+    return new Error(`Unknown plugboard option ${at(key)}: it is renamed to \`${target}\``)
+  }
   const names = [...known]
   const near = names.map((name) => [name, editDistance(key.toLowerCase(), name.toLowerCase())] as const).sort((a, b) => a[1] - b[1])[0]
   if (near !== undefined && near[1] <= 2 && near[1] < key.length) return new Error(`Unknown plugboard option ${at(key)} (did you mean ${at(near[0])}?)`)
   return new Error(`Unknown plugboard option ${at(key)} (known: ${names.join(", ")})`)
+}
+
+/** Option `history` after defaults (#586). */
+export interface HistoryOptions {
+  /** Keep one record of each model request: request, response, timing, routing, usage and errors. On by default; `false` stores nothing. */
+  readonly storeRequestBody: boolean
+}
+const HISTORY_OPTION_KNOWN = new Set(["storeRequestBody"])
+
+/** Option `history` or `apps.<name>.history`: a `storeRequestBody` boolean. Anything else is refused by name. */
+function parseHistory(raw: unknown, at: string): Partial<HistoryOptions> {
+  if (!isRecord(raw)) throw new Error(`plugboard option \`${at}\` must be an object: { storeRequestBody }`)
+  for (const key of Object.keys(raw)) if (!HISTORY_OPTION_KNOWN.has(key)) throw unknownOption(at, key, HISTORY_OPTION_KNOWN)
+  if (raw.storeRequestBody !== undefined && typeof raw.storeRequestBody !== "boolean") throw new Error(`plugboard option \`${at}.storeRequestBody\` must be a boolean`)
+  return raw.storeRequestBody === undefined ? {} : { storeRequestBody: raw.storeRequestBody }
 }
 
 const USAGE_KNOWN = new Set(["enabled", "retentionDays"])
@@ -631,6 +660,7 @@ const APP_KNOWN = new Set([
   "maxTools",
   "maxChoices",
   "sessions",
+  "history",
   "opencodeTools",
   "maxToolSteps",
   "maxToolCalls",
@@ -810,6 +840,7 @@ function parseApps(
     const promptCache = parsePromptCache(value.promptCache, `apps.${app}.promptCache`)
     const endpoints = value.endpoints === undefined ? undefined : parseEndpoints(value.endpoints, at)
     const sessions = value.sessions === undefined ? undefined : parseAppSessions(value.sessions, `apps.${app}`)
+    const history = value.history === undefined ? undefined : parseHistory(value.history, `apps.${app}.history`)
     // A deadline may be longer or shorter than the global one (#257); it is checked against the same ceiling as the global option.
     const requestTimeoutMs = value.requestTimeoutMs === undefined ? undefined : positiveInt(value.requestTimeoutMs, `apps.${app}.requestTimeoutMs`, 0, MAX_TIMER_MS)
     const maxOutputTokens = value.maxOutputTokens === undefined ? undefined : positiveInt(value.maxOutputTokens, `apps.${app}.maxOutputTokens`, 0, MAX_TIMER_MS)
@@ -830,6 +861,7 @@ function parseApps(
       ...(maxTools === undefined ? {} : { maxTools }),
       ...(maxChoices === undefined ? {} : { maxChoices }),
       ...(sessions === undefined ? {} : { sessions }),
+      ...(history === undefined ? {} : { history }),
       ...(opencodeTools === undefined ? {} : { opencodeTools }),
       ...(maxToolSteps === undefined ? {} : { maxToolSteps }),
       ...(maxToolCalls === undefined ? {} : { maxToolCalls }),
@@ -853,6 +885,7 @@ function parseApps(
       maxTools !== undefined ||
       maxChoices !== undefined ||
       sessions !== undefined ||
+      history !== undefined ||
       opencodeTools !== undefined ||
       sessionUrl !== undefined ||
       promptCache !== undefined ||
@@ -1022,6 +1055,11 @@ export function appSessionLimits(options: Pick<PlugboardOptions, "apps">): Recor
 /** The policy configured for `app` (`default` for the keyless app), if any. Own-property lookup: an app name never reaches the prototype. */
 export function appPolicy(options: Pick<PlugboardOptions, "apps">, app: string): AppPolicy | undefined {
   return Object.hasOwn(options.apps, app) ? options.apps[app] : undefined
+}
+
+/** Whether the request records are kept for `app` (option `history.storeRequestBody`, per app or global, #586). A per-app `false` beats a global `true`, and the reverse. */
+export function storesRecords(options: Pick<PlugboardOptions, "apps" | "history">, app: string): boolean {
+  return appPolicy(options, app)?.history?.storeRequestBody ?? options.history.storeRequestBody
 }
 
 /** Whether reasoning is returned for `app` (option `reasoningOutput`, per app or global, since 0.36.0). A per-app `false` beats a global `true`. */
@@ -1356,6 +1394,7 @@ export function parseOptions(raw: unknown): PlugboardOptions {
     logLevel: (input.logLevel as LogLevel | undefined) ?? "info",
     logRequests: input.logRequests !== false,
     metrics: input.metrics === true,
+    history: { storeRequestBody: true, ...(input.history === undefined ? {} : parseHistory(input.history, "history")) },
     reasoningOutput: input.reasoningOutput === true,
     modelIds: (input.modelIds as ModelIds | undefined) ?? "canonical",
     ...(limits === undefined ? {} : { limits }),

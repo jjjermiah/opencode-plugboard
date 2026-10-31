@@ -1,6 +1,6 @@
 # Errors on plugboard's own routes
 
-Plugboard's own routes live under `/plugboard/`: `/plugboard/usage`, `/plugboard/admin/keys`, `/plugboard/status`, `/plugboard/metrics`, `/plugboard/dashboard`, `/plugboard/health` and `/plugboard/ready`. Their errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, sent as `application/problem+json`:
+Plugboard's own routes live under `/plugboard/`: `/plugboard/usage`, `/plugboard/requests/{id}`, `/plugboard/admin/keys`, `/plugboard/status`, `/plugboard/metrics`, `/plugboard/dashboard`, `/plugboard/health` and `/plugboard/ready`. Their errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, sent as `application/problem+json`:
 
 ```json
 {
@@ -82,6 +82,10 @@ The `user` filter is not 1 to 64 characters of `A-Z`, `a-z`, `0-9`, `.`, `_`, `@
 ### app_forbidden {#app-forbidden}
 
 An app key asked for the usage of another app. An app key reads only its own app; the admin key reads any app.
+
+### record_not_found {#record-not-found}
+
+`GET /plugboard/requests/{id}` found no stored record of this app with that request id or session id. The id may belong to another app, never have been stored (`history.storeRequestBody` off), or be wrong. See [Stored requests](configuration.md#stored-requests).
 
 ### key_not_found {#key-not-found}
 

@@ -363,6 +363,7 @@ export const PROBLEM_CODES: ReadonlySet<string> = new Set([
   "invalid_app",
   "invalid_user",
   "app_forbidden",
+  "record_not_found",
   "key_not_found",
   "config_key",
   "app_has_opencode_tools",

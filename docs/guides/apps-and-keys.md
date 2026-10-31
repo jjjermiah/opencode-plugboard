@@ -71,6 +71,21 @@ An app with a policy still needs its key in `keys` (or `apps.<name>.key`).
 
 A call to any other endpoint family answers 403 `endpoint_forbidden`.
 
+## Read back exactly what an app sent and got
+
+Every model request of an app is stored whole, by default, and only that app's key reads it:
+
+```jsonc plugboard
+"history": { "storeRequestBody": true },   // the default; false stores nothing
+"apps": { "coding": { "history": { "storeRequestBody": false } } }   // one app opts out
+```
+
+```sh
+curl -s http://127.0.0.1:4010/plugboard/requests/$REQUEST_ID -H "Authorization: Bearer $PLUGBOARD_API_KEY"
+```
+
+The `x-plugboard-request-id` of any response names its record, and so does the session id. Another app's key gets a 404 for it. The record holds the request, the model's full answer, the routing, the usage and every error. It costs space: images and streams can be megabytes per request, and nothing is capped or pruned. Only the values of `Authorization`, `x-api-key`, `x-goog-api-key` and a `key` query parameter are redacted. See [Stored requests](../configuration.md#stored-requests).
+
 ## Add and revoke keys without a restart
 
 Set `adminKey`. It is not a model key: it reads usage for every app and manages runtime keys.
@@ -109,5 +124,6 @@ All in the [configuration reference](../configuration.md#apps-and-keys):
 - [Server tools](../configuration.md#per-app-policy-apps) (`opencodeTools`): let an app's key run OpenCode tools. Read the security warning first.
 - [Admin keys](../configuration.md#admin-keys) and [which key opens which route](../configuration.md#which-key-opens-which-route)
 - [End users](../configuration.md#end-users) and [Usage tags](../configuration.md#usage-tags)
+- [`history`](../configuration.md#options) and [Stored requests](../configuration.md#stored-requests)
 
 Next: [Models, aliases and fallbacks](models-and-aliases.md).

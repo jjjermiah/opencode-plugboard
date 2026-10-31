@@ -303,6 +303,12 @@ export interface CollectorHooks {
    * any other name is dropped and logged. OpenCode tools are not caller tools (`opencodeTools`), they keep their own handling.
    */
   readonly callerTools: readonly string[]
+  /**
+   * Called with a failure's raw host error before it is mapped to a caller-safe one, and with the raw error of a retry the host schedules (#586). The
+   * exchange record keeps it whole; nothing else sees it. The owner binds the recorder of the request, because events arrive from the event pump,
+   * outside the request's own async context.
+   */
+  readonly onUpstreamError?: (kind: "failed" | "retry", raw: unknown) => void
 }
 
 interface OpencodeCall {
@@ -620,6 +626,7 @@ export class RequestCollector {
         // The host waits, then runs the model step again (OpenCode 2.0.27 `session.retry.scheduled`). Before any output, a
         // call with a fallback target after it is not made to wait: the retry is a failure now, and the chain moves on (#391).
         const error = item.error as RawError | undefined
+        this.hooks.onUpstreamError?.("retry", { error: item.error, attempt: item.attempt })
         const failFast = this.hooks.failFastRetry === true && !this.anyEmitted
         log("provider.retry_scheduled", { requestID: this.hooks.requestID, type: error?.type ?? "unknown", status: error?.status ?? 0, attempt: Number(item.attempt ?? 0), failFast })
         if (failFast) this.abort({ status: 503, kind: "server", code: "provider_retry", message: "The model provider failed; the next target is tried" })
@@ -764,6 +771,7 @@ export class RequestCollector {
   private failFromHost(raw: RawError | undefined, fallback: string): void {
     if (this.finished) return
     const error = toPlugError(raw, fallback)
+    this.hooks.onUpstreamError?.("failed", raw)
     logError("model.failed", {
       requestID: this.hooks.requestID,
       type: raw?.type,
