@@ -29,6 +29,7 @@ import { findItem, forgetAnswer, rememberAnswer } from "./store.js"
 import { fullItem, retentionDaysFor } from "./state.js"
 import { loadFiles } from "../files/route.js"
 import { fileRefs, inlineFiles, restoreFileRefs } from "../files/refs.js"
+import { noteSizes, type SizeInfo } from "../request-size.js"
 import { tagField } from "../tag.js"
 
 const SESSION_HEADER = "x-plugboard-session"
@@ -39,7 +40,7 @@ export interface ResponsesCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { model?: string; failed?: string; tag?: string }
+  readonly info: ServedInfo & SizeInfo & { model?: string; failed?: string; tag?: string }
   /** The caller's response-cache headers (`parseCacheDirective`). */
   readonly cache?: CacheDirective
 }
@@ -97,6 +98,7 @@ export async function serveResponses(host: RouteHost, { app, body, response, sco
   const generation = appGeneration(appPolicy(host.options, app), parsed.request.generation)
   const call: PlugRequest = { ...parsed.request, model: requested.model, generation, ref, ...tagField(info.tag) }
   reportParallelTools(response, call)
+  noteSizes(info, call)
   reportDroppedTools(response, parsed.droppedTools)
   // The echoed object shows what the model gets: the app's cap and sampling defaults, not only the caller's values (#263, #264).
   const exchange: ResponsesExchange = {

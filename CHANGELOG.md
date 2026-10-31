@@ -14,7 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Every model request is stored whole, by default** ([#586](https://github.com/jjjermiah/opencode-plugboard/issues/586)). Each authenticated model request, on every API, leaves one record under its app: the request as received (method, path, query, every header, the body byte for byte), the response as sent (status, headers, the full body, a stream's raw SSE bytes), the timing, the routing (model requested and served, the fallback chain, breaker decisions, cache result), the usage and cost, the model's full answer assembled from the stream, and every error with its full body, the host's own error included. An app's key reads its own record with `GET /plugboard/requests/{request id or session id}`; another app's id is a 404. Only the values of `Authorization`, `x-api-key`, `x-goog-api-key` and a `key` query parameter are redacted. The option is `history.storeRequestBody` (default `true`, per app under `apps.<name>.history`); `false` stores nothing. Nothing is capped or pruned, and images and streams can be megabytes per request. The option name `history` was a retired spelling of `sessions`; its old fields now say they moved there.
+- **The request log line shows how big the request was** ([#586](https://github.com/jjjermiah/opencode-plugboard/issues/586)). Each model request logs `body_bytes`, and the count and bytes of its system prompts, messages and tools (`system_count`, `system_bytes`, `message_count`, `message_bytes`, `tool_count`, `tool_bytes`). A small question that costs thousands of cached prompt tokens now shows where they come from, usually the tool list.
 
 ## [0.63.1] - 2026-10-24: Signed Thinking Again
 

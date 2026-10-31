@@ -18,6 +18,7 @@ import type { UsageRecorder } from "../../src/usage.js"
 import type { KeyStore } from "../../src/keys.js"
 import { createResponseState, createResponseStore, type ResponseStore } from "../../src/responses/state.js"
 import { createFileState, createFileStore, type FileStore } from "../../src/files/state.js"
+import { createRecordStore, type RecordStore } from "../../src/record-store.js"
 import { FakeStorage } from "./usage.js"
 import type { SessionPromptDeps } from "../../src/session/caller.js"
 import type { RuntimeStatus } from "../../src/runtime.js"
@@ -178,6 +179,8 @@ export interface RouteServer extends Loopback {
   readonly options: PlugboardOptions
   /** The route's metrics registry (fresh per server; written only when option `metrics` is on). */
   readonly metrics: Metrics
+  /** The storage behind the default exchange records store: every key and value written, for a test to read. */
+  readonly storage: FakeStorage
 }
 
 /** The runtime facts `/plugboard/status` and `/plugboard/metrics` report, fixed for tests (the real ones come from src/runtime.ts). */
@@ -202,6 +205,8 @@ export interface RouteSetup {
   readonly responses?: ResponseStore
   /** The uploaded files store (src/files/state.ts). Defaults to one on a fresh `FakeStorage`; pass your own to share storage across servers (a restart). */
   readonly files?: FileStore
+  /** The exchange records store (src/record-store.ts, #586). Defaults to one on a fresh `FakeStorage`, which `RouteServer.storage` exposes. */
+  readonly records?: RecordStore
   /** The listen address the options name (`0.0.0.0`, #544); the socket itself is always loopback. Default `127.0.0.1`. */
   readonly listenHost?: string
 }
@@ -214,6 +219,7 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
   const options = testOptions({ ...setup.options, listen: { ...(setup.options?.listen as object | undefined), host: setup.listenHost ?? "127.0.0.1", port: server.port } })
   const catalog = setup.catalog ?? CATALOG
   const metrics = createMetrics()
+  const storage = new FakeStorage()
   handle = createOpenAiRoute({
     options,
     caller: setup.caller,
@@ -226,8 +232,9 @@ export async function startRoute(setup: RouteSetup): Promise<RouteServer> {
     ...(setup.session ? { session: setup.session } : {}),
     responses: setup.responses ?? createResponseStore({ storage: new FakeStorage(), state: createResponseState() }),
     files: setup.files ?? createFileStore({ storage: new FakeStorage(), state: createFileState() }),
+    records: setup.records ?? createRecordStore({ storage }),
   })
-  return { ...server, options, metrics }
+  return { ...server, options, metrics, storage }
 }
 
 /** One parsed SSE item, in stream order: an event (`data`, and `event` when named) or a comment (`: keepalive`). */

@@ -30,6 +30,7 @@ import { serveAdmin } from "../admin/route.js"
 import {
   DEFAULT_APP,
   appPolicy,
+  storesRecords,
   authenticate,
   authenticateUsage,
   bodyLimits,
@@ -76,6 +77,8 @@ import { clientAddress, forwardedOrigin } from "../forwarded.js"
 import { encodeGeminiError } from "../gemini/response.js"
 import { geminiAuthorization, matchGeminiRoute, serveGemini } from "../gemini/route.js"
 import { errorMessage, logError, logRequest, withRequestId } from "../log.js"
+import { ExchangeRecorder, recording, teeResponse, withRecorder } from "../record.js"
+import type { RecordStore } from "../record-store.js"
 import { NO_APP, outcomeLabel, type Metrics } from "../metrics.js"
 import { effortUnavailable, filterByCapability, listAvailableModels, modelNotAvailable, parseCapability, resolveModel, THINKING_HEADER } from "../models.js"
 import { parseCacheDirective, reportCache, reportCacheDirective } from "../cache.js"
@@ -95,6 +98,7 @@ import type { KeyStore } from "../keys.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
+import { bodyOf, noteBody, noteSizes, type SizeInfo } from "../request-size.js"
 import { noteTag, tagField } from "../tag.js"
 import { bodyUser, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
@@ -127,11 +131,26 @@ export interface RouteHost {
   readonly responses: ResponseStore
   /** Uploaded files (src/files/state.ts, since next): behind the Files APIs and every `file_id` and `fileUri`. */
   readonly files: FileStore
+  /** The exchange records (src/record-store.ts, #586): written when a model request ends and read by `GET /plugboard/requests/{id}`. Absent: nothing is stored. */
+  readonly records?: RecordStore
 }
 
 const SESSION_HEADER = "x-plugboard-session"
 const DROPPED_HEADER = "x-plugboard-dropped-params"
 const MODEL_PREFIX = "/v1/models/"
+/** `GET /plugboard/requests/{id}`: one exchange record of the caller's own app, by request id or session id (#586). */
+const RECORDS_PREFIX = "/plugboard/requests/"
+const RECORDS_ROUTE = "GET /plugboard/requests/{id}"
+/** The routes that run a model: what an exchange record is kept for. A count route does not run one. */
+const MODEL_PATH = /^\/v1\/(chat\/completions|completions|responses|messages)$|:(stream)?[gG]enerateContent$/
+const isModelRequest = (request: IncomingMessage): boolean => {
+  if (request.method !== "POST") return false
+  try {
+    return MODEL_PATH.test(new URL(request.url ?? "/", "http://127.0.0.1").pathname)
+  } catch {
+    return false
+  }
+}
 /** `GET /v1/models` and `GET /v1/models/{id}` read credentials as the Messages route does, so `x-api-key` works there too (#399). */
 const isModelsRead = (method: string | undefined, path: string) => method === "GET" && (path === "/v1/models" || path.startsWith(MODEL_PREFIX))
 /** The Files routes read credentials the same way: `x-api-key` works there too (the Anthropic SDKs send it). */
@@ -197,8 +216,8 @@ const decodeSegment = (raw: string): string => {
   }
 }
 
-/** What a request log line may carry: ids and outcomes only. */
-interface RequestInfo extends ServedInfo {
+/** What a request log line may carry: ids, outcomes and sizes only. */
+interface RequestInfo extends ServedInfo, SizeInfo {
   route: string
   app?: string
   model?: string
@@ -220,7 +239,8 @@ export function createOpenAiRoute(routeHost: RouteHost) {
   // Metrics are written only when the option is on: off means no bookkeeping, no wrapped event stream.
   const metrics = routeHost.options.metrics ? (routeHost.metrics ?? processMetrics()) : undefined
   const runtimeStatus = routeHost.status ?? processStatus
-  const host: RouteHost = metrics ? { ...routeHost, caller: metered(routeHost.caller, metrics) } : routeHost
+  // The recording layer is outermost, so the records see what the front-end sees; it does nothing for a request that is not recorded.
+  const host: RouteHost = { ...routeHost, caller: recording(metrics ? metered(routeHost.caller, metrics) : routeHost.caller) }
   /** The runtime app keys that authenticate (loaded from storage on first use, #55). */
   const runtimeDigests = async () => (host.keys ? await host.keys.digests() : [])
   /** Routes with a handler of their own. `GET /plugboard/metrics` exists only when enabled; otherwise it is an unknown path. */
@@ -287,6 +307,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
     const path = url.pathname
     if (path === PLUGBOARD_PREFIX || path.startsWith(`${PLUGBOARD_PREFIX}/`)) plugboardErrors.set(response, request.url ?? path)
+    const recordKey = request.method === "GET" && path.startsWith(RECORDS_PREFIX) && path.length > RECORDS_PREFIX.length ? decodeSegment(path.slice(RECORDS_PREFIX.length)) : undefined
     const modelId = request.method === "GET" && path.startsWith(MODEL_PREFIX) && path.length > MODEL_PREFIX.length ? decodeSegment(path.slice(MODEL_PREFIX.length)) : undefined
     const gemini = matchGeminiRoute(request.method, path)
     // The stored-response routes carry an id in the path: they are logged and counted under their template, never with the id.
@@ -297,9 +318,11 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // Any /v1beta path is Google's API, even one that matches no Gemini route (#150): its errors use Google's body.
     const googleShaped = gemini !== undefined || geminiFiles !== undefined || isGeminiPath(path)
     if (googleShaped) googleErrors.add(response)
-    const route = gemini?.route ?? stored?.route ?? files?.route ?? geminiFiles?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`
+    const route =
+      recordKey !== undefined ? RECORDS_ROUTE : (gemini?.route ?? stored?.route ?? files?.route ?? geminiFiles?.route ?? `${request.method} ${modelId !== undefined ? "/v1/models/{id}" : path}`)
     // Arbitrary client paths stay out of the log.
-    info.route = gemini || stored || files || geminiFiles || modelId !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
+    info.route =
+      gemini || stored || files || geminiFiles || modelId !== undefined || recordKey !== undefined || known(route) || HEALTH_ROUTES.includes(route) || READY_ROUTES.includes(route) ? route : "unknown"
     // CORS (#256). An allowed browser origin gets its headers on every answer. Its preflight (OPTIONS with a requested method)
     // is answered here, before authentication, because a preflight carries no credentials; the Host check still runs first.
     if (host.options.cors !== undefined) {
@@ -414,7 +437,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
         message: `No Gemini route for ${request.method} ${path}. Expected POST /v1beta/models/{model}:generateContent or POST /v1beta/models/{model}:streamGenerateContent; the path must start with /v1beta/models/. GET /v1beta/models lists the models.`,
       })
 
-    if (!gemini && !geminiFiles && !stored && !files && modelId === undefined && !known(route)) {
+    if (!gemini && !geminiFiles && !stored && !files && modelId === undefined && recordKey === undefined && !known(route)) {
       return fail(response, {
         status: 404,
         kind: "not_found",
@@ -437,6 +460,13 @@ export function createOpenAiRoute(routeHost: RouteHost) {
 
     // Stored Responses: read or deleted under the caller's own app, never another's (I32).
     if (stored) return serveStoredResponse(host, { app: auth.app, match: stored, url, response, scope })
+
+    // One exchange record: under the caller's own app only, whatever id is asked for (I34).
+    if (recordKey !== undefined) {
+      const json = host.records === undefined ? undefined : await scope.race(host.records.load(auth.app, recordKey))
+      if (json === undefined) return fail(response, { status: 404, kind: "not_found", code: "record_not_found", message: "No stored record with that id for this app" })
+      return sendText(response, 200, "application/json", json, { "cache-control": "no-store" })
+    }
 
     if (route === "GET /plugboard/status") {
       const catalog = await optionalCatalog(scope)
@@ -490,6 +520,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (isPlugError(cache)) return fail(response, cache)
 
     const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app, host.keys?.appNames()))
+    noteBody(info, request)
     // The end user: the app's `userHeader` when the request sends it (#272), else the body's `user`.
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUser(sent))
     const body = withEndUser(sent, user, "user")
@@ -519,6 +550,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
     const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref, ...tagField(info.tag) }
     reportParallelTools(response, call)
+    noteSizes(info, call)
     // Per app, then global (`reasoningOutputFor`): the decoder does not know the app.
     const exchange: OpenAiExchange = { ...parsed.exchange, reasoningOutput: reasoningOutputFor(host.options, auth.app) }
     // The answer names the model it runs on: the app's pin, else the caller's (#261).
@@ -623,11 +655,18 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     // The deadline is armed after the app is known, so an app's own `requestTimeoutMs` (#257) applies from the first await.
     const app = await requestApp(request)
     const scope = beginRequest(request, response, requestTimeoutFor(host.options, app), undefined, requestTimeoutOption(host.options, app))
+    // An authenticated model request is recorded when the app keeps records (option `history.storeRequestBody`, #586). The recorder copies the
+    // response as it is written, and the layers below reach it through `withRecorder`.
+    const recorder =
+      app !== undefined && host.records !== undefined && isModelRequest(request) && storesRecords(host.options, app)
+        ? new ExchangeRecorder({ id, app, method: request.method ?? "POST", url: new URL(request.url ?? "/", "http://127.0.0.1"), headers: request.headers })
+        : undefined
+    if (recorder) teeResponse(response, recorder)
     let outcome = "ok"
     let error: string | undefined
     try {
       try {
-        await serve(request, response, scope, info)
+        await withRecorder(recorder, () => serve(request, response, scope, info))
       } catch (caught) {
         if (caught instanceof RequestAborted) {
           outcome = caught.kind
@@ -661,6 +700,15 @@ export function createOpenAiRoute(routeHost: RouteHost) {
       try {
         finishRequest(request, response)
       } catch {}
+      if (recorder && host.records) {
+        try {
+          if (error !== undefined) recorder.trace("error", { source: "plugboard", outcome, message: error })
+          const record = recorder.finish(response, info.body ?? bodyOf(request), outcome)
+          await host.records.save(recorder.app, id, record.sessions, JSON.stringify(record))
+        } catch (caught) {
+          logError("record.save_failed", { error: errorMessage(caught) })
+        }
+      }
       const ms = Date.now() - started
       recorded("requestFinished", () => metrics?.requestFinished({ app: info.app ?? NO_APP, route: info.route, status: response.statusCode, outcome: outcomeLabel(outcome, response.statusCode), ms }))
       recorded("usage", () => {
@@ -691,6 +739,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           served: info.served,
           fallbacks: info.fallbacks,
           dropped: info.dropped,
+          ...info.sizes,
           status: response.statusCode,
           ms,
           outcome,

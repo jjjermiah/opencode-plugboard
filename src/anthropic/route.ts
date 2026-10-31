@@ -14,6 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { appPolicy, authenticate, bodyLimits, endpointRefusal, sessionUrlTemplate, requestedModel } from "../config.js"
 import { liveOptions } from "../runtime.js"
+import { noteBody, noteSizes, type SizeInfo } from "../request-size.js"
 import { noteTag, tagField } from "../tag.js"
 import { bodyUserId, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { isPlugError, type PlugError, type PlugRequest } from "../contract.js"
@@ -54,7 +55,7 @@ export interface MessagesCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the route name, the app, the resolved model, dropped parameters, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string; user?: string; tag?: string }
+  readonly info: ServedInfo & SizeInfo & { route: string; app?: string; model?: string; failed?: string; dropped?: string; user?: string; tag?: string }
 }
 
 const header = (request: IncomingMessage, name: string): string | undefined => {
@@ -109,6 +110,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     if (isPlugError(cache)) return fail(cache)
 
     const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app, host.keys?.appNames()))
+    noteBody(info, request)
     // The end user: the app's `userHeader` when the request sends it (#272), else the body's `metadata.user_id`.
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUserId(sent))
     const body = withEndUser(sent, user, "metadata")
@@ -151,6 +153,7 @@ export async function serveMessages(host: RouteHost, call: MessagesCall): Promis
     if (parsed.exchange.thinking && thinkingUnavailable(catalog, ref)) response.setHeader(THINKING_HEADER, "unavailable")
     const model: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref, ...tagField(info.tag) }
     reportParallelTools(response, model)
+    noteSizes(info, model)
     const { exchange } = parsed
     // The answer names the model it runs on: the app's pin, else the caller's (#261).
     exchange.model = requested.model

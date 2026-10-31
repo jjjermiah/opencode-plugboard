@@ -21,6 +21,7 @@ import { raceAbort } from "../abort.js"
 import { DEFAULT_APP, DEFAULT_OPENCODE_TOOL_CALLS, DEFAULT_OPENCODE_TOOL_STEPS, appPolicy, isAppName, type AppPolicy, type AffinityScope, type PlugboardOptions, type PromptCache } from "../config.js"
 import { isPlugError, type CallContext, type ModelCaller, type PlugError, type PlugEvent, type PlugRequest } from "../contract.js"
 import { debugEnabled, log, logDebug, logError, logRequest, logWarn } from "../log.js"
+import { currentRecorder } from "../record.js"
 import type { Metrics } from "../metrics.js"
 import { checkAppModel, type Persona } from "../models.js"
 import { RequestCollector } from "./events.js"
@@ -483,10 +484,13 @@ export function createSessionCaller(deps: SessionCallerDeps): ModelCaller {
         }
         if (context.signal.aborted) return
 
+        // The exchange record of this request (#586): the host's raw errors go to it, whole, before they are mapped.
+        const exchange = currentRecorder()
         collector = new RequestCollector({
           stopTurn: interrupt,
           requestID,
           app,
+          ...(exchange ? { onUpstreamError: (kind: "failed" | "retry", raw: unknown) => exchange.trace("error", { source: "upstream", kind, session: sessionID, raw }) } : {}),
           // The ids the model may name a tool by are rewritten only for this request's tools (#411).
           toolNames: [...request.tools.map((tool) => tool.name), ...(policy?.opencodeTools ?? [])],
           // The caller tools the session offers (after the tool policy): a tool call must name one of them (#463).

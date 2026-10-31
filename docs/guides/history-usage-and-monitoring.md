@@ -16,6 +16,8 @@ Every request is kept as an OpenCode session in a directory for its app, so it n
 - Set `sessionUrl` to get a `x-plugboard-session-url` link in each response.
 - A request's prompt is what your caller sent: its system prompts, messages and tools, plus the app's own prompt options. OpenCode's instruction files (`AGENTS.md`, global or project) are not sent to the model, even though OpenCode loads them into the session. When a small question costs many prompt tokens, the tool list is the usual cause.
 
+Plugboard also keeps one record per model request, by default: the request exactly as received, the response as sent (a stream as its raw SSE bytes), the timing, the routing, the usage and every error. The stored outputs are the model's full answers, not only the prompts. `history.storeRequestBody: false` turns it off, globally or per app. Read one with `GET /plugboard/requests/{id}` and the app's key. It is uncapped and not pruned, so images and streams add up. See [Stored requests](../configuration.md#stored-requests).
+
 History holds every prompt and reply, so treat OpenCode's database as sensitive. More: [Session history](../history.md).
 
 ## See what each app used: usage statistics
@@ -66,6 +68,7 @@ curl -s http://127.0.0.1:4010/plugboard/metrics -H "Authorization: Bearer $PLUGB
 - With `adminKey` set, only the admin key reads the metrics, because the series name every app.
 - The series: `plugboard_requests_total`, `plugboard_request_duration_seconds`, `plugboard_requests_in_flight`, `plugboard_tokens_total`, `plugboard_fallbacks_total`, `plugboard_circuit_breaker_events_total`, `plugboard_circuit_breaker_targets`, `plugboard_limited_total`, `plugboard_cache_requests_total`, `plugboard_dropped_params_total`, `plugboard_remote_image_fetches_total`, `plugboard_remote_image_bytes_total`, `plugboard_remote_image_fetch_duration_seconds`, `plugboard_usage_missing_total`, `plugboard_settled_from_transcript_total`, `plugboard_sessions_sweeps_total`, `plugboard_sessions_removed_total`, `plugboard_event_pump_up`, `plugboard_generations`, `plugboard_session_guards` and `plugboard_start_time_seconds`. There is no model label and no tag label, so cardinality stays bounded: a usage tag is free-form, so it lives in the usage report, not in the metrics.
 - Every response has an `x-plugboard-request-id`. The same id is on that request's log lines. A caller's `x-request-id` is echoed and logged as `clientRequestId` on the request line.
+- The request line also carries the size of the request: `body_bytes`, and the count and bytes of its system prompts, messages and tools (`tool_count`, `tool_bytes`). Look there first when a small question costs many prompt tokens.
 - `logLevel` picks the lowest level written. `logRequests: false` drops the per-request access lines. Problems stay visible at `warn`.
 - Probes: `GET /healthz` is liveness. `GET /readyz` says whether the listener, the event pump and the model catalog are ready.
 - `GET /plugboard/status` reports uptime, the listen address, the plugboard version and the OpenCode version.

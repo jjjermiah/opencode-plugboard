@@ -1,7 +1,7 @@
 /**
  * #586 OpenCode's instruction files (the global and project `AGENTS.md`) never reach the model of a request session. The host builds a
  * request session's system prompt with them, and the context hook then replaces the system prompt and the messages with the caller's.
- * Measured on OpenCode 2.1.4: a 16,784-character `AGENTS.md` left `prompt_tokens` for "say pong" at 11, with and without it.
+ * Measured on OpenCode 2.1.4: a 16,784-character `AGENTS.md` left `prompt_tokens` for "say pong" at 11, and at 5,977 for the same prompt with 40 tools, with and without it.
  */
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"

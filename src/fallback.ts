@@ -27,6 +27,7 @@ import { DEFAULT_CIRCUIT_BREAKER, type CircuitBreaker, type PlugboardOptions } f
 import type { CallContext, CatalogModel, ModelCaller, ModelRef, PlugError, PlugEvent, PlugRequest, ServedModel } from "./contract.js"
 import { RequestAborted } from "./http.js"
 import { debugEnabled, log, logDebug, logWarn } from "./log.js"
+import { trace } from "./record.js"
 import { fallbackRefs, refToString } from "./models.js"
 import { dropRejected } from "./openai/sampling.js"
 
@@ -149,6 +150,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
       if (claim.verdict !== "skip") return { index, token: claim.token }
       const until = breaker.until(name(index))
       log("circuit_breaker.skip", { app: context.app, target: name(index), ...(until === undefined ? {} : { until: new Date(until).toISOString() }) })
+      trace("breaker", { decision: "skip", target: name(index), ...(until === undefined ? {} : { until: new Date(until).toISOString() }) })
       deps.onCooldown?.("skip", context.app)
     }
     return undefined
@@ -161,6 +163,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
   const note = (event: "opened" | "reopened" | "closed" | undefined, model: string): void => {
     if (event === undefined) return
     const until = breaker.until(model)
+    trace("breaker", { decision: event, target: model, ...(until === undefined ? {} : { until: new Date(until).toISOString() }) })
     if (event === "closed") log("circuit_breaker.close", { app: context.app, target: model })
     else
       logWarn("circuit_breaker.open", {
@@ -177,6 +180,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
   let chosen = select(0)
   if (chosen === undefined) {
     logWarn("circuit_breaker.all_open", { app: context.app, targets: targets.length })
+    trace("breaker", { decision: "all_open", targets: targets.length })
     chosen = { index: 0 }
   }
   let { index, token } = chosen
@@ -251,6 +255,14 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
       else breaker.release(model, token)
     }
 
+    // What each attempt came to, with the error body it failed with.
+    trace("attempts", {
+      attempt: attempts,
+      target: refToString(ref),
+      outcome: reason ?? (thrown ? "thrown" : first!.done ? "empty" : first!.value.type === "error" ? "error" : "answered"),
+      ...(thrown ? { thrown: thrown.error instanceof Error ? thrown.error.message : String(thrown.error) } : {}),
+      ...(!thrown && !first!.done && first!.value.type === "error" ? { error: first!.value.error } : {}),
+    })
     if (reason !== undefined) {
       // The look-ahead took no slot, so another request may have taken the probe of the target it found: it is then tried without one, as the
       // attempt was told it follows (and may have been aborted for it).
@@ -258,6 +270,7 @@ async function* chain(inner: ModelCaller, deps: FallbackDeps, breaker: Breaker, 
       if (to !== undefined) {
         if (iterator && (!thrown || timedOut)) await close(iterator)
         log("model.fallback", { app: context.app, from: refToString(ref), to: name(to.index), reason, attempt: attempts })
+        trace("fallbacks", { from: refToString(ref), to: name(to.index), reason, attempt: attempts })
         deps.onFallback?.(context.app)
         index = to.index
         token = to.token

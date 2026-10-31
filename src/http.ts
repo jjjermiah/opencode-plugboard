@@ -9,6 +9,7 @@ import { raceAbort } from "./abort.js"
 import { BODY_LIMIT_DEFAULTS, type BodyLimits, isLoopbackHost, type PlugboardOptions } from "./config.js"
 import type { PlugError, PlugEvent } from "./contract.js"
 import { forwardedHost } from "./forwarded.js"
+import { rememberBody } from "./request-size.js"
 
 /** Largest delay `setTimeout` accepts; anything larger fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1
@@ -167,6 +168,7 @@ export function beginRequest(
  */
 export function readJsonBody(request: IncomingMessage, signal: AbortSignal, limits: BodyLimits = BODY_LIMIT_DEFAULTS): Promise<unknown> {
   return readBody(request, signal, limits).then((raw) => {
+    rememberBody(request, raw)
     try {
       return raw.length === 0 ? {} : JSON.parse(raw.toString("utf8"))
     } catch {
@@ -361,6 +363,7 @@ export const PROBLEM_CODES: ReadonlySet<string> = new Set([
   "invalid_app",
   "invalid_user",
   "app_forbidden",
+  "record_not_found",
   "key_not_found",
   "config_key",
   "app_has_opencode_tools",
