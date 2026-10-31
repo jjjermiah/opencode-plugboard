@@ -29,6 +29,7 @@ describe("parseOptions: defaults", () => {
       requestTimeoutMs: 600_000,
       remoteImages: false,
       sessions: { maxAgeDays: 30 },
+      history: { storeRequestBody: true },
       dropUnsupportedParams: true,
       logFormat: "text",
       logLevel: "info",
@@ -124,7 +125,12 @@ describe("parseOptions: defaults", () => {
 describe("parseOptions: an unknown option says what to do", () => {
   const keyed = { keys: { a: "k" } }
   test.each<[string, Record<string, unknown>, string]>([
-    ["an old top-level name", { history: { maxSessions: 1 } }, "Unknown plugboard option `history`: it is renamed to `sessions`"],
+    ["the retired history fields, which moved to sessions", { history: { maxSessions: 1 } }, "Unknown plugboard option `history.maxSessions`: it is renamed to `sessions.maxSessions`"],
+    [
+      "the retired history fields inside an app",
+      { ...keyed, apps: { a: { history: { maxAgeDays: 1 } } } },
+      "Unknown plugboard option `apps.a.history.maxAgeDays`: it is renamed to `apps.a.sessions.maxAgeDays`",
+    ],
     ["another old top-level name", { maxN: 2 }, "Unknown plugboard option `maxN`: it is renamed to `maxChoices`"],
     ["the old cache option", { cache: {} }, "Unknown plugboard option `cache`: it is renamed to `responseCache`"],
     ["the old circuit breaker", { fallbackCooldown: {} }, "Unknown plugboard option `fallbackCooldown`: it is renamed to `circuitBreaker`"],

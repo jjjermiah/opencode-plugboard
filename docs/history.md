@@ -17,6 +17,10 @@ That directory only groups sessions: it is the `directory` a session is filed un
 
 History records every prompt and reply, so treat OpenCode's database as sensitive.
 
+## Request records
+
+Beside each session, plugboard keeps a record of the HTTP exchange that made it (option `history.storeRequestBody`, on by default, per app or global): the request as received, the full response as sent, the timing, the routing, the usage and every error. A streamed answer is stored as its raw SSE bytes and as the assembled final answer. The outputs are the model's full answers, not only the prompts. Records live in the same OpenCode database, are not capped, and are not removed when their session is pruned. An app's key reads its own with `GET /plugboard/requests/{request id or session id}`. See [Stored requests](configuration.md#stored-requests).
+
 ## Where you see it
 
 In OpenCode the sessions appear as one group per app in the desktop and phone app home screen. In the TUI they are visible in the all-projects view (ctrl+a), not in a project's own list.

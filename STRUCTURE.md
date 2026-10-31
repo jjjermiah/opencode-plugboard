@@ -39,6 +39,9 @@ Where things live and where new code goes. How the pieces fit together, and why,
 | `tag.ts` | The usage tag of a request: the sanitizer for the `x-plugboard-tag` header, which a route reads into `RequestInfo` and each call it builds. A refused value is ignored with a debug line. |
 | `keys.ts` | Runtime app keys (#55): the store on the host storage (SHA-256 digests under `keys/`), the cache on the runtime, create, list and revoke. |
 | `metrics.ts` | The @prometheus-io/client registry and text rendering. No I/O. |
+| `request-size.ts` | The sizes of a model request for the request log line (`body_bytes`, `tool_bytes`, ...): the raw body kept per request, and the counts and JSON bytes of the decoded system, messages and tools. |
+| `record.ts` | The exchange record (#586, I34): `ExchangeRecorder` (request, response copied as written, timing, routing, calls, errors), `recording` (the model-caller layer that fills the call records), `trace` and `currentRecorder` (an async-local store the layers below reach it by), the redaction of secrets. |
+| `record-store.ts` | Where exchange records are stored: `record/<app>/<request id>` and `record-session/<app>/<session id>` on the host storage; the read behind `GET /plugboard/requests/{id}`. |
 | `log.ts` | The pino logger (text or JSON lines), the ambient request id and redaction. Ids and outcomes only. |
 | `usage.ts` | Per-app usage by UTC day: day records, the latency histogram, cost (mirrors OpenCode's `calculateCost`), the recorder with its serialized storage writes and retention, the query, and the `withUsage` model-caller wrapper. |
 | `usage-header.ts` | The `x-plugboard-usage` response header (#52): the format and the per-response accumulator behind `CallContext.onUsage`. |

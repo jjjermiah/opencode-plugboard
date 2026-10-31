@@ -38,6 +38,9 @@ export function rememberBody(request: IncomingMessage, raw: Buffer): void {
   bodies.set(request, raw)
 }
 
+/** The raw body of a request, if it was read (also when it was not valid JSON). */
+export const bodyOf = (request: IncomingMessage): Buffer | undefined => bodies.get(request)
+
 /** For a route: puts the raw body of the request in its info (the sizes are read from it). */
 export function noteBody(info: SizeInfo, request: IncomingMessage): void {
   const raw = bodies.get(request)

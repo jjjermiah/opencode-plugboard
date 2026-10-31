@@ -284,6 +284,11 @@ export const ROWS: readonly Row[] = [
     },
   },
   read(
+    "GET /plugboard/requests/{id}",
+    at(HTTP + "request-record.test.ts", "the app that made the request reads it by request id and by session id; another app gets a 404, and so does an unknown id"),
+    at(HTTP + "request-record.test.ts", "a key that tries to leave the app's prefix finds nothing"),
+  ),
+  read(
     "GET /plugboard/usage",
     at(HTTP + "usage.test.ts", "the admin key reads every app, and may narrow to one or name an empty one"),
     at(HTTP + "usage.test.ts", "an app key sees only its own app; naming another app is a 403"),

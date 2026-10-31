@@ -15,6 +15,8 @@ Every request is kept as an OpenCode session in a directory for its app, so it n
 - Set `sessions.hideFromList: true` to keep request sessions out of OpenCode's session lists. They become children of one `plugboard: <app>` parent.
 - Set `sessionUrl` to get a `x-plugboard-session-url` link in each response.
 
+Plugboard also keeps one record per model request, by default: the request exactly as received, the response as sent (a stream as its raw SSE bytes), the timing, the routing, the usage and every error. The stored outputs are the model's full answers, not only the prompts. `history.storeRequestBody: false` turns it off, globally or per app. Read one with `GET /plugboard/requests/{id}` and the app's key. It is uncapped and not pruned, so images and streams add up. See [Stored requests](../configuration.md#stored-requests).
+
 History holds every prompt and reply, so treat OpenCode's database as sensitive. More: [Session history](../history.md).
 
 ## See what each app used: usage statistics

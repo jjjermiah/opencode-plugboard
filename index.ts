@@ -52,6 +52,7 @@ import { keepAliveIntervalMs, keepAliveLoop } from "./src/keepalive.js"
 import { createKeyStore } from "./src/keys.js"
 import { createResponseStore } from "./src/responses/state.js"
 import { createFileStore } from "./src/files/state.js"
+import { createRecordStore } from "./src/record-store.js"
 import { usageHandlers, UsageRpc } from "./src/rpc.js"
 import { createUsageRecorder, withUsage } from "./src/usage.js"
 import { hostVersion } from "./src/version.js"
@@ -179,6 +180,8 @@ export default Plugin.define({
         responses: createResponseStore({ storage: createStoragePort(ctx) }),
         // Uploaded files (src/files/state.ts, since next): same host storage, request handling only.
         files: createFileStore({ storage: createStoragePort(ctx) }),
+        // Exchange records (src/record-store.ts, #586): same host storage, written and read from request handling only.
+        records: createRecordStore({ storage: createStoragePort(ctx) }),
         // The prompt a count reads (persona, server tools): the same port, persona lookup and backend gate as the session caller (#201).
         session: callerDeps,
       })
