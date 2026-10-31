@@ -2564,4 +2564,20 @@ export const MUTATIONS: readonly Mutation[] = [
     replace: 'const WINDOWS: ReadonlyArray<BudgetWindow> = ["day", "week"]',
     tests: ["test/unit/budgets.test.ts", "test/http/budgets.test.ts"],
   },
+  {
+    id: "P586-host-system-prompt-kept",
+    invariant: "#586",
+    file: "src/session/context.ts",
+    find: "  session.system = requestSystem(request, state.prelude ?? [], policy).map(text)\n",
+    replace: "  session.system = [...(session.system ?? []), ...requestSystem(request, state.prelude ?? [], policy).map(text)]\n",
+    tests: ["test/session/context-instructions.test.ts"],
+  },
+  {
+    id: "P586-host-messages-kept",
+    invariant: "#586",
+    file: "src/session/context.ts",
+    find: "  session.messages = [...caller, ...appended]\n",
+    replace: "  session.messages = [...host, ...caller, ...appended]\n",
+    tests: ["test/session/context-instructions.test.ts"],
+  },
 ]

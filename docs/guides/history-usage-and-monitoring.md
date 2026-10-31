@@ -14,6 +14,7 @@ Every request is kept as an OpenCode session in a directory for its app, so it n
 - One app can keep a different amount: `apps.<name>.sessions`. An unset field falls back to the global one.
 - Set `sessions.hideFromList: true` to keep request sessions out of OpenCode's session lists. They become children of one `plugboard: <app>` parent.
 - Set `sessionUrl` to get a `x-plugboard-session-url` link in each response.
+- A request's prompt is what your caller sent: its system prompts, messages and tools, plus the app's own prompt options. OpenCode's instruction files (`AGENTS.md`, global or project) are not sent to the model, even though OpenCode loads them into the session. When a small question costs many prompt tokens, the tool list is the usual cause.
 
 History holds every prompt and reply, so treat OpenCode's database as sensitive. More: [Session history](../history.md).
 
