@@ -34,6 +34,7 @@ import { STRUCTURED_FALLBACK_HEADER } from "../openai/response.js"
 import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { estimateTokens } from "../anthropic/tokens.js"
 import { inlineRequestFiles } from "../files/route.js"
+import { noteBody, noteSizes, type SizeInfo } from "../request-size.js"
 import { noteTag, tagField } from "../tag.js"
 import { parseGeminiRequest } from "./request.js"
 import { arrayWire, encodeGeminiError, encodeGeminiModel, encodeGeminiModelList, geminiCodec, noResponse, runGenerate, sseWire } from "./response.js"
@@ -109,7 +110,7 @@ export interface GeminiCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { model?: string; failed?: string; dropped?: string; tag?: string }
+  readonly info: ServedInfo & SizeInfo & { model?: string; failed?: string; dropped?: string; tag?: string }
 }
 
 export async function serveGemini(host: RouteHost, { match, request, url, app, response, scope, info }: GeminiCall): Promise<void> {
@@ -163,7 +164,9 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
   const cache = parseCacheDirective(request.headers)
   if (isPlugError(cache)) return fail(cache)
   // A `fileData.fileUri` naming a stored file is replaced by the inline form of that file before the decoder runs (since next).
-  const body = await inlineRequestFiles(host, app, "gemini", await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames())), scope)
+  const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, app, host.keys?.appNames()))
+  noteBody(info, request)
+  const body = await inlineRequestFiles(host, app, "gemini", sent, scope)
   if (isPlugError(body)) return fail(body)
 
   // The app's own `maxChoices` is the cap for this request; the decoder checks `candidateCount` against it.
@@ -183,6 +186,7 @@ export async function serveGemini(host: RouteHost, { match, request, url, app, r
     response.setHeader(DROPPED_HEADER, info.dropped)
   }
   const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref, ...tagField(info.tag) }
+  noteSizes(info, call)
   const { exchange } = parsed
   // The answer names the model it runs on: the app's pin, else the caller's (#261).
   exchange.model = requested.model

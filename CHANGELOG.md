@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **The request log line shows how big the request was** ([#586](https://github.com/jjjermiah/opencode-plugboard/issues/586)). Each model request logs `body_bytes`, and the count and bytes of its system prompts, messages and tools (`system_count`, `system_bytes`, `message_count`, `message_bytes`, `tool_count`, `tool_bytes`). A small question that costs thousands of cached prompt tokens now shows where they come from, usually the tool list.
 
 ## [0.63.1] - 2026-10-24: Signed Thinking Again
 
