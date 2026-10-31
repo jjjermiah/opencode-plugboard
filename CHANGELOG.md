@@ -14,10 +14,211 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.64.0] - 2026-10-31: Every Request, Kept
+
+**Full diff:** [v0.63.1...v0.64.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.1...v0.64.0)
+
 ### Added
 
 - **Every model request is stored whole, by default** ([#586](https://github.com/jjjermiah/opencode-plugboard/issues/586)). Each authenticated model request, on every API, leaves one record under its app: the request as received (method, path, query, every header, the body byte for byte), the response as sent (status, headers, the full body, a stream's raw SSE bytes), the timing, the routing (model requested and served, the fallback chain, breaker decisions, cache result), the usage and cost, the model's full answer assembled from the stream, and every error with its full body, the host's own error included. An app's key reads its own record with `GET /plugboard/requests/{request id or session id}`; another app's id is a 404. Only the values of `Authorization`, `x-api-key`, `x-goog-api-key` and a `key` query parameter are redacted. The option is `history.storeRequestBody` (default `true`, per app under `apps.<name>.history`); `false` stores nothing. Nothing is capped or pruned, and images and streams can be megabytes per request. The option name `history` was a retired spelling of `sessions`; its old fields now say they moved there.
 - **The request log line shows how big the request was** ([#586](https://github.com/jjjermiah/opencode-plugboard/issues/586)). Each model request logs `body_bytes`, and the count and bytes of its system prompts, messages and tools (`system_count`, `system_bytes`, `message_count`, `message_bytes`, `tool_count`, `tool_bytes`). A small question that costs thousands of cached prompt tokens now shows where they come from, usually the tool list.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (12 commits)</summary>
+
+#### Features
+
+**feat(http): log the size of each model request** ([`3806ab4`](https://github.com/jjjermiah/opencode-plugboard/commit/3806ab479882f6a8445d4e63397a7041e7543390))
+
+A request session showed about 14.5k cached prompt tokens for a 616-byte question, and nothing in plugboard said how big the request or its tool list was. The request log line now carries body_bytes, system_count, system_bytes, message_count, message_bytes, tool_count and tool_bytes.
+
+What changed
+- src/request-size.ts: the raw body is kept per request (readJsonBody remembers it), and the sizes are the UTF-8 size of the JSON of system, messages and tools as decoded, before the session remaps the tools. An empty part is 0 bytes, not the 2 bytes of "[]". A completions body with several prompts adds them up.
+- Every model route (chat, completions, responses, messages, gemini) notes the body after reading it and the sizes once the request is decoded. The access line spreads them in. A request refused before it is decoded has none.
+- Docs: configuration.md (Operating) and the monitoring guide.
+
+Decisions
+- The existing request line, not a new event: it already carries the app, model and id, so a size can be matched to a request. Counted per HTTP request, once, whatever the fan-out or the fallback chain does.
+- Sizes come from the decoded PlugRequest, not each wire shape's own tool array, so the five front-ends share one definition. The wire wrappers (type: function, functionDeclarations) are not counted.
+- request_tool_count and request_tool_bytes are not added to the usage record: the day record, its JSON reader, the sums and the report would all change, which is not a one-line change. Log only.
+
+Validation
+- bun run validate --mutations --skip examples,test: lint, typecheck, manifest, pack, docs and mutations pass (ten new P586 entries).
+- bun test: 3886 pass, 0 fail. The validate test step still exits 1 on main as well: coverage 98.3% against a 98.9% floor, with the live suite skipped on this machine. Floors for test counts are raised.
+- Live, isolated server, github-copilot/claude-haiku-5.5, a 336-byte chat body with one system message and one tool: the line printed body_bytes=336 system_bytes=18 message_bytes=63 tool_count=1 tool_bytes=141; wc -c gave 336 for the body.
+
+Refs #586
+
+**feat(http): store every model request whole, by default** ([`d053419`](https://github.com/jjjermiah/opencode-plugboard/commit/d053419b0bf0cf5d68ca364fd367d184206dfe95))
+
+Plugboard kept no copy of what a client sent or what it got back, so a request that cost far more than expected, or answered wrongly, could not be looked at afterwards. Each authenticated model request now leaves one JSON record under its app, on by default, with no size cap.
+
+The record holds
+- request: method, path, query, every header, the body byte for byte ({ text }, or { base64 } when the bytes are not UTF-8);
+- response: status, every header, the full body as sent, a stream as its raw SSE bytes;
+- timing: received, first byte, finished;
+- routing: app, model requested, model served, the fallback attempts with their error bodies, the fallbacks taken, breaker decisions, cache result;
+- calls: per model call (one per choice of n) the answer assembled from the events (text, reasoning, tool calls, finish reason), the usage as the model reported it, the cost, the session id;
+- errors: the error the client got, the plugboard error of each call, and the host's own error before it is mapped to a caller-safe one.
+
+Where it lives and who reads it
+- The host's plugin storage (ctx.storage, the same table as usage and the history index): record/<app>/<request id>, plus record-session/<app>/ <session id> so a session id finds it. Session metadata and prompt metadata were rejected: session lists carry every row's metadata and its events go to every connected client, so megabytes there slow OpenCode itself.
+- GET /plugboard/requests/{request id or session id} with the app's key. The key is built from the authenticated app, never the input, so another app's id is the same 404 as an unknown one. The admin key reads no record (I34).
+
+How
+- src/record.ts: ExchangeRecorder, the response tee (write, end, writeHead copy what is sent; nothing about the response changes), the `recording` model-caller layer (events and the hooks onRecord, onServed, onCache, onPolicy, onAffinity, onUsage), and an async-local store so fallback.ts and the session caller report to the request's recorder with no signature change. The session caller binds the recorder when it builds its collector, because host events arrive from the event pump.
+- onUsage is always set while recording, so a stream gets its cost too.
+- src/openai/route.ts creates the recorder after authentication and writes it when the response is over.
+
+Option
+- history.storeRequestBody (default true), per app in apps.<name>.history. One option covers everything. false stores nothing. maxRecordBytes was not needed and is not added.
+- `history` was a retired spelling of `sessions`. Its old fields (maxSessions, maxAgeDays, hideFromList, hidden) now say they moved to sessions.<field>. Tests of the old rename hint are updated.
+
+Redaction: the values of Authorization, x-api-key and x-goog-api-key, as asked, and also a `key` query parameter. Gemini clients send their key there, and storing it would put a live credential in the record.
+
+Not done: records are not pruned with their sessions (the owner will clean up); no list or delete route.
+
+Validation
+- bun run validate --mutations --skip examples,test: lint, typecheck, manifest, pack, docs, mutations pass (27 new R586 entries).
+- bun test: 3914 pass, 0 fail. The validate test step still exits 1 on main as well, coverage 98.3% against a 98.9% floor with the live suite skipped here; test-count floors are raised.
+- Live, isolated server (github-copilot/claude-haiku-5.5): a streamed, a non-streamed and a refused (unknown model) request each stored a record readable by their id; the stream record held the raw SSE bytes and the assembled "Pong"; cost 3.6e-6 USD was recorded for the stream; Authorization was [redacted]; the other app's key got 404 record_not_found and a wrong key 401.
+
+Refs #586
+
+#### Docs
+
+**docs(session): instruction files do not reach a request's model** ([`2c272fd`](https://github.com/jjjermiah/opencode-plugboard/commit/2c272fd881ea90be89416b2a1c2103c608dbf49f))
+
+A request session in an app directory showed about 14.5k cached prompt tokens for a 616-byte question, and the global AGENTS.md was recorded in the session's instruction state. The question was whether OpenCode sends that file to the model. It does not, so no strip option is added. The size comes from the tool list.
+
+Measurement (isolated OpenCode 2.1.4, github-copilot/claude-haiku-5.5, "say pong", no tools, prompt_tokens):
+- no AGENTS.md in the config dir: 11
+- a 16,784-character AGENTS.md in it, server restarted: 11 OpenCode did load it: the session's instruction state held core/instructions with a 17,136-character blob. It is replaced before the request goes out: applyContext sets session.system and session.messages to the caller's (src/session/context.ts).
+- 40 tools, 16,183 bytes of tool JSON (request log tool_bytes): 5,977 prompt tokens, about 0.37 tokens per tool byte. A 14.5k-token request is roughly 39 KB of tool schemas.
+
+What changed
+- test/session/context-instructions.test.ts pins that the host's system prompt and messages, instruction files included, are replaced by the caller's. Two mutation entries (P586-host-system-prompt-kept, P586-host-messages-kept) fail it.
+- The monitoring guide says instruction files are not sent and that the tool list is the usual cause of a large prompt.
+
+Rejected: system.instructionFiles with "all" and "none". With the file already absent from the request, "none" would change nothing.
+
+Validation
+- bun run validate --mutations --skip examples,test: lint, typecheck, manifest, pack, docs, mutations pass.
+- bun test: the new tests pass. The validate test step exits 1 on main as well on this machine (coverage floor, live suite skipped).
+
+Refs #586
+
+#### CI and tooling
+
+**ci: auto-merge patch and minor Dependabot PRs** ([`7deecd4`](https://github.com/jjjermiah/opencode-plugboard/commit/7deecd43ab57e8fb26b15926235ad52a7c10c3d6))
+
+Three Dependabot PRs were open and green (#568, #561, #562) with nothing to do but press merge, and the ruleset already defines when a PR may land: pull request required, merge commit only, CI passed, Lint commit messages, Analyze. This workflow reads the update type and turns auto-merge on for patch and minor updates, so GitHub merges them when those checks go green. A semver-major update stays open for a person, which is why pillow 12.3.0 to 13.0.0 is still the owner's call.
+
+Trigger is pull_request_target because Dependabot's pull_request runs get a read-only GITHUB_TOKEN and enabling auto-merge needs write. No pull request code is checked out or run: the metadata action and gh read the PR through the API. Rejected a workflow_run chain after CI, which would need mapping runs back to PRs for the same write token, and rejected the gh-aw agentic merge output, which is preview and nondeterministic for something the ruleset already decides.
+
+Checked by hand: dependabot/fetch-metadata v3.1.0 release commit 25dd0e3 pinned, allow_auto_merge true on the repo, ruleset 24907176 allows merge only, and PR 568 reports MERGEABLE/CLEAN with all 13 checks green, so auto-merge has nothing left to wait for. End to end proof comes after this merges: a Dependabot rebase should carry the PR through to merged on its own.
+
+Fixes #573
+
+#### Dependencies
+
+**chore(deps): bump certifi in /examples/smolagents** ([`d477148`](https://github.com/jjjermiah/opencode-plugboard/commit/d4771482f8121685fe58cbdc1090cbac70f815ed))
+
+Bumps [certifi](https://github.com/certifi/python-certifi) from 2026.7.22 to 2026.10.19.
+- [Commits](https://github.com/certifi/python-certifi/compare/2026.07.22...2026.10.19)
+
+--- updated-dependencies:
+- dependency-name: certifi dependency-version: 2026.10.19 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump filelock from 4.1.1 to 4.2.1 in /examples/smolagents** ([`de54d3f`](https://github.com/jjjermiah/opencode-plugboard/commit/de54d3f206e79c554a97224a58d8535bb400d681))
+
+Bumps [filelock](https://github.com/tox-dev/py-filelock) from 4.1.1 to 4.2.1.
+- [Release notes](https://github.com/tox-dev/py-filelock/releases)
+- [Changelog](https://github.com/tox-dev/filelock/blob/main/docs/changelog.rst)
+- [Commits](https://github.com/tox-dev/py-filelock/compare/4.1.1...4.2.1)
+
+--- updated-dependencies:
+- dependency-name: filelock dependency-version: 4.2.1 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/openai-agents** ([`c004f86`](https://github.com/jjjermiah/opencode-plugboard/commit/c004f8662ee61c70f9f12f25eaa983325358d18d))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.31.0 to 3.36.1.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.31.0...v3.36.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.36.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/langchain-python** ([`91a1055`](https://github.com/jjjermiah/opencode-plugboard/commit/91a10556077cee2128cff0194dbe69c867f53a25))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.31.0 to 3.36.1.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.31.0...v3.36.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.36.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump litellm from 1.105.1 to 1.106.2 in /examples/dspy** ([`ddfda4e`](https://github.com/jjjermiah/opencode-plugboard/commit/ddfda4ebaf13decedecb69eb6985b59926017031))
+
+Bumps [litellm](https://github.com/BerriAI/litellm) from 1.105.1 to 1.106.2.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.105.1...v1.106.2)
+
+--- updated-dependencies:
+- dependency-name: litellm dependency-version: 1.106.2 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai from 3.31.0 to 3.36.1 in /examples/pydantic-ai** ([`896a0a8`](https://github.com/jjjermiah/opencode-plugboard/commit/896a0a818f11b77e2b8ee4c089c792721aab1891))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.31.0 to 3.36.1.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.31.0...v3.36.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.36.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump github/codeql-action/upload-sarif** ([`729cf8a`](https://github.com/jjjermiah/opencode-plugboard/commit/729cf8a07149b980bfb60c8a2c417a280043ff6a))
+
+Bumps [github/codeql-action/upload-sarif](https://github.com/github/codeql-action) from 4.39.0 to 4.39.1.
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee...9b3254085494b55a0f7c4c2b3d2d52cc712ce370)
+
+--- updated-dependencies:
+- dependency-name: github/codeql-action/upload-sarif dependency-version: 4.39.1 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-core in /examples/langchain-python** ([`101fa43`](https://github.com/jjjermiah/opencode-plugboard/commit/101fa434e8812a4bee5d5e4a61686ef7d170ac2c))
+
+Bumps [langchain-core](https://github.com/langchain-ai/langchain) from 1.6.11 to 1.6.13.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-core==1.6.11...langchain-core==1.6.13)
+
+--- updated-dependencies:
+- dependency-name: langchain-core dependency-version: 1.6.13 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.63.1] - 2026-10-24: Signed Thinking Again
 
@@ -10303,7 +10504,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.1...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...HEAD
+[0.64.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.1...v0.64.0
 [0.63.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.0...v0.63.1
 [0.63.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.1...v0.63.0
 [0.62.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.0...v0.62.1
