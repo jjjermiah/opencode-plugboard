@@ -95,6 +95,7 @@ import type { KeyStore } from "../keys.js"
 import type { UsageRecorder } from "../usage.js"
 import { DASHBOARD_ROUTES } from "../dashboard/page.js"
 import { serveDashboard } from "../dashboard/assets.js"
+import { noteBody, noteSizes, type SizeInfo } from "../request-size.js"
 import { noteTag, tagField } from "../tag.js"
 import { bodyUser, noteEndUser, requestUser, withEndUser } from "../user.js"
 import { setSessionLink } from "../session/link.js"
@@ -197,8 +198,8 @@ const decodeSegment = (raw: string): string => {
   }
 }
 
-/** What a request log line may carry: ids and outcomes only. */
-interface RequestInfo extends ServedInfo {
+/** What a request log line may carry: ids, outcomes and sizes only. */
+interface RequestInfo extends ServedInfo, SizeInfo {
   route: string
   app?: string
   model?: string
@@ -490,6 +491,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     if (isPlugError(cache)) return fail(response, cache)
 
     const sent = await readJsonBody(request, scope.signal, bodyLimits(host.options, auth.app, host.keys?.appNames()))
+    noteBody(info, request)
     // The end user: the app's `userHeader` when the request sends it (#272), else the body's `user`.
     const user = requestUser(request.headers, appPolicy(host.options, auth.app)?.userHeader, bodyUser(sent))
     const body = withEndUser(sent, user, "user")
@@ -519,6 +521,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
     }
     const call: PlugRequest = { ...parsed.request, model: requested.model, generation: sampled?.generation ?? generation, ref, ...tagField(info.tag) }
     reportParallelTools(response, call)
+    noteSizes(info, call)
     // Per app, then global (`reasoningOutputFor`): the decoder does not know the app.
     const exchange: OpenAiExchange = { ...parsed.exchange, reasoningOutput: reasoningOutputFor(host.options, auth.app) }
     // The answer names the model it runs on: the app's pin, else the caller's (#261).
@@ -691,6 +694,7 @@ export function createOpenAiRoute(routeHost: RouteHost) {
           served: info.served,
           fallbacks: info.fallbacks,
           dropped: info.dropped,
+          ...info.sizes,
           status: response.statusCode,
           ms,
           outcome,

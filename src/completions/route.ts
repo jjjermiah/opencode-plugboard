@@ -22,6 +22,7 @@ import { appPolicy, maxChoicesFor, maxChoicesOption, requestedModel } from "../c
 import { appGeneration, dropRejected } from "../openai/sampling.js"
 import { parseCompletionsRequest } from "./request.js"
 import { completionsCodec } from "./response.js"
+import { noteSizes, type SizeInfo } from "../request-size.js"
 import { tagField } from "../tag.js"
 
 const DROPPED_HEADER = "x-plugboard-dropped-params"
@@ -32,7 +33,7 @@ export interface CompletionsCall {
   readonly response: ServerResponse
   readonly scope: RequestScope
   /** The route's log fields: the resolved model, the sampling parameters dropped, and the outcome of a stream that failed after it committed. */
-  readonly info: ServedInfo & { model?: string; failed?: string; dropped?: string; tag?: string }
+  readonly info: ServedInfo & SizeInfo & { model?: string; failed?: string; dropped?: string; tag?: string }
   /** The caller's response-cache headers (`parseCacheDirective`). */
   readonly cache?: CacheDirective
 }
@@ -62,6 +63,8 @@ export async function serveCompletions(host: RouteHost, { app, body, response, s
       (): PlugRequest => ({ ...request, model: requested.model, generation: sampled ? sampled.generation : appGeneration(policy, request.generation), ref, ...tagField(info.tag) }),
     ),
   )
+  // One entry per prompt, not per choice: a choice repeats its prompt.
+  noteSizes(info, parsed.requests)
   // The answer names the model it runs on: the app's pin, else the caller's (#261).
   parsed.exchange.model = requested.model
   return serveChoices(host, { app, calls, response, scope, info, codec: completionsCodec(parsed.exchange), cache })
