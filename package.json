@@ -88,7 +88,7 @@
     "@opencode/plugin": "2.1.4",
     "@opentui/core": "0.5.17",
     "@opentui/solid": "0.5.17",
-    "@types/bun": "1.4.2",
+    "@types/bun": "1.4.4",
     "@types/lcov-parse": "1.0.2",
     "@types/node": "^26.6.2",
     "@types/semver": "7.8.0",
