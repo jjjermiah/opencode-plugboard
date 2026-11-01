@@ -20,8 +20,8 @@ import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 /** The pinned SDK version (package.json: @anthropic-ai/sdk). Generation fails when the installed one differs. */
-const SDK = "0.133.0"
-const RETRIEVED = "2026-10-15"
+const SDK = "1.3.0"
+const RETRIEVED = "2026-11-01"
 const SOURCE = `https://www.npmjs.com/package/@anthropic-ai/sdk/v/${SDK}`
 
 /** The response roots, by the SDK type they name: the Message, the token count, the error body and every stream event. */
