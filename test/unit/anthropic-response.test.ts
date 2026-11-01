@@ -30,6 +30,7 @@ describe("#4 runMessage: Anthropic's event sequence", () => {
       cache_creation: null,
       inference_geo: null,
       service_tier: null,
+      speed: null,
       output_tokens_details: null,
       server_tool_use: null,
     })

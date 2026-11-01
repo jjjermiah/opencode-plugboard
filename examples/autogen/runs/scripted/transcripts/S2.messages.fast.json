@@ -74,7 +74,8 @@
             "output_tokens": 7,
             "output_tokens_details": null,
             "server_tool_use": null,
-            "service_tier": null
+            "service_tier": null,
+            "speed": null
           }
         },
         "headers": {
@@ -174,7 +175,8 @@
             "output_tokens": 7,
             "output_tokens_details": null,
             "server_tool_use": null,
-            "service_tier": null
+            "service_tier": null,
+            "speed": null
           }
         },
         "headers": {
@@ -282,7 +284,8 @@
             "output_tokens": 7,
             "output_tokens_details": null,
             "server_tool_use": null,
-            "service_tier": null
+            "service_tier": null,
+            "speed": null
           }
         },
         "headers": {
@@ -398,7 +401,8 @@
             "output_tokens": 7,
             "output_tokens_details": null,
             "server_tool_use": null,
-            "service_tier": null
+            "service_tier": null,
+            "speed": null
           }
         },
         "headers": {

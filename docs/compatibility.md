@@ -94,7 +94,7 @@ Five clients run against the scripted fake in the `examples` CI job, through `bu
 |---|---|---|
 | `POST /v1/chat/completions`, `POST /v1/completions`, `POST /v1/responses`, `GET /v1/models` | OpenAI OpenAPI 3.1, `openai.json` (retrieved 2026-10-11) | One answer, every stream chunk, the Response, the model list |
 | `POST /v1beta/models/{model}:generateContent`, `:countTokens` | Gemini discovery document, `gemini.json` (retrieved 2026-10-11) | One answer, token count |
-| `POST /v1/messages`, `POST /v1/messages/count_tokens` | `@anthropic-ai/sdk` 0.133.0 types, `anthropic.json` (2026-10-15) | One Message (text and tool_use), every stream event (text, thinking with `signature_delta`, tool_use with `input_json_delta`, error mid-stream), the error body (401, 400, 429), the token count |
+| `POST /v1/messages`, `POST /v1/messages/count_tokens` | `@anthropic-ai/sdk` 1.3.0 types, `anthropic.json` (2026-11-01) | One Message (text and tool_use), every stream event (text, thinking with `signature_delta`, tool_use with `input_json_delta`, error mid-stream), the error body (401, 400, 429), the token count |
 
 Anthropic publishes no machine-readable Messages spec, so `anthropic.json` is generated from the pinned SDK's types by `test/fixtures/specs/vendor-anthropic.ts`. Run it by hand when the SDK is bumped. The SDK's stream union has no `ping` event, so a keep-alive is checked as `{"type": "ping"}` exactly, the same as the SDK's own type check (#132).
 

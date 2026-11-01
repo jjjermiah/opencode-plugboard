@@ -87,10 +87,10 @@ const encodeUsage = (usage: PlugUsage | undefined) => {
 }
 
 /**
- * A Message's usage: the counts above plus `cache_creation`, `inference_geo` and `service_tier`, which the SDK's `Usage` type
+ * A Message's usage: the counts above plus `cache_creation`, `inference_geo`, `service_tier` and `speed`, which the SDK's `Usage` type
  * requires (null when plugboard has no value). message_delta carries the narrower `MessageDeltaUsage`, so it takes `encodeUsage` alone.
  */
-const encodeMessageUsage = (usage: PlugUsage | undefined) => ({ ...encodeUsage(usage), cache_creation: null, inference_geo: null, service_tier: null })
+const encodeMessageUsage = (usage: PlugUsage | undefined) => ({ ...encodeUsage(usage), cache_creation: null, inference_geo: null, service_tier: null, speed: null })
 
 const STOP_REASON: Record<Exclude<PlugFinish, "error">, string> = {
   stop: "end_turn",
