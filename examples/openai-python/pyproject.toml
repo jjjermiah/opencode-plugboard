@@ -4,4 +4,4 @@ version = "0.1.0"
 description = "The OpenAI Python SDK against plugboard: S1 to S7 and the error paths. Pins from the 2026-10-11 record."
 requires-python = ">=3.12"
 # Exact pins: the versions the 3fcedc7 record ran on (openai 3.29.0, Python 3.13).
-dependencies = ["openai==3.31.0", "pydantic==2.14.1", "httpx==0.28.1"]
+dependencies = ["openai==3.41.0", "pydantic==2.14.1", "httpx==0.28.1"]
