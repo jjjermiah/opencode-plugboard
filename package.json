@@ -86,7 +86,7 @@
     "@langchain/google-genai": "2.3.2",
     "@langchain/openai": "1.6.2",
     "@opencode/plugin": "2.2.5",
-    "@opentui/core": "0.5.17",
+    "@opentui/core": "0.8.2",
     "@opentui/solid": "0.5.17",
     "@types/bun": "1.4.4",
     "@types/lcov-parse": "1.0.2",
