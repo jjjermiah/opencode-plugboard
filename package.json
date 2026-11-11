@@ -4,7 +4,16 @@
   "type": "module",
   "license": "MIT",
   "description": "Use the ChatGPT, Claude, Copilot and OpenCode Go logins in your OpenCode server from any app: an OpenCode V2 plugin serving OpenAI, Anthropic and Gemini compatible APIs.",
-  "keywords": ["opencode", "opencode-plugin", "openai", "openai-compatible", "chat-completions", "responses-api", "llm-gateway", "llm-proxy"],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "openai",
+    "openai-compatible",
+    "chat-completions",
+    "responses-api",
+    "llm-gateway",
+    "llm-proxy"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jjjermiah/opencode-plugboard.git"
@@ -32,7 +41,17 @@
   "bin": {
     "opencode-plugboard": "./bin/opencode-plugboard.ts"
   },
-  "files": ["index.ts", "rpc.ts", "tui.ts", "bin/", "src/", "dist/", "npm-shrinkwrap.json", "README.md", "LICENSE"],
+  "files": [
+    "index.ts",
+    "rpc.ts",
+    "tui.ts",
+    "bin/",
+    "src/",
+    "dist/",
+    "npm-shrinkwrap.json",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "bun": ">=1.4.2"
   },
@@ -85,7 +104,7 @@
     "@langchain/anthropic": "1.5.12",
     "@langchain/google-genai": "2.3.2",
     "@langchain/openai": "1.6.2",
-    "@opencode/plugin": "2.2.5",
+    "@opencode/plugin": "2.2.7",
     "@opentui/core": "0.5.17",
     "@opentui/solid": "0.5.17",
     "@types/bun": "1.4.4",
@@ -93,14 +112,14 @@
     "@types/node": "^26.6.2",
     "@types/semver": "7.8.0",
     "@vueuse/core": "12.8.2",
-    "ai": "7.0.137",
+    "ai": "7.0.163",
     "ajv": "8.20.0",
     "babel-preset-solid": "1.9.12",
     "conventional-commits-parser": "7.1.4",
-    "effect": "4.0.6",
+    "effect": "4.1.0",
     "eventsource-parser": "4.1.1",
     "fast-check": "4.10.2",
-    "fast-xml-parser": "5.11.2",
+    "fast-xml-parser": "5.12.0",
     "lcov-parse": "1.0.0",
     "lefthook": "2.2.1",
     "mitata": "1.0.34",
@@ -118,7 +137,7 @@
     "@opencode/plugin": ">=2.0.26 <2.3",
     "@opentui/core": ">=0.5.17",
     "@opentui/solid": ">=0.5.17",
-    "effect": "4.0.0-rc.112 || 4.0.1 || 4.0.6",
+    "effect": "4.0.0-rc.112 || 4.0.1 || 4.0.6 || 4.1.0",
     "solid-js": ">=1.9.0"
   },
   "peerDependenciesMeta": {
