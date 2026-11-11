@@ -94,9 +94,6 @@
               "role": "user"
             },
             {
-              "provider_specific_fields": {
-                "refusal": null
-              },
               "role": "assistant",
               "tool_calls": [
                 {

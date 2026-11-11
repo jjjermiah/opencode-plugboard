@@ -23,7 +23,7 @@
         "@opencode/plugin": ">=2.0.26 <2.3",
         "@opentui/core": ">=0.5.17",
         "@opentui/solid": ">=0.5.17",
-        "effect": "4.0.0-rc.112 || 4.0.1 || 4.0.6",
+        "effect": "4.0.0-rc.112 || 4.0.1 || 4.0.6 || 4.1.0",
         "solid-js": ">=1.9.0"
       },
       "peerDependenciesMeta": {
