@@ -236,7 +236,9 @@ describe("#56 GET /plugboard/metrics", () => {
   test("a successful scrape writes no log line", async () => {
     await route({ metrics: true })
     await server!.send({ path: "/plugboard/metrics" })
-    expect(logs.lines).toEqual([])
+    // Only lines about this scrape count. A background line from an earlier test (e.g. a streamed
+    // request's usage_missing) can land after beforeEach clears the capture, so filter on the route.
+    expect(logs.lines.filter((line) => line.raw.includes("/plugboard/metrics"))).toEqual([])
   })
 
   test("off: the route records no metrics at all", async () => {
