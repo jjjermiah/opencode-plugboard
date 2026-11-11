@@ -37,7 +37,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import semver from "semver"
-import { changelogBlock, collectCommits } from "./commit-detail.ts"
+import { changelogBlock, collectCommits, refExists } from "./commit-detail.ts"
 import { approvalState, judgeChecks, mergeRules, type CheckRow, type GhReview } from "./merge-gate.ts"
 import { bumpInstallPins, replaceSinceNext } from "./since-next.ts"
 
@@ -516,7 +516,17 @@ const docRewrites = ["README.md", ...[...new Bun.Glob("docs/**/*.md").scanSync("
 const linkAt = lines.findIndex((l) => l.startsWith("[Unreleased]: "))
 const link = /^\[Unreleased\]: (.+)\/compare\/v(.+)\.\.\.HEAD$/.exec(lines[linkAt] ?? "")
 if (!link) fail('CHANGELOG.md needs a "[Unreleased]: <repo url>/compare/v<previous>...HEAD" link ref at the bottom')
-const [, repoUrl, previous] = link
+const [, repoUrl, linkedPrevious] = link
+// The link names the last version the changelog saw, but an unpublished version (a release whose CI or
+// Publish failed) leaves a heading and link for a tag that does not exist, and the next release then fails
+// on `git log v<that>..HEAD`. So the previous version is the newest tag that exists below this release.
+const previous = refExists(`v${linkedPrevious}`)
+  ? linkedPrevious
+  : git("tag", "--list", "v*", "--sort=-v:refname")
+      .split("\n")
+      .map((t) => t.slice(1))
+      .find((v) => semver.valid(v) && semver.lt(v, version))
+if (!previous) fail(`no release tag below ${version} exists, and CHANGELOG.md links v${linkedPrevious}, which is not a tag`)
 if (!semver.gt(version, previous)) fail(`${version} does not increase on the last released version ${previous}`)
 
 // The commit-level detail: every commit since the previous tag, grouped by type, in a

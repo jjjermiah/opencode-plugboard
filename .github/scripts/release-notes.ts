@@ -55,8 +55,12 @@ if (!repoUrl) {
   console.error('CHANGELOG.md needs a "[Unreleased]: <repo url>/compare/..." link ref at the bottom')
   process.exit(1)
 }
-// The previous release is the next version heading down (the changelog is newest first).
-const previous = /^## \[([^\]]+)\]/.exec(lines[end] ?? "")?.[1]
+// The previous release is the next version heading down that has a tag (the changelog is newest first).
+// A heading for a version that never shipped (its CI or Publish failed) has no tag, so it is skipped.
+const previous = lines
+  .slice(end)
+  .map((l) => /^## \[([^\]]+)\]/.exec(l)?.[1])
+  .find((v): v is string => v !== undefined && v !== "Unreleased" && refExists(`v${v}`))
 
 // Before the tag exists (a dry run from main) the commits are the ones on HEAD.
 const tag = `v${version}`
