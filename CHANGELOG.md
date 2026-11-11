@@ -14,7 +14,15 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Runs on OpenCode 2.2.7** ([#646](https://github.com/jjjermiah/opencode-plugboard/pull/646)). The host peer range is now `>=2.0.26 <2.3`, and the optional `effect` peer accepts 4.1.0. This closes the 2.2.6 and 2.2.7 load-check failures ([#622](https://github.com/jjjermiah/opencode-plugboard/issues/622), [#647](https://github.com/jjjermiah/opencode-plugboard/issues/647)).
+- **Dependencies.** About 40 routine bumps merged, covering the `ai` SDK, `@opentui/core`, `conventional-commits-parser`, `fast-xml-parser`, `@ai-sdk/openai-compatible`, GitHub Actions, and the example apps. No runtime behaviour change.
+
+### Fixed
+
+- **Anthropic usage speed for SDK 1.3.** The Messages response carries the usage `speed` field the 1.3 SDK requires ([ddc8245](https://github.com/jjjermiah/opencode-plugboard/commit/ddc8245)).
+- **The 0.65.0 and 0.65.1 releases never reached npm.** 0.65.0 was not tagged: its merge CI failed on a racing test, fixed in [#651](https://github.com/jjjermiah/opencode-plugboard/pull/651). 0.65.1 was tagged, but its Publish run failed at "Build the release notes" because the changelog's previous heading (0.65.0) had no tag, so npm kept 0.64.0. This patch carries their changes. Its release notes now find the previous tag, v0.65.1.
 
 ## [0.65.1] - 2026-11-11: Second Thoughts
 
