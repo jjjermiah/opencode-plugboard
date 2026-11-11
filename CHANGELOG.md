@@ -11277,7 +11277,7 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...HEAD
 [0.65.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.1...v0.64.0
 [0.63.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.0...v0.63.1
