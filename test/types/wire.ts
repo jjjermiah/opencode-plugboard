@@ -647,7 +647,8 @@ export const anthropicMessage = {
     "server_tool_use": null,
     "cache_creation": null,
     "inference_geo": null,
-    "service_tier": null
+    "service_tier": null,
+    "speed": null
   }
 } satisfies Wire<Anthropic.Message>
 
@@ -674,7 +675,8 @@ export const anthropicEvents = [
         "server_tool_use": null,
         "cache_creation": null,
         "inference_geo": null,
-        "service_tier": null
+        "service_tier": null,
+        "speed": null
       }
     }
   },

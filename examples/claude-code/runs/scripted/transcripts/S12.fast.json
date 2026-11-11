@@ -745,7 +745,8 @@
                     "output_tokens": 0,
                     "output_tokens_details": null,
                     "server_tool_use": null,
-                    "service_tier": null
+                    "service_tier": null,
+                    "speed": null
                   }
                 },
                 "type": "message_start"
@@ -1601,7 +1602,8 @@
                     "output_tokens": 0,
                     "output_tokens_details": null,
                     "server_tool_use": null,
-                    "service_tier": null
+                    "service_tier": null,
+                    "speed": null
                   }
                 },
                 "type": "message_start"
@@ -2484,7 +2486,8 @@
                     "output_tokens": 0,
                     "output_tokens_details": null,
                     "server_tool_use": null,
-                    "service_tier": null
+                    "service_tier": null,
+                    "speed": null
                   }
                 },
                 "type": "message_start"
