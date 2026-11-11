@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.65.0] - 2026-11-11: Two Lines Ahead
+
+**Full diff:** [v0.64.0...v0.65.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...v0.65.0)
+
 ### Changed
 
 - **Runs on OpenCode 2.2.7** ([#646](https://github.com/jjjermiah/opencode-plugboard/pull/646)). The host peer range is now `>=2.0.26 <2.3`, and the optional `effect` peer accepts 4.1.0. This closes the 2.2.6 and 2.2.7 load-check failures ([#622](https://github.com/jjjermiah/opencode-plugboard/issues/622), [#647](https://github.com/jjjermiah/opencode-plugboard/issues/647)): the 2.2.7 bump had shipped a stale `npm-shrinkwrap.json`, which the package gate caught.
@@ -22,6 +28,758 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Fixed
 
 - **Anthropic usage speed for SDK 1.3.** The Messages response now carries the usage `speed` field the 1.3 SDK requires ([ddc8245](https://github.com/jjjermiah/opencode-plugboard/commit/ddc8245)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (74 commits)</summary>
+
+#### Fixes
+
+**fix(anthropic): emit required usage speed for SDK 1.3** ([`ddc8245`](https://github.com/jjjermiah/opencode-plugboard/commit/ddc8245fe6117af7d724e0e7a1d72637b296fc21))
+
+The SDK's Message.Usage now requires a nullable speed field. Include null on messages and message_start while keeping message_delta's narrower usage unchanged. Regenerate the typed wire golden and update the encoder test. Sync bun.lock and retain the runtime-only shrinkwrap.
+
+Validation: bun run typecheck; 152 Anthropic and wire tests passed; build:tui and check-pack (87 files) passed; git diff --check.
+
+#### Tests
+
+**test(anthropic): sync SDK 1.3 conformance and example runs** ([`a6a1bcd`](https://github.com/jjjermiah/opencode-plugboard/commit/a6a1bcd0fe58c4e44eef1a1d3bca55cc9dd80fe7))
+
+The SDK adds usage.speed, so strict conformance and scripted client captures reject our newly valid responses until their fixtures match. Regenerate both from the pinned SDK and CI's complete client run. Keep the SDK's Apache-2.0 license beside the derived schema.
+
+Validation: typecheck, 27 conformance tests, check-pack (87 files), git diff --check; CI generated all scripted example transcripts.
+
+#### Docs
+
+**docs(changelog): write the 0.65.0 notes and pin the README to 0.65.0** ([`24d5f44`](https://github.com/jjjermiah/opencode-plugboard/commit/24d5f447cd8b69106992f7aaf728e1c49885f7b5))
+
+The release script needs a non-empty [Unreleased] section, and the README pins the version a user installs. Both were stale: [Unreleased] said "Nothing yet." and the pin was 0.64.0.
+
+The notes cover the OpenCode 2.2.7 support (#646, closes #622 and #647), the routine dependency bumps merged since 0.64.0, and the Anthropic SDK 1.3 usage speed fix (ddc8245).
+
+Validation: git diff origin/main shows only CHANGELOG.md and README.md.
+
+#### CI and tooling
+
+**chore(deps-dev): bump @types/bun from 1.4.2 to 1.4.4** ([`8212e48`](https://github.com/jjjermiah/opencode-plugboard/commit/8212e48d72cc09800aa49a1c0839e9a72a033c68))
+
+Bumps [@types/bun](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/HEAD/types/bun) from 1.4.2 to 1.4.4.
+- [Release notes](https://github.com/DefinitelyTyped/DefinitelyTyped/releases)
+- [Commits](https://github.com/DefinitelyTyped/DefinitelyTyped/commits/HEAD/types/bun)
+
+--- updated-dependencies:
+- dependency-name: "@types/bun" dependency-version: 1.4.4 dependency-type: direct:development update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps-dev): bump @anthropic-ai/sdk from 0.133.0 to 1.3.0** ([`9bfa22b`](https://github.com/jjjermiah/opencode-plugboard/commit/9bfa22b4e9706f9ff38db73e98f5371e90eab0a8))
+
+Bumps [@anthropic-ai/sdk](https://github.com/anthropics/anthropic-sdk-typescript) from 0.133.0 to 1.3.0.
+- [Release notes](https://github.com/anthropics/anthropic-sdk-typescript/releases)
+- [Changelog](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.133.0...sdk-v1.3.0)
+
+--- updated-dependencies:
+- dependency-name: "@anthropic-ai/sdk" dependency-version: 1.3.0 dependency-type: direct:development update-type: version-update:semver-major ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps-dev): bump openai from 7.32.0 to 7.45.1** ([`2a11590`](https://github.com/jjjermiah/opencode-plugboard/commit/2a11590f6c90ffd47a860112c4e8055a55586d06))
+
+Bumps [openai](https://github.com/openai/openai-node) from 7.32.0 to 7.45.1.
+- [Release notes](https://github.com/openai/openai-node/releases)
+- [Changelog](https://github.com/openai/openai-node/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-node/compare/v7.32.0...v7.45.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 7.45.1 dependency-type: direct:development update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(examples): refresh pydantic-ai scripted summary** ([`a1ad321`](https://github.com/jjjermiah/opencode-plugboard/commit/a1ad32102338684193fd6d592e53b4216d2230db))
+
+The dependency bump changes the recorded client version, so the scripted-run CI gate rejects the old summary. Regenerating the run changes only the version in its two summary files.
+
+Validation: bun examples/_harness/run.ts pydantic-ai --target scripted reported pass; git diff --check passed.
+
+**ci(dependabot): auto-merge majors and group CodeQL updates** ([`421eb82`](https://github.com/jjjermiah/opencode-plugboard/commit/421eb82ea2027e2c01e6afe461b4ea03ea515abc))
+
+The owner chose auto-merge for all Dependabot updates once required checks pass. Keep the ruleset and merge-commit gate unchanged. Group CodeQL actions so init and analyze update to the same version together.
+
+Validation: actionlint .github/workflows/dependabot-auto-merge.yml; git diff --check; AFT found zero diagnostics in both YAML files.
+
+**chore(examples): refresh openai-python scripted summary** ([`d64e9f7`](https://github.com/jjjermiah/opencode-plugboard/commit/d64e9f722f587d8451b9b6477a401b71b25b14dd))
+
+The client bump changes the version recorded in the scripted run. Regenerating it changes only the two summary files and clears the examples freshness gate.
+
+Validation: bun examples/_harness/run.ts openai-python --target scripted reported pass; git diff --check passed.
+
+**chore(examples): include LiteLLM MCP extra** ([`db49c35`](https://github.com/jjjermiah/opencode-plugboard/commit/db49c35c2be824206a1edee2af40e836646e2e36))
+
+LiteLLM 1.106.6 imports mcp during completion even in this client-only example. Select its supported MCP extra, relock, and regenerate the scripted transcript so the required scenarios can run again.
+
+Validation: uv lock and bun examples/_harness/run.ts litellm-client --target scripted reported pass; git diff --check passed.
+
+**chore(deps-dev): bump the opencode-host group across 1 directory with 2 updates** ([`ec3975e`](https://github.com/jjjermiah/opencode-plugboard/commit/ec3975e52df043c150e00a2d5d363ce9dd3d3224))
+
+Bumps the opencode-host group with 2 updates in the / directory: [@opencode/plugin](https://github.com/anomalyco/opencode/tree/HEAD/packages/plugin) and [effect](https://github.com/Effect-TS/effect/tree/HEAD/packages/effect).
+
+
+Updates `@opencode/plugin` from 2.1.4 to 2.2.2
+- [Release notes](https://github.com/anomalyco/opencode/releases)
+- [Changelog](https://github.com/anomalyco/opencode/blob/dev/CHANGELOG.md)
+- [Commits](https://github.com/anomalyco/opencode/commits/v2.2.2/packages/plugin)
+
+Updates `effect` from 4.0.1 to 4.1.0
+- [Release notes](https://github.com/Effect-TS/effect/releases)
+- [Changelog](https://github.com/Effect-TS/effect/blob/main/packages/effect/CHANGELOG.md)
+- [Commits](https://github.com/Effect-TS/effect/commits/effect@4.1.0/packages/effect)
+
+--- updated-dependencies:
+- dependency-name: "@opencode/plugin" dependency-version: 2.2.1 dependency-type: direct:development update-type: version-update:semver-minor dependency-group: opencode-host
+- dependency-name: effect dependency-version: 4.1.0 dependency-type: direct:development update-type: version-update:semver-minor dependency-group: opencode-host ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps-dev): bump ai from 7.0.137 to 7.0.163** ([`58df934`](https://github.com/jjjermiah/opencode-plugboard/commit/58df93428cb15fed44487ac61225e20b6b2125a1))
+
+Bumps [ai](https://github.com/vercel/ai/tree/HEAD/packages/ai) from 7.0.137 to 7.0.163.
+- [Release notes](https://github.com/vercel/ai/releases)
+- [Changelog](https://github.com/vercel/ai/blob/main/packages/ai/CHANGELOG.md)
+- [Commits](https://github.com/vercel/ai/commits/ai@7.0.163/packages/ai)
+
+--- updated-dependencies:
+- dependency-name: ai dependency-version: 7.0.163 dependency-type: direct:development update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps-dev): bump @opentui/core from 0.5.17 to 0.8.2** ([`59e78f5`](https://github.com/jjjermiah/opencode-plugboard/commit/59e78f5c8d34b94c68ce654409c9590b73ed1454))
+
+Bumps [@opentui/core](https://github.com/anomalyco/opentui/tree/HEAD/packages/core) from 0.5.17 to 0.8.2.
+- [Release notes](https://github.com/anomalyco/opentui/releases)
+- [Commits](https://github.com/anomalyco/opentui/commits/v0.8.2/packages/core)
+
+--- updated-dependencies:
+- dependency-name: "@opentui/core" dependency-version: 0.8.2 dependency-type: direct:development update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps-dev): bump conventional-commits-parser from 7.1.3 to 7.1.4** ([`a86d3dd`](https://github.com/jjjermiah/opencode-plugboard/commit/a86d3ddfcb4955a3ad9248d29dc76df17623c2f5))
+
+Bumps [conventional-commits-parser](https://github.com/conventional-changelog/conventional-changelog/tree/HEAD/packages/conventional-commits-parser) from 7.1.3 to 7.1.4.
+- [Release notes](https://github.com/conventional-changelog/conventional-changelog/releases)
+- [Changelog](https://github.com/conventional-changelog/conventional-changelog/blob/master/packages/conventional-commits-parser/CHANGELOG.md)
+- [Commits](https://github.com/conventional-changelog/conventional-changelog/commits/conventional-commits-parser-v7.1.4/packages/conventional-commits-parser)
+
+--- updated-dependencies:
+- dependency-name: conventional-commits-parser dependency-version: 7.1.4 dependency-type: direct:development update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps-dev): bump @ai-sdk/openai-compatible from 3.0.67 to 3.0.85** ([`f3542fa`](https://github.com/jjjermiah/opencode-plugboard/commit/f3542fa27a3b106243bf4c4ba6b8b072866a5256))
+
+Bumps [@ai-sdk/openai-compatible](https://github.com/vercel/ai/tree/HEAD/packages/openai-compatible) from 3.0.67 to 3.0.85.
+- [Release notes](https://github.com/vercel/ai/releases)
+- [Changelog](https://github.com/vercel/ai/blob/main/packages/openai-compatible/CHANGELOG.md)
+- [Commits](https://github.com/vercel/ai/commits/@ai-sdk/openai-compatible@3.0.85/packages/openai-compatible)
+
+--- updated-dependencies:
+- dependency-name: "@ai-sdk/openai-compatible" dependency-version: 3.0.85 dependency-type: direct:development update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps-dev): bump fast-xml-parser from 5.11.2 to 5.12.0** ([`75ed527`](https://github.com/jjjermiah/opencode-plugboard/commit/75ed5271f8278074c424bab12b0f94498c22398c))
+
+Bumps [fast-xml-parser](https://github.com/NaturalIntelligence/fast-xml-parser) from 5.11.2 to 5.12.0.
+- [Release notes](https://github.com/NaturalIntelligence/fast-xml-parser/releases)
+- [Changelog](https://github.com/NaturalIntelligence/fast-xml-parser/blob/master/CHANGELOG.md)
+- [Commits](https://github.com/NaturalIntelligence/fast-xml-parser/compare/v5.11.2...v5.12.0)
+
+--- updated-dependencies:
+- dependency-name: fast-xml-parser dependency-version: 5.12.0 dependency-type: direct:development ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+#### Dependencies
+
+**chore(deps): bump pillow from 12.3.0 to 13.0.0 in /examples/smolagents** ([`526b0e6`](https://github.com/jjjermiah/opencode-plugboard/commit/526b0e65a02a19e9a0caa6b1b13742b569886b1d))
+
+Bumps [pillow](https://github.com/python-pillow/Pillow) from 12.3.0 to 13.0.0.
+- [Release notes](https://github.com/python-pillow/Pillow/releases)
+- [Changelog](https://github.com/python-pillow/Pillow/blob/main/CHANGES.rst)
+- [Commits](https://github.com/python-pillow/Pillow/compare/12.3.0...13.0.0)
+
+--- updated-dependencies:
+- dependency-name: pillow dependency-version: 13.0.0 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump certifi in /examples/pydantic-ai** ([`87f99c3`](https://github.com/jjjermiah/opencode-plugboard/commit/87f99c33c1d9539abbfefed276cc349cba69029e))
+
+Bumps [certifi](https://github.com/certifi/python-certifi) from 2026.7.22 to 2026.10.18.
+- [Commits](https://github.com/certifi/python-certifi/compare/2026.07.22...2026.10.18)
+
+--- updated-dependencies:
+- dependency-name: certifi dependency-version: 2026.10.18 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump certifi in /examples/semantic-kernel** ([`4ebea2a`](https://github.com/jjjermiah/opencode-plugboard/commit/4ebea2ac1fe140b83dbb0751b797e1a040b8f149))
+
+Bumps [certifi](https://github.com/certifi/python-certifi) from 2026.7.22 to 2026.10.18.
+- [Commits](https://github.com/certifi/python-certifi/compare/2026.07.22...2026.10.18)
+
+--- updated-dependencies:
+- dependency-name: certifi dependency-version: 2026.10.18 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/openai-python** ([`7795ef7`](https://github.com/jjjermiah/opencode-plugboard/commit/7795ef7ec35ccb504b6b1e4f59c7db137652f475))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.31.0 to 3.41.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.31.0...v3.41.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.41.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/openai-agents** ([`4861e88`](https://github.com/jjjermiah/opencode-plugboard/commit/4861e880cc4e1ba32e759aa0900b6d6083c7bd6d))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.36.1 to 3.41.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.36.1...v3.41.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.41.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-core in /examples/langchain-python** ([`2f6e45f`](https://github.com/jjjermiah/opencode-plugboard/commit/2f6e45f7931f06dc21c3d81c9a2bea195dc7d36e))
+
+Bumps [langchain-core](https://github.com/langchain-ai/langchain) from 1.6.13 to 1.7.1.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-core==1.6.13...langchain-core==1.7.1)
+
+--- updated-dependencies:
+- dependency-name: langchain-core dependency-version: 1.7.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai from 3.36.1 to 3.41.0 in /examples/pydantic-ai** ([`a8ce4bd`](https://github.com/jjjermiah/opencode-plugboard/commit/a8ce4bde820294d51c3dd0cd89aa93748599b4bc))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.36.1 to 3.41.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.36.1...v3.41.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.41.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump litellm from 1.106.2 to 1.106.6 in /examples/dspy** ([`e7b60e4`](https://github.com/jjjermiah/opencode-plugboard/commit/e7b60e4b987e782d5111714f0277b1eaa6ea18ed))
+
+Bumps [litellm](https://github.com/BerriAI/litellm) from 1.106.2 to 1.106.6.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.106.2...v1.106.6)
+
+--- updated-dependencies:
+- dependency-name: litellm dependency-version: 1.106.6 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump litellm in /examples/litellm-client** ([`d8934ae`](https://github.com/jjjermiah/opencode-plugboard/commit/d8934ae963d0ae957257b6b8ae371162a250141c))
+
+Bumps [litellm](https://github.com/BerriAI/litellm) from 1.105.1 to 1.106.6.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.105.1...v1.106.6)
+
+--- updated-dependencies:
+- dependency-name: litellm dependency-version: 1.106.6 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/langchain-python** ([`817d046`](https://github.com/jjjermiah/opencode-plugboard/commit/817d04660de54fb6535a5e5e4451a224f873e227))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.36.1 to 3.41.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.36.1...v3.41.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.41.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic-ai-slim[openai] in /examples/pydantic-ai** ([`a137c94`](https://github.com/jjjermiah/opencode-plugboard/commit/a137c94c964365244fe3327f608281dc2856d2dd))
+
+Bumps [pydantic-ai-slim[openai]](https://github.com/pydantic/pydantic-ai) from 2.57.0 to 2.63.0.
+- [Release notes](https://github.com/pydantic/pydantic-ai/releases)
+- [Changelog](https://github.com/pydantic/pydantic-ai/blob/main/docs/changelog.md)
+- [Commits](https://github.com/pydantic/pydantic-ai/compare/v2.57.0...v2.63.0)
+
+--- updated-dependencies:
+- dependency-name: pydantic-ai-slim[openai] dependency-version: 2.63.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): sync Bun lock for OpenAI dev update** ([`29fcd21`](https://github.com/jjjermiah/opencode-plugboard/commit/29fcd211c6469523ef8d6fe014c0c307968a395f))
+
+Dependabot updated the npm shrinkwrap with dev-only packages and left the frozen Bun lock stale. The runtime and peer dependencies have not changed, so retain the existing runtime-only shrinkwrap and update bun.lock to match the new OpenAI dev version.
+
+Validation: bun install --frozen-lockfile; bun run build:tui; check-pack reported 87 matching files; bun run typecheck; bun test reported 3921 pass, 130 skip, 0 fail across 157 files.
+
+**chore(deps): bump pydantic from 2.14.1 to 2.14.2 in /examples/instructor** ([`4ce007f`](https://github.com/jjjermiah/opencode-plugboard/commit/4ce007fec60ced23aa164885d84758055f51215f))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.1 to 2.14.2.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/v2.14.2/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.1...v2.14.2)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.2 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic in /examples/pydantic-ai** ([`43c26c9`](https://github.com/jjjermiah/opencode-plugboard/commit/43c26c9ebd4c1e89332c9695a9f98949b75b62de))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.1 to 2.14.2.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/v2.14.2/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.1...v2.14.2)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.2 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic in /examples/openai-agents** ([`ccfd53b`](https://github.com/jjjermiah/opencode-plugboard/commit/ccfd53b39147241eda409dacd2285e11f2189530))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.1 to 2.14.2.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/v2.14.2/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.1...v2.14.2)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.2 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-core in /examples/langchain-python** ([`35f21df`](https://github.com/jjjermiah/opencode-plugboard/commit/35f21df005c1f44c389319f2c75f90f03769c01a))
+
+Bumps [langchain-core](https://github.com/langchain-ai/langchain) from 1.7.1 to 1.7.2.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-core==1.7.1...langchain-core==1.7.2)
+
+--- updated-dependencies:
+- dependency-name: langchain-core dependency-version: 1.7.2 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic from 2.14.1 to 2.14.2 in /examples/dspy** ([`5b45dcf`](https://github.com/jjjermiah/opencode-plugboard/commit/5b45dcff00d26b60b276af6b53df69c257208d10))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.1 to 2.14.2.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/v2.14.2/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.1...v2.14.2)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.2 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): sync Bun types update lockfiles** ([`74fb484`](https://github.com/jjjermiah/opencode-plugboard/commit/74fb484d9719e19f29df33b6f039c58668e98dc3))
+
+Dependabot updated the npm shrinkwrap with dev-only packages but left the frozen Bun lock stale. Retain the existing runtime-only shrinkwrap and update bun.lock for the new @types/bun dev version.
+
+Validation: bun install --frozen-lockfile; bun run typecheck; bun run build:tui; check-pack reported 87 matching files.
+
+**chore(deps): bump the codeql-action group with 2 updates** ([`a404d6a`](https://github.com/jjjermiah/opencode-plugboard/commit/a404d6ab55fea20d94905c6d8c47de46cb548c35))
+
+Bumps the codeql-action group with 2 updates: [github/codeql-action/init](https://github.com/github/codeql-action) and [github/codeql-action/analyze](https://github.com/github/codeql-action).
+
+
+Updates `github/codeql-action/init` from 4.39.0 to 4.39.1
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee...9b3254085494b55a0f7c4c2b3d2d52cc712ce370)
+
+Updates `github/codeql-action/analyze` from 4.39.0 to 4.39.1
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee...9b3254085494b55a0f7c4c2b3d2d52cc712ce370)
+
+--- updated-dependencies:
+- dependency-name: github/codeql-action/init dependency-version: 4.39.1 dependency-type: direct:production update-type: version-update:semver-patch dependency-group: codeql-action
+- dependency-name: github/codeql-action/analyze dependency-version: 4.39.1 dependency-type: direct:production update-type: version-update:semver-patch dependency-group: codeql-action ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic in /examples/langchain-python** ([`f6edbc8`](https://github.com/jjjermiah/opencode-plugboard/commit/f6edbc87e3cc83629d3c2012d90824f065bbd571))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.1 to 2.14.2.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/v2.14.2/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.1...v2.14.2)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.2 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic in /examples/litellm-client** ([`e67d656`](https://github.com/jjjermiah/opencode-plugboard/commit/e67d6563978a39a1f6ea84a37debf2b56f4206a5))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.1 to 2.14.2.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/v2.14.2/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.1...v2.14.2)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.2 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-openai in /examples/langchain-python** ([`a480ab2`](https://github.com/jjjermiah/opencode-plugboard/commit/a480ab248b3e0256ed9beb866e956929c13676e6))
+
+Bumps [langchain-openai](https://github.com/langchain-ai/langchain) from 1.7.2 to 1.7.3.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-openai==1.7.2...langchain-openai==1.7.3)
+
+--- updated-dependencies:
+- dependency-name: langchain-openai dependency-version: 1.7.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): align OpenCode 2.2.2 with its Effect pin** ([`c173784`](https://github.com/jjjermiah/opencode-plugboard/commit/c173784c722210e0620e7a56d571ea4dfe6c53ce))
+
+OpenCode's plugin 2.2.2 requires Effect 4.0.6, not Dependabot's independent 4.1.0 update. Align the dev dependency and advertised peer ranges using host-bump.ts, then preserve the runtime-only npm shrinkwrap with matching peer metadata.
+
+Validation: bun install --frozen-lockfile; typecheck; build:tui; check-pack (87 files); bun test (3921 pass, 130 skip, 0 fail).
+
+**build(deps): support opencode 2.2.5** ([`fda5928`](https://github.com/jjjermiah/opencode-plugboard/commit/fda59282c1f3d2619a5fafc7675092c020c6bffb))
+
+OpenCode published @opencode/plugin 2.2.5. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+**chore(deps): bump pydantic in /examples/openai-agents** ([`c52d111`](https://github.com/jjjermiah/opencode-plugboard/commit/c52d1113f96c7becda2aef031a03461b3136d17c))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.2 to 2.14.3.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/main/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.2...v2.14.3)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump actions/setup-java from 6.1.0 to 6.2.0** ([`3ff3525`](https://github.com/jjjermiah/opencode-plugboard/commit/3ff35251c502395854c1c515927832b9ce9b218d))
+
+Bumps [actions/setup-java](https://github.com/actions/setup-java) from 6.1.0 to 6.2.0.
+- [Release notes](https://github.com/actions/setup-java/releases)
+- [Commits](https://github.com/actions/setup-java/compare/b843ebf9b913146b38da2eaa7aeddf76074ae1ad...77dd5b2ce225ea11469928ac317850245a74ae78)
+
+--- updated-dependencies:
+- dependency-name: actions/setup-java dependency-version: 6.2.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): support opencode 2.2.7** ([`6583fff`](https://github.com/jjjermiah/opencode-plugboard/commit/6583fffc2cae75cbe6c621475880ef1797daaf0f))
+
+OpenCode published @opencode/plugin 2.2.7. The bump pins it, pins the effect version it uses, and widens the peer ranges only where needed. Opened and checked by .github/workflows/host-bump.yml.
+
+**build(deps): regenerate npm-shrinkwrap for the 2.2.7 bump** ([`12e61aa`](https://github.com/jjjermiah/opencode-plugboard/commit/12e61aa2934c37d9857c4bf205f12ffcb7c81837))
+
+The bump widened the effect peer range (4.1.0) and moved @opencode/plugin to 2.2.7, but the shrinkwrap still described the old peer ranges. check-pack.ts failed with "npm-shrinkwrap.json peerDependencies differ from package.json: regenerate it" and the PR CI gate (package job) went red. Regenerated with the command in docs/packaging.md.
+
+Validation: check-pack.ts ok (87 files), bun test 3921 pass / 0 fail, tsc --noEmit clean, opencode-load-check.ts against opencode 2.2.7 ok.
+
+Fixes the failing package job on PR #646. Refs #647.
+
+**chore(deps): bump actions/setup-dotnet from 6.0.0 to 6.1.0** ([`4ceb658`](https://github.com/jjjermiah/opencode-plugboard/commit/4ceb6582c3417ad65e5e4b079cf2029574549dba))
+
+Bumps [actions/setup-dotnet](https://github.com/actions/setup-dotnet) from 6.0.0 to 6.1.0.
+- [Release notes](https://github.com/actions/setup-dotnet/releases)
+- [Commits](https://github.com/actions/setup-dotnet/compare/a98b56852c35b8e3190ac28c8c2271da59106c68...0f4a354dd5547a28c70b7853dbd95d5b67886e73)
+
+--- updated-dependencies:
+- dependency-name: actions/setup-dotnet dependency-version: 6.1.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic in /examples/litellm-client** ([`9a5058b`](https://github.com/jjjermiah/opencode-plugboard/commit/9a5058b8e7c99ab5f379ab7cd30433c15ba09934))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.2 to 2.14.3.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/main/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.2...v2.14.3)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/openai-agents** ([`0ec1e0c`](https://github.com/jjjermiah/opencode-plugboard/commit/0ec1e0c3318904a8fb18399635ba1a06c7b76961))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.41.0 to 3.46.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.41.0...v3.46.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.46.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump litellm from 1.106.6 to 1.108.3 in /examples/dspy** ([`c943ee3`](https://github.com/jjjermiah/opencode-plugboard/commit/c943ee3755ffb5c61f0abd56dd6d27c4e0a6474c))
+
+Bumps [litellm](https://github.com/BerriAI/litellm) from 1.106.6 to 1.108.3.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.106.6...v1.108.3)
+
+--- updated-dependencies:
+- dependency-name: litellm dependency-version: 1.108.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump litellm[mcp] in /examples/litellm-client** ([`02bab9f`](https://github.com/jjjermiah/opencode-plugboard/commit/02bab9fe1d5e2f321ea80654f4b3543490a5f6c5))
+
+Bumps [litellm[mcp]](https://github.com/BerriAI/litellm) from 1.106.6 to 1.108.3.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.106.6...v1.108.3)
+
+--- updated-dependencies:
+- dependency-name: litellm[mcp] dependency-version: 1.108.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic in /examples/pydantic-ai** ([`41fa99b`](https://github.com/jjjermiah/opencode-plugboard/commit/41fa99b2f9a733a60e652b325a1c74a5325fdfde))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.2 to 2.14.3.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/main/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.2...v2.14.3)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/langchain-python** ([`2d6ed32`](https://github.com/jjjermiah/opencode-plugboard/commit/2d6ed320c6cfaab608581b5d7379d539f03dd23e))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.41.0 to 3.46.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.41.0...v3.46.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.46.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump the codeql-action group across 1 directory with 3 updates** ([`8a2d618`](https://github.com/jjjermiah/opencode-plugboard/commit/8a2d6180e57f2036856312eed9c9d0d9d7406f40))
+
+Bumps the codeql-action group with 3 updates in the / directory: [github/codeql-action/init](https://github.com/github/codeql-action), [github/codeql-action/analyze](https://github.com/github/codeql-action) and [github/codeql-action/upload-sarif](https://github.com/github/codeql-action).
+
+
+Updates `github/codeql-action/init` from 4.39.1 to 4.39.3
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/9b3254085494b55a0f7c4c2b3d2d52cc712ce370...33d7b85da1a04171e211befe2c739303b9a4c066)
+
+Updates `github/codeql-action/analyze` from 4.39.1 to 4.39.3
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/9b3254085494b55a0f7c4c2b3d2d52cc712ce370...33d7b85da1a04171e211befe2c739303b9a4c066)
+
+Updates `github/codeql-action/upload-sarif` from 4.39.1 to 4.39.3
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/9b3254085494b55a0f7c4c2b3d2d52cc712ce370...33d7b85da1a04171e211befe2c739303b9a4c066)
+
+--- updated-dependencies:
+- dependency-name: github/codeql-action/analyze dependency-version: 4.39.3 dependency-type: direct:production update-type: version-update:semver-patch dependency-group: codeql-action
+- dependency-name: github/codeql-action/init dependency-version: 4.39.3 dependency-type: direct:production update-type: version-update:semver-patch dependency-group: codeql-action
+- dependency-name: github/codeql-action/upload-sarif dependency-version: 4.39.3 dependency-type: direct:production update-type: version-update:semver-patch dependency-group: codeql-action ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic in /examples/openai-python** ([`d28e7a0`](https://github.com/jjjermiah/opencode-plugboard/commit/d28e7a02d1b9c0ca2ab0f481bcf1cb2042f67755))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.1 to 2.14.3.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/main/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.1...v2.14.3)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic from 2.14.2 to 2.14.3 in /examples/instructor** ([`bec8d06`](https://github.com/jjjermiah/opencode-plugboard/commit/bec8d06242747b58ebc7c9deb7c9df35b132d773))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.2 to 2.14.3.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/main/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.2...v2.14.3)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic from 2.14.2 to 2.14.3 in /examples/dspy** ([`24efd29`](https://github.com/jjjermiah/opencode-plugboard/commit/24efd2986e3e72672657c6db8ed3b18c98e3cc2d))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.2 to 2.14.3.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/main/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.2...v2.14.3)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai from 3.41.0 to 3.46.0 in /examples/pydantic-ai** ([`f0be59c`](https://github.com/jjjermiah/opencode-plugboard/commit/f0be59c001fdb1746e8012c607bfd1717f61a750))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.41.0 to 3.46.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.41.0...v3.46.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.46.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump pydantic in /examples/langchain-python** ([`8ca97e4`](https://github.com/jjjermiah/opencode-plugboard/commit/8ca97e487d63b8ec6df0735aa73fa20448021b39))
+
+Bumps [pydantic](https://github.com/pydantic/pydantic) from 2.14.2 to 2.14.3.
+- [Release notes](https://github.com/pydantic/pydantic/releases)
+- [Changelog](https://github.com/pydantic/pydantic/blob/main/HISTORY.md)
+- [Commits](https://github.com/pydantic/pydantic/compare/v2.14.2...v2.14.3)
+
+--- updated-dependencies:
+- dependency-name: pydantic dependency-version: 2.14.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/openai-python** ([`1fa3f4f`](https://github.com/jjjermiah/opencode-plugboard/commit/1fa3f4fc01ee7cef3f464c3f4bf5ddf54ccf9864))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.41.0 to 3.46.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.41.0...v3.46.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.46.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-core in /examples/langchain-python** ([`bed845e`](https://github.com/jjjermiah/opencode-plugboard/commit/bed845ed5ec469ce8c147a55e327ce4e0fb04577))
+
+Bumps [langchain-core](https://github.com/langchain-ai/langchain) from 1.7.2 to 1.7.6.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-core==1.7.2...langchain-core==1.7.6)
+
+--- updated-dependencies:
+- dependency-name: langchain-core dependency-version: 1.7.6 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): refresh bun.lock for the fast-xml-parser bump** ([`3fb0c45`](https://github.com/jjjermiah/opencode-plugboard/commit/3fb0c45a7338217a754a3ace2d4e702f2d90aa27))
+
+The bump changed package.json but the committed bun.lock was not regenerated, so every CI job failed at "bun install --frozen-lockfile" (lockfile had changes). Refreshed with bun install.
+
+Validation: bun install --frozen-lockfile exits 0 on this branch.
+
+**chore(deps): bump pydantic-ai-slim[openai] in /examples/pydantic-ai** ([`2a8cf8d`](https://github.com/jjjermiah/opencode-plugboard/commit/2a8cf8d61a22b8c45b8185e8c2986da1be15d420))
+
+Bumps [pydantic-ai-slim[openai]](https://github.com/pydantic/pydantic-ai) from 2.63.0 to 2.66.0.
+- [Release notes](https://github.com/pydantic/pydantic-ai/releases)
+- [Changelog](https://github.com/pydantic/pydantic-ai/blob/main/docs/changelog.md)
+- [Commits](https://github.com/pydantic/pydantic-ai/compare/v2.63.0...v2.66.0)
+
+--- updated-dependencies:
+- dependency-name: pydantic-ai-slim[openai] dependency-version: 2.66.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): regenerate the litellm-client scripted runs for the bump** ([`99c0d06`](https://github.com/jjjermiah/opencode-plugboard/commit/99c0d067d13f51e5db7dc20e42c66b9f895224eb))
+
+The bump changed the example dependencies, so the committed scripted run no longer matched a fresh run and the "Examples (scripted runs are current)" gate failed. Regenerated with bun examples/_harness/run.ts litellm-client --target scripted; the run passes.
+
+Validation: scripted run pass on this branch.
+
+**chore(deps): regenerate the openai-python scripted runs for the bump** ([`ac02148`](https://github.com/jjjermiah/opencode-plugboard/commit/ac02148f74346ebd13804b1971ba314513d3c593))
+
+The bump changed the example dependencies, so the committed scripted run no longer matched a fresh run and the "Examples (scripted runs are current)" gate failed. Regenerated with bun examples/_harness/run.ts openai-python --target scripted; the run passes.
+
+Validation: scripted run pass on this branch.
+
+**chore(deps): regenerate the pydantic-ai scripted runs for the bump** ([`bccaa13`](https://github.com/jjjermiah/opencode-plugboard/commit/bccaa13c789b60dbfd3344d47c3fc43c528863f6))
+
+The bump changed the example dependencies, so the committed scripted run no longer matched a fresh run and the "Examples (scripted runs are current)" gate failed. Regenerated with bun examples/_harness/run.ts pydantic-ai --target scripted; the run passes.
+
+Validation: scripted run pass on this branch.
+
+**chore(deps): regenerate the langchain-python scripted runs for the bump** ([`2baf2cf`](https://github.com/jjjermiah/opencode-plugboard/commit/2baf2cf418876881cc66ecc2c92c0c8739ef80ec))
+
+The bump changed the example dependencies, so the committed scripted run no longer matched a fresh run and the "Examples (scripted runs are current)" gate failed. Regenerated with bun examples/_harness/run.ts langchain-python --target scripted; the run passes.
+
+Validation: scripted run pass on this branch.
+
+**build(deps): regenerate npm-shrinkwrap for the fast-xml-parser bump** ([`f54b5fc`](https://github.com/jjjermiah/opencode-plugboard/commit/f54b5fc68c100ef750508ad346c684ae9df20c61))
+
+fast-xml-parser is a runtime dependency. The bump changed package.json but not the shrinkwrap, so check-pack.ts failed ("npm-shrinkwrap.json dependencies differ from package.json") and the package gate went red. Regenerated with the command in docs/packaging.md.
+
+Validation: bun .github/scripts/check-pack.ts prints "pack ok: 87 files".
+
+**build(deps): refresh bun.lock for this bump** ([`cd36d28`](https://github.com/jjjermiah/opencode-plugboard/commit/cd36d28873a41f7ffa5a71114fd6d45c526941f7))
+
+The bump changed package.json but the committed bun.lock was out of date, so every CI job failed at "bun install --frozen-lockfile". Refreshed with bun install.
+
+Validation: bun install --frozen-lockfile exits 0 on this branch (install exit 0 before refresh).
+
+**build(deps): refresh bun.lock for this bump** ([`08037d2`](https://github.com/jjjermiah/opencode-plugboard/commit/08037d2e3af3b815a942df329d5271fdbc591b69))
+
+The bump changed package.json but the committed bun.lock was out of date, so every CI job failed at "bun install --frozen-lockfile". Refreshed with bun install.
+
+Validation: bun install --frozen-lockfile exits 0 on this branch (install exit 0 before refresh).
+
+**build(deps): refresh bun.lock for this bump** ([`45e85bd`](https://github.com/jjjermiah/opencode-plugboard/commit/45e85bd559c7c5c1aec15e68d1c4a808bc8cefc9))
+
+The bump changed package.json but the committed bun.lock was out of date, so every CI job failed at "bun install --frozen-lockfile". Refreshed with bun install.
+
+Validation: bun install --frozen-lockfile exits 0 on this branch (install exit 0 before refresh).
+
+**build(deps): refresh bun.lock for this bump** ([`f3f3271`](https://github.com/jjjermiah/opencode-plugboard/commit/f3f32718f5f48d093ab46c656c0f2859295f8161))
+
+The bump changed package.json but the committed bun.lock was out of date, so every CI job failed at "bun install --frozen-lockfile". Refreshed with bun install.
+
+Validation: bun install --frozen-lockfile exits 0 on this branch (install exit 0 before refresh).
+
+**build(deps): regenerate npm-shrinkwrap for this bump** ([`a3c69f6`](https://github.com/jjjermiah/opencode-plugboard/commit/a3c69f651046a86f0e7f60e1bb1c7f57fdff4c13))
+
+The shrinkwrap pinned effect and @opencode/plugin, optional peers that must not ship, so check-pack.ts failed and the package gate went red. Regenerated with the command in docs/packaging.md; check-pack.ts now prints "pack ok".
+
+**build(deps): regenerate npm-shrinkwrap for this bump** ([`a9bc1d1`](https://github.com/jjjermiah/opencode-plugboard/commit/a9bc1d1e9962b9e1665271e2bd6d2627fcf058c5))
+
+The shrinkwrap pinned effect and @opencode/plugin, optional peers that must not ship, so check-pack.ts failed and the package gate went red. Regenerated with the command in docs/packaging.md; check-pack.ts now prints "pack ok".
+
+**build(deps): regenerate npm-shrinkwrap for this bump** ([`3e7e3fd`](https://github.com/jjjermiah/opencode-plugboard/commit/3e7e3fdd382ecfd25b1b5a3e1b4b7b5668dcbebc))
+
+The shrinkwrap pinned effect and @opencode/plugin, optional peers that must not ship, so check-pack.ts failed and the package gate went red. Regenerated with the command in docs/packaging.md; check-pack.ts now prints "pack ok".
+
+**build(deps): regenerate npm-shrinkwrap for this bump** ([`cdad8a3`](https://github.com/jjjermiah/opencode-plugboard/commit/cdad8a380248ce07da6bbdb2596b1642607f4bd3))
+
+The shrinkwrap pinned effect and @opencode/plugin, optional peers that must not ship, so check-pack.ts failed and the package gate went red. Regenerated with the command in docs/packaging.md; check-pack.ts now prints "pack ok".
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.64.0] - 2026-10-31: Every Request, Kept
 
@@ -10511,7 +11269,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.0...HEAD
+[0.65.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.1...v0.64.0
 [0.63.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.0...v0.63.1
 [0.63.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.62.1...v0.63.0
