@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.65.2] - 2026-11-11: Third Time Lucky
+
+**Full diff:** [v0.65.1...v0.65.2](https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.1...v0.65.2)
+
 ### Changed
 
 - **Runs on OpenCode 2.2.7** ([#646](https://github.com/jjjermiah/opencode-plugboard/pull/646)). The host peer range is now `>=2.0.26 <2.3`, and the optional `effect` peer accepts 4.1.0. This closes the 2.2.6 and 2.2.7 load-check failures ([#622](https://github.com/jjjermiah/opencode-plugboard/issues/622), [#647](https://github.com/jjjermiah/opencode-plugboard/issues/647)).
@@ -23,6 +29,21 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **Anthropic usage speed for SDK 1.3.** The Messages response carries the usage `speed` field the 1.3 SDK requires ([ddc8245](https://github.com/jjjermiah/opencode-plugboard/commit/ddc8245)).
 - **The 0.65.0 and 0.65.1 releases never reached npm.** 0.65.0 was not tagged: its merge CI failed on a racing test, fixed in [#651](https://github.com/jjjermiah/opencode-plugboard/pull/651). 0.65.1 was tagged, but its Publish run failed at "Build the release notes" because the changelog's previous heading (0.65.0) had no tag, so npm kept 0.64.0. This patch carries their changes. Its release notes now find the previous tag, v0.65.1.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (1 commit)</summary>
+
+#### Docs
+
+**docs(changelog): write the 0.65.2 notes; 0.65.0 and 0.65.1 never reached npm** ([`8898883`](https://github.com/jjjermiah/opencode-plugboard/commit/8898883f47614c85bb242818219f0908c335b4ba))
+
+0.65.0 was not tagged (merge CI failed on a racing test, fixed in #651). 0.65.1 was tagged, but its Publish run failed at "Build the release notes": the changelog heading below it is 0.65.0, and v0.65.0 does not exist. Tags cannot move, so the fix goes forward as 0.65.2. Its previous heading is 0.65.1, whose tag exists, so the notes step can run.
+
+Validation: git diff origin/main shows only CHANGELOG.md and README.md.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.65.1] - 2026-11-11: Second Thoughts
 
@@ -12063,7 +12084,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.1...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.2...HEAD
+[0.65.2]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.1...v0.65.2
 [0.65.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...v0.65.1
 [0.65.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.63.1...v0.64.0
