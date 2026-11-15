@@ -97,7 +97,7 @@
     "@babel/core": "7.29.7",
     "@babel/preset-typescript": "7.27.1",
     "@biomejs/biome": "2.5.15",
-    "@commitlint/cli": "21.2.3",
+    "@commitlint/cli": "21.2.4",
     "@commitlint/config-conventional": "21.2.3",
     "@fontsource/instrument-serif": "5.3.0",
     "@google/genai": "2.28.0",
