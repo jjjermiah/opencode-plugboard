@@ -114,7 +114,7 @@
     "@vueuse/core": "12.8.2",
     "ai": "7.0.163",
     "ajv": "8.20.0",
-    "babel-preset-solid": "1.9.12",
+    "babel-preset-solid": "1.9.19",
     "conventional-commits-parser": "7.1.4",
     "effect": "4.1.0",
     "eventsource-parser": "4.1.1",
