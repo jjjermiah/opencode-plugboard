@@ -14,7 +14,14 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Runs on OpenCode 2.3** ([#700](https://github.com/jjjermiah/opencode-plugboard/pull/700)). The host peer range is now `>=2.0.26 <2.4` and the dev pin is 2.3.2, which CI's host matrix now tests. Hosts that respect the peer range stayed on 2.2.7 until now: aihub's autoupdate skipped 2.3.2 every hour from 2026-11-18. The daily host bump only handles versions inside the range, so this one was run by hand with the same script. It replaces dependabot's #699, which failed every job on a frozen lockfile.
+- **Dependencies.** About 25 routine bumps covering GitHub Actions and the example apps. No runtime behaviour change.
+
+### Fixed
+
+- **Release script takes the previous version from tags that exist** ([7b066e1](https://github.com/jjjermiah/opencode-plugboard/commit/7b066e1)).
 
 ## [0.65.2] - 2026-11-11: Third Time Lucky
 
