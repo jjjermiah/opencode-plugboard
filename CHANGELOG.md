@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.66.0] - 2026-11-22: OpenCode 2.3 support
+
+**Full diff:** [v0.65.2...v0.66.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.2...v0.66.0)
+
 ### Changed
 
 - **Runs on OpenCode 2.3** ([#700](https://github.com/jjjermiah/opencode-plugboard/pull/700)). The host peer range is now `>=2.0.26 <2.4` and the dev pin is 2.3.2, which CI's host matrix now tests. Hosts that respect the peer range stayed on 2.2.7 until now: aihub's autoupdate skipped 2.3.2 every hour from 2026-11-18. The daily host bump only handles versions inside the range, so this one was run by hand with the same script. It replaces dependabot's #699, which failed every job on a frozen lockfile.
@@ -22,6 +28,339 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 ### Fixed
 
 - **Release script takes the previous version from tags that exist** ([7b066e1](https://github.com/jjjermiah/opencode-plugboard/commit/7b066e1)).
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (28 commits)</summary>
+
+#### Fixes
+
+**fix(release): take the previous version from tags that exist** ([`7b066e1`](https://github.com/jjjermiah/opencode-plugboard/commit/7b066e142448f8b08cfb81eb7470551afa15b68f))
+
+release.ts read the previous version from the CHANGELOG [Unreleased] compare link, and release-notes.ts from the next heading down. A release that failed after its commit reached main (0.65.0 CI, 0.65.1 Publish) left a heading and link for a tag that never existed. The next release then failed on git log v0.65.0..HEAD, and Publish failed with "tag v0.65.0 is not in this clone". Recovery needed a hand-edited link (#653) and an extra patch release (0.65.2).
+
+release.ts now uses the linked version only when its tag exists, else the newest v* tag below the new version. release-notes.ts walks the headings below the section to the first with a tag. Rejected: a CHANGELOG-only fix, which leaves the next failed release to break the same way.
+
+Validation: release-notes.ts 0.65.1 now gives "Full diff v0.64.0...v0.65.1" (it exited 1 before). release.ts --dry-run with the link set to nonexistent v0.65.9 resolves the previous version to 0.65.2. bun run typecheck passes.
+
+Closes #657
+
+#### Docs
+
+**docs(changelog): notes for 0.66.0, OpenCode 2.3 support** ([`dfab82d`](https://github.com/jjjermiah/opencode-plugboard/commit/dfab82d807781adf79346df24c787d2708a00d64))
+
+Curated [Unreleased] entry so the release script has something to ship: the peer range widening from #700, the routine bumps, and the release-script tag fix.
+
+#### Dependencies
+
+**chore(deps): bump nltk from 3.10.3 to 3.10.4 in /examples/llamaindex** ([`dfcae74`](https://github.com/jjjermiah/opencode-plugboard/commit/dfcae74a5cf97663149a3d93b5ba370d8b53869a))
+
+Bumps [nltk](https://github.com/nltk/nltk) from 3.10.3 to 3.10.4.
+- [Release notes](https://github.com/nltk/nltk/releases)
+- [Changelog](https://github.com/nltk/nltk/blob/develop/ChangeLog)
+- [Commits](https://github.com/nltk/nltk/compare/v3.10.3...v3.10.4)
+
+--- updated-dependencies:
+- dependency-name: nltk dependency-version: 3.10.4 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump opentelemetry-api** ([`cb318f5`](https://github.com/jjjermiah/opencode-plugboard/commit/cb318f5eb8b899beb40cdc2efcb1c9da4269b0dd))
+
+Bumps [opentelemetry-api](https://github.com/open-telemetry/opentelemetry-python) from 1.45.1 to 1.45.2.
+- [Release notes](https://github.com/open-telemetry/opentelemetry-python/releases)
+- [Changelog](https://github.com/open-telemetry/opentelemetry-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/open-telemetry/opentelemetry-python/compare/v1.45.1...v1.45.2)
+
+--- updated-dependencies:
+- dependency-name: opentelemetry-api dependency-version: 1.45.2 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump opentelemetry-api in /examples/pydantic-ai** ([`7dd747c`](https://github.com/jjjermiah/opencode-plugboard/commit/7dd747c856938c25906b1a3c99d7b970cd4a3535))
+
+Bumps [opentelemetry-api](https://github.com/open-telemetry/opentelemetry-python) from 1.45.1 to 1.45.2.
+- [Release notes](https://github.com/open-telemetry/opentelemetry-python/releases)
+- [Changelog](https://github.com/open-telemetry/opentelemetry-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/open-telemetry/opentelemetry-python/compare/v1.45.1...v1.45.2)
+
+--- updated-dependencies:
+- dependency-name: opentelemetry-api dependency-version: 1.45.2 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump opentelemetry-api in /examples/openai-agents** ([`518ad55`](https://github.com/jjjermiah/opencode-plugboard/commit/518ad55171a737e8d5f99154784e5612a023239f))
+
+Bumps [opentelemetry-api](https://github.com/open-telemetry/opentelemetry-python) from 1.45.1 to 1.45.2.
+- [Release notes](https://github.com/open-telemetry/opentelemetry-python/releases)
+- [Changelog](https://github.com/open-telemetry/opentelemetry-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/open-telemetry/opentelemetry-python/compare/v1.45.1...v1.45.2)
+
+--- updated-dependencies:
+- dependency-name: opentelemetry-api dependency-version: 1.45.2 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump peter-evans/create-pull-request from 8.1.1 to 8.1.3** ([`3092910`](https://github.com/jjjermiah/opencode-plugboard/commit/309291069d4c30acbdd3dffc0cea56cd51d7ed03))
+
+Bumps [peter-evans/create-pull-request](https://github.com/peter-evans/create-pull-request) from 8.1.1 to 8.1.3.
+- [Release notes](https://github.com/peter-evans/create-pull-request/releases)
+- [Commits](https://github.com/peter-evans/create-pull-request/compare/5f6978faf089d4d20b00c7766989d076bb2fc7f1...3ffccacd46053766916f087ce41d627c0b8cf2d1)
+
+--- updated-dependencies:
+- dependency-name: peter-evans/create-pull-request dependency-version: 8.1.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/litellm-client** ([`6086055`](https://github.com/jjjermiah/opencode-plugboard/commit/6086055522262f9d084de6dac3227f6d91b9c194))
+
+Bumps [openai](https://github.com/openai/openai-python) from 2.54.0 to 3.49.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v2.54.0...v3.49.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.49.0 dependency-type: direct:production update-type: version-update:semver-major ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/openai-agents** ([`7849803`](https://github.com/jjjermiah/opencode-plugboard/commit/78498036e531b4d29c814d34150cee40765884fc))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.46.0 to 3.49.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.46.0...v3.49.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.49.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai from 2.54.0 to 3.49.0 in /examples/dspy** ([`7db6713`](https://github.com/jjjermiah/opencode-plugboard/commit/7db671335e082575fa787a1241a8485aa6f5859b))
+
+Bumps [openai](https://github.com/openai/openai-python) from 2.54.0 to 3.49.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v2.54.0...v3.49.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.49.0 dependency-type: direct:production update-type: version-update:semver-major ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai from 3.46.0 to 3.49.0 in /examples/pydantic-ai** ([`c062fb6`](https://github.com/jjjermiah/opencode-plugboard/commit/c062fb6fc7ffc88ad891e733c39ee4e9d256a23c))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.46.0 to 3.49.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.46.0...v3.49.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.49.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-core in /examples/langchain-python** ([`9c1622c`](https://github.com/jjjermiah/opencode-plugboard/commit/9c1622c38bb635c427e224ec6d0c5d50114221c0))
+
+Bumps [langchain-core](https://github.com/langchain-ai/langchain) from 1.7.6 to 1.8.0.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-core==1.7.6...langchain-core==1.8.0)
+
+--- updated-dependencies:
+- dependency-name: langchain-core dependency-version: 1.8.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump litellm from 1.108.3 to 1.109.1 in /examples/dspy** ([`f72506d`](https://github.com/jjjermiah/opencode-plugboard/commit/f72506d2b6627b17096b00be706c1ef15f86e38b))
+
+Bumps [litellm](https://github.com/BerriAI/litellm) from 1.108.3 to 1.109.1.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.108.3...v1.109.1)
+
+--- updated-dependencies:
+- dependency-name: litellm dependency-version: 1.109.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/langchain-python** ([`8bb736c`](https://github.com/jjjermiah/opencode-plugboard/commit/8bb736cc08405660a74bca0f86cb97a5b5349d5e))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.46.0 to 3.49.0.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.46.0...v3.49.0)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.49.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump opentelemetry-api in /examples/pydantic-ai-anthropic** ([`b9e0a56`](https://github.com/jjjermiah/opencode-plugboard/commit/b9e0a5609e2fffd625e8622fbf830897f4098646))
+
+Bumps [opentelemetry-api](https://github.com/open-telemetry/opentelemetry-python) from 1.45.1 to 1.45.2.
+- [Release notes](https://github.com/open-telemetry/opentelemetry-python/releases)
+- [Changelog](https://github.com/open-telemetry/opentelemetry-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/open-telemetry/opentelemetry-python/compare/v1.45.1...v1.45.2)
+
+--- updated-dependencies:
+- dependency-name: opentelemetry-api dependency-version: 1.45.2 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump opentelemetry-api in /examples/semantic-kernel** ([`cfe85b8`](https://github.com/jjjermiah/opencode-plugboard/commit/cfe85b8f879c88f07cd1368b71304ffaacfd5d2b))
+
+Bumps [opentelemetry-api](https://github.com/open-telemetry/opentelemetry-python) from 1.45.1 to 1.45.2.
+- [Release notes](https://github.com/open-telemetry/opentelemetry-python/releases)
+- [Changelog](https://github.com/open-telemetry/opentelemetry-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/open-telemetry/opentelemetry-python/compare/v1.45.1...v1.45.2)
+
+--- updated-dependencies:
+- dependency-name: opentelemetry-api dependency-version: 1.45.2 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump opentelemetry-api in /examples/langfuse** ([`de09a86`](https://github.com/jjjermiah/opencode-plugboard/commit/de09a864af6d952ec4f7eba49a5cd67517c7b5dd))
+
+Bumps [opentelemetry-api](https://github.com/open-telemetry/opentelemetry-python) from 1.45.1 to 1.45.2.
+- [Release notes](https://github.com/open-telemetry/opentelemetry-python/releases)
+- [Changelog](https://github.com/open-telemetry/opentelemetry-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/open-telemetry/opentelemetry-python/compare/v1.45.1...v1.45.2)
+
+--- updated-dependencies:
+- dependency-name: opentelemetry-api dependency-version: 1.45.2 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/openai-agents** ([`6c5d908`](https://github.com/jjjermiah/opencode-plugboard/commit/6c5d908a5c8da547ef9fa0f83b1ecf6a5b190083))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.49.0 to 3.55.1.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.49.0...v3.55.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.55.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai from 3.49.0 to 3.55.1 in /examples/pydantic-ai** ([`f319d92`](https://github.com/jjjermiah/opencode-plugboard/commit/f319d926b32157b2cf69e1f11a0e7f847f24adb5))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.49.0 to 3.55.1.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.49.0...v3.55.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.55.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump litellm from 1.109.1 to 1.110.1 in /examples/dspy** ([`b307ea9`](https://github.com/jjjermiah/opencode-plugboard/commit/b307ea93e230780f08c720f85848e5353c0d7eab))
+
+Bumps [litellm](https://github.com/BerriAI/litellm) from 1.109.1 to 1.110.1.
+- [Release notes](https://github.com/BerriAI/litellm/releases)
+- [Commits](https://github.com/BerriAI/litellm/compare/v1.109.1...v1.110.1)
+
+--- updated-dependencies:
+- dependency-name: litellm dependency-version: 1.110.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump actions/create-github-app-token from 3.3.0 to 3.4.0** ([`3d65529`](https://github.com/jjjermiah/opencode-plugboard/commit/3d65529dc8b71068659f6cd944464346a6e888f1))
+
+Bumps [actions/create-github-app-token](https://github.com/actions/create-github-app-token) from 3.3.0 to 3.4.0.
+- [Release notes](https://github.com/actions/create-github-app-token/releases)
+- [Changelog](https://github.com/actions/create-github-app-token/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/actions/create-github-app-token/compare/64ab729a6294000f5aa4a4bc0b73d1f32bc45510...f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc)
+
+--- updated-dependencies:
+- dependency-name: actions/create-github-app-token dependency-version: 3.4.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/langchain-python** ([`d509f19`](https://github.com/jjjermiah/opencode-plugboard/commit/d509f1924d1b01321720fc5e4bc12c8494550f9e))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.49.0 to 3.55.1.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.49.0...v3.55.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.55.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump ossf/scorecard-action from 2.5.0 to 2.6.0** ([`e72f8cf`](https://github.com/jjjermiah/opencode-plugboard/commit/e72f8cffe6c8c5dfde2e7e3483963a7beef7a75a))
+
+Bumps [ossf/scorecard-action](https://github.com/ossf/scorecard-action) from 2.5.0 to 2.6.0.
+- [Release notes](https://github.com/ossf/scorecard-action/releases)
+- [Changelog](https://github.com/ossf/scorecard-action/blob/main/RELEASE.md)
+- [Commits](https://github.com/ossf/scorecard-action/compare/fa7117db83c52d787ae5a89f350999701505d78e...23f22cd43608bae7a1f1fa2603d7314dee9538a5)
+
+--- updated-dependencies:
+- dependency-name: ossf/scorecard-action dependency-version: 2.6.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump actions/setup-java from 6.2.0 to 6.3.0** ([`119479a`](https://github.com/jjjermiah/opencode-plugboard/commit/119479ad2a29104f330d9e6c4aace97b4f2eeb67))
+
+Bumps [actions/setup-java](https://github.com/actions/setup-java) from 6.2.0 to 6.3.0.
+- [Release notes](https://github.com/actions/setup-java/releases)
+- [Commits](https://github.com/actions/setup-java/compare/77dd5b2ce225ea11469928ac317850245a74ae78...d1374f8ac74474200d16ef8ecee22c7ae7a51880)
+
+--- updated-dependencies:
+- dependency-name: actions/setup-java dependency-version: 6.3.0 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai in /examples/litellm-client** ([`9c0f86d`](https://github.com/jjjermiah/opencode-plugboard/commit/9c0f86d16979d8be4cf226a02edc85c44ea9773f))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.49.0 to 3.55.1.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.49.0...v3.55.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.55.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump langchain-core in /examples/langchain-python** ([`aa5d569`](https://github.com/jjjermiah/opencode-plugboard/commit/aa5d569c9063daf958562badf7227eaab66642df))
+
+Bumps [langchain-core](https://github.com/langchain-ai/langchain) from 1.8.0 to 1.8.3.
+- [Release notes](https://github.com/langchain-ai/langchain/releases)
+- [Commits](https://github.com/langchain-ai/langchain/compare/langchain-core==1.8.0...langchain-core==1.8.3)
+
+--- updated-dependencies:
+- dependency-name: langchain-core dependency-version: 1.8.3 dependency-type: direct:production update-type: version-update:semver-patch ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**chore(deps): bump openai from 3.49.0 to 3.55.1 in /examples/dspy** ([`406e5d9`](https://github.com/jjjermiah/opencode-plugboard/commit/406e5d9e1ac9f4910d99d5b38fd406b9841fa444))
+
+Bumps [openai](https://github.com/openai/openai-python) from 3.49.0 to 3.55.1.
+- [Release notes](https://github.com/openai/openai-python/releases)
+- [Changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/openai/openai-python/compare/v3.49.0...v3.55.1)
+
+--- updated-dependencies:
+- dependency-name: openai dependency-version: 3.55.1 dependency-type: direct:production update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+**build(deps): support opencode 2.3.2** ([`a02a2ca`](https://github.com/jjjermiah/opencode-plugboard/commit/a02a2cab113748a99c5c38852270b77e716b7d7d))
+
+OpenCode 2.3.2 shipped on 2026-11-18, but the plugboard peer range stopped at <2.3, so hosts that pin the plugin (aihub's autoupdate checks the range) stayed on 2.2.7. The daily host-bump workflow only handles versions inside the range, so this bump was done by hand with the same script: `bun .github/scripts/host-bump.ts 2.3.2`.
+
+- devDependency @opencode/plugin 2.2.7 -> 2.3.2 (effect stays 4.1.0, the version 2.3.2 pins)
+- peer @opencode/plugin >=2.0.26 <2.3 -> >=2.0.26 <2.4
+- npm-shrinkwrap.json regenerated per docs/packaging.md, so its root peer range matches package.json
+
+Dependabot PR #699 made the same move but failed every job with "lockfile had changes, but lockfile is frozen"; this branch carries a regenerated bun.lock.
+
+Validation on macOS arm64 with bun 1.4.4: `bun run typecheck` clean; `bun test` 3920 pass, 130 skip, 0 fail (one earlier run had a single flaky failure that did not repeat); check-pack ok (87 files); smoke-pack ok. The CI host matrix adds 2.3.2 from the widened range.
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.65.2] - 2026-11-11: Third Time Lucky
 
@@ -12091,7 +12430,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.2...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.66.0...HEAD
+[0.66.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.2...v0.66.0
 [0.65.2]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.1...v0.65.2
 [0.65.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...v0.65.1
 [0.65.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...v0.65.0
