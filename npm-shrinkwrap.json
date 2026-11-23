@@ -1,12 +1,12 @@
 {
   "name": "opencode-plugboard",
-  "version": "0.64.0",
+  "version": "0.65.2",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "opencode-plugboard",
-      "version": "0.64.0",
+      "version": "0.65.2",
       "dependencies": {
         "@prometheus-io/client": "0.16.1",
         "@types/escape-html": "1.0.4",
@@ -20,7 +20,7 @@
         "uplot": "1.6.32"
       },
       "peerDependencies": {
-        "@opencode/plugin": ">=2.0.26 <2.3",
+        "@opencode/plugin": ">=2.0.26 <2.4",
         "@opentui/core": ">=0.5.17",
         "@opentui/solid": ">=0.5.17",
         "effect": "4.0.0-rc.112 || 4.0.1 || 4.0.6 || 4.1.0",
