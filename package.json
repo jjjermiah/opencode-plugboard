@@ -104,7 +104,7 @@
     "@langchain/anthropic": "1.5.12",
     "@langchain/google-genai": "2.3.2",
     "@langchain/openai": "1.6.2",
-    "@opencode/plugin": "2.3.2",
+    "@opencode/plugin": "2.4.2",
     "@opentui/core": "0.8.2",
     "@opentui/solid": "0.5.17",
     "@types/bun": "1.4.4",
@@ -134,7 +134,7 @@
     "vite": "6.4.3"
   },
   "peerDependencies": {
-    "@opencode/plugin": ">=2.0.26 <2.4",
+    "@opencode/plugin": ">=2.0.26 <2.5",
     "@opentui/core": ">=0.5.17",
     "@opentui/solid": ">=0.5.17",
     "effect": "4.0.0-rc.112 || 4.0.1 || 4.0.6 || 4.1.0",
