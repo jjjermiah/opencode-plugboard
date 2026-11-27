@@ -71,6 +71,10 @@ Any SDK works the same way: set its base URL to `http://127.0.0.1:4010/v1` (Anth
 
 Streaming, tool calls, structured output, images, PDFs and reasoning output work through the usual SDK calls.
 
+`tool_choice` is a request, not a guarantee: OpenCode's session API has no tool-choice control, so
+`required` and a named function reach the model as an instruction plus that tool's list, and a model
+that ignores the instruction answers in text. The call is still a normal 200 response, never an error.
+
 ## Works with
 
 OpenAI, Anthropic and Google SDKs for Python, JavaScript, Go, .NET and Rust; LangChain, LlamaIndex, pydantic-ai, the Vercel AI SDK, CrewAI and other agent frameworks; Open WebUI, LibreChat, n8n, Dify and Home Assistant; Claude Code, Codex CLI, Gemini CLI, Aider, Cline, Continue and Zed. Setup for each: [client pages](https://jjjermiah.github.io/opencode-plugboard/clients/).
