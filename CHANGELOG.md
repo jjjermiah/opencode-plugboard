@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A host change that breaks tool renaming fails the request instead of sending no tools** ([#199](https://github.com/jjjermiah/opencode-plugboard/issues/199)). Plugboard offers a caller's tools by renaming its placeholder seeds in the `context` hook, and the host finds them again by the identity of the descriptor object, a rule it states only in a comment. If a host upgrade handed out copies, froze the descriptors or matched by key alone, every renamed tool would be dropped without an error and the model would answer with no tools at all, while `tsc` stayed green because no type changed. The hook now checks its own output: every tool it leaves in place must be a descriptor object the host handed it, or the request fails with the usual 500 `backend_preparation_failed` and a `request.seed_rename_failed` log line naming the tools. A request that used to fail silently now fails visibly.
 
 ## [0.67.0] - 2026-11-27: Runs on OpenCode 2.4
 
