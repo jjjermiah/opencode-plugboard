@@ -14,10 +14,65 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.67.0] - 2026-11-27: Runs on OpenCode 2.4
+
+**Full diff:** [v0.66.0...v0.67.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.66.0...v0.67.0)
+
 ### Changed
 
 - **Runs on OpenCode 2.4** ([#703](https://github.com/jjjermiah/opencode-plugboard/pull/703)). The host peer range is now `>=2.0.26 <2.5` and the dev pin is 2.4.2, which CI's host matrix now tests. OpenCode 2.4.2 shipped on 2026-11-26, and a host that respects the peer range had skipped it every hour since: aihub's autoupdate logged "skip 2.4.2: outside opencode-plugboard@0.66.0 peer range >=2.0.26 <2.4". The daily host bump only covers versions inside the range, so this one was run by hand with the same script.
 - **A tool's `codemode` option may be an object.** OpenCode 2.4 widened it from `boolean` to `boolean | { pinned, description, input, output }`, and `isDirect` in `src/session/host.ts`, which decides what `opencodeTools` offers a caller, accepted only the boolean. The type check failed at both `ctx.tool.list()` filters, and it would fail for anyone who typechecks the shipped source as well. `isDirect` now takes the host's own listed-tool type, so the next shape change fails there instead of being read as "not direct". Behaviour is unchanged: a tool is direct only when `codemode` is `false`, and the object form is Code Mode. `effect` is still 4.1.0, and nothing else in the API the plugin uses changed shape.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (4 commits)</summary>
+
+#### Docs
+
+**docs(changelog): notes for 0.67.0, OpenCode 2.4 support** ([`ba95c88`](https://github.com/jjjermiah/opencode-plugboard/commit/ba95c88f49ddc29b5f7024ad4425472860307332))
+
+The release script refuses an empty [Unreleased], so this fills it for 0.67.0 from #703: the peer range widening to <2.5 with the dev pin at 2.4.2, and the codemode type change that came with it.
+
+The second bullet is written for the reader who typechecks the shipped source, because that is who the break hit: OpenCode 2.4 widened a tool's `codemode` option to an object, and the old narrow parameter in `isDirect` failed compilation instead of a runtime check. It says plainly that behaviour is unchanged, so nobody reads it as a fix to a tool-listing bug.
+
+Checked: `bun .github/scripts/since-next.ts --check` reports no placeholder in a released section.
+
+**docs(releasing): the release script bumps install pins** ([`467fc5b`](https://github.com/jjjermiah/opencode-plugboard/commit/467fc5b6433543538b0c330af5097e37b54ff7ac))
+
+docs/releasing.md said to update `opencode-plugboard@x.y.z` in README.md and docs/clients/any-app.md by hand because the release script did not touch them. The script now imports `bumpInstallPins` and rewrites the pin in README.md and every docs/**/*.md, which `bun run release 0.67.0 --dry-run` confirms. The step now says so.
+
+#### Dependencies
+
+**build(deps): support opencode 2.4.2** ([`284744e`](https://github.com/jjjermiah/opencode-plugboard/commit/284744ef3c428471d25889cd6500198357869221))
+
+OpenCode 2.4.2 shipped on 2026-11-26, but the plugboard peer range stopped at <2.4, so hosts that respect it still skip it (aihub's autoupdate logs "skip 2.4.2: outside opencode-plugboard@0.66.0 peer range >=2.0.26 <2.4" every hour). The daily host bump only covers versions inside the range, so this one was run by hand with the same script: `bun .github/scripts/host-bump.ts 2.4.2`.
+
+- devDependency @opencode/plugin 2.3.2 -> 2.4.2 (effect stays 4.1.0, the version 2.4.2 pins)
+- peer @opencode/plugin >=2.0.26 <2.4 -> >=2.0.26 <2.5
+- npm-shrinkwrap.json regenerated per docs/packaging.md, so its root peer range matches package.json
+
+OpenCode 2.4 widened a tool's `Options.codemode` from `boolean` to `boolean | { pinned, description, input, output }` and added CMInput and CMOutput to `Tool.Info`. `isDirect` in src/session/host.ts accepted only `codemode?: boolean`, so both `ctx.tool.list()` filters failed the typecheck. It now takes `ListedTool`, derived from the host's own `ctx.tool.list()` return type, so the next shape change fails here too. `codemode === false` is still the test for a direct tool: the object form still routes the tool through Code Mode, and the deprecated top-level `pinned` option (removed in 2.5) is not something plugboard sets.
+
+Nothing else plugboard uses changed shape: `HostContextMatches` and the checked `satisfies` parameter types pass, the session bus events changed only by added events (`experimental.job.*`) and comments, and the session message payloads plugboard reads are unchanged.
+
+The maintainer docs that name the host range and pin were stale already (2.1.4, `<2.2`); they now name what the package declares, in docs/architecture.md, docs/development.md, docs/packaging.md and AGENTS.md. docs/packaging.md also gains the 2.4.2 re-check its own header asks for: `dist/host.js` gained local-directory `exports` resolution and a `gui` entry, and `dist/runtime-modules.js` skips `gui/`, while `resolve`, `load`, `dist/source.bun.js`, `dist/source.node.js` and `dist/runtime.js` are byte-identical to 2.1.4, so shipping the TypeScript source and taking `effect` and `@opencode/plugin` from the host still hold.
+
+Validation on macOS arm64 with bun 1.4.4: `bun run lint` and `bun run format` clean; `bun run typecheck` clean across all four projects; `bun test` 3921 pass, 130 skip, 0 fail; check-pack ok (87 files); smoke-pack ok, including "the effect the plugin uses is the host's instance"; `bun run docs:build` ok. CI's host matrix now tests 2.0.26, a middle host and 2.4.2.
+
+**chore(deps): bump certifi in /examples/openai-python** ([`c674a23`](https://github.com/jjjermiah/opencode-plugboard/commit/c674a236e55aebf05f695f1b06eb40872a71aab4))
+
+Bumps [certifi](https://github.com/certifi/python-certifi) from 2026.7.22 to 2026.10.18.
+- [Commits](https://github.com/certifi/python-certifi/compare/2026.07.22...2026.10.18)
+
+--- updated-dependencies:
+- dependency-name: certifi dependency-version: 2026.10.18 dependency-type: indirect ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.66.0] - 2026-11-22: OpenCode 2.3 support
 
@@ -12433,7 +12488,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.66.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.67.0...HEAD
+[0.67.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.2...v0.66.0
 [0.65.2]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.1...v0.65.2
 [0.65.1]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.64.0...v0.65.1
