@@ -163,7 +163,6 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
   let failed = 0
   let active = 0
   let children = 0
-  let attempts = 0
   let more = false
 
   const apps = await indexedApps(port, signal)
@@ -172,6 +171,8 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
       more = true
       break
     }
+    // The budget is per app, so a busy app cannot spend it before a later one is read. The deadline still bounds the whole sweep.
+    let attempts = 0
     const limits = limitsFor(input.limits, input.apps, app)
     // An app with no limit today is not read: a scan over it would report `more` and re-sweep every minute for nothing (#319).
     if (limits.maxSessions === undefined && limits.maxAgeDays === undefined) continue

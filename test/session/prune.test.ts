@@ -256,4 +256,22 @@ describe("#200 review: a request session with a child session is kept", () => {
     expect(await runOnce()).toMatchObject({ removed: 1, children: 0 })
     expect(port.removed).toEqual(["app-1", "app-0"])
   })
+
+  test("one app's kept sessions cannot spend another app's budget", async () => {
+    const port = new FakeChildHistoryPort()
+    for (const [app, count] of [
+      ["a", 3],
+      ["b", 2],
+    ] as const)
+      for (let index = 0; index < count; index++) {
+        port.sessions.add(`${app}-${index}`)
+        await recordSession(port, app, `${app}-${index}`, NOW - (count - index) * DAY)
+      }
+    port.addChild("a-0", "human-1")
+    port.addChild("a-1", "human-2")
+    // Two apps in index order (a, then b), maxSessions 1, budget 2: app a has two candidates and keeps both, app b's candidate is removed.
+    // With one sweep-wide budget of 2, app b would not be read at all.
+    expect(await sweep(port, { limits: { maxSessions: 1 }, maxDeletes: 2 })).toMatchObject({ apps: 2, removed: 1, children: 2 })
+    expect(port.removed).toEqual(["b-0"])
+  })
 })
