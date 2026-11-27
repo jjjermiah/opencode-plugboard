@@ -133,8 +133,24 @@ export function answer(request: PlugRequest): PlugEvent[] {
   const coding = claudeCode(request, text)
   if (coding) return coding
   if (isPrAgentReview(text)) return say(PR_REVIEW_YAML)
-  // DSPy's chat adapter wraps the question and wants the answer in a `[[ ## answer ## ]]` field, after `reasoning` when the
-  // signature asks for it. Other clients never send these markers, so their answers are unchanged.
+  // DSPy 3.5's default XML adapter wraps the question in `<question>` and wants each output field in its own tag, plus a
+  // `<plan>` when chain of thought sends its reasoning field. Other clients never send this format.
+  if (text.includes("<question>") && text.includes("Output format (replace placeholders):")) {
+    const plan = text.includes("<plan>") ? "<plan>\nThe answer is requested.\n</plan>\n\n" : ""
+    if (text.includes(prompt("S1"))) return say(`${plan}<answer>\npong\n</answer>`)
+    if (text.includes(prompt("S6")))
+      return say(
+        `${plan}<answer>\n<calories>\n${MEAL.calories}\n</calories>\n<protein_g>\n${MEAL.protein_g}\n</protein_g>\n</answer>`,
+      )
+  }
+  // DSPy's JSON fallback asks for one JSON object holding every output field. Its chat adapter instead wraps the question and
+  // wants the answer in a `[[ ## answer ## ]]` field, after `reasoning` when the signature asks for it. Other clients never
+  // send these markers, so their answers are unchanged.
+  if (text.includes("Respond with a JSON object in the following order of fields")) {
+    const plan = text.includes("`plan`") ? { plan: "The answer is requested." } : {}
+    if (text.includes(prompt("S1"))) return say(JSON.stringify({ ...plan, answer: "pong" }))
+    if (text.includes(prompt("S6"))) return say(JSON.stringify({ ...plan, answer: MEAL }))
+  }
   if (text.includes("[[ ## ")) {
     const reasoning = text.includes("`[[ ## reasoning ## ]]`") ? "[[ ## reasoning ## ]]\nThe answer is requested.\n\n" : ""
     if (text.includes(prompt("S1"))) return say(`${reasoning}[[ ## answer ## ]]\npong\n\n[[ ## completed ## ]]`)
