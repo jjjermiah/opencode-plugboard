@@ -14,6 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+### Added
+
+- **A step that starts after the interrupt is logged** ([#14](https://github.com/jjjermiah/opencode-plugboard/issues/14)). A request that ends with tool calls interrupts its session so the runner does not start another step, and that interrupt is fire-and-forget: the runner can begin the next step before the host handles it. The stray step is wasted (extra tokens, a stray assistant message in history) but never wrong for the caller, so it is counted rather than prevented. At `logLevel: debug`, every step the host starts after plugboard asked for an interrupt writes `request.stray_step` with the step count, how many were stray and whether the response had already finished. A run of real traffic then says whether the race can be ignored or needs the upstream change (#3's native backend has no loop to race).
+
 ### Changed
 
 - **`tool_choice` is documented as a request, not a guarantee** ([#13](https://github.com/jjjermiah/opencode-plugboard/issues/13)). The OpenCode session API has no tool-choice control, so `required` and a named function reach the model as a system instruction plus a narrowed tool list, and a model can answer in text instead. That was true and undocumented on the front page. The README now says so, next to what the APIs serve, and a test pins the documented result: a scripted model that ignores the instruction gets its text answer back as a normal 200, with no `tool_calls` and no error. The alternative, answering 400 when a request needs a guarantee plugboard cannot give, was rejected: it would break the pydantic-ai and `with_structured_output` callers that were checked and work today, for a risk that has not been seen.

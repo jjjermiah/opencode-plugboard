@@ -4,9 +4,10 @@
  * (#36), the stop-turn rules keyed on the step and execution ends (#33), the queue bounds (#39) and
  * the caller-safe error classes (#88).
  */
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import type { PlugEvent } from "../../src/contract.js"
+import { setLogLevel } from "../../src/log.js"
 import { replayedReasoning } from "../../src/reasoning-replay.js"
 import { RequestCollector } from "../../src/session/events.js"
 import { createSessionStore, FAILURE_EVENT } from "../../src/session/state.js"
@@ -16,6 +17,29 @@ import { bus, type BusEnvelope, type HostError } from "../support/session.js"
 
 const logs = captureLogs()
 const host = bus("ses_1")
+
+describe("#14 a step that starts after the interrupt", () => {
+  afterEach(() => setLogLevel("info"))
+
+  test("a step the runner starts after the interrupt is logged at debug level", async () => {
+    setLogLevel("debug")
+    const run = setup()
+    run.send(host.toolCalled("c1", "lookup", { q: 1 }), host.stepEnded("tool-calls"), host.stepStarted())
+    expect(run.stops).toBe(1)
+    expect((await run.drain()).at(-1)).toEqual({ type: "finish", reason: "tool-calls", usage: undefined })
+    const stray = logs.of("request.stray_step")
+    expect(stray).toHaveLength(1)
+    expect(stray[0]!.fields).toMatchObject({ requestID: "req_1", step: "1", stray: "1", finished: "true" })
+  })
+
+  test("a step before any interrupt is not logged", async () => {
+    setLogLevel("debug")
+    const run = setup()
+    run.send(host.stepStarted(), host.stepEnded("stop"))
+    expect(await run.drain()).toEqual([{ type: "finish", reason: "stop", usage: undefined }])
+    expect(logs.of("request.stray_step")).toEqual([])
+  })
+})
 
 /** The caller tools the tests below declare: every name a test's tool call uses, so a call to one of them is a valid call (#463). */
 const CALLER_TOOLS = ["lookup", "f", "first", "second", "get_weather"]

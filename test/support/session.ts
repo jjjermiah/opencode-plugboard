@@ -154,6 +154,8 @@ export function bus(sessionID: string) {
     toolInputStarted: (id: string, name: string) => envelope("session.tool.input.started", { id, name }),
     toolCalled: (id: string, name: string, input: Json = {}) => envelope("session.tool.called", { id, name, input }),
     usage: (tokens: HostTokens) => envelope("session.usage.updated", { tokens }),
+    /** The start of a step, which the runner sends for every model call after the first (#14). */
+    stepStarted: () => envelope("session.step.started", { assistantMessageID: "msg_1", started: 0 }),
     stepEnded: (finish = "stop", tokens?: HostTokens) => envelope("session.step.ended", { finish, ...(tokens ? { tokens } : {}) }),
     stepFailed: (error: HostError, finish?: string) => envelope("session.step.failed", { error, ...(finish ? { finish } : {}) }),
     /** The host waits, then runs the model step again (OpenCode 2.0.27 `session.retry.scheduled`). */
