@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Pruning keeps a request session that has a child session** (found in review of the abandoned #200 change). OpenCode deletes a session's children when the session is deleted, so the sweep's removal could take a session plugboard never created: a fork, a session started under the request, another plugin's child. A request session allows no tool that could start one, so any child there is someone else's. On OpenCode 2.1 and later the sweep now asks the host for the session's children and keeps it, index entry included, so the next sweep can prune it once the child is gone; on 2.0.x, whose plugin API cannot list sessions, the removal goes ahead as before. The sweep line gains a `children` count, and the runtime version is 18, so a server that hot-reloads the plugin needs a restart.
 
 ## [0.67.0] - 2026-11-27: Runs on OpenCode 2.4
 

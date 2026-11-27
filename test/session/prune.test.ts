@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test"
 import { indexKey, limitsFor, recordSession, sweepSessions, type SweepInput } from "../../src/session/prune.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { plugRequest } from "../support/fixtures.js"
-import { FakeHistoryPort } from "../support/session.js"
+import { FakeChildHistoryPort, FakeHistoryPort } from "../support/session.js"
 
 const DAY = 86_400_000
 const NOW = Date.UTC(2026, 9, 11)
@@ -36,7 +36,7 @@ describe("sweepSessions", () => {
   test("no limits: nothing is removed", async () => {
     const port = await history({ app: 3 })
     // An app with no limit is not read at all (#319): nothing scanned, so nothing left for a later sweep.
-    expect(await sweep(port)).toEqual({ apps: 1, scanned: 0, removed: 0, missing: 0, failed: 0, active: 0, more: false })
+    expect(await sweep(port)).toEqual({ apps: 1, scanned: 0, removed: 0, missing: 0, failed: 0, active: 0, children: 0, more: false })
   })
 
   test("maxSessions keeps the newest per app, each app on its own", async () => {
@@ -157,6 +157,70 @@ describe("#265 review: a looser app limit replaces the global one, in both direc
 
   test("an app with no effective limit is not even read: no scan, no 'more', so no re-sweep", async () => {
     const port = await history({ old: 3 })
-    expect(await sweep(port, { limits: {}, maxScan: 2 })).toEqual({ apps: 1, scanned: 0, removed: 0, missing: 0, failed: 0, active: 0, more: false })
+    expect(await sweep(port, { limits: {}, maxScan: 2 })).toEqual({ apps: 1, scanned: 0, removed: 0, missing: 0, failed: 0, active: 0, children: 0, more: false })
+  })
+})
+
+/**
+ * Review of #200: a removal deletes the session's children with it (`Session.remove` lists them by `parentID` and removes each), and a
+ * child of a request session is never plugboard's: the session's permissions run no tool that could start one. So a session with a
+ * child is kept, index entry included, and the next sweep asks again.
+ */
+describe("#200 review: a request session with a child session is kept", () => {
+  /** `count` request sessions of `app`, one a day, oldest first (`app-0` is the oldest). */
+  async function indexed(port: FakeHistoryPort, count: number): Promise<void> {
+    for (let index = 0; index < count; index++) {
+      const id = `app-${index}`
+      port.sessions.add(id)
+      await recordSession(port, "app", id, NOW - (count - index) * DAY)
+    }
+  }
+
+  test("a session with a child is not removed, keeps its index entry, and the child survives", async () => {
+    const port = new FakeChildHistoryPort()
+    await indexed(port, 3)
+    port.addChild("app-0", "human-1")
+    // maxSessions 1 over three sessions: the two oldest are candidates, and the oldest has a child.
+    expect(await sweep(port, { limits: { maxSessions: 1 } })).toMatchObject({ scanned: 3, removed: 1, children: 1 })
+    expect(port.removed).toEqual(["app-1"])
+    expect(port.destroyed.size).toBe(0)
+    expect([...port.sessions].sort()).toEqual(["app-0", "app-2", "human-1"])
+    // Kept, not dropped: the next sweep asks again, and once the child is gone the parent can be pruned.
+    expect(port.entries.size).toBe(2)
+  })
+
+  test("a session without children is removed as before", async () => {
+    const port = new FakeChildHistoryPort()
+    await indexed(port, 2)
+    expect(await sweep(port, { limits: { maxSessions: 1 } })).toMatchObject({ removed: 1, children: 0 })
+    expect(port.removed).toEqual(["app-0"])
+    expect(port.entries.size).toBe(1)
+  })
+
+  test("a host without the check (OpenCode 2.0.x) removes as before", async () => {
+    const port = new FakeHistoryPort()
+    await indexed(port, 2)
+    expect("hasChild" in port).toBe(false)
+    expect(await sweep(port, { limits: { maxSessions: 1 } })).toMatchObject({ removed: 1, children: 0 })
+    expect(port.removed).toEqual(["app-0"])
+  })
+
+  test("a child check that fails keeps the session and is counted for the next sweep", async () => {
+    const port = new FakeChildHistoryPort()
+    await indexed(port, 2)
+    port.hasChild = async () => {
+      throw new Error("session.list failed")
+    }
+    expect(await sweep(port, { limits: { maxSessions: 1 } })).toMatchObject({ removed: 0, failed: 1 })
+    expect(port.removed).toEqual([])
+    expect(port.entries.size).toBe(2)
+  })
+
+  test("a kept session uses one removal budget slot, so a sweep stays bounded", async () => {
+    const port = new FakeChildHistoryPort()
+    await indexed(port, 3)
+    for (const id of ["app-0", "app-1"]) port.addChild(id, `${id}-child`)
+    expect(await sweep(port, { limits: { maxSessions: 1 }, maxDeletes: 1 })).toMatchObject({ removed: 0, children: 1, more: true })
+    expect(port.entries.size).toBe(3)
   })
 })

@@ -52,10 +52,12 @@ export interface SweepResult {
   readonly removed: number
   /** Already gone from the host (deleted by hand); only the index entry was dropped. */
   readonly missing: number
-  /** Host deletions or index updates that failed; retried by the next sweep. */
+  /** Host deletions, child checks or index updates that failed; retried by the next sweep. */
   readonly failed: number
   /** Over a limit but skipped because the request guard is still active. */
   readonly active: number
+  /** Over a limit but kept because the session has a child session, which removing it would delete too (#200 review). */
+  readonly children: number
   /** Work was left (budget, deadline or scan cap reached): run the next sweep soon. */
   readonly more: boolean
 }
@@ -139,9 +141,10 @@ async function readApp(port: HistoryPort, app: string, maxScan: number, signal: 
 /**
  * One pass over the index. Per app, the sessions to delete are a prefix of its oldest-first list:
  * as many as exceed `maxSessions`, or are older than `maxAgeDays`, whichever is more. A session
- * with an active request guard is skipped (it still counts as kept). Entries of sessions the host
- * no longer has are dropped. A scan that hit `maxScan` only undercounts the app, so it can only
- * delete fewer sessions than the limit asks for, never more.
+ * with an active request guard is skipped (it still counts as kept), and so is one that has a child
+ * session of its own. Entries of sessions the host no longer has are dropped. A scan that hit
+ * `maxScan` only undercounts the app, so it can only delete fewer sessions than the limit asks for,
+ * never more.
  */
 export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
   const { port, sessions, signal } = input
@@ -152,6 +155,7 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
   let missing = 0
   let failed = 0
   let active = 0
+  let children = 0
   let attempts = 0
   let more = false
 
@@ -183,6 +187,14 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
       }
       attempts++
       try {
+        // A removal deletes the session's children with it (OpenCode `Session.remove`), and a child of a request session is never
+        // plugboard's, since the session's permissions run no tool that starts one. So a session with a child is kept, index entry
+        // and all, and the next sweep asks again: once the child is gone the parent can be pruned, and dropping the entry instead
+        // would forget the session forever. On a 2.0.x host there is no way to ask, and the removal goes ahead as before.
+        if (port.hasChild !== undefined && (await port.hasChild(entry.sessionID))) {
+          children++
+          continue
+        }
         if ((await port.removeSession(entry.sessionID)) === "removed") removed++
         else missing++
         await port.drop(entry.key)
@@ -191,5 +203,5 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
       }
     }
   }
-  return { apps: apps.length, scanned, removed, missing, failed, active, more }
+  return { apps: apps.length, scanned, removed, missing, failed, active, children, more }
 }

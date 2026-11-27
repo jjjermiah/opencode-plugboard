@@ -300,6 +300,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/prune.test.ts"],
   },
   {
+    id: "P200-child-session-not-checked",
+    invariant: "#200 review",
+    file: "src/session/prune.ts",
+    find: "        if (port.hasChild !== undefined && (await port.hasChild(entry.sessionID))) {",
+    replace: "        if (false) {",
+    tests: ["test/session/prune.test.ts"],
+  },
+  {
     id: "P262-audit-line-follows-log-level",
     invariant: "#262",
     file: "src/log.ts",

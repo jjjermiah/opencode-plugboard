@@ -247,9 +247,10 @@ function modelSchema(input: unknown): Readonly<Record<string, unknown>> {
 
 /**
  * What the history index needs from the host: the plugin's own key-value storage (`ctx.storage`,
- * namespaced by plugin id and shared by every Location of the server) and `session.remove`. The
- * plugin session API has no `list`, so plugboard indexes its own request sessions in that storage
- * and prunes from the index (src/session/prune.ts).
+ * namespaced by plugin id and shared by every Location of the server), `session.remove`, and, on a host
+ * that can list sessions, whether a session has children. The plugin session API has no `list`, so
+ * plugboard indexes its own request sessions in that storage and prunes from the index
+ * (src/session/prune.ts).
  */
 export interface HistoryPort {
   put(key: string, value: string): Promise<void>
@@ -258,6 +259,13 @@ export interface HistoryPort {
   scan(input: { readonly prefix: string; readonly after?: string; readonly limit: number }): Promise<{ readonly keys: ReadonlyArray<string>; readonly next?: string }>
   /** `missing` when the session no longer exists (the host's `Session.NotFoundError`); any other failure rejects. */
   removeSession(sessionID: string): Promise<"removed" | "missing">
+  /**
+   * Whether `sessionID` has a child session. Removing a session deletes its children with it (`Session.remove` in
+   * `packages/core/src/session.ts`: it lists them by `parentID` and removes each), and a child of a request session is never
+   * plugboard's, because the session's permissions run no tool that could start one. Absent on OpenCode 2.0.x, whose plugin
+   * session API has no `list` and so cannot ask; the sweep then removes without the check, as it always did.
+   */
+  hasChild?(sessionID: string): Promise<boolean>
 }
 
 const failureTag = (error: unknown): unknown => (typeof error === "object" && error !== null ? (error as { _tag?: unknown })._tag : undefined)
@@ -272,7 +280,7 @@ const childOrMissing = <A>(effect: Effect.Effect<A, unknown>): Promise<A> =>
     throw failureTag(result.error) === "Session.NotFoundError" ? new MissingParentError() : result.error
   })
 
-/** `ctx.storage` and `ctx.session.remove` as a Promise port. The branded session ID is the same host-issued string as above. */
+/** `ctx.storage`, `ctx.session.remove` and, on a host that has it, `ctx.session.list` as a Promise port. The branded session ID is the same host-issued string as above. */
 export function createHistoryPort(ctx: HostContext): HistoryPort {
   return {
     put: (key, value) => Effect.runPromise(ctx.storage.set(key, value)),
@@ -292,6 +300,14 @@ export function createHistoryPort(ctx: HostContext): HistoryPort {
         if (failureTag(failed.error) === "Session.NotFoundError") return "missing" as const
         throw failed.error
       }),
+    // `list` arrived in OpenCode 2.1, and it is the only way to ask for a session's children. A 2.0.x host has no such method, so
+    // the sweep removes without the check there (src/session/prune.ts).
+    ...(typeof ctx.session.list === "function"
+      ? {
+          hasChild: (sessionID: string) =>
+            Effect.runPromise(ctx.session.list({ parentID: hostSessionID(sessionID), limit: 1 } satisfies Parameters<HostSession["list"]>[0])).then((page) => page.data.length > 0),
+        }
+      : {}),
   }
 }
 
