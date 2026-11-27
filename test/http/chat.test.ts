@@ -424,3 +424,32 @@ describe("reasoningOutput (since 0.36.0): tool calls, stop sequences and per-app
     expect(loud.json().choices[0].message).toMatchObject({ reasoning_content: "hm", reasoning: "hm" })
   })
 })
+
+/**
+ * #13: the OpenCode session API has no tool-choice control, so `required` and a named function are an instruction to the model plus a
+ * narrowed tool list. These are the documented outcomes when the model ignores the instruction: the text answer is returned as a normal
+ * 200, with no `tool_calls` and no error. The instruction itself is covered by test/session/context.test.ts.
+ */
+describe("#13 tool_choice is best effort", () => {
+  const tools = [{ type: "function", function: { name: "lookup", description: "look up a value", parameters: { type: "object", properties: { q: { type: "string" } } } } }]
+
+  test("required: a model that answers in text gets its text answer back, as a 200", async () => {
+    const caller = await route([ev.text("I would rather explain."), ev.finish("stop")])
+    const reply = await server!.send(chat({ tools, tool_choice: "required" }))
+    expect(reply.status).toBe(200)
+    expect(reply.json().choices[0]).toMatchObject({ finish_reason: "stop", message: { role: "assistant", content: "I would rather explain." } })
+    expect(reply.json().choices[0].message).not.toHaveProperty("tool_calls")
+    // What reached the model: the tool was offered and the choice was recorded, which the context hook turns into the instruction.
+    expect(caller.call.request.toolChoice).toBe("required")
+    expect(caller.call.request.tools.map((item) => item.name)).toEqual(["lookup"])
+  })
+
+  test("a named function: the same, with the choice kept as that one tool", async () => {
+    const caller = await route([ev.text("No thanks."), ev.finish("stop")])
+    const reply = await server!.send(chat({ tools, tool_choice: { type: "function", function: { name: "lookup" } } }))
+    expect(reply.status).toBe(200)
+    expect(reply.json().choices[0]).toMatchObject({ finish_reason: "stop", message: { role: "assistant", content: "No thanks." } })
+    expect(reply.json().choices[0].message).not.toHaveProperty("tool_calls")
+    expect(caller.call.request.toolChoice).toEqual({ type: "tool", name: "lookup" })
+  })
+})

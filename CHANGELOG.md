@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **`tool_choice` is documented as a request, not a guarantee** ([#13](https://github.com/jjjermiah/opencode-plugboard/issues/13)). The OpenCode session API has no tool-choice control, so `required` and a named function reach the model as a system instruction plus a narrowed tool list, and a model can answer in text instead. That was true and undocumented on the front page. The README now says so, next to what the APIs serve, and a test pins the documented result: a scripted model that ignores the instruction gets its text answer back as a normal 200, with no `tool_calls` and no error. The alternative, answering 400 when a request needs a guarantee plugboard cannot give, was rejected: it would break the pydantic-ai and `with_structured_output` callers that were checked and work today, for a risk that has not been seen.
 
 ## [0.67.0] - 2026-11-27: Runs on OpenCode 2.4
 
