@@ -22,6 +22,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 - **`tool_choice` is documented as a request, not a guarantee** ([#13](https://github.com/jjjermiah/opencode-plugboard/issues/13)). The OpenCode session API has no tool-choice control, so `required` and a named function reach the model as a system instruction plus a narrowed tool list, and a model can answer in text instead. That was true and undocumented on the front page. The README now says so, next to what the APIs serve, and a test pins the documented result: a scripted model that ignores the instruction gets its text answer back as a normal 200, with no `tool_calls` and no error. The alternative, answering 400 when a request needs a guarantee plugboard cannot give, was rejected: it would break the pydantic-ai and `with_structured_output` callers that were checked and work today, for a risk that has not been seen.
 
+### Fixed
+
+- **A host change that breaks tool renaming fails the request instead of sending no tools** ([#199](https://github.com/jjjermiah/opencode-plugboard/issues/199)). Plugboard offers a caller's tools by renaming its placeholder seeds in the `context` hook, and the host finds them again by the identity of the descriptor object, a rule it states only in a comment. If a host upgrade handed out copies, froze the descriptors or matched by key alone, every renamed tool would be dropped without an error and the model would answer with no tools at all, while `tsc` stayed green because no type changed. The hook now checks its own output: every tool it leaves in place must be a descriptor object the host handed it, or the request fails with the usual 500 `backend_preparation_failed` and a `request.seed_rename_failed` log line naming the tools. A request that used to fail silently now fails visibly.
+
 ## [0.67.0] - 2026-11-27: Runs on OpenCode 2.4
 
 **Full diff:** [v0.66.0...v0.67.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.66.0...v0.67.0)

@@ -11,7 +11,7 @@ import { Effect } from "effect"
 import { appPolicy, type AppPolicy, type PlugboardOptions } from "../config.js"
 import type { PlugError, PlugMessage, PlugRequest, ReasoningPart } from "../contract.js"
 import { log } from "../log.js"
-import type { ContextHookEvent, HostContext, HostPart, HostToolDescriptor } from "./host.js"
+import { describeError, type ContextHookEvent, type HostContext, type HostPart, type HostToolDescriptor } from "./host.js"
 import { SEED_PREFIX, SEED_RESULT, seedToolsFor } from "./seeds.js"
 import { FAILURE_EVENT, type SessionStore } from "./state.js"
 
@@ -116,7 +116,8 @@ function generationOptions(request: PlugRequest): Record<string, unknown> {
  * The map is built with `Object.fromEntries`: a tool named `__proto__` becomes an own key like any
  * other instead of assigning the prototype and vanishing.
  */
-function remapSeedTools(session: ContextHookEvent, request: PlugRequest, opencodeTools: ReadonlyArray<string>): number {
+function remapSeedTools(session: ContextHookEvent, request: PlugRequest, opencodeTools: ReadonlyArray<string>): SeedRemap {
+  const offered: ReadonlySet<HostToolDescriptor> = new Set(Object.values(session.tools ?? {}))
   const seeds = Object.entries(session.tools ?? {}).filter(([name]) => name.startsWith(SEED_PREFIX))
   const tools = seedToolsFor(request)
   const next = new Map<string, HostToolDescriptor>()
@@ -133,14 +134,39 @@ function remapSeedTools(session: ContextHookEvent, request: PlugRequest, opencod
   }
   const missing = tools.length - next.size
   if (request.toolChoice !== "none") {
-    const offered = session.tools ?? {}
+    const offeredTools = session.tools ?? {}
     for (const name of opencodeTools) {
-      if (!Object.hasOwn(offered, name) || next.has(name)) continue
-      next.set(name, offered[name] as HostToolDescriptor)
+      if (!Object.hasOwn(offeredTools, name) || next.has(name)) continue
+      next.set(name, offeredTools[name] as HostToolDescriptor)
     }
   }
   session.tools = Object.fromEntries(next)
-  return missing
+  return { missing, offered }
+}
+
+/**
+ * What `remapSeedTools` did, and what the host can still map back. `offered` holds the descriptor objects this hook call
+ * received, by identity: the only objects the host maps to a registered tool (I10).
+ */
+interface SeedRemap {
+  /** Caller tools that got no seed (zero unless the seed pool is smaller than the request needs, or two caller tools share a name). */
+  readonly missing: number
+  readonly offered: ReadonlySet<HostToolDescriptor>
+}
+
+/**
+ * The caller tool names whose descriptor is not an object the host offered in this hook call (#199).
+ *
+ * The host maps a rewritten tool back to its registered tool by descriptor identity (`given.get(d)` in OpenCode's
+ * `model-request.ts`), which the plugin docs only state in a comment. A descriptor that is a copy, or one the host rejected an
+ * in-place write to, leaves the host with nothing to map and the tool is dropped without an error. The rewrite is checked here,
+ * before the hook returns, so that case fails the request with the generic 500 and a log line instead of reaching a model with no
+ * tools. Empty when every entry resolves.
+ */
+export function unresolvedSeeds(offered: ReadonlySet<HostToolDescriptor>, tools: Readonly<Record<string, HostToolDescriptor>>): string[] {
+  return Object.entries(tools)
+    .filter(([, descriptor]) => !offered.has(descriptor))
+    .map(([name]) => name)
 }
 
 /**
@@ -285,7 +311,25 @@ function applyContext(event: unknown, sessions: SessionStore, apps: PlugboardOpt
   session.messages = [...caller, ...appended]
   Object.assign(session.options ?? (session.options = {}), generationOptions(request))
 
-  const missingTools = remapSeedTools(session, request, policy?.opencodeTools ?? [])
+  // #199: the host maps a rewritten seed back by descriptor identity, which it states only in a comment. Check the rewrite before
+  // the hook returns, so a host that copies the descriptors, refuses the in-place write or matches by key alone fails the request
+  // with a log line instead of quietly sending the model no tools.
+  let missingTools = 0
+  try {
+    const remap = remapSeedTools(session, request, policy?.opencodeTools ?? [])
+    missingTools = remap.missing
+    const unresolved = unresolvedSeeds(remap.offered, session.tools ?? {})
+    if (unresolved.length > 0) {
+      log("request.seed_rename_failed", { requestID: state.requestID, app: state.app, reason: "unresolved", tools: unresolved.join(",") })
+      state.collector.push({ type: FAILURE_EVENT, error: preparationFailed() })
+      return
+    }
+  } catch (error) {
+    // A descriptor the host made read-only throws on the in-place write; any other throw is the same kind of host change.
+    log("request.seed_rename_failed", { requestID: state.requestID, app: state.app, reason: "error", error: describeError(error) })
+    state.collector.push({ type: FAILURE_EVENT, error: preparationFailed() })
+    return
+  }
   orderOneHourHints(session)
 
   // The caller validates both before dispatch; this only fires if the host disagrees. The request is
