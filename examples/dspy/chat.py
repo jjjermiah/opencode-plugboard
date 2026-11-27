@@ -1,6 +1,6 @@
 """S1, plain chat through DSPy: a Predict and a ChainOfThought on one question.
 
-dspy.LM routes through LiteLLM with the `openai/` prefix, so the calls take the Chat Completions path. The snippet is
+dspy.LM routes through LiteLLM with the `openai/` prefix, and its default adapter asks for the Responses API. The snippet is
 the program; `lm` (outside it) is the dspy.LM that run.py configures from PLUGBOARD_BASE_URL and PLUGBOARD_KEY.
 finish_reason and usage come from the last call's response in `lm.history`, not from DSPy's output.
 """
@@ -22,7 +22,7 @@ def lm_for(model: str) -> dspy.LM:
 
 
 def last_response(lm: dspy.LM) -> dict:
-    # DSPy 3.4 calls the provider through its own client, so each history entry holds a normalised Response (finish_reason)
+    # DSPy calls the provider through its own client, so each history entry holds a normalised Response (finish_reason)
     # and the call's usage counts.
     entry = lm.history[-1]
     return {"finish_reason": entry["response"].finish_reason, "usage": entry.get("usage") or None}

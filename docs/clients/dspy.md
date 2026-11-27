@@ -1,6 +1,6 @@
 # DSPy
 
-DSPy reaches models through LiteLLM; the `openai/` prefix sends them to Chat Completions.
+DSPy reaches models through LiteLLM; its default adapter asks for the Responses API.
 
 ## Connect
 
@@ -16,7 +16,7 @@ Put `api_base` on each `dspy.LM`, not in the model string. A second model needs 
 
 <<< @/../examples/dspy/typed.py#snippet
 
-DSPy asks for its own text format first and falls back to a JSON schema when the text doesn't parse.
+DSPy asks for its own XML format first and falls back to a JSON object when the text doesn't parse.
 
 ## Limits
 

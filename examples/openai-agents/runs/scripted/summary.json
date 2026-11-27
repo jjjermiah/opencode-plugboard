@@ -5,7 +5,7 @@
       "name": "python",
       "version": "3"
     },
-    "version": "0.24.0"
+    "version": "0.26.0"
   },
   "example": "openai-agents",
   "models": [
