@@ -14,7 +14,10 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **Runs on OpenCode 2.4** ([#703](https://github.com/jjjermiah/opencode-plugboard/pull/703)). The host peer range is now `>=2.0.26 <2.5` and the dev pin is 2.4.2, which CI's host matrix now tests. OpenCode 2.4.2 shipped on 2026-11-26, and a host that respects the peer range had skipped it every hour since: aihub's autoupdate logged "skip 2.4.2: outside opencode-plugboard@0.66.0 peer range >=2.0.26 <2.4". The daily host bump only covers versions inside the range, so this one was run by hand with the same script.
+- **A tool's `codemode` option may be an object.** OpenCode 2.4 widened it from `boolean` to `boolean | { pinned, description, input, output }`, and `isDirect` in `src/session/host.ts`, which decides what `opencodeTools` offers a caller, accepted only the boolean. The type check failed at both `ctx.tool.list()` filters, and it would fail for anyone who typechecks the shipped source as well. `isDirect` now takes the host's own listed-tool type, so the next shape change fails there instead of being read as "not direct". Behaviour is unchanged: a tool is direct only when `codemode` is `false`, and the object form is Code Mode. `effect` is still 4.1.0, and nothing else in the API the plugin uses changed shape.
 
 ## [0.66.0] - 2026-11-22: OpenCode 2.3 support
 
