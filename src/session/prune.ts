@@ -68,6 +68,12 @@ export interface SweepInput {
   readonly limits: SessionLimits
   /** Each app's own limits (`apps.<name>.sessions`, #265), keyed by app name. */
   readonly apps?: Readonly<Record<string, SessionLimits>>
+  /**
+   * Where the last sweep stopped, per app: the index key of the last entry it examined. A sweep starts at the first candidate
+   * after that key and wraps to the beginning, so an entry it keeps (a child session) cannot hold the deletion budget on every
+   * sweep while the entries behind it wait. The runtime keeps the map across sweeps; a sweep updates it in place.
+   */
+  readonly position: Map<string, string>
   readonly sessions: SessionStore
   readonly now: number
   /** Aborts the sweep between host calls. */
@@ -142,9 +148,10 @@ async function readApp(port: HistoryPort, app: string, maxScan: number, signal: 
  * One pass over the index. Per app, the sessions to delete are a prefix of its oldest-first list:
  * as many as exceed `maxSessions`, or are older than `maxAgeDays`, whichever is more. A session
  * with an active request guard is skipped (it still counts as kept), and so is one that has a child
- * session of its own. Entries of sessions the host no longer has are dropped. A scan that hit
- * `maxScan` only undercounts the app, so it can only delete fewer sessions than the limit asks for,
- * never more.
+ * session of its own. The walk starts where the last sweep stopped and wraps (`position`), so a kept
+ * entry cannot block the ones behind it. Entries of sessions the host no longer has are dropped. A
+ * scan that hit `maxScan` only undercounts the app, so it can only delete fewer sessions than the
+ * limit asks for, never more.
  */
 export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
   const { port, sessions, signal } = input
@@ -175,7 +182,16 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
     const excess = limits.maxSessions === undefined ? 0 : Math.max(0, entries.length - limits.maxSessions)
     const expired = cutoff === undefined ? 0 : entries.findIndex((entry) => entry.createdAt >= cutoff)
     const count = Math.max(excess, cutoff === undefined ? 0 : expired === -1 ? entries.length : expired)
-    for (const entry of entries.slice(0, count)) {
+    const candidates = entries.slice(0, count)
+    // Start where the last sweep stopped and wrap around the candidate list. A kept entry (a child session) would otherwise sit at
+    // the front of the candidates and take the deletion budget on every sweep, and the removable entries behind it would never be
+    // reached (#200 review). The map holds one index key per app, so the walk continues across sweeps without trusting positions:
+    // entries deleted meanwhile only shift the keys, and the first candidate after the stored key is still the next one to examine.
+    const last = input.position.get(app)
+    const at = last === undefined ? 0 : candidates.findIndex((entry) => entry.key > last)
+    const from = at === -1 ? 0 : at
+    for (let offset = 0; offset < candidates.length; offset++) {
+      const entry = candidates[(from + offset) % candidates.length]!
       if (signal.aborted || attempts >= maxDeletes) {
         more = true
         break
@@ -186,11 +202,15 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
         continue
       }
       attempts++
+      // Every host operation advances the walk, so the next sweep resumes after the entry that spent the last slot.
+      input.position.set(app, entry.key)
       try {
         // A removal deletes the session's children with it (OpenCode `Session.remove`), and a child of a request session is never
         // plugboard's, since the session's permissions run no tool that starts one. So a session with a child is kept, index entry
-        // and all, and the next sweep asks again: once the child is gone the parent can be pruned, and dropping the entry instead
+        // and all, and a later sweep asks again: once the child is gone the parent can be pruned, and dropping the entry instead
         // would forget the session forever. On a 2.0.x host there is no way to ask, and the removal goes ahead as before.
+        // Best effort: a child created between this check and the removal is deleted with the session (the host has no
+        // conditional remove).
         if (port.hasChild !== undefined && (await port.hasChild(entry.sessionID))) {
           children++
           continue

@@ -23,7 +23,8 @@ async function history(apps: Record<string, number>) {
   return port
 }
 
-const sweep = (port: FakeHistoryPort, input: Partial<SweepInput> = {}) => sweepSessions({ port, limits: {}, sessions: createSessionStore(), now: NOW, signal: new AbortController().signal, ...input })
+const sweep = (port: FakeHistoryPort, input: Partial<SweepInput> = {}) =>
+  sweepSessions({ port, limits: {}, sessions: createSessionStore(), now: NOW, signal: new AbortController().signal, position: new Map(), ...input })
 
 describe("the history index", () => {
   test("keys sort by app, then creation time, then session id", () => {
@@ -222,5 +223,37 @@ describe("#200 review: a request session with a child session is kept", () => {
     for (const id of ["app-0", "app-1"]) port.addChild(id, `${id}-child`)
     expect(await sweep(port, { limits: { maxSessions: 1 }, maxDeletes: 1 })).toMatchObject({ removed: 0, children: 1, more: true })
     expect(port.entries.size).toBe(3)
+  })
+
+  test("kept sessions do not starve the removable ones behind them: the next sweep resumes after the last kept one", async () => {
+    const port = new FakeChildHistoryPort()
+    await indexed(port, 202)
+    // The first 200 sessions have a child, the app holds 202, and maxSessions 1 leaves 201 candidates: exactly one sweep of budget of kept
+    // entries before the first removable one.
+    for (let index = 0; index < 200; index++) port.addChild(`app-${index}`, `human-${index}`)
+    const position = new Map<string, string>()
+    const runOnce = () => sweep(port, { limits: { maxSessions: 1 }, position })
+    const first = await runOnce()
+    expect(first).toMatchObject({ children: 200, removed: 0, more: true })
+    // The second sweep starts after app-199 and reaches app-200, which has no child.
+    const second = await runOnce()
+    expect(second.removed).toBe(1)
+    expect(port.removed).toEqual(["app-200"])
+    expect(port.sessions.has("app-201")).toBe(true)
+  })
+
+  test("a kept session is rechecked later and pruned once its child is gone", async () => {
+    const port = new FakeChildHistoryPort()
+    await indexed(port, 3)
+    port.addChild("app-0", "human-1")
+    const position = new Map<string, string>()
+    const runOnce = () => sweep(port, { limits: { maxSessions: 1 }, position })
+    expect(await runOnce()).toMatchObject({ removed: 1, children: 1 })
+    expect(port.removed).toEqual(["app-1"])
+    // Still kept while the child exists, even though it is now the only candidate and the walk starts over at it.
+    expect(await runOnce()).toMatchObject({ removed: 0, children: 1 })
+    port.childrenOf.delete("app-0")
+    expect(await runOnce()).toMatchObject({ removed: 1, children: 0 })
+    expect(port.removed).toEqual(["app-1", "app-0"])
   })
 })

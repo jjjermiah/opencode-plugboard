@@ -190,7 +190,7 @@ describe("sessions.hideFromList: request sessions under the app's parent (#337)"
     const port = new FakeHistoryPort()
     port.sessions.add(child.id)
     await recordSession(port, "bot", child.id, Date.now() - 10 * 86_400_000)
-    const swept = await sweepSessions({ port, limits: { maxAgeDays: 1 }, sessions: createSessionStore(), now: Date.now(), signal: new AbortController().signal })
+    const swept = await sweepSessions({ port, limits: { maxAgeDays: 1 }, sessions: createSessionStore(), now: Date.now(), signal: new AbortController().signal, position: new Map() })
     expect(swept.removed).toBe(1)
     expect(port.removed).toEqual([child.id])
   })

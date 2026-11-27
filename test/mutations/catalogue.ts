@@ -308,6 +308,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/prune.test.ts"],
   },
   {
+    id: "P200-sweep-restarts-at-front",
+    invariant: "#200 review",
+    file: "src/session/prune.ts",
+    find: "    const at = last === undefined ? 0 : candidates.findIndex((entry) => entry.key > last)",
+    replace: "    const at = 0",
+    tests: ["test/session/prune.test.ts"],
+  },
+  {
     id: "P262-audit-line-follows-log-level",
     invariant: "#262",
     file: "src/log.ts",

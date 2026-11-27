@@ -180,7 +180,7 @@ interface Runtime {
   /** Live rejected generations per directory: tells "rejected" from "no generation yet". */
   readonly rejected: Map<string, number>
   /** History sweep rate limit: no sweep starts before `nextAt` (epoch ms) or while one `running`. */
-  readonly sweep: { nextAt: number; running: boolean }
+  readonly sweep: { nextAt: number; running: boolean; position: Map<string, string> }
   /** Process-wide counters, shared by every generation (see src/metrics.ts). */
   readonly metrics: Metrics
   /** Concurrency queues and requests-per-minute windows (see src/limits.ts). */
@@ -238,7 +238,7 @@ function runtime(): Runtime | undefined {
       generations: [],
       confirmed: new Set(),
       rejected: new Map(),
-      sweep: { nextAt: 0, running: false },
+      sweep: { nextAt: 0, running: false, position: new Map() },
       metrics: createMetrics(),
       limits: createLimitState(),
       breaker: createBreaker(),
@@ -293,7 +293,7 @@ async function maybeSweep(rt: Runtime, history: GenerationInput["history"]): Pro
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const result = await Promise.race([
-      sweepSessions({ port, limits, apps, sessions: rt.sessions, now, signal: deadline }),
+      sweepSessions({ port, limits, apps, sessions: rt.sessions, now, signal: deadline, position: rt.sweep.position }),
       new Promise<undefined>((resolve) => {
         timer = setTimeout(() => resolve(undefined), SWEEP_DEADLINE_MS + 5_000)
         timer.unref?.()
