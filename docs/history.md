@@ -38,7 +38,7 @@ Each app can set its own `sessions` (`apps.<name>.sessions`). A field replaces t
 
 Sweeps run on requests, at most every 10 minutes, in bounded batches, and never touch a running session. Pruning covers the sessions plugboard has indexed. A session created before the index existed is never pruned: remove it with `examples/_tools/sessions.py`. OpenCode's own backups keep copies of pruned sessions.
 
-Deleting a session deletes the sessions started under it, so a request session that has a child session is kept rather than pruned. Plugboard never starts one from a request session; a child there is yours or another plugin's, and it survives. On OpenCode 2.0.x, whose plugin API cannot list sessions, the sweep cannot ask and deletes the request session alone as before.
+Deleting a session deletes the sessions started under it, so when pruning finds that a request session has a child session it gives the request up instead: the index entry is dropped and the session is never deleted, even after those children are removed. Plugboard never starts a child from a request session, so the child is yours or another plugin's, and it survives. Once pruning finds children, plugboard relinquishes the request permanently, and the request stops counting toward `maxSessions` and `maxAgeDays`. The check is a query made just before the delete, so a child created in that moment can still be taken with the session: OpenCode has no conditional delete. On OpenCode 2.0.x, whose plugin API cannot list sessions, the sweep cannot ask at all and may delete the request's children with it.
 
 ## Plugin loading
 

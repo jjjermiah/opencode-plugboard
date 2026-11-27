@@ -56,8 +56,11 @@ export interface SweepResult {
   readonly failed: number
   /** Over a limit but skipped because the request guard is still active. */
   readonly active: number
-  /** Over a limit but kept because the session has a child session, which removing it would delete too (#200 review). */
-  readonly children: number
+  /**
+   * Given up because the session has a child session, which removing it would delete too (#200 review). The index entry is
+   * dropped and the session is left alone for good: plugboard no longer owns it, even if those children are removed later.
+   */
+  readonly relinquished: number
   /** Work was left (budget, deadline or scan cap reached): run the next sweep soon. */
   readonly more: boolean
 }
@@ -72,7 +75,7 @@ export interface SweepInput {
   readonly now: number
   /** Aborts the sweep between host calls. */
   readonly signal: AbortSignal
-  /** Most host deletions per sweep. */
+  /** Most candidate attempts per sweep: one child check plus one removal or index drop each. */
   readonly maxDeletes?: number
   /** Most index entries read per app per sweep. */
   readonly maxScan?: number
@@ -139,12 +142,16 @@ async function readApp(port: HistoryPort, app: string, maxScan: number, signal: 
 }
 
 /**
- * One pass over the index. Per app, the sessions to delete are a prefix of its oldest-first list:
- * as many as exceed `maxSessions`, or are older than `maxAgeDays`, whichever is more. A session
- * with an active request guard is skipped (it still counts as kept), and so is one that has a child
- * session of its own. Entries of sessions the host no longer has are dropped. A scan that hit
- * `maxScan` only undercounts the app, so it can only delete fewer sessions than the limit asks for,
- * never more.
+ * One pass over the index. Per app, the requests over a limit are a prefix of its oldest-first list:
+ * as many as exceed `maxSessions`, or are older than `maxAgeDays`, whichever is more. A request with
+ * an active guard is skipped (it still counts as kept). A request that has a child session of its own
+ * is relinquished: its index entry is dropped and the session is never removed, because a removal
+ * deletes the children with it. An entry whose session the host no longer has is dropped too. Both
+ * shrink the owned set like a delete, which is what `maxSessions` and `maxAgeDays` count.
+ *
+ * Relinquishing is permanent, so an app cannot starve: a protected prefix leaves the index on the
+ * first pass that reaches it, and the entries behind it are read next. A scan that hit `maxScan` only
+ * undercounts the app, so it can only act on fewer entries than the limit asks for, never more.
  */
 export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
   const { port, sessions, signal } = input
@@ -155,7 +162,7 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
   let missing = 0
   let failed = 0
   let active = 0
-  let children = 0
+  let relinquished = 0
   let attempts = 0
   let more = false
 
@@ -187,12 +194,13 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
       }
       attempts++
       try {
-        // A removal deletes the session's children with it (OpenCode `Session.remove`), and a child of a request session is never
-        // plugboard's, since the session's permissions run no tool that starts one. So a session with a child is kept, index entry
-        // and all, and the next sweep asks again: once the child is gone the parent can be pruned, and dropping the entry instead
-        // would forget the session forever. On a 2.0.x host there is no way to ask, and the removal goes ahead as before.
+        // A removal deletes the session's children with it (OpenCode `Session.remove` lists them by `parentID` and removes each),
+        // and a child of a request session is never plugboard's: the session's permissions run no tool that starts one. So the
+        // request is relinquished instead: its index entry is dropped, it is never removed, and it stays out of the counts even if
+        // those children are removed later. On a 2.0.x host there is no way to ask, and the removal goes ahead as before.
         if (port.hasChild !== undefined && (await port.hasChild(entry.sessionID))) {
-          children++
+          await port.drop(entry.key)
+          relinquished++
           continue
         }
         if ((await port.removeSession(entry.sessionID)) === "removed") removed++
@@ -203,5 +211,5 @@ export async function sweepSessions(input: SweepInput): Promise<SweepResult> {
       }
     }
   }
-  return { apps: apps.length, scanned, removed, missing, failed, active, children, more }
+  return { apps: apps.length, scanned, removed, missing, failed, active, relinquished, more }
 }

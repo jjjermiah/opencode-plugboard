@@ -130,6 +130,8 @@ export class FakeChildHistoryPort extends FakeHistoryPort {
   readonly childrenOf = new Map<string, string[]>()
   /** Child sessions a removal took with it: what the sweep's guard exists to avoid. */
   readonly destroyed = new Set<string>()
+  /** Index keys whose drop fails, like a host storage error. */
+  readonly failingDrops = new Set<string>()
 
   /** `child` becomes a live host session under `parent`. */
   addChild(parent: string, child: string): void {
@@ -140,6 +142,11 @@ export class FakeChildHistoryPort extends FakeHistoryPort {
   }
 
   hasChild = async (sessionID: string): Promise<boolean> => (this.childrenOf.get(sessionID) ?? []).length > 0
+
+  async drop(key: string): Promise<void> {
+    if (this.failingDrops.has(key)) throw new Error(`drop ${key} failed`)
+    await super.drop(key)
+  }
 
   async removeSession(sessionID: string): Promise<"removed" | "missing"> {
     const result = await super.removeSession(sessionID)

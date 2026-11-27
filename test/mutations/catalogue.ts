@@ -308,6 +308,14 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: ["test/session/prune.test.ts"],
   },
   {
+    id: "P200-relinquished-entry-kept",
+    invariant: "#200 review",
+    file: "src/session/prune.ts",
+    find: "          await port.drop(entry.key)\n          relinquished++",
+    replace: "          relinquished++",
+    tests: ["test/session/prune.test.ts"],
+  },
+  {
     id: "P262-audit-line-follows-log-level",
     invariant: "#262",
     file: "src/log.ts",
