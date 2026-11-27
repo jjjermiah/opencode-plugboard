@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["dspy==3.4.0"]
+# dependencies = ["dspy==3.5.0"]
 # ///
 """A DSPy program on plugboard (#224): ChainOfThought with a typed output.
 
