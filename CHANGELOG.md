@@ -14,6 +14,12 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.68.0] - 2026-11-27: Hands Off Their Children
+
+**Full diff:** [v0.67.0...v0.68.0](https://github.com/jjjermiah/opencode-plugboard/compare/v0.67.0...v0.68.0)
+
 ### Added
 
 - **A step that starts after the interrupt is logged** ([#14](https://github.com/jjjermiah/opencode-plugboard/issues/14)). A request that ends with tool calls interrupts its session so the runner does not start another step, and that interrupt is fire-and-forget: the runner can begin the next step before the host handles it. The stray step is wasted (extra tokens, a stray assistant message in history) but never wrong for the caller, so it is counted rather than prevented. At `logLevel: debug`, every step the host starts after plugboard asked for an interrupt writes `request.stray_step` with the step count, how many were stray and whether the response had already finished. A run of real traffic then says whether the race can be ignored or needs the upstream change (#3's native backend has no loop to race).
@@ -27,6 +33,176 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 - **A host change that breaks tool renaming fails the request instead of sending no tools** ([#199](https://github.com/jjjermiah/opencode-plugboard/issues/199)). Plugboard offers a caller's tools by renaming its placeholder seeds in the `context` hook, and the host finds them again by the identity of the descriptor object, a rule it states only in a comment. If a host upgrade handed out copies, froze the descriptors or matched by key alone, every renamed tool would be dropped without an error and the model would answer with no tools at all, while `tsc` stayed green because no type changed. The hook now checks its own output: every tool it leaves in place must be a descriptor object the host handed it, or the request fails with the usual 500 `backend_preparation_failed` and a `request.seed_rename_failed` log line naming the tools. A request that used to fail silently now fails visibly.
 - **Pruning gives up a request session that has a child session instead of deleting it** (found in review of the abandoned #200 change). OpenCode deletes a session's children when the session is deleted, so the sweep's removal could take a session plugboard never created: a session started under the request, or another plugin's child. A fork is not at risk: it is stored as a top-level session, not a child, and it is never in the index. A request session allows no tool that could start a child, so any child there is someone else's. On OpenCode 2.1 and later the sweep now asks the host for the session's children and, when there are any, gives the request up: the index entry is dropped and the session is never deleted, even after those children are removed. Once pruning finds children, plugboard relinquishes the request permanently, and it stops counting toward `maxSessions` and `maxAgeDays`. On 2.0.x, whose plugin API cannot list sessions, the removal goes ahead without that protection and can delete the children too. The check is made just before the delete, so a child created in between is still taken with the session: OpenCode has no conditional delete. The sweep line gains a `relinquished` count, and the runtime version is 18, so a server that hot-reloads the plugin needs a restart.
 - **The manual cleanup tool deletes only what it can prove.** `examples/_tools/sessions.py` matched sessions on `metadata.plugboard.app`, which a fork and a session started under a request both carry as a copy of the parent's. It now deletes only a request whose parent is an anchor of the same app, and refuses a top-level session, because plugboard's ownership index is not readable from the tool and metadata alone is not proof. Anchors, forks and sessions with children stay excluded, and the rules have their own checks (`examples/_tools/test_sessions.py`, run by `bun test`) with a foreign child under an owned request as the regression case.
+
+<!-- commit-detail:start -->
+<details>
+<summary>Commit-level detail (9 commits)</summary>
+
+#### Fixes
+
+**fix(session): log a step that starts after the interrupt** ([`765ff0b`](https://github.com/jjjermiah/opencode-plugboard/commit/765ff0bb3cb97f8ca5c7d436503f975e0a39c6da))
+
+A request that ends with tool calls interrupts its session in `session.step.ended` so the runner does not start another step against the placeholder seeds. The interrupt is fire-and-forget (`session.interrupt` forks, and the bus is how the plugin hears anything), so on a busy host the next step can begin before the interrupt lands: extra tokens and a stray assistant message, never a wrong answer for the caller. #14 asked for a debug line so the rate can be measured before deciding whether it matters.
+
+What changed:
+
+- `RequestCollector` now handles `session.step.started` (OpenCode `packages/schema/src/session-event.ts`, published for every step after the first): it counts the step, and when plugboard has asked for an interrupt it counts a stray step and writes `request.stray_step` with `step`, `stray` and `finished`. The fields are built only at `logLevel: debug` (the `debugEnabled()` guard), like the other debug lines.
+- `this.hooks.stopTurn()` is now reached only through a private `stopTurn()` on the collector, which records the ask. That is the one place an interrupt is requested, so the flag cannot be set by accident, and every existing call site keeps its behaviour.
+- No metric: `Metrics` in `src/metrics.ts` has dedicated counters (sweep, settledFromTranscript) rather than a generic one, and a per-request gauge is not what #14 asked for. The debug line carries the count, and a run of real traffic is what decides the question.
+- No behaviour change: the stray step is not interrupted again and nothing reaches the caller for it. A second interrupt was rejected: it is another fire-and-forget call with no way to know it wins, and the step is already harmless to the answer.
+
+Verified the collector's event path: the process pump subscribes to the whole server bus and hands every envelope to `SessionStore.dispatch` (`src/runtime.ts` `ensurePump`), which routes by session id and drops nothing by type, so `session.step.started` reaches the collector. What is not verified: a live host actually emitting it, which needs an isolated server and a real interrupt race (docs/development.md); the fake bus covers the collector's handling only.
+
+Tests: test/session/collector.test.ts, "#14 a step that starts after the interrupt": a step after the interrupt is logged once with `step: 1, stray: 1, finished: true` (no step had started before, and the response had already finished), and a step before any interrupt writes nothing. `bun test test/session/collector.test.ts`: 101 pass, 0 fail. `bun run typecheck`, `bun run lint` and `biome format` clean.
+
+Refs #14: the done-when also allows closing on a measured rate, which needs a live server and a run of traffic, so this commit adds the log line and the issue stays open.
+
+**fix(session): check the seed rename the host resolves by identity** ([`855ef75`](https://github.com/jjjermiah/opencode-plugboard/commit/855ef75d12b1184fa99ec8072dc6d4665066d678))
+
+The `context` hook offers a caller's tools by re-keying plugboard's placeholder seed descriptors, and the host finds them again by the identity of the descriptor object it handed the hook. That rule exists only as a comment in the host (`packages/core/src/session/model-request.ts`: `given` is keyed by each definition object, and a rewritten tool is looked up with `given.get(d)`), so nothing in the types holds it. A host upgrade that handed out copies, froze the descriptors or matched by key alone would drop every renamed tool without an error and the model would answer with no tools, while `tsc` stayed green because no type changed (#199).
+
+What changed in `src/session/context.ts`:
+
+- `remapSeedTools` returns `{ missing, offered }`, where `offered` is the set of descriptor objects this hook call received, by identity.
+- New `unresolvedSeeds(offered, tools)` names the entries the host did not offer. `applyContext` calls it right after the rewrite and, when it reports anything, logs `request.seed_rename_failed` (request id, app, the tool names) and fails the request with the same generic 500 `backend_preparation_failed` the other preparation mismatches use. Nothing about it reaches the caller: I13 still holds.
+- The whole rewrite is now inside a `try`. A descriptor the host made read-only throws on the in-place write, and that throw used to escape into the host's hook effect, where it would have failed the prompt for a reason nobody could read. It is logged as the same event with `reason: error` and the error text, and the request fails with the generic 500.
+- `SessionContext` still comes from `@opencode/plugin/effect/session`, because the package index does not export it; `docs/architecture.md` now says so next to the identity rule, and records what the runtime check does and does not cover.
+
+Rejected: comparing tool names only. The host's fallback by name is exactly what a silent rename failure looks like from outside, so a name check would pass in the case the check exists for. Rejected: a `test.failing`. The read-only case is a real failure path that is handled, not a known bug, so it is an ordinary test.
+
+Not done: an upstream ask. #199 also wants the host to document renames and export the hook types; filing that is not part of this change. A live-suite case that renames a tool against a real host was considered and not added: `test/live` drives real clients against an isolated server, and a case that proves descriptor identity would need a second plugin loaded in the same server, which the live harness has no shape for. The runtime check is what covers a host change before users hit it.
+
+Tests: test/session/context.test.ts, "#199 the seed rewrite is checked before the hook returns": `unresolvedSeeds` reports a copied descriptor and accepts an offered one, and a hook event whose seed descriptors are frozen fails the request with the 500 and one `request.seed_rename_failed` line instead of throwing. `bun test test/session`: 496 pass, 0 fail. `bun run typecheck`, `bun run lint` and `biome format` clean.
+
+Refs #199: the runtime check and its test are done; the upstream documentation and typed export ask remains, which is the host's side of the issue.
+
+**fix(session): keep a request session that has a child session** ([`5bd8da8`](https://github.com/jjjermiah/opencode-plugboard/commit/5bd8da80ced79473240d05e9339dbf40f03d3e4b))
+
+`ctx.session.remove` is not a single-session delete: the host lists the session's children by `parentID` and removes each of them (`Session.remove` in `packages/core/src/session.ts`). The history sweep therefore deleted more than it meant to. An indexed request session that someone started a session under lost that child too, and a child of a request session is never plugboard's: request sessions are created with `deny *` plus the seeds (I8), so no tool the model can call starts one, and `opencodeTools` refuses `subagent` and `task` by name. Every child there belongs to a person or another plugin.
+
+What changed:
+
+- `HistoryPort.hasChild(sessionID)` (`src/session/host.ts`), built only when the host can list sessions (`typeof ctx.session.list === "function"`, OpenCode 2.1 and later): one `ctx.session.list({ parentID, limit: 1 })`, which the store filters as `parent_id = <id>` server-side (`packages/core/src/session/store.ts` `list`), so the answer is about direct children.
+- `sweepSessions` (`src/session/prune.ts`) asks before every removal and, when the answer is yes, keeps the session: no delete, no index drop, and a new `children` count in `SweepResult` and in the `sessions.swept` line.
+- A child check that throws keeps the session and counts as `failed`, so the entry is retried rather than removed unchecked.
+- The check consumes one of the 200 removal slots, so a sweep is still bounded in host calls even when every candidate is kept.
+- Runtime `VERSION` 17 to 18, because the history port changed shape.
+
+Kept in the index rather than dropped from it: dropping the entry would forget the session forever, so once the user's child is gone the parent could never be pruned, and the index is the only record plugboard has of a session it owns. Keeping it costs one indexed query per candidate per sweep, and the session counts against `maxSessions` while it exists, which is the honest reading of "keep this one".
+
+On OpenCode 2.0.x the plugin session API has no `list`, so `hasChild` is absent and the sweep removes as it always did. That gap is documented in `docs/history.md`, `docs/configuration.md` and the architecture page, and it closes when the peer minimum moves.
+
+Two related facts checked while here. A fork is not a child: the projector writes it with `parent_id: null` and `fork_session_id` set, so it is a top-level session and `remove` never takes it, and it was never in the index anyway. And the index itself remains identity-bound: only the session `register` hook writes an entry, so a fork or a human session with copied metadata is not a candidate. That is why the index stays and the list-based pruning explored for #200 was dropped.
+
+Found in review of the abandoned #200 change, which tried to prune from `session.list` and would have deleted human forks (their metadata is copied from the parent) and, with this same `remove` behaviour, their descendants.
+
+Validation: `bun run typecheck` clean across all four projects; `bun run lint` clean; `bun test` 3926 pass, 130 skip, 0 fail; check-pack ok (87 files); the new mutation `P200-child-session-not-checked` is killed. Tests: `test/session/prune.test.ts` "#200 review: a request session with a child session is kept" (kept with its index entry and the child alive; a session without children is removed as before; a host without the check removes as before; a failing check keeps the session and counts `failed`; a kept session uses one budget slot).
+
+Not verified: a live OpenCode 2.4.2 host answering `list({ parentID })` for a real child session. The shape is from the 2.4.2 source and the fake covers the policy only.
+
+**fix(session): relinquish an indexed request that has a child session** ([`1d79480`](https://github.com/jjjermiah/opencode-plugboard/commit/1d79480d004519854615dbfd3dfc82cb14ad10b3))
+
+`ctx.session.remove` deletes a session's children with it (OpenCode's `Session.remove` lists them by `parentID` and removes each). Keeping the entry while skipping the removal, as the previous commit did, made no progress: a kept entry consumed a candidate attempt and stayed in the index, so a prefix of kept entries held the sweep's budget, and a prefix longer than one `maxScan` read could stay in front of the removable entries for good.
+
+A request with a child is now relinquished. The sweep drops its index entry and never removes the session, not even after those children are gone. Ownership leaves the plugin, which is the honest answer: the child is someone else's (a request session allows no tool that could start one), the host offers no conditional remove, and plugboard cannot promise to prune the request later without keeping a record it may then act on wrongly.
+
+Why this cannot starve: a drop shrinks the index exactly like a delete, so the next pass reads the entries behind the prefix. No cursor, no per-app budget, nothing to postpone. Both shapes are tested: 202 entries with the first 200 protected, and a protected prefix inside a small `maxScan`.
+
+What changed:
+
+- `SweepResult.children` is `relinquished`, and the `sessions.swept` line carries it in the same key=value form. The count moves only after the index drop succeeds; a failed check or a failed drop counts as `failed` and leaves the entry for the next sweep.
+- `maxSessions` and `maxAgeDays` count indexed, still-owned requests, so a drop reduces the count like a delete. The candidate prefix is still computed from the entries read before acting, which is conservative: dropping can only leave the app at or under the limit, never over it.
+- The candidate order is still the index order, oldest first, over owned entries only.
+- `maxDeletes` is documented as what it bounds: 200 candidate attempts per sweep, a child check plus its removal or drop.
+
+Nothing re-indexes a relinquished session. Entries are written only by `trackSession` (`src/runtime.ts`), from the session store's `register`, and only for the session a request has just created (`src/session/caller.ts`, right after `session.create`). An existing session is never registered again, so a dropped entry stays dropped.
+
+The docs now say pruning relinquishes the request permanently once it finds children, keep the best-effort note about a child created between the check and the removal, and keep the 2.0.x limitation (no `list`, so no check). `docs/history.md`, `docs/configuration.md` and the architecture page were updated, the architecture page no longer describes a kept entry and states the budget and the `relinquished` field, and the CHANGELOG entry is rewritten the same way.
+
+Checks on this branch: `bun run typecheck` clean across all four projects; `bun run lint` clean; `bun test` 3929 pass, 130 skip, 0 fail; check-pack ok (87 files); the mutations `P200-child-session-not-checked` and `P200-relinquished-entry-kept` are both killed.
+
+New tests in `test/session/prune.test.ts`, under "#200 review: a request session with a child session is relinquished": the entry is dropped while the session and child survive and are not rechecked; no children means a removal as before; a 2.0.x port removes as before; a failed check keeps the entry; a failed drop keeps the entry and does not count; one attempt per relinquish; the 202-entry shape progresses on the second sweep; a protected prefix inside `maxScan` progresses on the second read.
+
+Left unverified is a live OpenCode 2.4.2 host answering `session.list({ parentID })` for a real child session.
+
+**fix(examples): prove ownership before the cleanup tool deletes a session** ([`446e9b8`](https://github.com/jjjermiah/opencode-plugboard/commit/446e9b808e922ca26fb69583126e04e687ac3f3f))
+
+`examples/_tools/sessions.py` deleted whatever `session.list` returned for the app directory with `metadata.plugboard.app == <app>`. That is not proof of ownership. A fork copies its parent's metadata, and so does any session started under a session without its own metadata (`packages/core/src/session.ts`: `metadata: input.metadata ?? parent?.metadata`). So `delete --all`, or naming such an id, could delete a session plugboard never created, and `session.remove` takes that session's children with it.
+
+What changed:
+
+- A session is deleted only when its parent is an anchor of the same app: the parent is in the app's listing, its `metadata.plugboard.anchor` is true, its app matches, and the parent is not a fork. The parent comes from the same `app_sessions` listing, so this costs no extra API call.
+- A top-level request is refused. Plugboard's ownership index lives in the plugin's host storage, which the tool cannot read through the OpenCode API, and the metadata it can read is the thing that is not proof. Refusing is the fail-closed choice: the session is removed in OpenCode instead, and the docs now say so.
+- The own-anchor, own-fork and has-children exclusions stay. The keep marks in `list` cover the first two and ownership, and its output says the parent check is a delete-time query (one call per session would be slow for a long list).
+- Explicit ids that are not removable are refused with the reason, and `--all`/`--older-than` skip them and report how many.
+
+The regression this covers: a leaf foreign session under an owned request, carrying the inherited metadata, must survive `delete --all` and must be refused when named.
+
+New checks in `examples/_tools/test_sessions.py` (unittest, mocked API: a `session.list` that answers the directory listing and `parentID` queries, and a `session.remove` that deletes children the way the host does): only the owned leaf request is deleted; the foreign leaf survives `delete --all` and a named delete; a fork, a parent, a top-level request and an anchor are each refused; a dry run reports the same set; `list` marks the keeps. `test/unit/sessions-tool.test.ts` runs that file so `bun test` covers it, and skips when `python3` is missing.
+
+The docs now match: `docs/history.md` no longer sends a pre-index session to the tool (it is top-level, so the tool refuses it), the architecture page's manual-path bullet states the rules, and the CHANGELOG has the entry.
+
+Checks: `python3 examples/_tools/test_sessions.py` 6 tests, OK; `bun test` covers it through the new file; `bun run typecheck`, `bun run lint` and check-pack run on the branch tip.
+
+**fix(session): compile the child check against OpenCode 2.0.x types** ([`fcb5699`](https://github.com/jjjermiah/opencode-plugboard/commit/fcb569945cce34f319b6072aae7d6f6991704930))
+
+The host matrix job for OpenCode 2.0.26 failed typecheck with TS2339: "Property 'list' does not exist on type 'SessionDomain'". `list` arrived in 2.1, and the child check named it through the host's own type.
+
+The check already feature-detects `list` at runtime. A small local type for the one call it makes (`parentID`, `limit: 1`, reading `data`) keeps the detection and makes the code compile against every host in the peer range.
+
+Checks: `bun run typecheck` is clean with the 2.4.2 dev pin and with `@opencode/plugin@2.0.26` plus its effect, installed the way CI's host matrix does. `bun test test/session`: 506 pass, 0 fail.
+
+#### Docs
+
+**docs(session): state that tool_choice is best effort, and test it** ([`d600306`](https://github.com/jjjermiah/opencode-plugboard/commit/d6003067218b18e00d3329b7eb1a1f04204363a7))
+
+OpenAI's `tool_choice` (`required`, or a named function) cannot be enforced through OpenCode: the session `context` hook can replace the system prompt, messages and tools, but it has no field for a tool choice, so plugboard steers the model with a system instruction and a narrowed tool list. A model that ignores the instruction answers in text. That was true, recorded in docs/configuration.md, and absent from the README, which is where a client author looks first (#13).
+
+What changed:
+
+- README.md, next to "What it serves": `tool_choice` is a request, not a guarantee; `required` and a named function reach the model as an instruction plus that tool's list; a model that ignores it answers in text; the call is still a normal 200, never an error.
+- test/http/chat.test.ts, "#13 tool_choice is best effort": two scripted models that answer in text (one for `required`, one for a named function) are sent through the real route over loopback. Both answers are 200 with `finish_reason: stop`, the text, and no `tool_calls`, and the model caller received the choice (`"required"` / `{ type: "tool", name: "lookup" }`) and the offered tool.
+
+Checked, not changed: nothing in `src/` writes `toolChoice` into the request `options`. The only `options` writer is `generationOptions` in `src/session/context.ts` (maxTokens, temperature, topP, topK, seed and the two penalties), and on OpenCode 2.4.2 any other key in `options` is routed to the provider as a provider option (`model-request.ts` `GENERATION_KEYS` filter), so a stray `toolChoice` would have been sent to the provider as a bogus option. `toolChoice` is read in `src/session/seeds.ts` (which tools to offer) and in `requestSystem` (the instruction) only.
+
+Rejected: answering 400 when a request needs a guarantee plugboard cannot give. The issue lists it as the alternative, and the evidence points the other way: client checks with named `tool_choice` on `with_structured_output(method="function_calling")` and `required` for pydantic-ai tool-mode output passed, so a 400 would break callers that work. Best effort plus documentation is also what the README now promises, so the two agree.
+
+Tests: test/http/chat.test.ts 43 pass, 0 fail. `bun run typecheck` and `bun run lint` clean.
+
+Fixes #13: the README states the behaviour, and a test shows `required` and a named function against a model that ignores the instruction with the documented result.
+
+#### CI and tooling
+
+**chore(examples): bump six example SDKs and regenerate their scripted runs** ([`a7a0a60`](https://github.com/jjjermiah/opencode-plugboard/commit/a7a0a6009fa681ecc8dab9450f723e6ccca44815))
+
+Takes the six example bumps on current main: litellm[mcp] 1.110.1, openai 3.58.0, openai-agents 0.26.0, pydantic-ai-slim[openai] 2.71.0, langchain-openai 1.7.4 and dspy 3.5.0, superseding #693, #689, #687, #685, #673 and #671. Each uv.lock is re-locked with uv 0.12.18, the version CI installs, so the transitive versions match a cold `uv run --frozen`. Five of the six runs changed only the client version line in summary.json and summary.md; their traffic and results are identical.
+
+dspy 3.5.0 is the exception. Its default adapter moved from the Chat Completions `[[ ## answer ## ]]` format to an XML format over the Responses API, so the scripted model now answers `<question>` prompts with `<answer>` tags, the JSON fallback with a JSON object, and a chain of thought request with `<plan>` first. chat.py, example.py's inline pin and the DSPy client page all said the calls take the Chat Completions path, so they say what 3.5 does now.
+
+Rejected: configuring `dspy.ChatAdapter` in the example to keep the old path. A plain dspy 3.5 user gets the Responses API, and the example and its runs should show what they get, not a configuration only the example uses.
+
+Checked with bun 1.4.2: `bun examples/_harness/run.ts <example> --target scripted` for all six (all pass; the dspy run failed at 9 scenarios before the scripted-model change and passes after), plus lint, format, typecheck, `bun test` (3921 pass, 0 fail), check-pack, smoke-pack and `bun run docs:build`.
+
+Refs #671 #673 #685 #687 #689 #693
+
+#### Dependencies
+
+**build(deps): take the four dev dependency bumps on current main** ([`5698dda`](https://github.com/jjjermiah/opencode-plugboard/commit/5698dda844fa49aba9fe516530a7b3fc33a5f407))
+
+Bumps babel-preset-solid 1.9.12 -> 1.9.19, ai 7.0.163 -> 7.0.177, @commitlint/cli 21.2.3 -> 21.2.4 and @anthropic-ai/sdk 1.3.0 -> 1.11.0, superseding Dependabot #680, #679, #678 and #677.
+
+The four branches conflict because Dependabot regenerated npm-shrinkwrap.json with devDependencies, which pulls the whole dev tree into a file that exists to pin the runtime install only (docs/packaging.md). No runtime dependency changed, so the shrinkwrap is untouched here and bun.lock carries the bump instead. bun.lock is what CI's `bun install --frozen-lockfile` reads, and that install failing is what stopped lint, typecheck and tests from running on the branches.
+
+The @anthropic-ai/sdk jump is 1.3.0 to 1.11.0 in one step. Nothing in src/ or test/compat uses a symbol it removed, so it needed no code change.
+
+Rejected: merging the Dependabot branches and resolving their lockfile conflicts, which would have kept the dev-only shrinkwrap rewrite.
+
+Checked with bun 1.4.2 (the CI pin, via npx): `bun install --frozen-lockfile` (no changes), `bun run lint`, `bun run format`, `bun run typecheck`, `bun test` (3921 pass, 0 fail, 130 skip), check-pack.ts and smoke-pack.ts.
+
+Refs #677 #678 #679 #680
+
+</details>
+<!-- commit-detail:end -->
 
 ## [0.67.0] - 2026-11-27: Runs on OpenCode 2.4
 
@@ -12500,7 +12676,8 @@ package.json gets real metadata, an exports entry, a files allowlist and a 2.0.2
 </details>
 <!-- commit-detail:end -->
 
-[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.67.0...HEAD
+[Unreleased]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.68.0...HEAD
+[0.68.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.2...v0.66.0
 [0.65.2]: https://github.com/jjjermiah/opencode-plugboard/compare/v0.65.1...v0.65.2
