@@ -222,9 +222,15 @@ export function toStoredAnswer(messages: ReadonlyArray<unknown>): StoredAnswer |
   }
 }
 
-/** A tool a request session can call by name: direct (`codemode: false`), with a permission name equal to its id. */
-const isDirect = (tool: { readonly id: string; readonly options?: { readonly codemode?: boolean; readonly permission?: string } }): boolean =>
-  tool.options?.codemode === false && (tool.options?.permission ?? tool.id) === tool.id
+/** A tool as `ctx.tool.list()` reports it, taken from the host so a change to that shape fails this file's typecheck. */
+type ListedTool = Effect.Success<ReturnType<HostContext["tool"]["list"]>>[number]
+
+/**
+ * A tool a request session can call by name: direct (`codemode: false`), with a permission name equal to its id.
+ * From OpenCode 2.4 `codemode` may also be an object (`{ pinned, description, input, output }`), which still means
+ * the tool is reached through Code Mode, so only `false` is direct.
+ */
+const isDirect = (tool: ListedTool): boolean => tool.options?.codemode === false && (tool.options?.permission ?? tool.id) === tool.id
 
 /**
  * A tool input as the model reads it. Mirrors `inputJsonSchema` in OpenCode core (packages/core/src/tool/runtime.ts): a standard
