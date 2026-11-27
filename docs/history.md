@@ -13,7 +13,7 @@ Each session is filed under a per-app directory, so it never shows up in your re
 $XDG_DATA_HOME/opencode-plugboard/<app>/        # default ~/.local/share/opencode-plugboard/<app>/
 ```
 
-That directory only groups sessions: it is the `directory` a session is filed under. The prompts and replies are not stored in it. OpenCode keeps them in its own database, `opencode.db` in its data directory (`opencode debug paths` prints the exact location, and `OPENCODE_DB` can override it). So deleting, locking down or backing up the app directory removes, protects or saves no history. To back up, restrict or purge history, work on that database, or remove sessions through OpenCode ([`examples/_tools/sessions.py`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/_tools/sessions.py) does that for one app).
+That directory only groups sessions: it is the `directory` a session is filed under. The prompts and replies are not stored in it. OpenCode keeps them in its own database, `opencode.db` in its data directory (`opencode debug paths` prints the exact location, and `OPENCODE_DB` can override it). So deleting, locking down or backing up the app directory removes, protects or saves no history. To back up, restrict or purge history, work on that database, or remove sessions through OpenCode ([`examples/_tools/sessions.py`](https://github.com/jjjermiah/opencode-plugboard/blob/main/examples/_tools/sessions.py) does that for one app's anchored requests).
 
 History records every prompt and reply, so treat OpenCode's database as sensitive.
 
@@ -36,7 +36,9 @@ Each app can set its own `sessions` (`apps.<name>.sessions`). A field replaces t
 - The global `maxAgeDays` defaults to 30, so an app that sets only `maxSessions` is still pruned after 30 days. Set its `maxAgeDays` to keep it longer.
 - An app cannot set `0` (keep forever). Use a large value such as `36500`.
 
-Sweeps run on requests, at most every 10 minutes, in bounded batches, and never touch a running session. Pruning covers the sessions plugboard has indexed. A session created before the index existed is never pruned: remove it with `examples/_tools/sessions.py`. OpenCode's own backups keep copies of pruned sessions.
+Sweeps run on requests, at most every 10 minutes, in bounded batches, and never touch a running session. Pruning covers the sessions plugboard has indexed. A session created before the index existed is never pruned: remove it in OpenCode. OpenCode's own backups keep copies of pruned sessions.
+
+Deleting a session deletes the sessions started under it, so when pruning finds that a request session has a child session it gives the request up instead: the index entry is dropped and the session is never deleted, even after those children are removed. Plugboard never starts a child from a request session, so the child is yours or another plugin's, and it survives. Once pruning finds children, plugboard relinquishes the request permanently, and the request stops counting toward `maxSessions` and `maxAgeDays`. The check is a query made just before the delete, so a child created in that moment can still be taken with the session: OpenCode has no conditional delete. On OpenCode 2.0.x, whose plugin API cannot list sessions, the sweep cannot ask at all and may delete the request's children with it.
 
 ## Plugin loading
 

@@ -120,6 +120,45 @@ export class FakeHistoryPort implements HistoryPort {
   }
 }
 
+/**
+ * A `HistoryPort` for a host that can answer `hasChild` (OpenCode 2.1+): `childrenOf` maps a session to its child sessions, and removing
+ * a session removes them too, which is what the host's `Session.remove` does. `childrenOf` is the only record: a session with no entry
+ * has no children.
+ */
+export class FakeChildHistoryPort extends FakeHistoryPort {
+  /** Parent session id -> its child session ids. */
+  readonly childrenOf = new Map<string, string[]>()
+  /** Child sessions a removal took with it: what the sweep's guard exists to avoid. */
+  readonly destroyed = new Set<string>()
+  /** Index keys whose drop fails, like a host storage error. */
+  readonly failingDrops = new Set<string>()
+
+  /** `child` becomes a live host session under `parent`. */
+  addChild(parent: string, child: string): void {
+    const list = this.childrenOf.get(parent) ?? []
+    list.push(child)
+    this.childrenOf.set(parent, list)
+    this.sessions.add(child)
+  }
+
+  hasChild = async (sessionID: string): Promise<boolean> => (this.childrenOf.get(sessionID) ?? []).length > 0
+
+  async drop(key: string): Promise<void> {
+    if (this.failingDrops.has(key)) throw new Error(`drop ${key} failed`)
+    await super.drop(key)
+  }
+
+  async removeSession(sessionID: string): Promise<"removed" | "missing"> {
+    const result = await super.removeSession(sessionID)
+    if (result === "removed")
+      for (const child of this.childrenOf.get(sessionID) ?? []) {
+        this.destroyed.add(child)
+        this.sessions.delete(child)
+      }
+    return result
+  }
+}
+
 /** A host bus envelope as the event pump receives it. */
 export interface BusEnvelope {
   readonly type: string
