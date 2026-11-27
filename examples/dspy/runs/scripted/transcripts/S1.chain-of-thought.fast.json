@@ -3,54 +3,85 @@
     {
       "request": {
         "body": {
-          "messages": [
+          "input": [
             {
-              "content": "Your input fields are:\n1. `question` (str):\nYour output fields are:\n1. `reasoning` (str): \n2. `answer` (str):\nAll interactions will be structured in the following way, with the appropriate values filled in.\n\n[[ ## question ## ]]\n{question}\n\n[[ ## reasoning ## ]]\n{reasoning}\n\n[[ ## answer ## ]]\n{answer}\n\n[[ ## completed ## ]]\nIn adhering to this structure, your objective is: \n        Given the fields `question`, produce the fields `answer`.",
-              "role": "system"
-            },
-            {
-              "content": "[[ ## question ## ]]\nReply with exactly: pong\n\nRespond with the corresponding output fields, starting with the field `[[ ## reasoning ## ]]`, then `[[ ## answer ## ]]`, and then ending with the marker for `[[ ## completed ## ]]`.",
+              "content": [
+                {
+                  "text": "<question>\nReply with exactly: pong\n</question>\n\nOutput format (replace placeholders):\n<plan>\n{plan}\n</plan>\n\n<answer>\n{answer}\n</answer>\n\nUse this format for text outputs. Put field tags on separate lines. Write string values literally, without XML or JSON escaping.",
+                  "type": "input_text"
+                }
+              ],
               "role": "user"
             }
           ],
-          "model": "fast"
+          "instructions": "Your input fields are:\n1. `question` (str):\nYour output fields are:\n1. `plan` (str): A short plan for solving the task.\n2. `answer` (str):\nOutput format (replace placeholders):\n<plan>\n{plan}\n</plan>\n\n<answer>\n{answer}\n</answer>\nIn adhering to this structure, your objective is: \n        Given the fields `question`, produce the fields `answer`.",
+          "model": "fast",
+          "stream": false
         },
         "headers": {
           "accept": "*/*",
           "content-type": "application/json"
         },
         "method": "POST",
-        "path": "/v1/chat/completions"
+        "path": "/v1/responses"
       },
       "response": {
         "body": {
-          "choices": [
+          "created_at": "<time-1>",
+          "error": null,
+          "id": "<id-1>",
+          "incomplete_details": null,
+          "instructions": "Your input fields are:\n1. `question` (str):\nYour output fields are:\n1. `plan` (str): A short plan for solving the task.\n2. `answer` (str):\nOutput format (replace placeholders):\n<plan>\n{plan}\n</plan>\n\n<answer>\n{answer}\n</answer>\nIn adhering to this structure, your objective is: \n        Given the fields `question`, produce the fields `answer`.",
+          "max_output_tokens": null,
+          "metadata": {},
+          "model": "fast",
+          "object": "response",
+          "output": [
             {
-              "finish_reason": "stop",
-              "index": 0,
-              "logprobs": null,
-              "message": {
-                "content": "[[ ## reasoning ## ]]\nThe answer is requested.\n\n[[ ## answer ## ]]\npong\n\n[[ ## completed ## ]]",
-                "refusal": null,
-                "role": "assistant"
-              }
+              "content": [
+                {
+                  "annotations": [],
+                  "logprobs": [],
+                  "text": "<plan>\nThe answer is requested.\n</plan>\n\n<answer>\npong\n</answer>",
+                  "type": "output_text"
+                }
+              ],
+              "id": "<id-2>",
+              "role": "assistant",
+              "status": "completed",
+              "type": "message"
             }
           ],
-          "created": "<time-1>",
-          "id": "<id-1>",
-          "model": "fast",
-          "object": "chat.completion",
+          "parallel_tool_calls": true,
+          "previous_response_id": null,
+          "reasoning": {
+            "effort": null,
+            "summary": null
+          },
+          "status": "completed",
+          "store": true,
+          "temperature": null,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto",
+          "tools": [],
+          "top_p": null,
+          "truncation": "disabled",
           "usage": {
-            "completion_tokens": 7,
-            "completion_tokens_details": {
-              "reasoning_tokens": 0
-            },
-            "prompt_tokens": 11,
-            "prompt_tokens_details": {
+            "input_tokens": 11,
+            "input_tokens_details": {
               "cached_tokens": 0
             },
+            "output_tokens": 7,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
             "total_tokens": 18
-          }
+          },
+          "user": null
         },
         "headers": {
           "content-type": "application/json"
