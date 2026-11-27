@@ -108,6 +108,9 @@ type HostSession = HostContext["session"]
 type HostSessionID = Parameters<HostSession["interrupt"]>[0]["sessionID"]
 const hostSessionID = (id: string): HostSessionID => id as HostSessionID
 
+/** The slice of OpenCode 2.1+'s `ctx.session.list` the sweep uses; absent from the 2.0.x types, so it is declared here. */
+type SessionListChildren = (input: { readonly parentID: HostSessionID; readonly limit: number }) => Effect.Effect<{ readonly data: ReadonlyArray<unknown> }, unknown>
+
 type HostCreate = NonNullable<Parameters<HostSession["create"]>[0]>
 type HostModelRef = NonNullable<HostCreate["model"]>
 type HostDirectory = NonNullable<HostCreate["location"]>["directory"]
@@ -301,11 +304,12 @@ export function createHistoryPort(ctx: HostContext): HistoryPort {
         throw failed.error
       }),
     // `list` arrived in OpenCode 2.1, and it is the only way to ask for a session's children. A 2.0.x host has no such method, so
-    // the sweep removes without the check there (src/session/prune.ts).
-    ...(typeof ctx.session.list === "function"
+    // the sweep removes without the check there (src/session/prune.ts). The structural type keeps this compiling against the
+    // 2.0.x plugin types, where `SessionDomain` has no `list`.
+    ...(typeof (ctx.session as { readonly list?: unknown }).list === "function"
       ? {
           hasChild: (sessionID: string) =>
-            Effect.runPromise(ctx.session.list({ parentID: hostSessionID(sessionID), limit: 1 } satisfies Parameters<HostSession["list"]>[0])).then((page) => page.data.length > 0),
+            Effect.runPromise((ctx.session as unknown as { readonly list: SessionListChildren }).list({ parentID: hostSessionID(sessionID), limit: 1 })).then((page) => page.data.length > 0),
         }
       : {}),
   }
