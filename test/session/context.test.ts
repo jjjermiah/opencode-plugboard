@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import type { PlugRequest } from "../../src/contract.js"
-import { installSessionHooks, replaysSignedThinking } from "../../src/session/context.js"
+import { installSessionHooks, replaysSignedThinking, unresolvedSeeds } from "../../src/session/context.js"
 import type { ContextHookEvent, HostToolDescriptor } from "../../src/session/host.js"
 import { createSessionStore } from "../../src/session/state.js"
 import { captureLogs } from "../support/logs.js"
@@ -604,5 +604,24 @@ describe("seed tools are re-keyed by descriptor identity", () => {
     run(event({ tools: seeds(2) }))
     expect(pushed).toEqual([{ type: "plugboard.failure", error: { status: 500, kind: "server", code: "backend_preparation_failed", message: "Could not prepare the model request" } }])
     expect(logs.of("request.preparation_failed")[0]!.fields).toMatchObject({ missing_media: "0", missing_tools: "1" })
+  })
+})
+
+/** #199: the identity contract the host states only in a comment (`model-request.ts`: "we find the tool by object identity"). */
+describe("#199 the seed rewrite is checked before the hook returns", () => {
+  test("unresolvedSeeds reports a descriptor the host did not offer, and nothing else", () => {
+    const offered = new Set<HostToolDescriptor>([{ description: "placeholder", input: {} }])
+    const seed = [...offered][0]!
+    expect(unresolvedSeeds(offered, { lookup: seed, other: seed })).toEqual([])
+    expect(unresolvedSeeds(offered, { lookup: { ...seed } })).toEqual(["lookup"])
+  })
+
+  test("a descriptor the host made read-only fails the request with a clear error instead of throwing out of the hook", () => {
+    const { run, pushed } = hook(plugRequest({ tools: [tool("lookup")] }))
+    const before = event()
+    for (const [name, descriptor] of Object.entries(before.tools!)) if (name.startsWith("plugboard_seed_")) Object.freeze(descriptor)
+    expect(() => run(before)).not.toThrow()
+    expect(pushed.at(-1)).toMatchObject({ type: "plugboard.failure", error: { status: 500, code: "backend_preparation_failed" } })
+    expect(logs.of("request.seed_rename_failed")[0]!.fields).toMatchObject({ app: "app", reason: "error" })
   })
 })
