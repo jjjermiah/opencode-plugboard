@@ -14,7 +14,9 @@ Work is tracked in [GitHub issues](https://github.com/jjjermiah/opencode-plugboa
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A step that starts after the interrupt is logged** ([#14](https://github.com/jjjermiah/opencode-plugboard/issues/14)). A request that ends with tool calls interrupts its session so the runner does not start another step, and that interrupt is fire-and-forget: the runner can begin the next step before the host handles it. The stray step is wasted (extra tokens, a stray assistant message in history) but never wrong for the caller, so it is counted rather than prevented. At `logLevel: debug`, every step the host starts after plugboard asked for an interrupt writes `request.stray_step` with the step count, how many were stray and whether the response had already finished. A run of real traffic then says whether the race can be ignored or needs the upstream change (#3's native backend has no loop to race).
 
 ## [0.67.0] - 2026-11-27: Runs on OpenCode 2.4
 

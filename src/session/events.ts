@@ -19,7 +19,7 @@
  */
 
 import { isPlugError, type PlugError, type PlugEvent, type PlugFinish, type PlugUsage } from "../contract.js"
-import { log, logError, logWarn } from "../log.js"
+import { debugEnabled, log, logDebug, logError, logWarn } from "../log.js"
 import type { BusEvent, StoredAnswer } from "./host.js"
 import { StopScan } from "../stop.js"
 import { placeholderAliases, placeholderRewriter } from "../tool-placeholders.js"
@@ -342,6 +342,11 @@ export class RequestCollector {
   private lateCalls = 0
   private lateStepCalls = 0
   private opencodeSteps = 0
+  /** Steps the host started for this request (`session.step.started`), and whether plugboard asked for an interrupt. */
+  private steps = 0
+  private interrupted = false
+  /** Steps that started after the interrupt: on a host where the interrupt always wins this stays 0 (#14). */
+  private straySteps = 0
   private usage?: RawUsage
   /** True once any output event (not an error) was emitted: the answer is committed and no retry may restart it. */
   private anyEmitted = false
@@ -517,7 +522,7 @@ export class RequestCollector {
           // A client that left mid-run (the settle window): no tool runs for it, and the run is stopped at once (no further step).
           if (this.wasCancelled && !this.executionDone && !this.leftStopped) {
             this.leftStopped = true
-            this.hooks.stopTurn()
+            this.stopTurn()
           }
           return
         }
@@ -562,6 +567,17 @@ export class RequestCollector {
         // Assumed invariant: `tokens` is the host's token-usage record (RawUsage shape).
         this.usage = (item.tokens as RawUsage | undefined) ?? this.usage
         return
+      case "session.step.started": {
+        // #14: the interrupt that ends a tool-call step is fire-and-forget, so the runner can start one more step before the host
+        // handles it. That step is wasted (extra tokens, a stray assistant message) but never wrong for the caller, so it is only
+        // counted in a debug line: the rate on a real host is what would show it can be ignored.
+        this.steps++
+        if (this.interrupted && debugEnabled()) {
+          this.straySteps++
+          logDebug("request.stray_step", { requestID: this.hooks.requestID, app: this.hooks.app, step: this.steps, stray: this.straySteps, finished: this.finished })
+        }
+        return
+      }
       case "session.step.ended": {
         this.reported()
         // Text and reasoning ordinals count from 0 in each assistant message, so the next step starts its counts again.
@@ -575,16 +591,16 @@ export class RequestCollector {
         // A late step that ran OpenCode calls: the host is still running the session, so the turn is stopped again (#196).
         const late = this.lateStepCalls
         this.lateStepCalls = 0
-        if (this.finished && late > 0 && !this.executionDone) this.hooks.stopTurn()
+        if (this.finished && late > 0 && !this.executionDone) this.stopTurn()
         // Also after the response finished: a later step that ended with calls means the first
         // interrupt lost the race or failed; ask again (the guard stays until the execution ends).
-        if (this.calls.size > 0 && !this.executionDone) this.hooks.stopTurn()
+        if (this.calls.size > 0 && !this.executionDone) this.stopTurn()
         const reason = toFinish(item.finish)
         // A client that left mid-run: a step that asks for another (OpenCode tools, or a finish that is not a plain stop) is stopped at
         // once, so no further step starts. A client tool call already stopped the run above (`calls` is non-empty then).
         if (this.wasCancelled && !this.executionDone && !this.leftStopped && this.calls.size === 0 && (reason !== "stop" || opencodeCalls > 0)) {
           this.leftStopped = true
-          this.hooks.stopTurn()
+          this.stopTurn()
         }
         if (this.calls.size === 0 && opencodeCalls > 0) return this.opencodeStepEnded(reason)
         // #463: every call the step made was undeclared and no text was written: nothing to return, so the request fails.
@@ -592,7 +608,7 @@ export class RequestCollector {
         // A tool-calls finish needs a valid call (#463). Without one the step is a stop, and no further step runs.
         if (this.calls.size === 0 && reason === "tool-calls") {
           // A finished run was already stopped by the branch above (a late call, #196): only a live run is stopped here.
-          if (!this.finished && !this.executionDone) this.hooks.stopTurn()
+          if (!this.finished && !this.executionDone) this.stopTurn()
           return this.finishWith("stop")
         }
         if (this.calls.size === 0 && reason === "stop") this.settled = true
@@ -615,7 +631,7 @@ export class RequestCollector {
           logWarn("request.stop_step_failed", { requestID: this.hooks.requestID, app: this.hooks.app, error: error?.type ?? "unknown" })
           return this.finishStopped(true)
         }
-        if (!this.executionDone && error?.type !== "aborted") this.hooks.stopTurn()
+        if (!this.executionDone && error?.type !== "aborted") this.stopTurn()
         if (this.calls.size > 0 && error?.type === "aborted") return this.finishWith("tool-calls")
         if (error?.type === "aborted" && this.stopped) return this.finishWith("stop")
         if (item.finish === "content-filter") return this.finishWith("content-filter")
@@ -662,6 +678,15 @@ export class RequestCollector {
   abort(error: PlugError): void {
     if (this.finished) return
     this.fail(error)
+    this.stopTurn()
+  }
+
+  /**
+   * The one place the collector asks the owner to interrupt the turn: the ask is remembered, so a step the runner starts
+   * after it is known to be a stray one (#14).
+   */
+  private stopTurn(): void {
+    this.interrupted = true
     this.hooks.stopTurn()
   }
 
@@ -699,7 +724,7 @@ export class RequestCollector {
     if (this.finished) return
     // Finish first: an interrupt may report back synchronously, and the run must already be over when it does.
     this.finishWith("stop")
-    if (interrupt && !this.executionDone) this.hooks.stopTurn()
+    if (interrupt && !this.executionDone) this.stopTurn()
   }
 
   /**
@@ -817,7 +842,7 @@ export class RequestCollector {
     this.queue.clear()
     this.queue.push({ type: "error", error: RESPONSE_OVERFLOW }, 0, true)
     this.end()
-    if (!this.executionDone) this.hooks.stopTurn()
+    if (!this.executionDone) this.stopTurn()
   }
 }
 
